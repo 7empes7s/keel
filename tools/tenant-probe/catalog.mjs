@@ -18,7 +18,9 @@ export const CATALOG = [
     note: 'Missing domains were a named cause of the CoreView UPN failures.' },
   { type: 'subscribedSku', path: '/subscribedSkus', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
     note: 'Licence availability is a hard precondition for user restore.' },
-  { type: 'directorySettingTemplate', path: '/directorySettingTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
+  // v1.0 has no directorySettingTemplates segment; groupSetting.templateId
+  // dangles without these, so the beta path is load-bearing, not optional.
+  { type: 'directorySettingTemplate', path: '/directorySettingTemplates', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'groupSetting', path: '/groupSettings', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
 
   // ------------------------------------------------------------ principals
@@ -37,7 +39,10 @@ export const CATALOG = [
     pageCap: 20,
     note: 'Secret values are unrecoverable — cross-tenant needs the re-issue workflow (spec §9.5).' },
   { type: 'servicePrincipal', path: '/servicePrincipals', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
-    select: 'id,appId,displayName,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,tags,signInAudience',
+    // appRoles and oauth2PermissionScopes publish the permission ids that every
+    // application's requiredResourceAccess points at. Without them, every
+    // permission in the tenant reads as a dangling reference.
+    select: 'id,appId,displayName,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,tags,signInAudience,appRoles,oauth2PermissionScopes',
     pageCap: 20 },
   { type: 'oauth2PermissionGrant', path: '/oauth2PermissionGrants', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
     pageCap: 20,
@@ -48,11 +53,17 @@ export const CATALOG = [
   // ------------------------------------------------------------------ RBAC
   { type: 'directoryRole', path: '/directoryRoles', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout' },
   { type: 'roleDefinition', path: '/roleManagement/directory/roleDefinitions', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout' },
+  // A roleAssignment's roleDefinitionId may point at a CUSTOM roleDefinition
+  // (above) OR at a BUILT-IN role template — a separate Microsoft-defined
+  // catalog, identical GUIDs in every tenant. Confirmed 2026-09-03: dangling
+  // roleDefinitionIds in the sandbox tenant resolved as directoryRoleTemplate.
+  { type: 'directoryRoleTemplate', path: '/directoryRoleTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic',
+    note: 'Global constant catalog, not tenant configuration — collected only to resolve roleAssignment.roleDefinitionId.' },
   { type: 'roleAssignment', path: '/roleManagement/directory/roleAssignments', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
     pageCap: 20,
     note: 'Break-glass accounts live here. The invariant in spec §10.4 reads this set.' },
-  { type: 'roleEligibilitySchedule', path: '/roleManagement/directory/roleEligibilitySchedules', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
-    note: 'PIM. Requires Entra ID P2; absence here is a licensing signal, not a coverage gap.' },
+  { type: 'roleEligibilitySchedule', path: '/roleManagement/directory/roleEligibilityScheduleInstances', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
+    note: 'PIM. The ...Schedules collection returns CultureNotFoundException unfiltered; the Instances collection is the queryable one.' },
 
   // ---------------------------------------------------- conditional access
   { type: 'conditionalAccessPolicy', path: '/identity/conditionalAccess/policies', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
@@ -87,7 +98,8 @@ export const CATALOG = [
   { type: 'deviceManagementRoleDefinition', path: '/deviceManagement/roleDefinitions', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting' },
   { type: 'deviceCategory', path: '/deviceManagement/deviceCategories', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'termsAndConditions', path: '/deviceManagement/termsAndConditions', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
-  { type: 'windowsAutopilotDeploymentProfile', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  { type: 'windowsAutopilotDeploymentProfile', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
+    note: 'Beta-only surface — a fidelity risk the spec flags for Intune.' },
   { type: 'deviceManagementIntent', path: '/deviceManagement/intents', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'managedDevice', path: '/deviceManagement/managedDevices', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic', pageCap: 5,
     note: 'Device records are re-enrolled, not restored. Counted for scale only.' },

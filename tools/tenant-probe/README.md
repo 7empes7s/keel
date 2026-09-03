@@ -5,7 +5,7 @@ that spec §19.1 requires before implementation begins.
 
 ## What it measures
 
-1. **Reachability** — which of the 50 catalogued Entra/Intune resource types
+1. **Reachability** — which of the 52 catalogued Entra/Intune resource types
    actually return data with the granted scopes. A type is reachable only if a
    real request returned it; nothing is inferred from documentation.
 2. **Scale** — true object counts per type via `$count`, independent of any
@@ -55,4 +55,4 @@ The reference analyser is the module the M1 go/no-go decision rests on, so its
 fixture is built to distinguish a correct implementation from the plausible
 wrong ones — self-references, appId-only resolution, well-known Microsoft ids,
 GUIDs nested in arrays, and genuine dangling references each change the totals.
-All four mutations tried against it are killed by the suite.
+All ten mutations tried against it are killed by the suite.

@@ -12,6 +12,22 @@ const GRAPH = {
   beta: 'https://graph.microsoft.com/beta',
 };
 
+const GRAPH_HOSTS = new Set(['graph.microsoft.com']);
+
+/**
+ * The access token may only ever be sent to Graph itself. @odata.nextLink
+ * values arrive as absolute URLs and are followed verbatim, so without this
+ * guard a malicious or buggy response could point the client at a foreign
+ * host and receive the bearer token there.
+ */
+function isGraphUrl(url) {
+  try {
+    return GRAPH_HOSTS.has(new URL(url).host);
+  } catch {
+    return false;
+  }
+}
+
 export class GraphReader {
   constructor(getAccessToken) {
     this.getAccessToken = getAccessToken;
@@ -36,6 +52,9 @@ export class GraphReader {
    */
   async get(version, path, { consistencyLevel = false, maxRetries = 5 } = {}) {
     const url = this.url(version, path);
+    if (!isGraphUrl(url)) {
+      return { ok: false, status: 0, code: 'UnsafeUrl', error: `refused request to non-Graph host: ${url}` };
+    }
     const headers = { Authorization: `Bearer ${await this.getAccessToken()}` };
     if (consistencyLevel) headers.ConsistencyLevel = 'eventual';
 

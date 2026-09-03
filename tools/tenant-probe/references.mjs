@@ -51,15 +51,22 @@ const GLOBAL_CONSTANT_FIELDS = [
   /(^|\.)servicePlanId$/,
   /(^|\.)roleTemplateId$/,
   /(^|\.)templateId$/,
+  // Permission ids are defined by the resource application, not the tenant:
+  // the same id means the same permission in every tenant. (Ids published by
+  // THIS tenant's apps resolve through the index before this rule is reached.)
   /^requiredResourceAccess\.resourceAccess\.id$/,
-  /^grantControls\.authenticationStrength\.id$/,
-  /^authenticationMethodConfigurations\..*(Profile|profileId)$/i,
   /(^|\.)builtInStandardId$/,
   // Gallery application templates are published by Microsoft, not the tenant.
   /(^|\.)applicationTemplateId$/,
-  // Passkey authenticator AAGUIDs are FIDO Alliance device model identifiers.
-  /(^|\.)allowedPasskeyProfiles$/,
-  /(^|\.)aaGuid$/i,
+  // FIDO2 keyRestrictions.aaGuids list FIDO Alliance authenticator model ids
+  // (e.g. a YubiKey's AAGUID), defined by the FIDO Alliance, not the tenant.
+  /(^|\.)aaGuids?$/i,
+  // NOTE what is deliberately absent:
+  //  - grantControls.authenticationStrength.id — only the three BUILT-IN
+  //    strengths are global (WELL_KNOWN); custom strengths are tenant objects
+  //    and must resolve through the index or report as unresolvable.
+  //  - allowedPasskeyProfiles — the built-in default profile is WELL_KNOWN
+  //    (0000...0001); any other id there is a tenant-created custom profile.
 ];
 
 /**
@@ -99,7 +106,6 @@ const CHILD_IDENTITY_FIELDS = [
   /^(includes|excludes)\.id$/,
   /^authenticationMethodConfigurations\.id$/,
   /^servicePlans\.servicePlanId$/,
-  /^(assignedPlans|provisionedPlans)\.\w+$/,
   /^verifiedDomains\.\w+$/,
   // Permissions and credentials an app or service principal publishes are its
   // own; they resolve to itself and must not be counted as outbound references.
@@ -108,7 +114,12 @@ const CHILD_IDENTITY_FIELDS = [
   /^(passwordCredentials|keyCredentials)\.(keyId|customKeyIdentifier)$/,
 ];
 
-/** First-party Microsoft app ids, for tenants where the SP was not collected. */
+/**
+ * App/object ids that are identical in every tenant by construction, for
+ * tenants where the SP was not collected: first-party Microsoft apps, the
+ * built-in authentication strengths, and the third-party mail clients named
+ * in Microsoft's managed consent policies (their app registrations are global).
+ */
 const WELL_KNOWN = new Map([
   ['00000003-0000-0000-c000-000000000000', 'Microsoft Graph'],
   ['00000002-0000-0000-c000-000000000000', 'Azure AD Graph'],
@@ -123,6 +134,22 @@ const WELL_KNOWN = new Map([
   // "Default passkey profile" inside authenticationMethodsPolicy — a built-in
   // FIDO2 profile, not a tenant-created object.
   ['00000000-0000-0000-0000-000000000001', 'Default passkey profile (built-in)'],
+  // The three built-in authentication strengths — documented Microsoft-global
+  // ids. CUSTOM authentication strengths are tenant objects with tenant-random
+  // ids; they must resolve through the index or report as unresolvable.
+  ['00000000-0000-0000-0000-000000000002', 'Multifactor authentication (built-in strength)'],
+  ['00000000-0000-0000-0000-000000000003', 'Passwordless MFA (built-in strength)'],
+  ['00000000-0000-0000-0000-000000000004', 'Phishing-resistant MFA (built-in strength)'],
+  // Apps named in Microsoft's managed consent policies ("Manage app consent
+  // policies", Microsoft Learn) — the same app id in every tenant, so a
+  // permissionGrantPolicy listing them restores verbatim.
+  ['fb78d390-0c51-40cd-8e17-fdbfab77341b', 'Exchange Online PowerShell'],
+  ['f8d98a96-0999-43f5-8af3-69971c7bb423', 'Apple Mail'],
+  ['b50c1dbd-1855-4e54-b07c-d3c3029e93d3', 'Spark Email'],
+  ['e9a7fea1-1cc0-4cd9-a31b-9137ca5deedd', 'eM Client'],
+  ['8acd33ea-7197-4a96-bc33-d7cc7101262f', 'Samsung Email for Android'],
+  ['2cee05de-2b8f-45a2-8289-2a06ca32c4c8', 'Android Mail'],
+  ['9e5f94bc-e8a4-4e73-b8be-63364c29d753', 'Thunderbird'],
 ]);
 
 const matches = (patterns, path) => patterns.some((re) => re.test(path));
@@ -172,6 +199,10 @@ export function naturalKey(type, obj) {
   }
 }
 
+/** Index kinds whose ids are a Microsoft-published catalog: the same GUID in
+ * every tenant, preserved verbatim rather than remapped to a natural key. */
+const CATALOG_KINDS = new Set(['roleTemplate', 'settingTemplate']);
+
 /**
  * Build every resolution target the tenant offers.
  *
@@ -194,9 +225,12 @@ export function buildIndex(collected) {
     for (const obj of objects) {
       // Built-in role templates are a Microsoft-defined catalog: the same id
       // means the same role in every tenant. Indexed distinctly from ordinary
-      // objects so classify() can report them as verbatim, not remapped.
-      if (type === 'directoryRoleTemplate') {
-        add(obj?.id, { type, key: naturalKey(type, obj), kind: 'roleTemplate' });
+      // objects so classify() can report them as verbatim, not remapped. The
+      // same is true of directory setting templates (e.g. Group.Unified),
+      // whose ids are also identical across tenants.
+      if (type === 'directoryRoleTemplate' || type === 'directorySettingTemplate') {
+        const kind = type === 'directoryRoleTemplate' ? 'roleTemplate' : 'settingTemplate';
+        add(obj?.id, { type, key: naturalKey(type, obj), kind });
         continue;
       }
 
@@ -257,9 +291,11 @@ function* walkGuids(node, path = '') {
 
 /**
  * Classify one GUID occurrence. Order matters: identity and non-reference
- * checks come first so they are never counted as references at all, and index
- * resolution comes before the field-path rules so an id we can actually name
- * is never written off as an opaque constant.
+ * checks come first so they are never counted as references at all; read-only
+ * fields are excluded next because server-assigned values cannot be written
+ * and so are never a restore risk, even when the target is one we collected;
+ * and index resolution comes before the remaining field-path rules so an id
+ * we can actually name is never written off as an opaque constant.
  */
 export function classify({ path, guid, ownIds, index }) {
   const p = normalisePath(path);
@@ -272,9 +308,9 @@ export function classify({ path, guid, ownIds, index }) {
 
   const hit = index.get(guid);
   if (hit) {
-    // roleTemplate ids are Microsoft's built-in catalog — the same GUID in
-    // every tenant, preserved verbatim, not remapped to a different value.
-    const klass = hit.kind === 'roleTemplate' ? 'globalConstant' : 'resolvable';
+    // Catalog ids (built-in role/setting templates) are the same GUID in every
+    // tenant — preserved verbatim, not remapped to a different value.
+    const klass = CATALOG_KINDS.has(hit.kind) ? 'globalConstant' : 'resolvable';
     return { klass, kind: hit.kind, key: hit.key };
   }
   if (WELL_KNOWN.has(guid)) return { klass: 'globalConstant', key: WELL_KNOWN.get(guid) };

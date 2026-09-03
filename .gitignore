@@ -10,3 +10,6 @@
 # Probe output may contain tenant object names and structure.
 out/
 node_modules/
+
+# Raw agent dispatch transcripts — debug artifacts, not source.
+.review-logs/

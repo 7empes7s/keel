@@ -1,0 +1,12 @@
+# Credentials — never commit. Real material lives in /etc/keel (mode 700).
+*.key
+*.pem
+*.pfx
+*.cer
+*.crt
+.env
+.env.*
+
+# Probe output may contain tenant object names and structure.
+out/
+node_modules/

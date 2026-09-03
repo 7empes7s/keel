@@ -42,19 +42,36 @@ export function renderReport(r) {
 
   push(`## Reference resolvability`);
   push();
-  push(`The decisive measurement for cross-tenant restore. An unresolvable GUID is`);
-  push(`a reference that cannot be re-pointed in a rebuilt tenant.`);
+  push(`The decisive measurement for cross-tenant restore. Only the last row is a`);
+  push(`risk: everything above it either re-points to a natural key, is a Microsoft`);
+  push(`constant identical in every tenant, or belongs to a foreign tenant and is`);
+  push(`correct to preserve verbatim.`);
   push();
   const ref = r.references;
-  push(`| Class | Count | Share |`);
-  push(`|---|---:|---:|`);
-  push(`| Resolvable to a collected object | ${ref.resolvable} | ${pct(ref.resolvable, ref.totalReferences)} |`);
-  push(`| Well-known Microsoft identifier | ${ref.wellKnown} | ${pct(ref.wellKnown, ref.totalReferences)} |`);
-  push(`| **Unresolvable** | **${ref.unresolvable}** | **${pct(ref.unresolvable, ref.totalReferences)}** |`);
-  push(`| Total inter-object references | ${ref.totalReferences} | |`);
+  push(`| Class | Count | Share | Restores cross-tenant? |`);
+  push(`|---|---:|---:|---|`);
+  push(`| Resolvable to a natural key | ${ref.resolvable} | ${pct(ref.resolvable, ref.totalReferences)} | yes, remapped |`);
+  push(`| Microsoft-global constant | ${ref.globalConstant} | ${pct(ref.globalConstant, ref.totalReferences)} | yes, verbatim |`);
+  push(`| Foreign tenant identifier | ${ref.foreignTenant} | ${pct(ref.foreignTenant, ref.totalReferences)} | yes, verbatim |`);
+  push(`| Server-assigned, not writable | ${ref.readOnly} | ${pct(ref.readOnly, ref.totalReferences)} | n/a, cannot be set |`);
+  push(`| **Unresolvable** | **${ref.unresolvable}** | **${pct(ref.unresolvable, ref.totalReferences)}** | **no** |`);
+  push(`| Total references | ${ref.totalReferences} | | |`);
   push();
-  push(`Indexed objects available as resolution targets: ${ref.indexedObjects.toLocaleString()}.`);
+  push(`Excluded before classification: ${ref.identity.toLocaleString()} identity fields`);
+  push(`(an object's own ids, and ids of elements it owns) and ${ref.nonReference} GUID-shaped`);
+  push(`values in name fields, which are not references at all.`);
   push();
+  push(`Resolution targets indexed: ${ref.indexedTargets.toLocaleString()} — ` +
+    Object.entries(ref.indexedByKind).map(([k, v]) => `${v} ${k}`).join(', ') + '.');
+  push();
+  if (Object.keys(ref.resolvableByKind).length) {
+    push(`Resolved by kind: ` +
+      Object.entries(ref.resolvableByKind)
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${k} ${v}`)
+        .join(', ') + '.');
+    push();
+  }
 
   const problem = Object.entries(ref.byType)
     .filter(([, v]) => v.unresolvable > 0)
@@ -68,6 +85,12 @@ export function renderReport(r) {
     for (const [type, v] of problem.slice(0, 20)) {
       const worst = Object.entries(v.unresolvedFields).sort((a, b) => b[1] - a[1])[0];
       push(`| \`${type}\` | ${v.total} | ${v.unresolvable} (${pct(v.unresolvable, v.total)}) | \`${worst?.[0] ?? '—'}\` |`);
+    }
+    push();
+    push(`### Unresolved samples`);
+    push();
+    for (const s of ref.unresolvedSamples.slice(0, 15)) {
+      push(`- \`${s.type}\` · \`${s.field}\` → \`${s.guid}\``);
     }
     push();
   } else {

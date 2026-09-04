@@ -6,8 +6,8 @@ import { immutableDrift, writableProjection } from '../reconcile/writableProject
 import { recordPriorState } from './rollbackJournal.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
-/** Spec §7.1, §9.3, §11.5. An apply is not complete until verify() reads the
- * state back and confirms it — this function is where that rule lives. */
+/** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
+ * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
   targetTenant,
   mode,
@@ -217,9 +217,16 @@ export async function applyWave(writer, governor, wave, {
     const existingId = existingTargetIds.get(resource.naturalKey);
     if (existingId) {
       if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
-      const verified = await writer.verify(existingId);
-      if (verified) { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
-      failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but does not verify() against the plan — manual reconciliation required` });
+      const path = `${pathFor(resource.resourceType)}/${existingId}`;
+      const reRead = await writer.read('v1.0', path);
+      if (reRead?.ok === false) {
+        failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but could not be read (status ${reRead.status}) — manual reconciliation required` });
+        continue;
+      }
+      const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
+      const desiredHash = canonicalHash(payload, resource.resourceType);
+      if (actualHash === desiredHash) { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
+      failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but actual hash ${actualHash} does not match desired hash ${desiredHash} — manual reconciliation required` });
       continue;
     }
 
@@ -231,8 +238,17 @@ export async function applyWave(writer, governor, wave, {
     if (!writeResult.ok) { failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) }); continue; }
 
     const targetId = writeResult.body.id;
-    const verified = await writer.verify(targetId);
-    if (!verified) { failed.push({ naturalKey: resource.naturalKey, error: `verify() did not match after write to ${targetId}` }); continue; }
+    const reRead = await writer.read('v1.0', `${path}/${targetId}`);
+    if (reRead?.ok === false) {
+      failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+      continue;
+    }
+    const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
+    const desiredHash = canonicalHash(payload, resource.resourceType);
+    if (actualHash !== desiredHash) {
+      failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}` });
+      continue;
+    }
 
     applied.push({ naturalKey: resource.naturalKey, targetId });
   }

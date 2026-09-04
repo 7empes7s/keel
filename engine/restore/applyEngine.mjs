@@ -41,6 +41,42 @@ export async function applyWave(writer, governor, wave, { targetTenant, mode, ex
   return { applied, skipped, failed };
 }
 
+/** Spec §8.4 — second phase of the two-phase apply. Each patch re-adds the field that was
+ * omitted to break a cycle, once every node it depends on exists. */
+export async function applyPatches(writer, governor, patches, { targetTenant, mode, appliedIds }) {
+  const applied = [];
+  const failed = [];
+
+  for (const patch of patches) {
+    if (!appliedIds.has(patch.symbol)) {
+      failed.push({ naturalKey: patch.naturalKey, reason: `patch symbol ${patch.symbol} was never applied` });
+      continue;
+    }
+
+    const targetId = appliedIds.get(patch.symbol);
+    const resourceType = patch.naturalKey.split(':', 1)[0];
+    const patchId = appliedIds.get(patch.naturalKey);
+    let body = { [patch.field]: targetId };
+    if (resourceType === 'conditionalAccessPolicy') body = enforceReportOnly(body);
+
+    if (mode === 'dry-run') {
+      applied.push({ naturalKey: patch.naturalKey, targetId: patchId });
+      continue;
+    }
+
+    await governor.acquire(targetTenant, 'entra', 'write');
+    const writeResult = await writer.write('v1.0', `${pathFor(resourceType)}/${patchId}`, { method: 'PATCH', body });
+    if (!writeResult.ok) {
+      failed.push({ naturalKey: patch.naturalKey, error: JSON.stringify(writeResult.body) });
+      continue;
+    }
+
+    applied.push({ naturalKey: patch.naturalKey, targetId: patchId });
+  }
+
+  return { applied, failed };
+}
+
 function pathFor(resourceType) {
   const paths = {
     group: '/groups',

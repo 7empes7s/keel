@@ -167,7 +167,7 @@ const OWN_IDENTITY_FIELDS = {
   __default: ['id', 'appId'],
 };
 
-function ownIdentifiers(type, obj) {
+export function ownIdentifiers(type, obj) {
   const fields = OWN_IDENTITY_FIELDS[type] ?? OWN_IDENTITY_FIELDS.__default;
   return new Set(
     fields
@@ -273,7 +273,7 @@ export function buildIndex(collected) {
 }
 
 /** Recursively yield every GUID-shaped string with its JSON path. */
-function* walkGuids(node, path = '') {
+export function* walkGuids(node, path = '') {
   if (typeof node === 'string') {
     if (GUID.test(node)) yield { path, guid: node.toLowerCase() };
     return;

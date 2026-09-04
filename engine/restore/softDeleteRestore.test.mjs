@@ -16,7 +16,7 @@ function fakeWriter({ restored, afterUpdate = restored } = {}) {
     read: async (version, path) => {
       calls.push({ kind: 'read', version, path });
       reads += 1;
-      return reads === 1 ? restored : afterUpdate;
+      return { ok: true, status: 200, body: reads === 1 ? restored : afterUpdate };
     },
   };
 }

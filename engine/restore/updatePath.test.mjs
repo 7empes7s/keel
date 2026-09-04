@@ -13,7 +13,7 @@ function fakeWriter(reRead) {
     },
     read: async (version, path) => {
       calls.push({ kind: 'read', version, path });
-      return reRead;
+      return { ok: true, status: 200, body: reRead };
     },
   };
 }

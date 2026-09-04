@@ -29,6 +29,16 @@ export class GraphWriter {
     return { ok: res.ok, status: res.status, body: responseBody };
   }
 
+  async read(version, path) {
+    const url = this.url(version, path);
+    if (!isGraphUrl(url)) throw new Error(`refused read from non-Graph host: ${url}`);
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${await this.getAccessToken()}` },
+    });
+    const body = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, body };
+  }
+
   /**
    * Spec §11.2–§11.3: max 20 requests per batch; a 429 inside the batch
    * arrives inside a 200 envelope, and every item is parsed individually — the

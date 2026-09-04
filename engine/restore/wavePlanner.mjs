@@ -20,3 +20,11 @@ export function planWaves(resources) {
 
   return { waves, patches };
 }
+
+/** Spec M2.5. Deletions run after every create/update wave, in REVERSE dependency order:
+ * a group cannot be deleted while a role assignment still references it. */
+export function planDeletionWaves(resourcesToDelete) {
+  const graph = buildGraph(resourcesToDelete);
+  const waves = topoWaves(graph).reverse();
+  return { waves };
+}

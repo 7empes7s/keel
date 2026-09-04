@@ -1,18 +1,85 @@
 import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
+import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { recordPriorState } from './rollbackJournal.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until verify() reads the
  * state back and confirms it — this function is where that rule lives. */
-export async function applyWave(writer, governor, wave, { targetTenant, mode, existingTargetIds = new Map() }) {
+export async function applyWave(writer, governor, wave, {
+  targetTenant,
+  mode,
+  existingTargetIds = new Map(),
+  deletionGuardOptions = { breakGlassUserIds: [], keelAppIds: [], caPolicies: [] },
+  rollbackClient,
+  runId,
+  simulationPassed = false,
+}) {
   const applied = [];
   const skipped = [];
   const failed = [];
   const notRemediable = [];
 
   for (const resource of wave) {
+    if (resource.verb === 'delete') {
+      const deletionCheck = refuseUnsafeDeletion(resource, deletionGuardOptions);
+      if (deletionCheck.refused) {
+        skipped.push({ naturalKey: resource.naturalKey, reason: deletionCheck.reason });
+        continue;
+      }
+      if (resource.blastRadius === 'tenant-lockout' && simulationPassed !== true) {
+        skipped.push({
+          naturalKey: resource.naturalKey,
+          reason: 'refusing to delete tenant-lockout resource: simulationPassed must be true',
+        });
+        continue;
+      }
+
+      const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
+      if (!targetId) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'delete has no targetId' });
+        continue;
+      }
+
+      if (mode === 'dry-run') {
+        applied.push({ naturalKey: resource.naturalKey, targetId });
+        continue;
+      }
+
+      try {
+        await recordPriorState(rollbackClient, {
+          runId,
+          naturalKey: resource.naturalKey,
+          priorState: resource.payload,
+        });
+      } catch {
+        failed.push({ naturalKey: resource.naturalKey, error: 'refusing to delete: rollback journal write failed' });
+        continue;
+      }
+
+      const path = `${pathFor(resource.resourceType)}/${targetId}`;
+      await governor.acquire(targetTenant, 'entra', 'write');
+      const deleteResult = await writer.write('v1.0', path, { method: 'DELETE', body: {} });
+      if (!deleteResult.ok) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(deleteResult.body) });
+        continue;
+      }
+
+      const reRead = await writer.read('v1.0', path);
+      const isAbsent = reRead?.ok === false && reRead.status === 404;
+      const live = reRead?.body ?? reRead;
+      const isSoftDeleted = live?.deletedDateTime != null;
+      if (!isAbsent && !isSoftDeleted) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'delete did not verify as absent or soft-deleted' });
+        continue;
+      }
+
+      applied.push({ naturalKey: resource.naturalKey, targetId });
+      continue;
+    }
+
     const syncCheck = refuseIfSynced(resource);
     if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KEEL tier3 backup weekly
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+Unit=keel-backup-tier3.service
+
+[Install]
+WantedBy=timers.target

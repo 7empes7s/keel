@@ -1,10 +1,39 @@
 import { strict as assert } from 'node:assert';
 import { M1_TYPES } from '../collect/entraAdapter.mjs';
-import { canonicalHash, canonicalize, VOLATILE_FIELDS } from './canonicalHash.mjs';
+import { canonicalHash, canonicalize } from './canonicalHash.mjs';
 
 for (const resourceType of M1_TYPES) {
-  assert.ok(VOLATILE_FIELDS.has(resourceType), `missing volatile-field entry for ${resourceType}`);
+  const baseline = {
+    id: `${resourceType}-before`,
+    createdDateTime: '2026-09-04T00:00:00Z',
+    modifiedDateTime: '2026-09-04T00:00:00Z',
+    displayName: 'Finance Admins',
+  };
+  const serverOwnedChanged = {
+    ...baseline,
+    id: `${resourceType}-after`,
+    createdDateTime: '2026-09-05T00:00:00Z',
+    modifiedDateTime: '2026-09-05T00:00:00Z',
+  };
+  const writableChanged = { ...baseline, displayName: 'Legal Admins' };
+
+  assert.equal(
+    canonicalHash(baseline, resourceType),
+    canonicalHash(serverOwnedChanged, resourceType),
+    `${resourceType} server-owned changes must converge`,
+  );
+  assert.notEqual(
+    canonicalHash(baseline, resourceType),
+    canonicalHash(writableChanged, resourceType),
+    `${resourceType} writable changes must remain drift`,
+  );
 }
+
+assert.notEqual(
+  canonicalHash({ displayName: 'Finance Admins', mailNickname: 'finance-admins' }, 'group'),
+  canonicalHash({ displayName: 'Finance Admins', mailNickname: 'legal-admins' }, 'group'),
+  'immutable fields are real drift',
+);
 
 const orderedA = {
   displayName: 'Finance Admins',
@@ -14,18 +43,7 @@ const orderedB = {
   conditions: { excludeGroups: ['legacy'], includeUsers: ['ana'] },
   displayName: 'Finance Admins',
 };
-assert.equal(canonicalHash(orderedA, 'order'), canonicalHash(orderedB, 'order'));
-
-VOLATILE_FIELDS.set('volatile-fixture', new Set(['modifiedDateTime']));
-assert.equal(
-  canonicalHash({ displayName: 'Finance Admins', modifiedDateTime: '2026-09-04T00:00:00Z' }, 'volatile-fixture'),
-  canonicalHash({ displayName: 'Finance Admins', modifiedDateTime: '2026-09-04T00:01:00Z' }, 'volatile-fixture'),
-);
-
-assert.notEqual(
-  canonicalHash({ displayName: 'Finance Admins', modifiedDateTime: '2026-09-04T00:00:00Z' }, 'volatile-fixture'),
-  canonicalHash({ displayName: 'Legal Admins', modifiedDateTime: '2026-09-04T00:01:00Z' }, 'volatile-fixture'),
-);
+assert.equal(canonicalHash(orderedA, 'group'), canonicalHash(orderedB, 'group'));
 
 const nestedA = {
   nested: { z: 3, a: 1 },
@@ -35,12 +53,12 @@ const nestedB = {
   array: [{ a: 'first', z: 'second' }, { a: 1, b: 2 }],
   nested: { a: 1, z: 3 },
 };
-assert.deepEqual(canonicalize(nestedA, new Set()), canonicalize(nestedB, new Set()));
-assert.equal(canonicalHash(nestedA, 'nested'), canonicalHash(nestedB, 'nested'));
+assert.deepEqual(canonicalize(nestedA, 'group'), canonicalize(nestedB, 'group'));
+assert.equal(canonicalHash(nestedA, 'group'), canonicalHash(nestedB, 'group'));
 
 assert.equal(
-  canonicalHash({ '@odata.etag': 'root-etag', nested: { '@odata.etag': 'nested-etag', value: 'same' } }, 'odata'),
-  canonicalHash({ '@odata.etag': 'other-root-etag', nested: { '@odata.etag': 'other-nested-etag', value: 'same' } }, 'odata'),
+  canonicalHash({ '@odata.etag': 'root-etag', nested: { '@odata.etag': 'nested-etag', value: 'same' } }, 'group'),
+  canonicalHash({ '@odata.etag': 'other-root-etag', nested: { '@odata.etag': 'other-nested-etag', value: 'same' } }, 'group'),
 );
 
 console.log('canonicalHash.test.mjs — all assertions passed');

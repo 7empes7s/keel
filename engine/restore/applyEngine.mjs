@@ -1,5 +1,8 @@
 import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
+import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
+import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { isDeepStrictEqual } from 'node:util';
 
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until verify() reads the
  * state back and confirms it — this function is where that rule lives. */
@@ -7,10 +10,58 @@ export async function applyWave(writer, governor, wave, { targetTenant, mode, ex
   const applied = [];
   const skipped = [];
   const failed = [];
+  const notRemediable = [];
 
   for (const resource of wave) {
     const syncCheck = refuseIfSynced(resource);
     if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
+
+    if (resource.verb === 'update') {
+      const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
+      if (!targetId) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'update has no targetId' });
+        continue;
+      }
+
+      let desired = resource.payload;
+      if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      const payload = writableProjection(desired, resource.resourceType);
+
+      if (mode === 'dry-run') {
+        applied.push({ naturalKey: resource.naturalKey, targetId });
+        continue;
+      }
+
+      await governor.acquire(targetTenant, 'entra', 'write');
+      const path = `${pathFor(resource.resourceType)}/${targetId}`;
+      const writeResult = await writer.write('v1.0', path, { method: 'PATCH', body: payload });
+      if (!writeResult.ok) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) });
+        continue;
+      }
+
+      const reRead = await writer.read('v1.0', path);
+      if (reRead?.ok === false) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+        continue;
+      }
+      const live = reRead?.body ?? reRead;
+      if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
+        const residual = residualDiff(desired, live, resource.resourceType);
+        const immutable = immutableDrift(desired, live, resource.resourceType);
+        if (residual.length > 0 && residual.every((path) => immutable.some(
+          (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
+        ))) {
+          notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
+          continue;
+        }
+        failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
+        continue;
+      }
+
+      applied.push({ naturalKey: resource.naturalKey, targetId });
+      continue;
+    }
 
     let payload = resource.payload;
     if (resource.resourceType === 'conditionalAccessPolicy') payload = enforceReportOnly(payload);
@@ -38,7 +89,52 @@ export async function applyWave(writer, governor, wave, { targetTenant, mode, ex
     applied.push({ naturalKey: resource.naturalKey, targetId });
   }
 
-  return { applied, skipped, failed };
+  return { applied, skipped, failed, notRemediable };
+}
+
+function residualDiff(desired, live, resourceType) {
+  const paths = [];
+  collectResidualPaths(
+    canonicalize(desired, resourceType),
+    canonicalize(live, resourceType),
+    '',
+    paths,
+  );
+  return paths;
+}
+
+function collectResidualPaths(desired, live, path, paths) {
+  if (isDeepStrictEqual(desired, live)) return;
+
+  if (Array.isArray(desired) || Array.isArray(live)) {
+    const desiredItems = Array.isArray(desired) ? desired : [];
+    const liveItems = Array.isArray(live) ? live : [];
+    const length = Math.max(desiredItems.length, liveItems.length);
+    for (let index = 0; index < length; index += 1) {
+      collectResidualPaths(desiredItems[index], liveItems[index], path ? `${path}.${index}` : String(index), paths);
+    }
+    return;
+  }
+
+  if (
+    (desired && typeof desired === 'object')
+    || (live && typeof live === 'object')
+  ) {
+    const desiredObject = desired && typeof desired === 'object' ? desired : {};
+    const liveObject = live && typeof live === 'object' ? live : {};
+    const keys = new Set([...Object.keys(desiredObject), ...Object.keys(liveObject)]);
+    for (const key of keys) {
+      collectResidualPaths(
+        desiredObject[key],
+        liveObject[key],
+        path ? `${path}.${key}` : key,
+        paths,
+      );
+    }
+    return;
+  }
+
+  if (path) paths.push(path);
 }
 
 /** Spec §8.4 — second phase of the two-phase apply. Each patch re-adds the field that was

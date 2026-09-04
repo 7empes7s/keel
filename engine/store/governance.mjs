@@ -1,3 +1,5 @@
+import { OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+
 export async function createBaseline(client, { tenantRef, setBy }) {
   const { rows } = await client.query(
     `INSERT INTO baseline (tenant_ref, set_by) VALUES ($1, $2) RETURNING id`,
@@ -47,22 +49,7 @@ export async function listOpenDrift(client, { tenantRef }) {
     `SELECT d.*
      FROM drift d
      WHERE d.tenant_ref = $1
-       AND (
-         NOT EXISTS (
-           SELECT 1 FROM disposition p WHERE p.drift_id = d.id
-         )
-         OR (
-           EXISTS (
-             SELECT 1 FROM disposition p
-             WHERE p.drift_id = d.id
-           )
-           AND NOT EXISTS (
-             SELECT 1 FROM disposition p
-             WHERE p.drift_id = d.id
-               AND (p.action <> 'ignore' OR p.expires_at IS NULL OR p.expires_at > now())
-           )
-         )
-       )
+       AND ${OPEN_DRIFT_PREDICATE}
      ORDER BY d.detected_at, d.id`,
     [tenantRef],
   );

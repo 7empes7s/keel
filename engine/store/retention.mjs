@@ -1,3 +1,5 @@
+import { OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+
 /** Spec M2.7. A snapshot is prunable ONLY if nothing depends on it. Retention that deletes
  * the baseline out from under the governance loop is data loss, not cleanup. */
 const DEFAULT_RETENTION_DAYS = {
@@ -34,9 +36,7 @@ export async function pruneSnapshots(client, { tenantRef, policy, now }) {
          UNION
          SELECT d.observed_snapshot AS snapshot_id
          FROM drift d
-         WHERE NOT EXISTS (
-           SELECT 1 FROM disposition p WHERE p.drift_id = d.id
-         )
+         WHERE ${OPEN_DRIFT_PREDICATE}
          UNION
          SELECT p.source_snapshot AS snapshot_id
          FROM plan p

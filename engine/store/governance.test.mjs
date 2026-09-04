@@ -20,6 +20,8 @@ await admin.end();
 
 const client = await connect(url);
 const tenantRef = 'sha256:governance-test';
+const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');
+const unexpiredIgnoreAt = new Date('2099-01-01T00:00:00.000Z');
 const snapshotId = await createSnapshot(client, { tenantRef });
 const versionId = await insertResourceVersion(client, {
   snapshotId,
@@ -75,7 +77,7 @@ await recordDisposition(client, {
   action: 'ignore',
   actor: 'test-operator',
   reason: 'expired test ignore',
-  expiresAt: new Date(Date.now() - 60_000),
+  expiresAt: expiredIgnoreAt,
 });
 openDrift = await listOpenDrift(client, { tenantRef });
 assert.deepEqual(openDrift.map((row) => row.id), [expiredDriftId]);
@@ -98,7 +100,7 @@ await recordDisposition(client, {
   action: 'ignore',
   actor: 'test-operator',
   reason: 'unexpired test ignore',
-  expiresAt: new Date(Date.now() + 60_000),
+  expiresAt: unexpiredIgnoreAt,
 });
 openDrift = await listOpenDrift(client, { tenantRef });
 assert.deepEqual(openDrift.map((row) => row.id), [expiredDriftId]);

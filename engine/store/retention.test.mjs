@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { connect, createSnapshot, insertResourceVersion } from './db.mjs';
+import { recordDisposition, recordDrift } from './governance.mjs';
 import { isPrunable, pruneSnapshots } from './retention.mjs';
 
 const url = process.env.KEEL_DB_TEST_URL;
@@ -36,6 +37,8 @@ await admin.end();
 
 const client = await connect(url);
 const tenantRef = 'sha256:retention-test';
+const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');
+const unexpiredIgnoreAt = new Date('2099-01-01T00:00:00.000Z');
 const activeBaselineSnapshotId = await createSnapshot(client, { tenantRef });
 await insertResourceVersion(client, {
   snapshotId: activeBaselineSnapshotId,
@@ -71,6 +74,48 @@ await client.query(
   [baselineRows[0].id, activeBaselineSnapshotId],
 );
 
+async function createOldSnapshotWithIgnoredDrift(expiresAt) {
+  const observedSnapshot = await createSnapshot(client, { tenantRef });
+  await client.query(
+    `UPDATE snapshot
+     SET started_at = $2, completed_at = $2
+     WHERE id = $1`,
+    [observedSnapshot, oldTier1Snapshot.startedAt],
+  );
+  const driftId = await recordDrift(client, {
+    tenantRef,
+    baselineId: baselineRows[0].id,
+    observedSnapshot,
+    naturalKey: 'group:retention-test',
+    resourceType: 'group',
+    changeType: 'modified',
+    beforeHash: 'retention-test-hash',
+    afterHash: 'retention-test-drift-hash',
+    beforePayload: { displayName: 'Retention test' },
+    afterPayload: { displayName: 'Retention test changed' },
+    blastRadius: 'access-affecting',
+  });
+  await recordDisposition(client, {
+    driftId,
+    action: 'ignore',
+    actor: 'test-operator',
+    reason: 'retention ignore test',
+    expiresAt,
+  });
+  return observedSnapshot;
+}
+
+const expiredIgnoreSnapshotId = await createOldSnapshotWithIgnoredDrift(expiredIgnoreAt);
+assert.equal(isPrunable({
+  id: expiredIgnoreSnapshotId,
+  tier: 'tier1',
+  startedAt: oldTier1Snapshot.startedAt,
+}, {
+  now,
+  referencedSnapshotIds: new Set(),
+  policy,
+}), true);
+
 const prunedSnapshotIds = await pruneSnapshots(client, { tenantRef, policy, now });
 assert.deepEqual(prunedSnapshotIds, []);
 const { rows: remainingSnapshots } = await client.query(
@@ -78,6 +123,27 @@ const { rows: remainingSnapshots } = await client.query(
   [activeBaselineSnapshotId],
 );
 assert.equal(remainingSnapshots.length, 1);
+
+const { rows: expiredIgnoreSnapshots } = await client.query(
+  'SELECT id FROM snapshot WHERE id = $1',
+  [expiredIgnoreSnapshotId],
+);
+assert.equal(expiredIgnoreSnapshots.length, 1);
+
+const unexpiredIgnoreSnapshotId = await createOldSnapshotWithIgnoredDrift(unexpiredIgnoreAt);
+const deletedSnapshotIds = [];
+const deleteSnapshotFake = {
+  query(query, values) {
+    if (query === 'DELETE FROM snapshot WHERE id = ANY($1::uuid[])') {
+      deletedSnapshotIds.push(...values[0]);
+      return Promise.resolve({ rows: [] });
+    }
+    return client.query(query, values);
+  },
+};
+const unexpiredPrunedSnapshotIds = await pruneSnapshots(deleteSnapshotFake, { tenantRef, policy, now });
+assert.ok(unexpiredPrunedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
+assert.ok(deletedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
 
 await client.end();
 console.log('retention.test.mjs — all assertions passed');

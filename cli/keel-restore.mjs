@@ -11,7 +11,7 @@ import { connect, getResourceVersions, getReferences } from '../engine/store/db.
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
-import { applyWave } from '../engine/restore/applyEngine.mjs';
+import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
 import { recordPriorState } from '../engine/restore/rollbackJournal.mjs';
 
 function arg(name, fallback) {
@@ -57,7 +57,7 @@ async function main() {
       references: refsByVersion.get(v.id) ?? [], blastRadius: v.blast_radius, restorePriority: 100,
     }));
 
-  const { waves } = planWaves(resources);
+  const { waves, patches } = planWaves(resources);
   const token = await getToken(targetConfig);
   const writer = new GraphWriter(async () => token);
 
@@ -74,6 +74,7 @@ async function main() {
   };
   const governor = new ThrottleGovernor(seeds);
   const runId = `run-${planId}`;
+  const appliedIds = new Map();
 
   for (const [i, waveKeys] of waves.entries()) {
     const wave = resources.filter((r) => waveKeys.includes(r.naturalKey));
@@ -83,11 +84,18 @@ async function main() {
     }
     const result = await applyWave(writer, governor, wave, { targetTenant: targetConfig.tenantId, mode, existingTargetIds });
     console.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+    for (const { naturalKey, targetId } of result.applied) appliedIds.set(naturalKey, targetId);
     if (result.failed.length) {
       console.error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
-      break;
+      await client.end();
+      return;
     }
   }
+
+  const patchResult = await applyPatches(writer, governor, patches, {
+    targetTenant: targetConfig.tenantId, mode, appliedIds,
+  });
+  console.log(`patched ${patchResult.applied.length}, patchFailed ${patchResult.failed.length}`);
 
   await client.end();
 }

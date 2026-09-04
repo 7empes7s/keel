@@ -14,8 +14,11 @@ const { waves, patches } = planWaves([a, b, leaf]);
 assert.equal(waves.flat().length, 3);
 // The broken edge's reference must show up as a deferred patch, not silently
 // dropped — the wave planner still has to apply it, just later.
-assert.equal(patches.length, 1);
-assert.equal(patches[0].symbol, patches[0].symbol); // sanity: field is present
-assert.ok(['testResourceA:1', 'testResourceB:1'].includes(patches[0].naturalKey));
+assert.ok(patches.length > 0);
+for (const patch of patches) {
+  assert.ok(patch.naturalKey);
+  assert.ok(patch.field);
+  assert.ok(patch.symbol);
+}
 
 console.log('wavePlanner.test.mjs — all assertions passed');

@@ -1,26 +1,18 @@
 import { createHash } from 'node:crypto';
+import { fieldClass } from './serverOwned.mjs';
 
 export const HASH_VERSION = 2;
-// Measured 2026-09-04 from out/volatility-20260904T223648Z.json.
-export const VOLATILE_FIELDS = new Map([
-  ['user', new Set()],
-  ['authenticationStrengthPolicy', new Set()],
-  ['group', new Set()],
-  ['roleAssignment', new Set()],
-  ['namedLocation', new Set()],
-  ['conditionalAccessPolicy', new Set()],
-]);
 
-export function canonicalize(value, volatileFields, path = '') {
+export function canonicalize(value, resourceType, path = '') {
   if (Array.isArray(value)) {
-    return value.map((item) => canonicalize(item, volatileFields, path));
+    return value.map((item) => canonicalize(item, resourceType, path));
   }
   if (value && typeof value === 'object') {
     const canonical = {};
     for (const key of Object.keys(value).sort()) {
       const dottedPath = path ? `${path}.${key}` : key;
-      if (volatileFields.has(dottedPath) || key.startsWith('@odata.')) continue;
-      canonical[key] = canonicalize(value[key], volatileFields, dottedPath);
+      if (fieldClass(dottedPath, resourceType) === 'serverOwned') continue;
+      canonical[key] = canonicalize(value[key], resourceType, dottedPath);
     }
     return canonical;
   }
@@ -28,7 +20,10 @@ export function canonicalize(value, volatileFields, path = '') {
 }
 
 export function canonicalHash(payload, resourceType) {
+  // Validate the type even for an empty payload: unknown types must never receive
+  // a hash that later makes their server-owned fields look writable.
+  fieldClass('', resourceType);
   return createHash('sha256')
-    .update(JSON.stringify(canonicalize(payload, VOLATILE_FIELDS.get(resourceType) ?? new Set())))
+    .update(JSON.stringify(canonicalize(payload, resourceType)))
     .digest('hex');
 }

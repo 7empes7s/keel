@@ -5,6 +5,7 @@ const synced = { payload: { onPremisesSyncEnabled: true } };
 const cloudOnly = { payload: { onPremisesSyncEnabled: false } };
 const noField = { payload: {} }; // most M1 types (namedLocation, CA policy) never carry this field
 
+assert.equal(synced.payload.onPremisesSyncEnabled, true);
 assert.equal(refuseIfSynced(synced).refused, true);
 assert.equal(refuseIfSynced(cloudOnly).refused, false);
 assert.equal(refuseIfSynced(noField).refused, false);

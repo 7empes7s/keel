@@ -1,0 +1,204 @@
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import pg from 'pg';
+import { acceptDrift, seedFromSnapshot } from './baseline.mjs';
+import { connect, createSnapshot, insertResourceVersion } from '../store/db.mjs';
+import { recordDrift } from '../store/governance.mjs';
+
+const url = process.env.KEEL_DB_TEST_URL;
+if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+
+const admin = new pg.Client({ connectionString: url });
+await admin.connect();
+await admin.query(
+  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
+);
+await admin.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+await admin.end();
+
+const client = await connect(url);
+const tenantRef = 'sha256:baseline-test';
+
+async function addGroup(snapshotId, naturalKey, displayName) {
+  return insertResourceVersion(client, {
+    snapshotId,
+    resource: {
+      naturalKey,
+      resourceType: 'group',
+      payload: { displayName },
+      payloadHash: `${naturalKey}:${displayName}`,
+      criticality: 'tier1',
+      blastRadius: 'access-affecting',
+      fidelity: 'full',
+      provenance: { adapter: 'test' },
+    },
+  });
+}
+
+const baselineSnapshotId = await createSnapshot(client, { tenantRef });
+const alphaV1 = await addGroup(baselineSnapshotId, 'group:alpha', 'Alpha');
+const betaV1 = await addGroup(baselineSnapshotId, 'group:beta', 'Beta');
+const gammaV1 = await addGroup(baselineSnapshotId, 'group:gamma', 'Gamma');
+
+const baselineId = await seedFromSnapshot(client, {
+  tenantRef,
+  snapshotId: baselineSnapshotId,
+  setBy: 'test-operator',
+});
+const { rows: seededRows } = await client.query(
+  `SELECT natural_key, resource_version_id
+   FROM baseline_resource
+   WHERE baseline_id = $1
+   ORDER BY natural_key`,
+  [baselineId],
+);
+assert.deepEqual(seededRows, [
+  { natural_key: 'group:alpha', resource_version_id: alphaV1 },
+  { natural_key: 'group:beta', resource_version_id: betaV1 },
+  { natural_key: 'group:gamma', resource_version_id: gammaV1 },
+]);
+
+const observedSnapshotId = await createSnapshot(client, { tenantRef });
+const alphaV2 = await addGroup(observedSnapshotId, 'group:alpha', 'Alpha changed');
+const gammaV2 = await addGroup(observedSnapshotId, 'group:gamma', 'Gamma');
+const deltaV2 = await addGroup(observedSnapshotId, 'group:delta', 'Delta');
+
+const modifiedDriftId = await recordDrift(client, {
+  tenantRef,
+  baselineId,
+  observedSnapshot: observedSnapshotId,
+  naturalKey: 'group:alpha',
+  resourceType: 'group',
+  changeType: 'modified',
+  beforeHash: 'group:alpha:Alpha',
+  afterHash: 'group:alpha:Alpha changed',
+  beforePayload: { displayName: 'Alpha' },
+  afterPayload: { displayName: 'Alpha changed' },
+  blastRadius: 'access-affecting',
+});
+const addedDriftId = await recordDrift(client, {
+  tenantRef,
+  baselineId,
+  observedSnapshot: observedSnapshotId,
+  naturalKey: 'group:delta',
+  resourceType: 'group',
+  changeType: 'added',
+  beforeHash: null,
+  afterHash: 'group:delta:Delta',
+  beforePayload: null,
+  afterPayload: { displayName: 'Delta' },
+  blastRadius: 'access-affecting',
+});
+const removedDriftId = await recordDrift(client, {
+  tenantRef,
+  baselineId,
+  observedSnapshot: observedSnapshotId,
+  naturalKey: 'group:beta',
+  resourceType: 'group',
+  changeType: 'removed',
+  beforeHash: 'group:beta:Beta',
+  afterHash: null,
+  beforePayload: { displayName: 'Beta' },
+  afterPayload: null,
+  blastRadius: 'access-affecting',
+});
+
+await acceptDrift(client, {
+  driftId: modifiedDriftId,
+  actor: 'test-operator',
+  reason: 'approved alpha change',
+});
+const { rows: afterModifiedRows } = await client.query(
+  `SELECT natural_key, resource_version_id
+   FROM baseline_resource
+   WHERE baseline_id = $1
+   ORDER BY natural_key`,
+  [baselineId],
+);
+assert.deepEqual(afterModifiedRows, [
+  { natural_key: 'group:alpha', resource_version_id: alphaV2 },
+  { natural_key: 'group:beta', resource_version_id: betaV1 },
+  { natural_key: 'group:gamma', resource_version_id: gammaV1 },
+]);
+assert.notEqual(gammaV1, gammaV2);
+
+await acceptDrift(client, {
+  driftId: addedDriftId,
+  actor: 'test-operator',
+  reason: 'approved delta addition',
+});
+await acceptDrift(client, {
+  driftId: removedDriftId,
+  actor: 'test-operator',
+  reason: 'approved beta removal',
+});
+const { rows: afterAllRows } = await client.query(
+  `SELECT natural_key, resource_version_id
+   FROM baseline_resource
+   WHERE baseline_id = $1
+   ORDER BY natural_key`,
+  [baselineId],
+);
+assert.deepEqual(afterAllRows, [
+  { natural_key: 'group:alpha', resource_version_id: alphaV2 },
+  { natural_key: 'group:delta', resource_version_id: deltaV2 },
+  { natural_key: 'group:gamma', resource_version_id: gammaV1 },
+]);
+
+const { rows: dispositions } = await client.query(
+  `SELECT drift_id, action, actor, reason
+   FROM disposition
+   ORDER BY decided_at, id`,
+);
+assert.deepEqual(dispositions, [
+  {
+    drift_id: modifiedDriftId,
+    action: 'accept',
+    actor: 'test-operator',
+    reason: 'approved alpha change',
+  },
+  {
+    drift_id: addedDriftId,
+    action: 'accept',
+    actor: 'test-operator',
+    reason: 'approved delta addition',
+  },
+  {
+    drift_id: removedDriftId,
+    action: 'accept',
+    actor: 'test-operator',
+    reason: 'approved beta removal',
+  },
+]);
+const { rows: evidence } = await client.query(
+  `SELECT tenant_ref, kind, actor, prev_hash, record_hash
+   FROM evidence
+   ORDER BY seq`,
+);
+assert.equal(evidence.length, 3);
+assert.ok(evidence.every((row) => row.tenant_ref === tenantRef));
+assert.ok(evidence.every((row) => row.kind === 'disposition'));
+assert.ok(evidence.every((row) => row.actor === 'test-operator'));
+assert.equal(evidence[0].prev_hash, null);
+assert.equal(evidence[1].prev_hash, evidence[0].record_hash);
+assert.equal(evidence[2].prev_hash, evidence[1].record_hash);
+
+const replacementBaselineId = await seedFromSnapshot(client, {
+  tenantRef,
+  snapshotId: observedSnapshotId,
+  setBy: 'replacement-operator',
+});
+const { rows: baselines } = await client.query(
+  `SELECT id, active
+   FROM baseline
+   WHERE tenant_ref = $1
+   ORDER BY set_at, id`,
+  [tenantRef],
+);
+assert.deepEqual(baselines, [
+  { id: baselineId, active: false },
+  { id: replacementBaselineId, active: true },
+]);
+
+await client.end();
+console.log('baseline.test.mjs — all assertions passed');

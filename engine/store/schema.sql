@@ -51,3 +51,59 @@ CREATE TABLE IF NOT EXISTS plan (
   preflight        jsonb NOT NULL,
   clean            boolean NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS baseline (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref text NOT NULL,
+  set_at     timestamptz NOT NULL DEFAULT now(),
+  set_by     text NOT NULL,
+  active     boolean NOT NULL DEFAULT true
+);
+CREATE UNIQUE INDEX IF NOT EXISTS baseline_one_active_idx
+  ON baseline (tenant_ref) WHERE active;
+
+CREATE TABLE IF NOT EXISTS baseline_resource (
+  baseline_id         uuid NOT NULL REFERENCES baseline(id) ON DELETE CASCADE,
+  natural_key         text NOT NULL,
+  resource_version_id uuid NOT NULL REFERENCES resource_version(id),
+  PRIMARY KEY (baseline_id, natural_key)
+);
+
+CREATE TABLE IF NOT EXISTS drift (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref        text NOT NULL,
+  baseline_id       uuid NOT NULL REFERENCES baseline(id),
+  observed_snapshot uuid NOT NULL REFERENCES snapshot(id),
+  natural_key       text NOT NULL,
+  resource_type     text NOT NULL,
+  change_type       text NOT NULL CHECK (change_type IN ('added','modified','removed')),
+  before_hash       text,
+  after_hash        text,
+  before_payload    jsonb,
+  after_payload     jsonb,
+  blast_radius      text NOT NULL,
+  detected_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (baseline_id, observed_snapshot, natural_key)
+);
+
+CREATE TABLE IF NOT EXISTS disposition (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  drift_id   uuid NOT NULL REFERENCES drift(id),
+  action     text NOT NULL CHECK (action IN ('accept','rollback','ignore')),
+  actor      text NOT NULL,
+  reason     text NOT NULL,
+  decided_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz,
+  plan_id    uuid REFERENCES plan(id)
+);
+
+CREATE TABLE IF NOT EXISTS evidence (
+  seq         bigserial PRIMARY KEY,
+  tenant_ref  text NOT NULL,
+  occurred_at timestamptz NOT NULL DEFAULT now(),
+  kind        text NOT NULL,
+  subject     jsonb NOT NULL,
+  actor       text NOT NULL,
+  prev_hash   text,
+  record_hash text NOT NULL
+);

@@ -43,26 +43,20 @@ export const IMMUTABLE = new Map(
   ]),
 );
 
-function fieldName(path) {
-  return path.split('.').at(-1);
-}
-
 /** @returns {'serverOwned' | 'immutable' | 'writable'} */
 export function fieldClass(path, resourceType) {
   if (!SERVER_OWNED.has(resourceType) || !IMMUTABLE.has(resourceType)) {
     throw new Error(`unknown resourceType: ${resourceType}`);
   }
 
-  const key = fieldName(path);
   if (
     /(^|\.)@odata\./.test(path)
-    || SERVER_OWNED_ALWAYS.has(key)
+    || (!path.includes('.') && SERVER_OWNED_ALWAYS.has(path))
     || SERVER_OWNED.get(resourceType).has(path)
-    || SERVER_OWNED.get(resourceType).has(key)
   ) {
     return 'serverOwned';
   }
-  if (IMMUTABLE.get(resourceType).has(path) || IMMUTABLE.get(resourceType).has(key)) {
+  if (IMMUTABLE.get(resourceType).has(path)) {
     return 'immutable';
   }
   return 'writable';

@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 
 export const HASH_VERSION = 2;
-export const VOLATILE_FIELDS = new Map();
+// Measured 2026-09-04 from out/volatility-20260904T223648Z.json.
+export const VOLATILE_FIELDS = new Map([
+  ['user', new Set()],
+  ['authenticationStrengthPolicy', new Set()],
+  ['group', new Set()],
+  ['roleAssignment', new Set()],
+  ['namedLocation', new Set()],
+  ['conditionalAccessPolicy', new Set()],
+]);
 
 export function canonicalize(value, volatileFields, path = '') {
   if (Array.isArray(value)) {

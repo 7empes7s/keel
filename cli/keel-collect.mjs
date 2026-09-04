@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-collect.mjs
 //
-// node keel-collect.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+// node keel-collect.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL] [--tier tier1|tier2|tier3]
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -18,6 +18,16 @@ function arg(name, fallback) {
 }
 
 async function main() {
+  if (process.argv.includes('--help')) {
+    console.log('usage: keel-collect.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL] [--tier tier1|tier2|tier3]');
+    return;
+  }
+
+  const tier = arg('tier');
+  if (tier && !['tier1', 'tier2', 'tier3'].includes(tier)) {
+    throw new Error('--tier must be tier1, tier2, or tier3');
+  }
+
   const config = JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
@@ -26,7 +36,7 @@ async function main() {
   const reader = new GraphReader(async () => accessToken);
   console.log('collecting M1 Entra types…');
   const collected = await collectM1(reader);
-  const resources = canonicalizeAll(collected);
+  const resources = canonicalizeAll(collected).filter((resource) => !tier || resource.criticality === tier);
 
   const tenantRef = `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
   const client = await connect(dbUrl);

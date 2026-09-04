@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KEEL tier2 backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=keel-backup-tier2.service
+
+[Install]
+WantedBy=timers.target

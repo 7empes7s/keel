@@ -1,0 +1,8 @@
+[Unit]
+Description=KEEL tier2 backup
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/keel/db.env
+ExecStart=/usr/bin/node /opt/keel/cli/keel-collect.mjs --tier tier2

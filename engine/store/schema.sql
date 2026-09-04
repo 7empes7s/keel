@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS resource_version (
   provenance    jsonb NOT NULL,
   UNIQUE (snapshot_id, natural_key)
 );
+ALTER TABLE resource_version ADD COLUMN IF NOT EXISTS hash_version int NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS resource_reference (
   from_version uuid NOT NULL REFERENCES resource_version(id),

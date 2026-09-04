@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { createHash } from 'node:crypto';
+import { canonicalHash, HASH_VERSION } from '../cir/canonicalHash.mjs';
 
 export async function connect(url) {
   const client = new pg.Client({ connectionString: url });
@@ -24,14 +24,14 @@ export async function completeSnapshot(client, { id, status, coverageDigest }) {
 
 export async function insertResourceVersion(client, { snapshotId, resource }) {
   const payloadHash =
-    resource.payloadHash ?? createHash('sha256').update(JSON.stringify(resource.payload)).digest('hex');
+    resource.payloadHash ?? canonicalHash(resource.payload, resource.resourceType);
   const { rows } = await client.query(
     `INSERT INTO resource_version
-       (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       (snapshot_id, natural_key, resource_type, payload, payload_hash, hash_version, criticality, blast_radius, fidelity, provenance)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      RETURNING id`,
     [
-      snapshotId, resource.naturalKey, resource.resourceType, resource.payload, payloadHash,
+      snapshotId, resource.naturalKey, resource.resourceType, resource.payload, payloadHash, HASH_VERSION,
       resource.criticality, resource.blastRadius, resource.fidelity, resource.provenance,
     ],
   );

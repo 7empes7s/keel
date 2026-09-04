@@ -41,3 +41,12 @@ CREATE TABLE IF NOT EXISTS rollback_entry (
   recorded_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS rollback_entry_run_idx ON rollback_entry (run_id);
+
+CREATE TABLE IF NOT EXISTS plan (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  source_snapshot  uuid NOT NULL REFERENCES snapshot(id),
+  target_tenant    text NOT NULL,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  preflight        jsonb NOT NULL,
+  clean            boolean NOT NULL
+);

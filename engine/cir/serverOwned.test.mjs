@@ -16,9 +16,11 @@ assert.deepEqual(SERVER_OWNED_ALWAYS, new Set([
   'id', 'createdDateTime', 'modifiedDateTime', 'deletedDateTime', 'renewedDateTime',
 ]));
 assert.equal(fieldClass('id', 'user'), 'serverOwned');
-assert.equal(fieldClass('nested.modifiedDateTime', 'namedLocation'), 'serverOwned');
+assert.equal(fieldClass('nested.modifiedDateTime', 'namedLocation'), 'writable');
+assert.equal(fieldClass('nested.id', 'conditionalAccessPolicy'), 'writable');
 assert.equal(fieldClass('conditions.@odata.type', 'conditionalAccessPolicy'), 'serverOwned');
 assert.equal(fieldClass('mailNickname', 'group'), 'immutable');
+assert.equal(fieldClass('nested.mailNickname', 'group'), 'writable');
 assert.equal(fieldClass('mailEnabled', 'group'), 'immutable');
 assert.equal(fieldClass('securityEnabled', 'group'), 'immutable');
 assert.equal(fieldClass('groupTypes', 'group'), 'immutable');

@@ -35,6 +35,26 @@ assert.notEqual(
   'immutable fields are real drift',
 );
 
+const authenticationStrengthA = {
+  grantControls: { authenticationStrength: { id: 'strength-AAA' } },
+};
+const authenticationStrengthB = {
+  grantControls: { authenticationStrength: { id: 'strength-BBB' } },
+};
+assert.notEqual(
+  canonicalHash(authenticationStrengthA, 'conditionalAccessPolicy'),
+  canonicalHash(authenticationStrengthB, 'conditionalAccessPolicy'),
+  'nested authentication-strength ids are configuration references and must remain drift',
+);
+
+const topLevelIdA = { id: 'strength-AAA' };
+const topLevelIdB = { id: 'strength-BBB' };
+assert.equal(
+  canonicalHash(topLevelIdA, 'conditionalAccessPolicy'),
+  canonicalHash(topLevelIdB, 'conditionalAccessPolicy'),
+  'top-level ids remain server-owned and must converge',
+);
+
 const orderedA = {
   displayName: 'Finance Admins',
   conditions: { includeUsers: ['ana'], excludeGroups: ['legacy'] },

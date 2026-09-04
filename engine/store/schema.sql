@@ -32,3 +32,12 @@ CREATE TABLE IF NOT EXISTS resource_reference (
 
 CREATE INDEX IF NOT EXISTS resource_version_key_idx ON resource_version (natural_key, snapshot_id);
 CREATE INDEX IF NOT EXISTS resource_reference_symbol_idx ON resource_reference (to_symbol);
+
+CREATE TABLE IF NOT EXISTS rollback_entry (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  run_id       text NOT NULL,
+  natural_key  text NOT NULL,
+  prior_state  jsonb,
+  recorded_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rollback_entry_run_idx ON rollback_entry (run_id);

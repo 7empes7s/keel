@@ -1,5 +1,10 @@
 import { strict as assert } from 'node:assert';
+import { M1_TYPES } from '../collect/entraAdapter.mjs';
 import { canonicalHash, canonicalize, VOLATILE_FIELDS } from './canonicalHash.mjs';
+
+for (const resourceType of M1_TYPES) {
+  assert.ok(VOLATILE_FIELDS.has(resourceType), `missing volatile-field entry for ${resourceType}`);
+}
 
 const orderedA = {
   displayName: 'Finance Admins',

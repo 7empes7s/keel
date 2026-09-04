@@ -107,3 +107,11 @@ CREATE TABLE IF NOT EXISTS evidence (
   prev_hash   text,
   record_hash text NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS evidence_head (
+  tenant_ref  text PRIMARY KEY,
+  head_seq    bigint NOT NULL,
+  head_hash   text NOT NULL,
+  record_count bigint NOT NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);

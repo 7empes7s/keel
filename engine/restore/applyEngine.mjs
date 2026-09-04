@@ -16,6 +16,87 @@ export async function applyWave(writer, governor, wave, { targetTenant, mode, ex
     const syncCheck = refuseIfSynced(resource);
     if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
 
+    if (resource.verb === 'restore-soft-deleted') {
+      const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
+      const deletedItemId = resource.deletedItemId ?? resource.live?.deletedItemId;
+      if (!targetId) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'restore has no targetId' });
+        continue;
+      }
+      if (!deletedItemId) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'restore has no deletedItemId' });
+        continue;
+      }
+
+      let desired = resource.payload;
+      if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+
+      if (mode === 'dry-run') {
+        applied.push({ naturalKey: resource.naturalKey, targetId });
+        continue;
+      }
+
+      await governor.acquire(targetTenant, 'entra', 'write');
+      const restoreResult = await writer.write(
+        'v1.0',
+        `/directory/deletedItems/${deletedItemId}/restore`,
+        { method: 'POST', body: {} },
+      );
+      if (!restoreResult.ok) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(restoreResult.body) });
+        continue;
+      }
+      if (restoreResult.body?.id !== targetId) {
+        failed.push({
+          naturalKey: resource.naturalKey,
+          error: 'restore returned a different objectId — references would be broken',
+        });
+        continue;
+      }
+
+      const path = `${pathFor(resource.resourceType)}/${targetId}`;
+      const reRead = await writer.read('v1.0', path);
+      if (reRead?.ok === false) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+        continue;
+      }
+      let live = reRead?.body ?? reRead;
+      if (canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+        applied.push({ naturalKey: resource.naturalKey, targetId });
+        continue;
+      }
+
+      const payload = writableProjection(desired, resource.resourceType);
+      await governor.acquire(targetTenant, 'entra', 'write');
+      const updateResult = await writer.write('v1.0', path, { method: 'PATCH', body: payload });
+      if (!updateResult.ok) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateResult.body) });
+        continue;
+      }
+
+      const updateReRead = await writer.read('v1.0', path);
+      if (updateReRead?.ok === false) {
+        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateReRead.body ?? updateReRead.error) });
+        continue;
+      }
+      live = updateReRead?.body ?? updateReRead;
+      if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
+        const residual = residualDiff(desired, live, resource.resourceType);
+        const immutable = immutableDrift(desired, live, resource.resourceType);
+        if (residual.length > 0 && residual.every((path) => immutable.some(
+          (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
+        ))) {
+          notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
+          continue;
+        }
+        failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
+        continue;
+      }
+
+      applied.push({ naturalKey: resource.naturalKey, targetId });
+      continue;
+    }
+
     if (resource.verb === 'update') {
       const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
       if (!targetId) {

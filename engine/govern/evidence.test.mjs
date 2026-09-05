@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { appendEvidence, verifyChain } from './evidence.mjs';
+import { canonicalize } from '../cir/canonicalHash.mjs';
 
 const url = process.env.KEEL_DB_TEST_URL;
 if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
@@ -38,12 +40,21 @@ await appendEvidence(client, {
 assert.deepEqual(await verifyChain(client, { tenantRef }), { ok: true });
 
 const { rows } = await client.query(
-  `SELECT seq, subject
+  `SELECT seq, tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash
    FROM evidence
    WHERE tenant_ref = $1
    ORDER BY seq`,
   [tenantRef],
 );
+for (const row of rows) {
+  const expectedRecordHash = createHash('sha256')
+    .update(
+      `${row.prev_hash ?? ''}${row.tenant_ref}${row.occurred_at.toISOString()}${row.kind}`
+      + `${JSON.stringify(canonicalize(row.subject, 'group'))}${row.actor}`,
+    )
+    .digest('hex');
+  assert.equal(row.record_hash, expectedRecordHash);
+}
 const newest = rows.at(-1);
 await client.query('DELETE FROM evidence WHERE seq = $1', [newest.seq]);
 assert.deepEqual(

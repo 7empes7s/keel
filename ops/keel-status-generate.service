@@ -1,0 +1,15 @@
+# ops/keel-status-generate.service
+[Unit]
+Description=KEEL public status page generator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/keel/status-db.env
+ExecStart=/usr/bin/node /opt/keel/status/generate.mjs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keel-status-generate
+TimeoutStartSec=30

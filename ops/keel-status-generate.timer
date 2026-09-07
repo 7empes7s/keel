@@ -1,0 +1,13 @@
+# ops/keel-status-generate.timer
+[Unit]
+Description=Run the KEEL status page generator every minute
+Requires=keel-status-generate.service
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+RandomizedDelaySec=5s
+Unit=keel-status-generate.service
+
+[Install]
+WantedBy=timers.target

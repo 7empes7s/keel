@@ -16,10 +16,12 @@ await admin.query(
   + 'resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
 );
 await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
-await admin.query(readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8'));
-await admin.query(`ALTER ROLE keel_status WITH PASSWORD '${TEST_STATUS_PASSWORD}'`);
+const roleSql = readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8')
+  .replaceAll('keel_status', 'keel_status_test');
+await admin.query(roleSql);
+await admin.query(`ALTER ROLE keel_status_test WITH PASSWORD '${TEST_STATUS_PASSWORD}'`);
 
-const statusUrl = url.replace(/\/\/[^:]+:[^@]+@/, `//keel_status:${TEST_STATUS_PASSWORD}@`);
+const statusUrl = url.replace(/\/\/[^:]+:[^@]+@/, `//keel_status_test:${TEST_STATUS_PASSWORD}@`);
 const client = await connect(statusUrl);
 
 for (const table of [

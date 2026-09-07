@@ -14,17 +14,31 @@ assert.deepEqual(parseCommitLog(raw), [
 ]);
 
 // Same task number committed twice (a revision) counts once, not twice.
-const revised = parseCommitLog('a\x1ftask-01 first try\nb\x1ftask-01 revised\nc\x1ftask-02 done\n');
+const revised = parseCommitLog(
+  'a\x1ffeat(engine): thing (autonomous orchestration, task-01)\n'
+  + 'b\x1ffeat(engine): revised (autonomous orchestration, task-01)\n'
+  + 'c\x1ffeat(engine): other (autonomous orchestration, task-02)\n',
+);
 assert.equal(distinctTaskCount(revised), 2);
 
 assert.deepEqual(
-  summarizePhases([{ name: 'Phase X', totalTasks: 3, raw: 'a\x1ftask-01\nb\x1ftask-02\n' }]),
+  summarizePhases([{
+    name: 'Phase X',
+    totalTasks: 3,
+    raw: 'a\x1ffeat(engine): a (autonomous orchestration, task-01)\n'
+      + 'b\x1ffeat(engine): b (autonomous orchestration, task-02)\n',
+  }]),
   [{ name: 'Phase X', total: 3, done: 2 }],
 );
 
 // done never exceeds total, even if more distinct task numbers appear than the plan declares.
 assert.deepEqual(
-  summarizePhases([{ name: 'Phase Y', totalTasks: 1, raw: 'a\x1ftask-01\nb\x1ftask-02\n' }]),
+  summarizePhases([{
+    name: 'Phase Y',
+    totalTasks: 1,
+    raw: 'a\x1ffeat(engine): a (autonomous orchestration, task-01)\n'
+      + 'b\x1ffeat(engine): b (autonomous orchestration, task-02)\n',
+  }]),
   [{ name: 'Phase Y', total: 1, done: 1 }],
 );
 
@@ -37,15 +51,15 @@ execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
 mkdirSync(join(dir, 'engine'), { recursive: true });
 writeFileSync(join(dir, 'engine', 'a.test.mjs'), '// fixture\n');
 execFileSync('git', ['add', '.'], { cwd: dir });
-execFileSync('git', ['commit', '-q', '-m', 'feat: task-01 seed'], { cwd: dir });
+execFileSync('git', ['commit', '-q', '-m', 'feat(engine): seed (autonomous orchestration, task-01)'], { cwd: dir });
 const firstCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
 
 writeFileSync(join(dir, 'file2.txt'), 'two\n');
 execFileSync('git', ['add', '.'], { cwd: dir });
-execFileSync('git', ['commit', '-q', '-m', 'feat: task-01 revised for M2'], { cwd: dir });
+execFileSync('git', ['commit', '-q', '-m', 'feat(engine): revised for M2 (autonomous orchestration, task-01)'], { cwd: dir });
 writeFileSync(join(dir, 'engine', 'b.test.mjs'), '// fixture\n');
 execFileSync('git', ['add', '.'], { cwd: dir });
-execFileSync('git', ['commit', '-q', '-m', 'feat: task-02 more'], { cwd: dir });
+execFileSync('git', ['commit', '-q', '-m', 'feat(engine): more (autonomous orchestration, task-02)'], { cwd: dir });
 
 const progress = collectBuildProgress({ repoDir: dir, m1LastCommit: firstCommit });
 assert.equal(progress.testFileCount, 2);

@@ -3,7 +3,10 @@
 // node generate.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_STATUS_DB_URL]
 //                    [--repo-dir /opt/keel] [--out status/out/index.html]
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import {
+  readFileSync, writeFileSync, renameSync, mkdirSync,
+} from 'node:fs';
+import { dirname } from 'node:path';
 import { connect } from './db.mjs';
 import { collectGovernance } from './queries.mjs';
 import { collectBuildProgress } from './buildProgress.mjs';
@@ -30,6 +33,7 @@ export async function run({
     const buildProgress = fetchProgress({ repoDir });
     const html = renderPage({ buildProgress, governance, generatedAt: now() });
     const tmpPath = `${outPath}.tmp`;
+    mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(tmpPath, html);
     renameSync(tmpPath, outPath);
     return { status: 'ok' };

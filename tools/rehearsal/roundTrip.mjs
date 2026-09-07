@@ -127,12 +127,27 @@ async function baselineRows(client, baselineId) {
   return rows;
 }
 
-async function readGroup(reader, groupId) {
+async function readGroupOnce(reader, groupId) {
   const result = await reader.get(
     'v1.0',
     `/groups/${groupId}?$select=id,displayName,description,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,modifiedDateTime`,
   );
   return throwOnGraphFailure(result, `read group ${groupId}`);
+}
+
+/** Same empirically-observed lag Task 3 hardens engine/restore/applyEngine.mjs against, applied
+ * here to the rehearsal's own reads of the object it just created or mutated. */
+export async function readGroupWithRetry(reader, groupId, { attempts = 6, delayMs = 3000 } = {}) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await readGroupOnce(reader, groupId);
+    } catch (error) {
+      lastError = error;
+      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -142,7 +157,7 @@ async function readGroup(reader, groupId) {
  */
 async function collectRehearsalSnapshot(reader, groupId) {
   const collected = await collectM1(reader);
-  const rehearsalGroup = await readGroup(reader, groupId);
+  const rehearsalGroup = await readGroupWithRetry(reader, groupId);
   const groupEntry = collected.find(([resourceType]) => resourceType === 'group');
   const groups = groupEntry?.[1];
   if (!groups) throw new Error('group collection missing from M1 collection');
@@ -233,7 +248,7 @@ function probeValue(field, group) {
 }
 
 async function measureImmutablePatches({ writer, reader, groupId, naturalKey, log }) {
-  let current = await readGroup(reader, groupId);
+  let current = await readGroupOnce(reader, groupId);
   let currentNaturalKey = naturalKey;
   const results = [];
 
@@ -245,7 +260,7 @@ async function measureImmutablePatches({ writer, reader, groupId, naturalKey, lo
     });
     const outcome = { field, ok: result.ok, status: result.status, body: result.body ?? null };
     if (result.ok) {
-      current = await readGroup(reader, groupId);
+      current = await readGroupOnce(reader, groupId);
       currentNaturalKey = `group:${current.mailNickname}`;
       assertDisposable(currentNaturalKey);
       outcome.naturalKey = currentNaturalKey;
@@ -370,7 +385,7 @@ export async function runRoundTrip({
       }),
       `modify rehearsal group ${groupId}`,
     );
-    const driftedGroup = await readGroup(reader, groupId);
+    const driftedGroup = await readGroupWithRetry(reader, groupId);
     logEvidence(log, 3, {
       naturalKey,
       description: driftedGroup.description,
@@ -411,7 +426,7 @@ export async function runRoundTrip({
     if (rollback.failed.length || rollback.skipped.length || rollback.applied.length !== 1) {
       throw new Error(`rollback did not apply exactly once: ${JSON.stringify(rollback)}`);
     }
-    const restoredGroup = await readGroup(reader, groupId);
+    const restoredGroup = await readGroupOnce(reader, groupId);
     logEvidence(log, 5, { naturalKey, rollback, groupId });
 
     // 6. Re-read with Collector credentials and prove canonical convergence.

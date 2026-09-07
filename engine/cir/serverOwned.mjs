@@ -4,13 +4,10 @@
  *                 excluded from PATCH, and reported as not-auto-remediable.
  *  - everything else is writable: in the hash and in PATCH bodies.
  *
- * Microsoft Graph v1.0 documentation verified through Context7 on 2026-09-04:
- * group creation requires mailNickname, mailEnabled, and securityEnabled, while the
- * documented PATCH table lists mailNickname and securityEnabled as updatable. That
- * conflicts with the M2 task's required group immutable set below; this file retains
- * the prescribed M2 classification pending the fixture-only write-side-effect probe.
- * The create response documents id as service-created; Graph response metadata fields
- * and @odata.* annotations are not client-settable configuration.
+ * group classification corrected 2026-09-07 per group-update.md's PATCH table: mailNickname and
+ * securityEnabled are writable, not immutable; server-owned fields (classification, mail,
+ * onPremisesX, securityIdentifier, theme, etc.) were previously unclassified, which caused
+ * applyEngine.mjs's update-verify step to see them as spurious residual drift.
  */
 
 export const SERVER_OWNED_ALWAYS = new Set([
@@ -33,15 +30,18 @@ const RESOURCE_TYPES = [
 export const SERVER_OWNED = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );
+SERVER_OWNED.set('group', new Set([
+  'classification', 'creationOptions', 'expirationDateTime', 'infoCatalogs', 'mail',
+  'onPremisesDomainName', 'onPremisesLastSyncDateTime', 'onPremisesNetBiosName',
+  'onPremisesProvisioningErrors', 'onPremisesSamAccountName', 'onPremisesSecurityIdentifier',
+  'onPremisesSyncEnabled', 'proxyAddresses', 'resourceBehaviorOptions', 'resourceProvisioningOptions',
+  'securityIdentifier', 'serviceProvisioningErrors', 'theme',
+]));
 
 export const IMMUTABLE = new Map(
-  RESOURCE_TYPES.map((resourceType) => [
-    resourceType,
-    new Set(resourceType === 'group'
-      ? ['mailNickname', 'mailEnabled', 'securityEnabled', 'groupTypes']
-      : []),
-  ]),
+  RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );
+IMMUTABLE.set('group', new Set(['mailEnabled', 'groupTypes', 'isAssignableToRole']));
 
 /** @returns {'serverOwned' | 'immutable' | 'writable'} */
 export function fieldClass(path, resourceType) {

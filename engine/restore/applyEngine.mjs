@@ -6,6 +6,21 @@ import { immutableDrift, writableProjection } from '../reconcile/writableProject
 import { recordPriorState } from './rollbackJournal.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
+/** Empirically observed on this tenant: a read immediately after a write to the same object can
+ * return 404 or a stale body for up to ~15-20s. Retries only the specific staleness signature the
+ * caller names — never masks a genuine error. */
+async function readAfterWrite(writer, version, path, isStale, { attempts = 6, delayMs = 3000 } = {}) {
+  let result;
+  for (let i = 0; i < attempts; i += 1) {
+    result = await writer.read(version, path);
+    if (!isStale(result)) return result;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
+const isNotFound = (result) => result?.ok === false && result?.status === 404;
+
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -67,7 +82,7 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const reRead = await writer.read('v1.0', path);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, (r) => r?.ok === true && r.body?.deletedDateTime == null);
       const isAbsent = reRead?.ok === false && reRead.status === 404;
       const live = reRead?.body ?? reRead;
       const isSoftDeleted = live?.deletedDateTime != null;
@@ -122,7 +137,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const reRead = await writer.read('v1.0', path);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
       if (reRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
         continue;
@@ -141,7 +156,7 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const updateReRead = await writer.read('v1.0', path);
+      const updateReRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
       if (updateReRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateReRead.body ?? updateReRead.error) });
         continue;
@@ -188,7 +203,7 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const reRead = await writer.read('v1.0', path);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
       if (reRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
         continue;
@@ -238,7 +253,7 @@ export async function applyWave(writer, governor, wave, {
     if (!writeResult.ok) { failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) }); continue; }
 
     const targetId = writeResult.body.id;
-    const reRead = await writer.read('v1.0', `${path}/${targetId}`);
+    const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound);
     if (reRead?.ok === false) {
       failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
       continue;

@@ -89,4 +89,47 @@ assert.equal(conflictResult.failed.length, 1);
 assert.match(conflictResult.failed[0].error, /conflict/i);
 assert.match(conflictResult.failed[0].error, /actual hash [a-f0-9]{64}.*desired hash [a-f0-9]{64}/i);
 
+// A fake writer whose read() returns 404 for the first two calls on a given path, then
+// succeeds — simulating the observed read-after-write lag.
+function flakyThenOkReader(okBody) {
+  const callsPerPath = new Map();
+  return {
+    read: async (version, path) => {
+      const n = (callsPerPath.get(path) ?? 0) + 1;
+      callsPerPath.set(path, n);
+      if (n <= 2) return { ok: false, status: 404, body: null };
+      return { ok: true, status: 200, body: okBody };
+    },
+  };
+}
+
+{
+  const desired = { displayName: 'Alpha' };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: { id: 'g1' } }),
+    ...flakyThenOkReader({ id: 'g1', displayName: 'Alpha' }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:alpha', resourceType: 'group', verb: 'update', targetId: 'g1', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.applied.length, 1, `expected the update to succeed once the flaky read recovers: ${JSON.stringify(result)}`);
+  assert.equal(result.failed.length, 0);
+}
+
+// A writer whose read() returns 404 forever — retries must exhaust and still report failure,
+// not hang or silently swallow a genuine problem.
+{
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: { id: 'g2' } }),
+    read: async () => ({ ok: false, status: 404, body: null }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:beta', resourceType: 'group', verb: 'update', targetId: 'g2', payload: { displayName: 'Beta' } },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.failed.length, 1, `expected exhausted retries to still report failure: ${JSON.stringify(result)}`);
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

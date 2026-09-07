@@ -79,4 +79,31 @@ assert.throws(
   assert.equal(calls, 3, 'expected two failed attempts before the third succeeded');
 }
 
+// readGroupWithRetry must also retry a read that succeeds but doesn't yet satisfy a caller-given
+// expectation — the stale-200 failure mode confirmed live on 2026-09-07, distinct from a 404.
+{
+  let calls = 0;
+  const reader = {
+    get: async () => {
+      calls += 1;
+      const description = calls <= 2 ? 'stale' : 'fresh';
+      return { ok: true, status: 200, body: { id: 'g1', description } };
+    },
+  };
+  const result = await readGroupWithRetry(reader, 'g1', { isExpected: (body) => body.description === 'fresh' });
+  assert.equal(result.description, 'fresh');
+  assert.equal(calls, 3, 'expected two stale reads before the third satisfied isExpected');
+}
+
+// Without an isExpected predicate, existing behavior (retry only on 404, accept the first
+// successful read regardless of content) must be unchanged — this is collectRehearsalSnapshot's
+// use, which only needs the object to exist, not to match specific content.
+{
+  let calls = 0;
+  const reader = { get: async () => { calls += 1; return { ok: true, status: 200, body: { id: 'g2' } }; } };
+  const result = await readGroupWithRetry(reader, 'g2');
+  assert.equal(result.id, 'g2');
+  assert.equal(calls, 1, 'expected no retry when no isExpected predicate is given and the read succeeds immediately');
+}
+
 console.log('roundTrip.test.mjs — all assertions passed');

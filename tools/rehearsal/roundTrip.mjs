@@ -137,15 +137,17 @@ async function readGroupOnce(reader, groupId) {
 
 /** Same empirically-observed lag Task 3 hardens engine/restore/applyEngine.mjs against, applied
  * here to the rehearsal's own reads of the object it just created or mutated. */
-export async function readGroupWithRetry(reader, groupId, { attempts = 6, delayMs = 3000 } = {}) {
+export async function readGroupWithRetry(reader, groupId, { attempts = 6, delayMs = 3000, isExpected } = {}) {
   let lastError;
   for (let i = 0; i < attempts; i += 1) {
     try {
-      return await readGroupOnce(reader, groupId);
+      const group = await readGroupOnce(reader, groupId);
+      if (!isExpected || isExpected(group)) return group;
+      lastError = new Error(`read of ${groupId} succeeded but did not yet satisfy the expected condition`);
     } catch (error) {
       lastError = error;
-      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw lastError;
 }
@@ -385,7 +387,10 @@ export async function runRoundTrip({
       }),
       `modify rehearsal group ${groupId}`,
     );
-    const driftedGroup = await readGroupWithRetry(reader, groupId);
+    const driftedGroup = await readGroupWithRetry(reader, groupId, {
+      isExpected: (group) => group.description === 'KEEL disposable rehearsal drift'
+        && group.displayName === `${payload.displayName} (drifted)`,
+    });
     logEvidence(log, 3, {
       naturalKey,
       description: driftedGroup.description,
@@ -426,7 +431,9 @@ export async function runRoundTrip({
     if (rollback.failed.length || rollback.skipped.length || rollback.applied.length !== 1) {
       throw new Error(`rollback did not apply exactly once: ${JSON.stringify(rollback)}`);
     }
-    const restoredGroup = await readGroupWithRetry(reader, groupId);
+    const restoredGroup = await readGroupWithRetry(reader, groupId, {
+      isExpected: (group) => canonicalHash(group, 'group') === baselineHash,
+    });
     logEvidence(log, 5, { naturalKey, rollback, groupId });
 
     // 6. Re-read with Collector credentials and prove canonical convergence.

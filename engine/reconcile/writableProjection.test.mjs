@@ -8,7 +8,7 @@ assert.deepEqual(
     mailNickname: 'finance-admins',
     displayName: 'Finance Admins',
   }, 'group'),
-  { displayName: 'Finance Admins' },
+  { mailNickname: 'finance-admins', displayName: 'Finance Admins' },
 );
 
 assert.throws(
@@ -26,11 +26,11 @@ assert.deepEqual(
 
 assert.deepEqual(
   immutableDrift(
-    { mailNickname: 'finance-admins', displayName: 'Finance Admins' },
-    { mailNickname: 'legal-admins', displayName: 'Finance Admins' },
+    { mailEnabled: false, displayName: 'Finance Admins' },
+    { mailEnabled: true, displayName: 'Finance Admins' },
     'group',
   ),
-  ['mailNickname'],
+  ['mailEnabled'],
 );
 
 console.log('writableProjection.test.mjs — all assertions passed');

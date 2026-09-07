@@ -302,13 +302,16 @@ assert.equal(convergenceResult.applied[0].naturalKey, 'group:finance-admins');
 
 // Step 9: immutable-only residual drift is not-remediable, not failed, and
 // does not make a second PATCH attempt.
+// Uses mailEnabled (still immutable per serverOwned.mjs) rather than mailNickname —
+// mailNickname was reclassified writable 2026-09-07 (Task 1), so it no longer
+// exercises this not-remediable path.
 const immutableDesired = {
   displayName: 'Finance Admins',
-  mailNickname: 'finance-admins',
+  mailEnabled: false,
 };
 const immutableWriter = updateWriter({
   displayName: 'Finance Admins',
-  mailNickname: 'different-mail-nickname',
+  mailEnabled: true,
 });
 const immutableResult = await applyWave(
   immutableWriter,
@@ -322,7 +325,7 @@ assert.equal(immutableResult.notRemediable.length, 1);
 assert.deepEqual(immutableResult.notRemediable[0], {
   naturalKey: 'group:finance-admins',
   status: 'not-remediable',
-  immutable: ['mailNickname'],
+  immutable: ['mailEnabled'],
 });
 assert.equal(
   immutableWriter.calls.filter((call) => call.kind === 'write' && call.opts.method === 'PATCH').length,

@@ -38,10 +38,26 @@ SERVER_OWNED.set('group', new Set([
   'securityIdentifier', 'serviceProvisioningErrors', 'theme',
 ]));
 
+SERVER_OWNED.set('user', new Set([
+  'onPremisesSyncEnabled', 'onPremisesImmutableId', 'userType', 'assignedLicenses',
+]));
+
+SERVER_OWNED.set('conditionalAccessPolicy', new Set(['templateId']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );
 IMMUTABLE.set('group', new Set(['mailEnabled', 'groupTypes', 'isAssignableToRole']));
+
+IMMUTABLE.set('roleAssignment', new Set([
+  'principalId', 'principalOrganizationId', 'directoryScopeId', 'roleDefinitionId',
+]));
+
+IMMUTABLE.set('authenticationStrengthPolicy', new Set(['allowedCombinations']));
+
+// namedLocation needs no entries — every field it collects (displayName, isTrusted,
+// ipRanges, countriesAndRegions, includeUnknownCountriesAndRegions) is writable, so
+// the empty default SERVER_OWNED/IMMUTABLE sets are already correct.
 
 /** @returns {'serverOwned' | 'immutable' | 'writable'} */
 export function fieldClass(path, resourceType) {

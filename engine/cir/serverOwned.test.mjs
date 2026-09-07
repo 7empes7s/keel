@@ -54,4 +54,36 @@ const unfilteredRead = {
 };
 assert.equal(canonicalHash(narrowSelect, 'group'), canonicalHash(unfilteredRead, 'group'));
 
+// user
+assert.equal(fieldClass('userPrincipalName', 'user'), 'writable');
+assert.equal(fieldClass('onPremisesSyncEnabled', 'user'), 'serverOwned');
+assert.equal(fieldClass('onPremisesImmutableId', 'user'), 'serverOwned');
+assert.equal(fieldClass('userType', 'user'), 'serverOwned');
+assert.equal(fieldClass('assignedLicenses', 'user'), 'serverOwned');
+
+// roleAssignment — no PATCH support at all; every real field is immutable
+assert.equal(fieldClass('principalId', 'roleAssignment'), 'immutable');
+assert.equal(fieldClass('principalOrganizationId', 'roleAssignment'), 'immutable');
+assert.equal(fieldClass('directoryScopeId', 'roleAssignment'), 'immutable');
+assert.equal(fieldClass('roleDefinitionId', 'roleAssignment'), 'immutable');
+
+// namedLocation
+assert.equal(fieldClass('displayName', 'namedLocation'), 'writable');
+assert.equal(fieldClass('isTrusted', 'namedLocation'), 'writable');
+assert.equal(fieldClass('ipRanges', 'namedLocation'), 'writable');
+assert.equal(fieldClass('countriesAndRegions', 'namedLocation'), 'writable');
+assert.equal(fieldClass('includeUnknownCountriesAndRegions', 'namedLocation'), 'writable');
+
+// conditionalAccessPolicy
+assert.equal(fieldClass('conditions', 'conditionalAccessPolicy'), 'writable');
+assert.equal(fieldClass('grantControls', 'conditionalAccessPolicy'), 'writable');
+assert.equal(fieldClass('sessionControls', 'conditionalAccessPolicy'), 'writable');
+assert.equal(fieldClass('state', 'conditionalAccessPolicy'), 'writable');
+assert.equal(fieldClass('templateId', 'conditionalAccessPolicy'), 'serverOwned');
+
+// authenticationStrengthPolicy
+assert.equal(fieldClass('displayName', 'authenticationStrengthPolicy'), 'writable');
+assert.equal(fieldClass('description', 'authenticationStrengthPolicy'), 'writable');
+assert.equal(fieldClass('allowedCombinations', 'authenticationStrengthPolicy'), 'immutable');
+
 console.log('serverOwned.test.mjs — all assertions passed');

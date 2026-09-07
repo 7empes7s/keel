@@ -156,7 +156,8 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const updateReRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
+      const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
+        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)));
       if (updateReRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateReRead.body ?? updateReRead.error) });
         continue;
@@ -203,7 +204,8 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
+        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)));
       if (reRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
         continue;

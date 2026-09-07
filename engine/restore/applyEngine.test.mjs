@@ -132,4 +132,44 @@ function flakyThenOkReader(okBody) {
   assert.equal(result.failed.length, 1, `expected exhausted retries to still report failure: ${JSON.stringify(result)}`);
 }
 
+// A read that succeeds immediately but returns STALE content (pre-write values) for the first
+// two calls, then reflects the write on the third — the failure mode confirmed live on
+// 2026-09-07, distinct from a 404: nothing about a stale-but-200 read looks like a failure to a
+// presence-only retry, so it must be retried based on content, not just on `.ok`.
+{
+  const desired = { displayName: 'Alpha' };
+  let calls = 0;
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: { id: 'g3' } }),
+    read: async () => {
+      calls += 1;
+      const displayName = calls <= 2 ? 'Beta' : 'Alpha'; // stale twice, then caught up
+      return { ok: true, status: 200, body: { id: 'g3', displayName } };
+    },
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:alpha', resourceType: 'group', verb: 'update', targetId: 'g3', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.applied.length, 1, `expected the update to converge once the stale read catches up: ${JSON.stringify(result)}`);
+  assert.equal(result.failed.length, 0);
+  assert.equal(calls, 3, 'expected exactly two stale reads before the third succeeded');
+}
+
+// A genuinely-mismatched final state (not staleness — a real, permanent residual) must still be
+// reported as a failure once retries are exhausted, not retried forever or silently accepted.
+{
+  const desired = { displayName: 'Alpha' };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: { id: 'g4' } }),
+    read: async () => ({ ok: true, status: 200, body: { id: 'g4', displayName: 'SomethingElseEntirely' } }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:beta', resourceType: 'group', verb: 'update', targetId: 'g4', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.failed.length, 1, `expected a real, persistent mismatch to still fail after retries exhaust: ${JSON.stringify(result)}`);
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

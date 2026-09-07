@@ -1,5 +1,4 @@
 import { OPEN_DRIFT_PREDICATE } from '../engine/store/openDrift.mjs';
-import { getActiveBaseline } from '../engine/store/governance.mjs';
 import { getLatestSnapshot } from '../engine/store/db.mjs';
 import { verifyChain } from '../engine/govern/evidence.mjs';
 
@@ -21,8 +20,11 @@ export async function getResourceCounts(client, { tenantRef }) {
 }
 
 export async function getBaselineInfo(client, { tenantRef }) {
-  const baseline = await getActiveBaseline(client, { tenantRef });
-  return baseline ? { setAt: baseline.set_at } : null;
+  const { rows } = await client.query(
+    'SELECT set_at FROM baseline WHERE tenant_ref = $1 AND active = true LIMIT 1',
+    [tenantRef],
+  );
+  return rows[0] ? { setAt: rows[0].set_at } : null;
 }
 
 export async function getOpenDriftCounts(client, { tenantRef }) {
@@ -65,14 +67,11 @@ export async function getRecentDispositionCounts(client, { tenantRef, days = 7 }
 }
 
 export async function collectGovernance(client, { tenantRef }) {
-  const [resourceCounts, baseline, openDrift, lastCollection, evidence, recentDispositions] =
-    await Promise.all([
-      getResourceCounts(client, { tenantRef }),
-      getBaselineInfo(client, { tenantRef }),
-      getOpenDriftCounts(client, { tenantRef }),
-      getLastCollection(client, { tenantRef }),
-      getEvidenceIntegrity(client, { tenantRef }),
-      getRecentDispositionCounts(client, { tenantRef }),
-    ]);
+  const resourceCounts = await getResourceCounts(client, { tenantRef });
+  const baseline = await getBaselineInfo(client, { tenantRef });
+  const openDrift = await getOpenDriftCounts(client, { tenantRef });
+  const lastCollection = await getLastCollection(client, { tenantRef });
+  const evidence = await getEvidenceIntegrity(client, { tenantRef });
+  const recentDispositions = await getRecentDispositionCounts(client, { tenantRef });
   return { resourceCounts, baseline, openDrift, lastCollection, evidence, recentDispositions };
 }

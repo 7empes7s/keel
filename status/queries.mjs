@@ -1,9 +1,20 @@
 import { OPEN_DRIFT_PREDICATE } from '../engine/store/openDrift.mjs';
-import { getLatestSnapshot } from '../engine/store/db.mjs';
 import { verifyChain } from '../engine/govern/evidence.mjs';
 
+async function getLatestSnapshotMeta(client, { tenantRef }) {
+  const { rows } = await client.query(
+    `SELECT id, completed_at, status
+     FROM snapshot
+     WHERE tenant_ref = $1
+     ORDER BY started_at DESC
+     LIMIT 1`,
+    [tenantRef],
+  );
+  return rows[0] ?? null;
+}
+
 export async function getResourceCounts(client, { tenantRef }) {
-  const snapshot = await getLatestSnapshot(client, { tenantRef });
+  const snapshot = await getLatestSnapshotMeta(client, { tenantRef });
   if (!snapshot) return { byType: [], asOf: null };
   const { rows } = await client.query(
     `SELECT resource_type, count(*)::int AS n
@@ -40,7 +51,7 @@ export async function getOpenDriftCounts(client, { tenantRef }) {
 }
 
 export async function getLastCollection(client, { tenantRef }) {
-  const snapshot = await getLatestSnapshot(client, { tenantRef });
+  const snapshot = await getLatestSnapshotMeta(client, { tenantRef });
   return snapshot ? { completedAt: snapshot.completed_at, status: snapshot.status } : null;
 }
 

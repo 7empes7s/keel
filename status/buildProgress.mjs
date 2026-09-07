@@ -16,7 +16,7 @@ export function parseCommitLog(raw) {
 export function distinctTaskCount(commits) {
   const tasks = new Set();
   for (const { subject } of commits) {
-    const match = subject.match(/task-(\d+)/);
+    const match = subject.match(/\(autonomous orchestration, task-(\d+)\)/);
     if (match) tasks.add(Number(match[1]));
   }
   return tasks.size;

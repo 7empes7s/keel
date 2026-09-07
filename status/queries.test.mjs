@@ -23,8 +23,10 @@ await admin.query(
   + 'resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
 );
 await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
-await admin.query(readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8'));
-await admin.query(`ALTER ROLE keel_status WITH PASSWORD '${TEST_STATUS_PASSWORD}'`);
+const roleSql = readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8')
+  .replaceAll('keel_status', 'keel_status_test');
+await admin.query(roleSql);
+await admin.query(`ALTER ROLE keel_status_test WITH PASSWORD '${TEST_STATUS_PASSWORD}'`);
 
 const superuser = await connectSuperuser(url);
 
@@ -67,7 +69,7 @@ await recordDisposition(superuser, {
 await appendEvidence(superuser, { tenantRef, kind: 'collection', subject: { snapshotId }, actor: 'test' });
 await appendEvidence(superuser, { tenantRef, kind: 'drift-detected', subject: { driftId: openDriftId }, actor: 'test' });
 
-const statusUrl = url.replace(/\/\/[^:]+:[^@]+@/, `//keel_status:${TEST_STATUS_PASSWORD}@`);
+const statusUrl = url.replace(/\/\/[^:]+:[^@]+@/, `//keel_status_test:${TEST_STATUS_PASSWORD}@`);
 const client = await connect(statusUrl);
 
 const resourceCounts = await getResourceCounts(client, { tenantRef });
@@ -99,6 +101,11 @@ assert.deepEqual(
   Object.keys(combined).sort(),
   ['baseline', 'evidence', 'lastCollection', 'openDrift', 'recentDispositions', 'resourceCounts'].sort(),
 );
+
+const fullBlob = JSON.stringify(combined);
+for (const forbidden of ['group:alpha', 'namedLocation:corp', 'Alpha', 'Corp', 'expected change', 'test']) {
+  assert.ok(!fullBlob.includes(forbidden), `aggregate-only guarantee violated: "${forbidden}" leaked into collectGovernance output`);
+}
 
 await client.end();
 await superuser.end();

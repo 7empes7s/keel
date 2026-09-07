@@ -426,7 +426,7 @@ export async function runRoundTrip({
     if (rollback.failed.length || rollback.skipped.length || rollback.applied.length !== 1) {
       throw new Error(`rollback did not apply exactly once: ${JSON.stringify(rollback)}`);
     }
-    const restoredGroup = await readGroupOnce(reader, groupId);
+    const restoredGroup = await readGroupWithRetry(reader, groupId);
     logEvidence(log, 5, { naturalKey, rollback, groupId });
 
     // 6. Re-read with Collector credentials and prove canonical convergence.

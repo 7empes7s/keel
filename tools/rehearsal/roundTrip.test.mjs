@@ -58,8 +58,13 @@ assert.throws(
   /expected exactly one drift row/,
 );
 
-// readGroup (used by collectRehearsalSnapshot) must retry a 404 rather than propagate it
-// immediately — this is the exact failure observed live right after group creation.
+// readGroupWithRetry must retry a 404 rather than propagate it immediately — this is the
+// exact failure observed live right after a group write (creation, mutation, or rollback).
+// This generically exercises the retry behavior shared by all three call sites in
+// roundTrip.mjs — collectRehearsalSnapshot (step 2/step 4 collection), the step 3
+// post-mutation read, and the step 5 post-rollback read — since each is a plain
+// `readGroupWithRetry(reader, groupId)` call with no call-site-specific branching. A
+// duplicate fixture per call site would not exercise anything this one doesn't already cover.
 {
   let calls = 0;
   const reader = {

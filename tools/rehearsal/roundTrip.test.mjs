@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertSingleModifiedDrift, runRoundTrip,
+  assertDisposable, assertSingleModifiedDrift, readGroupWithRetry, runRoundTrip,
 } from './roundTrip.mjs';
 
 function fakeWriter() {
@@ -57,5 +57,21 @@ assert.throws(
   ], oneModifiedDrift[0].natural_key),
   /expected exactly one drift row/,
 );
+
+// readGroup (used by collectRehearsalSnapshot) must retry a 404 rather than propagate it
+// immediately — this is the exact failure observed live right after group creation.
+{
+  let calls = 0;
+  const reader = {
+    get: async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: false, status: 404, body: null };
+      return { ok: true, status: 200, body: { id: 'g1', displayName: 'x', mailNickname: 'x' } };
+    },
+  };
+  const result = await readGroupWithRetry(reader, 'g1');
+  assert.equal(result.id, 'g1');
+  assert.equal(calls, 3, 'expected two failed attempts before the third succeeded');
+}
 
 console.log('roundTrip.test.mjs — all assertions passed');

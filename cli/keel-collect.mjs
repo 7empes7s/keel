@@ -6,11 +6,8 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
-import { collectM1 } from '../engine/collect/entraAdapter.mjs';
-import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
-import {
-  connect, createSnapshot, completeSnapshot, insertResourceVersion, insertReferences,
-} from '../engine/store/db.mjs';
+import { collectSnapshot } from '../engine/collect/snapshot.mjs';
+import { connect } from '../engine/store/db.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -34,29 +31,17 @@ async function main() {
 
   const { accessToken } = await getToken(config);
   const reader = new GraphReader(async () => accessToken);
-  console.log('collecting M1 Entra types…');
-  const collected = await collectM1(reader);
-  const resources = canonicalizeAll(collected).filter((resource) => !tier || resource.criticality === tier);
-
   const tenantRef = `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
   const client = await connect(dbUrl);
-  const snapshotId = await createSnapshot(client, { tenantRef });
-
-  const coverageDigest = {};
-  for (const resource of resources) {
-    coverageDigest[resource.resourceType] = (coverageDigest[resource.resourceType] ?? 0) + 1;
-    const versionId = await insertResourceVersion(client, {
-      snapshotId,
-      resource: { ...resource, fidelity: resource.provenance.fidelity },
-    });
-    await insertReferences(client, { fromVersion: versionId, references: resource.references });
+  console.log('collecting graph-native types…');
+  try {
+    const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef, tier });
+    console.log(`snapshot ${snapshotId} complete`);
+    console.table(coverageDigest);
+    if (Object.values(coverageDigest).some((entry) => entry.outcome === 'failed')) process.exitCode = 1;
+  } finally {
+    await client.end();
   }
-
-  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
-  await client.end();
-
-  console.log(`snapshot ${snapshotId} complete`);
-  console.table(coverageDigest);
 }
 
 main().catch((err) => {

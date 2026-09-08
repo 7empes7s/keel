@@ -4,11 +4,10 @@
  *
  * Three anti-overclaim mechanisms are enforced here, non-negotiably:
  *
- * 1. A type is 'covered' only when its last completed collection returned a
- *    NON-ZERO item count. Zero items reports 'failed', not covered — a missing
- *    OAuth scope makes Graph return an empty 200, which is indistinguishable
- *    from "the tenant has none of these" unless we refuse to call it coverage
- *    (spec §11.3).
+ * 1. A type is 'covered' only with an explicit completed outcome and a valid
+ *    count (including zero). Missing/failed outcomes stay failed. Historical
+ *    numeric digests retain their old non-zero-only meaning: they cannot
+ *    prove a completed empty read.
  * 2. Every catalog entry is enumerated. An entry with no registered descriptor
  *    renders explicitly as 'not-covered' — the report lists the unknown, not
  *    just the known.
@@ -76,10 +75,14 @@ function coveredEntry(descriptor, snapshot, digest, drill) {
   if (!snapshot) {
     status = 'never-collected';
   } else {
-    itemCount = digest?.[descriptor.type] ?? 0;
-    // Anti-overclaim: a completed collection that yielded zero items for this
-    // type (or omitted it from the digest entirely) is FAILED coverage.
-    status = itemCount > 0 ? 'covered' : 'failed';
+    const entry = Object.hasOwn(digest ?? {}, descriptor.type) ? digest[descriptor.type] : undefined;
+    const legacy = typeof entry === 'number';
+    const count = legacy ? entry : entry?.itemCount;
+    const validCount = Number.isSafeInteger(count) && count >= 0;
+    itemCount = validCount ? count : null;
+    // Missing outcome is never evidence of completion, even with a count.
+    const complete = legacy ? count > 0 : entry?.outcome === 'complete';
+    status = complete && validCount ? 'covered' : 'failed';
   }
   return {
     type: descriptor.type,

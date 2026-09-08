@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-govern.mjs
 //
-// node keel-govern.mjs baseline set --snapshot <id> --by <actor>
+// node keel-govern.mjs baseline set --snapshot <id> --by <actor> [--label <name>] [--description <text>]
 // node keel-govern.mjs baseline show
+// node keel-govern.mjs baseline list
+// node keel-govern.mjs baseline activate --label <name> | --id <uuid>
 // node keel-govern.mjs disposition <driftId> --action accept|rollback|ignore --actor <actor> --reason <reason> [--expires <iso8601>] [--confirm]
 // node keel-govern.mjs evidence verify
 import { createHash } from 'node:crypto';
@@ -18,7 +20,9 @@ import { decideVerb } from '../engine/reconcile/verb.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
-import { seedFromSnapshot } from '../engine/govern/baseline.mjs';
+import {
+  seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
+} from '../engine/govern/baseline.mjs';
 import { applyDisposition } from '../engine/govern/disposition.mjs';
 import { verifyChain } from '../engine/govern/evidence.mjs';
 import { connect } from '../engine/store/db.mjs';
@@ -26,8 +30,10 @@ import { getActiveBaseline } from '../engine/store/governance.mjs';
 
 function usage() {
   console.log(`usage:
-  keel-govern.mjs baseline set --snapshot <id> --by <actor> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+  keel-govern.mjs baseline set --snapshot <id> --by <actor> [--label <name>] [--description <text>] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
   keel-govern.mjs baseline show [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+  keel-govern.mjs baseline list [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+  keel-govern.mjs baseline activate --label <name> | --id <uuid> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
   keel-govern.mjs disposition <driftId> --action accept|rollback|ignore --actor <actor> --reason <reason> [--expires <iso8601>] [--confirm]
   keel-govern.mjs evidence verify [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 
@@ -84,6 +90,8 @@ async function withClient(fn) {
 async function setBaseline() {
   const snapshotId = requiredArg('snapshot');
   const setBy = requiredArg('by');
+  const label = arg('label');
+  const description = arg('description');
   const tenantRef = tenantRefFor(readConfig());
 
   await withClient(async (client) => {
@@ -96,7 +104,48 @@ async function setBaseline() {
       throw new Error(`snapshot ${snapshotId} does not belong to this tenant`);
     }
 
-    const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId, setBy });
+    const baselineId = await seedFromSnapshot(client, {
+      tenantRef, snapshotId, setBy, label, description,
+    });
+    console.log(`active baseline ${baselineId}`);
+  });
+}
+
+async function listBaselinesCmd() {
+  const tenantRef = tenantRefFor(readConfig());
+
+  await withClient(async (client) => {
+    const baselines = await listBaselines(client, { tenantRef });
+    if (!baselines.length) {
+      console.log('no baselines for this tenant');
+      return;
+    }
+    for (const baseline of baselines) {
+      const label = baseline.label ?? '(unlabeled)';
+      const active = baseline.active ? 'active' : 'inactive';
+      console.log(
+        `${baseline.id}  ${active}  ${label}  set_at=${baseline.set_at.toISOString()} `
+        + `set_by=${baseline.set_by} resources=${baseline.resource_count}`,
+      );
+    }
+  });
+}
+
+async function activateBaselineCmd() {
+  const label = arg('label');
+  const id = arg('id');
+  if (!label && !id) throw new Error('baseline activate requires --label <name> or --id <uuid>');
+  if (label && id) throw new Error('baseline activate takes --label or --id, not both');
+  const tenantRef = tenantRefFor(readConfig());
+
+  await withClient(async (client) => {
+    let baselineId = id;
+    if (label) {
+      const baseline = await getBaselineByLabel(client, { tenantRef, label });
+      if (!baseline) throw new Error(`no baseline labeled ${label} for this tenant`);
+      baselineId = baseline.id;
+    }
+    await activateBaseline(client, { tenantRef, baselineId });
     console.log(`active baseline ${baselineId}`);
   });
 }
@@ -286,6 +335,8 @@ async function main() {
   const [command, subject] = process.argv.slice(2);
   if (command === 'baseline' && subject === 'set') return setBaseline();
   if (command === 'baseline' && subject === 'show') return showBaseline();
+  if (command === 'baseline' && subject === 'list') return listBaselinesCmd();
+  if (command === 'baseline' && subject === 'activate') return activateBaselineCmd();
   if (command === 'disposition') return disposition(subject);
   if (command === 'evidence' && subject === 'verify') return verifyEvidence();
   usage();

@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS baseline (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS baseline_one_active_idx
   ON baseline (tenant_ref) WHERE active;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS label text;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS description text;
+CREATE UNIQUE INDEX IF NOT EXISTS baseline_tenant_label_idx
+  ON baseline (tenant_ref, label) WHERE label IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS baseline_resource (
   baseline_id         uuid NOT NULL REFERENCES baseline(id) ON DELETE CASCADE,

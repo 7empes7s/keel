@@ -127,7 +127,9 @@ export async function acceptDrift(client, { driftId, actor, reason }) {
   }
 }
 
-export async function seedFromSnapshot(client, { tenantRef, snapshotId, setBy }) {
+export async function seedFromSnapshot(client, {
+  tenantRef, snapshotId, setBy, label, description,
+}) {
   await client.query('BEGIN');
   try {
     await client.query(
@@ -137,10 +139,10 @@ export async function seedFromSnapshot(client, { tenantRef, snapshotId, setBy })
       [tenantRef],
     );
     const { rows } = await client.query(
-      `INSERT INTO baseline (tenant_ref, set_by)
-       VALUES ($1, $2)
+      `INSERT INTO baseline (tenant_ref, set_by, label, description)
+       VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [tenantRef, setBy],
+      [tenantRef, setBy, label ?? null, description ?? null],
     );
     const baselineId = rows[0].id;
     await client.query(
@@ -152,6 +154,75 @@ export async function seedFromSnapshot(client, { tenantRef, snapshotId, setBy })
     );
     await client.query('COMMIT');
     return baselineId;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+/** All baselines for a tenant, newest first, with a resource_count. Named and anonymous alike. */
+export async function listBaselines(client, { tenantRef }) {
+  const { rows } = await client.query(
+    `SELECT b.id, b.label, b.description, b.set_at, b.set_by, b.active,
+            count(br.natural_key)::int AS resource_count
+     FROM baseline b
+     LEFT JOIN baseline_resource br ON br.baseline_id = b.id
+     WHERE b.tenant_ref = $1
+     GROUP BY b.id
+     ORDER BY b.set_at DESC, b.id DESC`,
+    [tenantRef],
+  );
+  return rows;
+}
+
+export async function getBaselineByLabel(client, { tenantRef, label }) {
+  const { rows } = await client.query(
+    `SELECT * FROM baseline WHERE tenant_ref = $1 AND label = $2 LIMIT 1`,
+    [tenantRef, label],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Makes one baseline active and deactivates the previously active one, atomically.
+ * The partial unique index (tenant_ref) WHERE active allows at most one active row per
+ * tenant, so the target is validated and locked BEFORE anything is deactivated: if the
+ * target doesn't exist the whole transaction rolls back before it ever touches the
+ * currently active baseline. That is the failure mode to avoid — a tenant left with
+ * ZERO active baselines, which would make drift detection throw `no active baseline`.
+ */
+export async function activateBaseline(client, { tenantRef, baselineId }) {
+  await client.query('BEGIN');
+  try {
+    const { rows: targetRows } = await client.query(
+      `SELECT id FROM baseline WHERE id = $1 AND tenant_ref = $2 FOR UPDATE`,
+      [baselineId, tenantRef],
+    );
+    if (!targetRows[0]) {
+      throw new Error(`baseline not found for tenant: ${baselineId}`);
+    }
+
+    await client.query(
+      `SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true FOR UPDATE`,
+      [tenantRef],
+    );
+
+    await client.query(
+      `UPDATE baseline
+       SET active = false
+       WHERE tenant_ref = $1 AND active = true AND id <> $2`,
+      [tenantRef, baselineId],
+    );
+
+    const { rowCount } = await client.query(
+      `UPDATE baseline SET active = true WHERE id = $1 AND tenant_ref = $2`,
+      [baselineId, tenantRef],
+    );
+    if (rowCount !== 1) {
+      throw new Error(`failed to activate baseline: ${baselineId}`);
+    }
+
+    await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

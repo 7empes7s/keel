@@ -280,4 +280,128 @@ function flakyThenOkReader(okBody) {
   assert.ok(result.failed[0].residual.includes('securityEnabled'));
 }
 
+// ---------------------------------------------------------------------------
+// Cross-tenant reference rewriting at apply time (the resolver must feed the
+// writer, not just the pre-flight planner). A create-verb (fallthrough)
+// resource whose payload carries a GUID-valued reference field, alongside a
+// `references` array (the same shape engine/graph/resolver.mjs consumes),
+// must have that field rewritten to the TARGET tenant's id before the write.
+// ---------------------------------------------------------------------------
+
+// (a) A reference to a resource CREATED EARLIER IN THIS SAME RUN (runProvenance,
+// threaded via the `appliedIds` option) is rewritten to that resource's target id
+// — not left as the source-tenant id that appears in the payload.
+{
+  const sourceGroupGuid = '11111111-1111-1111-1111-111111111111';
+  const targetGroupGuid = 'target-group-guid-999';
+  const roleAssignmentResource = {
+    naturalKey: 'roleAssignment:Owner@group:FIN-Admins',
+    resourceType: 'roleAssignment',
+    payload: { principalId: sourceGroupGuid, roleDefinitionId: 'role-def-guid', directoryScopeId: '/' },
+    references: [{ field: 'principalId', symbol: 'group:FIN-Admins', required: true }],
+    blastRadius: 'tenant-lockout',
+  };
+  const writer = fakeWriter();
+  const result = await applyWave(writer, governor, [roleAssignmentResource], {
+    targetTenant: 'target', mode: 'enforce',
+    appliedIds: new Map([['group:FIN-Admins', targetGroupGuid]]),
+  });
+  const writeCall = writer.calls.find((c) => c.kind === 'write');
+  assert.ok(writeCall, 'expected a write call');
+  assert.equal(writeCall.opts.body.principalId, targetGroupGuid,
+    `expected principalId rewritten to the target id, got ${JSON.stringify(writeCall.opts.body)}`);
+  assert.notEqual(writeCall.opts.body.principalId, sourceGroupGuid, 'must not write the source-tenant guid');
+  assert.equal(result.failed.length, 0, JSON.stringify(result.failed));
+  assert.equal(result.applied.length, 1);
+}
+
+// (b) A reference that resolves to a KNOWN GLOBAL constant (the GlobalAdministrator
+// role template GUID from GLOBAL_ROLE_SYMBOLS) is the same id in every tenant — the
+// field must be preserved AS-IS, never overwritten with the resolver's symbolic
+// placeholder ('global:GlobalAdministrator').
+{
+  const globalAdminTemplateGuid = '62e90394-69f5-4237-9190-012177145e10';
+  const roleAssignmentResource = {
+    naturalKey: 'roleAssignment:GA@user:break-glass',
+    resourceType: 'roleAssignment',
+    payload: { principalId: 'break-glass-principal-guid', roleDefinitionId: globalAdminTemplateGuid, directoryScopeId: '/' },
+    references: [{ field: 'roleDefinitionId', symbol: 'global:GlobalAdministrator', required: true }],
+    blastRadius: 'tenant-lockout',
+  };
+  const writer = fakeWriter();
+  const result = await applyWave(writer, governor, [roleAssignmentResource], { targetTenant: 'target', mode: 'enforce' });
+  const writeCall = writer.calls.find((c) => c.kind === 'write');
+  assert.ok(writeCall, 'expected a write call');
+  assert.equal(writeCall.opts.body.roleDefinitionId, globalAdminTemplateGuid,
+    `global constant must be preserved verbatim, got ${JSON.stringify(writeCall.opts.body)}`);
+  assert.equal(result.failed.length, 0, JSON.stringify(result.failed));
+  assert.equal(result.applied.length, 1);
+}
+
+// (c) THE MOST IMPORTANT TEST: a reference that cannot be resolved — either because
+// it points at a symbol absent from every lookup source, or because it was already
+// null (unresolvable-at-collection) — must FAIL the resource. It must NEVER reach
+// writer.write with a dangling source-tenant guid.
+{
+  const sourceGroupGuid = '22222222-2222-2222-2222-222222222222';
+  const roleAssignmentResource = {
+    naturalKey: 'roleAssignment:Owner@group:Ghost-Group',
+    resourceType: 'roleAssignment',
+    payload: { principalId: sourceGroupGuid, roleDefinitionId: 'role-def-guid', directoryScopeId: '/' },
+    references: [{ field: 'principalId', symbol: 'group:Ghost-Group', required: true }],
+    blastRadius: 'tenant-lockout',
+  };
+  const writer = fakeWriter();
+  const result = await applyWave(writer, governor, [roleAssignmentResource], { targetTenant: 'target', mode: 'enforce' });
+  assert.equal(writer.calls.length, 0, `must never write a dangling guid: ${JSON.stringify(writer.calls)}`);
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.failed.length, 1, JSON.stringify(result));
+  assert.match(result.failed[0].error, /group:Ghost-Group/);
+}
+{
+  // A symbol that was already null at collection time (unresolvable-at-collection)
+  // must fail exactly the same way — never silently dropped.
+  const roleAssignmentResource = {
+    naturalKey: 'roleAssignment:Owner@unknown',
+    resourceType: 'roleAssignment',
+    payload: { principalId: '33333333-3333-3333-3333-333333333333', roleDefinitionId: 'role-def-guid', directoryScopeId: '/' },
+    references: [{ field: 'principalId', symbol: null, required: true }],
+    blastRadius: 'tenant-lockout',
+  };
+  const writer = fakeWriter();
+  const result = await applyWave(writer, governor, [roleAssignmentResource], { targetTenant: 'target', mode: 'enforce' });
+  assert.equal(writer.calls.length, 0, `must never write a dangling guid: ${JSON.stringify(writer.calls)}`);
+  assert.equal(result.failed.length, 1, JSON.stringify(result));
+}
+
+// (d) Same-tenant restore is unaffected: when the resolved target id is IDENTICAL to
+// the id already in the payload (source === target), the write body must be
+// byte-identical to a resource with no `references` at all — proving the rewrite is
+// a true no-op, not just "close enough."
+{
+  const guid = '55555555-5555-5555-5555-555555555555';
+  const withRefs = {
+    naturalKey: 'roleAssignment:sameTenant', resourceType: 'roleAssignment',
+    payload: { principalId: guid, roleDefinitionId: 'role-def-guid', directoryScopeId: '/' },
+    references: [{ field: 'principalId', symbol: 'group:FIN-Admins', required: true }],
+    blastRadius: 'tenant-lockout',
+  };
+  const withoutRefs = {
+    naturalKey: 'roleAssignment:sameTenant', resourceType: 'roleAssignment',
+    payload: { principalId: guid, roleDefinitionId: 'role-def-guid', directoryScopeId: '/' },
+    blastRadius: 'tenant-lockout',
+  };
+  const writerA = fakeWriter();
+  const writerB = fakeWriter();
+  const resultA = await applyWave(writerA, governor, [withRefs], {
+    targetTenant: 'target', mode: 'enforce', existingTargetIds: new Map([['group:FIN-Admins', guid]]),
+  });
+  const resultB = await applyWave(writerB, governor, [withoutRefs], { targetTenant: 'target', mode: 'enforce' });
+  const bodyA = writerA.calls.find((c) => c.kind === 'write').opts.body;
+  const bodyB = writerB.calls.find((c) => c.kind === 'write').opts.body;
+  assert.deepEqual(bodyA, bodyB, 'same-tenant (source id === target id) must be byte-identical to no references at all');
+  assert.equal(resultA.applied.length, 1, JSON.stringify(resultA));
+  assert.equal(resultB.applied.length, 1, JSON.stringify(resultB));
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

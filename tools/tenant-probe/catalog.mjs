@@ -24,7 +24,11 @@ export const CATALOG = [
   { type: 'groupSetting', path: '/groupSettings', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
 
   // ------------------------------------------------------------ principals
-  { type: 'user', path: '/users', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
+  // Operator decision (2026-09-08): users stay on the DAILY backup tier, so
+  // this entry carries tier2 even though the spec's default for users is
+  // tier1. Do not "fix" this upward — tier1 collection is hourly and would
+  // multiply user collection 24x against that explicit decision.
+  { type: 'user', path: '/users', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     select: 'id,userPrincipalName,displayName,accountEnabled,onPremisesSyncEnabled,onPremisesImmutableId,userType,usageLocation,assignedLicenses,employeeId,createdDateTime',
     pageCap: 20,
     note: 'onPremisesSyncEnabled drives the AD-sync guard — synced users must not be cloud-restored.' },

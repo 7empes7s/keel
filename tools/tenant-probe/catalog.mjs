@@ -18,9 +18,9 @@ export const CATALOG = [
     note: 'Missing domains were a named cause of the CoreView UPN failures.' },
   { type: 'subscribedSku', path: '/subscribedSkus', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
     note: 'Licence availability is a hard precondition for user restore.' },
-  // v1.0 has no directorySettingTemplates segment; groupSetting.templateId
-  // dangles without these, so the beta path is load-bearing, not optional.
-  { type: 'directorySettingTemplate', path: '/directorySettingTemplates', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
+  // Measured v1.0 endpoint: the type is named directorySettingTemplate,
+  // but its collection is groupSettingTemplates.
+  { type: 'directorySettingTemplate', path: '/groupSettingTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'groupSetting', path: '/groupSettings', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
 
   // ------------------------------------------------------------ principals
@@ -52,7 +52,7 @@ export const CATALOG = [
     pageCap: 20,
     note: 'Delegated consent. Cross-tenant these must be re-granted, not copied.' },
   { type: 'identityProvider', path: '/identity/identityProviders', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
-  { type: 'certificateBasedAuthConfiguration', path: '/organization/{org}/certificateBasedAuthConfiguration', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout', needsOrgId: true },
+  { type: 'certificateBasedAuthConfiguration', path: '/organization/{org}/certificateBasedAuthConfiguration', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout', needsOrgId: true, singleton: true },
 
   // ------------------------------------------------------------------ RBAC
   { type: 'directoryRole', path: '/directoryRoles', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout' },
@@ -62,12 +62,12 @@ export const CATALOG = [
   // catalog, identical GUIDs in every tenant. Confirmed 2026-09-03: dangling
   // roleDefinitionIds in the sandbox tenant resolved as directoryRoleTemplate.
   { type: 'directoryRoleTemplate', path: '/directoryRoleTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic',
-    note: 'Global constant catalog, not tenant configuration — collected only to resolve roleAssignment.roleDefinitionId.' },
+    note: 'Global constant catalog, not tenant configuration. Rejects $top; follow nextLink verbatim.' },
   { type: 'roleAssignment', path: '/roleManagement/directory/roleAssignments', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
     pageCap: 20,
     note: 'Break-glass accounts live here. The invariant in spec §10.4 reads this set.' },
-  { type: 'roleEligibilitySchedule', path: '/roleManagement/directory/roleEligibilityScheduleInstances', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
-    note: 'PIM. The ...Schedules collection returns CultureNotFoundException unfiltered; the Instances collection is the queryable one.' },
+  { type: 'roleEligibilitySchedule', path: '/roleManagement/directory/roleEligibilitySchedules', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
+    note: 'PIM schedules. Measured HTTP 200 with the reader’s Accept-Language header.' },
 
   // ---------------------------------------------------- conditional access
   { type: 'conditionalAccessPolicy', path: '/identity/conditionalAccess/policies', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
@@ -106,7 +106,7 @@ export const CATALOG = [
   { type: 'deviceEnrollmentConfiguration', path: '/deviceManagement/deviceEnrollmentConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'deviceManagementRoleDefinition', path: '/deviceManagement/roleDefinitions', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting' },
   { type: 'deviceCategory', path: '/deviceManagement/deviceCategories', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
-  { type: 'termsAndConditions', path: '/deviceManagement/termsAndConditions', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
+  { type: 'termsAndConditions', path: '/deviceManagement/termsAndConditions', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'windowsAutopilotDeploymentProfile', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'Beta-only surface — a fidelity risk the spec flags for Intune.' },
   { type: 'deviceManagementIntent', path: '/deviceManagement/intents', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },

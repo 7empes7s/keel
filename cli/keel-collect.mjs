@@ -35,7 +35,7 @@ async function main() {
   const client = await connect(dbUrl);
   console.log('collecting graph-native types…');
   try {
-    const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef, tier });
+    const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef, tenantId: config.tenantId, tier });
     console.log(`snapshot ${snapshotId} complete`);
     console.table(coverageDigest);
     if (Object.values(coverageDigest).some((entry) => entry.outcome === 'failed')) process.exitCode = 1;

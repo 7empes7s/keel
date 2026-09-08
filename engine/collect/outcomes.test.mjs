@@ -12,7 +12,7 @@ const reader = {
     return { items: [], error: null };
   },
 };
-const { collected, coverageDigest } = await collectWithOutcomes(reader);
+const { collected, coverageDigest } = await collectWithOutcomes(reader, { tenantId: 'fixture-tenant' });
 assert.equal(calls.length, M1_TYPES.length, 'errors do not prevent later types from being attempted');
 assert.deepEqual(Object.keys(coverageDigest), M1_TYPES);
 assert.deepEqual(coverageDigest.user, { outcome: 'complete', itemCount: 1 });

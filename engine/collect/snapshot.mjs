@@ -4,8 +4,8 @@ import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion, insertReferences } from '../store/db.mjs';
 
 /** Persist outcomes independently of resources, including completed empty reads. */
-export async function collectSnapshot(client, { reader, tenantRef, tier }) {
-  const result = await collectWithOutcomes(reader);
+export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier }) {
+  const result = await collectWithOutcomes(reader, { tenantId });
   const resources = canonicalizeAll(result.collected).filter((r) => !tier || r.criticality === tier);
   // A tier-filtered snapshot must not claim coverage for data it doesn't store.
   const coverageDigest = Object.fromEntries(DESCRIPTORS

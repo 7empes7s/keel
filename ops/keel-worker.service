@@ -1,0 +1,21 @@
+# ops/keel-worker.service
+[Unit]
+Description=KEEL job worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/keel/db.env
+ExecStart=/usr/bin/node /opt/keel/cli/keel-worker.mjs
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keel-worker
+
+[Install]
+WantedBy=multi-user.target

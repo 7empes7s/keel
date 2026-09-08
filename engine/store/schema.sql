@@ -119,3 +119,18 @@ CREATE TABLE IF NOT EXISTS evidence_head (
   record_count bigint NOT NULL,
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS job (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind         text NOT NULL CHECK (kind IN ('collect','prune','drift-detect')),
+  params       jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status       text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','succeeded','failed','cancelled')),
+  requested_by text NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  started_at   timestamptz,
+  finished_at  timestamptz,
+  result       jsonb,
+  error        text,
+  worker_id    text
+);
+CREATE INDEX IF NOT EXISTS job_status_created_idx ON job (status, created_at);

@@ -201,6 +201,7 @@ export async function applyWave(writer, governor, wave, {
 
       let desired = resource.payload;
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      const normalisedDesired = withoutNulls(desired);
       const payload = writableProjection(desired, resource.resourceType);
 
       if (mode === 'dry-run') {
@@ -217,15 +218,15 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)));
+        isNotFound(r) || (r?.ok === true && canonicalHash(withoutNulls(r.body), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)));
       if (reRead?.ok === false) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
         continue;
       }
-      const live = reRead?.body ?? reRead;
-      if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
-        const residual = residualDiff(desired, live, resource.resourceType);
-        const immutable = immutableDrift(desired, live, resource.resourceType);
+      const live = withoutNulls(reRead?.body ?? reRead);
+      if (canonicalHash(live, resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)) {
+        const residual = residualDiff(normalisedDesired, live, resource.resourceType);
+        const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
         ))) {
@@ -283,6 +284,21 @@ export async function applyWave(writer, governor, wave, {
   }
 
   return { applied, skipped, failed, notRemediable };
+}
+
+/** The collector projects group/user through a $select; the verify re-read has none, so Graph
+ * returns its full default projection with uncaptured properties set to null. For restore purposes
+ * a null-valued property is unset, so absent-vs-null is a projection artifact, not drift. Applied
+ * symmetrically to both sides so it cannot blind drift in either direction; NOT applied to
+ * canonicalHash, whose output is persisted as payload_hash. Top-level only — canonicalize()
+ * already strips server-owned fields recursively. */
+function withoutNulls(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = {};
+  for (const key of Object.keys(value)) {
+    if (value[key] !== null && value[key] !== undefined) out[key] = value[key];
+  }
+  return out;
 }
 
 function residualDiff(desired, live, resourceType) {

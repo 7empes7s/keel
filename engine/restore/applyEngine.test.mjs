@@ -193,4 +193,91 @@ function flakyThenOkReader(okBody) {
   assert.equal(writeCalls, 2, 'expected exactly one failed write attempt before the retry succeeded');
 }
 
+// Measured live 2026-09-08: the collector's selected group projection omits these fields, while
+// Graph's default verify projection returns them as null. Merge semantics treat an unset property
+// as absent on both sides for comparison, so these projection artifacts must not create drift.
+{
+  const desired = { id: 'g9', displayName: 'Alpha', mailNickname: 'alpha' };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: {} }),
+    read: async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        ...desired,
+        preferredDataLocation: null,
+        preferredLanguage: null,
+        uniqueName: null,
+      },
+    }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:delta', resourceType: 'group', verb: 'update', targetId: 'g9', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.failed.length, 0, `null uncaptured defaults must not be drift: ${JSON.stringify(result.failed)}`);
+  assert.equal(result.applied.length, 1);
+}
+
+// Merge semantics still enforce a non-null property added by the live object. The uncaptured null
+// remains absent for comparison, while a real non-null addition must remain residual drift.
+{
+  const desired = { id: 'g9', displayName: 'Alpha' };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: {} }),
+    read: async () => ({
+      ok: true,
+      status: 200,
+      body: { ...desired, description: 'added by drift', uniqueName: null },
+    }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:delta', resourceType: 'group', verb: 'update', targetId: 'g9', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.failed.length, 1, 'a non-null added property must still fail');
+  assert.ok(result.failed[0].residual.includes('description'));
+  assert.ok(!result.failed[0].residual.includes('uniqueName'));
+}
+
+// A captured field being nulled live is still drift: only uncaptured projection defaults receive
+// symmetric unset semantics, so captured nulling remains visible to verification.
+{
+  const desired = { id: 'g9', displayName: 'Alpha', membershipRule: 'user.dept -eq "x"' };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: {} }),
+    read: async () => ({
+      ok: true,
+      status: 200,
+      body: { ...desired, membershipRule: null, uniqueName: null },
+    }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:delta', resourceType: 'group', verb: 'update', targetId: 'g9', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.failed.length, 1, 'a captured field nulled live must still fail');
+  assert.ok(result.failed[0].residual.includes('membershipRule'));
+}
+
+// False is a captured value and must be compared as a value, not treated as absent during
+// normalization; a live true therefore remains a real residual drift.
+{
+  const desired = { id: 'g9', displayName: 'Alpha', securityEnabled: false };
+  const writer = {
+    write: async () => ({ ok: true, status: 200, body: {} }),
+    read: async () => ({
+      ok: true,
+      status: 200,
+      body: { ...desired, securityEnabled: true, uniqueName: null },
+    }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:delta', resourceType: 'group', verb: 'update', targetId: 'g9', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.failed.length, 1, 'false must be compared, not treated as absent');
+  assert.ok(result.failed[0].residual.includes('securityEnabled'));
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

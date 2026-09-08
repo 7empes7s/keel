@@ -22,13 +22,27 @@ const tenantRef = 'sha256:coverage-test';
 const now = new Date('2026-09-08T12:00:00.000Z');
 
 // One completed collection: group healthy, namedLocation returned ZERO items
-// (the missing-scope empty-200 trap), user healthy.
+// (the missing-scope empty-200 trap), user healthy. The 22 types widened into
+// DESCRIPTORS on 2026-09-08 also get realistic non-zero counts here — a real
+// completed collection populates the digest for every registered type it
+// collects, and leaving them out of this fixture would make them read as
+// 'failed' (digest-absent) rather than the 'covered' a healthy run over the
+// widened set actually produces.
 await client.query(
   `INSERT INTO snapshot (tenant_ref, status, completed_at, coverage_digest)
    VALUES ($1, 'complete', now(), $2)`,
   [tenantRef, JSON.stringify({
     user: 12, group: 5, roleAssignment: 3, conditionalAccessPolicy: 2,
     namedLocation: 0, authenticationStrengthPolicy: 1,
+    organization: 1, domain: 2, subscribedSku: 4, groupSetting: 1,
+    administrativeUnit: 3, identityProvider: 2, application: 9,
+    servicePrincipal: 14, directoryRole: 6, roleDefinition: 6,
+    authenticationMethodsPolicy: 1, authorizationPolicy: 1,
+    crossTenantAccessPolicy: 1, crossTenantAccessPolicyPartner: 2,
+    permissionGrantPolicy: 2, adminConsentRequestPolicy: 1,
+    accessReviewScheduleDefinition: 1, deviceConfiguration: 3,
+    deviceCompliancePolicy: 2, configurationPolicy: 4,
+    deviceManagementRoleDefinition: 1, mobileApp: 5,
   })],
 );
 
@@ -53,10 +67,13 @@ assert.equal(namedLocation.covered, false);
 assert.equal(namedLocation.itemCount, 0);
 
 // 3. catalog entry with no descriptor → explicitly not-covered
-const domain = byType.get('domain');
-assert.equal(domain.status, 'not-covered');
-assert.equal(domain.covered, false);
-assert.equal(domain.adapter, null);
+// `domain` was widened into DESCRIPTORS on 2026-09-08 (see descriptors.mjs), so it no longer
+// exemplifies "no descriptor" — `contact` is one of the 19 zero-object types descriptors.mjs's
+// header documents as deliberately left out, so it's still guaranteed uncollected.
+const contact = byType.get('contact');
+assert.equal(contact.status, 'not-covered');
+assert.equal(contact.covered, false);
+assert.equal(contact.adapter, null);
 assert.equal(report.types.length, CATALOG.length, 'the report enumerates the unknown, not just the known');
 assert.equal(
   report.types.filter((t) => t.status === 'not-covered').length,
@@ -70,7 +87,8 @@ assert.deepEqual(byType.get('user').fidelity, { declared: 'read-only', verifiedB
 // summary
 assert.equal(report.tenantRef, tenantRef);
 assert.equal(report.generatedAt, now.toISOString());
-assert.equal(report.summary.covered, 5);
+// covered = all 28 descriptor types except namedLocation (0 items, deliberately failed above)
+assert.equal(report.summary.covered, DESCRIPTORS.length - 1);
 assert.equal(report.summary.failed, 1);
 assert.equal(report.summary.notCovered, CATALOG.length - DESCRIPTORS.length);
 

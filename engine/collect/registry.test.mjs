@@ -7,12 +7,41 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
 const M1_ORDER = ['user', 'authenticationStrengthPolicy', 'group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy'];
 
-// --- DESCRIPTORS stays exactly the six M1 types, in historical order ---------
-assert.equal(DESCRIPTORS.length, 6, 'DESCRIPTORS is exactly the six M1 types');
-assert.deepEqual(DESCRIPTORS.map((d) => d.type), M1_ORDER);
-// The 46 new descriptors are known to the registry but NOT wired into
-// collection: M1_TYPES (and therefore collectM1) is unchanged by this commit.
-assert.deepEqual(M1_TYPES, M1_ORDER, 'M1_TYPES still returns exactly the original six');
+// Widened 2026-09-08 after measuring naturalKeyFor()/naturalKey() against a
+// real tenant for all 52 catalog types — see engine/collect/descriptors.mjs's
+// file header for the measurement and the full list of what was left out.
+const WIDENED_TYPES = [
+  'organization', 'domain', 'subscribedSku', 'groupSetting', 'administrativeUnit', 'identityProvider',
+  'application', 'servicePrincipal', 'directoryRole', 'roleDefinition',
+  'authenticationMethodsPolicy', 'authorizationPolicy', 'crossTenantAccessPolicy',
+  'crossTenantAccessPolicyPartner', 'permissionGrantPolicy', 'adminConsentRequestPolicy',
+  'accessReviewScheduleDefinition', 'deviceConfiguration', 'deviceCompliancePolicy',
+  'configurationPolicy', 'deviceManagementRoleDefinition', 'mobileApp',
+];
+const ENABLED_TYPES = [...M1_ORDER, ...WIDENED_TYPES];
+
+// --- regression guard: the original six M1 types are still enabled, first, in order ---
+assert.deepEqual(
+  DESCRIPTORS.slice(0, 6).map((d) => d.type),
+  M1_ORDER,
+  'the six previously-live M1 types stay enabled, first, in their historical order',
+);
+assert.deepEqual(
+  M1_TYPES.slice(0, 6),
+  M1_ORDER,
+  'M1_TYPES still starts with exactly the original six, in order',
+);
+for (const type of M1_ORDER) {
+  assert.ok(M1_TYPES.includes(type), `previously-live type ${type} is still in M1_TYPES`);
+}
+
+// --- widened set: DESCRIPTORS is exactly the six M1 types plus the 2026-09-08 widening ---
+assert.deepEqual(
+  DESCRIPTORS.map((d) => d.type).sort(),
+  [...ENABLED_TYPES].sort(),
+  'DESCRIPTORS is exactly the M1 six plus the measured-clean widened set — no more, no less',
+);
+assert.deepEqual(M1_TYPES.sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
 
 // --- the registry knows every catalog type -----------------------------------
 assert.equal(ALL_DESCRIPTORS.length, CATALOG.length, 'one descriptor per catalog entry');
@@ -32,8 +61,61 @@ for (const d of ALL_DESCRIPTORS) {
   assert.equal(typeof d.naturalKeyStrategy, 'string', `${d.type} naturalKeyStrategy`);
 }
 
-// DESCRIPTORS is the M1 prefix of ALL_DESCRIPTORS — the same descriptor objects.
+// DESCRIPTORS is the collected prefix of ALL_DESCRIPTORS — the same descriptor objects.
+assert.deepEqual(
+  ALL_DESCRIPTORS.slice(0, DESCRIPTORS.length).map((d) => d.type).sort(),
+  DESCRIPTORS.map((d) => d.type).sort(),
+);
+// ...and its own first six are still the M1 six, in order (spec-pinned prefix).
 assert.deepEqual(ALL_DESCRIPTORS.slice(0, 6).map((d) => d.type), M1_ORDER);
+
+// --- natural-key safety: no ENABLED type may sit on the bare displayName fallback
+// silently. Either it declares a real strategy, or it is on this allowlist —
+// pinned here because the 2026-09-08 measurement showed each of these types
+// resolves to a real, human-assigned name for every object in the probe
+// tenant (zero collisions, zero GUID-shaped keys). A type newly added to
+// DESCRIPTORS with an unlisted bare 'displayName' strategy fails this test,
+// which is the point: it forces a measurement before collection is widened
+// further, exactly as engine/collect/descriptors.mjs's header describes.
+const JUSTIFIED_DISPLAYNAME_FALLBACK = new Set([
+  'organization',
+  'groupSetting',
+  'administrativeUnit',
+  'identityProvider',
+  'authenticationMethodsPolicy',
+  'authorizationPolicy',
+  'crossTenantAccessPolicy',
+  'permissionGrantPolicy',
+  'accessReviewScheduleDefinition',
+  'deviceConfiguration',
+  'deviceCompliancePolicy',
+  'configurationPolicy',
+  'deviceManagementRoleDefinition',
+  'mobileApp',
+]);
+// Scoped to the newly-widened types only: the original six are pinned by the
+// regression guard above and already declared their (pre-existing)
+// naturalKeyStrategy before this widening — re-litigating them here is out
+// of scope for this pass.
+for (const d of DESCRIPTORS) {
+  if (!WIDENED_TYPES.includes(d.type)) continue;
+  if (d.naturalKeyStrategy !== 'displayName') continue;
+  assert.ok(
+    JUSTIFIED_DISPLAYNAME_FALLBACK.has(d.type),
+    `${d.type} is enabled on the bare displayName fallback without a measured justification — ` +
+      `add it to JUSTIFIED_DISPLAYNAME_FALLBACK only after measuring zero collisions and zero GUID-fallback`,
+  );
+}
+// The allowlist itself must not rot: every type on it must actually be enabled.
+for (const type of JUSTIFIED_DISPLAYNAME_FALLBACK) {
+  assert.ok(DESCRIPTORS.some((d) => d.type === type), `justified type ${type} must be enabled`);
+}
+
+// --- operator decision: users stay on the DAILY tier --------------------------
+// Regression test: the catalog is the source of truth, and it must keep user
+// on tier2. Flipping the catalog entry to tier1 must fail here.
+assert.equal(CATALOG_BY_TYPE.get('user').criticality, 'tier2', 'operator decision: user stays on tier2 (daily)');
+assert.equal(ALL_DESCRIPTORS.find((d) => d.type === 'user').criticality, 'tier2', 'user descriptor resolves to tier2');
 
 // Fidelity is never overstated: only the four types with a write path in
 // engine/restore/applyEngine.mjs's pathFor() may claim 'full'; everything
@@ -46,12 +128,6 @@ for (const d of ALL_DESCRIPTORS) {
     assert.equal(d.fidelity, 'read-only', `${d.type} has no write path — fidelity must stay read-only`);
   }
 }
-
-// --- operator decision: users stay on the DAILY tier --------------------------
-// Regression test: the catalog is the source of truth, and it must keep user
-// on tier2. Flipping the catalog entry to tier1 must fail here.
-assert.equal(CATALOG_BY_TYPE.get('user').criticality, 'tier2', 'operator decision: user stays on tier2 (daily)');
-assert.equal(ALL_DESCRIPTORS.find((d) => d.type === 'user').criticality, 'tier2', 'user descriptor resolves to tier2');
 
 // --- register / get / list -----------------------------------------------------
 const widgetDescriptor = {
@@ -72,7 +148,7 @@ assert.equal(got.descriptor, widgetDescriptor);
 assert.equal(got.adapter, widgetAdapter);
 
 const listed = list();
-assert.equal(listed.length, 7, 'list() returns all registered descriptors');
+assert.equal(listed.length, DESCRIPTORS.length + 1, 'list() returns all registered descriptors');
 assert.ok(listed.some((d) => d.type === 'testWidget'));
 for (const type of M1_TYPES) assert.ok(listed.some((d) => d.type === type), `list() contains ${type}`);
 
@@ -89,12 +165,12 @@ const fakeReader = {
   },
 };
 const collected = await collectM1(fakeReader);
-assert.equal(collected.length, 6);
-assert.deepEqual(collected.map(([type]) => type), M1_TYPES, 'same six types, same order');
+assert.equal(collected.length, M1_TYPES.length);
+assert.deepEqual(collected.map(([type]) => type), M1_TYPES, 'same types, same order as M1_TYPES');
 for (const [type, items] of collected) {
   assert.ok(Array.isArray(items) && items.length === 1, `${type} collected via its registered adapter`);
 }
-assert.equal(seen.length, 6, 'one reader.collect call per type');
+assert.equal(seen.length, M1_TYPES.length, 'one reader.collect call per type');
 
 // collectM1 is order-independent against the reader: entries are keyed by type.
 const byType = Object.fromEntries(collected);

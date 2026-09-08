@@ -170,6 +170,7 @@ h2 { font-size: 1.15rem; font-weight: 620; margin: 0 0 0.35rem; letter-spacing: 
   break-inside: avoid;
 }
 .holding span { color: var(--muted); }
+.holding small { display: block; text-align: right; font-size: 0.72rem; }
 .empty { color: var(--muted); font-style: italic; }
 
 /* tables — three short columns look adrift at full page width */
@@ -222,7 +223,11 @@ export function renderPage({ buildProgress, governance, generatedAt }) {
     .join('\n');
 
   const holdings = governance.resourceCounts.byType
-    .map((t) => `<div class="holding">${escapeHtml(t.resourceType)}<span>${t.count}</span></div>`)
+    .map((t) => {
+      const asOf = t.asOf ? new Date(t.asOf).toISOString() : null;
+      const age = asOf ? `<small><time datetime="${asOf}" title="${asOf}">${escapeHtml(fmtAge(asOf))}</time></small>` : '';
+      return `<div class="holding">${escapeHtml(t.resourceType)}<span>${t.count ?? 'unavailable'}${age}</span></div>`;
+    })
     .join('\n') || '<p class="empty">Nothing collected yet.</p>';
 
   // With no drift there is nothing to tabulate, so the table drops its header
@@ -295,7 +300,7 @@ ${governance.openDrift
 
 <section>
   <h2>What KEEL is holding</h2>
-  <p class="lede">Object counts from the most recent collection. Counts only — this page never shows
+  <p class="lede">Object counts from each type's latest completed collection, with its age. Counts only — this page never shows
     which objects, or anything stored inside them.</p>
   <div class="holdings">
 ${holdings}

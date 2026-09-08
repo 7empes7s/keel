@@ -15,7 +15,12 @@ const html = renderPage({
     testFileCount: 40,
   },
   governance: {
-    resourceCounts: { byType: [{ resourceType: 'group', count: 12 }], asOf: '2026-09-07T00:00:00Z' },
+    resourceCounts: { byType: [
+      { resourceType: 'group', count: 12, asOf: '2026-09-07T00:00:00Z' },
+      { resourceType: 'user', count: 7, asOf: '2026-09-06T00:00:00Z' },
+      { resourceType: 'namedLocation', count: 0, asOf: '2026-09-07T00:00:00Z' },
+      { resourceType: 'roleAssignment', count: null, asOf: '2026-09-07T00:00:00Z' },
+    ], asOf: null },
     baseline: { setAt: '2026-09-06T00:00:00Z' },
     openDrift: [{ changeType: 'modified', blastRadius: 'access-affecting', count: 2 }],
     lastCollection: { completedAt: '2026-09-07T00:00:00Z', status: 'complete' },
@@ -30,6 +35,10 @@ assert.match(html, /28\/28/);
 assert.match(html, /40 test files/);
 assert.match(html, /group/);
 assert.match(html, />12</);
+assert.match(html, /group<span>12<small><time datetime="2026-09-07T00:00:00.000Z"/);
+assert.match(html, /user<span>7<small><time datetime="2026-09-06T00:00:00.000Z"/);
+assert.match(html, /namedLocation<span>0</);
+assert.match(html, /roleAssignment<span>unavailable</);
 assert.match(html, /intact/);
 assert.match(html, /5 records/);
 assert.match(html, /1 accept/);

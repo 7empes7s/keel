@@ -4,7 +4,81 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
+import { resolveSymbol } from '../graph/resolver.mjs';
 import { isDeepStrictEqual } from 'node:util';
+
+/** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
+ * and turned into a `failed` entry — a resource whose references don't all resolve must never
+ * reach writer.write with a dangling source-tenant guid (spec §8.2/§9.3 cross-tenant risk). */
+export class UnresolvedReferenceError extends Error {
+  constructor(naturalKey, ref, reason) {
+    super(`${naturalKey}: cannot resolve reference at "${ref.field}" (symbol ${ref.symbol ?? 'null'}): ${reason}`);
+    this.name = 'UnresolvedReferenceError';
+    this.naturalKey = naturalKey;
+    this.field = ref.field;
+    this.symbol = ref.symbol;
+    this.reason = reason;
+  }
+}
+
+/** Parses a resolver reference's `field` path (dot-separated object keys, `[n]` array indices —
+ * the exact syntax walkGuids()/canonicalize.mjs's referenceValues() produce, e.g.
+ * "conditions.users.excludeGroups[0]") into an ordered list of object-key/array-index segments. */
+function parseFieldPath(path) {
+  const segments = [];
+  const re = /([^.[\]]+)|\[(\d+)\]/g;
+  let m;
+  while ((m = re.exec(path))) {
+    segments.push(m[2] !== undefined ? Number(m[2]) : m[1]);
+  }
+  return segments;
+}
+
+/** Immutable set: returns a NEW object/array with `value` placed at `path`, sharing every
+ * untouched branch with the original. Payload objects are reused across multiple applyWave
+ * calls in tests (and, in the pipeline, potentially across resources), so mutating in place
+ * would leak a rewrite from one write into an unrelated one. */
+function setAtPath(root, path, value) {
+  const segments = parseFieldPath(path);
+  if (segments.length === 0) return root;
+  const walk = (node, i) => {
+    const key = segments[i];
+    const isLast = i === segments.length - 1;
+    const nextValue = isLast ? value : walk(node?.[key], i + 1);
+    if (Array.isArray(node)) {
+      const copy = node.slice();
+      copy[key] = nextValue;
+      return copy;
+    }
+    return { ...node, [key]: nextValue };
+  };
+  return walk(root, 0);
+}
+
+/** Where the resolver meets the writer: rewrites every GUID-valued reference field in `payload`
+ * from its source-tenant id to the target tenant's id, using the EXACT resolution order defined
+ * in engine/graph/resolver.mjs's resolveSymbol (exact-match > mapping-table > prior-restore,
+ * global constants short-circuit first) — this must never diverge from what keel-plan.mjs's
+ * pre-flight already proved resolvable for the same symbol.
+ *
+ * A reference that fails to resolve throws rather than returning a payload with a dangling
+ * source-tenant guid — callers must catch UnresolvedReferenceError and fail the resource.
+ * A `global-constant` resolution leaves the field UNTOUCHED: resolveSymbol reports its
+ * targetId as the symbolic string itself (e.g. "global:GlobalAdministrator"), which is a
+ * placeholder for "resolvable, no rewrite needed" — not a literal value to write. */
+export function rewriteReferences(payload, references, ctx, naturalKey) {
+  if (!references || references.length === 0) return payload;
+  let rewritten = payload;
+  for (const ref of references) {
+    const result = resolveSymbol(ref.symbol, ctx);
+    if (!result.resolved) {
+      throw new UnresolvedReferenceError(naturalKey, ref, result.reason);
+    }
+    if (result.via === 'global-constant') continue;
+    rewritten = setAtPath(rewritten, ref.field, result.targetId);
+  }
+  return rewritten;
+}
 
 /** Empirically observed on this tenant: a read immediately after a write to the same object can
  * return 404 or a stale body for up to ~15-20s. Retries only the specific staleness signature the
@@ -39,6 +113,13 @@ export async function applyWave(writer, governor, wave, {
   targetTenant,
   mode,
   existingTargetIds = new Map(),
+  // Natural-key -> target-id of resources already applied EARLIER IN THIS SAME RUN (across
+  // prior waves). Feeds resolveSymbol's `runProvenance` lookup. Defaults to empty so the
+  // existing cli/keel-restore.mjs call site (which does not yet pass this) is unaffected.
+  appliedIds = new Map(),
+  // Manual symbol->symbol override table. Feeds resolveSymbol's `mappingTable` lookup.
+  // No caller currently populates this; kept as an option for parity with resolvePlan's ctx.
+  mappingTable = new Map(),
   deletionGuardOptions = { breakGlassUserIds: [], keelAppIds: [], caPolicies: [] },
   rollbackClient,
   runId,
@@ -48,6 +129,9 @@ export async function applyWave(writer, governor, wave, {
   const skipped = [];
   const failed = [];
   const notRemediable = [];
+  // Same three lookup sources resolvePlan() uses in cli/keel-plan.mjs, so a symbol that the
+  // pre-flight proved resolvable resolves identically here at write time.
+  const referenceContext = { targetIndex: existingTargetIds, mappingTable, runProvenance: appliedIds };
 
   for (const resource of wave) {
     if (resource.verb === 'delete') {
@@ -124,6 +208,12 @@ export async function applyWave(writer, governor, wave, {
 
       let desired = resource.payload;
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      try {
+        desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
+      } catch (err) {
+        failed.push({ naturalKey: resource.naturalKey, error: err.message });
+        continue;
+      }
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
@@ -201,6 +291,12 @@ export async function applyWave(writer, governor, wave, {
 
       let desired = resource.payload;
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      try {
+        desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
+      } catch (err) {
+        failed.push({ naturalKey: resource.naturalKey, error: err.message });
+        continue;
+      }
       const normalisedDesired = withoutNulls(desired);
       const payload = writableProjection(desired, resource.resourceType);
 
@@ -243,6 +339,12 @@ export async function applyWave(writer, governor, wave, {
 
     let payload = resource.payload;
     if (resource.resourceType === 'conditionalAccessPolicy') payload = enforceReportOnly(payload);
+    try {
+      payload = rewriteReferences(payload, resource.references, referenceContext, resource.naturalKey);
+    } catch (err) {
+      failed.push({ naturalKey: resource.naturalKey, error: err.message });
+      continue;
+    }
 
     const existingId = existingTargetIds.get(resource.naturalKey);
     if (existingId) {

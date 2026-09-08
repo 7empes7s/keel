@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertSingleModifiedDrift, readGroupWithRetry, runRoundTrip,
+  assertDisposable, assertSingleModifiedDrift, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 
 function fakeWriter() {
@@ -104,6 +104,34 @@ assert.throws(
   const result = await readGroupWithRetry(reader, 'g2');
   assert.equal(result.id, 'g2');
   assert.equal(calls, 1, 'expected no retry when no isExpected predicate is given and the read succeeds immediately');
+}
+
+// A write that 404s on a freshly-created object (this tenant's confirmed write-path lag,
+// distinct from the read-path lag already covered) must retry, not fail immediately.
+{
+  let calls = 0;
+  const writer = {
+    write: async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: false, status: 404, body: null };
+      return { ok: true, status: 200, body: { id: 'g1' } };
+    },
+  };
+  const result = await writeWithRetry(writer, 'v1.0', '/groups/g1', { method: 'PATCH', body: { displayName: 'x' } });
+  assert.equal(result.ok, true);
+  assert.equal(calls, 3, 'expected two failed attempts before the third succeeded');
+}
+
+// A non-404 failure (a real rejection) must NOT be retried — it should fail on the first attempt.
+{
+  let calls = 0;
+  const writer = {
+    write: async () => { calls += 1; return { ok: false, status: 400, body: { error: 'bad request' } }; },
+  };
+  const result = await writeWithRetry(writer, 'v1.0', '/groups/g1', { method: 'PATCH', body: {} });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 400);
+  assert.equal(calls, 1, 'a 400 must never be retried');
 }
 
 console.log('roundTrip.test.mjs — all assertions passed');

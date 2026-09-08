@@ -172,4 +172,25 @@ function flakyThenOkReader(okBody) {
   assert.equal(result.failed.length, 1, `expected a real, persistent mismatch to still fail after retries exhaust: ${JSON.stringify(result)}`);
 }
 
+// The update verb's write itself (not just its verification read) can 404 on a freshly-created
+// object per this tenant's confirmed write-path lag — it must retry a 404, not fail immediately.
+{
+  const desired = { displayName: 'Alpha' };
+  let writeCalls = 0;
+  const writer = {
+    write: async () => {
+      writeCalls += 1;
+      if (writeCalls === 1) return { ok: false, status: 404, body: null };
+      return { ok: true, status: 200, body: { id: 'g5' } };
+    },
+    read: async () => ({ ok: true, status: 200, body: { id: 'g5', displayName: 'Alpha' } }),
+  };
+  const governor = { acquire: async () => {} };
+  const result = await applyWave(writer, governor, [
+    { naturalKey: 'group:gamma', resourceType: 'group', verb: 'update', targetId: 'g5', payload: desired },
+  ], { targetTenant: 't1', mode: 'enforce' });
+  assert.equal(result.applied.length, 1, `expected the write to succeed once retried: ${JSON.stringify(result)}`);
+  assert.equal(writeCalls, 2, 'expected exactly one failed write attempt before the retry succeeded');
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

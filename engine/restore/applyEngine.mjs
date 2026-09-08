@@ -19,6 +19,18 @@ async function readAfterWrite(writer, version, path, isStale, { attempts = 6, de
   return result;
 }
 
+/** Same lag readAfterWrite retries on the read side — this tenant's write path can also 404 a
+ * write to an object this session just created/mutated. Retries ONLY a 404. */
+async function writeAfterCreate(writer, version, path, body, { attempts = 6, delayMs = 3000 } = {}) {
+  let result;
+  for (let i = 0; i < attempts; i += 1) {
+    result = await writer.write(version, path, body);
+    if (result.ok || result.status !== 404) return result;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
@@ -198,7 +210,7 @@ export async function applyWave(writer, governor, wave, {
 
       await governor.acquire(targetTenant, 'entra', 'write');
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const writeResult = await writer.write('v1.0', path, { method: 'PATCH', body: payload });
+      const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload });
       if (!writeResult.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) });
         continue;

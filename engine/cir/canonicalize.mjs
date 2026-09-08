@@ -9,6 +9,7 @@
  * re-derived here.
  */
 import { classify, buildIndex, walkGuids, ownIdentifiers } from '../../tools/tenant-probe/references.mjs';
+import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { naturalKeyFor } from './naturalKey.mjs';
 
 export class NaturalKeyCollisionError extends Error {
@@ -18,9 +19,13 @@ export class NaturalKeyCollisionError extends Error {
   }
 }
 
-// Exported: engine/collect/descriptors.mjs reads these as the single source of
-// truth for per-type criticality / blastRadius / fidelity. Do not duplicate
-// these maps elsewhere.
+// Fidelity is declared here — the catalog carries no fidelity field.
+// engine/collect/descriptors.mjs reads this map; do not duplicate it.
+//
+// criticality / blastRadius are NOT declared here. The single source of truth
+// for both is the tenant-probe catalog (tools/tenant-probe/catalog.mjs) —
+// keeping a second copy here is what let `user` silently sit on tier2 while
+// the catalog said tier1.
 export const FIDELITY = {
   user: 'read-only',
   authenticationStrengthPolicy: 'read-only',
@@ -30,14 +35,7 @@ export const FIDELITY = {
   conditionalAccessPolicy: 'full',
 };
 
-export const BLAST_RADIUS = {
-  user: 'access-affecting',
-  authenticationStrengthPolicy: 'tenant-lockout',
-  group: 'access-affecting',
-  roleAssignment: 'tenant-lockout',
-  namedLocation: 'tenant-lockout',
-  conditionalAccessPolicy: 'tenant-lockout',
-};
+const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
 const RESTORE_PRIORITY = {
   user: 200,
@@ -47,9 +45,6 @@ const RESTORE_PRIORITY = {
   namedLocation: 150,
   conditionalAccessPolicy: 150,
 };
-
-export const CRITICALITY = { user: 'tier2', authenticationStrengthPolicy: 'tier1', group: 'tier1',
-  roleAssignment: 'tier1', namedLocation: 'tier1', conditionalAccessPolicy: 'tier1' };
 
 // M1 deliberately does not collect directory role templates: they are
 // Microsoft-global catalog entries, not tenant resources to recreate. Resolve
@@ -107,6 +102,7 @@ export function canonicalizeAll(collected) {
 }
 
 function buildResource(type, obj, key, index, idToSymbol) {
+  const catalogEntry = CATALOG_BY_TYPE.get(type);
   const ownIds = ownIdentifiers(type, obj);
   const references = [];
   const seen = new Set();
@@ -124,8 +120,8 @@ function buildResource(type, obj, key, index, idToSymbol) {
     resourceType: type,
     payload: obj,
     references,
-    criticality: CRITICALITY[type],
-    blastRadius: BLAST_RADIUS[type],
+    criticality: catalogEntry?.criticality,
+    blastRadius: catalogEntry?.blastRadius,
     restorePriority: RESTORE_PRIORITY[type],
     provenance: {
       adapter: 'keel/entra@0.1.0',

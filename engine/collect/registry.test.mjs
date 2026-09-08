@@ -1,27 +1,57 @@
 import { strict as assert } from 'node:assert';
 import { register, get, list } from './registry.mjs';
-import { DESCRIPTORS } from './descriptors.mjs';
+import { DESCRIPTORS, ALL_DESCRIPTORS } from './descriptors.mjs';
 import { collectM1, M1_TYPES } from './entraAdapter.mjs';
-import { CRITICALITY, BLAST_RADIUS } from '../cir/canonicalize.mjs';
+import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 
-// --- the six M1 types are seeded as descriptors -------------------------------
-assert.equal(DESCRIPTORS.length, 6, 'exactly the six M1 types are seeded — the other 46 are Phase 3');
-assert.deepEqual(
-  DESCRIPTORS.map((d) => d.type),
-  ['user', 'authenticationStrengthPolicy', 'group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy'],
-);
+const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
+const M1_ORDER = ['user', 'authenticationStrengthPolicy', 'group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy'];
 
-// criticality/blastRadius are read from the single source in canonicalize.mjs,
-// not re-declared.
-for (const d of DESCRIPTORS) {
-  assert.equal(d.criticality, CRITICALITY[d.type], `${d.type} criticality must come from canonicalize.mjs`);
-  assert.equal(d.blastRadius, BLAST_RADIUS[d.type], `${d.type} blastRadius must come from canonicalize.mjs`);
+// --- DESCRIPTORS stays exactly the six M1 types, in historical order ---------
+assert.equal(DESCRIPTORS.length, 6, 'DESCRIPTORS is exactly the six M1 types');
+assert.deepEqual(DESCRIPTORS.map((d) => d.type), M1_ORDER);
+// The 46 new descriptors are known to the registry but NOT wired into
+// collection: M1_TYPES (and therefore collectM1) is unchanged by this commit.
+assert.deepEqual(M1_TYPES, M1_ORDER, 'M1_TYPES still returns exactly the original six');
+
+// --- the registry knows every catalog type -----------------------------------
+assert.equal(ALL_DESCRIPTORS.length, CATALOG.length, 'one descriptor per catalog entry');
+for (const entry of CATALOG) {
+  const d = ALL_DESCRIPTORS.find((x) => x.type === entry.type);
+  assert.ok(d, `catalog type ${entry.type} has a descriptor`);
+  // criticality / blastRadius come from the catalog — one source of truth.
+  assert.equal(d.criticality, entry.criticality, `${entry.type} criticality must equal the catalog's`);
+  assert.equal(d.blastRadius, entry.blastRadius, `${entry.type} blastRadius must equal the catalog's`);
+}
+for (const d of ALL_DESCRIPTORS) {
+  assert.ok(CATALOG_BY_TYPE.has(d.type), `no descriptor for a type absent from the catalog: ${d.type}`);
   assert.ok(['full', 'partial', 'read-only', 'unprotectable'].includes(d.fidelity), `${d.type} fidelity`);
-  assert.equal(typeof d.adapter, 'string', `${d.type} declares a static serving adapter id`);
+  assert.equal(d.adapter, `graph-native/${d.type}`, `${d.type} declares a static serving adapter id`);
   assert.ok(Array.isArray(d.unsupportedFields), `${d.type} unsupportedFields`);
   assert.equal(typeof d.remappable, 'boolean', `${d.type} remappable`);
   assert.equal(typeof d.naturalKeyStrategy, 'string', `${d.type} naturalKeyStrategy`);
 }
+
+// DESCRIPTORS is the M1 prefix of ALL_DESCRIPTORS — the same descriptor objects.
+assert.deepEqual(ALL_DESCRIPTORS.slice(0, 6).map((d) => d.type), M1_ORDER);
+
+// Fidelity is never overstated: only the four types with a write path in
+// engine/restore/applyEngine.mjs's pathFor() may claim 'full'; everything
+// else stays 'read-only' until a write path exists.
+const WRITE_PATH_TYPES = new Set(['group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy']);
+for (const d of ALL_DESCRIPTORS) {
+  if (WRITE_PATH_TYPES.has(d.type)) {
+    assert.equal(d.fidelity, 'full', `${d.type} has a write path`);
+  } else {
+    assert.equal(d.fidelity, 'read-only', `${d.type} has no write path — fidelity must stay read-only`);
+  }
+}
+
+// --- operator decision: users stay on the DAILY tier --------------------------
+// Regression test: the catalog is the source of truth, and it must keep user
+// on tier2. Flipping the catalog entry to tier1 must fail here.
+assert.equal(CATALOG_BY_TYPE.get('user').criticality, 'tier2', 'operator decision: user stays on tier2 (daily)');
+assert.equal(ALL_DESCRIPTORS.find((d) => d.type === 'user').criticality, 'tier2', 'user descriptor resolves to tier2');
 
 // --- register / get / list -----------------------------------------------------
 const widgetDescriptor = {

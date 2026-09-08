@@ -39,7 +39,8 @@ try {
   assert.equal((await getResourceVersions(client, { snapshotId })).length, 6);
   delete coverageDigest.conditionalAccessPolicy;
   const saveDigest = async (digest) => client.query(
-    'UPDATE snapshot SET coverage_digest = $2 WHERE id = $1', [snapshotId, JSON.stringify(digest)],
+    'UPDATE snapshot SET coverage_digest = $2, completed_at = $3 WHERE id = $1',
+    [snapshotId, JSON.stringify(digest), now],
   );
   await saveDigest(coverageDigest);
 
@@ -74,6 +75,7 @@ try {
   assert.deepEqual(report.summary, {
     covered: DESCRIPTORS.length - 2, failed: 1,
     notCovered: CATALOG.length - DESCRIPTORS.length, neverCollected: 1,
+    stale: 0,
   });
   assert.equal(report.tenantRef, tenantRef);
   assert.equal(report.generatedAt, now.toISOString());
@@ -109,6 +111,7 @@ try {
   assert.equal(missingAdapter.status, 'not-covered');
   assert.equal(missingAdapter.covered, false);
   assert.equal(missingAdapter.adapter, null);
+  assert.equal(missingAdapter.stale, false);
 
   const noSnapshot = await buildCoverageReport(client, { ...options, tenantRef: 'sha256:no-snapshots' });
   assert.equal(noSnapshot.snapshot, null);
@@ -116,6 +119,7 @@ try {
   for (const t of noSnapshot.types) {
     if (DESCRIPTORS.some((d) => d.type === t.type)) assert.equal(t.status, 'never-collected');
     assert.equal(t.covered, false);
+    assert.equal(t.stale, false);
   }
 
   // Tier filtering must keep successful empty outcomes for the selected tier,
@@ -184,6 +188,43 @@ try {
     assert.deepEqual(entry.lastCollectedAt, at, `${type}: timestamp comes from that mention`);
   }
   assert.equal(historyByType.get('user').criticality, 'tier2');
+
+  // Pin literal boundary instants independently of the production constants.
+  // A newer unrelated tier must not refresh this type's collection clock.
+  for (const [type, tier, collectedAt] of [
+    ['group', 'tier1', '2026-09-08T09:00:00.000Z'],
+    ['user', 'tier2', '2026-09-05T12:00:00.000Z'],
+    ['contact', 'tier3', '2026-08-18T12:00:00.000Z'],
+  ]) {
+    const tenant = `sha256:staleness-${tier}`;
+    const descriptor = DESCRIPTORS.find((d) => d.type === type);
+    assert.equal(descriptor.criticality, tier);
+    const id = await insertSnapshot({ tenant, at: collectedAt, digest: {
+      [type]: { outcome: 'complete', itemCount: 6 },
+    } });
+    await insertSnapshot({ tenant, at: '2026-09-08T11:45:00.000Z', digest: {
+      [type === 'group' ? 'user' : 'group']: { outcome: 'complete', itemCount: 55 },
+    } });
+    const staleOptions = { tenantRef: tenant, descriptors: [descriptor], catalog: [] };
+    for (const [offset, expected] of [[-1, false], [0, false], [1, true]]) {
+      const result = await buildCoverageReport(client, { ...staleOptions, now: new Date(now.getTime() + offset) });
+      const entry = result.types[0];
+      assert.equal(entry.stale, expected, `${tier}: stale at threshold ${offset >= 0 ? '+' : ''}${offset}ms`);
+      assert.equal(entry.status, 'covered', 'staleness must not introduce a new status');
+      assert.equal(entry.covered, true);
+      assert.equal(entry.itemCount, 6);
+      assert.deepEqual(entry.lastCollectedAt, new Date(collectedAt));
+      assert.deepEqual(result.summary, { covered: 1, failed: 0, notCovered: 0, neverCollected: 0, stale: Number(expected) });
+    }
+    // Failed observations age too; stale is not a substitute for failure.
+    await client.query('UPDATE snapshot SET coverage_digest = $2 WHERE id = $1', [id, {
+      [type]: { outcome: 'failed', itemCount: null },
+    }]);
+    const failed = await buildCoverageReport(client, { ...staleOptions, now: new Date(now.getTime() + 1) });
+    assert.equal(failed.types[0].status, 'failed');
+    assert.equal(failed.types[0].stale, true);
+    assert.deepEqual(failed.summary, { covered: 0, failed: 1, notCovered: 0, neverCollected: 0, stale: 1 });
+  }
 } finally {
   await client.end();
 }

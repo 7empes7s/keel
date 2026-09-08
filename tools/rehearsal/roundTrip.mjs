@@ -46,6 +46,28 @@ export function assertDisposable(naturalKey) {
   }
 }
 
+/**
+ * Refuse production by comparing host, port, and database independently of
+ * credentials; rehearsal writes seed baselines, snapshots, and drift rows,
+ * while production holds operator-set baselines.
+ */
+export function assertRehearsalDatabase(dbUrl, productionUrl = process.env.KEEL_DB_URL) {
+  if (!dbUrl) {
+    throw new Error('the rehearsal needs a non-production database: set KEEL_DB_TEST_URL or pass --db-url');
+  }
+  if (!productionUrl) return dbUrl;
+  const identity = (url) => {
+    const parsed = new URL(url);
+    return [parsed.hostname.toLowerCase(), parsed.port || '5432', parsed.pathname].join('|');
+  };
+  if (identity(dbUrl) === identity(productionUrl)) {
+    throw new Error('refusing to run the rehearsal against the production database (KEEL_DB_URL): it seeds '
+      + 'baselines, snapshots and drift rows that would appear as real governance state on the '
+      + 'public status page. Use KEEL_DB_TEST_URL or pass --db-url.');
+  }
+  return dbUrl;
+}
+
 /** Step 4 is deliberately exact: a broader result is not rehearsal evidence. */
 export function assertSingleModifiedDrift(driftRows, naturalKey) {
   if (driftRows.length !== 1) {
@@ -328,7 +350,7 @@ export async function runRoundTrip({
   log = (line) => process.stdout.write(`${line}\n`),
   collectorConfigPath = '/etc/keel/tenant.json',
   restorerConfigPath,
-  dbUrl = process.env.KEEL_DB_URL,
+  dbUrl = process.env.KEEL_DB_TEST_URL,
   writer,
   reader,
   client,
@@ -340,14 +362,13 @@ export async function runRoundTrip({
     return { mode, sequence: INTENDED_SEQUENCE };
   }
   if (mode !== 'live') throw new Error(`unknown mode: ${mode}`);
+  assertRehearsalDatabase(dbUrl);
 
   let ownedClient = false;
   try {
     const collector = readConfig(collectorConfigPath);
     const restorer = readConfig(restorerConfigPath);
     assertSeparateRestorer(collector, restorer);
-    if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
-
     if (!reader) {
       const { accessToken } = await getToken(collector);
       reader = new GraphReader(async () => accessToken);
@@ -495,7 +516,7 @@ async function main() {
     mode: live ? 'live' : 'dry-run',
     collectorConfigPath: arg('config', '/etc/keel/tenant.json'),
     restorerConfigPath: arg('restorer-config'),
-    dbUrl: arg('db-url', process.env.KEEL_DB_URL),
+    dbUrl: arg('db-url', process.env.KEEL_DB_TEST_URL),
   });
 }
 

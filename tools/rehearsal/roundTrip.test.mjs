@@ -1,7 +1,43 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertSingleModifiedDrift, readGroupWithRetry, runRoundTrip, writeWithRetry,
+  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, readGroupWithRetry,
+  runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
+
+// Production and rehearsal URLs with the same host and database identify the
+// same governance store even when their credentials differ.
+assert.throws(
+  () => assertRehearsalDatabase(
+    'postgres://u:p@127.0.0.1:5433/keel',
+    'postgres://u:p@127.0.0.1:5433/keel',
+  ),
+  /production/i,
+);
+assert.throws(
+  () => assertRehearsalDatabase(
+    'postgres://other:creds@127.0.0.1:5433/keel',
+    'postgres://u:p@127.0.0.1:5433/keel',
+  ),
+  /production/i,
+);
+assert.equal(
+  assertRehearsalDatabase(
+    'postgres://u:p@127.0.0.1:5433/keel_test',
+    'postgres://u:p@127.0.0.1:5433/keel',
+  ),
+  'postgres://u:p@127.0.0.1:5433/keel_test',
+);
+assert.throws(
+  () => assertRehearsalDatabase(
+    'postgres://u:p@LOCALHOST:5432/keel',
+    'postgres://u:p@localhost/keel',
+  ),
+  /production/i,
+);
+assert.throws(
+  () => assertRehearsalDatabase(undefined, 'postgres://u:p@localhost/keel'),
+  /KEEL_DB_TEST_URL|--db-url/,
+);
 
 function fakeWriter() {
   const writes = [];

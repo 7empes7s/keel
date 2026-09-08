@@ -62,16 +62,18 @@ try {
   assert.equal(empty.status, 'covered', 'a completed empty read is coverage');
   assert.equal(empty.covered, true);
   assert.equal(empty.itemCount, 0);
+  assert.equal(byType.get('roleAssignment').status, 'failed');
+  assert.equal(byType.get('conditionalAccessPolicy').status, 'never-collected');
+  assert.equal(byType.get('conditionalAccessPolicy').lastCollectedAt, null);
   for (const type of ['roleAssignment', 'conditionalAccessPolicy']) {
-    assert.equal(byType.get(type).status, 'failed', `${type}: error and silence both fail`);
     assert.equal(byType.get(type).covered, false);
     assert.equal(byType.get(type).itemCount, null, 'unknown cardinality is not zero');
   }
   assert.equal(Object.hasOwn(coverageDigest, 'conditionalAccessPolicy'), false);
   assert.equal(report.types.length, CATALOG.length);
   assert.deepEqual(report.summary, {
-    covered: DESCRIPTORS.length - 2, failed: 2,
-    notCovered: CATALOG.length - DESCRIPTORS.length, neverCollected: 0,
+    covered: DESCRIPTORS.length - 2, failed: 1,
+    notCovered: CATALOG.length - DESCRIPTORS.length, neverCollected: 1,
   });
   assert.equal(report.tenantRef, tenantRef);
   assert.equal(report.generatedAt, now.toISOString());
@@ -84,7 +86,7 @@ try {
     else changed.namedLocation = entry;
     await saveDigest(changed);
     const result = (await buildCoverageReport(client, options)).types.find((t) => t.type === 'namedLocation');
-    assert.equal(result.status, 'failed');
+    assert.equal(result.status, entry === undefined ? 'never-collected' : 'failed');
     assert.equal(result.covered, false);
   }
   // A claimed completion with missing/invalid cardinality also fails closed.
@@ -96,7 +98,7 @@ try {
   const legacy = await buildCoverageReport(client, options);
   assert.equal(legacy.types.find((t) => t.type === 'group').status, 'covered');
   assert.equal(legacy.types.find((t) => t.type === 'namedLocation').status, 'failed', 'legacy zero lacks an outcome');
-  assert.equal(legacy.types.find((t) => t.type === 'user').status, 'failed');
+  assert.equal(legacy.types.find((t) => t.type === 'user').status, 'never-collected');
 
   // Explicit unsupported fixture continues to exercise the portal contract
   // even when every real catalogue type has a registered adapter.
@@ -124,6 +126,64 @@ try {
   const stored = await getResourceVersions(client, { snapshotId: tierRun.snapshotId });
   assert.equal(stored.length, 5);
   assert.ok(stored.every((r) => r.criticality === 'tier1'));
+
+  // Different tiers must resolve independently, ordered by completion rather
+  // than start/insertion time. No resources are needed to prove an empty read.
+  const historyTenant = 'sha256:coverage-history';
+  const olderAt = new Date('2026-09-08T10:00:00.000Z');
+  const newerAt = new Date('2026-09-08T11:00:00.000Z');
+  const insertSnapshot = async ({ digest, at, status = 'complete', tenant = historyTenant, startedAt = at }) => {
+    const { rows } = await client.query(
+      `INSERT INTO snapshot (tenant_ref, started_at, completed_at, status, coverage_digest)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [tenant, startedAt, at, status, digest],
+    );
+    return rows[0].id;
+  };
+  const newestId = await insertSnapshot({ at: newerAt, startedAt: '2026-09-08T08:00:00Z', digest: {
+    group: { outcome: 'complete', itemCount: 2 },
+    roleAssignment: { outcome: 'failed', itemCount: null },
+    namedLocation: { outcome: 'complete', itemCount: 0 },
+    organization: null,
+  } });
+  await insertSnapshot({ at: olderAt, digest: {
+    user: { outcome: 'complete', itemCount: 7 },
+    group: { outcome: 'complete', itemCount: 9 },
+    roleAssignment: { outcome: 'complete', itemCount: 4 },
+    namedLocation: { outcome: 'complete', itemCount: 3 },
+    organization: { outcome: 'complete', itemCount: 1 },
+  } });
+  // Neither another tenant nor unfinished/failed runs may override evidence.
+  for (const overrides of [{ tenant: 'sha256:other-tenant' }, { status: 'running' }, { status: 'failed' }, { at: null }]) {
+    await insertSnapshot({ at: now, startedAt: now, ...overrides, digest: {
+      user: { outcome: 'complete', itemCount: 99 },
+      contact: { outcome: 'complete', itemCount: 88 },
+    } });
+  }
+  let snapshotQueries = 0;
+  const countedClient = { query: (...args) => {
+    if (/\bFROM snapshot\b/.test(args[0])) snapshotQueries++;
+    return client.query(...args);
+  } };
+  const history = await buildCoverageReport(countedClient, { ...options, tenantRef: historyTenant });
+  assert.equal(snapshotQueries, 1, 'all 52 types must resolve in one snapshot query');
+  assert.equal(history.snapshot.id, newestId);
+  assert.deepEqual(history.snapshot.completedAt, newerAt);
+  const historyByType = new Map(history.types.map((t) => [t.type, t]));
+  for (const [type, status, itemCount, at] of [
+    ['user', 'covered', 7, olderAt],
+    ['group', 'covered', 2, newerAt],
+    ['roleAssignment', 'failed', null, newerAt],
+    ['namedLocation', 'covered', 0, newerAt],
+    ['organization', 'failed', null, newerAt],
+    ['contact', 'never-collected', null, null],
+  ]) {
+    const entry = historyByType.get(type);
+    assert.equal(entry.status, status, `${type}: newest mention decides the outcome`);
+    assert.equal(entry.itemCount, itemCount, `${type}: count comes from that mention`);
+    assert.deepEqual(entry.lastCollectedAt, at, `${type}: timestamp comes from that mention`);
+  }
+  assert.equal(historyByType.get('user').criticality, 'tier2');
 } finally {
   await client.end();
 }

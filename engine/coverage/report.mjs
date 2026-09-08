@@ -17,19 +17,20 @@
  *    presented as verified.
  */
 
+import { TYPE_COVERAGE_CTES, readCoverageOutcome } from './snapshots.mjs';
+
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 
 export async function buildCoverageReport(client, { tenantRef, catalog, descriptors, now }) {
   const generatedAt = (now ?? new Date()).toISOString();
-  const snapshot = await latestCompletedSnapshot(client, tenantRef);
-  const digest = snapshot?.coverage_digest ?? null;
+  const { snapshot, byType } = await latestCompletedSnapshots(client, tenantRef);
   const drillEvidence = await loadDrillEvidence(client, tenantRef);
 
   const descriptorByType = new Map(descriptors.map((d) => [d.type, d]));
   const types = [];
 
   for (const descriptor of descriptors) {
-    types.push(coveredEntry(descriptor, snapshot, digest, drillEvidence.get(descriptor.type)));
+    types.push(coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type)));
   }
   for (const entry of catalog) {
     if (descriptorByType.has(entry.type)) continue;
@@ -68,21 +69,16 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   };
 }
 
-function coveredEntry(descriptor, snapshot, digest, drill) {
-  const lastCollectedAt = snapshot?.completed_at ?? null;
+function coveredEntry(descriptor, observation, drill) {
+  const lastCollectedAt = observation?.completed_at ?? null;
   let status;
   let itemCount = null;
-  if (!snapshot) {
+  if (!observation) {
     status = 'never-collected';
   } else {
-    const entry = Object.hasOwn(digest ?? {}, descriptor.type) ? digest[descriptor.type] : undefined;
-    const legacy = typeof entry === 'number';
-    const count = legacy ? entry : entry?.itemCount;
-    const validCount = Number.isSafeInteger(count) && count >= 0;
-    itemCount = validCount ? count : null;
-    // Missing outcome is never evidence of completion, even with a count.
-    const complete = legacy ? count > 0 : entry?.outcome === 'complete';
-    status = complete && validCount ? 'covered' : 'failed';
+    const outcome = readCoverageOutcome(observation.coverage_entry);
+    itemCount = outcome.itemCount;
+    status = outcome.covered ? 'covered' : 'failed';
   }
   return {
     type: descriptor.type,
@@ -103,16 +99,24 @@ function coveredEntry(descriptor, snapshot, digest, drill) {
   };
 }
 
-async function latestCompletedSnapshot(client, tenantRef) {
+async function latestCompletedSnapshots(client, tenantRef) {
   const { rows } = await client.query(
-    `SELECT id, status, started_at, completed_at, coverage_digest
-       FROM snapshot
-      WHERE tenant_ref = $1 AND status = 'complete' AND completed_at IS NOT NULL
-      ORDER BY completed_at DESC
-      LIMIT 1`,
+    `WITH ${TYPE_COVERAGE_CTES}
+     SELECT latest.id, latest.status, latest.started_at, latest.completed_at,
+            t.resource_type, t.coverage_entry, t.completed_at AS type_completed_at
+     FROM (
+       SELECT id, status, started_at, completed_at FROM completed_snapshots
+       ORDER BY completed_at DESC, started_at DESC, id DESC LIMIT 1
+     ) latest
+     LEFT JOIN latest_type_coverage t ON true`,
     [tenantRef],
   );
-  return rows[0] ?? null;
+  return {
+    snapshot: rows[0] ?? null,
+    byType: new Map(rows.filter((row) => row.resource_type !== null).map((row) => [row.resource_type, {
+      coverage_entry: row.coverage_entry, completed_at: row.type_completed_at,
+    }])),
+  };
 }
 
 /** Latest fidelity-drill evidence per resource type, if any drill has run. */

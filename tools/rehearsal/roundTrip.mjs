@@ -152,6 +152,20 @@ export async function readGroupWithRetry(reader, groupId, { attempts = 6, delayM
   throw lastError;
 }
 
+/** Same tenant-specific replication lag as readGroupWithRetry, observed on the write path too:
+ * a write to an object this session just created/mutated can itself 404 until the write path
+ * catches up. Retries ONLY a 404 — any other failure (400, 403, a real conflict) returns
+ * immediately, unretried. */
+export async function writeWithRetry(writer, version, path, body, { attempts = 6, delayMs = 3000 } = {}) {
+  let result;
+  for (let i = 0; i < attempts; i += 1) {
+    result = await writer.write(version, path, body);
+    if (result.ok || result.status !== 404) return result;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
 /**
  * M1's broad group projection intentionally excludes description. The
  * rehearsal must roll its description mutation back, so merge an explicit
@@ -256,7 +270,7 @@ async function measureImmutablePatches({ writer, reader, groupId, naturalKey, lo
 
   for (const field of ['mailNickname', 'mailEnabled', 'securityEnabled', 'groupTypes']) {
     assertDisposable(currentNaturalKey);
-    const result = await writer.write('v1.0', `/groups/${groupId}`, {
+    const result = await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, {
       method: 'PATCH',
       body: { [field]: probeValue(field, current) },
     });
@@ -277,7 +291,7 @@ async function hardDelete({ writer, reader, client, naturalKey, groupId, priorSt
   assertDisposable(naturalKey);
   await recordPriorState(client, { runId, naturalKey, priorState });
   throwOnGraphFailure(
-    await writer.write('v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} }),
+    await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} }),
     `delete group ${groupId}`,
   );
 
@@ -294,7 +308,7 @@ async function hardDelete({ writer, reader, client, naturalKey, groupId, priorSt
   assertDisposable(naturalKey);
   await recordPriorState(client, { runId, naturalKey, priorState: deletedItem.body });
   throwOnGraphFailure(
-    await writer.write('v1.0', `/directory/deletedItems/${groupId}`, { method: 'DELETE', body: {} }),
+    await writeWithRetry(writer, 'v1.0', `/directory/deletedItems/${groupId}`, { method: 'DELETE', body: {} }),
     `permanently delete group ${groupId}`,
   );
 
@@ -378,7 +392,7 @@ export async function runRoundTrip({
     // 3. Mutate both fields named by the rehearsal contract.
     assertDisposable(naturalKey);
     throwOnGraphFailure(
-      await writer.write('v1.0', `/groups/${groupId}`, {
+      await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, {
         method: 'PATCH',
         body: {
           description: 'KEEL disposable rehearsal drift',

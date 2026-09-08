@@ -55,7 +55,23 @@ export class GraphReader {
     if (!isGraphUrl(url)) {
       return { ok: false, status: 0, code: 'UnsafeUrl', error: `refused request to non-Graph host: ${url}` };
     }
-    const headers = { Authorization: `Bearer ${await this.getAccessToken()}` };
+    // Accept-Language is required on every Graph request, not just this one.
+    // Measured live 2026-09-08: GET
+    // roleManagement/directory/roleEligibilityScheduleInstances 400s with
+    // {"ErrorCode":"CultureNotFoundException","Message":"Culture is not
+    // supported. Parameter name: name\n* is an invalid culture identifier."}
+    // when no Accept-Language is sent, and returns 200 once
+    // `Accept-Language: en-US` is added — nothing else about the request
+    // differs. Graph's PIM endpoints (and, per Microsoft's own guidance,
+    // others) fall back to a locale of "*" without this header, which their
+    // culture parser then rejects. The header is harmless and standard
+    // everywhere else, so it is sent unconditionally here rather than only on
+    // the one endpoint that is known to need it today — scoping it would
+    // leave the same trap for the next PIM-like endpoint.
+    const headers = {
+      Authorization: `Bearer ${await this.getAccessToken()}`,
+      'Accept-Language': 'en-US',
+    };
     if (consistencyLevel) headers.ConsistencyLevel = 'eventual';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

@@ -18,7 +18,10 @@ export class NaturalKeyCollisionError extends Error {
   }
 }
 
-const FIDELITY = {
+// Exported: engine/collect/descriptors.mjs reads these as the single source of
+// truth for per-type criticality / blastRadius / fidelity. Do not duplicate
+// these maps elsewhere.
+export const FIDELITY = {
   user: 'read-only',
   authenticationStrengthPolicy: 'read-only',
   group: 'full',
@@ -27,7 +30,7 @@ const FIDELITY = {
   conditionalAccessPolicy: 'full',
 };
 
-const BLAST_RADIUS = {
+export const BLAST_RADIUS = {
   user: 'access-affecting',
   authenticationStrengthPolicy: 'tenant-lockout',
   group: 'access-affecting',
@@ -45,7 +48,7 @@ const RESTORE_PRIORITY = {
   conditionalAccessPolicy: 150,
 };
 
-const CRITICALITY = { user: 'tier2', authenticationStrengthPolicy: 'tier1', group: 'tier1',
+export const CRITICALITY = { user: 'tier2', authenticationStrengthPolicy: 'tier1', group: 'tier1',
   roleAssignment: 'tier1', namedLocation: 'tier1', conditionalAccessPolicy: 'tier1' };
 
 // M1 deliberately does not collect directory role templates: they are

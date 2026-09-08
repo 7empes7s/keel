@@ -18,7 +18,7 @@ const WIDENED_TYPES = [
   'accessReviewScheduleDefinition', 'deviceConfiguration', 'deviceCompliancePolicy',
   'configurationPolicy', 'deviceManagementRoleDefinition', 'mobileApp',
 ];
-const ENABLED_TYPES = [...M1_ORDER, ...WIDENED_TYPES];
+const ENABLED_TYPES = CATALOG.map((entry) => entry.type);
 
 // --- regression guard: the original six M1 types are still enabled, first, in order ---
 assert.deepEqual(
@@ -35,13 +35,21 @@ for (const type of M1_ORDER) {
   assert.ok(M1_TYPES.includes(type), `previously-live type ${type} is still in M1_TYPES`);
 }
 
-// --- widened set: DESCRIPTORS is exactly the six M1 types plus the 2026-09-08 widening ---
+// --- full catalogue: the metadata and the actual registry must both resolve ---
 assert.deepEqual(
   DESCRIPTORS.map((d) => d.type).sort(),
   [...ENABLED_TYPES].sort(),
-  'DESCRIPTORS is exactly the M1 six plus the measured-clean widened set — no more, no less',
+  'DESCRIPTORS covers exactly the full catalogue',
 );
-assert.deepEqual(M1_TYPES.sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
+assert.deepEqual([...M1_TYPES].sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
+
+assert.equal(CATALOG.length, 52);
+assert.equal(list().length, 52);
+assert.deepEqual(list().map((d) => d.type).sort(), [...ENABLED_TYPES].sort(), 'registry-vs-catalogue diff is empty');
+for (const entry of CATALOG) {
+  assert.equal(get(entry.type).descriptor.type, entry.type);
+  assert.equal(typeof get(entry.type).adapter.collect, 'function');
+}
 
 // --- the registry knows every catalog type -----------------------------------
 assert.equal(ALL_DESCRIPTORS.length, CATALOG.length, 'one descriptor per catalog entry');
@@ -164,7 +172,7 @@ const fakeReader = {
     return { items: [{ id: `${path}#1` }], error: null };
   },
 };
-const collected = await collectM1(fakeReader);
+const collected = await collectM1(fakeReader, { tenantId: 'fixture-tenant' });
 assert.equal(collected.length, M1_TYPES.length);
 assert.deepEqual(collected.map(([type]) => type), M1_TYPES, 'same types, same order as M1_TYPES');
 for (const [type, items] of collected) {

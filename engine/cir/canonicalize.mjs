@@ -52,7 +52,11 @@ function keyFor(type, obj, ctx) {
  * can ever reference either type by a GUID it doesn't have, so skipping the
  * mapping when `id` is absent is a safe no-op rather than a crash.
  */
-function idKey(obj) {
+function idKey(obj, type) {
+  // Global templates can share ids with active role definitions. Collecting
+  // the catalogue must not overwrite those tenant symbols or change existing
+  // role-assignment keys. buildIndex already classifies templates as global.
+  if (type === 'directoryRoleTemplate' || type === 'directorySettingTemplate') return null;
   return obj?.id != null ? String(obj.id).toLowerCase() : null;
 }
 
@@ -83,10 +87,8 @@ const RESTORE_PRIORITY = {
   conditionalAccessPolicy: 150,
 };
 
-// M1 deliberately does not collect directory role templates: they are
-// Microsoft-global catalog entries, not tenant resources to recreate. Resolve
-// the one role template that M1's break-glass invariant needs into the same
-// stable symbol used by role-assignment natural keys.
+// Preserve M1's stable break-glass symbol even when a scoped collection lacks
+// role templates. Templates are global catalogues, not resources to recreate.
 const GLOBAL_ROLE_SYMBOLS = new Map([
   ['62e90394-69f5-4237-9190-012177145e10', 'global:GlobalAdministrator'],
 ]);
@@ -104,7 +106,7 @@ export function canonicalizeAll(collected) {
       collisions.push({ type, naturalKey: key, ids: [existing.sourceId, obj.id] });
       return;
     }
-    const idk = idKey(obj);
+    const idk = idKey(obj, type);
     if (idk) idToSymbol.set(idk, key);
     const resource = buildResource(type, obj, key, index, idToSymbol);
     byKey.set(key, resource);
@@ -119,7 +121,7 @@ export function canonicalizeAll(collected) {
     for (const obj of objects) {
       const key = `${type}:${keyFor(type, obj)}`;
       selfContained.push({ type, obj, key });
-      const idk = idKey(obj);
+      const idk = idKey(obj, type);
       if (idk) idToSymbol.set(idk, key);
     }
   }
@@ -210,7 +212,7 @@ function classifyCanonicalReference({ path, guid, ownIds, index, resolvedSymbol 
   if (classified.klass === 'unresolvable' && globalRoleSymbol) {
     return { klass: 'globalConstant', key: globalRoleSymbol.slice('global:'.length) };
   }
-  if (classified.klass === 'unresolvable' && resolvedSymbol) {
+  if ((classified.klass === 'unresolvable' || classified.klass === 'resolvable') && resolvedSymbol) {
     return { klass: 'resolvable', symbol: resolvedSymbol };
   }
   return classified;

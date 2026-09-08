@@ -33,7 +33,7 @@ try {
   // Exercise the actual collector -> persistence -> report path. Most types
   // are completed empty reads; one fails, and a distinct type is then omitted
   // from the persisted digest to model silence (e.g. an older collector).
-  const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef });
+  const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef, tenantId: 'fixture-tenant' });
   assert.deepEqual(coverageDigest.namedLocation, { outcome: 'complete', itemCount: 0 });
   assert.equal(coverageDigest.roleAssignment.outcome, 'failed');
   assert.equal((await getResourceVersions(client, { snapshotId })).length, 6);
@@ -118,7 +118,7 @@ try {
 
   // Tier filtering must keep successful empty outcomes for the selected tier,
   // and must not claim coverage for excluded resources.
-  const tierRun = await collectSnapshot(client, { reader, tenantRef: 'sha256:tier-only', tier: 'tier1' });
+  const tierRun = await collectSnapshot(client, { reader, tenantRef: 'sha256:tier-only', tenantId: 'fixture-tenant', tier: 'tier1' });
   assert.deepEqual(tierRun.coverageDigest.namedLocation, { outcome: 'complete', itemCount: 0 });
   assert.equal(Object.hasOwn(tierRun.coverageDigest, 'user'), false);
   const stored = await getResourceVersions(client, { snapshotId: tierRun.snapshotId });

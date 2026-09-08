@@ -11,10 +11,14 @@ const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 // verify join the adapter contract with the restore milestone.
 function graphNativeAdapter(type) {
   return {
-    async collect(reader) {
+    async collect(reader, { tenantId } = {}) {
       const entry = byType.get(type);
       if (!entry) throw new Error(`M1 type ${type} not found in tenant-probe CATALOG`);
-      const path = entry.select ? `${entry.path}?$select=${entry.select}` : entry.path;
+      if (entry.needsOrgId && !tenantId) throw new Error(`collecting ${type} failed: tenantId required`);
+      const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(tenantId)) : entry.path;
+      // Do not append $top: directoryRoleTemplates rejects it. The reader
+      // follows Graph's nextLink verbatim and handles singleton responses too.
+      const path = entry.select ? `${basePath}?$select=${entry.select}` : basePath;
       const { items, error, capped } = await reader.collect(entry.version, path, {
         pageCap: entry.pageCap ?? Infinity,
       });
@@ -30,11 +34,14 @@ for (const descriptor of DESCRIPTORS) {
   register(descriptor, graphNativeAdapter(descriptor.type));
 }
 
-export async function collectM1(reader) {
+export async function collectM1(reader, scope = {}) {
   const collected = [];
+  const context = { ...scope };
   for (const type of M1_TYPES) {
     const { adapter } = get(type);
-    collected.push([type, await adapter.collect(reader)]);
+    const items = await adapter.collect(reader, context);
+    collected.push([type, items]);
+    if (type === 'organization') context.tenantId ??= items[0]?.id;
   }
   return collected;
 }
@@ -45,14 +52,16 @@ export async function collectM1(reader) {
  * unknown cardinality, never an invented zero. Keep collectM1 fail-fast for
  * planning and restore callers that require a complete input set.
  */
-export async function collectWithOutcomes(reader) {
+export async function collectWithOutcomes(reader, scope = {}) {
   const collected = [];
   const coverageDigest = {};
+  const context = { ...scope };
   for (const type of M1_TYPES) {
     try {
-      const items = await get(type).adapter.collect(reader);
+      const items = await get(type).adapter.collect(reader, context);
       collected.push([type, items]);
       coverageDigest[type] = { outcome: 'complete', itemCount: items.length };
+      if (type === 'organization') context.tenantId ??= items[0]?.id;
     } catch (error) {
       coverageDigest[type] = { outcome: 'failed', itemCount: null, error: error.message };
     }

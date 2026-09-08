@@ -1,0 +1,8 @@
+[Unit]
+Description=KEEL snapshot retention prune
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/keel/db.env
+ExecStart=/usr/bin/node /opt/keel/cli/keel-prune.mjs

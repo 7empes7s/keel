@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KEEL snapshot retention prune daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=keel-prune.service
+
+[Install]
+WantedBy=timers.target

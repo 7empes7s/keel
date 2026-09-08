@@ -19,6 +19,12 @@ const issuer = "https://keel-test.cloudflareaccess.com";
 const audience = "keel-test-audience";
 const trustedKeyId = "trusted-key";
 const authenticatedEmail = "operator@example.com";
+const readOnlyApiRoutes = [
+  "/api/dashboard",
+  "/api/coverage",
+  "/api/drift",
+  "/api/baselines",
+] as const;
 
 let jwksServer: Server;
 let trustedPrivateKey: CryptoKey;
@@ -104,6 +110,14 @@ test("an API request with no Access assertion is rejected with 401", async () =>
   assert.equal(response.status, 401);
 });
 
+for (const path of readOnlyApiRoutes) {
+  test(`GET ${path} rejects an unauthenticated request with 401`, async () => {
+    const response = await middleware(request(path));
+
+    assert.equal(response.status, 401);
+  });
+}
+
 test("a malformed Access assertion is rejected with 401", async () => {
   const response = await middleware(request("/", "garbage"));
 
@@ -166,4 +180,3 @@ test("non-GET requests to /api/health do not bypass authentication", async () =>
 
   assert.equal(response.status, 401);
 });
-

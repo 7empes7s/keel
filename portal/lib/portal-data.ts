@@ -1,0 +1,332 @@
+import { buildCoverageReport } from "../../engine/coverage/report.mjs";
+import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
+import { listBaselines } from "../../engine/govern/baseline.mjs";
+import {
+  getActiveBaseline,
+  listOpenDrift,
+} from "../../engine/store/governance.mjs";
+import { connect } from "../../engine/store/db.mjs";
+import {
+  getEvidenceIntegrity,
+  getLastCollection,
+} from "../../status/queries.mjs";
+import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
+
+import { BLAST_RADIUS_ORDER } from "@/lib/presentation";
+import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import type {
+  BaselineRecord,
+  BaselinesData,
+  CoverageData,
+  CoverageType,
+  DashboardAlert,
+  DashboardData,
+  DriftData,
+  DriftRecord,
+  Fidelity,
+  ProtectionState,
+} from "@/lib/types";
+
+interface KeelClient {
+  end(): Promise<void>;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Promise<T> {
+  const client = (await connect(databaseUrl())) as KeelClient;
+  try {
+    return await operation(client);
+  } finally {
+    await client.end();
+  }
+}
+
+function iso(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.valueOf()) ? null : date.toISOString();
+}
+
+function fidelity(value: unknown): Fidelity | null {
+  return value === "full" ||
+    value === "partial" ||
+    value === "read-only" ||
+    value === "unprotectable"
+    ? value
+    : null;
+}
+
+function protectionState(
+  reportStatus: string,
+  declared: Fidelity | null,
+  measured: Fidelity | null,
+): ProtectionState {
+  if (reportStatus === "failed") return "failed";
+  if (reportStatus === "not-covered" || reportStatus === "never-collected") {
+    return "not-covered";
+  }
+
+  switch (measured ?? declared) {
+    case "full":
+      return "protected";
+    case "partial":
+      return "partially-protected";
+    case "read-only":
+      return "read-only";
+    case "unprotectable":
+      return "unprotectable";
+    default:
+      return "not-covered";
+  }
+}
+
+function normalizeCoverageType(raw: UnknownRecord): CoverageType {
+  const rawFidelity = (raw.fidelity ?? null) as UnknownRecord | null;
+  const verifiedBy = (rawFidelity?.verifiedBy ?? null) as UnknownRecord | null;
+  const declared = fidelity(rawFidelity?.declared);
+  const measured = fidelity(verifiedBy?.measuredFidelity);
+  const reportStatus = String(raw.status) as CoverageType["reportStatus"];
+
+  return {
+    type: String(raw.type),
+    reportStatus,
+    protectionState: protectionState(reportStatus, declared, measured),
+    itemCount: typeof raw.itemCount === "number" ? raw.itemCount : null,
+    lastCollectedAt: iso(raw.lastCollectedAt),
+    adapter: typeof raw.adapter === "string" ? raw.adapter : null,
+    fidelity: {
+      declared,
+      measured,
+      verifiedAt: iso(verifiedBy?.at),
+    },
+    criticality: typeof raw.criticality === "string" ? raw.criticality : null,
+    blastRadius: typeof raw.blastRadius === "string" ? raw.blastRadius : null,
+    remappable: typeof raw.remappable === "boolean" ? raw.remappable : null,
+  };
+}
+
+function normalizeBaseline(raw: UnknownRecord): BaselineRecord {
+  return {
+    id: String(raw.id),
+    label: typeof raw.label === "string" ? raw.label : null,
+    description: typeof raw.description === "string" ? raw.description : null,
+    setAt: iso(raw.set_at) ?? "",
+    setBy: String(raw.set_by),
+    active: Boolean(raw.active),
+    resourceCount: Number(raw.resource_count ?? 0),
+  };
+}
+
+function normalizeDrift(raw: UnknownRecord): DriftRecord {
+  return {
+    id: String(raw.id),
+    naturalKey: String(raw.natural_key),
+    resourceType: String(raw.resource_type),
+    changeType: String(raw.change_type) as DriftRecord["changeType"],
+    blastRadius: String(raw.blast_radius),
+    detectedAt: iso(raw.detected_at) ?? "",
+  };
+}
+
+async function coverageFor(client: KeelClient, ref: string): Promise<CoverageData> {
+  const raw = (await buildCoverageReport(client, {
+    tenantRef: ref,
+    catalog: CATALOG,
+    descriptors: DESCRIPTORS,
+    now: new Date(),
+  })) as UnknownRecord;
+  const rawSummary = raw.summary as UnknownRecord;
+  const types = (raw.types as UnknownRecord[]).map(normalizeCoverageType);
+
+  return {
+    generatedAt: iso(raw.generatedAt) ?? new Date().toISOString(),
+    snapshot: raw.snapshot
+      ? {
+          id: String((raw.snapshot as UnknownRecord).id),
+          status: String((raw.snapshot as UnknownRecord).status),
+          startedAt: iso((raw.snapshot as UnknownRecord).startedAt),
+          completedAt: iso((raw.snapshot as UnknownRecord).completedAt),
+        }
+      : null,
+    summary: {
+      covered: Number(rawSummary.covered ?? 0),
+      failed: Number(rawSummary.failed ?? 0),
+      notCovered: Number(rawSummary.notCovered ?? 0),
+      neverCollected: Number(rawSummary.neverCollected ?? 0),
+      total: types.length,
+    },
+    types,
+  };
+}
+
+async function baselinesFor(client: KeelClient, ref: string): Promise<BaselineRecord[]> {
+  const rows = (await listBaselines(client, { tenantRef: ref })) as UnknownRecord[];
+  return rows.map(normalizeBaseline);
+}
+
+async function activeDriftFor(
+  client: KeelClient,
+  ref: string,
+  activeBaselineId: string | null,
+): Promise<DriftRecord[]> {
+  if (!activeBaselineId) return [];
+  const rows = (await listOpenDrift(client, { tenantRef: ref })) as UnknownRecord[];
+  return rows
+    .filter((row) => String(row.baseline_id) === activeBaselineId)
+    .map(normalizeDrift);
+}
+
+export async function getCoverageData(): Promise<CoverageData> {
+  const ref = tenantRef();
+  return withClient((client) => coverageFor(client, ref));
+}
+
+export async function getBaselinesData(): Promise<BaselinesData> {
+  const ref = tenantRef();
+  return withClient(async (client) => ({
+    generatedAt: new Date().toISOString(),
+    baselines: await baselinesFor(client, ref),
+  }));
+}
+
+export async function getDriftData(): Promise<DriftData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const active = (await getActiveBaseline(client, { tenantRef: ref })) as
+      | UnknownRecord
+      | null;
+    const baselines = await baselinesFor(client, ref);
+    const baseline = active
+      ? baselines.find((candidate) => candidate.id === String(active.id)) ??
+        normalizeBaseline({ ...active, resource_count: 0 })
+      : null;
+    const items = await activeDriftFor(client, ref, baseline?.id ?? null);
+
+    return { generatedAt: new Date().toISOString(), baseline, items };
+  });
+}
+
+function buildAlerts({
+  activeBaseline,
+  lastCollection,
+  coverage,
+  evidence,
+}: Pick<
+  DashboardData,
+  "activeBaseline" | "lastCollection" | "coverage" | "evidence"
+>): DashboardAlert[] {
+  const alerts: DashboardAlert[] = [];
+
+  if (!activeBaseline) {
+    alerts.push({
+      severity: "critical",
+      title: "No active baseline",
+      detail: "Drift cannot be evaluated until a baseline is active.",
+    });
+  } else if (activeBaseline.resourceCount === 0) {
+    alerts.push({
+      severity: "critical",
+      title: "Active baseline is empty",
+      detail: "It contains zero resources and cannot represent tenant state.",
+    });
+  }
+
+  if (!lastCollection) {
+    alerts.push({
+      severity: "critical",
+      title: "No collection exists",
+      detail: "KEEL has no recorded tenant snapshot.",
+    });
+  } else if (lastCollection.status !== "complete") {
+    alerts.push({
+      severity: "warning",
+      title: `Latest collection is ${lastCollection.status.toUpperCase()}`,
+      detail: lastCollection.completedAt
+        ? "The latest snapshot did not complete successfully."
+        : "The latest snapshot has no completion timestamp.",
+    });
+  }
+
+  if (coverage.failed > 0) {
+    alerts.push({
+      severity: "critical",
+      title: `${coverage.failed} ${coverage.failed === 1 ? "type" : "types"} FAILED collection`,
+      detail: "The last completed collection returned zero items. KEEL does not count this as coverage.",
+    });
+  }
+
+  const uncovered = coverage.notCovered + coverage.neverCollected;
+  if (uncovered > 0) {
+    alerts.push({
+      severity: "warning",
+      title: `${uncovered} catalog ${uncovered === 1 ? "type is" : "types are"} not covered`,
+      detail: "These known configuration surfaces have no successful non-zero collection.",
+    });
+  }
+
+  if (!evidence.ok) {
+    alerts.push({
+      severity: "critical",
+      title: "Evidence chain integrity failed",
+      detail: "Governance evidence cannot be trusted until the chain is investigated.",
+    });
+  }
+
+  return alerts;
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const active = (await getActiveBaseline(client, { tenantRef: ref })) as
+      | UnknownRecord
+      | null;
+    const baselines = await baselinesFor(client, ref);
+    const activeBaseline = active
+      ? baselines.find((candidate) => candidate.id === String(active.id)) ??
+        normalizeBaseline({ ...active, resource_count: 0 })
+      : null;
+    const lastCollectionRaw = (await getLastCollection(client, {
+      tenantRef: ref,
+    })) as UnknownRecord | null;
+    const evidenceRaw = (await getEvidenceIntegrity(client, {
+      tenantRef: ref,
+    })) as { ok: boolean; chainLength: number };
+    const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
+    const coverageData = await coverageFor(client, ref);
+
+    const openDriftByBlastRadius = [...new Set([
+      ...BLAST_RADIUS_ORDER,
+      ...drift.map((item) => item.blastRadius),
+    ])]
+      .map((blastRadius) => ({
+        blastRadius,
+        count: drift.filter((item) => item.blastRadius === blastRadius).length,
+      }))
+      .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
+    const lastCollection = lastCollectionRaw
+      ? {
+          completedAt: iso(lastCollectionRaw.completedAt),
+          status: String(lastCollectionRaw.status),
+        }
+      : null;
+    const data: DashboardData = {
+      generatedAt: new Date().toISOString(),
+      activeBaseline,
+      lastCollection,
+      lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
+      openDriftByBlastRadius,
+      openDriftTotal: drift.length,
+      coverage: coverageData.summary,
+      evidence: {
+        ok: Boolean(evidenceRaw.ok),
+        chainLength: Number(evidenceRaw.chainLength),
+      },
+      alerts: [],
+    };
+
+    data.alerts = buildAlerts(data);
+    return data;
+  });
+}

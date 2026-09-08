@@ -174,6 +174,20 @@ export async function readGroupWithRetry(reader, groupId, { attempts = 6, delayM
   throw lastError;
 }
 
+/** Same replication lag readGroupWithRetry and writeWithRetry handle, for an arbitrary Graph path.
+ * Retries until the caller's predicate holds — which may mean waiting for a resource to APPEAR
+ * (/directory/deletedItems after a soft-delete) or to VANISH (/groups after one). Returns the last
+ * result when attempts run out, leaving the caller's own error handling unchanged. */
+export async function getWithRetry(reader, version, path, isSatisfied, { attempts = 6, delayMs = 3000 } = {}) {
+  let result;
+  for (let i = 0; i < attempts; i += 1) {
+    result = await reader.get(version, path);
+    if (isSatisfied(result)) return result;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
 /** Same tenant-specific replication lag as readGroupWithRetry, observed on the write path too:
  * a write to an object this session just created/mutated can itself 404 until the write path
  * catches up. Retries ONLY a 404 — any other failure (400, 403, a real conflict) returns
@@ -317,12 +331,14 @@ async function hardDelete({ writer, reader, client, naturalKey, groupId, priorSt
     `delete group ${groupId}`,
   );
 
-  const absentFromGroups = await reader.get('v1.0', `/groups/${groupId}`);
+  const absentFromGroups = await getWithRetry(reader, 'v1.0', `/groups/${groupId}`,
+    (r) => r.ok === false && r.status === 404);
   if (absentFromGroups.ok || absentFromGroups.status !== 404) {
     throw new Error(`deleted group ${groupId} is still present at /groups`);
   }
 
-  const deletedItem = await reader.get('v1.0', `/directory/deletedItems/${groupId}`);
+  const deletedItem = await getWithRetry(reader, 'v1.0', `/directory/deletedItems/${groupId}`,
+    (r) => r.ok === true);
   if (!deletedItem.ok) {
     throw new Error(`deleted group ${groupId} could not be read before permanent deletion`);
   }

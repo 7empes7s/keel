@@ -24,3 +24,10 @@ random password, re-applies `status/setupRole.sql`, rewrites `/etc/keel/status-d
 project's own test suite (`status/*.test.mjs`) against production credentials to "check" anything —
 they operate against a separate `keel_status_test` role scoped to the disposable `keel_test`
 database only, and are safe to run freely for that reason.
+
+## Round-trip rehearsal
+
+`tools/rehearsal/roundTrip.mjs` exercises a real tenant through Graph while writing KEEL's own
+governance state to `keel_test`; it defaults to `KEEL_DB_TEST_URL` and refuses to start against
+`KEEL_DB_URL` (use `--db-url` only for another non-production database). Production baselines must
+only ever be set by an operator because the public status page reports them.

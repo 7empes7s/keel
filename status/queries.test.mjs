@@ -46,8 +46,11 @@ await insertResourceVersion(superuser, {
   },
 });
 await superuser.query(
-  'UPDATE snapshot SET status = $2, completed_at = now() WHERE id = $1',
-  [snapshotId, 'complete'],
+  'UPDATE snapshot SET status = $2, completed_at = $3, coverage_digest = $4 WHERE id = $1',
+  [snapshotId, 'complete', '2026-09-08T10:00:00.000Z', {
+    group: { outcome: 'complete', itemCount: 1 },
+    namedLocation: { outcome: 'complete', itemCount: 1 },
+  }],
 );
 
 const baselineId = await createBaseline(superuser, { tenantRef, setBy: 'test' });
@@ -75,8 +78,12 @@ const client = await connect(statusUrl);
 const resourceCounts = await getResourceCounts(client, { tenantRef });
 assert.deepEqual(
   [...resourceCounts.byType].sort((a, b) => a.resourceType.localeCompare(b.resourceType)),
-  [{ resourceType: 'group', count: 1 }, { resourceType: 'namedLocation', count: 1 }],
+  [
+    { resourceType: 'group', count: 1, asOf: new Date('2026-09-08T10:00:00.000Z') },
+    { resourceType: 'namedLocation', count: 1, asOf: new Date('2026-09-08T10:00:00.000Z') },
+  ],
 );
+assert.deepEqual(resourceCounts.asOf, new Date('2026-09-08T10:00:00.000Z'));
 assert.ok(!JSON.stringify(resourceCounts).includes('payload'), 'must never select payload');
 
 const baseline = await getBaselineInfo(client, { tenantRef });
@@ -106,6 +113,65 @@ const fullBlob = JSON.stringify(combined);
 for (const forbidden of ['group:alpha', 'namedLocation:corp', 'Alpha', 'Corp', 'expected change', 'test']) {
   assert.ok(!fullBlob.includes(forbidden), `aggregate-only guarantee violated: "${forbidden}" leaked into collectGovernance output`);
 }
+
+// Persist different counts in successive snapshots, with failures and empty
+// successes superseding older non-zero holdings. Query with the read-only role.
+const historyTenant = 'sha256:status-history';
+const olderAt = new Date('2026-09-08T10:00:00.000Z');
+const newerAt = new Date('2026-09-08T11:00:00.000Z');
+async function holdingsSnapshot({ at, digest, counts, tenant = historyTenant, status = 'complete', startedAt = at }) {
+  const id = await createSnapshot(superuser, { tenantRef: tenant });
+  for (const [resourceType, count] of Object.entries(counts)) {
+    for (let i = 0; i < count; i++) {
+      await insertResourceVersion(superuser, { snapshotId: id, resource: {
+        naturalKey: `${resourceType}:fixture-${i}`, resourceType,
+        payload: { displayName: 'Private fixture' },
+        criticality: 'tier2', blastRadius: 'cosmetic', fidelity: 'read-only', provenance: { adapter: 'test' },
+      } });
+    }
+  }
+  await superuser.query(
+    'UPDATE snapshot SET completed_at = $2, coverage_digest = $3, status = $4, started_at = $5 WHERE id = $1',
+    [id, at, digest, status, startedAt],
+  );
+}
+await holdingsSnapshot({ at: newerAt, startedAt: '2026-09-08T08:00:00Z', counts: { group: 2 }, digest: {
+  group: { outcome: 'complete', itemCount: 2 },
+  namedLocation: { outcome: 'complete', itemCount: 0 },
+  roleAssignment: { outcome: 'failed', itemCount: null },
+  organization: null,
+} });
+await holdingsSnapshot({ at: olderAt, counts: { group: 9, user: 7, namedLocation: 3, roleAssignment: 4, organization: 1 }, digest: {
+  group: { outcome: 'complete', itemCount: 9 },
+  user: { outcome: 'complete', itemCount: 7 },
+  namedLocation: { outcome: 'complete', itemCount: 3 },
+  roleAssignment: { outcome: 'complete', itemCount: 4 },
+  organization: { outcome: 'complete', itemCount: 1 },
+} });
+for (const overrides of [{ tenant: 'sha256:status-other' }, { status: 'running' }, { status: 'failed' }, { at: null }]) {
+  await holdingsSnapshot({ at: '2026-09-08T12:00:00Z', startedAt: '2026-09-08T11:30:00Z', ...overrides,
+    counts: { user: 8, contact: 1 }, digest: {
+      user: { outcome: 'complete', itemCount: 8 }, contact: { outcome: 'complete', itemCount: 1 },
+    },
+  });
+}
+// An unmentioned resource row cannot prove an attempted collection.
+await holdingsSnapshot({ at: '2026-09-08T11:30:00Z', digest: {}, counts: { contact: 3 } });
+let countQueries = 0;
+const countedClient = { query: (...args) => { countQueries++; return client.query(...args); } };
+const historyCounts = await getResourceCounts(countedClient, { tenantRef: historyTenant });
+assert.equal(countQueries, 1, 'holdings must resolve every type in one query');
+assert.deepEqual(historyCounts, {
+  byType: [
+    { resourceType: 'group', count: 2, asOf: newerAt },
+    { resourceType: 'namedLocation', count: 0, asOf: newerAt },
+    { resourceType: 'organization', count: null, asOf: newerAt },
+    { resourceType: 'roleAssignment', count: null, asOf: newerAt },
+    { resourceType: 'user', count: 7, asOf: olderAt },
+  ],
+  asOf: null,
+});
+assert.deepEqual(await getResourceCounts(client, { tenantRef: 'sha256:status-uncollected' }), { byType: [], asOf: null });
 
 await client.end();
 await superuser.end();

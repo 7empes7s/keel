@@ -1,5 +1,6 @@
 import { OPEN_DRIFT_PREDICATE } from '../engine/store/openDrift.mjs';
 import { verifyChain } from '../engine/govern/evidence.mjs';
+import { TYPE_COVERAGE_CTES, readCoverageOutcome } from '../engine/coverage/snapshots.mjs';
 
 async function getLatestSnapshotMeta(client, { tenantRef }) {
   const { rows } = await client.query(
@@ -14,19 +15,27 @@ async function getLatestSnapshotMeta(client, { tenantRef }) {
 }
 
 export async function getResourceCounts(client, { tenantRef }) {
-  const snapshot = await getLatestSnapshotMeta(client, { tenantRef });
-  if (!snapshot) return { byType: [], asOf: null };
   const { rows } = await client.query(
-    `SELECT resource_type, count(*)::int AS n
-     FROM resource_version
-     WHERE snapshot_id = $1
-     GROUP BY resource_type
-     ORDER BY resource_type`,
-    [snapshot.id],
+    `WITH ${TYPE_COVERAGE_CTES}
+     SELECT t.resource_type, t.completed_at, t.coverage_entry, count(rv.id)::int AS n
+     FROM latest_type_coverage t
+     LEFT JOIN resource_version rv
+       ON rv.snapshot_id = t.snapshot_id AND rv.resource_type = t.resource_type
+     GROUP BY t.resource_type, t.completed_at, t.coverage_entry
+     ORDER BY t.resource_type`,
+    [tenantRef],
   );
+  const byType = rows.map((r) => ({
+    resourceType: r.resource_type,
+    // Unknown cardinality after a failed read is not a completed empty read.
+    count: readCoverageOutcome(r.coverage_entry).covered ? r.n : null,
+    asOf: r.completed_at,
+  }));
+  // Retain the aggregate timestamp only when all counts share it.
+  const commonAsOf = byType[0]?.asOf ?? null;
   return {
-    byType: rows.map((r) => ({ resourceType: r.resource_type, count: r.n })),
-    asOf: snapshot.completed_at,
+    byType,
+    asOf: byType.every((t) => t.asOf.getTime() === commonAsOf.getTime()) ? commonAsOf : null,
   };
 }
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KEEL offsite database replication daily
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 UTC
+Persistent=true
+Unit=keel-offsite.service
+
+[Install]
+WantedBy=timers.target

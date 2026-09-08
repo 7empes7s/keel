@@ -1,0 +1,7 @@
+[Unit]
+Description=KEEL offsite database replication
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/keel/ops/keel-offsite.sh

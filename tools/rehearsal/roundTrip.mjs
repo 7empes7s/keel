@@ -340,6 +340,21 @@ async function hardDelete({ writer, reader, client, naturalKey, groupId, priorSt
   }
 }
 
+/** The rehearsal's step 7 only runs on the happy path. Any earlier failure would otherwise leave a
+ * live disposable group in the tenant — observed 2026-09-08. This is best-effort cleanup, not
+ * evidence: it deliberately skips the rollback journal that hardDelete writes, and it never throws,
+ * so it cannot mask the failure that triggered it. */
+async function cleanupOrphan({ writer, groupId, naturalKey, log }) {
+  try {
+    assertDisposable(naturalKey);
+    await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} });
+    await writeWithRetry(writer, 'v1.0', `/directory/deletedItems/${groupId}`, { method: 'DELETE', body: {} });
+    log(`cleanup: removed orphaned rehearsal group ${groupId}`);
+  } catch (error) {
+    log(`cleanup FAILED for ${groupId}: ${error.message}`);
+  }
+}
+
 /**
  * Runs live only when mode is exactly "live". Dry-run is deliberately the
  * default and returns before it constructs credentials, connects to the
@@ -365,6 +380,9 @@ export async function runRoundTrip({
   assertRehearsalDatabase(dbUrl);
 
   let ownedClient = false;
+  let createdGroupId = null;
+  let createdNaturalKey = null;
+  let hardDeleted = false;
   try {
     const collector = readConfig(collectorConfigPath);
     const restorer = readConfig(restorerConfigPath);
@@ -392,6 +410,8 @@ export async function runRoundTrip({
     );
     if (!created?.id) throw new Error('created rehearsal group did not return an id');
     const groupId = created.id;
+    createdGroupId = groupId;
+    createdNaturalKey = naturalKey;
     logEvidence(log, 1, { naturalKey, groupId, created: true });
 
     // 2. Collect with the Collector credential and seed that snapshot as active.
@@ -500,10 +520,14 @@ export async function runRoundTrip({
       priorState: measured.current,
       runId: `rehearsal-${Date.now()}`,
     });
+    hardDeleted = true;
     logEvidence(log, 7, { naturalKey: measured.naturalKey, groupId, absent: true });
 
     return { mode, naturalKey: measured.naturalKey, groupId, baselineHash, immutableFieldResults: measured.results };
   } finally {
+    if (createdGroupId && !hardDeleted) {
+      await cleanupOrphan({ writer, groupId: createdGroupId, naturalKey: createdNaturalKey, log });
+    }
     if (ownedClient) await client.end();
   }
 }

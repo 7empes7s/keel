@@ -20,6 +20,11 @@
 import { TYPE_COVERAGE_CTES, readCoverageOutcome } from './snapshots.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
+const STALE_AFTER_MS = {
+  tier1: 3 * 60 * 60 * 1000,
+  tier2: 3 * 24 * 60 * 60 * 1000,
+  tier3: 3 * 7 * 24 * 60 * 60 * 1000,
+};
 
 export async function buildCoverageReport(client, { tenantRef, catalog, descriptors, now }) {
   const generatedAt = (now ?? new Date()).toISOString();
@@ -30,7 +35,7 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   const types = [];
 
   for (const descriptor of descriptors) {
-    types.push(coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type)));
+    types.push(coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt));
   }
   for (const entry of catalog) {
     if (descriptorByType.has(entry.type)) continue;
@@ -38,6 +43,7 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       type: entry.type,
       status: 'not-covered',
       covered: false,
+      stale: false,
       itemCount: null,
       lastCollectedAt: null,
       adapter: null,
@@ -65,11 +71,12 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       failed: types.filter((t) => t.status === 'failed').length,
       notCovered: types.filter((t) => t.status === 'not-covered').length,
       neverCollected: types.filter((t) => t.status === 'never-collected').length,
+      stale: types.filter((t) => t.stale).length,
     },
   };
 }
 
-function coveredEntry(descriptor, observation, drill) {
+function coveredEntry(descriptor, observation, drill, generatedAt) {
   const lastCollectedAt = observation?.completed_at ?? null;
   let status;
   let itemCount = null;
@@ -84,6 +91,10 @@ function coveredEntry(descriptor, observation, drill) {
     type: descriptor.type,
     status,
     covered: status === 'covered',
+    // No observation has no age; its never-collected status carries that gap.
+    // Freshness is independent of outcome and does not change status counts.
+    stale: lastCollectedAt !== null
+      && new Date(generatedAt) - new Date(lastCollectedAt) > STALE_AFTER_MS[descriptor.criticality],
     itemCount,
     lastCollectedAt,
     adapter: descriptor.adapter,

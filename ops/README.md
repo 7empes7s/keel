@@ -25,6 +25,33 @@ project's own test suite (`status/*.test.mjs`) against production credentials to
 they operate against a separate `keel_status_test` role scoped to the disposable `keel_test`
 database only, and are safe to run freely for that reason.
 
+## Offsite database replication
+
+`keel-offsite.sh` ships the most recent `/opt/backups/<YYYY-MM-DD>/keel-db.sql.gz` (produced
+nightly by `/opt/mimoun/backup.sh`) to a second, independent host — Hostinger at `187.124.7.67`,
+reached via `ssh -i /root/.ssh/playground_vps`, under `/opt/keel-offsite/` there. A dump on the same
+host as the database it protects is not a backup: if this VPS is lost, every tenant baseline goes
+with it unless a copy exists elsewhere.
+
+It verifies the dump twice: `gzip -t` plus a `>= 5` `^COPY public` block count *before* shipping
+(a corrupt dump shipped offsite is worse than none, because it looks like protection), and a
+remote-computed sha256 compared against the local one *after* transfer (scp's exit code alone is
+not trusted). It stages the copy under a `.partial` name and only `mv`s it into place once the
+hash matches; a mismatch deletes the partial copy and fails loudly rather than leaving a
+silently-truncated file behind. Remote copies older than 30 days are pruned on each successful run.
+Every failure path is `set -euo pipefail` and exits non-zero — nothing is swallowed with
+`|| true`. Run `keel-offsite.sh --dry-run` to verify the current dump and report what would ship
+without transferring anything.
+
+Not installed or enabled by the build, matching the tiered backup units above:
+
+```sh
+sudo install -m 0755 ops/keel-offsite.sh /opt/keel/ops/keel-offsite.sh
+sudo install -m 0644 ops/keel-offsite.service ops/keel-offsite.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now keel-offsite.timer
+```
+
 ## Round-trip rehearsal
 
 `tools/rehearsal/roundTrip.mjs` exercises a real tenant through Graph while writing KEEL's own

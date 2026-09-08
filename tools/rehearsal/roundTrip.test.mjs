@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import {
   assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
-  getWithRetry, readGroupWithRetry, runRoundTrip, writeWithRetry,
+  getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 
 // Production and rehearsal URLs with the same host and database identify the
@@ -311,6 +311,42 @@ assert.throws(
   assert.ok(group, 'expected the rehearsal group in the collected snapshot');
   assert.equal(group.payload.description, 'baseline');
   assert.equal(gets, 1, 'expected no retry when no isExpected predicate is given and the read succeeds immediately');
+}
+
+// Regression for the 2026-09-08 09:15Z incident: after the permanent DELETE,
+// /directory/deletedItems/{id} can still return 200 until the purge
+// replicates. hardDelete's final absence check must retry toward a 404, like
+// the two reads above it — here the post-purge read returns 200 twice, then
+// 404, and hardDelete must succeed rather than throw.
+{
+  let deletedItemReads = 0;
+  const reader = {
+    get: async (version, path) => {
+      if (path.startsWith('/groups/')) return { ok: false, status: 404, body: null };
+      deletedItemReads += 1;
+      // First deletedItems read is the pre-purge presence check: the
+      // soft-deleted group is there.
+      if (deletedItemReads === 1) return { ok: true, status: 200, body: { id: 'g1' } };
+      // Post-purge reads: the purge lags two reads behind, then propagates.
+      if (deletedItemReads <= 3) return { ok: true, status: 200, body: { id: 'g1' } };
+      return { ok: false, status: 404, body: null };
+    },
+  };
+  const writer = fakeWriter();
+  const client = { query: async () => ({ rows: [] }) };
+  await hardDelete({
+    writer,
+    reader,
+    client,
+    naturalKey: 'group:keel-rehearsal-2026-09-08T09-15-00-000Z',
+    groupId: 'g1',
+    priorState: { id: 'g1' },
+    runId: 'rehearsal-test',
+  });
+  assert.ok(
+    deletedItemReads >= 4,
+    `expected the post-purge deletedItems read to be retried until 404, got ${deletedItemReads} reads`,
+  );
 }
 
 console.log('roundTrip.test.mjs — all assertions passed');

@@ -326,7 +326,7 @@ async function measureImmutablePatches({ writer, reader, groupId, naturalKey, lo
   return { results, naturalKey: currentNaturalKey, current };
 }
 
-async function hardDelete({ writer, reader, client, naturalKey, groupId, priorState, runId }) {
+export async function hardDelete({ writer, reader, client, naturalKey, groupId, priorState, runId }) {
   assertDisposable(naturalKey);
   await recordPriorState(client, { runId, naturalKey, priorState });
   throwOnGraphFailure(
@@ -353,7 +353,8 @@ async function hardDelete({ writer, reader, client, naturalKey, groupId, priorSt
     `permanently delete group ${groupId}`,
   );
 
-  const absentFromDeletedItems = await reader.get('v1.0', `/directory/deletedItems/${groupId}`);
+  const absentFromDeletedItems = await getWithRetry(reader, 'v1.0', `/directory/deletedItems/${groupId}`,
+    (r) => r.ok === false && r.status === 404);
   if (absentFromDeletedItems.ok || absentFromDeletedItems.status !== 404) {
     throw new Error(`hard-deleted group ${groupId} is still present in deletedItems`);
   }

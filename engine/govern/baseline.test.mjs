@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { acceptDrift, seedFromSnapshot } from './baseline.mjs';
+import {
+  acceptDrift, seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
+} from './baseline.mjs';
 import { connect, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
 
@@ -199,6 +201,96 @@ assert.deepEqual(baselines, [
   { id: baselineId, active: false },
   { id: replacementBaselineId, active: true },
 ]);
+
+// --- Named baselines: label/description, listBaselines, getBaselineByLabel, activateBaseline ---
+
+const labelTenantRef = 'sha256:baseline-label-test';
+const labelSnapshotId = await createSnapshot(client, { tenantRef: labelTenantRef });
+await addGroup(labelSnapshotId, 'group:one', 'One');
+
+const namedBaselineId = await seedFromSnapshot(client, {
+  tenantRef: labelTenantRef,
+  snapshotId: labelSnapshotId,
+  setBy: 'label-operator',
+  label: 'post-audit-2026-q3',
+  description: 'Snapshot taken right after the Q3 audit closed.',
+});
+
+const fetchedByLabel = await getBaselineByLabel(client, {
+  tenantRef: labelTenantRef,
+  label: 'post-audit-2026-q3',
+});
+assert.equal(fetchedByLabel.id, namedBaselineId);
+assert.equal(fetchedByLabel.description, 'Snapshot taken right after the Q3 audit closed.');
+
+// Two baselines in the same tenant cannot share a label.
+const dupSnapshotId = await createSnapshot(client, { tenantRef: labelTenantRef });
+await addGroup(dupSnapshotId, 'group:two', 'Two');
+await assert.rejects(() => seedFromSnapshot(client, {
+  tenantRef: labelTenantRef,
+  snapshotId: dupSnapshotId,
+  setBy: 'label-operator',
+  label: 'post-audit-2026-q3',
+}));
+
+// A baseline with NO label is still allowed, and many of them can coexist.
+const unlabeledSnapshotA = await createSnapshot(client, { tenantRef: labelTenantRef });
+await addGroup(unlabeledSnapshotA, 'group:three', 'Three');
+const unlabeledBaselineA = await seedFromSnapshot(client, {
+  tenantRef: labelTenantRef,
+  snapshotId: unlabeledSnapshotA,
+  setBy: 'label-operator',
+});
+const unlabeledSnapshotB = await createSnapshot(client, { tenantRef: labelTenantRef });
+await addGroup(unlabeledSnapshotB, 'group:four', 'Four');
+const unlabeledBaselineB = await seedFromSnapshot(client, {
+  tenantRef: labelTenantRef,
+  snapshotId: unlabeledSnapshotB,
+  setBy: 'label-operator',
+});
+assert.notEqual(unlabeledBaselineA, unlabeledBaselineB);
+
+const listedBaselines = await listBaselines(client, { tenantRef: labelTenantRef });
+assert.equal(listedBaselines.length, 3);
+const listedById = new Map(listedBaselines.map((row) => [row.id, row]));
+assert.equal(listedById.get(namedBaselineId).label, 'post-audit-2026-q3');
+assert.equal(listedById.get(namedBaselineId).resource_count, 1);
+assert.equal(listedById.get(unlabeledBaselineA).label, null);
+
+// Newest-first ordering (tie-break-safe: assert relative order, not absolute position).
+const orderedIds = listedBaselines.map((row) => row.id);
+const idxNamed = orderedIds.indexOf(namedBaselineId);
+const idxA = orderedIds.indexOf(unlabeledBaselineA);
+const idxB = orderedIds.indexOf(unlabeledBaselineB);
+assert.ok(idxNamed > idxA && idxA > idxB, 'listBaselines must return newest first');
+
+// seedFromSnapshot always deactivates the prior active baseline, so the most
+// recently seeded (unlabeledBaselineB) is currently the sole active one.
+let activeRows = await client.query(
+  'SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true',
+  [labelTenantRef],
+);
+assert.deepEqual(activeRows.rows.map((row) => row.id), [unlabeledBaselineB]);
+
+// activateBaseline makes one baseline active and deactivates the previously active one.
+await activateBaseline(client, { tenantRef: labelTenantRef, baselineId: namedBaselineId });
+activeRows = await client.query(
+  'SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true',
+  [labelTenantRef],
+);
+assert.deepEqual(activeRows.rows.map((row) => row.id), [namedBaselineId]);
+
+// Atomicity: if activation fails partway (e.g. target does not exist), the
+// tenant must still have exactly one active baseline — never zero.
+await assert.rejects(() => activateBaseline(client, {
+  tenantRef: labelTenantRef,
+  baselineId: '00000000-0000-0000-0000-000000000000',
+}));
+activeRows = await client.query(
+  'SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true',
+  [labelTenantRef],
+);
+assert.deepEqual(activeRows.rows.map((row) => row.id), [namedBaselineId]);
 
 await client.end();
 console.log('baseline.test.mjs — all assertions passed');

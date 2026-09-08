@@ -1,8 +1,9 @@
 # KEEL operator portal
 
-Phase P1 is a Next.js 16 App Router scaffold with defence-in-depth Cloudflare
-Access authentication. It contains only the authenticated placeholder page and
-the health endpoint.
+Phase P2 is a Next.js 16 App Router operator console with defence-in-depth
+Cloudflare Access authentication. Its read-only dashboard, coverage, drift, and
+baseline surfaces read KEEL data directly from Postgres through the existing
+engine/query modules.
 
 ## Configuration
 
@@ -12,6 +13,11 @@ Set both variables in the service environment:
 CLOUDFLARE_ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
 CLOUDFLARE_ACCESS_AUD=your-application-audience-tag
 ```
+
+The portal also reads `KEEL_DB_URL` from the process environment, falling back
+to `/etc/keel/db.env`, and derives the tenant reference from
+`/etc/keel/tenant.json`. Both paths can be overridden with
+`KEEL_DB_ENV_PATH` and `KEEL_TENANT_CONFIG_PATH`.
 
 `CLOUDFLARE_ACCESS_TEAM_DOMAIN` must be the complete HTTPS team origin with no
 path. `CLOUDFLARE_ACCESS_AUD` is the Application Audience (AUD) tag from the
@@ -41,6 +47,18 @@ literal body `{"status":"ok"}` and reads no database, filesystem, or other
 service. Even other HTTP methods at that path go through authentication. Any
 future route is authenticated automatically and must have a regression test
 showing that a request without an assertion receives 401.
+
+## Read-only routes
+
+| Page | API | Purpose |
+|---|---|---|
+| `/` | `/api/dashboard` | Active baseline, collection, drift, coverage, and integrity posture |
+| `/coverage` | `/api/coverage` | Per-type collection and fidelity honesty report |
+| `/drift` | `/api/drift` | Sortable/filterable open drift against the active baseline |
+| `/baselines` | `/api/baselines` | Named baseline register |
+
+P2 intentionally contains no write handlers or controls. Restore and schedules
+belong to later phases.
 
 ## Local commands
 

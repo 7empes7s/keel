@@ -170,4 +170,46 @@ assert.throws(
   assert.equal(calls, 1, 'a 400 must never be retried');
 }
 
+// Regression for the 2026-09-08 07:55Z incident: a failure at any step after
+// group creation must still hard-delete the disposable group. Here step 2
+// blows up (the first collect read rejects), so step 7 is never reached — yet
+// the writer must still record DELETEs against the created group, and the
+// original error must propagate unchanged.
+{
+  const calls = [];
+  const failingWriter = {
+    write: async (version, path, body) => {
+      calls.push({ path, method: body?.method });
+      if (body?.method === 'POST' && path === '/groups') {
+        return { ok: true, status: 201, body: { id: 'rehearsal-group-id-1' } };
+      }
+      return { ok: true, status: 204, body: null };
+    },
+  };
+  const failingReader = {
+    collect: async () => { throw new Error('simulated step-2 collect failure'); },
+    get: async () => { throw new Error('simulated step-2 collect failure'); },
+  };
+  const failingClient = { query: async () => ({ rows: [] }) };
+  await assert.rejects(
+    runRoundTrip({
+      mode: 'live',
+      log: () => {},
+      collectorConfigPath: '/etc/keel/tenant.json',
+      restorerConfigPath: '/etc/keel/restorer.json',
+      dbUrl: 'postgres://u:p@127.0.0.1:5433/keel_test_fake',
+      writer: failingWriter,
+      reader: failingReader,
+      client: failingClient,
+      now: () => new Date('2026-09-08T07:55:08.076Z'),
+    }),
+    /simulated step-2 collect failure/,
+  );
+  const deletes = calls.filter((call) => call.method === 'DELETE');
+  assert.ok(
+    deletes.some((call) => call.path === '/groups/rehearsal-group-id-1'),
+    `expected a DELETE of the created group on the failure path, got ${JSON.stringify(calls)}`,
+  );
+}
+
 console.log('roundTrip.test.mjs — all assertions passed');

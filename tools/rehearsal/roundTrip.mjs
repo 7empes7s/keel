@@ -206,10 +206,13 @@ export async function writeWithRetry(writer, version, path, body, { attempts = 6
  * M1's broad group projection intentionally excludes description. The
  * rehearsal must roll its description mutation back, so merge an explicit
  * Collector-only read of the group it created into each rehearsal snapshot.
+ * Callers that just mutated the group pass isExpected so the overlay read
+ * cannot settle for a stale replica's body (observed live 2026-09-08 08:59Z);
+ * with no predicate the first successful read is accepted, as before.
  */
-async function collectRehearsalSnapshot(reader, groupId) {
+export async function collectRehearsalSnapshot(reader, groupId, { isExpected, delayMs } = {}) {
   const collected = await collectM1(reader);
-  const rehearsalGroup = await readGroupWithRetry(reader, groupId);
+  const rehearsalGroup = await readGroupWithRetry(reader, groupId, { isExpected, delayMs });
   const groupEntry = collected.find(([resourceType]) => resourceType === 'group');
   const groups = groupEntry?.[1];
   if (!groups) throw new Error('group collection missing from M1 collection');
@@ -234,11 +237,11 @@ async function persistSnapshot(client, { tenantRef, resources }) {
   return snapshotId;
 }
 
-async function detect(client, { tenantRef, reader, groupId }) {
+async function detect(client, { tenantRef, reader, groupId, isExpected }) {
   const baseline = await getActiveBaseline(client, { tenantRef });
   if (!baseline) throw new Error(`no active baseline for ${tenantRef}`);
 
-  const resources = await collectRehearsalSnapshot(reader, groupId);
+  const resources = await collectRehearsalSnapshot(reader, groupId, { isExpected });
   const snapshotId = await persistSnapshot(client, { tenantRef, resources });
   const [before, after] = await Promise.all([
     baselineRows(client, baseline.id),
@@ -447,6 +450,11 @@ export async function runRoundTrip({
     logEvidence(log, 2, { baselineSnapshotId, baselineId, naturalKey, baselineHash });
 
     // 3. Mutate both fields named by the rehearsal contract.
+    // Step 3 waits for the drifted content to replicate, and step 4's
+    // collection must wait for the SAME content — a single predicate so the
+    // two can never drift apart.
+    const driftIsVisible = (group) => group.description === 'KEEL disposable rehearsal drift'
+      && group.displayName === `${payload.displayName} (drifted)`;
     assertDisposable(naturalKey);
     throwOnGraphFailure(
       await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, {
@@ -459,8 +467,7 @@ export async function runRoundTrip({
       `modify rehearsal group ${groupId}`,
     );
     const driftedGroup = await readGroupWithRetry(reader, groupId, {
-      isExpected: (group) => group.description === 'KEEL disposable rehearsal drift'
-        && group.displayName === `${payload.displayName} (drifted)`,
+      isExpected: driftIsVisible,
     });
     logEvidence(log, 3, {
       naturalKey,
@@ -469,7 +476,7 @@ export async function runRoundTrip({
     });
 
     // 4. Detect and accept only the precise evidence for this disposable key.
-    const detected = await detect(client, { tenantRef, reader, groupId });
+    const detected = await detect(client, { tenantRef, reader, groupId, isExpected: driftIsVisible });
     const drift = assertSingleModifiedDrift(detected.rows, naturalKey);
     logEvidence(log, 4, { snapshotId: detected.snapshotId, driftId: drift.id, naturalKey, changeType: drift.change_type });
 

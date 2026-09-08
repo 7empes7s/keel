@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, getWithRetry,
-  readGroupWithRetry, runRoundTrip, writeWithRetry,
+  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
+  getWithRetry, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 
 // Production and rehearsal URLs with the same host and database identify the
@@ -132,8 +132,8 @@ assert.throws(
 }
 
 // Without an isExpected predicate, existing behavior (retry only on 404, accept the first
-// successful read regardless of content) must be unchanged — this is collectRehearsalSnapshot's
-// use, which only needs the object to exist, not to match specific content.
+// successful read regardless of content) must be unchanged — this is step 2's baseline collect,
+// which only needs the object to exist, not to match specific content.
 {
   let calls = 0;
   const reader = { get: async () => { calls += 1; return { ok: true, status: 200, body: { id: 'g2' } }; } };
@@ -259,6 +259,58 @@ assert.throws(
   assert.equal(result.ok, true);
   assert.equal(result.body.attempt, 3, 'expected the last result to be returned');
   assert.equal(calls, 3, 'expected exactly `attempts` calls when the predicate never holds');
+}
+
+// Regression for the 2026-09-08 08:59Z incident: step 4's collection read the
+// group it had just mutated with no expected-content predicate, so a stale
+// replica's body could be snapshotted as "after" — identical to the baseline,
+// hence zero drift rows. collectRehearsalSnapshot must keep polling its
+// single-object overlay read until the caller's isExpected predicate holds.
+{
+  let gets = 0;
+  const staleBody = {
+    id: 'g1', displayName: 'keel-rehearsal-x', description: 'stale', mailNickname: 'keel-rehearsal-x',
+  };
+  const driftedBody = { ...staleBody, description: 'drifted' };
+  const reader = {
+    collect: async (version, path) => ({
+      items: path.startsWith('/groups') ? [staleBody] : [],
+    }),
+    get: async () => {
+      gets += 1;
+      return { ok: true, status: 200, body: gets <= 2 ? staleBody : driftedBody };
+    },
+  };
+  const resources = await collectRehearsalSnapshot(reader, 'g1', {
+    isExpected: (group) => group.description === 'drifted',
+    delayMs: 1,
+  });
+  const group = resources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g1');
+  assert.ok(group, 'expected the rehearsal group in the collected snapshot');
+  assert.equal(
+    group.payload.description,
+    'drifted',
+    'the overlay read must wait for the drifted content, not accept a stale replica body',
+  );
+  assert.ok(gets > 1, `expected the overlay read to be polled more than once, got ${gets}`);
+}
+
+// Without an isExpected predicate, collectRehearsalSnapshot must accept the
+// first successful overlay read — step 2's baseline collect is unchanged.
+{
+  let gets = 0;
+  const body = {
+    id: 'g2', displayName: 'keel-rehearsal-y', description: 'baseline', mailNickname: 'keel-rehearsal-y',
+  };
+  const reader = {
+    collect: async (version, path) => ({ items: path.startsWith('/groups') ? [body] : [] }),
+    get: async () => { gets += 1; return { ok: true, status: 200, body }; },
+  };
+  const resources = await collectRehearsalSnapshot(reader, 'g2', { delayMs: 1 });
+  const group = resources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g2');
+  assert.ok(group, 'expected the rehearsal group in the collected snapshot');
+  assert.equal(group.payload.description, 'baseline');
+  assert.equal(gets, 1, 'expected no retry when no isExpected predicate is given and the read succeeds immediately');
 }
 
 console.log('roundTrip.test.mjs — all assertions passed');

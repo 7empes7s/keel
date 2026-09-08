@@ -8,16 +8,25 @@
 // and executes them by invoking the EXISTING CLIs as child processes, so collection and
 // pruning safety guards stay on the one code path those CLIs already implement — this
 // worker never reimplements collection or pruning logic.
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { connect } from '../engine/store/db.mjs';
-import { claimNext, complete, fail, resetOrphaned } from '../engine/jobs/queue.mjs';
+import {
+  claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
+} from '../engine/jobs/queue.mjs';
 
-const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Individual job kinds can override this default without putting timeout literals in the
+// child-process invocation. Thirty minutes is the safe default for every current kind.
+export const JOB_TIMEOUT_MS = Object.freeze({
+  default: 30 * 60 * 1000,
+});
+const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
+const PROCESS_GROUP_POLL_MS = 25;
+const MAX_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,6 +35,119 @@ function arg(name, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function isProcessGroupAlive(pid) {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (err) {
+    if (err.code === 'ESRCH') return false;
+    throw err;
+  }
+}
+
+export function signalProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch (err) {
+    if (err.code === 'ESRCH') return false;
+    throw err;
+  }
+}
+
+export async function terminateProcessGroup(pid) {
+  signalProcessGroup(pid, 'SIGTERM');
+  const deadline = Date.now() + PROCESS_GROUP_TERM_GRACE_MS;
+  while (isProcessGroupAlive(pid) && Date.now() < deadline) {
+    await sleep(PROCESS_GROUP_POLL_MS);
+  }
+  if (isProcessGroupAlive(pid)) signalProcessGroup(pid, 'SIGKILL');
+  while (isProcessGroupAlive(pid)) {
+    await sleep(PROCESS_GROUP_POLL_MS);
+  }
+}
+
+// The child is a process-group leader. This is essential: the collection and pruning CLIs
+// may themselves start descendants, all of which must die with the job on timeout or shutdown.
+export function startJobChild(file, args, { env = process.env, timeoutMs }) {
+  let child;
+  let timeout;
+  let timedOut = false;
+  let termination;
+  let outputError;
+  const stdout = [];
+  const stderr = [];
+  let outputBytes = 0;
+
+  const terminate = () => {
+    if (!termination) termination = terminateProcessGroup(child.pid);
+    return termination;
+  };
+
+  const collectOutput = (chunks, chunk) => {
+    outputBytes += chunk.length;
+    if (outputBytes > MAX_CHILD_OUTPUT_BYTES) {
+      outputError = new Error(`child output exceeded ${MAX_CHILD_OUTPUT_BYTES} bytes`);
+      void terminate();
+      return;
+    }
+    chunks.push(chunk);
+  };
+
+  const completed = new Promise((resolve, reject) => {
+    child = spawn('node', [file, ...args], {
+      detached: true,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout.on('data', (chunk) => collectOutput(stdout, chunk));
+    child.stderr.on('data', (chunk) => collectOutput(stderr, chunk));
+    child.once('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timeout);
+      const output = {
+        stdout: Buffer.concat(stdout).toString(),
+        stderr: Buffer.concat(stderr).toString(),
+      };
+      Promise.resolve(termination).then(() => {
+        if (timedOut) {
+          const timeoutError = new Error(`execution timed out after ${timeoutMs}ms`);
+          timeoutError.code = 'ETIMEDOUT';
+          timeoutError.stdout = output.stdout;
+          timeoutError.stderr = output.stderr;
+          reject(timeoutError);
+          return;
+        }
+        if (outputError) {
+          outputError.stdout = output.stdout;
+          outputError.stderr = output.stderr;
+          reject(outputError);
+          return;
+        }
+        if (code !== 0) {
+          const exitError = new Error(signal ? `terminated by ${signal}` : `exit code ${code}`);
+          exitError.code = code;
+          exitError.signal = signal;
+          exitError.stdout = output.stdout;
+          exitError.stderr = output.stderr;
+          reject(exitError);
+          return;
+        }
+        resolve(output);
+      }, reject);
+    });
+    timeout = setTimeout(() => {
+      timedOut = true;
+      void terminate();
+    }, timeoutMs);
+  });
+
+  return { child, completed, terminate };
 }
 
 function requireString(value, label) {
@@ -79,7 +201,7 @@ const JOB_HANDLERS = {
   },
 };
 
-async function runJob(client, job, { dbUrl }) {
+async function runJob(client, job, { dbUrl, onInFlightChange }) {
   const handler = JOB_HANDLERS[job.kind];
   if (!handler) {
     await fail(client, { id: job.id, error: `no worker handler registered for kind: ${job.kind}` });
@@ -98,11 +220,16 @@ async function runJob(client, job, { dbUrl }) {
 
   const startedAt = Date.now();
   console.log(`job ${job.id}: running ${job.kind} ${handler.script} ${args.join(' ')}`);
-  try {
-    const { stdout, stderr } = await execFileAsync('node', [handler.script, ...args], {
-      env: process.env,
-      maxBuffer: 16 * 1024 * 1024,
+  const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
+  const execution = startJobChild(handler.script, args, { timeoutMs });
+  onInFlightChange({ job, terminate: execution.terminate });
+  const heartbeat = setInterval(() => {
+    touchHeartbeat(client, { id: job.id, workerId: job.worker_id }).catch((err) => {
+      console.error(`job ${job.id}: heartbeat failed — ${err.message}`);
     });
+  }, JOB_HEARTBEAT_INTERVAL_MS);
+  try {
+    const { stdout, stderr } = await execution.completed;
     await complete(client, {
       id: job.id,
       result: { stdout, stderr, durationMs: Date.now() - startedAt },
@@ -116,6 +243,9 @@ async function runJob(client, job, { dbUrl }) {
     ].filter(Boolean).join('\n');
     await fail(client, { id: job.id, error: message });
     console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${message}`);
+  } finally {
+    clearInterval(heartbeat);
+    onInFlightChange(null);
   }
 }
 
@@ -134,18 +264,26 @@ async function main() {
 
   const client = await connect(dbUrl);
 
-  const reclaimed = await resetOrphaned(client, { workerId });
+  const reclaimed = await resetOrphaned(client);
   if (reclaimed.length > 0) {
     console.log(
-      `worker ${workerId}: reclaimed ${reclaimed.length} orphaned job(s) from a previous ` +
-      `instance of this worker: ${reclaimed.map((j) => j.id).join(', ')}`,
+      `worker ${workerId}: reclaimed ${reclaimed.length} stale job(s): ` +
+      reclaimed.map((j) => j.id).join(', '),
     );
   }
 
   let shuttingDown = false;
+  let inFlight = null;
   const stop = (signal) => {
+    if (shuttingDown) return;
     console.log(`worker ${workerId}: received ${signal} — finishing current job, then exiting`);
     shuttingDown = true;
+    if (inFlight) {
+      console.log(`worker ${workerId}: terminating in-flight job ${inFlight.job.id}`);
+      void inFlight.terminate().catch((err) => {
+        console.error(`worker ${workerId}: could not terminate job ${inFlight.job.id}: ${err.message}`);
+      });
+    }
   };
   process.on('SIGTERM', () => stop('SIGTERM'));
   process.on('SIGINT', () => stop('SIGINT'));
@@ -157,7 +295,14 @@ async function main() {
       await sleep(pollIntervalMs);
       continue;
     }
-    await runJob(client, job, { dbUrl });
+    if (shuttingDown) {
+      await fail(client, { id: job.id, error: 'worker stopped before job execution' });
+      continue;
+    }
+    await runJob(client, job, {
+      dbUrl,
+      onInFlightChange: (execution) => { inFlight = execution; },
+    });
   }
 
   await client.end();
@@ -165,7 +310,9 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

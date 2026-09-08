@@ -133,4 +133,6 @@ CREATE TABLE IF NOT EXISTS job (
   error        text,
   worker_id    text
 );
+ALTER TABLE job ADD COLUMN IF NOT EXISTS heartbeat_at timestamptz;
 CREATE INDEX IF NOT EXISTS job_status_created_idx ON job (status, created_at);
+CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE status = 'running';

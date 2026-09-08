@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { connect } from '../store/db.mjs';
 import {
-  claimNext, complete, enqueue, fail, listJobs, resetOrphaned,
+  claimNext, complete, enqueue, fail, listJobs, ORPHANED_HEARTBEAT_STALE_MS,
+  resetOrphaned,
 } from './queue.mjs';
 
 // SAFETY: this test drops and recreates the `job` table. It must NEVER touch the
@@ -14,7 +15,10 @@ if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env 
 const admin = new pg.Client({ connectionString: url });
 await admin.connect();
 await admin.query('DROP TABLE IF EXISTS job CASCADE');
-await admin.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const jobSchema = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS job'));
+await admin.query(jobSchema);
 await admin.end();
 
 const client = await connect(url);
@@ -45,6 +49,7 @@ assert.equal(claimed.id, queued.id);
 assert.equal(claimed.status, 'running');
 assert.equal(claimed.worker_id, 'worker-a');
 assert.ok(claimed.started_at);
+assert.ok(claimed.heartbeat_at);
 
 // --- claimNext on an empty queue returns null and does not throw ---
 await assert.doesNotReject(async () => {
@@ -79,7 +84,7 @@ for (let i = 1; i < listed.length; i++) {
   assert.ok(new Date(listed[i - 1].created_at) >= new Date(listed[i].created_at));
 }
 
-// --- resetOrphaned reclaims only the SAME worker_id's running jobs, never another's ---
+// --- resetOrphaned never reclaims a fresh heartbeat, even for the SAME worker_id ---
 const ownJob = await enqueue(client, { kind: 'collect', params: {}, requestedBy: 'test-operator' });
 await claimNext(client, { workerId: 'worker-recover-me' });
 assert.equal(ownJob.id, (await client.query('SELECT id FROM job WHERE worker_id = $1', ['worker-recover-me'])).rows[0].id);
@@ -87,12 +92,30 @@ assert.equal(ownJob.id, (await client.query('SELECT id FROM job WHERE worker_id 
 const otherWorkersJob = await enqueue(client, { kind: 'prune', params: {}, requestedBy: 'test-operator' });
 await claimNext(client, { workerId: 'worker-still-alive' });
 
-const reclaimed = await resetOrphaned(client, { workerId: 'worker-recover-me' });
+const freshReclaimed = await resetOrphaned(client);
+assert.deepEqual(freshReclaimed, []);
+const { rows: freshRows } = await client.query(
+  'SELECT status, worker_id, heartbeat_at FROM job WHERE id = $1',
+  [ownJob.id],
+);
+assert.equal(freshRows[0].status, 'running');
+assert.equal(freshRows[0].worker_id, 'worker-recover-me');
+assert.ok(freshRows[0].heartbeat_at);
+
+// --- resetOrphaned reclaims a stale heartbeat for the SAME worker_id ---
+await client.query(
+  `UPDATE job
+   SET heartbeat_at = now() - ($2 * interval '1 millisecond')
+   WHERE id = $1`,
+  [ownJob.id, ORPHANED_HEARTBEAT_STALE_MS + 1000],
+);
+const reclaimed = await resetOrphaned(client);
 assert.deepEqual(reclaimed.map((row) => row.id), [ownJob.id]);
-const { rows: ownRows } = await client.query('SELECT status, worker_id, started_at FROM job WHERE id = $1', [ownJob.id]);
+const { rows: ownRows } = await client.query('SELECT status, worker_id, started_at, heartbeat_at FROM job WHERE id = $1', [ownJob.id]);
 assert.equal(ownRows[0].status, 'queued');
 assert.equal(ownRows[0].worker_id, null);
 assert.equal(ownRows[0].started_at, null);
+assert.equal(ownRows[0].heartbeat_at, null);
 
 const { rows: otherRows } = await client.query('SELECT status, worker_id FROM job WHERE id = $1', [otherWorkersJob.id]);
 assert.equal(otherRows[0].status, 'running');

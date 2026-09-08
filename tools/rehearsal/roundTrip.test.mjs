@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, readGroupWithRetry,
-  runRoundTrip, writeWithRetry,
+  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, getWithRetry,
+  readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 
 // Production and rehearsal URLs with the same host and database identify the
@@ -210,6 +210,55 @@ assert.throws(
     deletes.some((call) => call.path === '/groups/rehearsal-group-id-1'),
     `expected a DELETE of the created group on the failure path, got ${JSON.stringify(calls)}`,
   );
+}
+
+// getWithRetry must retry toward PRESENCE on an arbitrary Graph path — the
+// /directory/deletedItems/{id} read in hardDelete, which 404s until a
+// soft-delete replicates.
+{
+  let calls = 0;
+  const reader = {
+    get: async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: false, status: 404, body: null };
+      return { ok: true, status: 200, body: { id: 'g1' } };
+    },
+  };
+  const result = await getWithRetry(reader, 'v1.0', '/directory/deletedItems/g1', (r) => r.ok === true, { delayMs: 1 });
+  assert.equal(result.ok, true);
+  assert.equal(result.body.id, 'g1');
+  assert.equal(calls, 3, 'expected two failed attempts before the third succeeded');
+}
+
+// getWithRetry must also retry toward ABSENCE — the /groups/{id} read in
+// hardDelete, which can still return 200 until a soft-delete replicates.
+{
+  let calls = 0;
+  const reader = {
+    get: async () => {
+      calls += 1;
+      if (calls <= 2) return { ok: true, status: 200, body: { id: 'g1' } };
+      return { ok: false, status: 404, body: null };
+    },
+  };
+  const result = await getWithRetry(reader, 'v1.0', '/groups/g1', (r) => r.ok === false && r.status === 404, { delayMs: 1 });
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 404);
+  assert.equal(calls, 3, 'expected two stale reads before the third returned 404');
+}
+
+// When the predicate never holds, getWithRetry must return the LAST result
+// after exactly `attempts` calls — never throw, never hang — so the caller's
+// own error handling decides the outcome.
+{
+  let calls = 0;
+  const reader = {
+    get: async () => { calls += 1; return { ok: true, status: 200, body: { id: 'g1', attempt: calls } }; },
+  };
+  const result = await getWithRetry(reader, 'v1.0', '/groups/g1', (r) => r.ok === false, { attempts: 3, delayMs: 1 });
+  assert.equal(result.ok, true);
+  assert.equal(result.body.attempt, 3, 'expected the last result to be returned');
+  assert.equal(calls, 3, 'expected exactly `attempts` calls when the predicate never holds');
 }
 
 console.log('roundTrip.test.mjs — all assertions passed');

@@ -22,16 +22,118 @@ try {
 
   client = await database.connect();
 
-// --- invalid kind is rejected by the CHECK constraint (also proves 'restore' cannot be
-// enqueued yet — it is intentionally excluded until the write path can remap references) ---
-await assert.rejects(
-  () => enqueue(client, { kind: 'restore', params: {}, requestedBy: 'test-operator' }),
-  /violates check constraint/,
-);
+// --- every operator-action kind is accepted by the CHECK constraint ---
+for (const kind of [
+  'collect', 'prune', 'drift-detect', 'restore', 'remediate',
+  'baseline-create', 'baseline-activate', 'backup', 'policy-evaluate', 'notify',
+]) {
+  const accepted = await enqueue(client, { kind, params: {}, requestedBy: 'test-operator' });
+  assert.equal(accepted.kind, kind);
+  assert.equal(accepted.status, 'queued');
+}
+
+// --- an invalid kind is rejected by the database ---
 await assert.rejects(
   () => enqueue(client, { kind: 'bogus', params: {}, requestedBy: 'test-operator' }),
   /violates check constraint/,
 );
+
+// --- a repeated enqueue with the same idempotency key returns the first job ---
+const first = await enqueue(client, {
+  kind: 'backup', params: { tier: 'tier1' }, requestedBy: 'test-operator',
+  idempotencyKey: 'backup-once',
+});
+const repeat = await enqueue(client, {
+  kind: 'backup', params: { tier: 'tier1' }, requestedBy: 'test-operator',
+  idempotencyKey: 'backup-once',
+});
+assert.equal(repeat.id, first.id);
+const { rows: duplicateRows } = await client.query(
+  `SELECT id FROM job WHERE kind = 'backup' AND idempotency_key = 'backup-once'`,
+);
+assert.equal(duplicateRows.length, 1, 'repeat enqueue must not create a second row');
+
+// --- the same key under a different kind is a different job ---
+const otherKind = await enqueue(client, {
+  kind: 'collect', params: {}, requestedBy: 'test-operator', idempotencyKey: 'backup-once',
+});
+assert.notEqual(otherKind.id, first.id);
+
+// --- two concurrent enqueues with one key produce exactly one job ---
+// The race is forced, not left to timing. Each client runs through a wrapper that parks the
+// pre-insert idempotency SELECT on two barriers: no SELECT runs until BOTH clients have
+// arrived at it, and no client proceeds past its SELECT until BOTH SELECTs have completed.
+// Under a check-then-insert mutation both SELECTs therefore observe an empty table and both
+// clients go on to insert — the regression, every run, not seven runs in ten. With the
+// atomic INSERT ... ON CONFLICT the winner's insert returns a row, so only the loser ever
+// reaches the SELECT; barrier.finished() — called when a client's enqueue settles without
+// needing the SELECT — stands in for the second arrival and releases it.
+const IDEMPOTENCY_SELECT = 'FROM job WHERE kind = $1 AND idempotency_key = $2';
+const barrier = (() => {
+  const state = { arrived: 0, selected: 0, done: 0 };
+  const waiters = [];
+  const release = () => {
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (waiters[i].ready(state)) waiters.splice(i, 1)[0].resolve();
+    }
+  };
+  const gate = (ready) =>
+    new Promise((resolve) => {
+      waiters.push({ resolve, ready });
+      release();
+    });
+  return {
+    beforeSelect: () => {
+      state.arrived += 1;
+      return gate((s) => s.arrived + s.done >= 2);
+    },
+    afterSelect: () => {
+      state.selected += 1;
+      return gate((s) => s.selected + s.done >= 2);
+    },
+    finished: () => {
+      state.done += 1;
+      release();
+    },
+  };
+})();
+const wrapForRace = (raceClient) => ({
+  async query(text, values) {
+    if (typeof text !== 'string' || !text.includes(IDEMPOTENCY_SELECT)) {
+      return raceClient.query(text, values);
+    }
+    await barrier.beforeSelect();
+    const result = await raceClient.query(text, values);
+    await barrier.afterSelect();
+    return result;
+  },
+  end: () => raceClient.end(),
+});
+const raceEnqueue = async (raceClient) => {
+  try {
+    return await enqueue(wrapForRace(raceClient), {
+      kind: 'restore', params: {}, requestedBy: 'test-operator', idempotencyKey: 'restore-race',
+    });
+  } finally {
+    barrier.finished();
+  }
+};
+const clientC = await database.connect();
+const clientD = await database.connect();
+try {
+  const [raceOne, raceTwo] = await Promise.all([raceEnqueue(clientC), raceEnqueue(clientD)]);
+  assert.equal(raceOne.id, raceTwo.id, 'concurrent enqueues must return the same job');
+  const { rows: raceRows } = await client.query(
+    `SELECT id FROM job WHERE kind = 'restore' AND idempotency_key = 'restore-race'`,
+  );
+  assert.equal(raceRows.length, 1, 'concurrent enqueues must produce exactly one row');
+} finally {
+  await clientC.end();
+  await clientD.end();
+}
+
+// Drain everything the sections above left queued so the claim test below starts empty.
+while (await claimNext(client, { workerId: 'drain' })) { /* drain */ }
 
 // --- enqueue then claimNext returns the job and marks it running ---
 const queued = await enqueue(client, {

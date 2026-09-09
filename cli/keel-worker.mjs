@@ -201,7 +201,7 @@ const JOB_HANDLERS = {
   },
 };
 
-async function runJob(client, job, { dbUrl, onInFlightChange }) {
+export async function runJob(client, job, { dbUrl, onInFlightChange }) {
   const handler = JOB_HANDLERS[job.kind];
   if (!handler) {
     await fail(client, { id: job.id, error: `no worker handler registered for kind: ${job.kind}` });

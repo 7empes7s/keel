@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  isProcessGroupAlive, signalProcessGroup, startJobChild,
+  isProcessGroupAlive, runJob, signalProcessGroup, startJobChild,
 } from './keel-worker.mjs';
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'keel-worker-test-'));
@@ -36,5 +36,31 @@ try {
 } finally {
   if (isProcessGroupAlive(processGroupId)) signalProcessGroup(processGroupId, 'SIGKILL');
 }
+
+// --- an unknown kind fails the job rather than completing it ---
+// Drives runJob with a fake client; no database needed. The dispatch table's default
+// branch must call fail(), never complete().
+const failedCalls = [];
+const completedCalls = [];
+const fakeClient = {
+  async query(sql, params) {
+    if (sql.includes("SET status = 'succeeded'")) {
+      completedCalls.push(params);
+      return { rows: [{ id: params[0], status: 'succeeded' }] };
+    }
+    if (sql.includes("SET status = 'failed'")) {
+      failedCalls.push(params);
+      return { rows: [{ id: params[0], status: 'failed', error: params[1] }] };
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  },
+};
+await runJob(fakeClient, { id: 'job-unknown-kind', kind: 'bogus', params: {} }, {
+  dbUrl: 'postgres://unused',
+  onInFlightChange: () => {},
+});
+assert.equal(completedCalls.length, 0, 'an unknown kind must never complete the job');
+assert.equal(failedCalls.length, 1, 'an unknown kind must fail the job');
+assert.match(failedCalls[0][1], /no worker handler registered for kind: bogus/);
 
 console.log('keel-worker.test.mjs — all assertions passed');

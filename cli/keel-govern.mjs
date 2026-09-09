@@ -281,6 +281,7 @@ async function executeRollback(plan, { driftId, client }) {
     deletionGuardOptions,
     rollbackClient: client,
     runId: `rollback-${driftId}-${Date.now()}`,
+    signInPathGate: { reader, protectedPrincipalIds: breakGlassUserIds },
   });
   console.log(JSON.stringify({ ...result, noops }, null, 2));
 }

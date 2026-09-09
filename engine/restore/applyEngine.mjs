@@ -5,6 +5,7 @@ import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
+import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
@@ -124,11 +125,15 @@ export async function applyWave(writer, governor, wave, {
   rollbackClient,
   runId,
   simulationPassed = false,
+  signInPathGate,
 }) {
   const applied = [];
   const skipped = [];
   const failed = [];
   const notRemediable = [];
+  const signInPathBefore = signInPathGate && await snapshotSignInPath(signInPathGate.reader, {
+    protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
+  });
   // Same three lookup sources resolvePlan() uses in cli/keel-plan.mjs, so a symbol that the
   // pre-flight proved resolvable resolves identically here at write time.
   const referenceContext = { targetIndex: existingTargetIds, mappingTable, runProvenance: appliedIds };
@@ -383,6 +388,16 @@ export async function applyWave(writer, governor, wave, {
     }
 
     applied.push({ naturalKey: resource.naturalKey, targetId });
+  }
+
+  if (signInPathGate) {
+    const signInPathAfter = await snapshotSignInPath(signInPathGate.reader, {
+      protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
+    });
+    const gate = compareSignInPaths(signInPathBefore, signInPathAfter);
+    if (!gate.allowed) {
+      failed.push({ naturalKey: 'sign-in-path-gate', error: gate.reason, changed: gate.changed });
+    }
   }
 
   return { applied, skipped, failed, notRemediable };

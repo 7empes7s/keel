@@ -45,6 +45,7 @@ export const SERVER_OWNED_ALWAYS = new Set([
   'id',
   'createdDateTime',
   'modifiedDateTime',
+  'lastModifiedDateTime',
   'deletedDateTime',
   'renewedDateTime',
 ]);

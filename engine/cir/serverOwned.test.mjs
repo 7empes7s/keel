@@ -14,7 +14,7 @@ for (const resourceType of M1_TYPES) {
 }
 
 assert.deepEqual(SERVER_OWNED_ALWAYS, new Set([
-  'id', 'createdDateTime', 'modifiedDateTime', 'deletedDateTime', 'renewedDateTime',
+  'id', 'createdDateTime', 'modifiedDateTime', 'lastModifiedDateTime', 'deletedDateTime', 'renewedDateTime',
 ]));
 assert.equal(fieldClass('id', 'user'), 'serverOwned');
 assert.equal(fieldClass('nested.modifiedDateTime', 'namedLocation'), 'writable');

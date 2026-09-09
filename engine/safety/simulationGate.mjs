@@ -1,5 +1,8 @@
-/** Spec §10.3 — a predicted block on a break-glass account is a hard failure
- * with no override. There is deliberately no override parameter here. */
+/**
+ * This delegated-credential What If prototype is not wired into production:
+ * the product has application credentials, while this API requires delegated
+ * credentials. signInPathGate.mjs is the live §10.3 gate.
+ */
 export async function evaluatePromotion(graphWriter, { principalMatrix, breakGlassUserIds }) {
   const results = [];
   for (const principal of principalMatrix) {

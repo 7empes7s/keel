@@ -12,6 +12,7 @@ export interface CoverageType {
   type: string;
   reportStatus: "covered" | "failed" | "not-covered" | "never-collected";
   protectionState: ProtectionState;
+  stale: boolean;
   itemCount: number | null;
   lastCollectedAt: string | null;
   adapter: string | null;
@@ -30,6 +31,7 @@ export interface CoverageSummary {
   failed: number;
   notCovered: number;
   neverCollected: number;
+  stale: number;
   total: number;
 }
 

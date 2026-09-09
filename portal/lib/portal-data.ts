@@ -92,6 +92,7 @@ function normalizeCoverageType(raw: UnknownRecord): CoverageType {
     type: String(raw.type),
     reportStatus,
     protectionState: protectionState(reportStatus, declared, measured),
+    stale: raw.stale === true,
     itemCount: typeof raw.itemCount === "number" ? raw.itemCount : null,
     lastCollectedAt: iso(raw.lastCollectedAt),
     adapter: typeof raw.adapter === "string" ? raw.adapter : null,
@@ -154,6 +155,7 @@ async function coverageFor(client: KeelClient, ref: string): Promise<CoverageDat
       failed: Number(rawSummary.failed ?? 0),
       notCovered: Number(rawSummary.notCovered ?? 0),
       neverCollected: Number(rawSummary.neverCollected ?? 0),
+      stale: Number(rawSummary.stale ?? 0),
       total: types.length,
     },
     types,
@@ -207,7 +209,7 @@ export async function getDriftData(): Promise<DriftData> {
   });
 }
 
-function buildAlerts({
+export function buildAlerts({
   activeBaseline,
   lastCollection,
   coverage,
@@ -253,6 +255,14 @@ function buildAlerts({
       severity: "critical",
       title: `${coverage.failed} ${coverage.failed === 1 ? "type" : "types"} FAILED collection`,
       detail: "The last completed collection returned zero items. KEEL does not count this as coverage.",
+    });
+  }
+
+  if (coverage.stale > 0) {
+    alerts.push({
+      severity: "warning",
+      title: `${coverage.stale} ${coverage.stale === 1 ? "catalog type is" : "catalog types are"} stale`,
+      detail: "Run a collection for the stale types; they were collected successfully but are no longer recent enough for their tier.",
     });
   }
 

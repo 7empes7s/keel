@@ -136,3 +136,36 @@ CREATE TABLE IF NOT EXISTS job (
 ALTER TABLE job ADD COLUMN IF NOT EXISTS heartbeat_at timestamptz;
 CREATE INDEX IF NOT EXISTS job_status_created_idx ON job (status, created_at);
 CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE status = 'running';
+
+-- A CHECK constraint cannot be altered in place; dropping and re-adding it under the same
+-- name keeps this idempotent without rewriting any rows.
+ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
+ALTER TABLE job ADD CONSTRAINT job_kind_check
+  CHECK (kind IN ('collect','prune','drift-detect','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify'));
+ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
+CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
+  ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+-- §3.2 authorisation model: who is allowed to do what. The role -> capability mapping is
+-- code (engine/authz/permissions.mjs), deny-by-default; these tables are only data.
+-- scope is reserved for later per-tenant or per-resource narrowing and is '*' for now.
+CREATE TABLE IF NOT EXISTS principal (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id  text,
+  email        text NOT NULL,
+  display_name text,
+  disabled_at  timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS principal_email_idx ON principal (lower(email));
+
+CREATE TABLE IF NOT EXISTS role_grant (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  principal_id uuid NOT NULL REFERENCES principal(id),
+  role         text NOT NULL CHECK (role IN ('viewer','operator','approver','restorer','admin')),
+  scope        text NOT NULL DEFAULT '*',
+  active_from  timestamptz NOT NULL DEFAULT now(),
+  active_until timestamptz,
+  granted_by   text,
+  reason       text
+);
+CREATE INDEX IF NOT EXISTS role_grant_principal_idx ON role_grant (principal_id);

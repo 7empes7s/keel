@@ -13,6 +13,11 @@ import { NextRequest } from "next/server";
 
 import { GET as healthCheck } from "@/app/api/health/route";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
+import {
+  CAPABILITIES_HEADER,
+  PRINCIPAL_ID_HEADER,
+  type ResolvedIdentity,
+} from "@/lib/principal";
 import { createAccessMiddleware } from "@/proxy";
 
 const issuer = "https://keel-test.cloudflareaccess.com";
@@ -56,13 +61,21 @@ before(async () => {
   const address = jwksServer.address();
   assert(address && typeof address !== "string");
 
-  middleware = createAccessMiddleware(() => ({
-    audience,
-    issuer,
-    jwksUrl: new URL(
-      `http://127.0.0.1:${address.port}/cdn-cgi/access/certs`,
-    ),
-  }));
+  // Identity resolution is stubbed: middleware tests must never reach a database.
+  const stubIdentity: ResolvedIdentity = {
+    principalId: "principal-1",
+    capabilities: ["read", "collect"],
+  };
+  middleware = createAccessMiddleware(
+    () => ({
+      audience,
+      issuer,
+      jwksUrl: new URL(
+        `http://127.0.0.1:${address.port}/cdn-cgi/access/certs`,
+      ),
+    }),
+    async () => stubIdentity,
+  );
 });
 
 after(async () => {
@@ -148,10 +161,12 @@ test("an expired token is rejected with 401", async () => {
   assert.equal(response.status, 401);
 });
 
-test("a valid token is accepted and supplies only its verified email", async () => {
+test("a valid token is accepted and supplies only its verified identity", async () => {
   const response = await middleware(
     request("/", await accessToken(), "GET", {
       [AUTHENTICATED_EMAIL_HEADER]: "attacker@example.com",
+      [PRINCIPAL_ID_HEADER]: "attacker-principal",
+      [CAPABILITIES_HEADER]: "admin",
     }),
   );
 
@@ -162,6 +177,14 @@ test("a valid token is accepted and supplies only its verified email", async () 
       `x-middleware-request-${AUTHENTICATED_EMAIL_HEADER}`,
     ),
     authenticatedEmail,
+  );
+  assert.equal(
+    response.headers.get(`x-middleware-request-${PRINCIPAL_ID_HEADER}`),
+    "principal-1",
+  );
+  assert.equal(
+    response.headers.get(`x-middleware-request-${CAPABILITIES_HEADER}`),
+    "read collect",
   );
 });
 

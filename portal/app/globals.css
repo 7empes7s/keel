@@ -950,6 +950,7 @@ dd {
 }
 
 .state-badge,
+.stale-badge,
 .blast-badge,
 .change-badge,
 .tier-label,
@@ -995,6 +996,11 @@ dd {
 .state-not-covered {
   background: var(--uncovered-bg);
   color: var(--uncovered);
+}
+
+.stale-badge {
+  background: var(--partial-bg);
+  color: var(--partial);
 }
 
 .blast-tenant-lockout {
@@ -1143,6 +1149,7 @@ dd {
 }
 
 .fidelity-detail,
+.staleness-detail,
 .adapter-detail,
 .baseline-table-label {
   display: flex;
@@ -1155,6 +1162,16 @@ dd {
   font-size: 0.75rem;
   font-weight: 680;
   white-space: nowrap;
+}
+
+.freshness-detail {
+  color: var(--text-soft);
+}
+
+.staleness-detail small {
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  line-height: 1.4;
 }
 
 .fidelity-detail small,

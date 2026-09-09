@@ -48,6 +48,7 @@ function CoverageTable({ items }: { items: CoverageType[] }) {
             <th scope="col">Blast radius</th>
             <th scope="col">Remappable</th>
             <th className="number-column" scope="col">Items</th>
+            <th scope="col">Collection freshness</th>
             <th scope="col">Last collection</th>
           </tr>
         </thead>
@@ -97,6 +98,16 @@ function CoverageTable({ items }: { items: CoverageType[] }) {
               </td>
               <td className="number-column" data-label="Items">
                 {item.itemCount === null ? "—" : item.itemCount.toLocaleString("en-GB")}
+              </td>
+              <td data-label="Collection freshness">
+                {item.stale ? (
+                  <span className="staleness-detail">
+                    <span className="stale-badge">Stale</span>
+                    <small>Last collected {formatTimestamp(item.lastCollectedAt)}</small>
+                  </span>
+                ) : (
+                  <span className="freshness-detail">Fresh</span>
+                )}
               </td>
               <td data-label="Last collection">
                 <time dateTime={item.lastCollectedAt ?? undefined}>

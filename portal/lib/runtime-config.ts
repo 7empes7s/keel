@@ -59,3 +59,16 @@ export function tenantRef(): string {
   const digest = createHash("sha256").update(config.tenantId).digest("hex");
   return `sha256:${digest.slice(0, 16)}`;
 }
+
+// Plan task 14 step 5: approval requests expire after a configurable TTL. Unset means
+// the engine default (engine/govern/approvals.mjs DEFAULT_APPROVAL_TTL_MS) applies.
+export function approvalTtlMs(): number | undefined {
+  const configured = process.env.KEEL_APPROVAL_TTL_MS;
+  if (configured === undefined || configured.trim() === "") return undefined;
+
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("KEEL_APPROVAL_TTL_MS must be a positive number of milliseconds");
+  }
+  return parsed;
+}

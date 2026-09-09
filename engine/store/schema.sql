@@ -169,3 +169,25 @@ CREATE TABLE IF NOT EXISTS role_grant (
   reason       text
 );
 CREATE INDEX IF NOT EXISTS role_grant_principal_idx ON role_grant (principal_id);
+
+-- §3.3 approvals (plan task 14): requesting a requiresApproval action creates an
+-- approval_request, never a job. Only an approve decision by a principal other than
+-- the requester mints the job; reject closes the request. expires_at enforces the
+-- configurable TTL: a stale request expires *closed* so an approval can never be
+-- granted against stale parameters.
+CREATE TABLE IF NOT EXISTS approval_request (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  action        text NOT NULL,
+  params        jsonb NOT NULL DEFAULT '{}'::jsonb,
+  requested_by  text NOT NULL,
+  justification text,
+  status        text NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','rejected','expired')),
+  decided_by    text,
+  decided_at    timestamptz,
+  reason        text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at    timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS approval_request_status_idx
+  ON approval_request (status, created_at);

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
+import { APPROVAL_REQUEST_EVIDENCE_KIND } from "../../engine/govern/approvals.mjs";
 
 import { POST as baselineActivateRoute } from "@/app/api/actions/baseline/activate/route";
 import { POST as baselineRoute } from "@/app/api/actions/baseline/route";
@@ -206,24 +207,38 @@ test("every action route refuses a principal lacking its capability", async () =
   assert.equal(await jobCount(), 0, "a refused request must not enqueue");
 });
 
-test("a route requiring approval refuses to enqueue directly, even with the capability", async () => {
-  for (const route of actionRoutes.filter((candidate) => candidate.requiresApproval)) {
+test("a route requiring approval creates an approval request and never a job", async () => {
+  const approvalRoutes = actionRoutes.filter((candidate) => candidate.requiresApproval);
+  for (const route of approvalRoutes) {
     const response = await route.post(
       postAction(`/api/actions/${route.name}`, {
         principalId: "principal-restorer",
         capabilities: [route.capability],
-        body: {},
+        body: { target: "group:alpha", justification: "change ticket 42" },
       }),
     );
 
     assert.equal(
       response.status,
-      403,
-      `${route.name} requires approval and must not enqueue directly`,
+      202,
+      `${route.name} requires approval and must create a request`,
     );
-    assert.deepEqual(await response.json(), { error: "forbidden" });
+    const { approvalRequest } = await response.json();
+    assert.equal(approvalRequest.status, "pending");
+    assert.equal(approvalRequest.requestedBy, "principal-restorer");
+    assert.equal(approvalRequest.justification, "change ticket 42");
+    assert.deepEqual(approvalRequest.params, { target: "group:alpha" });
   }
-  assert.equal(await jobCount(), 0, "a refused request must not enqueue");
+  assert.equal(await jobCount(), 0, "a request must never enqueue a job directly");
+
+  const { rows } = await client.query(
+    `SELECT * FROM approval_request WHERE requested_by = 'principal-restorer'`,
+  );
+  assert.equal(
+    rows.length,
+    approvalRoutes.length,
+    "exactly one pending request per requiresApproval route",
+  );
 });
 
 test("a permitted caller enqueues exactly one job with the right kind and params", async () => {
@@ -313,14 +328,6 @@ test("every denial and every recorded attempt lands in the evidence chain", asyn
     "the missing-capability denial must be recorded",
   );
   assert.ok(
-    denied.some(
-      (row) =>
-        row.actor === "principal-restorer" &&
-        row.subject.reason === "requires-approval",
-    ),
-    "the approval-required denial must be recorded",
-  );
-  assert.ok(
     rows.some(
       (row) =>
         row.actor === "principal-operator" &&
@@ -328,6 +335,20 @@ test("every denial and every recorded attempt lands in the evidence chain", asyn
         row.subject.action === "collect",
     ),
     "the permitted attempt must be recorded",
+  );
+
+  const { rows: requestRows } = (await client.query(
+    `SELECT actor, subject FROM evidence WHERE kind = $1`,
+    [APPROVAL_REQUEST_EVIDENCE_KIND],
+  )) as unknown as {
+    rows: { actor: string; subject: { action?: string } }[];
+  };
+  assert.ok(
+    requestRows.some(
+      (row) =>
+        row.actor === "principal-restorer" && row.subject.action === "restore",
+    ),
+    "the approval request must be recorded",
   );
 });
 

@@ -1,3 +1,12 @@
+import {
+  ApprovalClosedError,
+  ApprovalExpiredError,
+  ApprovalNotFoundError,
+  SelfApprovalError,
+  approveRequest,
+  rejectRequest,
+  requestApproval,
+} from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
@@ -6,7 +15,7 @@ import { connect } from "../../engine/store/db.mjs";
 
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
-import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -37,6 +46,9 @@ export interface GuardSpec {
   // Capability the principal must hold. A route that declares none declares no check —
   // the suite's mutation (remove the check from one route) exists to catch exactly that.
   capability?: string;
+  // Job kind an approval of this action will mint. Required when requiresApproval is
+  // set: the approval request stores it so approve mints the right kind of job.
+  jobKind?: string;
   requiresApproval?: boolean;
   // Mutating routes record the attempt before acting; read routes do not.
   recordAttempt?: boolean;
@@ -46,6 +58,7 @@ export interface GuardContext {
   client: KeelClient;
   principalId: string;
   capabilities: string[];
+  tenantRef: string;
   request: Request;
 }
 
@@ -91,6 +104,22 @@ export function normalizeJob(row: Record<string, unknown>) {
     createdAt: iso(row.created_at),
     startedAt: iso(row.started_at),
     finishedAt: iso(row.finished_at),
+  };
+}
+
+export function normalizeApprovalRequest(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    action: String(row.action),
+    params: row.params ?? {},
+    requestedBy: String(row.requested_by),
+    justification: (row.justification as string | null) ?? null,
+    status: String(row.status),
+    decidedBy: (row.decided_by as string | null) ?? null,
+    decidedAt: iso(row.decided_at),
+    reason: (row.reason as string | null) ?? null,
+    createdAt: iso(row.created_at),
+    expiresAt: iso(row.expires_at),
   };
 }
 
@@ -158,9 +187,26 @@ export function guarded(
       if (spec.capability !== undefined && !capabilities.includes(spec.capability)) {
         return await deny("capability");
       }
-      // §3.3: a requiresApproval action can never be enqueued directly. Task 14 builds
-      // the approval_request path that replaces this denial.
-      if (spec.requiresApproval) return await deny("requires-approval");
+      // §3.3, plan task 14: a requiresApproval action can never be enqueued directly —
+      // requesting it creates an approval_request, and only a separate approve decision
+      // by a different principal mints the job. The request is recorded in the evidence
+      // chain by requestApproval itself.
+      if (spec.requiresApproval) {
+        const { justification, ...params } = await readActionParams(request);
+        const approvalRequest = (await requestApproval(client, {
+          tenantRef: resolveTenantRef(),
+          action: spec.jobKind ?? spec.action,
+          params,
+          requestedBy: principalId,
+          justification:
+            typeof justification === "string" ? justification : null,
+          ttlMs: approvalTtlMs(),
+        })) as Record<string, unknown>;
+        return Response.json(
+          { approvalRequest: normalizeApprovalRequest(approvalRequest) },
+          { status: 202, headers: NO_STORE },
+        );
+      }
 
       if (spec.recordAttempt) {
         await appendEvidence(client, {
@@ -171,7 +217,13 @@ export function guarded(
         });
       }
 
-      return await handler({ client, principalId, capabilities, request });
+      return await handler({
+        client,
+        principalId,
+        capabilities,
+        tenantRef: resolveTenantRef(),
+        request,
+      });
     } catch (error) {
       if (error instanceof InvalidActionRequest) {
         return Response.json(
@@ -212,6 +264,7 @@ export function guardedAction(
     {
       action: spec.action,
       capability,
+      jobKind: spec.jobKind,
       requiresApproval: spec.requiresApproval,
       recordAttempt: true,
     },
@@ -294,7 +347,7 @@ export function guardedJobList(
   );
 }
 
-const JOB_ID_PATTERN =
+const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function guardedJobShow(
@@ -305,13 +358,73 @@ export function guardedJobShow(
     async ({ client, request }) => {
       const id =
         new URL(request.url).pathname.split("/").filter(Boolean).pop() ?? "";
-      if (!JOB_ID_PATTERN.test(id)) return notFound();
+      if (!UUID_PATTERN.test(id)) return notFound();
 
       const { rows } = await client.query(`SELECT * FROM job WHERE id = $1`, [
         id,
       ]);
       if (!rows[0]) return notFound();
       return Response.json({ job: normalizeJob(rows[0]) }, { headers: NO_STORE });
+    },
+    deps,
+  );
+}
+
+// Plan task 14 steps 3-4: the approval decision endpoints. Both are guarded at the
+// `approver` capability (server-side, never only in the UI); the engine additionally
+// refuses self-approval and decisions against closed or expired requests. Every
+// refusal is detail-free: 404 for anything that does not exist or is not a pending
+// request the caller may see, 403 for a capability or self-approval refusal, 409 for
+// a request that is already decided or expired.
+export function guardedApprovalDecision(
+  decision: "approve" | "reject",
+  deps: GuardDeps = {},
+): (request: Request) => Promise<Response> {
+  return guarded(
+    { action: `approvals:${decision}`, capability: "approve", recordAttempt: true },
+    async ({ client, principalId, tenantRef: tenant, request }) => {
+      const segments = new URL(request.url).pathname.split("/").filter(Boolean);
+      const id = segments.at(-2) ?? "";
+      if (!UUID_PATTERN.test(id)) return notFound();
+
+      try {
+        if (decision === "approve") {
+          const { job } = (await approveRequest(client, {
+            tenantRef: tenant,
+            id,
+            decidedBy: principalId,
+          })) as { job: Record<string, unknown> };
+          return Response.json(
+            { job: normalizeJob(job) },
+            { status: 202, headers: NO_STORE },
+          );
+        }
+
+        const body = await readActionParams(request);
+        const rejected = (await rejectRequest(client, {
+          tenantRef: tenant,
+          id,
+          decidedBy: principalId,
+          reason: typeof body.reason === "string" ? body.reason : null,
+        })) as Record<string, unknown>;
+        return Response.json(
+          { approvalRequest: normalizeApprovalRequest(rejected) },
+          { headers: NO_STORE },
+        );
+      } catch (error) {
+        if (error instanceof ApprovalNotFoundError) return notFound();
+        if (error instanceof SelfApprovalError) return forbidden();
+        if (
+          error instanceof ApprovalClosedError
+          || error instanceof ApprovalExpiredError
+        ) {
+          return Response.json(
+            { error: "conflict" },
+            { status: 409, headers: NO_STORE },
+          );
+        }
+        throw error;
+      }
     },
     deps,
   );

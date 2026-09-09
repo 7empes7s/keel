@@ -5,7 +5,6 @@ export const runtime = "nodejs";
 
 export const POST = guardedAction({
   action: "collect",
-  capability: "collect",
   jobKind: "collect",
   requiresApproval: false,
 });

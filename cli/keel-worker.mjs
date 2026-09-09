@@ -7,12 +7,17 @@
 // docs/superpowers/specs/2026-09-08-keel-operator-portal-design.md). Claims queued jobs
 // and executes them by invoking the EXISTING CLIs as child processes, so collection and
 // pruning safety guards stay on the one code path those CLIs already implement — this
-// worker never reimplements collection or pruning logic.
+// worker never reimplements collection or pruning logic. Every claimed job is
+// re-authorized at execution time against its requester's current grants (plan task
+// 25); the enqueue-time check is never trusted here.
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
+import { can } from '../engine/authz/can.mjs';
+import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
+import { findPrincipalById } from '../engine/authz/principals.mjs';
 import {
   claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -161,7 +166,8 @@ function requireString(value, label) {
 // than a generic pass-through: job params can be written by anything that can enqueue a
 // job (the portal, an operator, a schedule), and must never be able to smuggle an
 // arbitrary flag — such as a different --db-url — into the child process invocation.
-const JOB_HANDLERS = {
+// Exported so a test can assert every registered kind has a capability mapping.
+export const JOB_HANDLERS = {
   collect: {
     script: join(__dirname, 'keel-collect.mjs'),
     argsFor(params = {}) {
@@ -201,11 +207,37 @@ const JOB_HANDLERS = {
   },
 };
 
-export async function runJob(client, job, { dbUrl, onInFlightChange }) {
-  const handler = JOB_HANDLERS[job.kind];
+export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS }) {
+  const handler = handlers[job.kind];
   if (!handler) {
     await fail(client, { id: job.id, error: `no worker handler registered for kind: ${job.kind}` });
     console.error(`job ${job.id}: no handler for kind ${job.kind}`);
+    return;
+  }
+
+  // Plan task 25: authorization at enqueue is never trusted at execution (§2.3). Re-check
+  // the REQUESTER — never the approver — against the capability this kind requires,
+  // evaluated now, immediately before dispatching to the handler. A job whose requester
+  // lost the grant, was disabled, or no longer resolves to a principal fails, un-run;
+  // it must not complete and it must not silently skip.
+  const capability = capabilityForJobKind(job.kind);
+  if (capability === null) {
+    await fail(client, { id: job.id, error: `no capability mapping for kind: ${job.kind}` });
+    console.error(`job ${job.id}: no capability mapping for kind ${job.kind}`);
+    return;
+  }
+  const principal = await findPrincipalById(client, job.requested_by);
+  if (!principal) {
+    await fail(client, {
+      id: job.id,
+      error: `requester no longer resolves to a principal: ${job.requested_by}`,
+    });
+    console.error(`job ${job.id}: requester ${job.requested_by} resolves to no principal`);
+    return;
+  }
+  if (!(await can(client, principal, capability, new Date()))) {
+    await fail(client, { id: job.id, error: `requester no longer authorized for kind: ${job.kind}` });
+    console.error(`job ${job.id}: requester ${job.requested_by} no longer authorized for ${job.kind}`);
     return;
   }
 

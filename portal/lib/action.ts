@@ -1,5 +1,6 @@
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
+import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs } from "../../engine/jobs/queue.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
@@ -191,22 +192,26 @@ export function guarded(
 
 export interface ActionSpec {
   action: string;
-  capability?: string;
   jobKind: string;
   requiresApproval: boolean;
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
 // job of the declared kind. A replayed request carrying the same idempotency key returns
-// the existing job instead of starting a second one (§3.1).
+// the existing job instead of starting a second one (§3.1). The capability checked here
+// is NOT declared per route: it comes from engine/authz/jobCapabilities.mjs, the single
+// source of truth the worker re-checks at execution (plan task 25). A route whose
+// jobKind has no mapping is denied by default, never silently unchecked.
 export function guardedAction(
   spec: ActionSpec,
   deps: GuardDeps = {},
 ): (request: Request) => Promise<Response> {
+  const capability =
+    capabilityForJobKind(spec.jobKind) ?? `unmapped-job-kind:${spec.jobKind}`;
   return guarded(
     {
       action: spec.action,
-      capability: spec.capability,
+      capability,
       requiresApproval: spec.requiresApproval,
       recordAttempt: true,
     },

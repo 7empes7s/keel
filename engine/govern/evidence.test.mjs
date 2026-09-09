@@ -1,21 +1,17 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
 import { appendEvidence, verifyChain } from './evidence.mjs';
 import { canonicalize } from '../cir/canonicalHash.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query('DROP TABLE IF EXISTS evidence_head, evidence');
-await admin.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
-await admin.end();
+try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
 
-const client = new pg.Client({ connectionString: url });
-await client.connect();
 const tenantRef = 'sha256:evidence-truncation-test';
 
 await appendEvidence(client, {
@@ -100,5 +96,8 @@ assert.deepEqual(
   { ok: false, brokenAtSeq: middle.seq },
 );
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('evidence.test.mjs — all assertions passed');

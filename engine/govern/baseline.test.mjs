@@ -1,24 +1,18 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
 import {
   acceptDrift, seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
 } from './baseline.mjs';
-import { connect, createSnapshot, insertResourceVersion } from '../store/db.mjs';
+import { createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query(
-  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
-);
-await admin.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
-await admin.end();
-
-const client = await connect(url);
+try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
 const tenantRef = 'sha256:baseline-test';
 
 async function addGroup(snapshotId, naturalKey, displayName) {
@@ -292,5 +286,8 @@ activeRows = await client.query(
 );
 assert.deepEqual(activeRows.rows.map((row) => row.id), [namedBaselineId]);
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('baseline.test.mjs — all assertions passed');

@@ -1,21 +1,17 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
 import {
-  connect, createSnapshot, completeSnapshot, insertResourceVersion,
+  createSnapshot, completeSnapshot, insertResourceVersion,
   insertReferences, getLatestSnapshot, getResourceVersions, getReferences,
 } from './db.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query('DROP TABLE IF EXISTS resource_reference, resource_version, snapshot CASCADE');
-await admin.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
-await admin.end();
-
-const client = await connect(url);
+try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
 
 const snapshotId = await createSnapshot(client, { tenantRef: 'sha256:test' });
 assert.ok(snapshotId);
@@ -66,5 +62,8 @@ await assert.rejects(() =>
   }),
 );
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('db.test.mjs — all assertions passed');

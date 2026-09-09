@@ -4,13 +4,12 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import pg from 'pg';
 import { connect, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { createBaseline, seedBaselineFromSnapshot } from '../engine/store/governance.mjs';
+import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
 
-// SAFETY: this test deletes rows. It must NEVER touch the production database.
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+const url = database.url;
 
 // The CLI derives tenantRef from the tenant config, so give it a config we
 // control and derive the same tenantRef here for seeding.
@@ -27,15 +26,16 @@ function runCli(...extraArgs) {
   });
 }
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query(
-  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
-);
-await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
-await admin.end();
+let client;
+try {
+  const admin = await database.connect();
+  try {
+    await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  } finally {
+    await admin.end();
+  }
 
-const client = await connect(url);
+  client = await connect(url);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const oldEnough = new Date(Date.now() - 30 * DAY_MS); // beyond the tier1 7-day window
@@ -92,5 +92,8 @@ assert.equal(await snapshotExists(prunableSnapshotId), false);
 assert.equal(await snapshotExists(baselineSnapshotId), true);
 assert.equal(await snapshotExists(recentSnapshotId), true);
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('keel-prune.test.mjs — all assertions passed');

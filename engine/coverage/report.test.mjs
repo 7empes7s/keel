@@ -1,23 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
-import { connect, getResourceVersions } from '../store/db.mjs';
+import { getResourceVersions } from '../store/db.mjs';
 import { buildCoverageReport } from './report.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query(
-  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
-);
-await admin.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
-await admin.end();
-
-const client = await connect(url);
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 const tenantRef = 'sha256:coverage-test';
 const now = new Date('2026-09-08T12:00:00.000Z');
 const reader = {
@@ -30,6 +21,8 @@ const reader = {
 };
 
 try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
   // Exercise the actual collector -> persistence -> report path. Most types
   // are completed empty reads; one fails, and a distinct type is then omitted
   // from the persisted digest to model silence (e.g. an older collector).
@@ -226,6 +219,7 @@ try {
     assert.deepEqual(failed.summary, { covered: 0, failed: 1, notCovered: 0, neverCollected: 0, stale: 1 });
   }
 } finally {
-  await client.end();
+  await client?.end();
+  await database.cleanup();
 }
 console.log('report.test.mjs — all assertions passed');

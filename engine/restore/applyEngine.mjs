@@ -46,14 +46,18 @@ function setAtPath(root, path, value) {
     const key = segments[i];
     const isLast = i === segments.length - 1;
     const nextValue = isLast ? value : walk(node?.[key], i + 1);
-    if (Array.isArray(node)) {
-      const copy = node.slice();
-      copy[key] = nextValue;
-      return copy;
-    }
-    return { ...node, [key]: nextValue };
+    let copy;
+    if (Array.isArray(node)) copy = node.slice();
+    else if (node && typeof node === 'object') copy = { ...node };
+    else copy = typeof key === 'number' ? [] : {};
+    copy[key] = nextValue;
+    return copy;
   };
   return walk(root, 0);
+}
+
+function valueAtPath(root, path) {
+  return parseFieldPath(path).reduce((value, segment) => value?.[segment], root);
 }
 
 /** Where the resolver meets the writer: rewrites every GUID-valued reference field in `payload`
@@ -465,20 +469,30 @@ function collectResidualPaths(desired, live, path, paths) {
 
 /** Spec §8.4 — second phase of the two-phase apply. Each patch re-adds the field that was
  * omitted to break a cycle, once every node it depends on exists. */
-export async function applyPatches(writer, governor, patches, { targetTenant, mode, appliedIds }) {
+export async function applyPatches(writer, governor, patches, {
+  targetTenant,
+  mode,
+  appliedIds,
+  readAfterWriteOptions,
+}) {
   const applied = [];
   const failed = [];
 
   for (const patch of patches) {
     if (!appliedIds.has(patch.symbol)) {
       failed.push({ naturalKey: patch.naturalKey, reason: `patch symbol ${patch.symbol} was never applied` });
-      continue;
+      return { applied, failed };
     }
 
     const targetId = appliedIds.get(patch.symbol);
-    const resourceType = patch.naturalKey.split(':', 1)[0];
+    const resourceType = patch.resourceType ?? patch.naturalKey.split(':', 1)[0];
     const patchId = appliedIds.get(patch.naturalKey);
-    let body = { [patch.field]: targetId };
+    if (!patchId) {
+      failed.push({ naturalKey: patch.naturalKey, reason: `patch target ${patch.naturalKey} was never applied` });
+      return { applied, failed };
+    }
+
+    let body = setAtPath({}, patch.field, targetId);
     if (resourceType === 'conditionalAccessPolicy') body = enforceReportOnly(body);
 
     if (mode === 'dry-run') {
@@ -490,7 +504,30 @@ export async function applyPatches(writer, governor, patches, { targetTenant, mo
     const writeResult = await writer.write('v1.0', `${pathFor(resourceType)}/${patchId}`, { method: 'PATCH', body });
     if (!writeResult.ok) {
       failed.push({ naturalKey: patch.naturalKey, error: JSON.stringify(writeResult.body) });
-      continue;
+      return { applied, failed };
+    }
+
+    const path = `${pathFor(resourceType)}/${patchId}`;
+    const reRead = await readAfterWrite(writer, 'v1.0', path, (result) => {
+      if (isNotFound(result)) return true;
+      if (!result?.ok) return false;
+      const actual = valueAtPath(result.body ?? result, patch.field);
+      // A missing value or the source-tenant value is the observed
+      // read-after-write lag signature. An unexpected third value is a real
+      // mismatch and is not retried as though it were staleness.
+      return actual === undefined || ('sourceValue' in patch && isDeepStrictEqual(actual, patch.sourceValue));
+    }, readAfterWriteOptions);
+    if (reRead?.ok === false) {
+      failed.push({ naturalKey: patch.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+      return { applied, failed };
+    }
+    const actual = valueAtPath(reRead?.body ?? reRead, patch.field);
+    if (!isDeepStrictEqual(actual, targetId)) {
+      failed.push({
+        naturalKey: patch.naturalKey,
+        error: `deferred reference at ${patch.field} did not verify as ${targetId}`,
+      });
+      return { applied, failed };
     }
 
     applied.push({ naturalKey: patch.naturalKey, targetId: patchId });

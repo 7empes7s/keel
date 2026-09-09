@@ -1,24 +1,18 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
-import { connect, createSnapshot, insertResourceVersion } from './db.mjs';
+import { createSnapshot, insertResourceVersion } from './db.mjs';
 import {
   createBaseline, seedBaselineFromSnapshot, getActiveBaseline, recordDrift,
   listOpenDrift, recordDisposition,
 } from './governance.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query(
-  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
-);
-await admin.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
-await admin.end();
-
-const client = await connect(url);
+try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
 const tenantRef = 'sha256:governance-test';
 const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');
 const unexpiredIgnoreAt = new Date('2099-01-01T00:00:00.000Z');
@@ -105,5 +99,8 @@ await recordDisposition(client, {
 openDrift = await listOpenDrift(client, { tenantRef });
 assert.deepEqual(openDrift.map((row) => row.id), [expiredDriftId]);
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('governance.test.mjs — all assertions passed');

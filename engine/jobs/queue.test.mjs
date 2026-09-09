@@ -1,27 +1,26 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
-import { connect } from '../store/db.mjs';
 import {
   claimNext, complete, enqueue, fail, listJobs, ORPHANED_HEARTBEAT_STALE_MS,
   resetOrphaned,
 } from './queue.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
-// SAFETY: this test drops and recreates the `job` table. It must NEVER touch the
-// production database.
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query('DROP TABLE IF EXISTS job CASCADE');
-await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
-const jobSchema = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS job'));
-await admin.query(jobSchema);
-await admin.end();
+try {
+  const admin = await database.connect();
+  try {
+    await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+    const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+    const jobSchema = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS job'));
+    await admin.query(jobSchema);
+  } finally {
+    await admin.end();
+  }
 
-const client = await connect(url);
+  client = await database.connect();
 
 // --- invalid kind is rejected by the CHECK constraint (also proves 'restore' cannot be
 // enqueued yet — it is intentionally excluded until the write path can remap references) ---
@@ -129,8 +128,8 @@ while (await claimNext(client, { workerId: 'drain' })) { /* drain */ }
 // Runs the claim against two SEPARATE database connections so this is a real network-level
 // race, not an in-process one.
 const contested = await enqueue(client, { kind: 'collect', params: {}, requestedBy: 'test-operator' });
-const clientA = await connect(url);
-const clientB = await connect(url);
+const clientA = await database.connect();
+const clientB = await database.connect();
 try {
   const [claimA, claimB] = await Promise.all([
     claimNext(clientA, { workerId: 'concurrent-a' }),
@@ -151,5 +150,8 @@ try {
   await clientB.end();
 }
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('queue.test.mjs — all assertions passed');

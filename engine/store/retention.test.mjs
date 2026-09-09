@@ -1,12 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
-import { connect, createSnapshot, insertResourceVersion } from './db.mjs';
+import { createSnapshot, insertResourceVersion } from './db.mjs';
 import { recordDisposition, recordDrift } from './governance.mjs';
 import { isPrunable, pruneSnapshots } from './retention.mjs';
-
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const now = new Date('2026-09-04T12:00:00.000Z');
 const policy = { tier1: 7, tier2: 90, tier3: 365 };
@@ -27,15 +24,12 @@ assert.equal(isPrunable(oldTier1Snapshot, {
   policy,
 }), false);
 
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query(
-  'DROP TABLE IF EXISTS evidence, disposition, drift, baseline_resource, baseline, resource_reference, rollback_entry, resource_version, plan, snapshot CASCADE',
-);
-await admin.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
-await admin.end();
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
+try {
+  client = await database.connect();
+  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
 
-const client = await connect(url);
 const tenantRef = 'sha256:retention-test';
 const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');
 const unexpiredIgnoreAt = new Date('2099-01-01T00:00:00.000Z');
@@ -145,5 +139,8 @@ const unexpiredPrunedSnapshotIds = await pruneSnapshots(deleteSnapshotFake, { te
 assert.ok(unexpiredPrunedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
 assert.ok(deletedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
 
-await client.end();
+} finally {
+  await client?.end();
+  await database.cleanup();
+}
 console.log('retention.test.mjs — all assertions passed');

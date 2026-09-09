@@ -284,6 +284,7 @@ assert.throws(
   const resources = await collectRehearsalSnapshot(reader, 'g1', {
     isExpected: (group) => group.description === 'drifted',
     delayMs: 1,
+    tenantId: 'tenant-fixture',
   });
   const group = resources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g1');
   assert.ok(group, 'expected the rehearsal group in the collected snapshot');
@@ -306,7 +307,7 @@ assert.throws(
     collect: async (version, path) => ({ items: path.startsWith('/groups') ? [body] : [] }),
     get: async () => { gets += 1; return { ok: true, status: 200, body }; },
   };
-  const resources = await collectRehearsalSnapshot(reader, 'g2', { delayMs: 1 });
+  const resources = await collectRehearsalSnapshot(reader, 'g2', { delayMs: 1, tenantId: 'tenant-fixture' });
   const group = resources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g2');
   assert.ok(group, 'expected the rehearsal group in the collected snapshot');
   assert.equal(group.payload.description, 'baseline');

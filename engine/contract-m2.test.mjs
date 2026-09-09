@@ -1,6 +1,5 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
 import { canonicalHash } from './cir/canonicalHash.mjs';
 import { diffSnapshots } from './govern/diffSnapshots.mjs';
 import { isSuppressed } from './govern/disposition.mjs';
@@ -9,9 +8,7 @@ import { applyWave } from './restore/applyEngine.mjs';
 import { ThrottleGovernor } from './restore/throttleGovernor.mjs';
 import { planDeletionWaves } from './restore/wavePlanner.mjs';
 import { refuseUnsafeDeletion } from './safety/deletionGuard.mjs';
-
-const url = process.env.KEEL_DB_TEST_URL;
-if (!url) throw new Error('KEEL_DB_TEST_URL not set — source /etc/keel/db.env first');
+import { createIsolatedTestDatabase } from './test/dbTestHelper.mjs';
 
 function governor() {
   return new ThrottleGovernor({
@@ -200,14 +197,11 @@ assert.deepEqual(diffSnapshots(baselineSnapshot, observedSnapshot), []);
 
 // Step 5: tampering an evidence record makes verification fail at that exact
 // sequence number.
-const admin = new pg.Client({ connectionString: url });
-await admin.connect();
-await admin.query('DROP TABLE IF EXISTS evidence_head, evidence');
-await admin.query(readFileSync(new URL('./store/schema.sql', import.meta.url), 'utf8'));
-await admin.end();
-
-const evidenceClient = new pg.Client({ connectionString: url });
-await evidenceClient.connect();
+const database = await createIsolatedTestDatabase(import.meta.url);
+let evidenceClient;
+try {
+  evidenceClient = await database.connect();
+  await evidenceClient.query(readFileSync(new URL('./store/schema.sql', import.meta.url), 'utf8'));
 const evidenceTenantRef = 'sha256:contract-m2-evidence';
 await appendEvidence(evidenceClient, {
   tenantRef: evidenceTenantRef,
@@ -235,7 +229,10 @@ assert.deepEqual(
   await verifyChain(evidenceClient, { tenantRef: evidenceTenantRef }),
   { ok: false, brokenAtSeq: tampered.seq },
 );
-await evidenceClient.end();
+} finally {
+  await evidenceClient?.end();
+  await database.cleanup();
+}
 
 // Step 6: an expired ignore resurfaces drift, and an ignore for a prior state
 // cannot suppress the same natural key after its hash changes.

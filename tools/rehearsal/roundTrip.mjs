@@ -208,10 +208,12 @@ export async function writeWithRetry(writer, version, path, body, { attempts = 6
  * Collector-only read of the group it created into each rehearsal snapshot.
  * Callers that just mutated the group pass isExpected so the overlay read
  * cannot settle for a stale replica's body (observed live 2026-09-08 08:59Z);
- * with no predicate the first successful read is accepted, as before.
+ * with no predicate the first successful read is accepted, as before. The
+ * tenantId comes from the loaded Collector config and feeds collectM1's scope
+ * for catalogue entries whose path embeds the organization id.
  */
-export async function collectRehearsalSnapshot(reader, groupId, { isExpected, delayMs } = {}) {
-  const collected = await collectM1(reader);
+export async function collectRehearsalSnapshot(reader, groupId, { isExpected, delayMs, tenantId } = {}) {
+  const collected = await collectM1(reader, { tenantId });
   const rehearsalGroup = await readGroupWithRetry(reader, groupId, { isExpected, delayMs });
   const groupEntry = collected.find(([resourceType]) => resourceType === 'group');
   const groups = groupEntry?.[1];
@@ -237,11 +239,11 @@ async function persistSnapshot(client, { tenantRef, resources }) {
   return snapshotId;
 }
 
-async function detect(client, { tenantRef, reader, groupId, isExpected }) {
+async function detect(client, { tenantRef, reader, groupId, isExpected, tenantId }) {
   const baseline = await getActiveBaseline(client, { tenantRef });
   if (!baseline) throw new Error(`no active baseline for ${tenantRef}`);
 
-  const resources = await collectRehearsalSnapshot(reader, groupId, { isExpected });
+  const resources = await collectRehearsalSnapshot(reader, groupId, { isExpected, tenantId });
   const snapshotId = await persistSnapshot(client, { tenantRef, resources });
   const [before, after] = await Promise.all([
     baselineRows(client, baseline.id),
@@ -436,7 +438,7 @@ export async function runRoundTrip({
 
     // 2. Collect with the Collector credential and seed that snapshot as active.
     const tenantRef = tenantRefFor(collector);
-    const baselineResources = await collectRehearsalSnapshot(reader, groupId);
+    const baselineResources = await collectRehearsalSnapshot(reader, groupId, { tenantId: collector.tenantId });
     const baselineSnapshotId = await persistSnapshot(client, { tenantRef, resources: baselineResources });
     const baselineId = await seedFromSnapshot(client, {
       tenantRef,
@@ -477,7 +479,7 @@ export async function runRoundTrip({
     });
 
     // 4. Detect and accept only the precise evidence for this disposable key.
-    const detected = await detect(client, { tenantRef, reader, groupId, isExpected: driftIsVisible });
+    const detected = await detect(client, { tenantRef, reader, groupId, isExpected: driftIsVisible, tenantId: collector.tenantId });
     const drift = assertSingleModifiedDrift(detected.rows, naturalKey);
     logEvidence(log, 4, { snapshotId: detected.snapshotId, driftId: drift.id, naturalKey, changeType: drift.change_type });
 

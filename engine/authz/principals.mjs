@@ -16,6 +16,18 @@ export async function findPrincipalByEmail(client, email) {
   return rows[0] ?? null;
 }
 
+// The worker re-authorizes a job against the principal recorded in requested_by, which
+// is the portal-downstreamed principal id. Comparing as text keeps a stale or foreign
+// requested_by (never a uuid) a clean miss instead of a cast error — deny by default.
+export async function findPrincipalById(client, id) {
+  if (typeof id !== 'string' || id.length === 0) return null;
+  const { rows } = await client.query(
+    `SELECT * FROM principal WHERE id::text = $1`,
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
 export async function capabilitiesForPrincipal(client, principal, at = new Date()) {
   if (!principal?.id || principal.disabled_at) return [];
   const { rows } = await client.query(

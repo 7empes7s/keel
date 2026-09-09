@@ -5,7 +5,6 @@ export const runtime = "nodejs";
 
 export const POST = guardedAction({
   action: "baseline-create",
-  capability: "baseline-create",
   jobKind: "baseline-create",
   requiresApproval: false,
 });

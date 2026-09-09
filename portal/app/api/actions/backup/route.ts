@@ -5,7 +5,6 @@ export const runtime = "nodejs";
 
 export const POST = guardedAction({
   action: "backup",
-  capability: "backup",
   jobKind: "backup",
   requiresApproval: false,
 });

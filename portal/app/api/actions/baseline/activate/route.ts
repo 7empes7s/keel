@@ -7,7 +7,6 @@ export const runtime = "nodejs";
 // directly; task 14's approval_request path is how it becomes a job.
 export const POST = guardedAction({
   action: "baseline-activate",
-  capability: "baseline-create",
   jobKind: "baseline-activate",
   requiresApproval: true,
 });

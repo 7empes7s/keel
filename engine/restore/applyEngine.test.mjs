@@ -404,4 +404,57 @@ function flakyThenOkReader(okBody) {
   assert.equal(resultB.applied.length, 1, JSON.stringify(resultB));
 }
 
+// The §10.3 replacement snapshots with the supplied read-only reader around a
+// wave and turns any changed protected sign-in path into a wave failure.
+{
+  let grantControls = ['mfa'];
+  const reader = {
+    collect: async (version, path) => {
+      assert.equal(version, 'v1.0');
+      if (path === '/identity/conditionalAccess/policies') {
+        return {
+          items: [{ id: 'ca-1', displayName: 'Protect admins', grantControls: { builtInControls: grantControls } }],
+          capped: false,
+          error: null,
+        };
+      }
+      if (path.startsWith('/roleManagement/directory/roleAssignments?')) {
+        return {
+          items: [{ id: 'role-1', principalId: 'break-glass-id', roleDefinitionId: 'global-admin', directoryScopeId: '/' }],
+          capped: false,
+          error: null,
+        };
+      }
+      throw new Error(`unexpected collection ${path}`);
+    },
+    get: async (version, path) => {
+      assert.equal(version, 'v1.0');
+      if (path === '/policies/authenticationMethodsPolicy') return { ok: true, status: 200, body: { id: 'authenticationMethodsPolicy' } };
+      if (path === '/policies/identitySecurityDefaultsEnforcementPolicy') return { ok: true, status: 200, body: { id: 'identitySecurityDefaultsEnforcementPolicy', isEnabled: true } };
+      if (path.startsWith('/users/')) return { ok: true, status: 200, body: { id: 'break-glass-id', accountEnabled: true } };
+      throw new Error(`unexpected read ${path}`);
+    },
+  };
+  const writer = {
+    write: async () => {
+      grantControls = ['block'];
+      return { ok: true, status: 204, body: null };
+    },
+    read: async () => ({ ok: true, status: 200, body: { id: 'group-id', displayName: 'Gate test' } }),
+  };
+  const result = await applyWave(writer, { acquire: async () => {} }, [{
+    naturalKey: 'group:gate-test', resourceType: 'group', targetId: 'group-id', verb: 'update', payload: { displayName: 'Gate test' },
+  }], {
+    targetTenant: 'target',
+    mode: 'enforce',
+    signInPathGate: { reader, protectedPrincipalIds: ['break-glass-id'] },
+  });
+  assert.equal(result.applied.length, 1, JSON.stringify(result));
+  assert.deepEqual(result.failed, [{
+    naturalKey: 'sign-in-path-gate',
+    error: 'sign-in path changed: conditionalAccessPolicies',
+    changed: ['conditionalAccessPolicies'],
+  }]);
+}
+
 console.log('applyEngine.test.mjs — all assertions passed');

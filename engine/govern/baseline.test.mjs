@@ -5,6 +5,7 @@ import {
 } from './baseline.mjs';
 import { createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
+import { POLICY_EVALUATION_EVIDENCE_KIND } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -167,17 +168,36 @@ assert.deepEqual(dispositions, [
   },
 ]);
 const { rows: evidence } = await client.query(
-  `SELECT tenant_ref, kind, actor, prev_hash, record_hash
+  `SELECT tenant_ref, kind, subject, actor, prev_hash, record_hash
    FROM evidence
    ORDER BY seq`,
 );
-assert.equal(evidence.length, 3);
 assert.ok(evidence.every((row) => row.tenant_ref === tenantRef));
-assert.ok(evidence.every((row) => row.kind === 'disposition'));
-assert.ok(evidence.every((row) => row.actor === 'test-operator'));
+// Recording a drift first records the policy decision — including the no-match
+// decision — then accepting it records the disposition. This ordered chain lets
+// an auditor answer both why it was not auto-remediated and who accepted it.
+assert.deepEqual(
+  evidence.map(({ kind, subject, actor }) => ({
+    kind,
+    driftId: subject.driftId,
+    actor,
+    ...(kind === POLICY_EVALUATION_EVIDENCE_KIND ? { matched: subject.matched } : {}),
+  })),
+  [
+    { kind: POLICY_EVALUATION_EVIDENCE_KIND, driftId: modifiedDriftId, actor: 'policy-evaluator', matched: false },
+    { kind: POLICY_EVALUATION_EVIDENCE_KIND, driftId: addedDriftId, actor: 'policy-evaluator', matched: false },
+    { kind: POLICY_EVALUATION_EVIDENCE_KIND, driftId: removedDriftId, actor: 'policy-evaluator', matched: false },
+    { kind: 'disposition', driftId: modifiedDriftId, actor: 'test-operator' },
+    { kind: 'disposition', driftId: addedDriftId, actor: 'test-operator' },
+    { kind: 'disposition', driftId: removedDriftId, actor: 'test-operator' },
+  ],
+);
 assert.equal(evidence[0].prev_hash, null);
 assert.equal(evidence[1].prev_hash, evidence[0].record_hash);
 assert.equal(evidence[2].prev_hash, evidence[1].record_hash);
+assert.equal(evidence[3].prev_hash, evidence[2].record_hash);
+assert.equal(evidence[4].prev_hash, evidence[3].record_hash);
+assert.equal(evidence[5].prev_hash, evidence[4].record_hash);
 
 const replacementBaselineId = await seedFromSnapshot(client, {
   tenantRef,

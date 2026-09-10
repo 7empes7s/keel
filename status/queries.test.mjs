@@ -8,6 +8,7 @@ import {
 import { connect as connectSuperuser, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { createBaseline, recordDrift, recordDisposition } from '../engine/store/governance.mjs';
 import { appendEvidence } from '../engine/govern/evidence.mjs';
+import { POLICY_EVALUATION_EVIDENCE_KIND } from '../engine/policy/evaluate.mjs';
 import {
   createIsolatedTestDatabase, quoteIdentifier,
 } from '../engine/test/dbTestHelper.mjs';
@@ -99,7 +100,33 @@ const lastCollection = await getLastCollection(client, { tenantRef });
 assert.equal(lastCollection.status, 'complete');
 
 const evidence = await getEvidenceIntegrity(client, { tenantRef });
-assert.deepEqual(evidence, { ok: true, chainLength: 2 });
+assert.equal(evidence.ok, true);
+const { rows: evidenceRecords } = await client.query(
+  `SELECT kind, subject, actor
+   FROM evidence
+   WHERE tenant_ref = $1
+   ORDER BY seq`,
+  [tenantRef],
+);
+// Each recorded drift leaves a policy decision behind before later collection
+// evidence. The no-match records are essential: they explain why neither drift
+// was auto-remediated, rather than making that absence indistinguishable from a
+// missing evaluation.
+assert.deepEqual(
+  evidenceRecords.map(({ kind, subject, actor }) => ({
+    kind,
+    actor,
+    ...(kind === POLICY_EVALUATION_EVIDENCE_KIND
+      ? { driftId: subject.driftId, matched: subject.matched }
+      : {}),
+  })),
+  [
+    { kind: POLICY_EVALUATION_EVIDENCE_KIND, actor: 'policy-evaluator', driftId: openDriftId, matched: false },
+    { kind: POLICY_EVALUATION_EVIDENCE_KIND, actor: 'policy-evaluator', driftId: acceptedDriftId, matched: false },
+    { kind: 'collection', actor: 'test' },
+    { kind: 'drift-detected', actor: 'test' },
+  ],
+);
 
 const dispositions = await getRecentDispositionCounts(client, { tenantRef });
 assert.deepEqual(dispositions, [{ action: 'accept', count: 1 }]);

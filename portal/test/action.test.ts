@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import React from "react";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { APPROVAL_REQUEST_EVIDENCE_KIND } from "../../engine/govern/approvals.mjs";
@@ -17,6 +18,7 @@ import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
 import { GET as showJobRoute } from "@/app/api/jobs/[id]/route";
 import { GET as listJobsRoute } from "@/app/api/jobs/route";
+import { BaselineCreateForm } from "@/components/baseline-create-form";
 import {
   ATTEMPT_EVIDENCE_KIND,
   IDEMPOTENCY_KEY_HEADER,
@@ -174,6 +176,89 @@ async function jobCount(): Promise<number> {
   return Number(rows[0].count);
 }
 
+type FormElement = {
+  type: unknown;
+  props: Record<string, unknown>;
+};
+
+function findFormElement(
+  node: unknown,
+  predicate: (element: FormElement) => boolean,
+): FormElement | undefined {
+  if (!node || typeof node !== "object") return undefined;
+  const element = node as FormElement;
+  if (predicate(element)) return element;
+  const children = element.props?.children;
+  const candidates = Array.isArray(children) ? children : [children];
+  for (const child of candidates) {
+    const found = findFormElement(child, predicate);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// This is a deliberately tiny browser-form harness: it renders the client component,
+// drives its select/input/button handlers, and lets postAction make its normal fetch.
+// The project does not carry a DOM test dependency; using React's hook dispatcher here
+// keeps this assertion at the form-to-action boundary instead of duplicating the body
+// object in an action-route test.
+function renderBaselineCreateForm() {
+  const internals = (React as unknown as {
+    __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: unknown;
+  }).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as {
+    H: unknown;
+  };
+  const originalDispatcher = internals.H;
+  const state: unknown[] = [];
+  let hookIndex = 0;
+  let contextIndex = 0;
+
+  internals.H = {
+    useState<T>(initial: T | (() => T)) {
+      const index = hookIndex++;
+      if (!(index in state)) {
+        state[index] = typeof initial === "function" ? (initial as () => T)() : initial;
+      }
+      return [state[index] as T, (next: T | ((previous: T) => T)) => {
+        state[index] = typeof next === "function"
+          ? (next as (previous: T) => T)(state[index] as T)
+          : next;
+      }];
+    },
+    useContext() {
+      // useRouter reads AppRouterContext first and LayoutRouterContext second.
+      if (contextIndex++ === 0) {
+        return {
+          back() {}, forward() {}, hmrRefresh() {}, prefetch() {}, push() {}, refresh() {}, replace() {},
+        };
+      }
+      return { parentCacheNode: { bfcacheId: 0 } };
+    },
+    useMemo<T>(create: () => T) { return create(); },
+  };
+
+  return {
+    render(): FormElement {
+      hookIndex = 0;
+      contextIndex = 0;
+      return BaselineCreateForm({
+        disabled: false,
+        snapshots: [
+          {
+            id: "snapshot-default", completedAt: null, startedAt: "2026-09-10T00:00:00.000Z", resourceCount: 2,
+          },
+          {
+            id: "snapshot-selected", completedAt: null, startedAt: "2026-09-10T01:00:00.000Z", resourceCount: 3,
+          },
+        ],
+      }) as unknown as FormElement;
+    },
+    restore() {
+      internals.H = originalDispatcher;
+    },
+  };
+}
+
 test("every action route refuses an unauthenticated caller with a detail-free 403", async () => {
   for (const route of actionRoutes) {
     const response = await route.post(postAction(`/api/actions/${route.name}`));
@@ -289,6 +374,77 @@ test("a permitted caller enqueues exactly one job with the right kind and params
     snapshotId,
     "the job must carry the chosen snapshot",
   );
+});
+
+test("BaselineCreateForm sends the selected snapshotId through the baseline action", async () => {
+  const form = renderBaselineCreateForm();
+  const originalFetch = globalThis.fetch;
+  let actionRequest: Request | undefined;
+  let actionResponse: Promise<Response> | undefined;
+  let submittedBody: unknown;
+  try {
+    // This stands in for the authenticated edge: postAction supplies the browser request,
+    // then the action receives the identity headers that Cloudflare Access adds in production.
+    globalThis.fetch = async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set(PRINCIPAL_ID_HEADER, "principal-baseline-form");
+      headers.set(CAPABILITIES_HEADER, "baseline-create");
+      submittedBody = JSON.parse(String(init?.body));
+      actionRequest = new Request(`http://localhost${String(input)}`, {
+        method: init?.method,
+        headers,
+        body: init?.body,
+      });
+      actionResponse = baselineRoute(actionRequest);
+      return actionResponse;
+    };
+
+    let rendered = form.render();
+    const select = findFormElement(rendered, (element) => element.type === "select");
+    assert.ok(select, "the browser form exposes its snapshot selector");
+    (select.props.onChange as (event: { target: { value: string } }) => void)({
+      target: { value: "snapshot-selected" },
+    });
+
+    rendered = form.render();
+    const label = findFormElement(
+      rendered,
+      (element) => element.type === "input" && element.props.placeholder === "e.g. post-audit-2026-q3",
+    );
+    assert.ok(label, "the browser form exposes its baseline label input");
+    (label.props.onChange as (event: { target: { value: string } }) => void)({
+      target: { value: "selected recovery point" },
+    });
+
+    rendered = form.render();
+    const button = findFormElement(
+      rendered,
+      (element) => element.type === "button" && element.props.children === "Create baseline",
+    );
+    assert.ok(button, "the browser form exposes its submit button");
+    (button.props.onClick as () => void)();
+
+    // submit awaits postAction, whose fetch reaches the actual guarded action route above.
+    assert.ok(actionResponse, "submitting the form makes an action request");
+    await actionResponse;
+    assert.ok(actionRequest, "submitting the form reaches the baseline action");
+    assert.deepEqual(submittedBody, {
+      snapshotId: "snapshot-selected",
+      label: "selected recovery point",
+    });
+
+    const { rows } = await client.query(
+      `SELECT params FROM job WHERE requested_by = 'principal-baseline-form'`,
+    );
+    assert.equal(rows.length, 1, "the action queues exactly one baseline-create job");
+    assert.deepEqual(rows[0].params, {
+      snapshotId: "snapshot-selected",
+      label: "selected recovery point",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    form.restore();
+  }
 });
 
 test("baseline activation requires approval — it creates a request, never a job", async () => {

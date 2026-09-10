@@ -1,14 +1,20 @@
 import { connection } from "next/server";
+import { headers } from "next/headers";
 
 import { DataUnavailable } from "@/components/data-unavailable";
 import { DriftTable } from "@/components/drift-table";
 import { PageHeader } from "@/components/page-header";
 import { formatAge, formatTimestamp } from "@/lib/presentation";
+import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getDriftData } from "@/lib/portal-data";
 import type { DriftData } from "@/lib/types";
 
 export default async function DriftPage() {
   await connection();
+  const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
+    .split(" ")
+    .filter((capability) => capability.length > 0);
+  const actionable = capabilities.includes("dispose-accept") || capabilities.includes("remediate");
 
   let data: DriftData;
   try {
@@ -19,7 +25,7 @@ export default async function DriftPage() {
         <PageHeader
           description="Unresolved changes measured against the active recovery baseline."
           eyebrow="Governance"
-          marker="Read-only"
+          marker={actionable ? "Actionable" : "Read-only"}
           title="Drift"
         />
         <DataUnavailable surface="Drift data" />
@@ -33,7 +39,7 @@ export default async function DriftPage() {
         description="Unresolved changes measured against the active recovery baseline."
         eyebrow="Governance"
         generatedAt={data.generatedAt}
-        marker="Read-only"
+        marker={actionable ? "Actionable" : "Read-only"}
         title="Drift"
       />
 
@@ -53,7 +59,7 @@ export default async function DriftPage() {
         </section>
       )}
 
-      {data.baseline ? <DriftTable items={data.items} /> : null}
+      {data.baseline ? <DriftTable capabilities={capabilities} items={data.items} /> : null}
     </>
   );
 }

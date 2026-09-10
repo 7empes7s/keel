@@ -270,14 +270,48 @@ test("a permitted caller enqueues exactly one job with the right kind and params
   assert.deepEqual(backupJob.params, { tier: "tier2" });
   assert.equal((await jobRows("backup")).length, 1);
 
+  const snapshotId = randomUUID();
   const baselined = await baselineRoute(
-    postAction("/api/actions/baseline", { ...operator, body: { label: "golden" } }),
+    postAction("/api/actions/baseline", {
+      ...operator,
+      body: { snapshotId, label: "golden" },
+    }),
   );
   assert.equal(baselined.status, 202);
   const { job: baselineJob } = await baselined.json();
   assert.equal(baselineJob.kind, "baseline-create");
-  assert.deepEqual(baselineJob.params, { label: "golden" });
-  assert.equal((await jobRows("baseline-create")).length, 1);
+  assert.deepEqual(baselineJob.params, { snapshotId, label: "golden" });
+  const baselineRows = await jobRows("baseline-create");
+  assert.equal(baselineRows.length, 1, "exactly one baseline-create job must exist");
+  assert.equal(
+    String(baselineRows[0].params &&
+      (baselineRows[0].params as Record<string, unknown>).snapshotId),
+    snapshotId,
+    "the job must carry the chosen snapshot",
+  );
+});
+
+test("baseline activation requires approval — it creates a request, never a job", async () => {
+  const baselineId = randomUUID();
+  const response = await baselineActivateRoute(
+    postAction("/api/actions/baseline/activate", {
+      principalId: "principal-operator",
+      capabilities: ["baseline-create"],
+      body: { baselineId, justification: "recovery rehearsal" },
+    }),
+  );
+
+  assert.equal(response.status, 202);
+  const { approvalRequest } = await response.json();
+  assert.equal(approvalRequest.status, "pending");
+  assert.equal(approvalRequest.action, "baseline-activate");
+  assert.equal(approvalRequest.requestedBy, "principal-operator");
+  assert.deepEqual(approvalRequest.params, { baselineId });
+  assert.equal(
+    (await jobRows("baseline-activate")).length,
+    0,
+    "activation must never enqueue a job directly",
+  );
 });
 
 test("a replayed request with the same idempotency key does not enqueue twice", async () => {

@@ -269,4 +269,187 @@ async function runFixture(dependencies) {
   assert.equal(fixture.state.clientEnds, 1);
 }
 
+// --- plan task 17: selection-driven restore (portal-design §4.1) ---
+// The job carries only the operator's RAW selection; the CLI recomputes the
+// dependency closure from the snapshot server-side and restores exactly that.
+function selectionResources() {
+  return {
+    versions: [
+      {
+        id: 'v-policy', natural_key: 'conditionalAccessPolicy:Protect-Admins', resource_type: 'conditionalAccessPolicy',
+        payload: {
+          displayName: 'Protect Admins', state: 'enabled',
+          conditions: { users: { excludeGroups: ['source-admins-id'] } },
+        }, blast_radius: 'tenant-lockout',
+      },
+      {
+        id: 'v-admins', natural_key: 'group:Admins', resource_type: 'group',
+        payload: { displayName: 'Admins', mailNickname: 'admins' }, blast_radius: 'access-affecting',
+      },
+      {
+        id: 'v-unrelated', natural_key: 'group:Unrelated', resource_type: 'group',
+        payload: { displayName: 'Unrelated', mailNickname: 'unrelated' }, blast_radius: 'access-affecting',
+      },
+    ],
+    references: [
+      { from_version: 'v-policy', field_path: 'conditions.users.excludeGroups[0]', to_symbol: 'group:Admins', required: true },
+    ],
+  };
+}
+
+function selectionFakes({ resourceSet = selectionResources() } = {}) {
+  const state = { connectUrls: [], clientEnds: 0, dbQueries: 0, waveCalls: [], waveResults: [] };
+  const client = {
+    query: async (sql) => {
+      state.dbQueries += 1;
+      throw new Error(`a selection restore must not query the plan table: ${sql}`);
+    },
+    end: async () => { state.clientEnds += 1; },
+  };
+
+  class FakeReader {
+    async collect(version, path) {
+      assert.equal(version, 'v1.0');
+      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments?')) {
+        return { items: [], capped: false, error: null };
+      }
+      throw new Error(`unexpected reader collection: ${path}`);
+    }
+
+    async get(version, path) {
+      assert.equal(version, 'v1.0');
+      if (path === '/policies/authenticationMethodsPolicy') return { ok: true, status: 200, body: { id: 'authenticationMethodsPolicy' } };
+      if (path === '/policies/identitySecurityDefaultsEnforcementPolicy') return { ok: true, status: 200, body: { id: 'identitySecurityDefaultsEnforcementPolicy', isEnabled: true } };
+      if (path.startsWith('/users/')) return { ok: true, status: 200, body: { id: 'break-glass-id', accountEnabled: true } };
+      throw new Error(`unexpected reader read: ${path}`);
+    }
+  }
+
+  class FakeWriter {
+    async write() { throw new Error('a dry-run restore must never write'); }
+    async read(version, path) { throw new Error(`unexpected writer read: ${path}`); }
+  }
+
+  return {
+    state,
+    dependencies: {
+      connect: async (url) => {
+        assert.equal(url, testDbUrl, 'restore CLI tests must use KEEL_DB_TEST_URL only');
+        state.connectUrls.push(url);
+        return client;
+      },
+      getResourceVersions: async () => resourceSet.versions,
+      getReferences: async () => resourceSet.references,
+      planWaves, // the REAL planner — the closure-to-waves path is what is under test
+      getToken: async () => ({ accessToken: 'fake-token' }),
+      GraphReader: FakeReader,
+      collectM1: async () => [],
+      canonicalizeAll: () => [
+        // group:Admins already exists in the target, so the dry-run can resolve the
+        // policy's reference without run provenance from a real write.
+        { naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id', payload: { displayName: 'Admins' } },
+        { naturalKey: 'roleAssignment:GlobalAdministrator:break-glass', resourceType: 'roleAssignment', sourceId: 'target-break-glass-role-id', payload: { principalId: 'break-glass-id' } },
+      ],
+      GraphWriter: FakeWriter,
+      ThrottleGovernor: class { async acquire() {} },
+      applyWave: async (...args) => {
+        state.waveCalls.push(args[2].map((resource) => resource.naturalKey));
+        const result = await applyWave(...args);
+        state.waveResults.push(result);
+        return result;
+      },
+      recordPriorState: async () => { throw new Error('a dry-run restore must not journal'); },
+    },
+  };
+}
+
+function runSelectionCli(selection, dependencies, extraArgv = []) {
+  return runCli({
+    argv: [
+      'node', 'keel-restore.mjs',
+      '--snapshot-id', 'source-snapshot',
+      ...selection.flatMap((key) => ['--select', key]),
+      '--target-config', '/fixtures/restorer.json',
+      '--collector-config', '/fixtures/collector.json',
+      ...extraArgv,
+    ],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    dependencies,
+    logger: { log() {}, error() {} },
+  });
+}
+
+// Selecting only the CA policy restores exactly the closure: the referenced group is
+// pulled in and applied even though it was never selected, and the unrelated group —
+// present in the same snapshot — is never planned at all.
+{
+  const fixture = selectionFakes();
+  const exitCode = await runSelectionCli(['conditionalAccessPolicy:Protect-Admins'], fixture.dependencies);
+  assert.equal(exitCode, 0, JSON.stringify(fixture.state.waveResults));
+  assert.deepEqual(
+    fixture.state.waveCalls,
+    [['group:Admins'], ['conditionalAccessPolicy:Protect-Admins']],
+    'the restore scope is the selection closure, not the whole snapshot',
+  );
+  const applied = fixture.state.waveResults.flatMap((r) => r.applied.map((a) => a.naturalKey));
+  assert.ok(
+    applied.includes('group:Admins'),
+    'the pulled-in dependency must be applied even though it was not in the selection',
+  );
+  assert.ok(!applied.includes('group:Unrelated'), 'an unselected, unreferenced resource is never touched');
+  assert.equal(fixture.state.dbQueries, 0, 'the selection path loads no plan row');
+  assert.equal(fixture.state.clientEnds, 1);
+}
+
+// A selected key the snapshot does not contain fails loudly — restoring something the
+// operator did not choose, silently, is the worse failure.
+{
+  const fixture = selectionFakes();
+  const exitCode = await runSelectionCli(['group:Does-Not-Exist'], fixture.dependencies);
+  assert.equal(exitCode, 1);
+  assert.equal(fixture.state.waveCalls.length, 0, 'no wave may run when the selection cannot be resolved');
+  assert.equal(fixture.state.clientEnds, 1);
+}
+
+// --select without --snapshot-id (and vice versa) is a usage error, not a partial run.
+{
+  const errors = [];
+  const exitCode = await runCli({
+    argv: ['node', 'keel-restore.mjs', '--select', 'group:Admins',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json'],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    logger: { log() {}, error: (err) => errors.push(String(err)) },
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some((e) => e.includes('--select requires --snapshot-id')));
+}
+{
+  const errors = [];
+  const exitCode = await runCli({
+    argv: ['node', 'keel-restore.mjs', '--snapshot-id', 'source-snapshot',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json'],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    logger: { log() {}, error: (err) => errors.push(String(err)) },
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some((e) => e.includes('--snapshot-id requires at least one --select')));
+}
+// --plan and the selection scope are mutually exclusive.
+{
+  const errors = [];
+  const exitCode = await runCli({
+    argv: ['node', 'keel-restore.mjs', '--plan', 'fixture-plan',
+      '--snapshot-id', 'source-snapshot', '--select', 'group:Admins',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json'],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    logger: { log() {}, error: (err) => errors.push(String(err)) },
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some((e) => e.includes('mutually exclusive')));
+}
+
 console.log('keel-restore.test.mjs — all assertions passed');

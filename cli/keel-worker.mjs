@@ -26,8 +26,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Individual job kinds can override this default without putting timeout literals in the
 // child-process invocation. Thirty minutes is the safe default for every current kind.
+// A restore replays whole dependency waves against a throttled Graph write path and can
+// legitimately take hours; killing it early is safe (applies are idempotent, spec §9.3)
+// but pointless, so it gets its own ceiling. remediate dispatches through the identical
+// apply path (plan task 19), so it gets the identical ceiling.
 export const JOB_TIMEOUT_MS = Object.freeze({
   default: 30 * 60 * 1000,
+  restore: 6 * 60 * 60 * 1000,
+  remediate: 6 * 60 * 60 * 1000,
 });
 const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
 const PROCESS_GROUP_POLL_MS = 25;
@@ -205,6 +211,125 @@ export const JOB_HANDLERS = {
       return args;
     },
   },
+  // Plan task 16: a backup IS a tiered collection — the tiered systemd units run
+  // keel-collect.mjs --tier tierN, so the job dispatches to that exact script rather
+  // than reimplementing any of its logic. The tier is whitelisted here even though
+  // no shell is involved: job params are never trusted.
+  backup: {
+    script: join(__dirname, 'keel-collect.mjs'),
+    argsFor(params = {}) {
+      const tier = params.tier ?? 'tier1';
+      if (!['tier1', 'tier2', 'tier3'].includes(tier)) {
+        throw new Error(`invalid params.tier: ${params.tier}`);
+      }
+      return ['--tier', tier];
+    },
+  },
+  // Baseline create/activate are in-DB governance writes, not tenant-touching scripts,
+  // so they dispatch to thin CLI wrappers around engine/govern/baseline.mjs — keeping
+  // the child-process dispatch shape and its timeout/process-group guarantees.
+  'baseline-create': {
+    script: join(__dirname, 'keel-baseline-create.mjs'),
+    argsFor(params = {}, job = {}) {
+      const args = [
+        '--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'),
+        '--label', requireString(params.label, 'params.label'),
+        '--set-by', requireString(job.requested_by, 'job.requested_by'),
+      ];
+      if (params.description !== undefined) {
+        args.push('--description', requireString(params.description, 'params.description'));
+      }
+      if (params.tenantRef !== undefined) {
+        args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
+      }
+      return args;
+    },
+  },
+  'baseline-activate': {
+    script: join(__dirname, 'keel-baseline-activate.mjs'),
+    argsFor(params = {}) {
+      const args = ['--baseline-id', requireString(params.baselineId, 'params.baselineId')];
+      if (params.tenantRef !== undefined) {
+        args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
+      }
+      return args;
+    },
+  },
+  // Plan task 17: restore dispatches to the existing restore CLI, so every safety gate
+  // (synced-object and unsafe-deletion guards, report-only Conditional Access, rollback
+  // journal, §10.3 sign-in-path gate) stays on the one apply path. The params carry the
+  // operator's RAW selection — the dependency closure is recomputed by the CLI from the
+  // snapshot (§4.1), never trusted from the job payload. Both credential configs are
+  // required strings because the read/write separation (assertSeparateRestorer) needs
+  // each; both are part of what the approver approved. Enforce is opt-in via
+  // params.mode === 'enforce' — the approval requirement is what gates it.
+  restore: {
+    script: join(__dirname, 'keel-restore.mjs'),
+    argsFor(params = {}) {
+      const args = [
+        '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
+        '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+      ];
+      const hasPlan = params.planId !== undefined;
+      const hasSelection = params.snapshotId !== undefined || params.selection !== undefined;
+      if (hasPlan && hasSelection) {
+        throw new Error('params.planId is mutually exclusive with params.snapshotId/params.selection');
+      }
+      if (hasPlan) {
+        args.push('--plan', requireString(params.planId, 'params.planId'));
+      } else {
+        args.push('--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'));
+        if (!Array.isArray(params.selection) || params.selection.length === 0) {
+          throw new Error('params.selection must be a non-empty array of natural keys');
+        }
+        for (const key of params.selection) {
+          args.push('--select', requireString(key, 'params.selection entry'));
+        }
+      }
+      if (params.mode !== undefined) {
+        if (params.mode !== 'enforce') throw new Error(`invalid params.mode: ${params.mode}`);
+        args.push('--enforce');
+      }
+      if (params.acceptDegradation !== undefined) {
+        if (params.acceptDegradation !== true) throw new Error('params.acceptDegradation must be true when present');
+        args.push('--accept-degradation');
+      }
+      return args;
+    },
+  },
+  // Plan task 19: remediate — whether minted by an approved operator request (task 15)
+  // or by policy automation (engine/policy/execute.mjs) — carries only drift ids.
+  // keel-remediate.mjs resolves those to a restore scope and dispatches through
+  // runRestore itself, so remediation inherits every restore safety gate, the §10.3
+  // sign-in path gate included. There is no separate "automatic" code path here: an
+  // automation-triggered remediate job and an operator-approved one run through this
+  // exact same handler and script. Credential config paths default to the tenant's one
+  // standing collector/restorer registration (§2.2: this portal manages exactly one
+  // tenant) so an automatic action never needs a human to supply them, but an explicit
+  // params value always wins.
+  remediate: {
+    script: join(__dirname, 'keel-remediate.mjs'),
+    argsFor(params = {}) {
+      if (!Array.isArray(params.driftIds) || params.driftIds.length === 0) {
+        throw new Error('params.driftIds must be a non-empty array of drift ids');
+      }
+      const args = [];
+      for (const id of params.driftIds) args.push('--drift-id', requireString(id, 'params.driftIds entry'));
+      args.push(
+        '--collector-config', requireString(
+          params.collectorConfig ?? '/etc/keel/tenant-target.json', 'params.collectorConfig',
+        ),
+        '--target-config', requireString(
+          params.targetConfig ?? '/etc/keel/restorer-target.json', 'params.targetConfig',
+        ),
+      );
+      if (params.mode !== undefined) {
+        if (params.mode !== 'enforce') throw new Error(`invalid params.mode: ${params.mode}`);
+        args.push('--enforce');
+      }
+      return args;
+    },
+  },
 };
 
 export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS }) {
@@ -243,7 +368,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
 
   let args;
   try {
-    args = [...handler.argsFor(job.params ?? {}), '--db-url', dbUrl];
+    // Handlers that need job context beyond params (baseline-create records the
+    // requester as set_by) receive the whole job as a second argument.
+    args = [...handler.argsFor(job.params ?? {}, job), '--db-url', dbUrl];
   } catch (err) {
     await fail(client, { id: job.id, error: `invalid params: ${err.message}` });
     console.error(`job ${job.id}: invalid params — ${err.message}`);

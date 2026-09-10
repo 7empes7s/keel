@@ -127,6 +127,8 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     changeType: String(raw.change_type) as DriftRecord["changeType"],
     blastRadius: String(raw.blast_radius),
     detectedAt: iso(raw.detected_at) ?? "",
+    before: raw.before_payload ?? null,
+    after: raw.after_payload ?? null,
   };
 }
 
@@ -206,6 +208,55 @@ export async function getDriftData(): Promise<DriftData> {
     const items = await activeDriftFor(client, ref, baseline?.id ?? null);
 
     return { generatedAt: new Date().toISOString(), baseline, items };
+  });
+}
+
+// Plan task 17 (portal-design §4.1): the restore surface lists the resources an
+// operator can select from one snapshot. The filter mirrors cli/keel-restore.mjs —
+// users and authentication strength policies are read-only in M1 and never written —
+// and the query is scoped to this tenant's snapshot so another tenant's snapshot id is
+// indistinguishable from one that does not exist.
+export interface RestoreResource {
+  naturalKey: string;
+  resourceType: string;
+  blastRadius: string;
+}
+
+export interface RestoreResourcesData {
+  generatedAt: string;
+  snapshotId: string;
+  resources: RestoreResource[];
+}
+
+export async function getRestoreResources(
+  snapshotId: string,
+): Promise<RestoreResourcesData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const queryClient = client as KeelClient & {
+      query(
+        text: string,
+        values?: unknown[],
+      ): Promise<{ rows: UnknownRecord[] }>;
+    };
+    const { rows } = await queryClient.query(
+      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius
+       FROM resource_version rv
+       JOIN snapshot s ON s.id = rv.snapshot_id
+       WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
+         AND rv.resource_type NOT IN ('user', 'authenticationStrengthPolicy')
+       ORDER BY rv.natural_key`,
+      [snapshotId, ref],
+    );
+    return {
+      generatedAt: new Date().toISOString(),
+      snapshotId,
+      resources: rows.map((row) => ({
+        naturalKey: String(row.natural_key),
+        resourceType: String(row.resource_type),
+        blastRadius: String(row.blast_radius),
+      })),
+    };
   });
 }
 

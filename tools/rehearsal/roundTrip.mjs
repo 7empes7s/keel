@@ -224,6 +224,14 @@ export async function collectRehearsalSnapshot(reader, groupId, { isExpected, de
   return canonicalizeAll(collected);
 }
 
+export async function collectBaselineSnapshot(reader, groupId, collector) {
+  return collectRehearsalSnapshot(reader, groupId, { tenantId: collector.tenantId });
+}
+
+export async function collectDetectionSnapshot(reader, groupId, collector, { isExpected } = {}) {
+  return collectRehearsalSnapshot(reader, groupId, { isExpected, tenantId: collector.tenantId });
+}
+
 async function persistSnapshot(client, { tenantRef, resources }) {
   const snapshotId = await createSnapshot(client, { tenantRef });
   const coverageDigest = {};
@@ -239,11 +247,11 @@ async function persistSnapshot(client, { tenantRef, resources }) {
   return snapshotId;
 }
 
-async function detect(client, { tenantRef, reader, groupId, isExpected, tenantId }) {
+async function detect(client, { tenantRef, reader, groupId, isExpected, collector }) {
   const baseline = await getActiveBaseline(client, { tenantRef });
   if (!baseline) throw new Error(`no active baseline for ${tenantRef}`);
 
-  const resources = await collectRehearsalSnapshot(reader, groupId, { isExpected, tenantId });
+  const resources = await collectDetectionSnapshot(reader, groupId, collector, { isExpected });
   const snapshotId = await persistSnapshot(client, { tenantRef, resources });
   const [before, after] = await Promise.all([
     baselineRows(client, baseline.id),
@@ -438,7 +446,7 @@ export async function runRoundTrip({
 
     // 2. Collect with the Collector credential and seed that snapshot as active.
     const tenantRef = tenantRefFor(collector);
-    const baselineResources = await collectRehearsalSnapshot(reader, groupId, { tenantId: collector.tenantId });
+    const baselineResources = await collectBaselineSnapshot(reader, groupId, collector);
     const baselineSnapshotId = await persistSnapshot(client, { tenantRef, resources: baselineResources });
     const baselineId = await seedFromSnapshot(client, {
       tenantRef,
@@ -479,7 +487,7 @@ export async function runRoundTrip({
     });
 
     // 4. Detect and accept only the precise evidence for this disposable key.
-    const detected = await detect(client, { tenantRef, reader, groupId, isExpected: driftIsVisible, tenantId: collector.tenantId });
+    const detected = await detect(client, { tenantRef, reader, groupId, isExpected: driftIsVisible, collector });
     const drift = assertSingleModifiedDrift(detected.rows, naturalKey);
     logEvidence(log, 4, { snapshotId: detected.snapshotId, driftId: drift.id, naturalKey, changeType: drift.change_type });
 

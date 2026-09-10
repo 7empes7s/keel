@@ -8,6 +8,8 @@ const links = [
   { href: "/coverage", label: "Coverage", short: "02" },
   { href: "/drift", label: "Drift", short: "03" },
   { href: "/baselines", label: "Baselines", short: "04" },
+  { href: "/backups", label: "Backups", short: "05" },
+  { href: "/restore", label: "Restore", short: "06" },
 ];
 
 export function NavLinks() {

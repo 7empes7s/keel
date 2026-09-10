@@ -1,4 +1,6 @@
 import { OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+import { evaluateDrift } from '../policy/evaluate.mjs';
+import { executeAutoRemediation } from '../policy/execute.mjs';
 
 export async function createBaseline(client, { tenantRef, setBy }) {
   const { rows } = await client.query(
@@ -35,12 +37,24 @@ export async function recordDrift(client, {
        (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
         before_hash, after_hash, before_payload, after_payload, blast_radius)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-     RETURNING id`,
+     RETURNING *`,
     [
       tenantRef, baselineId, observedSnapshot, naturalKey, resourceType, changeType,
       beforeHash ?? null, afterHash ?? null, beforePayload ?? null, afterPayload ?? null, blastRadius,
     ],
   );
+  // Policy evaluation is part of recording a newly detected drift row, rather
+  // than a separate caller responsibility. That is what makes every drift
+  // decision (including no match) explainable through the evidence chain.
+  const { matches } = await evaluateDrift(client, { tenantRef, drift: rows[0] });
+  // Plan task 19: evaluateDrift only recommends; an 'auto_remediate' outcome is acted
+  // on here, immediately, by the same caller that recorded the drift — never a
+  // separate, easy-to-forget wiring step.
+  for (const match of matches) {
+    if (match.outcome === 'auto_remediate') {
+      await executeAutoRemediation(client, { tenantRef, drift: rows[0], policyId: match.policyId });
+    }
+  }
   return rows[0].id;
 }
 

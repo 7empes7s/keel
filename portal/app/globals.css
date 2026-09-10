@@ -1266,6 +1266,182 @@ dd {
   font-size: 0.8125rem;
 }
 
+.drift-table {
+  min-width: 66rem;
+}
+
+.table-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.drift-action-panel {
+  display: grid;
+  margin: var(--space-lg) 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-muted);
+  grid-template-columns: minmax(14rem, 1.2fr) repeat(2, minmax(12rem, 1fr));
+  gap: var(--space-md);
+}
+
+.drift-action-panel > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.selection-scope {
+  margin: 0;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.drift-action-buttons {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.drift-action-buttons button,
+.comparison-button,
+.pagination button {
+  min-height: 2.5rem;
+  padding: 0 var(--space-sm);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.drift-action-buttons button:hover,
+.comparison-button:hover,
+.pagination button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.drift-action-buttons button:disabled,
+.pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.drift-action-buttons .remediate-button {
+  border-color: color-mix(in oklch, var(--partial) 62%, var(--line));
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.drift-action-buttons .secondary-action {
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.action-message,
+.action-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.action-message {
+  color: var(--protected);
+}
+
+.action-error {
+  color: var(--failed);
+}
+
+.comparison-button {
+  min-height: 2rem;
+  padding: 0 var(--space-xs);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.drift-difference {
+  display: grid;
+  margin-top: var(--space-md);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  grid-template-columns: minmax(12rem, 0.38fr) minmax(0, 1fr);
+}
+
+.difference-heading {
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--line);
+}
+
+.difference-heading h3 {
+  margin-top: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.difference-payloads {
+  display: grid;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.difference-payloads > section {
+  min-width: 0;
+  padding: var(--space-md);
+}
+
+.difference-payloads > section + section {
+  border-left: 1px solid var(--line);
+}
+
+.difference-payloads h4 {
+  margin: 0 0 var(--space-sm);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.difference-payloads pre {
+  max-height: 28rem;
+  margin: 0;
+  overflow: auto;
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  display: flex;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  align-items: center;
+  border-top: 1px solid var(--line);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.pagination div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
 @media (max-width: 74rem) {
   .state-selector {
     grid-template-columns: repeat(3, 1fr);
@@ -1342,6 +1518,14 @@ dd {
   .filter-bar,
   .drift-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drift-action-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .drift-action-panel > div:first-child {
+    grid-column: 1 / -1;
   }
 
   .search-field {
@@ -1466,6 +1650,22 @@ dd {
     margin-left: 0;
   }
 
+  .drift-action-panel,
+  .drift-difference,
+  .difference-payloads {
+    grid-template-columns: 1fr;
+  }
+
+  .difference-payloads {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .difference-payloads > section + section {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
   .data-table {
     min-width: 0;
     border: 0;
@@ -1587,7 +1787,9 @@ dd {
   .filter-bar,
   .state-selector,
   .text-link,
-  .as-of {
+  .as-of,
+  .drift-action-panel,
+  .pagination {
     display: none !important;
   }
 

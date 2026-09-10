@@ -1,10 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { JOB_KIND_CAPABILITIES } from '../engine/authz/jobCapabilities.mjs';
 import {
-  isProcessGroupAlive, JOB_HANDLERS, runJob, signalProcessGroup, startJobChild,
+  isProcessGroupAlive, JOB_HANDLERS, JOB_TIMEOUT_MS, runJob, signalProcessGroup, startJobChild,
 } from './keel-worker.mjs';
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'keel-worker-test-'));
@@ -75,11 +76,12 @@ writeFileSync(okScriptPath, `console.log('fixture job ran');\n`);
 // The real collect handler spawns keel-collect against a tenant; a test must never do
 // that, so every kind used here dispatches to a fixture script that exits 0. 'unmapped-kind'
 // has a handler but no entry in JOB_KIND_CAPABILITIES — the branch under test. 'restore'
-// is the destructive kind the re-authorization path is driven with: a real restore handler
-// would write to the tenant, so a fixture stands in.
+// and 'remediate' are destructive kinds the re-authorization path is driven with: real
+// handlers for either would write to the tenant, so a fixture stands in for both.
 const fixtureHandlers = {
   collect: { script: okScriptPath, argsFor: () => [] },
   restore: { script: okScriptPath, argsFor: () => [] },
+  remediate: { script: okScriptPath, argsFor: () => [] },
   'unmapped-kind': { script: okScriptPath, argsFor: () => [] },
 };
 
@@ -267,6 +269,244 @@ for (const kind of Object.keys(JOB_HANDLERS)) {
   await runAuthzJob(fake, authzJobFor('restore', { requested_by: restorerPrincipal.id }));
   assert.equal(fake.failedCalls.length, 0, `unexpected failure: ${fake.failedCalls[0]?.[1]}`);
   assert.equal(fake.completedCalls.length, 1, 'a requester holding restore runs the restore job');
+}
+
+// --- plan task 16: "back up now" dispatches to the EXISTING tier script ---
+// The tiered backups are keel-collect.mjs --tier tierN (the systemd tier units run
+// exactly that), so the backup handler must point at that script — never at a copy
+// of its logic — and pass the tier through as a flag.
+const cliDir = dirname(fileURLToPath(import.meta.url));
+assert.equal(
+  JOB_HANDLERS.backup.script,
+  join(cliDir, 'keel-collect.mjs'),
+  'a backup job must spawn the existing tiered collection script',
+);
+assert.deepEqual(JOB_HANDLERS.backup.argsFor({ tier: 'tier2' }), ['--tier', 'tier2']);
+assert.deepEqual(JOB_HANDLERS.backup.argsFor({}), ['--tier', 'tier1'], 'tier defaults to tier1');
+assert.throws(
+  () => JOB_HANDLERS.backup.argsFor({ tier: 'everything' }),
+  /invalid params.tier: everything/,
+);
+
+// Driven end-to-end through runJob: a requester holding the backup capability passes
+// the task-25 re-authorization and dispatches. The script is swapped for the fixture
+// so no real collection runs; the REAL argsFor still builds the argv.
+{
+  const backupHandlers = { backup: { ...JOB_HANDLERS.backup, script: okScriptPath } };
+  const fake = makeAuthzFakeClient({
+    principal: operatorPrincipal,
+    grants: [{ role: 'operator', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('backup', { params: { tier: 'tier3' } }), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: backupHandlers,
+  });
+  assert.equal(fake.failedCalls.length, 0, `unexpected failure: ${fake.failedCalls[0]?.[1]}`);
+  assert.equal(fake.completedCalls.length, 1, 'a requester holding backup runs the backup job');
+}
+
+// An invalid tier fails the job loudly at param validation — it never reaches spawn.
+{
+  const backupHandlers = { backup: { ...JOB_HANDLERS.backup, script: okScriptPath } };
+  const fake = makeAuthzFakeClient({
+    principal: operatorPrincipal,
+    grants: [{ role: 'operator', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('backup', { params: { tier: 'everything' } }), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: backupHandlers,
+  });
+  assertJobFailedUnRun(fake, /invalid params: invalid params.tier: everything/, 'invalid tier');
+}
+
+// --- plan task 16: baseline handlers dispatch to thin wrappers around govern/baseline.mjs ---
+assert.equal(
+  JOB_HANDLERS['baseline-create'].script,
+  join(cliDir, 'keel-baseline-create.mjs'),
+);
+assert.deepEqual(
+  JOB_HANDLERS['baseline-create'].argsFor(
+    { snapshotId: 'snapshot-1', label: 'golden', description: 'post-audit' },
+    { requested_by: 'principal-operator' },
+  ),
+  ['--snapshot-id', 'snapshot-1', '--label', 'golden', '--set-by', 'principal-operator',
+    '--description', 'post-audit'],
+  'baseline-create forwards the snapshot, label and the job requester as set-by',
+);
+assert.throws(
+  () => JOB_HANDLERS['baseline-create'].argsFor({ label: 'golden' }, { requested_by: 'p' }),
+  /params.snapshotId must be a non-empty string/,
+);
+assert.equal(
+  JOB_HANDLERS['baseline-activate'].script,
+  join(cliDir, 'keel-baseline-activate.mjs'),
+);
+assert.deepEqual(
+  JOB_HANDLERS['baseline-activate'].argsFor({ baselineId: 'baseline-1' }),
+  ['--baseline-id', 'baseline-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS['baseline-activate'].argsFor({}),
+  /params.baselineId must be a non-empty string/,
+);
+
+// --- plan task 17: restore dispatches to the EXISTING restore CLI with whitelisted args ---
+// The handler must never pass arbitrary params through: every flag below is built
+// explicitly from a validated param.
+assert.equal(
+  JOB_HANDLERS.restore.script,
+  join(cliDir, 'keel-restore.mjs'),
+  'a restore job must spawn the existing restore CLI so its safety gates apply',
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({
+    planId: 'plan-1',
+    collectorConfig: '/etc/keel/tenant-target.json',
+    targetConfig: '/etc/keel/restorer-target.json',
+  }),
+  ['--collector-config', '/etc/keel/tenant-target.json',
+    '--target-config', '/etc/keel/restorer-target.json', '--plan', 'plan-1'],
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({
+    snapshotId: 'snapshot-1',
+    selection: ['group:Admins', 'conditionalAccessPolicy:Protect-Admins'],
+    collectorConfig: '/etc/keel/tenant-target.json',
+    targetConfig: '/etc/keel/restorer-target.json',
+    mode: 'enforce',
+  }),
+  ['--collector-config', '/etc/keel/tenant-target.json',
+    '--target-config', '/etc/keel/restorer-target.json',
+    '--snapshot-id', 'snapshot-1',
+    '--select', 'group:Admins', '--select', 'conditionalAccessPolicy:Protect-Admins',
+    '--enforce'],
+  'the raw selection becomes repeatable --select flags; the closure is the CLI\'s job',
+);
+// Both credential configs are required — the read/write separation needs each.
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', targetConfig: '/t.json' }),
+  /params.collectorConfig must be a non-empty string/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', collectorConfig: '/c.json' }),
+  /params.targetConfig must be a non-empty string/,
+);
+// The two restore scopes never mix, and a selection scope is always complete.
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    planId: 'plan-1', snapshotId: 'snapshot-1', collectorConfig: '/c.json', targetConfig: '/t.json',
+  }),
+  /mutually exclusive/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    snapshotId: 'snapshot-1', selection: [], collectorConfig: '/c.json', targetConfig: '/t.json',
+  }),
+  /params.selection must be a non-empty array/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    snapshotId: 'snapshot-1', selection: ['group:Admins', 42], collectorConfig: '/c.json', targetConfig: '/t.json',
+  }),
+  /params.selection entry must be a non-empty string/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    snapshotId: 'snapshot-1', selection: ['group:Admins'],
+    collectorConfig: '/c.json', targetConfig: '/t.json', mode: 'yolo',
+  }),
+  /invalid params.mode: yolo/,
+);
+// A restore replays throttled write waves and can take hours; it must not inherit the
+// 30-minute default.
+assert.ok(
+  JOB_TIMEOUT_MS.restore > JOB_TIMEOUT_MS.default,
+  'restore must have its own, longer timeout',
+);
+
+// --- plan task 19: remediate dispatches to the EXISTING remediate CLI, which itself
+// dispatches through runRestore, so remediation inherits every restore safety gate ---
+assert.equal(
+  JOB_HANDLERS.remediate.script,
+  join(cliDir, 'keel-remediate.mjs'),
+  'a remediate job — automatic or operator-approved — must spawn the remediate CLI so restore\'s safety gates apply',
+);
+assert.deepEqual(
+  JOB_HANDLERS.remediate.argsFor({
+    driftIds: ['drift-1', 'drift-2'],
+    collectorConfig: '/etc/keel/tenant-target.json',
+    targetConfig: '/etc/keel/restorer-target.json',
+    mode: 'enforce',
+  }),
+  ['--drift-id', 'drift-1', '--drift-id', 'drift-2',
+    '--collector-config', '/etc/keel/tenant-target.json',
+    '--target-config', '/etc/keel/restorer-target.json',
+    '--enforce'],
+);
+// An operator-approved remediate request (task 15) never supplies credential config
+// paths — this portal manages exactly one tenant (§2.2), so the standing collector and
+// restorer registrations are the default, not a per-request value the caller must know.
+assert.deepEqual(
+  JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'] }),
+  ['--drift-id', 'drift-1',
+    '--collector-config', '/etc/keel/tenant-target.json',
+    '--target-config', '/etc/keel/restorer-target.json'],
+);
+assert.throws(
+  () => JOB_HANDLERS.remediate.argsFor({}),
+  /params.driftIds must be a non-empty array/,
+);
+assert.throws(
+  () => JOB_HANDLERS.remediate.argsFor({ driftIds: [] }),
+  /params.driftIds must be a non-empty array/,
+);
+assert.throws(
+  () => JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'], mode: 'yolo' }),
+  /invalid params.mode: yolo/,
+);
+// remediate replays the identical apply path as restore and gets the identical ceiling.
+assert.equal(
+  JOB_TIMEOUT_MS.remediate,
+  JOB_TIMEOUT_MS.restore,
+  'remediate must share restore\'s longer timeout, not the 30-minute default',
+);
+
+// Driven end-to-end through runJob: a requester holding the remediate capability
+// (restorer) passes the task-25 re-authorization and dispatches. The script is
+// swapped for the fixture so no real remediation runs; the REAL argsFor still builds
+// the argv.
+{
+  const remediateHandlers = { remediate: { ...JOB_HANDLERS.remediate, script: okScriptPath } };
+  const restorerPrincipal = {
+    id: 'principal-remediate-restorer', email: 'remediate-restorer@example.com', disabled_at: null,
+  };
+  const fake = makeAuthzFakeClient({
+    principal: restorerPrincipal,
+    grants: [{ role: 'restorer', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('remediate', {
+    requested_by: restorerPrincipal.id, params: { driftIds: ['drift-1'] },
+  }), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: remediateHandlers,
+  });
+  assert.equal(fake.failedCalls.length, 0, `unexpected failure: ${fake.failedCalls[0]?.[1]}`);
+  assert.equal(fake.completedCalls.length, 1, 'a requester holding remediate runs the remediate job');
+}
+
+// A principal holding only collect (operator) must not run a remediate job.
+{
+  const fake = makeAuthzFakeClient({
+    principal: operatorPrincipal,
+    grants: [{ role: 'operator', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runAuthzJob(fake, authzJobFor('remediate', { params: { driftIds: ['drift-1'] } }));
+  assertJobFailedUnRun(
+    fake, /requester no longer authorized for kind: remediate/, 'remediate under a mere collect grant',
+  );
 }
 
 console.log('keel-worker.test.mjs — all assertions passed');

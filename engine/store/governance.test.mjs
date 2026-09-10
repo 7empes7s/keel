@@ -5,6 +5,7 @@ import {
   createBaseline, seedBaselineFromSnapshot, getActiveBaseline, recordDrift,
   listOpenDrift, recordDisposition,
 } from './governance.mjs';
+import { createPolicy } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -98,6 +99,33 @@ await recordDisposition(client, {
 });
 openDrift = await listOpenDrift(client, { tenantRef });
 assert.deepEqual(openDrift.map((row) => row.id), [expiredDriftId]);
+
+// Plan task 19: recordDrift acts on an 'auto_remediate' evaluation immediately —
+// enqueuing a remediate job is not a separate wiring step a caller can forget.
+const adminPrincipalId = '22222222-2222-2222-2222-222222222222';
+await createPolicy(client, {
+  tenantRef, name: 'auto-remediate governance-test groups', resourceType: 'group',
+  action: 'auto_remediate', maxBlastRadius: 'tenant-lockout', createdBy: adminPrincipalId,
+});
+const autoRemediateDriftId = await recordDrift(client, {
+  tenantRef,
+  baselineId,
+  observedSnapshot,
+  naturalKey: 'group:governance-test-auto-remediate',
+  resourceType: 'group',
+  changeType: 'modified',
+  beforeHash: 'baseline-hash',
+  afterHash: 'auto-remediate-hash',
+  beforePayload: { displayName: 'Governance test' },
+  afterPayload: { displayName: 'Changed by attacker' },
+  blastRadius: 'access-affecting',
+});
+const { rows: autoRemediateJobs } = await client.query(
+  `SELECT * FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`,
+  [autoRemediateDriftId],
+);
+assert.equal(autoRemediateJobs.length, 1, 'an auto_remediate policy match must enqueue exactly one remediate job');
+assert.equal(autoRemediateJobs[0].requested_by, adminPrincipalId);
 
 } finally {
   await client?.end();

@@ -286,6 +286,56 @@ activeRows = await client.query(
 );
 assert.deepEqual(activeRows.rows.map((row) => row.id), [namedBaselineId]);
 
+// --- Plan task 16: activation stays atomic when two activations race ---
+// Two SEPARATE connections race to activate different baselines of one tenant. The
+// transaction and row locks inside activateBaseline must serialize them: both calls
+// complete, and the tenant is left with exactly one active baseline — never zero
+// (drift detection would throw `no active baseline`) and never two. Drop the
+// transaction (the task's named mutation) and the two activate writes interleave
+// past the partial unique index, making one call reject — which fails here.
+const raceTenantRef = 'sha256:baseline-race-test';
+const raceSnapshotId = await createSnapshot(client, { tenantRef: raceTenantRef });
+await addGroup(raceSnapshotId, 'group:raced', 'Raced');
+const raceBaselineA = await seedFromSnapshot(client, {
+  tenantRef: raceTenantRef,
+  snapshotId: raceSnapshotId,
+  setBy: 'race-operator',
+});
+const raceBaselineB = await seedFromSnapshot(client, {
+  tenantRef: raceTenantRef,
+  snapshotId: raceSnapshotId,
+  setBy: 'race-operator',
+});
+
+const raceClientA = await database.connect();
+const raceClientB = await database.connect();
+try {
+  for (let round = 0; round < 25; round += 1) {
+    const first = round % 2 === 0 ? raceBaselineA : raceBaselineB;
+    const second = round % 2 === 0 ? raceBaselineB : raceBaselineA;
+    await Promise.all([
+      activateBaseline(raceClientA, { tenantRef: raceTenantRef, baselineId: first }),
+      activateBaseline(raceClientB, { tenantRef: raceTenantRef, baselineId: second }),
+    ]);
+    const { rows: raceActiveRows } = await client.query(
+      'SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true',
+      [raceTenantRef],
+    );
+    assert.equal(
+      raceActiveRows.length,
+      1,
+      `round ${round}: exactly one baseline must be active after racing activations`,
+    );
+    assert.ok(
+      raceActiveRows[0].id === first || raceActiveRows[0].id === second,
+      `round ${round}: the active baseline must be one of the raced baselines`,
+    );
+  }
+} finally {
+  await raceClientA.end();
+  await raceClientB.end();
+}
+
 } finally {
   await client?.end();
   await database.cleanup();

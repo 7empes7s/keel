@@ -191,3 +191,34 @@ CREATE TABLE IF NOT EXISTS approval_request (
 );
 CREATE INDEX IF NOT EXISTS approval_request_status_idx
   ON approval_request (status, created_at);
+
+-- §3.4 automation model (plan task 18): a policy is a rule evaluated against each
+-- newly detected drift row. match narrows which drift rows the policy applies to
+-- (a null match column means "any"); action is what a match recommends; limits are
+-- structural guardrails enforced by engine/policy/evaluate.mjs itself, never
+-- bypassable by a policy's own match configuration — max_blast_radius in particular
+-- caps auto_remediate regardless of what the policy matched.
+CREATE TABLE IF NOT EXISTS policy (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref             text NOT NULL,
+  name                   text NOT NULL,
+  enabled                boolean NOT NULL DEFAULT true,
+  resource_type          text,
+  blast_radius           text CHECK (blast_radius IS NULL OR blast_radius IN ('cosmetic','access-affecting','tenant-lockout')),
+  natural_key_glob       text,
+  change_type            text CHECK (change_type IS NULL OR change_type IN ('added','modified','removed')),
+  action                 text NOT NULL CHECK (action IN ('alert','require_approval','auto_remediate')),
+  max_blast_radius       text NOT NULL CHECK (max_blast_radius IN ('cosmetic','access-affecting','tenant-lockout')),
+  max_actions_per_window int,
+  window_seconds         int,
+  created_at             timestamptz NOT NULL DEFAULT now(),
+  created_by             text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS policy_tenant_enabled_idx ON policy (tenant_ref) WHERE enabled;
+
+-- Plan task 19: a rate limit that pauses the policy when max_actions_per_window is
+-- exceeded, rather than dropping the action that tipped it over. paused_at is separate
+-- from enabled — enabled is operator-controlled, paused_at is the automatic circuit
+-- breaker engine/policy/execute.mjs trips itself. A paused policy takes no further
+-- automatic action until an operator clears it.
+ALTER TABLE policy ADD COLUMN IF NOT EXISTS paused_at timestamptz;

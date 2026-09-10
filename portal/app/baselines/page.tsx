@@ -1,24 +1,51 @@
 import { connection } from "next/server";
+import { headers } from "next/headers";
 
+import { ActivateBaseline } from "@/components/activate-baseline";
+import { BaselineCreateForm } from "@/components/baseline-create-form";
 import { DataUnavailable } from "@/components/data-unavailable";
+import { JobRefresher } from "@/components/job-refresher";
+import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { formatAge, formatTimestamp } from "@/lib/presentation";
+import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getBaselinesData } from "@/lib/portal-data";
+import {
+  getRecentJobs,
+  getSnapshotOptions,
+  type JobRecord,
+  type SnapshotOption,
+} from "@/lib/portal-jobs";
 import type { BaselinesData } from "@/lib/types";
+
+const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
 
 export default async function BaselinesPage() {
   await connection();
+  const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
+    .split(" ")
+    .filter((capability) => capability.length > 0);
+  // UI gating is a convenience only — the action API re-checks this capability on
+  // every request. Both create and activate sit behind baseline-create (see
+  // engine/authz/jobCapabilities.mjs).
+  const canBaseline = capabilities.includes("baseline-create");
 
   let data: BaselinesData;
+  let snapshots: SnapshotOption[];
+  let jobs: JobRecord[];
   try {
-    data = await getBaselinesData();
+    [data, snapshots, jobs] = await Promise.all([
+      getBaselinesData(),
+      getSnapshotOptions(),
+      getRecentJobs(BASELINE_JOB_KINDS),
+    ]);
   } catch {
     return (
       <>
         <PageHeader
           description="Named recovery reference points and their captured resource counts."
           eyebrow="Recovery history"
-          marker="Read-only"
+          marker={canBaseline ? "Actionable" : "Read-only"}
           title="Baselines"
         />
         <DataUnavailable surface="Baseline data" />
@@ -26,15 +53,21 @@ export default async function BaselinesPage() {
     );
   }
 
+  const jobsActive = jobs.some(
+    (job) => job.status === "queued" || job.status === "running",
+  );
+
   return (
     <>
       <PageHeader
         description="Named recovery reference points and their captured resource counts."
         eyebrow="Recovery history"
         generatedAt={data.generatedAt}
-        marker="Read-only"
+        marker={canBaseline ? "Actionable" : "Read-only"}
         title="Baselines"
       />
+
+      <BaselineCreateForm disabled={!canBaseline} snapshots={snapshots} />
 
       <section aria-labelledby="baseline-list-heading" className="report-section">
         <div className="section-heading-row report-heading">
@@ -58,6 +91,7 @@ export default async function BaselinesPage() {
                   <th scope="col">Set by</th>
                   <th scope="col">State</th>
                   <th className="number-column" scope="col">Resources</th>
+                  <th scope="col">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -86,6 +120,14 @@ export default async function BaselinesPage() {
                     <td className="number-column" data-label="Resources">
                       {baseline.resourceCount.toLocaleString("en-GB")}
                     </td>
+                    <td data-label="Actions">
+                      {baseline.active ? null : (
+                        <ActivateBaseline
+                          baselineId={baseline.id}
+                          disabled={!canBaseline}
+                        />
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -95,6 +137,14 @@ export default async function BaselinesPage() {
           <p className="empty-state">No baselines are recorded for this tenant.</p>
         )}
       </section>
+
+      <JobTable
+        headingId="baseline-jobs-heading"
+        jobs={jobs}
+        kicker="Queue"
+        title="Baseline jobs"
+      />
+      <JobRefresher active={jobsActive} />
     </>
   );
 }

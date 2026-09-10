@@ -64,6 +64,10 @@ export interface DriftRecord {
   changeType: "added" | "modified" | "removed";
   blastRadius: string;
   detectedAt: string;
+  // The per-deviation before/after already computed by govern/diffSnapshots.mjs and
+  // stored on the drift row (baseline state vs observed state, null on add/remove).
+  before: unknown;
+  after: unknown;
 }
 
 export interface DriftData {

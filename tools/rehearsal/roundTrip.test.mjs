@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import {
-  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
+  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectBaselineSnapshot,
+  collectDetectionSnapshot, collectRehearsalSnapshot,
   getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 
@@ -312,6 +313,48 @@ assert.throws(
   assert.ok(group, 'expected the rehearsal group in the collected snapshot');
   assert.equal(group.payload.description, 'baseline');
   assert.equal(gets, 1, 'expected no retry when no isExpected predicate is given and the read succeeds immediately');
+}
+
+// Both live collection call sites receive the tenant id only from the loaded
+// Collector configuration. The empty organization collection deliberately
+// disables collectM1's organization-derived fallback, so either path fails if
+// it stops threading collector.tenantId. This fixture never passes tenantId
+// to a collection function itself.
+{
+  const collector = { tenantId: 'tenant-wiring-fixture' };
+  const baselineBody = {
+    id: 'g3', displayName: 'keel-rehearsal-z', description: 'baseline', mailNickname: 'keel-rehearsal-z',
+  };
+  const driftedBody = { ...baselineBody, description: 'drifted' };
+  let currentBody = baselineBody;
+  const collectionPaths = [];
+  const reader = {
+    collect: async (version, path) => {
+      collectionPaths.push(path);
+      return { items: path.startsWith('/groups') ? [currentBody] : [] };
+    },
+    get: async () => ({ ok: true, status: 200, body: currentBody }),
+  };
+
+  const baselineResources = await collectBaselineSnapshot(reader, 'g3', collector);
+  currentBody = driftedBody;
+  const detectedResources = await collectDetectionSnapshot(reader, 'g3', collector, {
+    isExpected: (group) => group.description === 'drifted',
+  });
+
+  assert.equal(
+    baselineResources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g3').payload.description,
+    'baseline',
+  );
+  assert.equal(
+    detectedResources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g3').payload.description,
+    'drifted',
+  );
+  assert.equal(
+    collectionPaths.filter((path) => path.startsWith(`/organization/${collector.tenantId}/certificateBasedAuthConfiguration`)).length,
+    2,
+    'both the baseline and detect collection paths must scope organization resources with collector.tenantId',
+  );
 }
 
 // Regression for the 2026-09-08 09:15Z incident: after the permanent DELETE,

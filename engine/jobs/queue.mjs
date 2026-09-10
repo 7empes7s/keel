@@ -15,14 +15,16 @@
 export const JOB_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 export const ORPHANED_HEARTBEAT_STALE_MS = JOB_HEARTBEAT_INTERVAL_MS * 8;
 
-export async function enqueue(client, { kind, params, requestedBy, idempotencyKey }) {
+export async function enqueue(client, {
+  kind, params, requestedBy, idempotencyKey, notBefore,
+}) {
   const { rows } = await client.query(
-    `INSERT INTO job (kind, params, requested_by, idempotency_key)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before)
+     VALUES ($1, $2, $3, $4, COALESCE($5, now()))
      ON CONFLICT (kind, idempotency_key) WHERE idempotency_key IS NOT NULL
      DO NOTHING
      RETURNING *`,
-    [kind, params ?? {}, requestedBy, idempotencyKey ?? null],
+    [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null],
   );
   if (rows[0]) return rows[0];
   // A job with this kind and key already exists (or won a concurrent insert) — return it
@@ -40,7 +42,7 @@ export async function claimNext(client, { workerId }) {
      SET status = 'running', started_at = now(), heartbeat_at = now(), worker_id = $1
      WHERE id = (
        SELECT id FROM job
-       WHERE status = 'queued'
+       WHERE status = 'queued' AND not_before <= now()
        ORDER BY created_at
        FOR UPDATE SKIP LOCKED
        LIMIT 1

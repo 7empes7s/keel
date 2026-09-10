@@ -146,6 +146,12 @@ ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
 
+-- A retry must stay queued until its backoff expires. Keeping the time on the job
+-- makes the wait durable and visible instead of hiding it in a worker sleep.
+ALTER TABLE job ADD COLUMN IF NOT EXISTS not_before timestamptz NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS job_status_not_before_created_idx
+  ON job (status, not_before, created_at);
+
 -- §3.2 authorisation model: who is allowed to do what. The role -> capability mapping is
 -- code (engine/authz/permissions.mjs), deny-by-default; these tables are only data.
 -- scope is reserved for later per-tenant or per-resource narrowing and is '*' for now.
@@ -222,3 +228,43 @@ CREATE INDEX IF NOT EXISTS policy_tenant_enabled_idx ON policy (tenant_ref) WHER
 -- breaker engine/policy/execute.mjs trips itself. A paused policy takes no further
 -- automatic action until an operator clears it.
 ALTER TABLE policy ADD COLUMN IF NOT EXISTS paused_at timestamptz;
+
+-- §3.5 notification model (plan task 20). A channel is an outbound destination;
+-- subscriptions select the events it receives; delivery is the durable per-event,
+-- per-channel log. `event` deliberately keeps the full event payload available to
+-- operators when a delivery fails, instead of leaving only an opaque job error.
+CREATE TABLE IF NOT EXISTS channel (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind       text NOT NULL CHECK (kind IN ('webhook','email')),
+  config     jsonb NOT NULL DEFAULT '{}'::jsonb,
+  enabled    boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS subscription (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  channel_id   uuid NOT NULL REFERENCES channel(id) ON DELETE CASCADE,
+  event_glob   text NOT NULL,
+  min_severity text NOT NULL CHECK (min_severity IN ('notice','warning','critical')),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS subscription_channel_idx ON subscription (channel_id);
+
+CREATE TABLE IF NOT EXISTS delivery (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event           jsonb NOT NULL,
+  channel_id      uuid NOT NULL REFERENCES channel(id),
+  requested_by    text NOT NULL,
+  attempts        int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  max_attempts    int NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
+  status          text NOT NULL DEFAULT 'queued'
+                  CHECK (status IN ('queued','delivering','retrying','delivered','failed','cancelled')),
+  last_error      text,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  delivered_at    timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS delivery_status_next_attempt_idx
+  ON delivery (status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS delivery_channel_created_idx
+  ON delivery (channel_id, created_at DESC);

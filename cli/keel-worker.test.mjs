@@ -231,6 +231,7 @@ assert.deepEqual(
     'baseline-activate': 'baseline-create',
     remediate: 'remediate',
     restore: 'restore',
+    notify: 'configuration',
   },
   'every job kind must map to exactly the capability that kind requires',
 );
@@ -472,6 +473,41 @@ assert.equal(
   JOB_TIMEOUT_MS.restore,
   'remediate must share restore\'s longer timeout, not the 30-minute default',
 );
+
+// --- plan task 20: delivery jobs have a narrow, durable payload and are run only
+// by a principal still allowed to manage notification configuration ---
+assert.equal(
+  JOB_HANDLERS.notify.script,
+  join(cliDir, 'keel-notify.mjs'),
+  'a notify job must dispatch through the delivery-log CLI',
+);
+assert.deepEqual(
+  JOB_HANDLERS.notify.argsFor({ deliveryId: 'delivery-1' }),
+  ['--delivery-id', 'delivery-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS.notify.argsFor({}),
+  /params.deliveryId must be a non-empty string/,
+);
+{
+  const notifyHandlers = { notify: { ...JOB_HANDLERS.notify, script: okScriptPath } };
+  const adminPrincipal = {
+    id: 'principal-alerts-admin', email: 'alerts-admin@example.com', disabled_at: null,
+  };
+  const fake = makeAuthzFakeClient({
+    principal: adminPrincipal,
+    grants: [{ role: 'admin', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('notify', {
+    requested_by: adminPrincipal.id, params: { deliveryId: 'delivery-1' },
+  }), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: notifyHandlers,
+  });
+  assert.equal(fake.failedCalls.length, 0, `unexpected failure: ${fake.failedCalls[0]?.[1]}`);
+  assert.equal(fake.completedCalls.length, 1, 'a currently authorized notification job runs');
+}
 
 // Driven end-to-end through runJob: a requester holding the remediate capability
 // (restorer) passes the task-25 re-authorization and dispatches. The script is

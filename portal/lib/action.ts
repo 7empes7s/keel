@@ -274,6 +274,7 @@ export function guardedAction(
         params: await readActionParams(request),
         requestedBy: principalId,
         idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
+        notBefore: undefined,
       })) as Record<string, unknown>;
       return Response.json(
         { job: normalizeJob(job) },

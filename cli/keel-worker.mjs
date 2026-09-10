@@ -330,6 +330,16 @@ export const JOB_HANDLERS = {
       return args;
     },
   },
+  // Plan task 20: notification delivery has its own job kind. The payload is only a
+  // delivery id; channel config and the event are read from the durable delivery log,
+  // never accepted as arbitrary worker arguments. keel-notify records failed attempts
+  // and enqueues their backoff retries before exiting non-zero.
+  notify: {
+    script: join(__dirname, 'keel-notify.mjs'),
+    argsFor(params = {}) {
+      return ['--delivery-id', requireString(params.deliveryId, 'params.deliveryId')];
+    },
+  },
 };
 
 export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS }) {

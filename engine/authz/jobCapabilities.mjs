@@ -20,6 +20,10 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   'baseline-activate': 'baseline-create',
   remediate: 'remediate',
   restore: 'restore',
+  // Channels and subscriptions are configuration; a delivery retains the principal
+  // that dispatched its event, so the same configuration grant is checked again when
+  // the notify job executes.
+  notify: 'configuration',
 });
 
 export function capabilityForJobKind(kind) {

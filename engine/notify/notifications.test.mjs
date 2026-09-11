@@ -9,6 +9,7 @@ import {
   eventMatches,
   retryDelayMs,
 } from './notifications.mjs';
+import { claimNext } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 // The matching rule is deliberately pure so subscription semantics cannot depend on
@@ -157,6 +158,23 @@ try {
   assert.equal(retryJobs[0].status, 'queued');
   assert.ok(new Date(retryJobs[0].not_before) >= new Date(beforeFailure.getTime() + retryDelayMs(1)));
 
+  // Delayed-job claim eligibility (task-20): the scheduled retry must NOT be claimable
+  // before its backoff elapses. Draining every currently-claimable job must never return
+  // it; a claim query that ignores not_before would claim it here and fail this section.
+  const drainedIds = [];
+  let drainedJob;
+  while ((drainedJob = await claimNext(client, { workerId: 'notify-test-drain' }))) {
+    drainedIds.push(drainedJob.id);
+  }
+  assert.ok(
+    !drainedIds.includes(retryJobs[0].id),
+    'a retry job must not be claimable before its not_before backoff elapses',
+  );
+  const { rows: retryStillQueued } = await client.query(
+    'SELECT status FROM job WHERE id = $1', [retryJobs[0].id],
+  );
+  assert.equal(retryStillQueued[0].status, 'queued', 'the unclaimed retry stays queued');
+
   // Exhausting the retry budget is terminally failed, still never delivered, and
   // records the final transport error for operators to inspect.
   const terminalEvent = {
@@ -182,6 +200,29 @@ try {
     [`delivery:${terminalDelivery.id}:attempt:2`],
   );
   assert.equal(terminalRetryJobs.length, 0, 'a terminal failure does not enqueue a sixth attempt');
+
+  // Disabled-channel guard (task-20): a channel disabled after dispatch but before
+  // the attempt must not be delivered to. attemptDelivery must cancel the delivery
+  // without calling the transport; removing that guard would send to a channel the
+  // operator has explicitly turned off and mark the delivery delivered.
+  const disabledEvent = {
+    kind: 'drift.detected', severity: 'critical', driftId: 'fixture-drift-disabled',
+  };
+  const disabledDispatched = await dispatchAlert(client, { event: disabledEvent, requestedBy: requester });
+  const disabledDelivery = disabledDispatched.find(({ delivery }) => delivery.channel_id === webhook.id).delivery;
+  await client.query('UPDATE channel SET enabled = false WHERE id = $1', [webhook.id]);
+  let disabledTransportCalls = 0;
+  const disabledResult = await attemptDelivery(client, {
+    deliveryId: disabledDelivery.id,
+    transports: { webhook: async () => { disabledTransportCalls += 1; } },
+  });
+  assert.equal(disabledTransportCalls, 0, 'a disabled channel must never receive a delivery attempt');
+  assert.equal(disabledResult.delivery.status, 'cancelled');
+  assert.equal(disabledResult.delivery.last_error, 'channel disabled before delivery');
+  const { rows: disabledRows } = await client.query('SELECT * FROM delivery WHERE id = $1', [disabledDelivery.id]);
+  assert.equal(disabledRows[0].status, 'cancelled', 'a delivery to a disabled channel is cancelled, never delivered');
+  assert.equal(disabledRows[0].delivered_at, null);
+  await client.query('UPDATE channel SET enabled = true WHERE id = $1', [webhook.id]);
 } finally {
   await client?.end();
   await database.cleanup();

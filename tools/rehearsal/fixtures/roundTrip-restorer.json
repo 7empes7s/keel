@@ -1,0 +1,6 @@
+{
+  "tenantId": "tenant-wiring-fixture",
+  "clientId": "restorer-fixture-client-id",
+  "certPath": "/fixtures/restorer-cert.pem",
+  "keyPath": "/fixtures/restorer-key.pem"
+}

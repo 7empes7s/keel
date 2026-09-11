@@ -1,9 +1,10 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
-  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectBaselineSnapshot,
-  collectDetectionSnapshot, collectRehearsalSnapshot,
+  assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
   getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
+import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
 
 // Production and rehearsal URLs with the same host and database identify the
 // same governance store even when their credentials differ.
@@ -316,44 +317,94 @@ assert.throws(
 }
 
 // Both live collection call sites receive the tenant id only from the loaded
-// Collector configuration. The empty organization collection deliberately
-// disables collectM1's organization-derived fallback, so either path fails if
-// it stops threading collector.tenantId. This fixture never passes tenantId
-// to a collection function itself.
+// Collector configuration. Run the production round-trip path against fakes:
+// calling either collector-owned seam directly would not prove that
+// runRoundTrip or detect actually passes the loaded Collector config into it.
+// The empty organization collection deliberately disables collectM1's
+// organization-derived fallback, so either path fails if it stops threading
+// collector.tenantId. This fixture never passes tenantId to a collection
+// function itself.
 {
-  const collector = { tenantId: 'tenant-wiring-fixture' };
-  const baselineBody = {
-    id: 'g3', displayName: 'keel-rehearsal-z', description: 'baseline', mailNickname: 'keel-rehearsal-z',
-  };
-  const driftedBody = { ...baselineBody, description: 'drifted' };
-  let currentBody = baselineBody;
+  const isolated = await createIsolatedTestDatabase(import.meta.url);
+  const client = await isolated.connect();
+  await client.query(readFileSync(new URL('../../engine/store/schema.sql', import.meta.url), 'utf8'));
+
+  const collectorConfigPath = new URL('./fixtures/roundTrip-collector.json', import.meta.url);
+  const restorerConfigPath = new URL('./fixtures/roundTrip-restorer.json', import.meta.url);
+  const collector = JSON.parse(readFileSync(collectorConfigPath, 'utf8'));
   const collectionPaths = [];
+  let group = null;
+  let softDeleted = false;
+  let hardDeleted = false;
+  const getGroup = () => (group && !softDeleted
+    ? { ok: true, status: 200, body: group }
+    : { ok: false, status: 404, body: null });
   const reader = {
     collect: async (version, path) => {
       collectionPaths.push(path);
-      return { items: path.startsWith('/groups') ? [currentBody] : [] };
+      return { items: path.startsWith('/groups') && group && !softDeleted ? [group] : [] };
     },
-    get: async () => ({ ok: true, status: 200, body: currentBody }),
+    get: async (version, path) => {
+      if (path.startsWith('/groups/')) return getGroup();
+      if (path.startsWith('/directory/deletedItems/')) {
+        return softDeleted && !hardDeleted
+          ? { ok: true, status: 200, body: group }
+          : { ok: false, status: 404, body: null };
+      }
+      throw new Error(`unexpected fake Graph read: ${path}`);
+    },
+  };
+  const writer = {
+    write: async (version, path, { method, body }) => {
+      if (method === 'POST' && path === '/groups') {
+        group = { ...body, id: 'round-trip-wiring-group' };
+        return { ok: true, status: 201, body: group };
+      }
+      if (method === 'PATCH' && path === '/groups/round-trip-wiring-group') {
+        group = { ...group, ...body };
+        return { ok: true, status: 204, body: null };
+      }
+      if (method === 'DELETE' && path === '/groups/round-trip-wiring-group') {
+        softDeleted = true;
+        return { ok: true, status: 204, body: null };
+      }
+      if (method === 'DELETE' && path === '/directory/deletedItems/round-trip-wiring-group') {
+        hardDeleted = true;
+        return { ok: true, status: 204, body: null };
+      }
+      throw new Error(`unexpected fake Graph write: ${method} ${path}`);
+    },
+    read: async (version, path) => {
+      if (path === '/groups/round-trip-wiring-group') return getGroup();
+      throw new Error(`unexpected fake Graph writer read: ${path}`);
+    },
   };
 
-  const baselineResources = await collectBaselineSnapshot(reader, 'g3', collector);
-  currentBody = driftedBody;
-  const detectedResources = await collectDetectionSnapshot(reader, 'g3', collector, {
-    isExpected: (group) => group.description === 'drifted',
-  });
+  try {
+    const result = await runRoundTrip({
+      mode: 'live',
+      log: () => {},
+      collectorConfigPath,
+      restorerConfigPath,
+      dbUrl: process.env.KEEL_DB_TEST_URL,
+      reader,
+      writer,
+      client,
+      now: () => new Date('2026-09-11T00:00:00.000Z'),
+    });
 
-  assert.equal(
-    baselineResources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g3').payload.description,
-    'baseline',
-  );
-  assert.equal(
-    detectedResources.find((resource) => resource.resourceType === 'group' && resource.sourceId === 'g3').payload.description,
-    'drifted',
-  );
+    assert.equal(result.mode, 'live');
+    assert.equal(softDeleted, true, 'the fake rehearsal group must reach the production cleanup path');
+    assert.equal(hardDeleted, true, 'the fake rehearsal group must be permanently deleted');
+  } finally {
+    await client.end();
+    await isolated.cleanup();
+  }
+
   assert.equal(
     collectionPaths.filter((path) => path.startsWith(`/organization/${collector.tenantId}/certificateBasedAuthConfiguration`)).length,
     2,
-    'both the baseline and detect collection paths must scope organization resources with collector.tenantId',
+    'the runRoundTrip baseline and detect paths must scope organization resources with collector.tenantId',
   );
 }
 

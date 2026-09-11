@@ -1,0 +1,6 @@
+{
+  "tenantId": "tenant-wiring-fixture",
+  "clientId": "collector-fixture-client-id",
+  "certPath": "/fixtures/collector-cert.pem",
+  "keyPath": "/fixtures/collector-key.pem"
+}

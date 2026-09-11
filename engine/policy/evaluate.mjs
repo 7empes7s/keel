@@ -10,6 +10,8 @@
 // no-match evaluation is recorded exactly like a match — so "why did nothing
 // happen" is answerable from the evidence chain alone.
 import { appendEvidence } from '../govern/evidence.mjs';
+import { can } from '../authz/can.mjs';
+import { findPrincipalById } from '../authz/principals.mjs';
 
 export const POLICY_EVALUATION_EVIDENCE_KIND = 'policy-evaluation';
 
@@ -47,23 +49,67 @@ function outcomeFor(policy, drift) {
   return policy.action;
 }
 
+// An automatic policy deliberately does not inherit the creator's authority. The
+// explicit run-as principal must resolve, be enabled, and hold a live remediate grant
+// when an operator creates or enables the policy. The worker rechecks the same grant
+// immediately before it dispatches every queued job.
+export async function requireCurrentRemediationRunAs(client, runAsPrincipalId, at = new Date()) {
+  const principal = await findPrincipalById(client, runAsPrincipalId);
+  if (!(await can(client, principal, 'remediate', at))) {
+    throw new Error('auto-remediation run-as principal must be registered, enabled, and currently authorized for remediate');
+  }
+  return principal;
+}
+
 export async function createPolicy(client, {
   tenantRef, name, enabled = true, resourceType, blastRadius, naturalKeyGlob, changeType,
-  action, maxBlastRadius, maxActionsPerWindow, windowSeconds, createdBy,
+  action, maxBlastRadius, maxActionsPerWindow, windowSeconds, createdBy, runAsPrincipalId,
 }) {
+  if (action === 'auto_remediate') {
+    await requireCurrentRemediationRunAs(client, runAsPrincipalId);
+  }
   const { rows } = await client.query(
     `INSERT INTO policy
        (tenant_ref, name, enabled, resource_type, blast_radius, natural_key_glob, change_type,
-        action, max_blast_radius, max_actions_per_window, window_seconds, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        action, max_blast_radius, max_actions_per_window, window_seconds, created_by,
+        run_as_principal_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
     [
       tenantRef, name, enabled, resourceType ?? null, blastRadius ?? null, naturalKeyGlob ?? null,
       changeType ?? null, action, maxBlastRadius, maxActionsPerWindow ?? null, windowSeconds ?? null,
-      createdBy,
+      createdBy, action === 'auto_remediate' ? runAsPrincipalId : null,
     ],
   );
   return rows[0];
+}
+
+// This is the only policy-enable path. A migrated policy with no valid run-as remains
+// disabled until an operator repairs its identity, and a revoked, disabled, or expired
+// identity cannot be used to turn automation back on.
+export async function setPolicyEnabled(client, { policyId, enabled }) {
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const policy = rows[0];
+  if (!policy) throw new Error(`policy not found: ${policyId}`);
+  if (enabled && policy.action === 'auto_remediate') {
+    await requireCurrentRemediationRunAs(client, policy.run_as_principal_id);
+  }
+  const { rows: updated } = await client.query(
+    `UPDATE policy
+        SET enabled = $2,
+            run_as_repair_required = CASE
+              WHEN $2 AND action = 'auto_remediate' THEN false
+              ELSE run_as_repair_required
+            END,
+            paused_at = CASE
+              WHEN $2 AND action = 'auto_remediate' AND run_as_repair_required THEN NULL
+              ELSE paused_at
+            END
+      WHERE id = $1
+      RETURNING *`,
+    [policyId, enabled],
+  );
+  return updated[0];
 }
 
 /** Evaluates one newly detected drift row against every enabled policy for its

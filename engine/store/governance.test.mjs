@@ -103,9 +103,21 @@ assert.deepEqual(openDrift.map((row) => row.id), [expiredDriftId]);
 // Plan task 19: recordDrift acts on an 'auto_remediate' evaluation immediately —
 // enqueuing a remediate job is not a separate wiring step a caller can forget.
 const adminPrincipalId = '22222222-2222-2222-2222-222222222222';
+const runAsPrincipalId = '33333333-3333-3333-3333-333333333333';
+await client.query(
+  `INSERT INTO principal (id, email, display_name)
+   VALUES ($1, 'governance-run-as@example.com', 'Governance run-as')`,
+  [runAsPrincipalId],
+);
+await client.query(
+  `INSERT INTO role_grant (principal_id, role, granted_by, reason)
+   VALUES ($1, 'restorer', 'test', 'governance auto-remediation test')`,
+  [runAsPrincipalId],
+);
 await createPolicy(client, {
   tenantRef, name: 'auto-remediate governance-test groups', resourceType: 'group',
   action: 'auto_remediate', maxBlastRadius: 'tenant-lockout', createdBy: adminPrincipalId,
+  runAsPrincipalId,
 });
 const autoRemediateDriftId = await recordDrift(client, {
   tenantRef,
@@ -125,7 +137,7 @@ const { rows: autoRemediateJobs } = await client.query(
   [autoRemediateDriftId],
 );
 assert.equal(autoRemediateJobs.length, 1, 'an auto_remediate policy match must enqueue exactly one remediate job');
-assert.equal(autoRemediateJobs[0].requested_by, adminPrincipalId);
+assert.equal(autoRemediateJobs[0].requested_by, runAsPrincipalId);
 
 } finally {
   await client?.end();

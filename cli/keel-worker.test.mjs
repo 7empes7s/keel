@@ -107,6 +107,9 @@ function makeAuthzFakeClient({ principal = null, grants = [] } = {}) {
           grant.active_from <= at && (grant.active_until === null || grant.active_until > at));
         return { rows: live.map((grant) => ({ role: grant.role })) };
       }
+      if (sql.includes('FROM auto_remediation_execution')) {
+        return { rows: [] };
+      }
       throw new Error(`unexpected query: ${sql}`);
     },
   };

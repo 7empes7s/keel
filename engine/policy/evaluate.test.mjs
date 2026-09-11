@@ -64,6 +64,17 @@ try {
   await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
 
   const tenantRef = 'sha256:policy-evaluate-test';
+  const { rows: runAsRows } = await client.query(
+    `INSERT INTO principal (email, display_name)
+     VALUES ('policy-run-as@example.com', 'Policy run-as')
+     RETURNING *`,
+  );
+  const runAsPrincipalId = runAsRows[0].id;
+  await client.query(
+    `INSERT INTO role_grant (principal_id, role, granted_by, reason)
+     VALUES ($1, 'restorer', 'test', 'policy evaluation test')`,
+    [runAsPrincipalId],
+  );
 
   async function makeDrift({ naturalKey, resourceType, changeType, blastRadius }) {
     const baselineSnapshotId = await createSnapshot(client, { tenantRef });
@@ -129,7 +140,7 @@ try {
   // A disabled policy is never matched, whatever its criteria.
   const disabledPolicy = await createPolicy(client, {
     tenantRef, name: 'disabled auto-remediate', resourceType: 'group', action: 'auto_remediate',
-    maxBlastRadius: 'tenant-lockout', createdBy: 'admin-1', enabled: false,
+    maxBlastRadius: 'tenant-lockout', createdBy: 'admin-1', runAsPrincipalId, enabled: false,
   });
   const disabledCheckDrift = await makeDrift({
     naturalKey: 'group:disabled-check', resourceType: 'group', changeType: 'modified', blastRadius: 'cosmetic',
@@ -144,7 +155,7 @@ try {
   // lower than the drift's blast_radius is blocked, not honoured.
   const autoRemediatePolicy = await createPolicy(client, {
     tenantRef, name: 'auto-remediate low blast radius only', resourceType: 'user', action: 'auto_remediate',
-    maxBlastRadius: 'access-affecting', createdBy: 'admin-1',
+    maxBlastRadius: 'access-affecting', createdBy: 'admin-1', runAsPrincipalId,
   });
   const highBlastRadiusDrift = await makeDrift({
     naturalKey: 'user:high-blast', resourceType: 'user', changeType: 'modified', blastRadius: 'tenant-lockout',
@@ -174,7 +185,7 @@ try {
   const blastRadiusScopedPolicy = await createPolicy(client, {
     tenantRef, name: 'auto-remediate access-affecting groups only', resourceType: 'group',
     blastRadius: 'access-affecting', action: 'auto_remediate', maxBlastRadius: 'tenant-lockout',
-    createdBy: 'admin-1',
+    createdBy: 'admin-1', runAsPrincipalId,
   });
   const highBlastRadiusScopedDrift = await makeDrift({
     naturalKey: 'group:high-blast', resourceType: 'group', changeType: 'modified', blastRadius: 'tenant-lockout',

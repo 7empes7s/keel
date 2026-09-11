@@ -18,6 +18,7 @@ import { connect } from '../engine/store/db.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
+import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
 import {
   claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -343,9 +344,14 @@ export const JOB_HANDLERS = {
 };
 
 export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS }) {
+  const failJob = async (error) => {
+    await fail(client, { id: job.id, error });
+    await recordAutoRemediationTerminalOutcome(client, { job, status: 'failed', error });
+  };
+
   const handler = handlers[job.kind];
   if (!handler) {
-    await fail(client, { id: job.id, error: `no worker handler registered for kind: ${job.kind}` });
+    await failJob(`no worker handler registered for kind: ${job.kind}`);
     console.error(`job ${job.id}: no handler for kind ${job.kind}`);
     return;
   }
@@ -357,21 +363,18 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   // it must not complete and it must not silently skip.
   const capability = capabilityForJobKind(job.kind);
   if (capability === null) {
-    await fail(client, { id: job.id, error: `no capability mapping for kind: ${job.kind}` });
+    await failJob(`no capability mapping for kind: ${job.kind}`);
     console.error(`job ${job.id}: no capability mapping for kind ${job.kind}`);
     return;
   }
   const principal = await findPrincipalById(client, job.requested_by);
   if (!principal) {
-    await fail(client, {
-      id: job.id,
-      error: `requester no longer resolves to a principal: ${job.requested_by}`,
-    });
+    await failJob(`requester no longer resolves to a principal: ${job.requested_by}`);
     console.error(`job ${job.id}: requester ${job.requested_by} resolves to no principal`);
     return;
   }
   if (!(await can(client, principal, capability, new Date()))) {
-    await fail(client, { id: job.id, error: `requester no longer authorized for kind: ${job.kind}` });
+    await failJob(`requester no longer authorized for kind: ${job.kind}`);
     console.error(`job ${job.id}: requester ${job.requested_by} no longer authorized for ${job.kind}`);
     return;
   }
@@ -382,7 +385,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     // requester as set_by) receive the whole job as a second argument.
     args = [...handler.argsFor(job.params ?? {}, job), '--db-url', dbUrl];
   } catch (err) {
-    await fail(client, { id: job.id, error: `invalid params: ${err.message}` });
+    await failJob(`invalid params: ${err.message}`);
     console.error(`job ${job.id}: invalid params — ${err.message}`);
     return;
   }
@@ -403,6 +406,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       id: job.id,
       result: { stdout, stderr, durationMs: Date.now() - startedAt },
     });
+    await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
     console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
   } catch (err) {
     const message = [
@@ -410,7 +414,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       err.stderr ? `stderr: ${err.stderr}` : null,
       err.stdout ? `stdout: ${err.stdout}` : null,
     ].filter(Boolean).join('\n');
-    await fail(client, { id: job.id, error: message });
+    await failJob(message);
     console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${message}`);
   } finally {
     clearInterval(heartbeat);

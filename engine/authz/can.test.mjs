@@ -12,7 +12,10 @@ try {
   try {
     await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
     const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
-    const authzSchema = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS principal'));
+    const authzSchema = schema.slice(
+      schema.indexOf('CREATE TABLE IF NOT EXISTS principal'),
+      schema.indexOf('-- §3.3 approvals'),
+    );
     await admin.query(authzSchema);
   } finally {
     await admin.end();

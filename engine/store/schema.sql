@@ -218,7 +218,9 @@ CREATE TABLE IF NOT EXISTS policy (
   max_actions_per_window int,
   window_seconds         int,
   created_at             timestamptz NOT NULL DEFAULT now(),
-  created_by             text NOT NULL
+  created_by             text NOT NULL,
+  run_as_principal_id    uuid REFERENCES principal(id),
+  run_as_repair_required boolean NOT NULL DEFAULT false
 );
 CREATE INDEX IF NOT EXISTS policy_tenant_enabled_idx ON policy (tenant_ref) WHERE enabled;
 
@@ -228,6 +230,58 @@ CREATE INDEX IF NOT EXISTS policy_tenant_enabled_idx ON policy (tenant_ref) WHER
 -- breaker engine/policy/execute.mjs trips itself. A paused policy takes no further
 -- automatic action until an operator clears it.
 ALTER TABLE policy ADD COLUMN IF NOT EXISTS paused_at timestamptz;
+
+-- Task 9: `created_by` remains immutable audit provenance. An auto-remediation
+-- policy instead runs under this separately registered principal, which is checked
+-- for the remediate capability when configured and again by keel-worker at execution.
+-- The nullable column is deliberate: it makes this migration additive for existing
+-- policy rows. The repair marker makes each pre-existing unsafe row visible rather
+-- than silently binding it to its creator or any broader principal.
+ALTER TABLE policy
+  ADD COLUMN IF NOT EXISTS run_as_principal_id uuid REFERENCES principal(id);
+ALTER TABLE policy
+  ADD COLUMN IF NOT EXISTS run_as_repair_required boolean NOT NULL DEFAULT false;
+
+-- Existing automatic policies predate an explicit run-as identity. Disable and pause
+-- every one without a currently enabled restorer grant, including a missing or disabled
+-- principal. Re-running this is safe: paused_at is preserved after its first value and
+-- the same rows remain visibly marked for operator repair.
+UPDATE policy AS policy
+   SET enabled = false,
+       paused_at = COALESCE(policy.paused_at, now()),
+       run_as_repair_required = true
+ WHERE policy.action = 'auto_remediate'
+   AND (
+     policy.run_as_principal_id IS NULL
+     OR NOT EXISTS (
+       SELECT 1
+         FROM principal
+         JOIN role_grant ON role_grant.principal_id = principal.id
+        WHERE principal.id = policy.run_as_principal_id
+          AND principal.disabled_at IS NULL
+          AND role_grant.role = 'restorer'
+          AND role_grant.active_from <= now()
+          AND (role_grant.active_until IS NULL OR role_grant.active_until > now())
+     )
+   );
+
+-- One durable link per policy/drift/job lets worker terminal state become evidence
+-- without putting automation-only metadata into the remediation payload. The payload
+-- continues to contain only drift ids, so automated and human remediation share the
+-- same safety path.
+CREATE TABLE IF NOT EXISTS auto_remediation_execution (
+  job_id      uuid PRIMARY KEY REFERENCES job(id),
+  tenant_ref  text NOT NULL,
+  policy_id   uuid NOT NULL REFERENCES policy(id),
+  drift_id    uuid NOT NULL REFERENCES drift(id),
+  status      text NOT NULL CHECK (status IN ('queued','executed','failed')),
+  queued_at   timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  error       text,
+  UNIQUE (policy_id, drift_id)
+);
+CREATE INDEX IF NOT EXISTS auto_remediation_execution_job_idx
+  ON auto_remediation_execution (job_id);
 
 -- §3.5 notification model (plan task 20). A channel is an outbound destination;
 -- subscriptions select the events it receives; delivery is the durable per-event,

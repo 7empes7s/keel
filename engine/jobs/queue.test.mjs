@@ -14,8 +14,7 @@ try {
   try {
     await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
     const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
-    const jobSchema = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS job'));
-    await admin.query(jobSchema);
+    await admin.query(schema);
   } finally {
     await admin.end();
   }
@@ -157,6 +156,41 @@ await assert.doesNotReject(async () => {
   const empty = await claimNext(client, { workerId: 'worker-a' });
   assert.equal(empty, null);
 });
+
+// --- a job whose not_before is in the future is NOT claimable (task-20 retry backoff) ---
+// Pins the `not_before <= now()` predicate in claimNext: a delayed notify retry must stay
+// queued until its backoff elapses. Dropping that predicate from the claim query must fail
+// this section by claiming the delayed job before the immediate one.
+const delayed = await enqueue(client, {
+  kind: 'notify',
+  params: { deliveryId: 'fixture-delivery-delayed' },
+  requestedBy: 'test-operator',
+  idempotencyKey: 'delivery:fixture-delivery-delayed:attempt:2',
+  notBefore: new Date(Date.now() + 60 * 60 * 1000),
+});
+assert.equal(delayed.status, 'queued');
+assert.ok(new Date(delayed.not_before) > new Date());
+
+const immediate = await enqueue(client, {
+  kind: 'notify', params: { deliveryId: 'fixture-delivery-immediate' },
+  requestedBy: 'test-operator',
+});
+const claimedImmediate = await claimNext(client, { workerId: 'worker-a' });
+assert.equal(claimedImmediate.id, immediate.id, 'only the claimable job may be claimed');
+
+const skippedDelayed = await claimNext(client, { workerId: 'worker-a' });
+assert.equal(skippedDelayed, null, 'a future not_before job must not be claimable');
+const { rows: delayedRows } = await client.query(
+  'SELECT status FROM job WHERE id = $1', [delayed.id],
+);
+assert.equal(delayedRows[0].status, 'queued', 'the delayed job stays queued, never running early');
+
+await client.query(
+  `UPDATE job SET not_before = now() - interval '1 second' WHERE id = $1`,
+  [delayed.id],
+);
+const claimedDelayed = await claimNext(client, { workerId: 'worker-a' });
+assert.equal(claimedDelayed.id, delayed.id, 'once not_before passes the job becomes claimable');
 
 // --- complete/fail set terminal status and timestamps ---
 const succeededJob = await enqueue(client, { kind: 'prune', params: {}, requestedBy: 'test-operator' });

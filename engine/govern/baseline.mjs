@@ -1,5 +1,52 @@
 import { createHash } from 'node:crypto';
 import { canonicalize } from '../cir/canonicalHash.mjs';
+import { DESCRIPTORS } from '../collect/descriptors.mjs';
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * A baseline represents the whole estate, so a source is safe only when every
+ * descriptor explicitly reports a successful collection. A completed snapshot
+ * alone proves only that collection finished; it does not prove its coverage.
+ */
+export function isEligibleBaselineSource(snapshot, { tenantRef }) {
+  if (!snapshot
+    || snapshot.tenant_ref !== tenantRef
+    || snapshot.status !== 'complete'
+    || snapshot.completed_at === null
+    || snapshot.completed_at === undefined
+    || !isRecord(snapshot.coverage_digest)) {
+    return false;
+  }
+
+  return DESCRIPTORS.every(({ type }) => {
+    const coverage = snapshot.coverage_digest[type];
+    return isRecord(coverage) && coverage.outcome === 'complete';
+  });
+}
+
+/**
+ * The portal's baseline picker and seedFromSnapshot share this contract. Keep
+ * tier-filtered snapshots available to restore/history callers; this list is
+ * specifically for whole-estate baseline sources.
+ */
+export async function listEligibleBaselineSnapshots(client, { tenantRef, limit = 50 }) {
+  const { rows } = await client.query(
+    `SELECT s.id, s.tenant_ref, s.status, s.started_at, s.completed_at,
+            s.coverage_digest, count(rv.id)::int AS resource_count
+     FROM snapshot s
+     LEFT JOIN resource_version rv ON rv.snapshot_id = s.id
+     WHERE s.tenant_ref = $1
+     GROUP BY s.id
+     ORDER BY s.started_at DESC`,
+    [tenantRef],
+  );
+  return rows
+    .filter((snapshot) => isEligibleBaselineSource(snapshot, { tenantRef }))
+    .slice(0, limit);
+}
 
 function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor }) {
   return createHash('sha256')
@@ -132,6 +179,18 @@ export async function seedFromSnapshot(client, {
 }) {
   await client.query('BEGIN');
   try {
+    const { rows: snapshotRows } = await client.query(
+      `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
+       FROM snapshot
+       WHERE id = $1
+       FOR UPDATE`,
+      [snapshotId],
+    );
+    const snapshot = snapshotRows[0];
+    if (!isEligibleBaselineSource(snapshot, { tenantRef })) {
+      throw new Error(`snapshot is not an eligible whole-estate baseline source: ${snapshotId}`);
+    }
+
     await client.query(
       `UPDATE baseline
        SET active = false

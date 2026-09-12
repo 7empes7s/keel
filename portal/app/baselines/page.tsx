@@ -13,15 +13,18 @@ import { getBaselinesData } from "@/lib/portal-data";
 import {
   getRecentJobs,
   getSnapshotOptions,
+  hasCompletedSnapshots,
   type JobRecord,
   type SnapshotOption,
 } from "@/lib/portal-jobs";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { BaselinesData } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
 
 export default async function BaselinesPage() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.baselinesPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);
@@ -32,11 +35,13 @@ export default async function BaselinesPage() {
 
   let data: BaselinesData;
   let snapshots: SnapshotOption[];
+  let completedSnapshotsExist: boolean;
   let jobs: JobRecord[];
   try {
-    [data, snapshots, jobs] = await Promise.all([
+    [data, snapshots, completedSnapshotsExist, jobs] = await Promise.all([
       getBaselinesData(),
       getSnapshotOptions(),
+      hasCompletedSnapshots(),
       getRecentJobs(BASELINE_JOB_KINDS),
     ]);
   } catch {
@@ -67,7 +72,11 @@ export default async function BaselinesPage() {
         title="Baselines"
       />
 
-      <BaselineCreateForm disabled={!canBaseline} snapshots={snapshots} />
+      <BaselineCreateForm
+        completedSnapshotsExist={completedSnapshotsExist}
+        disabled={!canBaseline}
+        snapshots={snapshots}
+      />
 
       <section aria-labelledby="baseline-list-heading" className="report-section">
         <div className="section-heading-row report-heading">

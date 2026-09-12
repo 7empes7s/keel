@@ -6,8 +6,9 @@ import { AUTOMATION_EXECUTION_EVIDENCE_KIND, executeAutoRemediation } from './ex
 import { createPolicy, setPolicyEnabled } from './evaluate.mjs';
 import { verifyChain } from '../govern/evidence.mjs';
 import { seedFromSnapshot } from '../govern/baseline.mjs';
-import { createSnapshot, insertResourceVersion } from '../store/db.mjs';
+import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runJob } from '../../cli/keel-worker.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -46,6 +47,11 @@ try {
         payloadHash: `${naturalKey}-before`, criticality: 'tier1', blastRadius,
         fidelity: 'full', provenance: { adapter: 'test' },
       },
+    });
+    await completeSnapshot(client, {
+      id: baselineSnapshotId,
+      status: 'complete',
+      coverageDigest: fullSuccessfulCoverageDigest(),
     });
     const baselineId = await seedFromSnapshot(client, {
       tenantRef, snapshotId: baselineSnapshotId, setBy: adminPrincipalId,

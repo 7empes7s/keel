@@ -242,6 +242,7 @@ function renderBaselineCreateForm() {
       hookIndex = 0;
       contextIndex = 0;
       return BaselineCreateForm({
+        completedSnapshotsExist: true,
         disabled: false,
         snapshots: [
           {

@@ -16,9 +16,11 @@ function describeSnapshot(snapshot: SnapshotOption): string {
 // the guarded action API; the new idempotency key per completed submission makes a
 // double-submit return the same job while a genuinely new create enqueues a new one.
 export function BaselineCreateForm({
+  completedSnapshotsExist,
   snapshots,
   disabled,
 }: {
+  completedSnapshotsExist: boolean;
   snapshots: SnapshotOption[];
   disabled: boolean;
 }) {
@@ -124,7 +126,9 @@ export function BaselineCreateForm({
         </>
       ) : (
         <p className="empty-state">
-          No completed snapshots are available. Run a collection before creating a baseline.
+          {completedSnapshotsExist
+            ? "Completed snapshots exist, but none is safe for a whole-estate baseline. Run a full successful collection before creating a baseline."
+            : "No completed snapshots are available. Run a collection before creating a baseline."}
         </p>
       )}
 

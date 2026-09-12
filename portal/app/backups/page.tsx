@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
 
-const BACKUP_JOB_KINDS = ["backup"];
+export const BACKUP_JOB_KINDS = ["backup"];
 
 export default async function BackupsPage() {
   await connection();

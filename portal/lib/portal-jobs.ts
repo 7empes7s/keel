@@ -1,4 +1,5 @@
 import { listJobs } from "../../engine/jobs/queue.mjs";
+import { listEligibleBaselineSnapshots } from "../../engine/govern/baseline.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import { normalizeJob } from "@/lib/action";
@@ -28,6 +29,11 @@ function iso(value: unknown): string | null {
 // The normalized shape is exactly what GET /api/jobs serves, so the pages render the
 // same job a client-side poll of the API would return.
 export type JobRecord = ReturnType<typeof normalizeJob>;
+
+export interface JobsData {
+  generatedAt: string;
+  jobs: JobRecord[];
+}
 
 export interface SnapshotOption {
   id: string;
@@ -60,9 +66,63 @@ export async function getRecentJobs(
   });
 }
 
-// Snapshots a baseline can be created from: completed collections for this tenant,
-// newest first, with their captured resource counts.
+// The API job-history loaders intentionally open their own client only after the
+// route-level read guard has admitted the caller.
+export async function getJobsData(): Promise<JobsData> {
+  return withClient(async (client) => {
+    const rows = (await listJobs(client, { limit: 100 })) as UnknownRecord[];
+    return {
+      generatedAt: new Date().toISOString(),
+      jobs: rows.map(normalizeJob),
+    };
+  });
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function getJobData(id: string): Promise<JobRecord | null> {
+  if (!UUID_PATTERN.test(id)) return null;
+  return withClient(async (client) => {
+    const { rows } = await client.query(`SELECT * FROM job WHERE id = $1`, [id]);
+    return rows[0] ? normalizeJob(rows[0]) : null;
+  });
+}
+
+// Snapshots a baseline can be created from use the engine-owned whole-estate
+// eligibility contract. This is presentation only: seedFromSnapshot enforces the
+// same contract inside its transaction for every direct engine caller.
 export async function getSnapshotOptions(limit = 50): Promise<SnapshotOption[]> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const rows = await listEligibleBaselineSnapshots(client, { tenantRef: ref, limit });
+    return rows.map((row: UnknownRecord) => ({
+      id: String(row.id),
+      startedAt: iso(row.started_at),
+      completedAt: iso(row.completed_at),
+      resourceCount: Number(row.resource_count ?? 0),
+    }));
+  });
+}
+
+export async function hasCompletedSnapshots(): Promise<boolean> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const { rows } = await client.query(
+      `SELECT EXISTS(
+         SELECT 1
+         FROM snapshot
+         WHERE tenant_ref = $1 AND status = 'complete'
+       ) AS has_completed_snapshots`,
+      [ref],
+    );
+    return Boolean(rows[0]?.has_completed_snapshots);
+  });
+}
+
+// Partial snapshots remain selectable for explicitly scoped restore work. Baseline
+// creation is stricter because it establishes a whole-estate comparison point.
+export async function getRestoreSnapshotOptions(limit = 50): Promise<SnapshotOption[]> {
   const ref = tenantRef();
   return withClient(async (client) => {
     const { rows } = await client.query(

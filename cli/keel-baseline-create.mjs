@@ -10,16 +10,17 @@
 // engine module — this file only parses argv and connects.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { seedFromSnapshot } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
 
-function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+function arg(name, fallback, argv = process.argv) {
+  const i = argv.indexOf(`--${name}`);
+  return i > -1 ? argv[i + 1] : fallback;
 }
 
-function requireArg(name) {
-  const value = arg(name);
+function requireArg(name, argv = process.argv) {
+  const value = arg(name, undefined, argv);
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`--${name} is required`);
   }
@@ -28,38 +29,58 @@ function requireArg(name) {
 
 // The tenant ref is the hash of the tenant id in the config file, exactly as
 // keel-collect.mjs and keel-prune.mjs derive it; an explicit --tenant-ref wins.
-function resolveTenantRef() {
-  const explicit = arg('tenant-ref');
+function resolveTenantRef({ argv, readFile }) {
+  const explicit = arg('tenant-ref', undefined, argv);
   if (explicit) return explicit;
-  const config = JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
+  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
-async function main() {
-  if (process.argv.includes('--help')) {
-    console.log('usage: keel-baseline-create.mjs --snapshot-id ID --label LABEL --set-by PRINCIPAL [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
+export async function main({
+  argv = process.argv,
+  readFile = readFileSync,
+  dbUrl = process.env.KEEL_DB_URL,
+  dependencies = {},
+  logger = console,
+} = {}) {
+  if (argv.includes('--help')) {
+    logger.log('usage: keel-baseline-create.mjs --snapshot-id ID --label LABEL --set-by PRINCIPAL [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     return;
   }
 
-  const dbUrl = arg('db-url', process.env.KEEL_DB_URL);
-  if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
+  const selectedDbUrl = arg('db-url', dbUrl, argv);
+  if (!selectedDbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
+  const {
+    connect: connectFn = connect,
+    seedFromSnapshot: seedFromSnapshotFn = seedFromSnapshot,
+  } = dependencies;
 
-  const client = await connect(dbUrl);
+  const client = await connectFn(selectedDbUrl);
   try {
-    const baselineId = await seedFromSnapshot(client, {
-      tenantRef: resolveTenantRef(),
-      snapshotId: requireArg('snapshot-id'),
-      setBy: requireArg('set-by'),
-      label: requireArg('label'),
-      description: arg('description') ?? null,
+    const baselineId = await seedFromSnapshotFn(client, {
+      tenantRef: resolveTenantRef({ argv, readFile }),
+      snapshotId: requireArg('snapshot-id', argv),
+      setBy: requireArg('set-by', argv),
+      label: requireArg('label', argv),
+      description: arg('description', undefined, argv) ?? null,
     });
-    console.log(`baseline ${baselineId} created and active`);
+    logger.log(`baseline ${baselineId} created and active`);
+    return baselineId;
   } finally {
     await client.end();
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export async function runCli(options = {}) {
+  try {
+    await main(options);
+    return 0;
+  } catch (err) {
+    (options.logger ?? console).error(err);
+    return 1;
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runCli().then((exitCode) => { process.exitCode = exitCode; });
+}

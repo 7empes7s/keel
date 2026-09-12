@@ -13,10 +13,11 @@ import {
 } from "@/lib/portal-data";
 import {
   getRecentJobs,
-  getSnapshotOptions,
+  getRestoreSnapshotOptions,
   type JobRecord,
   type SnapshotOption,
 } from "@/lib/portal-jobs";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
 const RESTORE_JOB_KINDS = ["restore"];
 
@@ -31,6 +32,7 @@ export default async function RestorePage({
   searchParams: Promise<{ snapshot?: string }>;
 }) {
   await connection();
+  await requireReadAccess(DATA_SURFACES.restorePage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);
@@ -43,7 +45,7 @@ export default async function RestorePage({
   let snapshotId: string | null = null;
   try {
     [snapshots, jobs] = await Promise.all([
-      getSnapshotOptions(),
+      getRestoreSnapshotOptions(),
       getRecentJobs(RESTORE_JOB_KINDS),
     ]);
     snapshotId = requestedSnapshot !== undefined

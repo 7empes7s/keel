@@ -3,10 +3,11 @@ import { readFileSync } from 'node:fs';
 import {
   acceptDrift, seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
 } from './baseline.mjs';
-import { createSnapshot, insertResourceVersion } from '../store/db.mjs';
+import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
 import { POLICY_EVALUATION_EVIDENCE_KIND } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
@@ -15,6 +16,16 @@ try {
   client = await database.connect();
   await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
 const tenantRef = 'sha256:baseline-test';
+
+async function createFullSnapshot(tenant) {
+  const snapshotId = await createSnapshot(client, { tenantRef: tenant });
+  await completeSnapshot(client, {
+    id: snapshotId,
+    status: 'complete',
+    coverageDigest: fullSuccessfulCoverageDigest(),
+  });
+  return snapshotId;
+}
 
 async function addGroup(snapshotId, naturalKey, displayName) {
   return insertResourceVersion(client, {
@@ -32,7 +43,7 @@ async function addGroup(snapshotId, naturalKey, displayName) {
   });
 }
 
-const baselineSnapshotId = await createSnapshot(client, { tenantRef });
+const baselineSnapshotId = await createFullSnapshot(tenantRef);
 const alphaV1 = await addGroup(baselineSnapshotId, 'group:alpha', 'Alpha');
 const betaV1 = await addGroup(baselineSnapshotId, 'group:beta', 'Beta');
 const gammaV1 = await addGroup(baselineSnapshotId, 'group:gamma', 'Gamma');
@@ -55,7 +66,75 @@ assert.deepEqual(seededRows, [
   { natural_key: 'group:gamma', resource_version_id: gammaV1 },
 ]);
 
-const observedSnapshotId = await createSnapshot(client, { tenantRef });
+// A baseline source must be a same-tenant, completed, whole-estate success. Every
+// rejection happens before the current active baseline is deactivated or a new one
+// is inserted.
+async function assertRejectedBaselineSource(snapshotId, label) {
+  await assert.rejects(
+    () => seedFromSnapshot(client, {
+      tenantRef,
+      snapshotId,
+      setBy: 'test-operator',
+      label,
+    }),
+    /eligible whole-estate baseline source/,
+  );
+  const { rows: activeRows } = await client.query(
+    `SELECT id
+     FROM baseline
+     WHERE tenant_ref = $1 AND active = true`,
+    [tenantRef],
+  );
+  assert.deepEqual(activeRows.map((row) => row.id), [baselineId]);
+}
+
+const foreignSnapshotId = await createFullSnapshot('sha256:foreign-baseline-source');
+await addGroup(foreignSnapshotId, 'group:foreign', 'Foreign');
+await assertRejectedBaselineSource(foreignSnapshotId, 'foreign-source');
+
+const runningSnapshotId = await createSnapshot(client, { tenantRef });
+await addGroup(runningSnapshotId, 'group:running', 'Running');
+await assertRejectedBaselineSource(runningSnapshotId, 'running-source');
+
+const noCompletionTimestampSnapshotId = await createSnapshot(client, { tenantRef });
+await client.query(
+  `UPDATE snapshot
+   SET status = 'complete', coverage_digest = $2
+   WHERE id = $1`,
+  [noCompletionTimestampSnapshotId, fullSuccessfulCoverageDigest()],
+);
+await assertRejectedBaselineSource(noCompletionTimestampSnapshotId, 'no-completion-timestamp-source');
+
+const tierFilteredSnapshotId = await createSnapshot(client, { tenantRef });
+await addGroup(tierFilteredSnapshotId, 'group:tier1', 'Tier 1');
+await completeSnapshot(client, {
+  id: tierFilteredSnapshotId,
+  status: 'complete',
+  coverageDigest: { group: { outcome: 'complete', itemCount: 1 } },
+});
+await assertRejectedBaselineSource(tierFilteredSnapshotId, 'tier-filtered-source');
+
+const failedCoverage = fullSuccessfulCoverageDigest();
+failedCoverage.user = { outcome: 'failed', itemCount: null, error: 'fixture denial' };
+const failedCoverageSnapshotId = await createSnapshot(client, { tenantRef });
+await completeSnapshot(client, {
+  id: failedCoverageSnapshotId,
+  status: 'complete',
+  coverageDigest: failedCoverage,
+});
+await assertRejectedBaselineSource(failedCoverageSnapshotId, 'failed-coverage-source');
+
+const missingCoverage = fullSuccessfulCoverageDigest();
+delete missingCoverage.user;
+const missingCoverageSnapshotId = await createSnapshot(client, { tenantRef });
+await completeSnapshot(client, {
+  id: missingCoverageSnapshotId,
+  status: 'complete',
+  coverageDigest: missingCoverage,
+});
+await assertRejectedBaselineSource(missingCoverageSnapshotId, 'missing-coverage-source');
+
+const observedSnapshotId = await createFullSnapshot(tenantRef);
 const alphaV2 = await addGroup(observedSnapshotId, 'group:alpha', 'Alpha changed');
 const gammaV2 = await addGroup(observedSnapshotId, 'group:gamma', 'Gamma');
 const deltaV2 = await addGroup(observedSnapshotId, 'group:delta', 'Delta');
@@ -219,7 +298,7 @@ assert.deepEqual(baselines, [
 // --- Named baselines: label/description, listBaselines, getBaselineByLabel, activateBaseline ---
 
 const labelTenantRef = 'sha256:baseline-label-test';
-const labelSnapshotId = await createSnapshot(client, { tenantRef: labelTenantRef });
+const labelSnapshotId = await createFullSnapshot(labelTenantRef);
 await addGroup(labelSnapshotId, 'group:one', 'One');
 
 const namedBaselineId = await seedFromSnapshot(client, {
@@ -238,7 +317,7 @@ assert.equal(fetchedByLabel.id, namedBaselineId);
 assert.equal(fetchedByLabel.description, 'Snapshot taken right after the Q3 audit closed.');
 
 // Two baselines in the same tenant cannot share a label.
-const dupSnapshotId = await createSnapshot(client, { tenantRef: labelTenantRef });
+const dupSnapshotId = await createFullSnapshot(labelTenantRef);
 await addGroup(dupSnapshotId, 'group:two', 'Two');
 await assert.rejects(() => seedFromSnapshot(client, {
   tenantRef: labelTenantRef,
@@ -248,14 +327,14 @@ await assert.rejects(() => seedFromSnapshot(client, {
 }));
 
 // A baseline with NO label is still allowed, and many of them can coexist.
-const unlabeledSnapshotA = await createSnapshot(client, { tenantRef: labelTenantRef });
+const unlabeledSnapshotA = await createFullSnapshot(labelTenantRef);
 await addGroup(unlabeledSnapshotA, 'group:three', 'Three');
 const unlabeledBaselineA = await seedFromSnapshot(client, {
   tenantRef: labelTenantRef,
   snapshotId: unlabeledSnapshotA,
   setBy: 'label-operator',
 });
-const unlabeledSnapshotB = await createSnapshot(client, { tenantRef: labelTenantRef });
+const unlabeledSnapshotB = await createFullSnapshot(labelTenantRef);
 await addGroup(unlabeledSnapshotB, 'group:four', 'Four');
 const unlabeledBaselineB = await seedFromSnapshot(client, {
   tenantRef: labelTenantRef,
@@ -314,7 +393,7 @@ assert.deepEqual(activeRows.rows.map((row) => row.id), [namedBaselineId]);
 // transaction (the task's named mutation) and the two activate writes interleave
 // past the partial unique index, making one call reject — which fails here.
 const raceTenantRef = 'sha256:baseline-race-test';
-const raceSnapshotId = await createSnapshot(client, { tenantRef: raceTenantRef });
+const raceSnapshotId = await createFullSnapshot(raceTenantRef);
 await addGroup(raceSnapshotId, 'group:raced', 'Raced');
 const raceBaselineA = await seedFromSnapshot(client, {
   tenantRef: raceTenantRef,

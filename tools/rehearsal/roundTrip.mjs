@@ -12,6 +12,7 @@ import { getToken } from '../tenant-probe/auth.mjs';
 import { GraphReader } from '../tenant-probe/graph.mjs';
 import { canonicalHash } from '../../engine/cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../../engine/cir/canonicalize.mjs';
+import { DESCRIPTORS } from '../../engine/collect/descriptors.mjs';
 import { collectM1 } from '../../engine/collect/entraAdapter.mjs';
 import { seedFromSnapshot } from '../../engine/govern/baseline.mjs';
 import { diffSnapshots } from '../../engine/govern/diffSnapshots.mjs';
@@ -234,15 +235,22 @@ export async function collectDetectionSnapshot(reader, groupId, collector, { isE
 
 async function persistSnapshot(client, { tenantRef, resources }) {
   const snapshotId = await createSnapshot(client, { tenantRef });
-  const coverageDigest = {};
+  const itemCounts = new Map();
   for (const resource of resources) {
-    coverageDigest[resource.resourceType] = (coverageDigest[resource.resourceType] ?? 0) + 1;
+    itemCounts.set(resource.resourceType, (itemCounts.get(resource.resourceType) ?? 0) + 1);
     const versionId = await insertResourceVersion(client, {
       snapshotId,
       resource: { ...resource, fidelity: resource.provenance.fidelity },
     });
     await insertReferences(client, { fromVersion: versionId, references: resource.references });
   }
+  // collectM1 is fail-fast across every descriptor, so reaching this point
+  // proves a full successful collection. Preserve that evidence explicitly;
+  // an absent resource type is a successful empty collection, not no coverage.
+  const coverageDigest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, {
+    outcome: 'complete',
+    itemCount: itemCounts.get(type) ?? 0,
+  }]));
   await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
   return snapshotId;
 }

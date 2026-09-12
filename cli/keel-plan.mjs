@@ -21,6 +21,10 @@ function arg(name, fallback, argv = process.argv) {
   return i > -1 ? argv[i + 1] : fallback;
 }
 
+function isUsableSnapshot(snapshot) {
+  return snapshot?.status === 'complete' && snapshot.completed_at != null;
+}
+
 export async function runPlan({
   sourceConfig,
   targetConfig,
@@ -44,6 +48,9 @@ export async function runPlan({
     client = await connectFn(dbUrl);
     const snapshot = await getLatestSnapshotFn(client, { tenantRef });
     if (!snapshot) throw new Error(`no snapshot found for ${tenantRef} — run keel-collect.mjs first`);
+    if (!isUsableSnapshot(snapshot)) {
+      throw new Error(`snapshot ${snapshot.id} is not a usable completed snapshot`);
+    }
 
     const versions = await getResourceVersionsFn(client, { snapshotId: snapshot.id });
     const references = await getReferencesFn(client, { snapshotId: snapshot.id });

@@ -50,7 +50,12 @@ export async function insertReferences(client, { fromVersion, references }) {
 
 export async function getLatestSnapshot(client, { tenantRef }) {
   const { rows } = await client.query(
-    `SELECT * FROM snapshot WHERE tenant_ref = $1 ORDER BY started_at DESC LIMIT 1`,
+    `SELECT * FROM snapshot
+     WHERE tenant_ref = $1
+       AND status = 'complete'
+       AND completed_at IS NOT NULL
+     ORDER BY completed_at DESC, started_at DESC, id DESC
+     LIMIT 1`,
     [tenantRef],
   );
   return rows[0] ?? null;

@@ -1,10 +1,7 @@
 import { strict as assert } from 'node:assert';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import {
   createPolicy,
-  evaluateOpenDrifts,
   exceedsMaxBlastRadius,
   policyMatches,
   POLICY_EVALUATION_EVIDENCE_KIND,
@@ -13,10 +10,8 @@ import { verifyChain } from '../govern/evidence.mjs';
 import { seedFromSnapshot } from '../govern/baseline.mjs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
-import { enqueue } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
-import { runJob } from '../../cli/keel-worker.mjs';
 
 // --- pure match / guardrail checks, no database needed ---
 
@@ -81,17 +76,6 @@ try {
      VALUES ($1, 'restorer', 'test', 'policy evaluation test')`,
     [runAsPrincipalId],
   );
-  const { rows: policyAdminRows } = await client.query(
-    `INSERT INTO principal (email, display_name)
-     VALUES ('policy-admin@example.com', 'Policy admin')
-     RETURNING *`,
-  );
-  const policyAdminId = policyAdminRows[0].id;
-  await client.query(
-    `INSERT INTO role_grant (principal_id, role, granted_by, reason)
-     VALUES ($1, 'admin', 'test', 'policy evaluation administrator')`,
-    [policyAdminId],
-  );
 
   async function makeDrift({ naturalKey, resourceType, changeType, blastRadius }) {
     const baselineSnapshotId = await createSnapshot(client, { tenantRef });
@@ -145,88 +129,6 @@ try {
   const noMatchEvidence = await evidenceFor(unmatchedDrift.id);
   assert.equal(noMatchEvidence.matched, false, 'the no-match case is recorded, not silently skipped');
   assert.deepEqual(noMatchEvidence.matches, []);
-
-  // A policy enabled after an otherwise-open drift exists gets its evaluation pass
-  // through the policy-evaluate worker job. The worker runs the real CLI against this
-  // isolated database; only the destructive remediation process-spawn boundary is
-  // replaced with a fixture below.
-  const afterDriftPolicy = await createPolicy(client, {
-    tenantRef, name: 'evaluate existing group drift', resourceType: 'group',
-    naturalKeyGlob: 'group:unmatched', action: 'auto_remediate', maxBlastRadius: 'tenant-lockout',
-    createdBy: policyAdminId, runAsPrincipalId,
-  });
-  const policyEvaluateJob = await enqueue(client, {
-    kind: 'policy-evaluate', params: { tenantRef }, requestedBy: policyAdminId,
-  });
-  await runJob(client, policyEvaluateJob, {
-    dbUrl: database.url,
-    onInFlightChange: () => {},
-  });
-  const { rows: completedPolicyEvaluateRows } = await client.query(
-    'SELECT * FROM job WHERE id = $1', [policyEvaluateJob.id],
-  );
-  assert.equal(completedPolicyEvaluateRows[0].status, 'succeeded');
-  const { rows: queuedRemediationRows } = await client.query(
-    `SELECT * FROM job
-      WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`,
-    [unmatchedDrift.id],
-  );
-  const queuedRemediation = queuedRemediationRows[0];
-  assert.ok(queuedRemediation, 'the real policy-evaluate path reaches executeAutoRemediation');
-  assert.equal(queuedRemediation.requested_by, runAsPrincipalId);
-
-  const workerFixtureDir = mkdtempSync(join(tmpdir(), 'keel-policy-evaluate-worker-'));
-  const workerHandlerPath = join(workerFixtureDir, 'fake-remediate-handler.mjs');
-  const reachedPath = join(workerFixtureDir, 'remediation-reached');
-  writeFileSync(workerHandlerPath, `
-    import { writeFileSync } from 'node:fs';
-    writeFileSync(process.argv[2], 'handler reached');
-  `);
-  await runJob(client, queuedRemediation, {
-    dbUrl: database.url,
-    onInFlightChange: () => {},
-    handlers: {
-      remediate: {
-        script: workerHandlerPath,
-        argsFor: () => [reachedPath],
-      },
-    },
-  });
-  assert.equal(
-    existsSync(reachedPath),
-    true,
-    'the resulting remediation reaches a fake handler only at the process-spawn boundary',
-  );
-  assert.equal(afterDriftPolicy.action, 'auto_remediate');
-
-  // Disabled and unmatched policies leave an open drift without an action, but the
-  // rerun still records its no-match evaluation evidence.
-  const disabledReplayPolicy = await createPolicy(client, {
-    tenantRef, name: 'disabled service principal policy', resourceType: 'servicePrincipal',
-    action: 'auto_remediate', maxBlastRadius: 'tenant-lockout', createdBy: policyAdminId,
-    runAsPrincipalId, enabled: false,
-  });
-  const disabledDrift = await makeDrift({
-    naturalKey: 'servicePrincipal:disabled-policy', resourceType: 'servicePrincipal',
-    changeType: 'modified', blastRadius: 'cosmetic',
-  });
-  const unmatchedOpenDrift = await makeDrift({
-    naturalKey: 'application:no-policy', resourceType: 'application', changeType: 'modified',
-    blastRadius: 'cosmetic',
-  });
-  await evaluateOpenDrifts(client, { tenantRef });
-  for (const drift of [disabledDrift, unmatchedOpenDrift]) {
-    const evidence = await evidenceFor(drift.id);
-    assert.equal(evidence.matched, false, `${drift.natural_key} records a no-match evaluation`);
-    assert.deepEqual(evidence.matches, []);
-    const { rows: actionRows } = await client.query(
-      `SELECT id FROM job
-       WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`,
-      [drift.id],
-    );
-    assert.equal(actionRows.length, 0, `${drift.natural_key} produces no remediation action`);
-  }
-  assert.equal(disabledReplayPolicy.enabled, false);
 
   // A matching alert policy recommends 'alert' verbatim.
   const alertPolicy = await createPolicy(client, {

@@ -103,7 +103,7 @@ test("the route and page inventory is closed around each declared capability", (
   );
 
   for (const [name, surface] of declared) {
-    assert.equal(surface.capability, surface.source.includes("policies") ? "policies" : "read", `${name} must require its designated capability`);
+    assert.equal(surface.capability, surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
   }
 
   const pages = sources
@@ -155,9 +155,9 @@ test("the route and page inventory is closed around each declared capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
-      if (["jobsPage", "jobPage", "policiesPage", "policyPage"].includes(declaration.name)) {
+      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage"].includes(declaration.name)) {
         const guard = content.indexOf(`await requireReadAccess(${reference})`);
-        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies))\(/);
+        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries)\(/);
         assert.ok(loader > guard, `${source} must guard before its API loader`);
       }
     } else if (source === "api/policies/[id]/enabled/route.ts" || source === "api/policies/[id]/clear-pause/route.ts") {

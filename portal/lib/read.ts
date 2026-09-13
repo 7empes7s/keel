@@ -10,6 +10,10 @@ interface HeaderSource {
 }
 
 export const DATA_SURFACES = {
+  channelsApi: { capability: "configuration", source: "api/channels/route.ts" },
+  subscriptionsApi: { capability: "configuration", source: "api/subscriptions/route.ts" },
+  deliveriesApi: { capability: "read", source: "api/deliveries/route.ts" },
+  notificationsPage: { capability: "read", source: "notifications/page.tsx" },
   policiesApi: { capability: "policies", source: "api/policies/route.ts" },
   policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },
   policyEnabledApi: { capability: "policies", source: "api/policies/[id]/enabled/route.ts" },

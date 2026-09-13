@@ -93,6 +93,7 @@ export async function resolveRestoreScope(client, { driftIds }) {
 
 export async function runRemediate({
   driftIds,
+  previewOnly = false,
   targetConfig,
   collectorConfig,
   mode,
@@ -118,6 +119,7 @@ export async function runRemediate({
 
   logger.log(`remediating ${scope.selection.length} natural key(s) from snapshot ${scope.snapshotId}`);
   return runRestoreFn({
+    ...(previewOnly ? { previewOnly: true } : {}),
     snapshotId: scope.snapshotId,
     reconciliationResources: scope.reconciliationResources,
     targetConfig,

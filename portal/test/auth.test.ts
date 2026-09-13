@@ -188,6 +188,30 @@ test("a valid token is accepted and supplies only its verified identity", async 
   );
 });
 
+test("a valid Access JWT for an unregistered email is refused", async () => {
+  const address = jwksServer.address();
+  assert(address && typeof address !== "string");
+  const unregisteredMiddleware = createAccessMiddleware(
+    () => ({
+      audience,
+      issuer,
+      jwksUrl: new URL(
+        `http://127.0.0.1:${address.port}/cdn-cgi/access/certs`,
+      ),
+    }),
+    async () => ({ principalId: null, capabilities: [] }),
+  );
+
+  const response = await unregisteredMiddleware(
+    request("/api/drift", await accessToken()),
+  );
+
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("x-middleware-next"), null);
+  assert.deepEqual(await response.json(), { error: "forbidden" });
+});
+
 test("GET /api/health is reachable without a token and returns the literal body", async () => {
   const middlewareResponse = await middleware(request("/api/health"));
   const routeResponse = healthCheck();

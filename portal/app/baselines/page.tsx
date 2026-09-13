@@ -17,12 +17,14 @@ import {
   type JobRecord,
   type SnapshotOption,
 } from "@/lib/portal-jobs";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { BaselinesData } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
 
 export default async function BaselinesPage() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.baselinesPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);

@@ -129,9 +129,9 @@ function post(
   });
 }
 
-const restorer = { principalId: "principal-restorer", capabilities: ["restore"] };
+const restorer = { principalId: "principal-restorer", capabilities: ["read", "restore"] };
 
-test("the selection preview refuses an unauthenticated caller and a principal lacking restore", async () => {
+test("the selection preview refuses callers without read or restore", async () => {
   const unauthenticated = await selectionPreviewRoute(
     post("/api/actions/restore/selection", {
       body: { snapshotId, selected: ["conditionalAccessPolicy:Protect-Admins"] },
@@ -139,6 +139,16 @@ test("the selection preview refuses an unauthenticated caller and a principal la
   );
   assert.equal(unauthenticated.status, 403);
   assert.deepEqual(await unauthenticated.json(), { error: "forbidden" });
+
+  const withoutRead = await selectionPreviewRoute(
+    post("/api/actions/restore/selection", {
+      principalId: "principal-restorer",
+      capabilities: ["restore"],
+      body: { snapshotId, selected: ["conditionalAccessPolicy:Protect-Admins"] },
+    }),
+  );
+  assert.equal(withoutRead.status, 403, "a principal without read must be refused");
+  assert.deepEqual(await withoutRead.json(), { error: "forbidden" });
 
   const withoutCapability = await selectionPreviewRoute(
     post("/api/actions/restore/selection", {

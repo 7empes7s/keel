@@ -30,6 +30,11 @@ function iso(value: unknown): string | null {
 // same job a client-side poll of the API would return.
 export type JobRecord = ReturnType<typeof normalizeJob>;
 
+export interface JobsData {
+  generatedAt: string;
+  jobs: JobRecord[];
+}
+
 export interface SnapshotOption {
   id: string;
   startedAt: string | null;
@@ -58,6 +63,29 @@ export async function getRecentJobs(
       .filter((row) => kinds.includes(String(row.kind)))
       .slice(0, limit)
       .map(normalizeJob);
+  });
+}
+
+// The API job-history loaders intentionally open their own client only after the
+// route-level read guard has admitted the caller.
+export async function getJobsData(): Promise<JobsData> {
+  return withClient(async (client) => {
+    const rows = (await listJobs(client, { limit: 100 })) as UnknownRecord[];
+    return {
+      generatedAt: new Date().toISOString(),
+      jobs: rows.map(normalizeJob),
+    };
+  });
+}
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function getJobData(id: string): Promise<JobRecord | null> {
+  if (!UUID_PATTERN.test(id)) return null;
+  return withClient(async (client) => {
+    const { rows } = await client.query(`SELECT * FROM job WHERE id = $1`, [id]);
+    return rows[0] ? normalizeJob(rows[0]) : null;
   });
 }
 

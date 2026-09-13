@@ -8,11 +8,13 @@ import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
 export const BACKUP_JOB_KINDS = ["backup"];
 
 export default async function BackupsPage() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.backupsPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);

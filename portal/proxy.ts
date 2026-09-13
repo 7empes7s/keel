@@ -17,8 +17,20 @@ import {
 type ConfigProvider = () => AccessVerificationConfig;
 type IdentityResolver = (email: string) => Promise<ResolvedIdentity>;
 
+const NO_STORE = { "cache-control": "no-store" } as const;
+
 function unauthorized(): NextResponse {
-  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  return NextResponse.json(
+    { error: "unauthorized" },
+    { status: 401, headers: NO_STORE },
+  );
+}
+
+function forbidden(): NextResponse {
+  return NextResponse.json(
+    { error: "forbidden" },
+    { status: 403, headers: NO_STORE },
+  );
 }
 
 function isUnauthenticatedHealthCheck(request: NextRequest): boolean {
@@ -62,9 +74,9 @@ export function createAccessMiddleware(
       } catch {
         // fail closed: an unresolvable principal has no capabilities
       }
-      if (identity.principalId) {
-        requestHeaders.set(PRINCIPAL_ID_HEADER, identity.principalId);
-      }
+      if (!identity.principalId) return forbidden();
+
+      requestHeaders.set(PRINCIPAL_ID_HEADER, identity.principalId);
       requestHeaders.set(CAPABILITIES_HEADER, identity.capabilities.join(" "));
 
       return NextResponse.next({ request: { headers: requestHeaders } });
@@ -83,4 +95,3 @@ export function proxy(request: NextRequest): Promise<NextResponse> {
 export const config = {
   matcher: ["/:path*"],
 };
-

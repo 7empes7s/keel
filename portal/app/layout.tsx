@@ -24,6 +24,7 @@ export default async function RootLayout({
 }>) {
   const requestHeaders = await headers();
   const email = requestHeaders.get(AUTHENTICATED_EMAIL_HEADER);
+  const canUsers = readAccess(requestHeaders, DATA_SURFACES.principalsPage) !== null;
   const canPolicies = readAccess(requestHeaders, DATA_SURFACES.policiesPage) !== null;
   const canRead = readAccess(requestHeaders, DATA_SURFACES.jobsPage) !== null;
 
@@ -48,7 +49,7 @@ export default async function RootLayout({
                 <small>Operator portal</small>
               </span>
             </Link>
-            <NavLinks canRead={canRead} canPolicies={canPolicies} />
+            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} />
             <div className="operator-context">
               <span className="auth-state">
                 <span aria-hidden="true" className="auth-dot" /> Authenticated

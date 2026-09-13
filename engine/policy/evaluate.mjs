@@ -63,6 +63,34 @@ export async function requireCurrentRemediationRunAs(client, runAsPrincipalId, a
   return principal;
 }
 
+/** Read current policy state, including disabled and paused policies by default. */
+export async function listPolicies(client, { tenantRef, enabled } = {}) {
+  const { rows } = await client.query(
+    `SELECT * FROM policy
+      WHERE tenant_ref = $1 AND ($2::boolean IS NULL OR enabled = $2)
+      ORDER BY created_at, id`,
+    [tenantRef, enabled ?? null],
+  );
+  return rows;
+}
+
+// Clearing a pause must not restore automation under a revoked identity. This does
+// not enable a disabled policy; setPolicyEnabled remains the only enable path.
+export async function clearPolicyPause(client, { policyId }) {
+  const { rows } = await client.query('SELECT * FROM policy WHERE id = $1', [policyId]);
+  const policy = rows[0];
+  if (!policy) throw new Error(`policy not found: ${policyId}`);
+  if (policy.action === 'auto_remediate') {
+    await requireCurrentRemediationRunAs(client, policy.run_as_principal_id);
+  }
+  const { rows: updated } = await client.query(
+    `UPDATE policy SET paused_at = NULL, run_as_repair_required = false
+      WHERE id = $1 RETURNING *`,
+    [policyId],
+  );
+  return updated[0];
+}
+
 export async function createPolicy(client, {
   tenantRef, name, enabled = true, resourceType, blastRadius, naturalKeyGlob, changeType,
   action, maxBlastRadius, maxActionsPerWindow, windowSeconds, createdBy, runAsPrincipalId,

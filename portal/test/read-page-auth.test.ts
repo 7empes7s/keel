@@ -88,6 +88,8 @@ test("every server-rendered data page rejects before its loader without a read g
     restore,
     jobs,
     job,
+    policies,
+    policy,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -99,6 +101,8 @@ test("every server-rendered data page rejects before its loader without a read g
     import("../app/restore/page"),
     import("../app/jobs/page"),
     import("../app/jobs/[id]/page"),
+    import("../app/policies/page"),
+    import("../app/policies/[id]/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -116,6 +120,8 @@ test("every server-rendered data page rejects before its loader without a read g
     ["/restore", restore],
     ["/jobs", jobs],
     ["/jobs/[id]", job],
+    ["/policies", policies],
+    ["/policies/[id]", policy],
   ] as const) {
     await renderWithoutReadGrant(
       route,
@@ -125,7 +131,7 @@ test("every server-rendered data page rejects before its loader without a read g
     );
     await renderWithoutReadGrant(
       route, defaultPage(module), workAsyncStorage, workUnitAsyncStorage,
-      new Headers([[PRINCIPAL_ID_HEADER, "operator"], [CAPABILITIES_HEADER, "collect"]]),
+      new Headers([[PRINCIPAL_ID_HEADER, "operator"], [CAPABILITIES_HEADER, route.startsWith("/policies") ? "read collect" : "collect"]]),
     );
   }
 });
@@ -140,6 +146,8 @@ test("every server-rendered data page rejects a read grant without a principal i
     restore,
     jobs,
     job,
+    policies,
+    policy,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -151,6 +159,8 @@ test("every server-rendered data page rejects a read grant without a principal i
     import("../app/restore/page"),
     import("../app/jobs/page"),
     import("../app/jobs/[id]/page"),
+    import("../app/policies/page"),
+    import("../app/policies/[id]/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -168,6 +178,8 @@ test("every server-rendered data page rejects a read grant without a principal i
     ["/restore", restore],
     ["/jobs", jobs],
     ["/jobs/[id]", job],
+    ["/policies", policies],
+    ["/policies/[id]", policy],
   ] as const) {
     await renderWithoutReadGrant(
       route,

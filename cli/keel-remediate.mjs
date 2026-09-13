@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
+import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
 import { assertSeparateRestorer, runRestore } from './keel-restore.mjs';
 
 function arg(name, fallback, argv = process.argv) {
@@ -74,9 +75,19 @@ export async function resolveRestoreScope(client, { driftIds }) {
     throw new Error(`baseline ${baselineId} spans more than one snapshot — cannot select a single restore source`);
   }
 
+  const { rows: baselineRows } = await client.query(
+    `SELECT rv.*
+     FROM baseline_resource br
+     JOIN resource_version rv ON rv.id = br.resource_version_id
+     WHERE br.baseline_id = $1`,
+    [baselineId],
+  );
+  const reconciliation = buildRollbackPlan(driftRows, baselineRows);
+
   return {
     snapshotId: snapshotRows[0].snapshot_id,
     selection: [...new Set(driftRows.map((row) => row.natural_key))],
+    reconciliationResources: reconciliation.resources,
   };
 }
 
@@ -108,7 +119,7 @@ export async function runRemediate({
   logger.log(`remediating ${scope.selection.length} natural key(s) from snapshot ${scope.snapshotId}`);
   return runRestoreFn({
     snapshotId: scope.snapshotId,
-    selection: scope.selection,
+    reconciliationResources: scope.reconciliationResources,
     targetConfig,
     collectorConfig,
     mode,

@@ -256,6 +256,15 @@ export const JOB_HANDLERS = {
       return args;
     },
   },
+  // A policy may have been enabled after its matching drift was recorded. This
+  // database-only pass re-evaluates the tenant's open drift against current policies;
+  // the wrapper owns no policy decisions and accepts no params besides its tenant scope.
+  'policy-evaluate': {
+    script: join(__dirname, 'keel-policy-evaluate.mjs'),
+    argsFor(params = {}) {
+      return ['--tenant-ref', requireString(params.tenantRef, 'params.tenantRef')];
+    },
+  },
   // Plan task 17: restore dispatches to the existing restore CLI, so every safety gate
   // (synced-object and unsafe-deletion guards, report-only Conditional Access, rollback
   // journal, §10.3 sign-in-path gate) stays on the one apply path. The params carry the

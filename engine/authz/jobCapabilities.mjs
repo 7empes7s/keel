@@ -18,6 +18,7 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   backup: 'backup',
   'baseline-create': 'baseline-create',
   'baseline-activate': 'baseline-create',
+  'policy-evaluate': 'policies',
   remediate: 'remediate',
   restore: 'restore',
   // Channels and subscriptions are configuration; a delivery retains the principal

@@ -12,6 +12,8 @@
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { executeAutoRemediation } from './execute.mjs';
 
 export const POLICY_EVALUATION_EVIDENCE_KIND = 'policy-evaluation';
 
@@ -148,4 +150,40 @@ export async function evaluateDrift(client, { tenantRef, drift, actor = 'policy-
   });
 
   return { driftId: drift.id, matches };
+}
+
+// A policy can be created or enabled after its matching drift was recorded. Re-run the
+// normal one-drift evaluation for every currently open row so those rows receive the
+// same evidence and auto-remediation path as newly recorded drift.
+export async function evaluateOpenDrifts(client, {
+  tenantRef,
+  actor = 'policy-evaluator',
+  automationActor = 'policy-automation',
+}) {
+  const { rows: drifts } = await client.query(
+    `SELECT d.*
+     FROM drift d
+     WHERE d.tenant_ref = $1
+       AND ${OPEN_DRIFT_PREDICATE}
+     ORDER BY d.detected_at, d.id`,
+    [tenantRef],
+  );
+
+  const evaluations = [];
+  for (const drift of drifts) {
+    const evaluation = await evaluateDrift(client, { tenantRef, drift, actor });
+    const remediations = [];
+    for (const match of evaluation.matches) {
+      if (match.outcome === 'auto_remediate') {
+        remediations.push({
+          policyId: match.policyId,
+          ...(await executeAutoRemediation(client, {
+            tenantRef, drift, policyId: match.policyId, actor: automationActor,
+          })),
+        });
+      }
+    }
+    evaluations.push({ ...evaluation, remediations });
+  }
+  return evaluations;
 }

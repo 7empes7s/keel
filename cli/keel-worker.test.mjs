@@ -8,6 +8,29 @@ import {
   isProcessGroupAlive, JOB_HANDLERS, JOB_TIMEOUT_MS, runJob, signalProcessGroup, startJobChild,
 } from './keel-worker.mjs';
 
+function acceptedJobKindsFromSchema(schema) {
+  const match = schema.match(
+    /ALTER TABLE job ADD CONSTRAINT job_kind_check\s+CHECK \(kind IN \(([^)]+)\)\)/,
+  );
+  assert.ok(match, 'schema.sql must declare the job_kind_check accepted-kinds source');
+  return [...match[1].matchAll(/'([^']+)'/g)].map(([, kind]) => kind);
+}
+
+function assertSchemaJobKindCoverage(schema, handlers, capabilities) {
+  for (const kind of acceptedJobKindsFromSchema(schema)) {
+    assert.ok(
+      handlers[kind] !== undefined,
+      `schema-accepted kind ${kind} must have a worker handler`,
+    );
+    assert.ok(
+      capabilities[kind] !== undefined,
+      `schema-accepted kind ${kind} must have a capability mapping`,
+    );
+  }
+}
+
+const schemaSql = readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8');
+
 const fixtureDir = mkdtempSync(join(tmpdir(), 'keel-worker-test-'));
 const grandchildPidPath = join(fixtureDir, 'grandchild.pid');
 const fixturePath = join(fixtureDir, 'spawns-grandchild.mjs');
@@ -80,6 +103,7 @@ writeFileSync(okScriptPath, `console.log('fixture job ran');\n`);
 // handlers for either would write to the tenant, so a fixture stands in for both.
 const fixtureHandlers = {
   collect: { script: okScriptPath, argsFor: () => [] },
+  'policy-evaluate': { script: okScriptPath, argsFor: () => [] },
   restore: { script: okScriptPath, argsFor: () => [] },
   remediate: { script: okScriptPath, argsFor: () => [] },
   'unmapped-kind': { script: okScriptPath, argsFor: () => [] },
@@ -218,6 +242,33 @@ function assertJobFailedUnRun(fake, pattern, label) {
   );
 }
 
+// The database CHECK constraint is the closed inventory. A schema-accepted kind must
+// have both a dispatch handler and an enqueue/worker capability mapping; deriving this
+// from JOB_HANDLERS would hide a kind absent from both tables.
+assert.ok(
+  JOB_HANDLERS['policy-evaluate'] !== undefined,
+  'policy-evaluate must have a worker dispatch handler',
+);
+assertSchemaJobKindCoverage(schemaSql, JOB_HANDLERS, JOB_KIND_CAPABILITIES);
+const fixtureSchemaSql = schemaSql.replace(
+  ",'notify'));",
+  ",'notify','fixture-schema-kind'));",
+);
+assert.notEqual(fixtureSchemaSql, schemaSql, 'the fixture must add a schema-accepted kind');
+assert.throws(
+  () => assertSchemaJobKindCoverage(fixtureSchemaSql, JOB_HANDLERS, JOB_KIND_CAPABILITIES),
+  /schema-accepted kind fixture-schema-kind must have a worker handler/,
+  'a schema kind absent from both tables must fail without a handler being added first',
+);
+assert.throws(
+  () => assertSchemaJobKindCoverage(fixtureSchemaSql, {
+    ...JOB_HANDLERS,
+    'fixture-schema-kind': { script: okScriptPath, argsFor: () => [] },
+  }, JOB_KIND_CAPABILITIES),
+  /schema-accepted kind fixture-schema-kind must have a capability mapping/,
+  'a schema kind with a handler but no capability mapping must also fail',
+);
+
 // --- the kind -> capability mapping is asserted as data, per kind ---
 // Weakening a single entry — restore -> collect, the mutation that survived the first
 // attempt at this task — must fail here, not rely on the behavioural tests alone. The
@@ -232,20 +283,13 @@ assert.deepEqual(
     backup: 'backup',
     'baseline-create': 'baseline-create',
     'baseline-activate': 'baseline-create',
+    'policy-evaluate': 'policies',
     remediate: 'remediate',
     restore: 'restore',
     notify: 'configuration',
   },
   'every job kind must map to exactly the capability that kind requires',
 );
-// Every kind the worker can dispatch is present in the mapping — a registered kind with
-// no entry would be denied at execution time, which is a misconfiguration, not a policy.
-for (const kind of Object.keys(JOB_HANDLERS)) {
-  assert.ok(
-    JOB_KIND_CAPABILITIES[kind] !== undefined,
-    `registered kind ${kind} must have a capability mapping`,
-  );
-}
 
 // --- the re-authorization path is driven with a destructive kind, not only collect ---
 // A principal holding collect (operator) but NOT restore must not run a restore job —
@@ -355,6 +399,51 @@ assert.throws(
   () => JOB_HANDLERS['baseline-activate'].argsFor({}),
   /params.baselineId must be a non-empty string/,
 );
+
+// --- plan task 27: policy evaluation is a policies-authorized tenant-scoped job ---
+assert.equal(
+  JOB_HANDLERS['policy-evaluate'].script,
+  join(cliDir, 'keel-policy-evaluate.mjs'),
+);
+assert.deepEqual(
+  JOB_HANDLERS['policy-evaluate'].argsFor({ tenantRef: 'sha256:tenant-a' }),
+  ['--tenant-ref', 'sha256:tenant-a'],
+);
+assert.throws(
+  () => JOB_HANDLERS['policy-evaluate'].argsFor({}),
+  /params.tenantRef must be a non-empty string/,
+);
+{
+  const policyAdmin = {
+    id: 'principal-policy-admin', email: 'policy-admin@example.com', disabled_at: null,
+  };
+  const fake = makeAuthzFakeClient({
+    principal: policyAdmin,
+    grants: [{ role: 'admin', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('policy-evaluate', {
+    requested_by: policyAdmin.id, params: { tenantRef: 'sha256:tenant-a' },
+  }), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: fixtureHandlers,
+  });
+  assert.equal(fake.failedCalls.length, 0, `unexpected failure: ${fake.failedCalls[0]?.[1]}`);
+  assert.equal(fake.completedCalls.length, 1, 'a requester holding policies runs policy-evaluate');
+}
+{
+  const fake = makeAuthzFakeClient({
+    principal: operatorPrincipal,
+    grants: [{ role: 'operator', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runAuthzJob(fake, authzJobFor('policy-evaluate', {
+    params: { tenantRef: 'sha256:tenant-a' },
+  }));
+  assertJobFailedUnRun(
+    fake, /requester no longer authorized for kind: policy-evaluate/,
+    'policy-evaluate under a principal without policies',
+  );
+}
 
 // --- plan task 17: restore dispatches to the EXISTING restore CLI with whitelisted args ---
 // The handler must never pass arbitrary params through: every flag below is built

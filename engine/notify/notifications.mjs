@@ -157,15 +157,16 @@ export async function dispatchAlert(client, {
 // of their source event as an alert. Its payload contract is the same §3.5 event.
 export const dispatchEvent = dispatchAlert;
 
-export async function listDeliveries(client, { channelId, limit = 50 } = {}) {
+export async function listDeliveries(client, { channelId, status, limit = 50 } = {}) {
   const { rows } = await client.query(
     `SELECT d.*, c.kind AS channel_kind
        FROM delivery d
        JOIN channel c ON c.id = d.channel_id
       WHERE ($1::uuid IS NULL OR d.channel_id = $1)
+        AND ($2::text IS NULL OR d.status = $2)
       ORDER BY d.created_at DESC
-      LIMIT $2`,
-    [channelId ?? null, limit],
+      LIMIT $3`,
+    [channelId ?? null, status ?? null, limit],
   );
   return rows;
 }

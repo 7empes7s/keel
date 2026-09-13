@@ -101,6 +101,7 @@ export function normalizeJob(row: Record<string, unknown>) {
     requestedBy: String(row.requested_by),
     idempotencyKey: (row.idempotency_key as string | null) ?? null,
     workerId: (row.worker_id as string | null) ?? null,
+    heartbeatAt: iso(row.heartbeat_at),
     createdAt: iso(row.created_at),
     startedAt: iso(row.started_at),
     finishedAt: iso(row.finished_at),
@@ -334,8 +335,11 @@ export function guardedJobList(
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "jobs:list", capability: "read" },
-    async ({ client }) => {
-      const rows = (await listJobs(client, { limit: 100 })) as Record<
+    async ({ client, request }) => {
+      const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? 100);
+      const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
+        ? requestedLimit : 100;
+      const rows = (await listJobs(client, { limit })) as Record<
         string,
         unknown
       >[];

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -32,12 +33,14 @@ export function BackupControls({ disabled }: { disabled: boolean }) {
     Object.fromEntries(TIERS.map((tier) => [tier.id, crypto.randomUUID()])),
   );
   const [submittingTier, setSubmittingTier] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function backUpNow(tier: string) {
     setSubmittingTier(tier);
     setMessage(null);
+    setJobId(null);
     setError(null);
     try {
       const { payload } = await postAction(
@@ -46,7 +49,8 @@ export function BackupControls({ disabled }: { disabled: boolean }) {
         idempotencyKeys[tier],
       );
       const job = payload.job as { id: string };
-      setMessage(`${tier} backup queued (job ${job.id}). Progress appears below.`);
+      setJobId(job.id);
+      setMessage(`${tier} backup queued (job ${job.id}). View the job for progress.`);
       setIdempotencyKeys((current) => ({ ...current, [tier]: crypto.randomUUID() }));
       router.refresh();
     } catch {
@@ -80,7 +84,7 @@ export function BackupControls({ disabled }: { disabled: boolean }) {
         ))}
       </div>
 
-      {message ? <p aria-live="polite" className="action-message">{message}</p> : null}
+      {message ? <p aria-live="polite" className="action-message">{message} {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>View job</Link> : null}</p> : null}
       {error ? <p className="action-error" role="alert">{error}</p> : null}
     </section>
   );

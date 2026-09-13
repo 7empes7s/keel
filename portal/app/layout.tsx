@@ -7,6 +7,8 @@ import "@fontsource/jetbrains-mono/400.css";
 
 import "./globals.css";
 
+import { DATA_SURFACES, readAccess } from "@/lib/read";
+
 import { NavLinks } from "@/components/nav-links";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 
@@ -20,7 +22,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const email = (await headers()).get(AUTHENTICATED_EMAIL_HEADER);
+  const requestHeaders = await headers();
+  const email = requestHeaders.get(AUTHENTICATED_EMAIL_HEADER);
+  const canRead = readAccess(requestHeaders, DATA_SURFACES.jobsPage) !== null;
 
   if (!email) {
     throw new Error("Verified Cloudflare Access identity is missing");
@@ -43,7 +47,7 @@ export default async function RootLayout({
                 <small>Operator portal</small>
               </span>
             </Link>
-            <NavLinks />
+            <NavLinks canRead={canRead} />
             <div className="operator-context">
               <span className="auth-state">
                 <span aria-hidden="true" className="auth-dot" /> Authenticated

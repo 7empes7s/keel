@@ -54,6 +54,14 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "baselines/page.tsx",
   },
+  jobsPage: {
+    capability: "read",
+    source: "jobs/page.tsx",
+  },
+  jobPage: {
+    capability: "read",
+    source: "jobs/[id]/page.tsx",
+  },
   backupsPage: {
     capability: "read",
     source: "backups/page.tsx",

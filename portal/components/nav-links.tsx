@@ -10,14 +10,15 @@ const links = [
   { href: "/baselines", label: "Baselines", short: "04" },
   { href: "/backups", label: "Backups", short: "05" },
   { href: "/restore", label: "Restore", short: "06" },
+  { href: "/jobs", label: "Jobs", short: "07" },
 ];
 
-export function NavLinks() {
+export function NavLinks({ canRead = false }: { canRead?: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav aria-label="Primary navigation" className="primary-nav">
-      {links.map((link) => {
+      {links.filter((link) => link.href !== "/jobs" || canRead).map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (

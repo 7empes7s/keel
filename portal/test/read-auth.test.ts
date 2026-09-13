@@ -149,6 +149,11 @@ test("the route and page inventory is closed around declared read capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
+      if (declaration.name === "jobsPage" || declaration.name === "jobPage") {
+        const guard = content.indexOf(`await requireReadAccess(${reference})`);
+        const loader = content.search(/await loadJobs?\(/);
+        assert.ok(loader > guard, `${source} must guard before its API loader`);
+      }
     } else {
       assert.match(
         content,

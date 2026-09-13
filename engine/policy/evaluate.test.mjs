@@ -1,7 +1,10 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createPolicy,
+  evaluateOpenDrifts,
   exceedsMaxBlastRadius,
   policyMatches,
   POLICY_EVALUATION_EVIDENCE_KIND,
@@ -9,9 +12,11 @@ import {
 import { verifyChain } from '../govern/evidence.mjs';
 import { seedFromSnapshot } from '../govern/baseline.mjs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
-import { recordDrift } from '../store/governance.mjs';
+import { recordDisposition, recordDrift } from '../store/governance.mjs';
+import { enqueue } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
+import { runJob } from '../../cli/keel-worker.mjs';
 
 // --- pure match / guardrail checks, no database needed ---
 
@@ -76,9 +81,22 @@ try {
      VALUES ($1, 'restorer', 'test', 'policy evaluation test')`,
     [runAsPrincipalId],
   );
+  const { rows: policyAdminRows } = await client.query(
+    `INSERT INTO principal (email, display_name)
+     VALUES ('policy-admin@example.com', 'Policy admin')
+     RETURNING *`,
+  );
+  const policyAdminId = policyAdminRows[0].id;
+  await client.query(
+    `INSERT INTO role_grant (principal_id, role, granted_by, reason)
+     VALUES ($1, 'admin', 'test', 'policy evaluation administrator')`,
+    [policyAdminId],
+  );
 
-  async function makeDrift({ naturalKey, resourceType, changeType, blastRadius }) {
-    const baselineSnapshotId = await createSnapshot(client, { tenantRef });
+  async function makeDrift({
+    tenantRef: driftTenantRef = tenantRef, naturalKey, resourceType, changeType, blastRadius,
+  }) {
+    const baselineSnapshotId = await createSnapshot(client, { tenantRef: driftTenantRef });
     await insertResourceVersion(client, {
       snapshotId: baselineSnapshotId,
       resource: {
@@ -92,9 +110,9 @@ try {
       coverageDigest: fullSuccessfulCoverageDigest(),
     });
     const baselineId = await seedFromSnapshot(client, {
-      tenantRef, snapshotId: baselineSnapshotId, setBy: 'test-operator',
+      tenantRef: driftTenantRef, snapshotId: baselineSnapshotId, setBy: 'test-operator',
     });
-    const observedSnapshotId = await createSnapshot(client, { tenantRef });
+    const observedSnapshotId = await createSnapshot(client, { tenantRef: driftTenantRef });
     await insertResourceVersion(client, {
       snapshotId: observedSnapshotId,
       resource: {
@@ -103,7 +121,7 @@ try {
       },
     });
     const driftId = await recordDrift(client, {
-      tenantRef, baselineId, observedSnapshot: observedSnapshotId, naturalKey, resourceType,
+      tenantRef: driftTenantRef, baselineId, observedSnapshot: observedSnapshotId, naturalKey, resourceType,
       changeType, beforeHash: `${naturalKey}-before`, afterHash: `${naturalKey}-after`,
       beforePayload: { displayName: 'Baseline' }, afterPayload: { displayName: 'Changed' }, blastRadius,
     });
@@ -121,6 +139,16 @@ try {
     return rows[0]?.subject ?? null;
   }
 
+  async function policyEvaluationEvidenceRowsFor(driftId) {
+    const { rows } = await client.query(
+      `SELECT tenant_ref, subject FROM evidence
+       WHERE kind = $1 AND subject->>'driftId' = $2
+       ORDER BY seq`,
+      [POLICY_EVALUATION_EVIDENCE_KIND, driftId],
+    );
+    return rows;
+  }
+
   // Creating a drift row evaluates it immediately. No enabled policy matches,
   // but the no-match case is still recorded as evidence.
   const unmatchedDrift = await makeDrift({
@@ -129,6 +157,169 @@ try {
   const noMatchEvidence = await evidenceFor(unmatchedDrift.id);
   assert.equal(noMatchEvidence.matched, false, 'the no-match case is recorded, not silently skipped');
   assert.deepEqual(noMatchEvidence.matches, []);
+
+  // A policy enabled after an otherwise-open drift exists gets its evaluation pass
+  // through the policy-evaluate worker job. The worker runs the real CLI against this
+  // isolated database; only the destructive remediation process-spawn boundary is
+  // replaced with a fixture below.
+  const afterDriftPolicy = await createPolicy(client, {
+    tenantRef, name: 'evaluate existing group drift', resourceType: 'group',
+    naturalKeyGlob: 'group:unmatched', action: 'auto_remediate', maxBlastRadius: 'tenant-lockout',
+    createdBy: policyAdminId, runAsPrincipalId,
+  });
+  const policyEvaluateJob = await enqueue(client, {
+    kind: 'policy-evaluate', params: { tenantRef }, requestedBy: policyAdminId,
+  });
+  await runJob(client, policyEvaluateJob, {
+    dbUrl: database.url,
+    onInFlightChange: () => {},
+  });
+  const { rows: completedPolicyEvaluateRows } = await client.query(
+    'SELECT * FROM job WHERE id = $1', [policyEvaluateJob.id],
+  );
+  assert.equal(completedPolicyEvaluateRows[0].status, 'succeeded');
+  const { rows: queuedRemediationRows } = await client.query(
+    `SELECT * FROM job
+      WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`,
+    [unmatchedDrift.id],
+  );
+  const queuedRemediation = queuedRemediationRows[0];
+  assert.ok(queuedRemediation, 'the real policy-evaluate path reaches executeAutoRemediation');
+  assert.equal(queuedRemediation.requested_by, runAsPrincipalId);
+
+  const workerFixtureDir = mkdtempSync(join(tmpdir(), 'keel-policy-evaluate-worker-'));
+  const workerHandlerPath = join(workerFixtureDir, 'fake-remediate-handler.mjs');
+  const reachedPath = join(workerFixtureDir, 'remediation-reached');
+  writeFileSync(workerHandlerPath, `
+    import { writeFileSync } from 'node:fs';
+    writeFileSync(process.argv[2], 'handler reached');
+  `);
+  await runJob(client, queuedRemediation, {
+    dbUrl: database.url,
+    onInFlightChange: () => {},
+    handlers: {
+      remediate: {
+        script: workerHandlerPath,
+        argsFor: () => [reachedPath],
+      },
+    },
+  });
+  assert.equal(
+    existsSync(reachedPath),
+    true,
+    'the resulting remediation reaches a fake handler only at the process-spawn boundary',
+  );
+  assert.equal(afterDriftPolicy.action, 'auto_remediate');
+
+  // Disabled and unmatched policies leave an open drift without an action, but the
+  // rerun still records its no-match evaluation evidence.
+  const disabledReplayPolicy = await createPolicy(client, {
+    tenantRef, name: 'disabled service principal policy', resourceType: 'servicePrincipal',
+    action: 'auto_remediate', maxBlastRadius: 'tenant-lockout', createdBy: policyAdminId,
+    runAsPrincipalId, enabled: false,
+  });
+  const disabledDrift = await makeDrift({
+    naturalKey: 'servicePrincipal:disabled-policy', resourceType: 'servicePrincipal',
+    changeType: 'modified', blastRadius: 'cosmetic',
+  });
+  const unmatchedOpenDrift = await makeDrift({
+    naturalKey: 'application:no-policy', resourceType: 'application', changeType: 'modified',
+    blastRadius: 'cosmetic',
+  });
+  await evaluateOpenDrifts(client, { tenantRef });
+  for (const drift of [disabledDrift, unmatchedOpenDrift]) {
+    const evidence = await evidenceFor(drift.id);
+    assert.equal(evidence.matched, false, `${drift.natural_key} records a no-match evaluation`);
+    assert.deepEqual(evidence.matches, []);
+    const { rows: actionRows } = await client.query(
+      `SELECT id FROM job
+       WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`,
+      [drift.id],
+    );
+    assert.equal(actionRows.length, 0, `${drift.natural_key} produces no remediation action`);
+  }
+  assert.equal(disabledReplayPolicy.enabled, false);
+
+  // Replaying policies only considers open drift. A terminal disposition must keep a
+  // previously-open row out of both the returned evaluations and any new evidence.
+  const closedTenantRef = 'sha256:policy-evaluate-closed';
+  const closedDrift = await makeDrift({
+    tenantRef: closedTenantRef, naturalKey: 'group:closed', resourceType: 'group',
+    changeType: 'modified', blastRadius: 'cosmetic',
+  });
+  await createPolicy(client, {
+    tenantRef: closedTenantRef, name: 'would match a closed drift', resourceType: 'group',
+    naturalKeyGlob: 'group:closed', action: 'alert', maxBlastRadius: 'tenant-lockout',
+    createdBy: policyAdminId,
+  });
+  await recordDisposition(client, {
+    driftId: closedDrift.id, action: 'accept', actor: 'test-operator', reason: 'closed for test',
+  });
+  assert.deepEqual(
+    await evaluateOpenDrifts(client, { tenantRef: closedTenantRef }),
+    [],
+    'a closed drift row is never replayed',
+  );
+  assert.equal(
+    (await policyEvaluationEvidenceRowsFor(closedDrift.id)).length,
+    1,
+    'replaying must not add evaluation evidence for a closed drift row',
+  );
+
+  // The tenant scope belongs on drift selection, not merely policy selection. A
+  // foreign open row must not be replayed against policies from this tenant.
+  const scopedTenantRef = 'sha256:policy-evaluate-scope-a';
+  const foreignTenantRef = 'sha256:policy-evaluate-scope-b';
+  const foreignDrift = await makeDrift({
+    tenantRef: foreignTenantRef, naturalKey: 'group:foreign', resourceType: 'group',
+    changeType: 'modified', blastRadius: 'cosmetic',
+  });
+  await createPolicy(client, {
+    tenantRef: scopedTenantRef, name: 'must not see foreign drift', resourceType: 'group',
+    naturalKeyGlob: 'group:foreign', action: 'alert', maxBlastRadius: 'tenant-lockout',
+    createdBy: policyAdminId,
+  });
+  assert.deepEqual(
+    await evaluateOpenDrifts(client, { tenantRef: scopedTenantRef }),
+    [],
+    'a tenant replay does not evaluate another tenant\'s open drift rows',
+  );
+  assert.deepEqual(
+    (await policyEvaluationEvidenceRowsFor(foreignDrift.id)).map((row) => row.tenant_ref),
+    [foreignTenantRef],
+    'a tenant replay writes no evaluation evidence for another tenant\'s drift row',
+  );
+
+  // A replay is a complete traversal, not a single-row probe. Every currently open
+  // row for the tenant receives its post-policy evaluation and evidence.
+  const traversalTenantRef = 'sha256:policy-evaluate-traversal';
+  const traversalDrifts = [];
+  for (const naturalKey of ['group:traversal-one', 'group:traversal-two', 'group:traversal-three']) {
+    traversalDrifts.push(await makeDrift({
+      tenantRef: traversalTenantRef, naturalKey, resourceType: 'group', changeType: 'modified',
+      blastRadius: 'cosmetic',
+    }));
+  }
+  const traversalPolicy = await createPolicy(client, {
+    tenantRef: traversalTenantRef, name: 'replay every open group drift', resourceType: 'group',
+    naturalKeyGlob: 'group:traversal-*', action: 'alert', maxBlastRadius: 'tenant-lockout',
+    createdBy: policyAdminId,
+  });
+  const traversalEvaluations = await evaluateOpenDrifts(client, { tenantRef: traversalTenantRef });
+  assert.deepEqual(
+    traversalEvaluations.map((evaluation) => evaluation.driftId).sort(),
+    traversalDrifts.map((drift) => drift.id).sort(),
+    'a replay traverses every open drift row for its tenant',
+  );
+  for (const drift of traversalDrifts) {
+    const rows = await policyEvaluationEvidenceRowsFor(drift.id);
+    assert.equal(rows.length, 2, `${drift.natural_key} receives its replay evaluation evidence`);
+    assert.equal(rows[1].subject.matched, true, `${drift.natural_key} matches on replay`);
+    assert.ok(
+      rows[1].subject.matches.some((match) => match.policyId === traversalPolicy.id),
+      `${drift.natural_key} is evaluated against the enabled replay policy`,
+    );
+  }
 
   // A matching alert policy recommends 'alert' verbatim.
   const alertPolicy = await createPolicy(client, {

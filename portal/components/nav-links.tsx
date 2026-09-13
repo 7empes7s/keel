@@ -14,6 +14,7 @@ const links = [
   { href: "/policies", label: "Policies", short: "08" },
   { href: "/notifications", label: "Notifications", short: "09" },
   { href: "/principals", label: "Principals", short: "10" },
+  { href: "/evidence", label: "Evidence", short: "11" },
 ];
 
 export function NavLinks({ canRead = false, canPolicies = false, canUsers = false }: { canRead?: boolean; canPolicies?: boolean; canUsers?: boolean }) {
@@ -21,7 +22,7 @@ export function NavLinks({ canRead = false, canPolicies = false, canUsers = fals
 
   return (
     <nav aria-label="Primary navigation" className="primary-nav">
-      {links.filter((link) => (link.href !== "/principals" || canUsers) && (link.href !== "/jobs" || canRead) && (link.href !== "/notifications" || canRead) && (link.href !== "/policies" || canPolicies)).map((link) => {
+      {links.filter((link) => (link.href !== "/principals" || canUsers) && (link.href !== "/jobs" || canRead) && (link.href !== "/evidence" || canRead) && (link.href !== "/notifications" || canRead) && (link.href !== "/policies" || canPolicies)).map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (

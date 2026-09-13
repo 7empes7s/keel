@@ -10,6 +10,12 @@ interface HeaderSource {
 }
 
 export const DATA_SURFACES = {
+  policiesApi: { capability: "policies", source: "api/policies/route.ts" },
+  policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },
+  policyEnabledApi: { capability: "policies", source: "api/policies/[id]/enabled/route.ts" },
+  policyClearPauseApi: { capability: "policies", source: "api/policies/[id]/clear-pause/route.ts" },
+  policiesPage: { capability: "policies", source: "policies/page.tsx" },
+  policyPage: { capability: "policies", source: "policies/[id]/page.tsx" },
   dashboardApi: {
     capability: "read",
     source: "api/dashboard/route.ts",

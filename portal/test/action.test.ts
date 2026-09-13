@@ -1,3 +1,8 @@
+import { GET as listPoliciesRoute, POST as createPolicyRoute } from "@/app/api/policies/route";
+import { GET as showPolicyRoute } from "@/app/api/policies/[id]/route";
+import { POST as enablePolicyRoute } from "@/app/api/policies/[id]/enabled/route";
+import { POST as clearPauseRoute } from "@/app/api/policies/[id]/clear-pause/route";
+import { listPolicies } from "../../engine/policy/evaluate.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -606,4 +611,61 @@ test("GET /api/jobs/[id] shows one job to a viewer and nothing to anyone else", 
   assert.equal(job.id, id);
   assert.equal(job.kind, "collect");
   assert.equal(job.requestedBy, "principal-operator");
+});
+
+
+test("Task 36: non-admin roles cannot see or change policies, including read-only writes", async () => {
+  for (const capabilities of [["read"], ["collect", "backup", "baseline-create", "dispose-accept"], ["approve"], ["restore", "remediate", "rollback"], []]) {
+    for (const [handler, path, method] of [
+      [listPoliciesRoute, "/api/policies", "GET"],
+      [showPolicyRoute, `/api/policies/${randomUUID()}`, "GET"],
+      [createPolicyRoute, "/api/policies", "POST"],
+      [enablePolicyRoute, `/api/policies/${randomUUID()}/enabled`, "POST"],
+      [clearPauseRoute, `/api/policies/${randomUUID()}/clear-pause`, "POST"],
+    ] as const) {
+      const response = await handler(routeRequest(path, method, { principalId: "non-admin", capabilities, ...(method === "POST" ? { body: { enabled: true } } : {}) }));
+      assert.equal(response.status, 403, `${capabilities}: ${path}`);
+      assert.deepEqual(await response.json(), { error: "forbidden" });
+    }
+  }
+});
+
+test("Task 36: actual policy routes reject revoked run-as on enable and clear, and retain live state", async () => {
+  const runAs = randomUUID();
+  await client.query("INSERT INTO principal (id, email) VALUES ($1, $2)", [runAs, `${runAs}@test.invalid`]);
+  await client.query("INSERT INTO role_grant (principal_id, role, granted_by) VALUES ($1, 'restorer', 'test')", [runAs]);
+  const options = { principalId: "admin", capabilities: ["policies"] };
+  const created = await createPolicyRoute(postAction("/api/policies", { ...options, body: {
+    name: "Task 36 automation", action: "auto_remediate", maxBlastRadius: "cosmetic",
+    runAsPrincipalId: runAs, maxActionsPerWindow: 2, windowSeconds: 60,
+  } }));
+  assert.equal(created.status, 201);
+  const { policy } = await created.json();
+  assert.equal(policy.created_by, "admin");
+  const update = (enabled: boolean) => enablePolicyRoute(postAction(`/api/policies/${policy.id}/enabled`, { ...options, body: { enabled } }));
+  assert.equal((await update(false)).status, 200);
+  await client.query("UPDATE policy SET paused_at = now(), run_as_repair_required = true WHERE id = $1", [policy.id]);
+  await client.query("DELETE FROM role_grant WHERE principal_id = $1", [runAs]);
+  assert.equal((await update(true)).status, 409);
+  assert.equal((await clearPauseRoute(postAction(`/api/policies/${policy.id}/clear-pause`, options))).status, 409);
+  const show = await showPolicyRoute(getJobs(`/api/policies/${policy.id}`, options));
+  assert.equal(show.status, 200);
+  const current = (await show.json()).policy;
+  assert.equal(current.enabled, false);
+  assert.equal(current.run_as_repair_required, true);
+  assert.ok(current.paused_at);
+  const listed = await listPoliciesRoute(getJobs("/api/policies?enabled=false", options));
+  assert.equal(listed.status, 200);
+  assert.ok((await listed.json()).policies.some((p: { id: string }) => p.id === policy.id));
+  assert.ok(!(await listPolicies(client, { tenantRef: "other-tenant" })).some((p: { id: string }) => p.id === policy.id));
+  await client.query("INSERT INTO role_grant (principal_id, role, granted_by) VALUES ($1, 'restorer', 'test')", [runAs]);
+  const cleared = await clearPauseRoute(postAction(`/api/policies/${policy.id}/clear-pause`, options));
+  assert.equal(cleared.status, 200);
+  const repaired = (await cleared.json()).policy;
+  assert.equal(repaired.enabled, false, "clear must not enable");
+  assert.equal(repaired.paused_at, null);
+  assert.equal(repaired.run_as_repair_required, false);
+  assert.equal((await update(true)).status, 200);
+  const enabled = await listPoliciesRoute(getJobs("/api/policies?enabled=true", options));
+  assert.ok((await enabled.json()).policies.some((p: { id: string }) => p.id === policy.id));
 });

@@ -11,14 +11,15 @@ const links = [
   { href: "/backups", label: "Backups", short: "05" },
   { href: "/restore", label: "Restore", short: "06" },
   { href: "/jobs", label: "Jobs", short: "07" },
+  { href: "/policies", label: "Policies", short: "08" },
 ];
 
-export function NavLinks({ canRead = false }: { canRead?: boolean }) {
+export function NavLinks({ canRead = false, canPolicies = false }: { canRead?: boolean; canPolicies?: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav aria-label="Primary navigation" className="primary-nav">
-      {links.filter((link) => link.href !== "/jobs" || canRead).map((link) => {
+      {links.filter((link) => (link.href !== "/jobs" || canRead) && (link.href !== "/policies" || canPolicies)).map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (

@@ -6,10 +6,12 @@ import { PageHeader } from "@/components/page-header";
 import { BlastBadge } from "@/components/status-badge";
 import { formatAge, formatTimestamp, words } from "@/lib/presentation";
 import { getDashboardData } from "@/lib/portal-data";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DashboardData } from "@/lib/types";
 
 export default async function Home() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.dashboardPage);
 
   let data: DashboardData;
   try {

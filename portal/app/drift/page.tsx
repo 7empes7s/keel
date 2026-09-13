@@ -7,10 +7,12 @@ import { PageHeader } from "@/components/page-header";
 import { formatAge, formatTimestamp } from "@/lib/presentation";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getDriftData } from "@/lib/portal-data";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DriftData } from "@/lib/types";
 
 export default async function DriftPage() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.driftPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);

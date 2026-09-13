@@ -5,10 +5,12 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { formatTimestamp } from "@/lib/presentation";
 import { getCoverageData } from "@/lib/portal-data";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { CoverageData } from "@/lib/types";
 
 export default async function CoveragePage() {
   await connection();
+  await requireReadAccess(DATA_SURFACES.coveragePage);
 
   let data: CoverageData;
   try {

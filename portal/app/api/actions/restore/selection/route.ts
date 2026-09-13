@@ -9,6 +9,7 @@ import {
 } from "../../../../../../engine/store/db.mjs";
 
 import { guarded, InvalidActionRequest, readActionParams } from "@/lib/action";
+import { DATA_SURFACES, guardedRead } from "@/lib/read";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export const runtime = "nodejs";
 // resource mapping mirrors cli/keel-restore.mjs exactly (users and authentication
 // strength policies are read-only in M1), so what the preview shows is what the
 // restore CLI will plan.
-export const POST = guarded(
+const restoreSelection = guarded(
   {
     action: "restore:selection-preview",
     capability: "restore",
@@ -118,4 +119,9 @@ export const POST = guarded(
       { headers: { "cache-control": "no-store" } },
     );
   },
+);
+
+export const POST = guardedRead(
+  DATA_SURFACES.restoreSelectionApi,
+  restoreSelection,
 );

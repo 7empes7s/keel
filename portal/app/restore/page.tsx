@@ -17,6 +17,7 @@ import {
   type JobRecord,
   type SnapshotOption,
 } from "@/lib/portal-jobs";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
 const RESTORE_JOB_KINDS = ["restore"];
 
@@ -31,6 +32,7 @@ export default async function RestorePage({
   searchParams: Promise<{ snapshot?: string }>;
 }) {
   await connection();
+  await requireReadAccess(DATA_SURFACES.restorePage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);

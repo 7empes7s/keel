@@ -20,6 +20,7 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor }) {
       index.set(naturalKeyFor(resourceType, object), {
         targetId: object.id,
         payloadHash: canonicalHash(object, resourceType),
+        payload: object,
         state: 'present',
       });
     }
@@ -37,6 +38,7 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor }) {
       index.set(naturalKey, {
         targetId: object.id,
         payloadHash: canonicalHash(object, resourceType),
+        payload: object,
         state: 'soft-deleted',
         deletedItemId: object.id,
       });

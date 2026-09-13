@@ -103,7 +103,7 @@ test("the route and page inventory is closed around each declared capability", (
   );
 
   for (const [name, surface] of declared) {
-    assert.equal(surface.capability, surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
+    assert.equal(surface.capability, surface.source.includes("principals") ? (["principalGrantApi", "principalRevokeApi"].includes(name) ? "roles" : "users") : surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
   }
 
   const pages = sources
@@ -142,6 +142,11 @@ test("the route and page inventory is closed around each declared capability", (
     "every policy route, including write-only routes, must declare policies",
   );
 
+  assert.deepEqual(
+    declared.map(([, surface]) => surface.source).filter((source) => source.startsWith("api/principals/")).sort(),
+    sources.map(relativeSource).filter((source) => source.startsWith("api/principals/")).sort(),
+    "every principal write must be inventoried",
+  );
   for (const path of sources) {
     const source = relativeSource(path);
     const declaration = declaredBySource.get(source);
@@ -155,11 +160,14 @@ test("the route and page inventory is closed around each declared capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
-      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage"].includes(declaration.name)) {
+      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage"].includes(declaration.name)) {
         const guard = content.indexOf(`await requireReadAccess(${reference})`);
-        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries)\(/);
+        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals)\(/);
         assert.ok(loader > guard, `${source} must guard before its API loader`);
       }
+    } else if (/api\/principals\/\[id\]\//.test(source)) {
+      assert.ok(content.includes(`export const POST = guardedPrincipalWrite(`));
+      assert.ok(content.includes(`, ${reference})`));
     } else if (source === "api/policies/[id]/enabled/route.ts" || source === "api/policies/[id]/clear-pause/route.ts") {
       assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyUpdate\\([^,]+,\\s*${reference}\\)`));
     } else {

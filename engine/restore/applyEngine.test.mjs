@@ -50,6 +50,61 @@ const syncedResult = await applyWave(fakeWriter(), governor, [syncedUser], { tar
 assert.equal(syncedResult.skipped.length, 1);
 assert.match(syncedResult.skipped[0].reason, /on-premises/i);
 
+// An added drift is desired absence, so its source payload is null. The delete
+// guard must instead inspect the live target payload; otherwise an AD-synced
+// group could be deleted merely because it was absent from the baseline.
+{
+  const calls = [];
+  const writer = {
+    async write(version, path, options) {
+      calls.push({ kind: 'write', version, path, options });
+      return { ok: true, status: 204, body: null };
+    },
+    async read(version, path) {
+      calls.push({ kind: 'read', version, path });
+      return { ok: false, status: 404, body: null };
+    },
+  };
+  const result = await applyWave(writer, governor, [{
+    naturalKey: 'group:added-synced', resourceType: 'group', payload: null,
+    live: {
+      targetId: 'target-added-synced-id',
+      payload: { id: 'target-added-synced-id', onPremisesSyncEnabled: true },
+    },
+    targetId: 'target-added-synced-id', verb: 'delete', blastRadius: 'access-affecting', references: [],
+  }], {
+    targetTenant: 'target', mode: 'enforce',
+    deletionGuardOptions: {
+      breakGlassUserIds: ['break-glass-id'], breakGlassGroupIds: [], keelAppIds: [], caPolicies: [],
+    },
+  });
+  assert.equal(calls.length, 0, 'an AD-synced added group must never reach Graph DELETE');
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /on-premises/i);
+}
+
+// A desired-absent resource can be a no-op when the live addition has already
+// disappeared. It must not fall through to the create path and POST a null body.
+{
+  const calls = [];
+  const writer = {
+    async write(version, path, options) {
+      calls.push({ kind: 'write', version, path, options });
+      return { ok: true, status: 201, body: { id: 'unexpected-id' } };
+    },
+    async read(version, path) {
+      calls.push({ kind: 'read', version, path });
+      return { ok: true, status: 200, body: { id: 'unexpected-id' } };
+    },
+  };
+  const result = await applyWave(writer, governor, [{
+    naturalKey: 'group:already-absent', resourceType: 'group', payload: null,
+    targetId: null, verb: 'noop', blastRadius: 'access-affecting', references: [],
+  }], { targetTenant: 'target', mode: 'enforce' });
+  assert.deepEqual(result.applied, [{ naturalKey: 'group:already-absent', targetId: null }]);
+  assert.equal(calls.length, 0, 'a no-op must not POST a null body');
+}
+
 // A CA policy's write payload must be report-only-forced — inspect what was
 // actually sent, not just that something was sent (dangerous-direction check).
 const caWriter = fakeWriter();

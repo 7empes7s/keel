@@ -99,9 +99,15 @@ function restoreFakes({
 } = {}) {
   const state = { connectUrls: [], clientEnds: 0, writes: [], waveCalls: [], waveResults: [], priorStates: [] };
   const client = {
-    query: async (sql) => {
-      assert.match(sql, /SELECT \* FROM plan/);
-      return { rows: [{ id: 'fixture-plan', source_snapshot: 'source-snapshot', clean: true }] };
+    query: async (sql, values) => {
+      if (/SELECT \* FROM plan/.test(sql)) {
+        return { rows: [{ id: 'fixture-plan', source_snapshot: 'source-snapshot', clean: true }] };
+      }
+      if (/INSERT INTO rollback_entry/.test(sql)) {
+        state.priorStates.push(values);
+        return { rows: [] };
+      }
+      throw new Error(`unexpected test-database query: ${sql}`);
     },
     end: async () => { state.clientEnds += 1; },
   };
@@ -110,7 +116,8 @@ function restoreFakes({
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments?')) {
+      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group') {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);
@@ -177,7 +184,6 @@ function restoreFakes({
         state.waveResults.push(result);
         return result;
       },
-      recordPriorState: async (...args) => { state.priorStates.push(args); },
     },
   };
 }
@@ -310,7 +316,8 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments?')) {
+      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group') {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);
@@ -358,7 +365,6 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
         state.waveResults.push(result);
         return result;
       },
-      recordPriorState: async () => { throw new Error('a dry-run restore must not journal'); },
     },
   };
 }
@@ -410,6 +416,41 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   assert.equal(exitCode, 1);
   assert.equal(fixture.state.waveCalls.length, 0, 'no wave may run when the selection cannot be resolved');
   assert.equal(fixture.state.clientEnds, 1);
+}
+
+// Delete waves use reverse topology in the real restore orchestration: the
+// role assignment that refers to the group must be deleted before the group.
+// This must not reuse the forward create/update planner.
+{
+  const group = {
+    naturalKey: 'group:Finance', resourceType: 'group', targetId: 'target-group-id',
+    payload: null, live: { targetId: 'target-group-id', payload: { id: 'target-group-id' } },
+    references: [], blastRadius: 'access-affecting', restorePriority: 100, verb: 'delete',
+  };
+  const roleAssignment = {
+    naturalKey: 'roleAssignment:GlobalAdministrator@group:Finance@/', resourceType: 'roleAssignment',
+    targetId: 'target-role-assignment-id', payload: null,
+    live: { targetId: 'target-role-assignment-id', payload: { id: 'target-role-assignment-id' } },
+    references: [{ field: 'principalId', symbol: group.naturalKey, required: true }],
+    blastRadius: 'access-affecting', restorePriority: 100, verb: 'delete',
+  };
+  const fixture = restoreFakes({
+    applyWave: async (_writer, _governor, wave) => ({
+      applied: wave.map((resource) => ({ naturalKey: resource.naturalKey, targetId: resource.targetId })),
+      skipped: [], failed: [],
+    }),
+    planWaves: (resources) => {
+      assert.deepEqual(resources, [], 'delete resources must not use the forward planner');
+      return { waves: [], patches: [] };
+    },
+  });
+  fixture.dependencies.buildReconciliationPlan = async () => ({ resources: [group, roleAssignment] });
+  const exitCode = await runFixture(fixture.dependencies);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(fixture.state.waveCalls, [
+    [roleAssignment.naturalKey],
+    [group.naturalKey],
+  ]);
 }
 
 // --select without --snapshot-id (and vice versa) is a usage error, not a partial run.

@@ -112,6 +112,16 @@ async function writeAfterCreate(writer, version, path, body, { attempts = 6, del
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
+async function journalBeforeMutation(rollbackClient, { runId, naturalKey, priorState }) {
+  if (!rollbackClient) return true;
+  try {
+    await recordPriorState(rollbackClient, { runId, naturalKey, priorState });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -143,8 +153,16 @@ export async function applyWave(writer, governor, wave, {
   const referenceContext = { targetIndex: existingTargetIds, mappingTable, runProvenance: appliedIds };
 
   for (const resource of wave) {
+    if (resource.verb === 'noop') {
+      applied.push({ naturalKey: resource.naturalKey, targetId: resource.targetId ?? null });
+      continue;
+    }
+
     if (resource.verb === 'delete') {
-      const deletionCheck = refuseUnsafeDeletion(resource, deletionGuardOptions);
+      const deletionCheck = refuseUnsafeDeletion({
+        ...resource,
+        payload: resource.live?.payload ?? resource.payload,
+      }, deletionGuardOptions);
       if (deletionCheck.refused) {
         skipped.push({ naturalKey: resource.naturalKey, reason: deletionCheck.reason });
         continue;
@@ -168,13 +186,12 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      try {
-        await recordPriorState(rollbackClient, {
-          runId,
-          naturalKey: resource.naturalKey,
-          priorState: resource.payload,
-        });
-      } catch {
+      const journaled = await journalBeforeMutation(rollbackClient, {
+        runId,
+        naturalKey: resource.naturalKey,
+        priorState: resource.live?.payload ?? resource.payload,
+      });
+      if (!journaled) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to delete: rollback journal write failed' });
         continue;
       }
@@ -200,7 +217,10 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
-    const syncCheck = refuseIfSynced(resource);
+    const syncCheck = refuseIfSynced({
+      ...resource,
+      payload: resource.live?.payload ?? resource.payload,
+    });
     if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
 
     if (resource.verb === 'restore-soft-deleted') {
@@ -226,6 +246,16 @@ export async function applyWave(writer, governor, wave, {
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
+        continue;
+      }
+
+      const journaled = await journalBeforeMutation(rollbackClient, {
+        runId,
+        naturalKey: resource.naturalKey,
+        priorState: resource.live?.payload ?? resource.payload,
+      });
+      if (!journaled) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'refusing to restore: rollback journal write failed' });
         continue;
       }
 
@@ -314,6 +344,16 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      const journaled = await journalBeforeMutation(rollbackClient, {
+        runId,
+        naturalKey: resource.naturalKey,
+        priorState: resource.live?.payload ?? resource.payload,
+      });
+      if (!journaled) {
+        failed.push({ naturalKey: resource.naturalKey, error: 'refusing to update: rollback journal write failed' });
+        continue;
+      }
+
       await governor.acquire(targetTenant, 'entra', 'write');
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload });
@@ -372,6 +412,16 @@ export async function applyWave(writer, governor, wave, {
     }
 
     if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null }); continue; }
+
+    const journaled = await journalBeforeMutation(rollbackClient, {
+      runId,
+      naturalKey: resource.naturalKey,
+      priorState: null,
+    });
+    if (!journaled) {
+      failed.push({ naturalKey: resource.naturalKey, error: 'refusing to create: rollback journal write failed' });
+      continue;
+    }
 
     await governor.acquire(targetTenant, 'entra', 'write');
     const path = pathFor(resource.resourceType);

@@ -1813,3 +1813,9 @@ dd {
     break-inside: avoid;
   }
 }
+
+.job-payload {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}

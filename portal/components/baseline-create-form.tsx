@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -30,6 +31,7 @@ export function BaselineCreateForm({
   const [description, setDescription] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ export function BaselineCreateForm({
 
     setSubmitting(true);
     setMessage(null);
+    setJobId(null);
     setError(null);
     try {
       const { payload } = await postAction(
@@ -57,6 +60,7 @@ export function BaselineCreateForm({
         idempotencyKey,
       );
       const job = payload.job as { id: string };
+      setJobId(job.id);
       setMessage(`Baseline creation queued (job ${job.id}). The new baseline becomes active when the job completes.`);
       setIdempotencyKey(crypto.randomUUID());
       setLabel("");
@@ -132,7 +136,7 @@ export function BaselineCreateForm({
         </p>
       )}
 
-      {message ? <p aria-live="polite" className="action-message">{message}</p> : null}
+      {message ? <p aria-live="polite" className="action-message">{message} {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>View job</Link> : null}</p> : null}
       {error ? <p className="action-error" role="alert">{error}</p> : null}
     </section>
   );

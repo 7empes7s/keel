@@ -7,6 +7,7 @@ import {
   createSubscription,
   dispatchAlert,
   eventMatches,
+  listDeliveries,
   retryDelayMs,
 } from './notifications.mjs';
 import { claimNext } from '../jobs/queue.mjs';
@@ -223,6 +224,69 @@ try {
   assert.equal(disabledRows[0].status, 'cancelled', 'a delivery to a disabled channel is cancelled, never delivered');
   assert.equal(disabledRows[0].delivered_at, null);
   await client.query('UPDATE channel SET enabled = true WHERE id = $1', [webhook.id]);
+
+  // Delivery history is an operator read path. It returns rows newest-first and can
+  // narrow by either channel or durable delivery status without changing its shape.
+  const listChannel = await createChannel(client, {
+    kind: 'webhook', config: { url: 'https://history.example.test/keel' },
+  });
+  async function createListedDelivery({ status, createdAt, lastError = null }) {
+    const { rows } = await client.query(
+      `INSERT INTO delivery
+         (event, channel_id, requested_by, attempts, max_attempts, status, last_error, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [
+        { kind: 'fixture.delivery-history', severity: 'warning' }, listChannel.id, requester,
+        1, 5, status, lastError, createdAt,
+      ],
+    );
+    return rows[0];
+  }
+  const oldestListed = await createListedDelivery({
+    status: 'delivered', createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  const middleListed = await createListedDelivery({
+    status: 'retrying', createdAt: '2026-01-02T00:00:00.000Z', lastError: 'fixture retrying error',
+  });
+  const newestListed = await createListedDelivery({
+    status: 'failed', createdAt: '2026-01-03T00:00:00.000Z', lastError: 'fixture failed error',
+  });
+  const listedForChannel = await listDeliveries(client, { channelId: listChannel.id });
+  assert.deepEqual(
+    listedForChannel.map((delivery) => delivery.id),
+    [newestListed.id, middleListed.id, oldestListed.id],
+    'delivery history is newest-first for a channel',
+  );
+  const retryingForChannel = await listDeliveries(client, {
+    channelId: listChannel.id, status: 'retrying',
+  });
+  assert.deepEqual(
+    retryingForChannel.map((delivery) => delivery.id),
+    [middleListed.id],
+    'delivery history applies channelId and status filters together',
+  );
+  const failedForChannel = await listDeliveries(client, {
+    channelId: listChannel.id, status: 'failed',
+  });
+  assert.deepEqual(
+    failedForChannel.map((delivery) => delivery.id),
+    [newestListed.id],
+    'delivery history accepts the documented failed status filter',
+  );
+
+  let defaultListOptions;
+  await listDeliveries({
+    query: async (sql, options) => {
+      defaultListOptions = options;
+      return { rows: [] };
+    },
+  });
+  assert.deepEqual(
+    defaultListOptions,
+    [null, null, 50],
+    'delivery history keeps its documented default limit of 50',
+  );
 } finally {
   await client?.end();
   await database.cleanup();

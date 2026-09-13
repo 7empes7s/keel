@@ -59,6 +59,7 @@ const presentIndex = await buildLiveIndex(presentReader, {
 assert.deepEqual(presentIndex.get('group:present-group'), {
   targetId: 'present-group-id',
   payloadHash: canonicalHash(presentGroup, 'group'),
+  payload: presentGroup,
   state: 'present',
 });
 
@@ -74,6 +75,7 @@ const deletedIndex = await buildLiveIndex(deletedReader, {
 assert.deepEqual(deletedIndex.get('group:deleted-group'), {
   targetId: 'deleted-group-id',
   payloadHash: canonicalHash(deletedGroup, 'group'),
+  payload: deletedGroup,
   state: 'soft-deleted',
   deletedItemId: 'deleted-group-id',
 });
@@ -90,6 +92,7 @@ const liveWinsIndex = await buildLiveIndex(liveWinsReader, {
 assert.deepEqual(liveWinsIndex.get('group:live-wins'), {
   targetId: 'live-wins-id',
   payloadHash: canonicalHash(liveWinsGroup, 'group'),
+  payload: liveWinsGroup,
   state: 'present',
 });
 

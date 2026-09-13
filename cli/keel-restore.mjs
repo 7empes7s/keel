@@ -14,12 +14,12 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
-import { planWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
+import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
 import { dependencyClosure } from '../engine/restore/selection.mjs';
+import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
-import { recordPriorState } from '../engine/restore/rollbackJournal.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -60,6 +60,7 @@ export async function runRestore({
   planId,
   snapshotId,
   selection,
+  reconciliationResources,
   targetConfig,
   collectorConfig,
   mode,
@@ -73,7 +74,9 @@ export async function runRestore({
     getResourceVersions: getResourceVersionsFn = getResourceVersions,
     getReferences: getReferencesFn = getReferences,
     planWaves: planWavesFn = planWaves,
+    planDeletionWaves: planDeletionWavesFn = planDeletionWaves,
     dependencyClosure: dependencyClosureFn = dependencyClosure,
+    buildReconciliationPlan: buildReconciliationPlanFn = buildReconciliationPlan,
     getToken: getTokenFn = getToken,
     GraphReader: GraphReaderClass = GraphReader,
     collectM1: collectM1Fn = collectM1,
@@ -82,14 +85,13 @@ export async function runRestore({
     ThrottleGovernor: ThrottleGovernorClass = ThrottleGovernor,
     applyWave: applyWaveFn = applyWave,
     applyPatches: applyPatchesFn = applyPatches,
-    recordPriorState: recordPriorStateFn = recordPriorState,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
   // dependency closure is recomputed here, server-side, from the snapshot — never
   // trusted from the client. Exactly one of planId or (snapshotId + selection).
-  if (planId !== undefined && (snapshotId !== undefined || selection !== undefined)) {
-    throw new Error('planId and snapshotId/selection are mutually exclusive restore scopes');
+  if (planId !== undefined && (snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined)) {
+    throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
   if (planId === undefined && snapshotId === undefined) {
     throw new Error('a restore scope is required: planId, or snapshotId with a selection');
@@ -99,6 +101,13 @@ export async function runRestore({
     if (!Array.isArray(selection) || selection.length === 0
       || selection.some((key) => typeof key !== 'string' || key.length === 0)) {
       throw new Error('selection must be a non-empty array of natural keys');
+    }
+  }
+  if (reconciliationResources !== undefined) {
+    if (snapshotId === undefined) throw new Error('reconciliationResources requires snapshotId');
+    if (selection !== undefined) throw new Error('selection and reconciliationResources are mutually exclusive restore scopes');
+    if (!Array.isArray(reconciliationResources) || reconciliationResources.length === 0) {
+      throw new Error('reconciliationResources must be a non-empty array');
     }
   }
 
@@ -128,10 +137,23 @@ export async function runRestore({
       .filter((v) => v.resource_type !== 'user' && v.resource_type !== 'authenticationStrengthPolicy') // read-only in M1, never written
       .map((v) => ({
         naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
+        payloadHash: v.payload_hash,
         references: refsByVersion.get(v.id) ?? [], blastRadius: v.blast_radius, restorePriority: 100,
       }));
 
-    if (selection !== undefined) {
+    if (reconciliationResources !== undefined) {
+      const desiredKeys = reconciliationResources
+        .filter((resource) => resource.payload !== null)
+        .map((resource) => resource.naturalKey);
+      const closure = dependencyClosureFn(resources, desiredKeys);
+      const additions = reconciliationResources.filter((resource) => resource.payload === null);
+      resources = [...closure.resources, ...additions]
+        .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
+      for (const unresolved of closure.unresolvedReferences) {
+        logger.log(`unresolved reference: ${unresolved.from} at ${unresolved.field} -> ${unresolved.symbol} (no resource in this snapshot provides it)`);
+      }
+      logger.log(`reconciliation selection of ${reconciliationResources.length} closed to ${resources.length} resources`);
+    } else if (selection !== undefined) {
       // The closure — not the raw selection — is what gets restored. Unknown keys
       // throw inside dependencyClosure; references no snapshot resource can satisfy
       // are logged, because silently dropping them is how dangling restores happen.
@@ -143,7 +165,6 @@ export async function runRestore({
       logger.log(`selection of ${selection.length} closed to ${resources.length} resources`);
     }
 
-    const { waves, patches } = planWavesFn(resources);
     const { accessToken: collectorToken } = await getTokenFn(collectorConfig);
     const targetReader = new GraphReaderClass(async () => collectorToken);
     const { accessToken: restorerToken } = await getTokenFn(targetConfig);
@@ -159,6 +180,18 @@ export async function runRestore({
       .filter((resource) => resource.resourceType === 'roleAssignment'
         && resource.naturalKey.includes('GlobalAdministrator'))
       .map((resource) => resource.payload.principalId);
+    const deletionGuardOptions = {
+      breakGlassUserIds: protectedPrincipalIds,
+      breakGlassGroupIds: [],
+      keelAppIds: [],
+      caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
+    };
+    const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
+    resources = reconciliation.resources;
+    const writesBeforeDeletes = resources.filter((resource) => resource.verb !== 'delete');
+    const deletes = resources.filter((resource) => resource.verb === 'delete');
+    const { waves, patches } = planWavesFn(writesBeforeDeletes);
+    const { waves: deletionWaves } = planDeletionWavesFn(deletes);
 
     const seeds = {
       [`${targetConfig.tenantId}/entra/write`]: { capacity: 100, refillPerSecond: 100 / 20 }, // Intune-tier seed, spec §11.1
@@ -169,18 +202,18 @@ export async function runRestore({
 
     for (const [i, waveKeys] of waves.entries()) {
       const wave = phaseOneResources(
-        resources.filter((r) => waveKeys.includes(r.naturalKey)),
+        writesBeforeDeletes.filter((r) => waveKeys.includes(r.naturalKey)),
         patches,
       );
       logger.log(`wave ${i + 1}/${waves.length}: ${wave.length} resources`);
-      if (mode === 'enforce') {
-        for (const r of wave) await recordPriorStateFn(client, { runId, naturalKey: r.naturalKey, priorState: null });
-      }
       const result = await applyWaveFn(writer, governor, wave, {
         targetTenant: targetConfig.tenantId,
         mode,
         existingTargetIds,
         appliedIds,
+        rollbackClient: client,
+        runId,
+        deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
@@ -200,7 +233,32 @@ export async function runRestore({
       throw new Error('deferred patch had failures — stopping run');
     }
 
-    return { plan, resources, waves, patches, appliedIds, selection: selection ?? null };
+    for (const [i, waveKeys] of deletionWaves.entries()) {
+      const wave = deletes.filter((resource) => waveKeys.includes(resource.naturalKey));
+      logger.log(`delete wave ${i + 1}/${deletionWaves.length}: ${wave.length} resources`);
+      const result = await applyWaveFn(writer, governor, wave, {
+        targetTenant: targetConfig.tenantId,
+        mode,
+        existingTargetIds,
+        appliedIds,
+        rollbackClient: client,
+        runId,
+        deletionGuardOptions,
+        signInPathGate: { reader: targetReader, protectedPrincipalIds },
+      });
+      logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      for (const { naturalKey, targetId } of result.applied) {
+        if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
+      }
+      if (result.failed.length) {
+        throw new Error('delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+      }
+    }
+
+    return {
+      plan, resources, waves, deletionWaves, patches, appliedIds,
+      selection: selection ?? reconciliationResources?.map((resource) => resource.naturalKey) ?? null,
+    };
   } finally {
     await client?.end();
   }

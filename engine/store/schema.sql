@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS evidence_head (
 
 CREATE TABLE IF NOT EXISTS job (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind         text NOT NULL CHECK (kind IN ('collect','prune','drift-detect')),
+  kind         text NOT NULL CHECK (kind IN ('collect','prune','drift-detect','offsite')),
   params       jsonb NOT NULL DEFAULT '{}'::jsonb,
   status       text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','succeeded','failed','cancelled')),
   requested_by text NOT NULL,
@@ -141,7 +141,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -322,3 +322,28 @@ CREATE INDEX IF NOT EXISTS delivery_status_next_attempt_idx
   ON delivery (status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS delivery_channel_created_idx
   ON delivery (channel_id, created_at DESC);
+
+-- Task 42: preserve the design SQL verbatim while allowing schema re-application.
+DO $schedule$
+BEGIN
+IF to_regclass('schedule') IS NULL THEN
+CREATE TABLE schedule (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite'
+  tier          text,                -- 'tier1' | 'tier2' | 'tier3' | null (job kinds with no tier concept)
+  cadence       jsonb NOT NULL,      -- { "every": "hour"|"day"|"week", "n": 1, "atTime": "05:00" | null }
+  cron_override text,                -- raw cron expression; when set, takes precedence over `cadence`
+  enabled       boolean NOT NULL DEFAULT true,
+  next_due_at   timestamptz NOT NULL, -- the nominal due instant, never recomputed from wall-clock now
+  last_job_id   uuid REFERENCES job(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+-- Plain UNIQUE(tenant_ref, job_kind, tier) does NOT work here: Postgres treats every NULL tier as
+-- distinct, so it would silently allow duplicate rows for every job_kind with no tier concept
+-- (prune, drift-detect, offsite). Use a expression index that collapses NULL to a sentinel instead:
+CREATE UNIQUE INDEX schedule_one_per_job ON schedule (tenant_ref, job_kind, COALESCE(tier, ''));
+END IF;
+END
+$schedule$;

@@ -14,6 +14,7 @@
 export const JOB_KIND_CAPABILITIES = Object.freeze({
   collect: 'collect',
   prune: 'collect',
+  offsite: 'configuration',
   'drift-detect': 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',

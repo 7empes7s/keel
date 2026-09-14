@@ -17,12 +17,39 @@ const links = [
   { href: "/evidence", label: "Evidence", short: "11" },
 ];
 
-export function NavLinks({ canRead = false, canPolicies = false, canUsers = false }: { canRead?: boolean; canPolicies?: boolean; canUsers?: boolean }) {
+const approvalLink = { href: "/approvals", label: "Approvals", short: "12" };
+
+interface NavCapabilities {
+  canRead?: boolean;
+  canPolicies?: boolean;
+  canUsers?: boolean;
+  canApprove?: boolean;
+}
+
+// Exported so a plain unit test can assert each capability gate without rendering
+// this client component through a full React/router harness.
+export function visibleNavLinks({
+  canRead = false,
+  canPolicies = false,
+  canUsers = false,
+  canApprove = false,
+}: NavCapabilities) {
+  const gated = links.filter((link) =>
+    (link.href !== "/principals" || canUsers)
+    && (link.href !== "/jobs" || canRead)
+    && (link.href !== "/evidence" || canRead)
+    && (link.href !== "/notifications" || canRead)
+    && (link.href !== "/policies" || canPolicies));
+  return canApprove ? [...gated, approvalLink] : gated;
+}
+
+export function NavLinks({ canRead = false, canPolicies = false, canUsers = false, canApprove = false }: NavCapabilities) {
   const pathname = usePathname();
+  const visibleLinks = visibleNavLinks({ canRead, canPolicies, canUsers, canApprove });
 
   return (
     <nav aria-label="Primary navigation" className="primary-nav">
-      {links.filter((link) => (link.href !== "/principals" || canUsers) && (link.href !== "/jobs" || canRead) && (link.href !== "/evidence" || canRead) && (link.href !== "/notifications" || canRead) && (link.href !== "/policies" || canPolicies)).map((link) => {
+      {visibleLinks.map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (

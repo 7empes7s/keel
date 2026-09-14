@@ -12,6 +12,15 @@ import {
 } from "@/lib/read";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 
+// Task 34 intentionally gives the approval inbox its own approve-only contract:
+// a pure approver must not need general tenant-data read access. Its own closed
+// inventory lives in approvals.test.ts, so the read inventory excludes only these
+// two explicitly named non-read surfaces.
+const NON_READ_SURFACES = new Set([
+  "approvals/page.tsx",
+  "api/approvals/route.ts",
+]);
+
 function getRequest(
   principalId: string | null,
   capabilities: string[],
@@ -109,6 +118,7 @@ test("the route and page inventory is closed around declared read capability", (
   const pages = sources
     .filter((path) => path.endsWith("page.tsx"))
     .map(relativeSource)
+    .filter((source) => !NON_READ_SURFACES.has(source))
     .sort();
   const declaredPages = declared
     .map(([, surface]) => surface.source)
@@ -124,6 +134,7 @@ test("the route and page inventory is closed around declared read capability", (
       );
     })
     .map(relativeSource)
+    .filter((source) => !NON_READ_SURFACES.has(source))
     .filter((source) => source !== "api/health/route.ts")
     .sort();
   const declaredGetRoutes = declared

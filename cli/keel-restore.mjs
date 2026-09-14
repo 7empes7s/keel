@@ -20,6 +20,7 @@ import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
+import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -61,6 +62,7 @@ export async function runRestore({
   snapshotId,
   selection,
   reconciliationResources,
+  previewOnly = false,
   targetConfig,
   collectorConfig,
   mode,
@@ -167,8 +169,11 @@ export async function runRestore({
 
     const { accessToken: collectorToken } = await getTokenFn(collectorConfig);
     const targetReader = new GraphReaderClass(async () => collectorToken);
-    const { accessToken: restorerToken } = await getTokenFn(targetConfig);
-    const writer = new GraphWriterClass(async () => restorerToken);
+    let writer;
+    if (!previewOnly) {
+      const { accessToken: restorerToken } = await getTokenFn(targetConfig);
+      writer = new GraphWriterClass(async () => restorerToken);
+    }
 
     // Re-collect the target's CURRENT state — not what planning saw — so a retry
     // after a partial failure treats already-created resources as done instead
@@ -192,6 +197,26 @@ export async function runRestore({
     const deletes = resources.filter((resource) => resource.verb === 'delete');
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
     const { waves: deletionWaves } = planDeletionWavesFn(deletes);
+
+    // Human preview shares scope, current-state verb resolution and ordering with
+    // enforcement, but returns before acquiring Restorer credentials or a writer.
+    if (previewOnly) {
+      const guardRefusals = await previewApplyPlan({
+        resources, waves, deletionWaves, patches, existingTargetIds,
+        deletionGuardOptions,
+        signInPathGate: { reader: targetReader, protectedPrincipalIds },
+        targetTenant: collectorConfig.tenantId,
+      });
+      return {
+        snapshotId: sourceSnapshot,
+        resources: resources.map(({ naturalKey, resourceType, verb, verbReason }) => ({
+          naturalKey, resourceType, verb, verbReason,
+        })),
+        waves, deletionWaves,
+        patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
+        guardRefusals,
+      };
+    }
 
     const seeds = {
       [`${targetConfig.tenantId}/entra/write`]: { capacity: 100, refillPerSecond: 100 / 20 }, // Intune-tier seed, spec §11.1

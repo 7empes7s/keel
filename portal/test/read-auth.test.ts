@@ -158,6 +158,11 @@ test("the route and page inventory is closed around each declared capability", (
     sources.map(relativeSource).filter((source) => source.startsWith("api/principals/")).sort(),
     "every principal write must be inventoried",
   );
+  assert.deepEqual(
+    declared.map(([, surface]) => surface.source).filter((source) => source.endsWith("/selection/route.ts")).sort(),
+    sources.map(relativeSource).filter((source) => source.endsWith("/selection/route.ts")).sort(),
+    "every POST selection preview must be inventoried",
+  );
   for (const path of sources) {
     const source = relativeSource(path);
     const declaration = declaredBySource.get(source);

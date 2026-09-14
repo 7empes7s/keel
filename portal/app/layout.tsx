@@ -11,6 +11,7 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 
 import { NavLinks } from "@/components/nav-links";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
+import { CAPABILITIES_HEADER } from "@/lib/principal";
 
 export const metadata: Metadata = {
   title: "KEEL Operator Portal",
@@ -32,6 +33,10 @@ export default async function RootLayout({
     throw new Error("Verified Cloudflare Access identity is missing");
   }
 
+  const canApprove = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
+    .split(" ")
+    .includes("approve");
+
   return (
     <html lang="en">
       <body>
@@ -49,7 +54,7 @@ export default async function RootLayout({
                 <small>Operator portal</small>
               </span>
             </Link>
-            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} />
+            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} />
             <div className="operator-context">
               <span className="auth-state">
                 <span aria-hidden="true" className="auth-dot" /> Authenticated

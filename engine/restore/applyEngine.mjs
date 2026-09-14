@@ -6,6 +6,7 @@ import { immutableDrift, writableProjection } from '../reconcile/writableProject
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
+import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
@@ -88,10 +89,14 @@ export function rewriteReferences(payload, references, ctx, naturalKey) {
 /** Empirically observed on this tenant: a read immediately after a write to the same object can
  * return 404 or a stale body for up to ~15-20s. Retries only the specific staleness signature the
  * caller names — never masks a genuine error. */
-async function readAfterWrite(writer, version, path, isStale, { attempts = 6, delayMs = 3000 } = {}) {
+async function readAfterWrite(writer, version, path, isStale, {
+  attempts = 6,
+  delayMs = 3000,
+  retryOperation = (operation) => operation(),
+} = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await writer.read(version, path);
+    result = await retryOperation(() => writer.read(version, path));
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
@@ -100,10 +105,14 @@ async function readAfterWrite(writer, version, path, isStale, { attempts = 6, de
 
 /** Same lag readAfterWrite retries on the read side — this tenant's write path can also 404 a
  * write to an object this session just created/mutated. Retries ONLY a 404. */
-async function writeAfterCreate(writer, version, path, body, { attempts = 6, delayMs = 3000 } = {}) {
+async function writeAfterCreate(writer, version, path, body, {
+  attempts = 6,
+  delayMs = 3000,
+  retryOperation = (operation) => operation(),
+} = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await writer.write(version, path, body);
+    result = await retryOperation(() => writer.write(version, path, body));
     if (result.ok || result.status !== 404) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
@@ -111,6 +120,55 @@ async function writeAfterCreate(writer, version, path, body, { attempts = 6, del
 }
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
+
+const THROTTLE_RETRY_MAX_ATTEMPTS = 3;
+
+const sleepSeconds = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+
+function isThrottleResponse(result) {
+  return result?.ok === false && (result.status === 429 || result.status === 503);
+}
+
+function retryDelaySeconds(result) {
+  const delay = result?.retryAfter;
+  return Number.isSafeInteger(delay) && delay >= 0 ? delay : RETRY_AFTER_FALLBACK_SECONDS;
+}
+
+/** Every Graph operation in an apply wave uses this bounded retry path. Its
+ * sleeper is injected by tests so observed Graph delays never make fixtures
+ * wait in real time. */
+export async function retryThrottledGraphOperation(operation, {
+  governor,
+  targetTenant,
+  operationClass = 'write',
+  maxAttempts = THROTTLE_RETRY_MAX_ATTEMPTS,
+  sleep = sleepSeconds,
+} = {}) {
+  const attemptsLimit = Number.isInteger(maxAttempts)
+    ? Math.min(Math.max(maxAttempts, 1), THROTTLE_RETRY_MAX_ATTEMPTS)
+    : THROTTLE_RETRY_MAX_ATTEMPTS;
+  let result;
+  for (let attempt = 1; attempt <= attemptsLimit; attempt += 1) {
+    await governor.acquire(targetTenant, 'entra', operationClass);
+    result = await operation();
+    if (!isThrottleResponse(result)) return result;
+    if (attempt === attemptsLimit) return { ...result, attempts: attempt };
+
+    const delay = retryDelaySeconds(result);
+    governor.observeRetryAfter(targetTenant, 'entra', operationClass, delay);
+    await sleep(delay);
+  }
+  return result;
+}
+
+function graphFailure(naturalKey, result) {
+  const failure = { naturalKey, error: JSON.stringify(result?.body ?? result?.error) };
+  if (result?.attempts !== undefined) {
+    failure.status = result.status;
+    failure.attempts = result.attempts;
+  }
+  return failure;
+}
 
 async function journalBeforeMutation(rollbackClient, { runId, naturalKey, priorState }) {
   if (!rollbackClient) return true;
@@ -140,6 +198,7 @@ export async function applyWave(writer, governor, wave, {
   runId,
   simulationPassed = false,
   signInPathGate,
+  throttleRetryOptions,
 }) {
   const applied = [];
   const skipped = [];
@@ -151,6 +210,12 @@ export async function applyWave(writer, governor, wave, {
   // Same three lookup sources resolvePlan() uses in cli/keel-plan.mjs, so a symbol that the
   // pre-flight proved resolvable resolves identically here at write time.
   const referenceContext = { targetIndex: existingTargetIds, mappingTable, runProvenance: appliedIds };
+  const retryOperation = (operation) => retryThrottledGraphOperation(operation, {
+    governor,
+    targetTenant,
+    operationClass: 'write',
+    ...throttleRetryOptions,
+  });
 
   for (const resource of wave) {
     if (resource.verb === 'noop') {
@@ -197,14 +262,13 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      await governor.acquire(targetTenant, 'entra', 'write');
-      const deleteResult = await writer.write('v1.0', path, { method: 'DELETE', body: {} });
+      const deleteResult = await retryOperation(() => writer.write('v1.0', path, { method: 'DELETE', body: {} }));
       if (!deleteResult.ok) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(deleteResult.body) });
+        failed.push(graphFailure(resource.naturalKey, deleteResult));
         continue;
       }
 
-      const reRead = await readAfterWrite(writer, 'v1.0', path, (r) => r?.ok === true && r.body?.deletedDateTime == null);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, (r) => r?.ok === true && r.body?.deletedDateTime == null, { retryOperation });
       const isAbsent = reRead?.ok === false && reRead.status === 404;
       const live = reRead?.body ?? reRead;
       const isSoftDeleted = live?.deletedDateTime != null;
@@ -259,14 +323,13 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      await governor.acquire(targetTenant, 'entra', 'write');
-      const restoreResult = await writer.write(
+      const restoreResult = await retryOperation(() => writer.write(
         'v1.0',
         `/directory/deletedItems/${deletedItemId}/restore`,
         { method: 'POST', body: {} },
-      );
+      ));
       if (!restoreResult.ok) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(restoreResult.body) });
+        failed.push(graphFailure(resource.naturalKey, restoreResult));
         continue;
       }
       if (restoreResult.body?.id !== targetId) {
@@ -278,9 +341,9 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound);
+      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation });
       if (reRead?.ok === false) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+        failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
       let live = reRead?.body ?? reRead;
@@ -290,17 +353,16 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const payload = writableProjection(desired, resource.resourceType);
-      await governor.acquire(targetTenant, 'entra', 'write');
-      const updateResult = await writer.write('v1.0', path, { method: 'PATCH', body: payload });
+      const updateResult = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
       if (!updateResult.ok) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateResult.body) });
+        failed.push(graphFailure(resource.naturalKey, updateResult));
         continue;
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)));
+        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation });
       if (updateReRead?.ok === false) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(updateReRead.body ?? updateReRead.error) });
+        failed.push(graphFailure(resource.naturalKey, updateReRead));
         continue;
       }
       live = updateReRead?.body ?? updateReRead;
@@ -354,18 +416,17 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      await governor.acquire(targetTenant, 'entra', 'write');
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload });
+      const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation });
       if (!writeResult.ok) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) });
+        failed.push(graphFailure(resource.naturalKey, writeResult));
         continue;
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(withoutNulls(r.body), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)));
+        isNotFound(r) || (r?.ok === true && canonicalHash(withoutNulls(r.body), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
       if (reRead?.ok === false) {
-        failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+        failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
       const live = withoutNulls(reRead?.body ?? reRead);
@@ -399,9 +460,14 @@ export async function applyWave(writer, governor, wave, {
     if (existingId) {
       if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
       const path = `${pathFor(resource.resourceType)}/${existingId}`;
-      const reRead = await writer.read('v1.0', path);
+      const reRead = await retryOperation(() => writer.read('v1.0', path));
       if (reRead?.ok === false) {
-        failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but could not be read (status ${reRead.status}) — manual reconciliation required` });
+        const failure = { naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but could not be read (status ${reRead.status}) — manual reconciliation required` };
+        if (reRead?.attempts !== undefined) {
+          failure.status = reRead.status;
+          failure.attempts = reRead.attempts;
+        }
+        failed.push(failure);
         continue;
       }
       const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
@@ -423,15 +489,14 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
-    await governor.acquire(targetTenant, 'entra', 'write');
     const path = pathFor(resource.resourceType);
-    const writeResult = await writer.write('v1.0', path, { method: 'POST', body: payload });
-    if (!writeResult.ok) { failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(writeResult.body) }); continue; }
+    const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: payload }));
+    if (!writeResult.ok) { failed.push(graphFailure(resource.naturalKey, writeResult)); continue; }
 
     const targetId = writeResult.body.id;
-    const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound);
+    const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound, { retryOperation });
     if (reRead?.ok === false) {
-      failed.push({ naturalKey: resource.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+      failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
     const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
@@ -524,9 +589,16 @@ export async function applyPatches(writer, governor, patches, {
   mode,
   appliedIds,
   readAfterWriteOptions,
+  throttleRetryOptions,
 }) {
   const applied = [];
   const failed = [];
+  const retryOperation = (operation) => retryThrottledGraphOperation(operation, {
+    governor,
+    targetTenant,
+    operationClass: 'write',
+    ...throttleRetryOptions,
+  });
 
   for (const patch of patches) {
     if (!appliedIds.has(patch.symbol)) {
@@ -550,10 +622,9 @@ export async function applyPatches(writer, governor, patches, {
       continue;
     }
 
-    await governor.acquire(targetTenant, 'entra', 'write');
-    const writeResult = await writer.write('v1.0', `${pathFor(resourceType)}/${patchId}`, { method: 'PATCH', body });
+    const writeResult = await retryOperation(() => writer.write('v1.0', `${pathFor(resourceType)}/${patchId}`, { method: 'PATCH', body }));
     if (!writeResult.ok) {
-      failed.push({ naturalKey: patch.naturalKey, error: JSON.stringify(writeResult.body) });
+      failed.push(graphFailure(patch.naturalKey, writeResult));
       return { applied, failed };
     }
 
@@ -566,9 +637,9 @@ export async function applyPatches(writer, governor, patches, {
       // read-after-write lag signature. An unexpected third value is a real
       // mismatch and is not retried as though it were staleness.
       return actual === undefined || ('sourceValue' in patch && isDeepStrictEqual(actual, patch.sourceValue));
-    }, readAfterWriteOptions);
+    }, { ...readAfterWriteOptions, retryOperation });
     if (reRead?.ok === false) {
-      failed.push({ naturalKey: patch.naturalKey, error: JSON.stringify(reRead.body ?? reRead.error) });
+      failed.push(graphFailure(patch.naturalKey, reRead));
       return { applied, failed };
     }
     const actual = valueAtPath(reRead?.body ?? reRead, patch.field);

@@ -3,14 +3,45 @@
  * is mirrored at the code level, not just the credential level. */
 const GRAPH = { 'v1.0': 'https://graph.microsoft.com/v1.0', beta: 'https://graph.microsoft.com/beta' };
 const GRAPH_HOSTS = new Set(['graph.microsoft.com']);
+export const RETRY_AFTER_FALLBACK_SECONDS = 60;
 
 function isGraphUrl(url) {
   try { return GRAPH_HOSTS.has(new URL(url).host); } catch { return false; }
 }
 
+function headerValue(headers, name) {
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') return headers.get(name) ?? headers.get(name.toLowerCase()) ?? undefined;
+  const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
+  return entry?.[1];
+}
+
+/** HTTP Retry-After permits either non-negative delay-seconds or an HTTP-date.
+ * A past date, a decimal, or an otherwise invalid value is deliberately not
+ * trusted as a throttle delay. */
+export function parseRetryAfter(value, now = Date.now()) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    return Number.isSafeInteger(seconds) ? seconds : undefined;
+  }
+  const date = Date.parse(trimmed);
+  if (Number.isNaN(date)) return undefined;
+  const seconds = Math.ceil((date - now) / 1000);
+  return seconds >= 0 ? seconds : undefined;
+}
+
+export function retryAfterFor(status, headers, now = Date.now()) {
+  const retryAfter = parseRetryAfter(headerValue(headers, 'retry-after'), now);
+  if (retryAfter !== undefined) return retryAfter;
+  return status === 429 || status === 503 ? RETRY_AFTER_FALLBACK_SECONDS : undefined;
+}
+
 export class GraphWriter {
-  constructor(getAccessToken) {
+  constructor(getAccessToken, { clock = () => Date.now() } = {}) {
     this.getAccessToken = getAccessToken;
+    this.clock = clock;
   }
 
   url(version, path) {
@@ -26,7 +57,9 @@ export class GraphWriter {
       body: JSON.stringify(body),
     });
     const responseBody = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, body: responseBody };
+    const result = { ok: res.ok, status: res.status, body: responseBody };
+    if (!result.ok) result.retryAfter = retryAfterFor(res.status, res.headers, this.clock());
+    return result;
   }
 
   async read(version, path) {
@@ -36,7 +69,9 @@ export class GraphWriter {
       headers: { Authorization: `Bearer ${await this.getAccessToken()}` },
     });
     const body = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, body };
+    const result = { ok: res.ok, status: res.status, body };
+    if (!result.ok) result.retryAfter = retryAfterFor(res.status, res.headers, this.clock());
+    return result;
   }
 
   /**
@@ -53,15 +88,30 @@ export class GraphWriter {
       headers: { Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: requests.map((r) => ({ id: r.id, method: r.method, url: r.url, body: r.body })) }),
     });
-    const body = await res.json();
+    const body = await res.json().catch(() => null);
 
     const succeeded = [];
     const failed = [];
-    for (const item of body.responses ?? []) {
+    if (!res.ok) {
+      failed.push({
+        status: res.status,
+        error: body?.error,
+        retryAfter: retryAfterFor(res.status, res.headers, this.clock()),
+      });
+      return { ok: false, succeeded, failed };
+    }
+    if (!Array.isArray(body?.responses)) {
+      failed.push({
+        status: res.status,
+        error: new Error('malformed Graph batch response: missing responses array'),
+      });
+      return { ok: false, succeeded, failed };
+    }
+    for (const item of body.responses) {
       if (item.status >= 200 && item.status < 300) {
         succeeded.push({ id: item.id, status: item.status, body: item.body });
       } else {
-        const retryAfter = item.headers?.['Retry-After'] ? Number(item.headers['Retry-After']) : undefined;
+        const retryAfter = retryAfterFor(item.status, item.headers, this.clock());
         failed.push({ id: item.id, status: item.status, error: item.body?.error, retryAfter });
       }
     }

@@ -1,3 +1,7 @@
+import { can } from '../authz/can.mjs';
+import { findPrincipalById } from '../authz/principals.mjs';
+import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
+
 // engine/jobs/queue.mjs
 //
 // The job queue backing long-running work triggered by the operator portal (§3.3,
@@ -18,6 +22,14 @@ export const ORPHANED_HEARTBEAT_STALE_MS = JOB_HEARTBEAT_INTERVAL_MS * 8;
 export async function enqueue(client, {
   kind, params, requestedBy, idempotencyKey, notBefore,
 }) {
+  // Offsite has no portal route: enforce admission here as well as at execution.
+  if (kind === 'offsite') {
+    const principal = await findPrincipalById(client, requestedBy);
+    const capability = capabilityForJobKind(kind);
+    if (!principal || !capability || !(await can(client, principal, capability))) {
+      throw new Error('not authorized to enqueue offsite');
+    }
+  }
   const { rows } = await client.query(
     `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before)
      VALUES ($1, $2, $3, $4, COALESCE($5, now()))

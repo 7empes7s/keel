@@ -279,6 +279,7 @@ assert.deepEqual(
   {
     collect: 'collect',
     prune: 'collect',
+    offsite: 'configuration',
     'drift-detect': 'collect',
     backup: 'backup',
     'baseline-create': 'baseline-create',
@@ -638,3 +639,39 @@ assert.throws(
 }
 
 console.log('keel-worker.test.mjs — all assertions passed');
+
+// Task 42: exercise shell dispatch against a fake, never the shipping script.
+assert.equal(JOB_HANDLERS.offsite.script, join(cliDir, '../ops/keel-offsite.sh'));
+assert.equal(JOB_HANDLERS.offsite.executable, 'bash');
+assert.deepEqual(JOB_HANDLERS.offsite.argsFor({}), []);
+assert.deepEqual(JOB_HANDLERS.offsite.argsFor({ dryRun: true }), ['--dry-run']);
+for (const params of [null, [], { dryRun: 'yes' }, { config: '/tmp/other' }, { tier: 'tier1' }]) {
+  assert.throws(() => JOB_HANDLERS.offsite.argsFor(params), /offsite params/);
+}
+assert.throws(() => JOB_HANDLERS.offsite.resultFor({ stdout: 1, stderr: '', durationMs: 1 }), /invalid offsite result/);
+const offsiteFixture = join(fixtureDir, 'offsite.sh');
+writeFileSync(offsiteFixture, '#!/bin/bash\nset -eu\n[ "$#" -eq 1 ]\n[ "$1" = "--dry-run" ]\necho verified-fixture\n');
+const offsiteHandlers = { offsite: { ...JOB_HANDLERS.offsite, script: offsiteFixture } };
+{
+  const principal = { id: 'offsite-admin', email: 'offsite@fixture.invalid', disabled_at: null };
+  const fake = makeAuthzFakeClient({ principal, grants: [{ role: 'admin', active_from: hoursAgo(1), active_until: null }] });
+  await runJob(fake.client, authzJobFor('offsite', { requested_by: principal.id, params: { dryRun: true } }), {
+    dbUrl: 'postgres://unused', onInFlightChange: () => {}, handlers: offsiteHandlers,
+  });
+  assert.equal(fake.failedCalls.length, 0);
+  assert.equal(fake.completedCalls.length, 1);
+  const result = fake.completedCalls[0][1];
+  assert.equal(result.stdout, 'verified-fixture\n');
+  assert.equal(result.dryRun, true);
+  assert.equal(result.shipped, false);
+  assert.ok(result.durationMs >= 0);
+}
+{
+  const principal = { id: 'offsite-viewer', email: 'viewer@fixture.invalid', disabled_at: null };
+  const fake = makeAuthzFakeClient({ principal, grants: [{ role: 'viewer', active_from: hoursAgo(1), active_until: null }] });
+  await runJob(fake.client, authzJobFor('offsite', { requested_by: principal.id, params: { dryRun: true } }), {
+    dbUrl: 'postgres://unused', onInFlightChange: () => {}, handlers: offsiteHandlers,
+  });
+  assertJobFailedUnRun(fake, /requester no longer authorized for kind: offsite/, 'read-only offsite');
+}
+console.log('keel-worker offsite — all assertions passed');

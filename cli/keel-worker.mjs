@@ -83,7 +83,7 @@ export async function terminateProcessGroup(pid) {
 
 // The child is a process-group leader. This is essential: the collection and pruning CLIs
 // may themselves start descendants, all of which must die with the job on timeout or shutdown.
-export function startJobChild(file, args, { env = process.env, timeoutMs }) {
+export function startJobChild(file, args, { env = process.env, timeoutMs, executable = 'node' }) {
   let child;
   let timeout;
   let timedOut = false;
@@ -109,7 +109,7 @@ export function startJobChild(file, args, { env = process.env, timeoutMs }) {
   };
 
   const completed = new Promise((resolve, reject) => {
-    child = spawn('node', [file, ...args], {
+    child = spawn(executable, [file, ...args], {
       detached: true,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -175,6 +175,28 @@ function requireString(value, label) {
 // arbitrary flag — such as a different --db-url — into the child process invocation.
 // Exported so a test can assert every registered kind has a capability mapping.
 export const JOB_HANDLERS = {
+  offsite: {
+    script: join(__dirname, '../ops/keel-offsite.sh'),
+    executable: 'bash',
+    acceptsDbUrl: false,
+    argsFor(params = {}) {
+      if (params === null || typeof params !== 'object' || Array.isArray(params)
+          || Object.keys(params).some((key) => key !== 'dryRun')
+          || (params.dryRun !== undefined && typeof params.dryRun !== 'boolean')) {
+        throw new Error('offsite params must contain only an optional boolean dryRun');
+      }
+      return params.dryRun ? ['--dry-run'] : [];
+    },
+    // Result schema: captured output, elapsed milliseconds, and transfer/dry-run outcome.
+    resultFor({ stdout, stderr, durationMs }, params = {}) {
+      if (typeof stdout !== 'string' || typeof stderr !== 'string'
+          || !Number.isFinite(durationMs) || durationMs < 0) {
+        throw new Error('invalid offsite result');
+      }
+      return { stdout, stderr, durationMs, dryRun: params.dryRun === true,
+        shipped: params.dryRun !== true };
+    },
+  },
   collect: {
     script: join(__dirname, 'keel-collect.mjs'),
     argsFor(params = {}) {
@@ -392,7 +414,8 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   try {
     // Handlers that need job context beyond params (baseline-create records the
     // requester as set_by) receive the whole job as a second argument.
-    args = [...handler.argsFor(job.params ?? {}, job), '--db-url', dbUrl];
+    args = handler.argsFor(job.params ?? {}, job);
+    if (handler.acceptsDbUrl !== false) args = [...args, '--db-url', dbUrl];
   } catch (err) {
     await failJob(`invalid params: ${err.message}`);
     console.error(`job ${job.id}: invalid params — ${err.message}`);
@@ -402,7 +425,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   const startedAt = Date.now();
   console.log(`job ${job.id}: running ${job.kind} ${handler.script} ${args.join(' ')}`);
   const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
-  const execution = startJobChild(handler.script, args, { timeoutMs });
+  const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable });
   onInFlightChange({ job, terminate: execution.terminate });
   const heartbeat = setInterval(() => {
     touchHeartbeat(client, { id: job.id, workerId: job.worker_id }).catch((err) => {
@@ -411,9 +434,10 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }, JOB_HEARTBEAT_INTERVAL_MS);
   try {
     const { stdout, stderr } = await execution.completed;
+    const output = { stdout, stderr, durationMs: Date.now() - startedAt };
     await complete(client, {
       id: job.id,
-      result: { stdout, stderr, durationMs: Date.now() - startedAt },
+      result: handler.resultFor ? handler.resultFor(output, job.params ?? {}) : output,
     });
     await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
     console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);

@@ -12,12 +12,21 @@ const links = [
   { href: "/restore", label: "Restore", short: "06" },
 ];
 
-export function NavLinks() {
+const approvalLink = { href: "/approvals", label: "Approvals", short: "07" };
+
+// Exported so a plain unit test can assert the approve-only gate without rendering
+// this client component through a full React/router harness.
+export function visibleNavLinks(canApprove: boolean) {
+  return canApprove ? [...links, approvalLink] : links;
+}
+
+export function NavLinks({ canApprove }: { canApprove: boolean }) {
   const pathname = usePathname();
+  const visibleLinks = visibleNavLinks(canApprove);
 
   return (
     <nav aria-label="Primary navigation" className="primary-nav">
-      {links.map((link) => {
+      {visibleLinks.map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
         return (

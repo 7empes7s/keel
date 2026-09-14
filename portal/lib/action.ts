@@ -2,6 +2,7 @@ import {
   ApprovalClosedError,
   ApprovalExpiredError,
   ApprovalNotFoundError,
+  ApprovalReasonRequiredError,
   SelfApprovalError,
   approveRequest,
   rejectRequest,
@@ -406,7 +407,7 @@ export function guardedApprovalDecision(
           tenantRef: tenant,
           id,
           decidedBy: principalId,
-          reason: typeof body.reason === "string" ? body.reason : null,
+          reason: body.reason,
         })) as Record<string, unknown>;
         return Response.json(
           { approvalRequest: normalizeApprovalRequest(rejected) },
@@ -415,6 +416,12 @@ export function guardedApprovalDecision(
       } catch (error) {
         if (error instanceof ApprovalNotFoundError) return notFound();
         if (error instanceof SelfApprovalError) return forbidden();
+        if (error instanceof ApprovalReasonRequiredError) {
+          return Response.json(
+            { error: "invalid_request" },
+            { status: 400, headers: NO_STORE },
+          );
+        }
         if (
           error instanceof ApprovalClosedError
           || error instanceof ApprovalExpiredError

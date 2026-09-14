@@ -7,8 +7,10 @@ import {
   ApprovalClosedError,
   ApprovalExpiredError,
   ApprovalNotFoundError,
+  ApprovalReasonRequiredError,
   SelfApprovalError,
   approveRequest,
+  listApprovalRequests,
   rejectRequest,
   requestApproval,
 } from './approvals.mjs';
@@ -146,13 +148,161 @@ try {
   assert.equal(rejected.reason, 'out of change window');
   assert.equal((await jobRows()).length, 1, 'a rejection mints no job');
 
+  const missingReason = await requestApproval(client, {
+    tenantRef,
+    action: 'remediate',
+    params: { naturalKey: 'group:missing-rejection-reason' },
+    requestedBy: 'principal-restorer',
+    justification: 'requires a visible rejection reason',
+  });
+  await assert.rejects(
+    rejectRequest(client, {
+      tenantRef,
+      id: missingReason.id,
+      decidedBy: 'principal-approver',
+    }),
+    (error) => error instanceof ApprovalReasonRequiredError,
+    'a rejection reason is required by the engine path, not only the inbox UI',
+  );
+  assert.equal(
+    (await requestRow(missingReason.id)).status,
+    'pending',
+    'a missing rejection reason cannot close the request',
+  );
+
+  // The approval inbox reads a deliberately narrow review projection. Its filters use
+  // effective status, so a stale pending row appears in expired history without being
+  // presented as actionable, and its newest-first ordering has an id tie-breaker.
+  const inboxPending = await requestApproval(client, {
+    tenantRef,
+    action: 'restore',
+    params: { target: 'group:inbox-pending' },
+    requestedBy: 'principal-restorer',
+    justification: 'pending inbox review',
+  });
+  const inboxExpired = await requestApproval(client, {
+    tenantRef,
+    action: 'restore',
+    params: { target: 'group:inbox-expired' },
+    requestedBy: 'principal-restorer',
+    justification: 'expired inbox review',
+    ttlMs: -1000,
+  });
+  const olderHistory = await requestApproval(client, {
+    tenantRef,
+    action: 'remediate',
+    params: { target: 'group:older-history' },
+    requestedBy: 'principal-restorer',
+    justification: 'older history review',
+  });
+  await rejectRequest(client, {
+    tenantRef,
+    id: olderHistory.id,
+    decidedBy: 'principal-approver',
+    reason: 'older decision',
+  });
+  const newerHistory = await requestApproval(client, {
+    tenantRef,
+    action: 'remediate',
+    params: { target: 'group:newer-history' },
+    requestedBy: 'principal-restorer',
+    justification: 'newer history review',
+  });
+  await rejectRequest(client, {
+    tenantRef,
+    id: newerHistory.id,
+    decidedBy: 'principal-approver',
+    reason: 'newer decision',
+  });
+
+  const pending = await listApprovalRequests(client, {
+    statuses: ['pending'],
+    limit: 1,
+  });
+  assert.equal(pending.length, 1, 'status filtering and limit are explicit');
+  assert.equal(pending[0].id, inboxPending.id);
+  assert.equal(pending[0].effective_status, 'pending');
+  assert.equal(pending[0].action, 'restore');
+  assert.deepEqual(pending[0].params, { target: 'group:inbox-pending' });
+  assert.equal(pending[0].requested_by, 'principal-restorer');
+  assert.equal(pending[0].justification, 'pending inbox review');
+  assert.ok(pending[0].created_at);
+  assert.ok(pending[0].expires_at);
+
+  const expired = await listApprovalRequests(client, {
+    statuses: ['expired'],
+  });
+  const effectiveExpired = expired.find((request) => request.id === inboxExpired.id);
+  assert.equal(effectiveExpired?.status, 'pending', 'the stored row remains immutable');
+  assert.equal(effectiveExpired?.effective_status, 'expired');
+
+  const history = await listApprovalRequests(client, {
+    statuses: ['approved', 'rejected', 'expired'],
+  });
+  assert.ok(
+    history.findIndex((request) => request.id === newerHistory.id)
+      < history.findIndex((request) => request.id === olderHistory.id),
+    'decided history is newest-first',
+  );
+  const newest = history.find((request) => request.id === newerHistory.id);
+  assert.equal(newest?.decided_by, 'principal-approver');
+  assert.equal(newest?.reason, 'newer decision');
+  assert.ok(newest?.decided_at);
+
+  // Newest-first ordering has an explicit id DESC tie-breaker for rows sharing a
+  // created_at. Real inserts almost always differ by at least a microsecond, so a
+  // timing-based fixture would not expose a dropped tie-breaker; this test instead
+  // forces two rows to share created_at and assigns the earlier-inserted row the
+  // lexicographically smaller id. If `, id DESC` is dropped, nothing but scan order
+  // distinguishes the tie, which for these fixtures resolves to insertion order --
+  // the opposite of what is asserted below -- so this cannot pass by accident.
+  const tieOlder = await requestApproval(client, {
+    tenantRef,
+    action: 'remediate',
+    params: { target: 'group:tie-older' },
+    requestedBy: 'principal-restorer',
+    justification: 'tie-break ordering: older insert, smaller id',
+  });
+  const tieNewer = await requestApproval(client, {
+    tenantRef,
+    action: 'remediate',
+    params: { target: 'group:tie-newer' },
+    requestedBy: 'principal-restorer',
+    justification: 'tie-break ordering: newer insert, larger id',
+  });
+  const TIE_SMALL_ID = '00000000-0000-4000-8000-0000000000aa';
+  const TIE_LARGE_ID = '00000000-0000-4000-8000-0000000000bb';
+  const tieCreatedAt = (await requestRow(tieOlder.id)).created_at;
+  await client.query(
+    `UPDATE approval_request SET id = $2, created_at = $3 WHERE id = $1`,
+    [tieOlder.id, TIE_SMALL_ID, tieCreatedAt],
+  );
+  await client.query(
+    `UPDATE approval_request SET id = $2, created_at = $3 WHERE id = $1`,
+    [tieNewer.id, TIE_LARGE_ID, tieCreatedAt],
+  );
+  const tied = await listApprovalRequests(client, { statuses: ['pending'] });
+  const tieOrder = tied
+    .map((request) => request.id)
+    .filter((id) => id === TIE_SMALL_ID || id === TIE_LARGE_ID);
+  assert.deepEqual(
+    tieOrder,
+    [TIE_LARGE_ID, TIE_SMALL_ID],
+    'rows sharing created_at must tie-break by id DESC, not scan order',
+  );
+
   // Unknown requests are not found, for approve and reject alike.
   await assert.rejects(
     approveRequest(client, { tenantRef, id: randomUUID(), decidedBy: 'principal-approver' }),
     (error) => error instanceof ApprovalNotFoundError,
   );
   await assert.rejects(
-    rejectRequest(client, { tenantRef, id: randomUUID(), decidedBy: 'principal-approver' }),
+    rejectRequest(client, {
+      tenantRef,
+      id: randomUUID(),
+      decidedBy: 'principal-approver',
+      reason: 'missing request',
+    }),
     (error) => error instanceof ApprovalNotFoundError,
   );
 

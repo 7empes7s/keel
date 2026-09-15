@@ -38,6 +38,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/actions/restore/selection/route.ts",
   },
+  restoreDryRunArtifactApi: {
+    capability: "read",
+    source: "api/actions/restore/dry-run/[id]/route.ts",
+  },
   dashboardPage: {
     capability: "read",
     source: "page.tsx",

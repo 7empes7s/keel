@@ -469,14 +469,54 @@ assert.deepEqual(
     selection: ['group:Admins', 'conditionalAccessPolicy:Protect-Admins'],
     collectorConfig: '/etc/keel/tenant-target.json',
     targetConfig: '/etc/keel/restorer-target.json',
-    mode: 'enforce',
   }),
   ['--collector-config', '/etc/keel/tenant-target.json',
     '--target-config', '/etc/keel/restorer-target.json',
     '--snapshot-id', 'snapshot-1',
-    '--select', 'group:Admins', '--select', 'conditionalAccessPolicy:Protect-Admins',
-    '--enforce'],
+    '--select', 'group:Admins', '--select', 'conditionalAccessPolicy:Protect-Admins'],
   'the raw selection becomes repeatable --select flags; the closure is the CLI\'s job',
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    snapshotId: 'snapshot-1', selection: ['group:Admins'],
+    collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer-target.json',
+    mode: 'enforce',
+  }),
+  /params.artifactId is required to enforce a restore/,
+  'a direct selection-scoped enforce, with no artifactId, must be refused',
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({
+    planId: 'plan-1',
+    collectorConfig: '/etc/keel/tenant-target.json',
+    targetConfig: '/etc/keel/restorer-target.json',
+    mode: 'enforce',
+  }),
+  /params.artifactId is required to enforce a restore/,
+  'a direct plan-scoped enforce, with no artifactId, must be refused too',
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({ artifactId: 'artifact-1' }),
+  ['--artifact', 'artifact-1', '--enforce'],
+  'an already-queued artifact-only job promotes the completed dry run',
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({
+    mode: 'enforce',
+    artifactId: 'artifact-1',
+    // This is the artifact-derived audit projection minted by approveRequest. The
+    // worker ignores it and sends only --artifact; no caller-supplied scope can ride
+    // alongside a valid artifact into the restore CLI.
+    snapshotId: 'snapshot-from-artifact',
+    selection: ['group:Admins'],
+    closureKeys: ['group:Admins'],
+    targetTenantId: 'target-from-artifact',
+    collectorConfigPath: '/etc/keel/tenant-target.json',
+    targetConfigPath: '/etc/keel/restorer-target.json',
+    reconciliationResources: null,
+  }),
+  ['--artifact', 'artifact-1', '--enforce'],
+  'an artifact-backed enforce job always dispatches via the artifact-only CLI path',
 );
 // Both credential configs are required — the read/write separation needs each.
 assert.throws(

@@ -347,3 +347,34 @@ CREATE UNIQUE INDEX schedule_one_per_job ON schedule (tenant_ref, job_kind, COAL
 END IF;
 END
 $schedule$;
+
+-- Plan task 8 (portal-design §4.1): restore promotion requires an IMMUTABLE dry-run
+-- review, never a mutable selection. A dry run persists here — the exact source
+-- snapshot, raw selection, server-computed closure, target identity, waves, deferred
+-- patches, guard outcomes and per-resource result — with a stable digest over its
+-- planning inputs and a genuine fingerprint of the target state the closure would
+-- touch. An approval references the artifact by id; execution recomputes both the
+-- digest and the fingerprint and refuses to write on any mismatch, so a stale or
+-- tampered promotion fails closed rather than replaying whatever the caller supplies.
+CREATE TABLE IF NOT EXISTS restore_dry_run (
+  id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref                text NOT NULL,
+  snapshot_id               uuid NOT NULL REFERENCES snapshot(id),
+  selection                 jsonb NOT NULL,
+  closure_keys              jsonb NOT NULL,
+  target_tenant_id          text NOT NULL,
+  collector_config_path     text NOT NULL,
+  target_config_path        text NOT NULL,
+  reconciliation_resources  jsonb,
+  waves                     jsonb NOT NULL,
+  patches                   jsonb NOT NULL,
+  guard_refusals            jsonb NOT NULL DEFAULT '[]'::jsonb,
+  results                   jsonb NOT NULL,
+  current_state_fingerprint text NOT NULL,
+  digest                    text NOT NULL,
+  status                    text NOT NULL CHECK (status IN ('completed','refused','failed')),
+  requested_by              text NOT NULL,
+  created_at                timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS restore_dry_run_tenant_created_idx
+  ON restore_dry_run (tenant_ref, created_at DESC);

@@ -12,6 +12,7 @@
 
 import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
+import { getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
@@ -30,6 +31,10 @@ export class ApprovalClosedError extends Error {}
 export class ApprovalExpiredError extends Error {}
 export class ApprovalReasonRequiredError extends Error {}
 export class SelfApprovalError extends Error {}
+// Plan task 8: a restore approval references a completed dry-run artifact rather than
+// repeating mutable restore parameters. Promotion fails closed — this error, never a
+// silent mint — if that artifact is absent, incomplete, refused, or failed.
+export class PromotionRefusedError extends Error {}
 
 function approvalStatuses(statuses) {
   if (!Array.isArray(statuses) || statuses.length === 0) {
@@ -148,11 +153,53 @@ export async function approveRequest(client, { tenantRef, id, decidedBy }) {
       throw new SelfApprovalError('an approver can never approve their own request');
     }
 
+    // Plan task 8: a restore promotion is never minted from the request's own params —
+    // it references a completed dry-run artifact, checked fresh, inside this same
+    // transaction. Absent, refused, failed, or otherwise incomplete fails closed. The
+    // fresh recompute-and-compare against the target (digest, current-state
+    // fingerprint) happens later, at execution — this check is deliberately DB-only.
+    //
+    // Every mutable restore parameter (snapshot, selection, closure, target) comes
+    // from the artifact's own stored state, never from the request. Once artifactId is
+    // present, nothing else in request.params is read, validated, or compared against
+    // the artifact — it is discarded outright. An approval row may have been created
+    // by an older caller or an administrative repair tool that put other fields
+    // alongside artifactId, matching or not; there is no shape for such a caller to
+    // get right or wrong, because those fields are never looked at, so there is no
+    // longer a param path for a future caller to find into this defect.
+    let jobParams = request.params;
+    if (request.action === 'restore') {
+      const artifactId = request.params?.artifactId;
+      const artifact = typeof artifactId === 'string' && artifactId.length > 0
+        ? await getDryRunArtifact(client, { id: artifactId, tenantRef })
+        : null;
+      const validation = validateArtifactForApproval(artifact);
+      if (!validation.ok) throw new PromotionRefusedError(validation.reason);
+      // The approval row has only an artifact reference.  The job's restore scope is
+      // reconstructed entirely from that immutable row: not one snapshot, selection,
+      // closure, target, or credential-config path is read from request.params after
+      // artifactId has selected the artifact.  The worker deliberately ignores these
+      // copied values and invokes the artifact-only CLI path; carrying this
+      // artifact-derived scope on the job makes its audit record explicit while the
+      // persisted artifact remains the sole execution authority.
+      jobParams = {
+        mode: 'enforce',
+        artifactId: artifact.id,
+        snapshotId: artifact.snapshotId,
+        selection: artifact.selection,
+        closureKeys: artifact.closureKeys,
+        targetTenantId: artifact.targetTenantId,
+        collectorConfigPath: artifact.collectorConfigPath,
+        targetConfigPath: artifact.targetConfigPath,
+        reconciliationResources: artifact.reconciliationResources,
+      };
+    }
+
     // The idempotency key pins the minted job to this request: even a retried or
     // duplicated approval can never mint a second job for the same request.
     const job = await enqueue(client, {
       kind: request.action,
-      params: request.params,
+      params: jobParams,
       requestedBy: request.requested_by,
       idempotencyKey: `approval:${request.id}`,
     });

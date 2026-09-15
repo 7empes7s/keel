@@ -293,20 +293,48 @@ export const JOB_HANDLERS = {
   // operator's RAW selection — the dependency closure is recomputed by the CLI from the
   // snapshot (§4.1), never trusted from the job payload. Both credential configs are
   // required strings because the read/write separation (assertSeparateRestorer) needs
-  // each; both are part of what the approver approved. Enforce is opt-in via
-  // params.mode === 'enforce' — the approval requirement is what gates it.
+  // each; both are part of what the approver approved.
+  //
+  // Plan task 8: EVERY enforce run is reached ONLY by promoting a completed dry-run
+  // artifact. This includes a legacy plan scope: plan-cleanliness is not a substitute
+  // for a rendered immutable review. A dry-run-creation job (no params.mode) may
+  // optionally carry params.artifactId too — there it means "persist this dry run's
+  // result under this id" (job.requested_by becomes the artifact's provenance), the
+  // opposite direction of the same identifier.
   restore: {
     script: join(__dirname, 'keel-restore.mjs'),
-    argsFor(params = {}) {
-      const args = [
-        '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
-        '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
-      ];
+    argsFor(params = {}, job = {}) {
       const hasPlan = params.planId !== undefined;
       const hasSelection = params.snapshotId !== undefined || params.selection !== undefined;
       if (hasPlan && hasSelection) {
         throw new Error('params.planId is mutually exclusive with params.snapshotId/params.selection');
       }
+
+      if (params.mode !== undefined && params.mode !== 'enforce') {
+        throw new Error(`invalid params.mode: ${params.mode}`);
+      }
+
+      // An approval-minted job contains an artifact-derived audit projection
+      // (snapshot, selection, closure, and target) alongside artifactId. Those fields
+      // are never trusted here: the child gets only --artifact, and runRestore loads
+      // and validates the frozen artifact itself. The one-field form is retained for
+      // already-queued promotions from the first Task 8 implementation; it is equally
+      // safe because it follows that same artifact-only CLI path.
+      const paramKeys = Object.keys(params);
+      const hasArtifactId = typeof params.artifactId === 'string' && params.artifactId.length > 0;
+      const isLegacyArtifactPromotion = hasArtifactId
+        && paramKeys.length === 1 && paramKeys[0] === 'artifactId';
+      if (params.mode === 'enforce' || isLegacyArtifactPromotion) {
+        if (!hasArtifactId) {
+          throw new Error('params.artifactId is required to enforce a restore (a completed dry-run artifact must be promoted; a direct enforce is refused)');
+        }
+        return ['--artifact', params.artifactId, '--enforce'];
+      }
+
+      const args = [
+        '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
+        '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+      ];
       if (hasPlan) {
         args.push('--plan', requireString(params.planId, 'params.planId'));
       } else {
@@ -318,9 +346,9 @@ export const JOB_HANDLERS = {
           args.push('--select', requireString(key, 'params.selection entry'));
         }
       }
-      if (params.mode !== undefined) {
-        if (params.mode !== 'enforce') throw new Error(`invalid params.mode: ${params.mode}`);
-        args.push('--enforce');
+      if (params.artifactId !== undefined) {
+        args.push('--persist-artifact', requireString(params.artifactId, 'params.artifactId'));
+        args.push('--requested-by', requireString(job.requested_by, 'job.requested_by'));
       }
       if (params.acceptDegradation !== undefined) {
         if (params.acceptDegradation !== true) throw new Error('params.acceptDegradation must be true when present');
@@ -341,7 +369,7 @@ export const JOB_HANDLERS = {
   // params value always wins.
   remediate: {
     script: join(__dirname, 'keel-remediate.mjs'),
-    argsFor(params = {}) {
+    argsFor(params = {}, job = {}) {
       if (!Array.isArray(params.driftIds) || params.driftIds.length === 0) {
         throw new Error('params.driftIds must be a non-empty array of drift ids');
       }
@@ -358,6 +386,12 @@ export const JOB_HANDLERS = {
       if (params.mode !== undefined) {
         if (params.mode !== 'enforce') throw new Error(`invalid params.mode: ${params.mode}`);
         args.push('--enforce');
+      }
+      // An enforcement-mode remediation persists its automatic dry run under the
+      // immutable artifact flow. Its provenance is the already-authorized job
+      // requester, never a value supplied in mutable job params.
+      if (job.requested_by !== undefined) {
+        args.push('--requested-by', requireString(job.requested_by, 'job.requested_by'));
       }
       return args;
     },

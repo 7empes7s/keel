@@ -10,8 +10,12 @@ import React from "react";
 import {
   APPROVAL_DECISION_EVIDENCE_KIND,
   APPROVAL_REQUEST_EVIDENCE_KIND,
+  PromotionRefusedError,
+  approveRequest,
+  requestApproval,
 } from "../../engine/govern/approvals.mjs";
 import { verifyChain } from "../../engine/govern/evidence.mjs";
+import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
@@ -127,11 +131,39 @@ function get(path: string, options: RequestOptions = {}): Request {
 }
 
 async function createRestoreRequest(): Promise<string> {
+  const { rows } = await client.query(
+    `INSERT INTO snapshot (tenant_ref, status, completed_at)
+     VALUES ($1, 'complete', now())
+     RETURNING id`,
+    [tenantRef()],
+  );
+  const artifact = await createDryRunArtifact(client, {
+    id: randomUUID(),
+    tenantRef: tenantRef(),
+    snapshotId: String(rows[0].id),
+    selection: ["group:alpha"],
+    closureKeys: ["group:alpha"],
+    targetTenantId: "task-14-approval-target",
+    collectorConfigPath: "/fixtures/collector.json",
+    targetConfigPath: "/fixtures/restorer.json",
+    reconciliationResources: null,
+    waves: [["group:alpha"]],
+    patches: [],
+    guardRefusals: [],
+    results: {
+      applied: [{ naturalKey: "group:alpha", targetId: null }],
+      skipped: [], failed: [], notRemediable: [],
+    },
+    currentStateFingerprint: `fingerprint-${randomUUID()}`,
+    digest: `digest-${randomUUID()}`,
+    status: "completed",
+    requestedBy: "principal-restorer",
+  });
   const response = await restoreRoute(
     post("/api/actions/restore", {
       principalId: "principal-restorer",
       capabilities: ["restore"],
-      body: { target: "group:alpha", justification: "change ticket 7" },
+      body: { artifactId: artifact.id, justification: "change ticket 7" },
     }),
   );
   assert.equal(response.status, 202, "requesting restore must create a request");
@@ -318,7 +350,7 @@ test("an approver can list and decide another principal's request", async () => 
   assert.deepEqual(request, {
     id,
     action: "restore",
-    params: { target: "group:alpha" },
+    params: { artifactId: request.params.artifactId },
     requestedBy: "principal-restorer",
     justification: "change ticket 7",
     status: "pending",
@@ -534,7 +566,7 @@ test("approval by a different principal holding approver mints exactly one job",
   assert.equal(response.status, 202);
   const { job } = await response.json();
   assert.equal(job.kind, "restore");
-  assert.deepEqual(job.params, { target: "group:alpha" });
+  assert.equal(typeof job.params.artifactId, "string");
   assert.equal(job.requestedBy, "principal-restorer");
   assert.equal(job.status, "queued");
 
@@ -553,6 +585,39 @@ test("approval by a different principal holding approver mints exactly one job",
     jobsBefore + 1,
     "a repeated approval mints no second job",
   );
+});
+
+test("approveRequest refuses a completed dry-run artifact belonging to another tenant", async () => {
+  const localId = await createRestoreRequest();
+  const localRequest = await requestRow(localId);
+  const foreignTenantRef = `sha256:foreign-${randomUUID()}`;
+  // Bypass the confirmation route deliberately: the approval engine must enforce
+  // tenant scope even when a stored request references another tenant's artifact.
+  const foreignRequest = await requestApproval(client, {
+    tenantRef: foreignTenantRef,
+    action: "restore",
+    params: localRequest.params,
+    requestedBy: "principal-restorer",
+    justification: "cross-tenant artifact regression",
+  });
+  const { rows: jobsBefore } = await client.query("SELECT id FROM job ORDER BY id");
+
+  await assert.rejects(
+    approveRequest(client, {
+      tenantRef: foreignTenantRef,
+      id: foreignRequest.id,
+      decidedBy: "principal-approver",
+    }),
+    (error: unknown) => error instanceof PromotionRefusedError,
+  );
+  const refused = await requestRow(foreignRequest.id);
+  assert.equal(refused.status, "pending");
+  assert.equal(refused.decided_by, null);
+  const { rows: jobsAfter } = await client.query("SELECT id FROM job ORDER BY id");
+  assert.deepEqual(jobsAfter, jobsBefore, "a cross-tenant artifact reference must mint no job");
+
+  const response = await approveRoute(post(`/api/approvals/${localId}/approve`, approver));
+  assert.equal(response.status, 202, "the same artifact remains promotable in its own tenant");
 });
 
 test("approval by a principal without the approver capability is refused", async () => {

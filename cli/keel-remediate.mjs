@@ -13,6 +13,7 @@
 // exactly the "same job path, same safety gates" plan task 19 requires. Nothing here
 // has its own notion of how to apply a change; it only translates drift ids into a
 // restore scope.
+import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
@@ -95,8 +96,12 @@ export async function runRemediate({
   driftIds,
   targetConfig,
   collectorConfig,
+  targetConfigPath,
+  collectorConfigPath,
   mode,
   acceptDegradation,
+  requestedBy,
+  readFile,
   dbUrl = process.env.KEEL_DB_URL,
   dependencies = {},
   logger = console,
@@ -105,6 +110,7 @@ export async function runRemediate({
     connect: connectFn = connect,
     resolveRestoreScope: resolveRestoreScopeFn = resolveRestoreScope,
     runRestore: runRestoreFn = runRestore,
+    createArtifactId = randomUUID,
   } = dependencies;
 
   let client;
@@ -117,12 +123,55 @@ export async function runRemediate({
   }
 
   logger.log(`remediating ${scope.selection.length} natural key(s) from snapshot ${scope.snapshotId}`);
+  // Plan task 8: automatic remediation must take the exact immutable dry-run ->
+  // promotion path as an operator restore. It never weakens runRestore's raw-selection
+  // enforce gate or carries the scope beside the promotion: the dry run persists the
+  // server-computed closure, plan digest, target identity and current-state
+  // fingerprint, then the enforce invocation is artifact-only. The reconciliation
+  // scope (including desired absence for an added-drift delete) is stored in that
+  // immutable artifact, so promotion preserves Task 30's exact verb plan.
+  if (mode === 'enforce') {
+    const artifactId = createArtifactId();
+    const dryRun = await runRestoreFn({
+      snapshotId: scope.snapshotId,
+      reconciliationResources: scope.reconciliationResources,
+      targetConfig,
+      collectorConfig,
+      targetConfigPath,
+      collectorConfigPath,
+      mode: 'dry-run',
+      persistArtifactId: artifactId,
+      requestedBy,
+      readFile,
+      acceptDegradation,
+      dbUrl,
+      dependencies,
+      logger,
+    });
+    if (dryRun.artifactId !== artifactId) {
+      throw new Error('automatic remediation dry run did not persist its immutable review artifact');
+    }
+    return runRestoreFn({
+      artifactId,
+      mode: 'enforce',
+      acceptDegradation,
+      readFile,
+      dbUrl,
+      dependencies,
+      logger,
+    });
+  }
+
   return runRestoreFn({
     snapshotId: scope.snapshotId,
     reconciliationResources: scope.reconciliationResources,
     targetConfig,
     collectorConfig,
+    targetConfigPath,
+    collectorConfigPath,
     mode,
+    requestedBy,
+    readFile,
     acceptDegradation,
     dbUrl,
     dependencies,
@@ -139,7 +188,9 @@ export async function main({
 } = {}) {
   const driftIds = argAll('drift-id', argv);
   if (driftIds.length === 0) throw new Error('--drift-id <uuid> required (repeatable)');
-  const targetConfig = JSON.parse(readFile(arg('target-config', undefined, argv), 'utf8'));
+  const targetConfigPath = arg('target-config', undefined, argv);
+  if (!targetConfigPath) throw new Error('--target-config <path> required');
+  const targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
   const collectorConfigPath = arg('collector-config', undefined, argv);
   if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
   const collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
@@ -150,7 +201,11 @@ export async function main({
     driftIds,
     targetConfig,
     collectorConfig,
+    targetConfigPath,
+    collectorConfigPath,
     mode,
+    requestedBy: arg('requested-by', undefined, argv),
+    readFile,
     acceptDegradation: flag('accept-degradation', argv),
     dbUrl,
     dependencies,

@@ -116,14 +116,20 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
   }
 }
 
-// --- runRemediate: resolves the scope, then delegates to runRestore unchanged ---
+// --- an enforce-mode automated remediation persists a dry run, then promotes only
+// that immutable artifact. The raw snapshot/reconciliation scope never appears on the
+// enforcement call, so this cannot weaken restore's direct-enforce gate. ---
 {
   const calls = [];
   const result = await runRemediate({
     driftIds: ['drift-1'],
     targetConfig: { tenantId: 'target' },
     collectorConfig: { tenantId: 'target', clientId: 'collector' },
+    targetConfigPath: '/fixtures/target.json',
+    collectorConfigPath: '/fixtures/collector.json',
     mode: 'enforce',
+    requestedBy: 'policy-run-as-principal',
+    readFile: () => '{}',
     dbUrl: 'postgres://unused',
     logger: noopLogger,
     dependencies: {
@@ -141,11 +147,13 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
       },
       runRestore: async (options) => {
         calls.push(options);
+        if (options.mode === 'dry-run') return { artifactId: options.persistArtifactId };
         return { applied: [] };
       },
+      createArtifactId: () => 'automatic-remediation-artifact',
     },
   });
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].snapshotId, 'snapshot-1');
   assert.equal(calls[0].selection, undefined);
   assert.deepEqual(calls[0].reconciliationResources, [{
@@ -153,7 +161,18 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
     blastRadius: 'access-affecting',
   }]);
   assert.equal(calls[0].targetConfig.tenantId, 'target');
-  assert.equal(calls[0].mode, 'enforce');
+  assert.equal(calls[0].mode, 'dry-run');
+  assert.equal(calls[0].persistArtifactId, 'automatic-remediation-artifact');
+  assert.equal(calls[0].requestedBy, 'policy-run-as-principal');
+  assert.deepEqual(
+    calls[1],
+    {
+      artifactId: 'automatic-remediation-artifact', mode: 'enforce',
+      acceptDegradation: undefined, readFile: calls[0].readFile,
+      dbUrl: 'postgres://unused', dependencies: calls[0].dependencies, logger: noopLogger,
+    },
+    'enforcement is artifact-only; mutable restore scope and credentials are loaded from the dry-run artifact',
+  );
   assert.deepEqual(result, { applied: [] });
 }
 
@@ -394,7 +413,19 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
       driftIds,
       targetConfig: { tenantId: 'target', clientId: 'restorer', certPath: '/r.cer', keyPath: '/r.key' },
       collectorConfig: { tenantId: 'target', clientId: 'collector', certPath: '/c.cer', keyPath: '/c.key' },
+      targetConfigPath: '/fixtures/restorer.json',
+      collectorConfigPath: '/fixtures/collector.json',
       mode: 'enforce',
+      requestedBy: 'policy-run-as-principal',
+      readFile: (path) => {
+        if (path === '/fixtures/restorer.json') {
+          return JSON.stringify({ tenantId: 'target', clientId: 'restorer', certPath: '/r.cer', keyPath: '/r.key' });
+        }
+        if (path === '/fixtures/collector.json') {
+          return JSON.stringify({ tenantId: 'target', clientId: 'collector', certPath: '/c.cer', keyPath: '/c.key' });
+        }
+        throw new Error(`unexpected config read: ${path}`);
+      },
       dbUrl: database.url,
       logger: noopLogger,
       dependencies: {
@@ -407,9 +438,11 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
         GraphWriter: FakeWriter,
         ThrottleGovernor: class { async acquire() {} },
         applyWave: async (...args) => {
-          state.verbs.push(...args[2].map((resource) => ({
-            naturalKey: resource.naturalKey, verb: resource.verb, targetId: resource.targetId,
-          })));
+          if (args[3].mode === 'enforce') {
+            state.verbs.push(...args[2].map((resource) => ({
+              naturalKey: resource.naturalKey, verb: resource.verb, targetId: resource.targetId,
+            })));
+          }
           return applyWave(...args);
         },
       },
@@ -443,6 +476,15 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
     assert.equal(result.resources.find((resource) => resource.naturalKey === 'group:Finance').verb, 'update');
     assert.equal(result.resources.find((resource) => resource.naturalKey === 'group:Added').verb, 'delete');
     assert.equal(result.resources.find((resource) => resource.naturalKey === 'group:HR').verb, 'restore-soft-deleted');
+    const { rows: artifacts } = await client.query(
+      'SELECT selection, status FROM restore_dry_run WHERE snapshot_id = $1', [baselineSnapshotId],
+    );
+    assert.equal(artifacts.length, 1, 'automatic remediation persists exactly one immutable dry-run artifact');
+    assert.equal(artifacts[0].status, 'completed');
+    assert.deepEqual(
+      [...artifacts[0].selection].sort(),
+      ['group:Added', 'group:Finance', 'group:HR'],
+    );
   } finally {
     await client?.end();
     await database.cleanup();

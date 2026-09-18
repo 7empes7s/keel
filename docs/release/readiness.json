@@ -1,0 +1,43 @@
+{
+  "contractVersion": 1,
+  "generatedAt": "2026-09-15T10:12:11.558Z",
+  "source": {
+    "path": "/opt/keel",
+    "revision": "18a4c54142b3f12e15f9dbe68942d2036ea8dae3",
+    "dirty": true
+  },
+  "deployed": {
+    "path": "/opt/keel-live",
+    "revision": "7f59f2de442655aa864f31b93ed4c0d2f19ca909",
+    "dirty": true
+  },
+  "revisionMatch": false,
+  "portal": {
+    "url": "http://localhost:3000",
+    "health": {
+      "httpStatus": 404,
+      "ok": false
+    }
+  },
+  "probes": [
+    {
+      "feature": "coverage",
+      "path": "/api/coverage",
+      "outcome": "unknown",
+      "reason": "no-session"
+    },
+    {
+      "feature": "drift",
+      "path": "/api/drift",
+      "outcome": "unknown",
+      "reason": "no-session"
+    },
+    {
+      "feature": "jobs",
+      "path": "/api/jobs",
+      "outcome": "unknown",
+      "reason": "no-session"
+    }
+  ],
+  "verdict": "not-ready"
+}

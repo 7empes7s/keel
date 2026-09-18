@@ -10,6 +10,7 @@
 // worker never reimplements collection or pruning logic. Every claimed job is
 // re-authorized at execution time against its requester's current grants (plan task
 // 25); the enqueue-time check is never trusted here.
+import { createEventSink, jobCorrelationId, redactPayload } from '../engine/telemetry/events.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -20,7 +21,7 @@ import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
 import {
-  claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
+  emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -408,9 +409,10 @@ export const JOB_HANDLERS = {
   },
 };
 
-export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS }) {
+export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = JOB_HANDLERS, eventSink = createEventSink() }) {
   const failJob = async (error) => {
-    await fail(client, { id: job.id, error });
+    const failed = await fail(client, { id: job.id, error: redactPayload(error) });
+    emitJobEvent(failed ?? job, 'job.failed', eventSink);
     await recordAutoRemediationTerminalOutcome(client, { job, status: 'failed', error });
   };
 
@@ -457,9 +459,11 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }
 
   const startedAt = Date.now();
-  console.log(`job ${job.id}: running ${job.kind} ${handler.script} ${args.join(' ')}`);
+  emitJobEvent(job, 'job.running', eventSink);
   const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
-  const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable });
+  const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
+    env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job) },
+  });
   onInFlightChange({ job, terminate: execution.terminate });
   const heartbeat = setInterval(() => {
     touchHeartbeat(client, { id: job.id, workerId: job.worker_id }).catch((err) => {
@@ -469,10 +473,11 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   try {
     const { stdout, stderr } = await execution.completed;
     const output = { stdout, stderr, durationMs: Date.now() - startedAt };
-    await complete(client, {
+    const completed = await complete(client, {
       id: job.id,
       result: handler.resultFor ? handler.resultFor(output, job.params ?? {}) : output,
     });
+    emitJobEvent(completed ?? job, 'job.succeeded', eventSink);
     await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
     console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
   } catch (err) {
@@ -482,7 +487,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       err.stdout ? `stdout: ${err.stdout}` : null,
     ].filter(Boolean).join('\n');
     await failJob(message);
-    console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${message}`);
+    console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${redactPayload(message)}`);
   } finally {
     clearInterval(heartbeat);
     onInFlightChange(null);

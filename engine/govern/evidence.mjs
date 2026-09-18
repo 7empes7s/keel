@@ -1,3 +1,4 @@
+import { envelopeForEvidence, redactPayload, createEventSink } from '../telemetry/events.mjs';
 import { createHash } from 'node:crypto';
 import { canonicalize } from '../cir/canonicalHash.mjs';
 
@@ -11,7 +12,17 @@ function evidenceHash({ prevHash, tenantRef, occurredAt, kind, subject, actor })
 }
 
 /** Spec M2.6.4. Append-only, tamper-evident: each record embeds the previous record's hash. */
-export async function appendEvidence(client, { tenantRef, kind, subject, actor }) {
+export async function appendEvidence(client, {
+  tenantRef, kind, subject, actor,
+  correlationId = process.env.KEEL_EVENT_CORRELATION_ID,
+  eventSink = createEventSink(),
+}) {
+  subject = redactPayload(subject);
+  actor = redactPayload(actor);
+  if (correlationId) {
+    subject = { ...subject, _event: { version: 1, correlationId } };
+  }
+  let record;
   await client.query('BEGIN');
   try {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [tenantRef]);
@@ -44,11 +55,16 @@ export async function appendEvidence(client, { tenantRef, kind, subject, actor }
       [tenantRef, rows[0].seq, recordHash, BigInt(headRows[0]?.record_count ?? 0) + 1n],
     );
 
+    record = { seq: rows[0].seq, tenant_ref: tenantRef, occurred_at: occurredAt,
+      kind, subject, actor, prev_hash: prevHash, record_hash: recordHash };
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
   }
+  // A logging failure must never roll back or misreport committed audit evidence.
+  try { eventSink(envelopeForEvidence(record)); } catch { /* best-effort projection */ }
+  return record;
 }
 
 export async function verifyChain(client, { tenantRef }) {

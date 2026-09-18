@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { formatTimestamp } from "@/lib/presentation";
 import type { JobRecord } from "@/lib/portal-jobs";
 
@@ -51,7 +53,7 @@ export function JobTable({
               {jobs.map((job) => (
                 <tr key={job.id}>
                   <th data-label="Kind" scope="row">
-                    <code className="natural-key">{job.kind}</code>
+                    <Link href={`/jobs/${encodeURIComponent(job.id)}`}><code className="natural-key">{job.kind}</code></Link>
                   </th>
                   <td data-label="Status">
                     <span className={`job-status job-status-${job.status}`}>
@@ -73,7 +75,7 @@ export function JobTable({
                   </td>
                   <td className="wrap-value" data-label="Error">
                     {job.status === "failed" && job.error ? (
-                      <span className="job-error">{String(job.error)}</span>
+                      <pre className="job-error job-payload">{String(job.error)}</pre>
                     ) : (
                       "—"
                     )}

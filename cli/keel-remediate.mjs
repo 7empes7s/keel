@@ -94,14 +94,18 @@ export async function resolveRestoreScope(client, { driftIds }) {
 
 export async function runRemediate({
   driftIds,
+  previewOnly = false,
   targetConfig,
   collectorConfig,
-  targetConfigPath,
-  collectorConfigPath,
+  // Plan task 8 parameters. Optional here so the task-46 preview binding — which
+  // never persists or promotes an artifact — can call the same job path without
+  // them; runRestore applies its own defaults when they are absent.
+  targetConfigPath = /** @type {string | undefined} */ (undefined),
+  collectorConfigPath = /** @type {string | undefined} */ (undefined),
   mode,
   acceptDegradation,
-  requestedBy,
-  readFile,
+  requestedBy = /** @type {string | undefined} */ (undefined),
+  readFile = /** @type {((path: string) => string) | undefined} */ (undefined),
   dbUrl = process.env.KEEL_DB_URL,
   dependencies = {},
   logger = console,
@@ -163,6 +167,7 @@ export async function runRemediate({
   }
 
   return runRestoreFn({
+    ...(previewOnly ? { previewOnly: true } : {}),
     snapshotId: scope.snapshotId,
     reconciliationResources: scope.reconciliationResources,
     targetConfig,

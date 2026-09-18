@@ -21,6 +21,7 @@ process.env.__NEXT_EXPERIMENTAL_AUTH_INTERRUPTS = "1";
 
 type Page = (props?: {
   searchParams: Promise<{ snapshot?: string }>;
+  params: Promise<{ id: string }>;
 }) => Promise<unknown>;
 
 interface AsyncStore {
@@ -64,7 +65,7 @@ async function renderWithoutReadGrant(
 
   await assert.rejects(
     workAsyncStorage.run(workStore, () =>
-      workUnitAsyncStorage.run(requestStore, () => page({ searchParams: Promise.resolve({}) })),
+      workUnitAsyncStorage.run(requestStore, () => page({ searchParams: Promise.resolve({}), params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })),
     ),
     (error: unknown) => {
       assert.equal(
@@ -85,6 +86,13 @@ test("every server-rendered data page rejects before its loader without a read g
     coverage,
     drift,
     restore,
+    jobs,
+    job,
+    policies,
+    policy,
+    notifications,
+    principals,
+    evidence,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -94,6 +102,13 @@ test("every server-rendered data page rejects before its loader without a read g
     import("../app/coverage/page"),
     import("../app/drift/page"),
     import("../app/restore/page"),
+    import("../app/jobs/page"),
+    import("../app/jobs/[id]/page"),
+    import("../app/policies/page"),
+    import("../app/policies/[id]/page"),
+    import("../app/notifications/page"),
+    import("../app/principals/page"),
+    import("../app/evidence/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -109,12 +124,23 @@ test("every server-rendered data page rejects before its loader without a read g
     ["/coverage", coverage],
     ["/drift", drift],
     ["/restore", restore],
+    ["/jobs", jobs],
+    ["/jobs/[id]", job],
+    ["/policies", policies],
+    ["/policies/[id]", policy],
+    ["/notifications", notifications],
+    ["/principals", principals],
+    ["/evidence", evidence],
   ] as const) {
     await renderWithoutReadGrant(
       route,
       defaultPage(module),
       workAsyncStorage,
       workUnitAsyncStorage,
+    );
+    await renderWithoutReadGrant(
+      route, defaultPage(module), workAsyncStorage, workUnitAsyncStorage,
+      new Headers([[PRINCIPAL_ID_HEADER, "operator"], [CAPABILITIES_HEADER, route.startsWith("/policies") ? "read collect" : "collect"]]),
     );
   }
 });
@@ -127,6 +153,13 @@ test("every server-rendered data page rejects a read grant without a principal i
     coverage,
     drift,
     restore,
+    jobs,
+    job,
+    policies,
+    policy,
+    notifications,
+    principals,
+    evidence,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -136,6 +169,13 @@ test("every server-rendered data page rejects a read grant without a principal i
     import("../app/coverage/page"),
     import("../app/drift/page"),
     import("../app/restore/page"),
+    import("../app/jobs/page"),
+    import("../app/jobs/[id]/page"),
+    import("../app/policies/page"),
+    import("../app/policies/[id]/page"),
+    import("../app/notifications/page"),
+    import("../app/principals/page"),
+    import("../app/evidence/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -151,6 +191,13 @@ test("every server-rendered data page rejects a read grant without a principal i
     ["/coverage", coverage],
     ["/drift", drift],
     ["/restore", restore],
+    ["/jobs", jobs],
+    ["/jobs/[id]", job],
+    ["/policies", policies],
+    ["/policies/[id]", policy],
+    ["/notifications", notifications],
+    ["/principals", principals],
+    ["/evidence", evidence],
   ] as const) {
     await renderWithoutReadGrant(
       route,
@@ -217,7 +264,7 @@ test("the dashboard page never reaches its data loader before the read guard res
     };
     const workStore = { route: "/", forceStatic: false, dynamicShouldError: false };
     await workAsyncStorage.run(workStore, () =>
-      workUnitAsyncStorage.run(requestStore, () => page({ searchParams: Promise.resolve({}) })),
+      workUnitAsyncStorage.run(requestStore, () => page({ searchParams: Promise.resolve({}), params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }) })),
     );
     assert.ok(
       tenantConfigReads >= 1,
@@ -272,4 +319,60 @@ test("requireReadAccess rejects a read grant without a principal identifier", as
       return true;
     },
   );
+});
+
+test("jobs pages do not reach their API database loader for unauthenticated or no-read requests", async () => {
+  const [jobs, job, workUnitModule, workModule] = await Promise.all([
+    import("../app/jobs/page"), import("../app/jobs/[id]/page"),
+    import("next/dist/server/app-render/work-unit-async-storage.external.js"),
+    import("next/dist/server/app-render/work-async-storage.external.js"),
+  ]);
+  const { workUnitAsyncStorage } = workUnitModule as { workUnitAsyncStorage: AsyncStore };
+  const { workAsyncStorage } = workModule as { workAsyncStorage: AsyncStore };
+  const originalUrl = process.env.KEEL_DB_URL;
+  const originalPath = process.env.KEEL_DB_ENV_PATH;
+  const originalRead = fs.readFileSync;
+  const sentinel = join(process.cwd(), "job-loader-sentinel.env");
+  let loaderCalls = 0;
+  delete process.env.KEEL_DB_URL;
+  process.env.KEEL_DB_ENV_PATH = sentinel;
+  fs.readFileSync = ((...args: Parameters<typeof fs.readFileSync>) => {
+    if (args[0] === sentinel) {
+      loaderCalls += 1;
+      throw new Error("Observed job loader; no database connection allowed");
+    }
+    return originalRead(...args);
+  }) as typeof fs.readFileSync;
+  try {
+    for (const [route, module] of [["/jobs", jobs], ["/jobs/[id]", job]] as const) {
+      loaderCalls = 0;
+      const page = defaultPage(module);
+      for (const requestHeaders of [
+        new Headers(),
+        new Headers([[CAPABILITIES_HEADER, "read"]]),
+        new Headers([[PRINCIPAL_ID_HEADER, "operator"], [CAPABILITIES_HEADER, "collect"]]),
+      ]) {
+        await renderWithoutReadGrant(route, page, workAsyncStorage, workUnitAsyncStorage, requestHeaders);
+        assert.equal(loaderCalls, 0, `${route}: denied requests must never load jobs`);
+      }
+      await workAsyncStorage.run({ route, forceStatic: false, dynamicShouldError: false }, () =>
+        workUnitAsyncStorage.run({
+          type: "request", phase: "render",
+          headers: new Headers([[PRINCIPAL_ID_HEADER, "viewer"], [CAPABILITIES_HEADER, "read"]]),
+          implicitTags: [], url: { pathname: route, search: "" }, rootParams: {},
+          resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
+        }, () => page({
+          searchParams: Promise.resolve({}),
+          params: Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
+        })),
+      );
+      assert.equal(loaderCalls, 1, `${route}: positive control must reach the actual loader`);
+    }
+  } finally {
+    fs.readFileSync = originalRead;
+    if (originalUrl === undefined) delete process.env.KEEL_DB_URL;
+    else process.env.KEEL_DB_URL = originalUrl;
+    if (originalPath === undefined) delete process.env.KEEL_DB_ENV_PATH;
+    else process.env.KEEL_DB_ENV_PATH = originalPath;
+  }
 });

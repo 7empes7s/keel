@@ -50,3 +50,16 @@ export async function resolvePrincipal(client, email, at = new Date()) {
     capabilities: await capabilitiesForPrincipal(client, principal, at),
   };
 }
+
+// Keep raw grants (including scheduled/expired windows) beside the engine's effective
+// answer. A disabled identity remains visible for administration, with no capabilities.
+export async function listPrincipals(client) {
+  const { rows } = await client.query('SELECT id, email, disabled_at FROM principal ORDER BY lower(email), id');
+  const grants = await client.query('SELECT * FROM role_grant ORDER BY active_from, id');
+  const at = new Date();
+  return Promise.all(rows.map(async (principal) => ({
+    ...principal,
+    role_grants: grants.rows.filter((grant) => grant.principal_id === principal.id),
+    capabilities: await capabilitiesForPrincipal(client, principal, at),
+  })));
+}

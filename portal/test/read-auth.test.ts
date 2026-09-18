@@ -74,11 +74,11 @@ test("a read grant without a principal identifier is refused before its loader r
   assert.equal(loaderCalls(), 0, "a missing principal must not invoke the loader");
 });
 
-test("a current viewer grant reads every tenant-data surface and an expired grant reads none", async () => {
+test("the declared capability reads each data surface and an expired grant reads none", async () => {
   for (const [name, surface] of Object.entries(DATA_SURFACES)) {
     const current = await responseFor(
       surface,
-      getRequest("principal-viewer", ["read"]),
+      getRequest("principal-authorized", [surface.capability]),
     );
     assert.equal(current.response.status, 200, `${name}: current viewer`);
     assert.equal(current.loaderCalls(), 1, `${name}: current viewer loader`);
@@ -101,7 +101,7 @@ function appSources(directory: string): string[] {
   });
 }
 
-test("the route and page inventory is closed around declared read capability", () => {
+test("the route and page inventory is closed around each declared capability", () => {
   const appDirectory = fileURLToPath(new URL("../app/", import.meta.url));
   const sources = appSources(appDirectory)
     .filter((path) => path.endsWith("page.tsx") || path.endsWith("route.ts"));
@@ -112,7 +112,7 @@ test("the route and page inventory is closed around declared read capability", (
   );
 
   for (const [name, surface] of declared) {
-    assert.equal(surface.capability, "read", `${name} must require read`);
+    assert.equal(surface.capability, surface.source.includes("principals") ? (["principalGrantApi", "principalRevokeApi"].includes(name) ? "roles" : "users") : surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
   }
 
   const pages = sources
@@ -147,6 +147,22 @@ test("the route and page inventory is closed around declared read capability", (
     "every data GET must declare read; health is the sole public exception",
   );
 
+  assert.deepEqual(
+    declared.map(([, surface]) => surface.source).filter((source) => source.startsWith("api/policies/")).sort(),
+    sources.map(relativeSource).filter((source) => source.startsWith("api/policies/")).sort(),
+    "every policy route, including write-only routes, must declare policies",
+  );
+
+  assert.deepEqual(
+    declared.map(([, surface]) => surface.source).filter((source) => source.startsWith("api/principals/")).sort(),
+    sources.map(relativeSource).filter((source) => source.startsWith("api/principals/")).sort(),
+    "every principal write must be inventoried",
+  );
+  assert.deepEqual(
+    declared.map(([, surface]) => surface.source).filter((source) => source.endsWith("/selection/route.ts")).sort(),
+    sources.map(relativeSource).filter((source) => source.endsWith("/selection/route.ts")).sort(),
+    "every POST selection preview must be inventoried",
+  );
   for (const path of sources) {
     const source = relativeSource(path);
     const declaration = declaredBySource.get(source);
@@ -160,7 +176,20 @@ test("the route and page inventory is closed around declared read capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
+      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage", "evidencePage"].includes(declaration.name)) {
+        const guard = content.indexOf(`await requireReadAccess(${reference})`);
+        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals|Evidence)\(/);
+        assert.ok(loader > guard, `${source} must guard before its API loader`);
+      }
+    } else if (/api\/principals\/\[id\]\//.test(source)) {
+      assert.ok(content.includes(`export const POST = guardedPrincipalWrite(`));
+      assert.ok(content.includes(`, ${reference})`));
+    } else if (source === "api/policies/[id]/enabled/route.ts" || source === "api/policies/[id]/clear-pause/route.ts") {
+      assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyUpdate\\([^,]+,\\s*${reference}\\)`));
     } else {
+      if (source === "api/policies/route.ts") {
+        assert.match(content, /export const POST = guardedPolicyCreate\(DATA_SURFACES.policiesApi\)/);
+      }
       assert.match(
         content,
         new RegExp(

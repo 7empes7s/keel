@@ -10,6 +10,24 @@ interface HeaderSource {
 }
 
 export const DATA_SURFACES = {
+  evidenceApi: { capability: "read", source: "api/evidence/route.ts" },
+  evidenceVerifyApi: { capability: "read", source: "api/evidence/verify/route.ts" },
+  evidencePage: { capability: "read", source: "evidence/page.tsx" },
+  principalsApi: { capability: "users", source: "api/principals/route.ts" },
+  principalsPage: { capability: "users", source: "principals/page.tsx" },
+  principalGrantApi: { capability: "roles", source: "api/principals/[id]/grant/route.ts" },
+  principalRevokeApi: { capability: "roles", source: "api/principals/[id]/revoke/route.ts" },
+  principalDisableApi: { capability: "users", source: "api/principals/[id]/disable/route.ts" },
+  channelsApi: { capability: "configuration", source: "api/channels/route.ts" },
+  subscriptionsApi: { capability: "configuration", source: "api/subscriptions/route.ts" },
+  deliveriesApi: { capability: "read", source: "api/deliveries/route.ts" },
+  notificationsPage: { capability: "read", source: "notifications/page.tsx" },
+  policiesApi: { capability: "policies", source: "api/policies/route.ts" },
+  policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },
+  policyEnabledApi: { capability: "policies", source: "api/policies/[id]/enabled/route.ts" },
+  policyClearPauseApi: { capability: "policies", source: "api/policies/[id]/clear-pause/route.ts" },
+  policiesPage: { capability: "policies", source: "policies/page.tsx" },
+  policyPage: { capability: "policies", source: "policies/[id]/page.tsx" },
   dashboardApi: {
     capability: "read",
     source: "api/dashboard/route.ts",
@@ -42,6 +60,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/actions/restore/dry-run/[id]/route.ts",
   },
+  remediateSelectionApi: {
+    capability: "read",
+    source: "api/actions/remediate/selection/route.ts",
+  },
   dashboardPage: {
     capability: "read",
     source: "page.tsx",
@@ -57,6 +79,14 @@ export const DATA_SURFACES = {
   baselinesPage: {
     capability: "read",
     source: "baselines/page.tsx",
+  },
+  jobsPage: {
+    capability: "read",
+    source: "jobs/page.tsx",
+  },
+  jobPage: {
+    capability: "read",
+    source: "jobs/[id]/page.tsx",
   },
   backupsPage: {
     capability: "read",

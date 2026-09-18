@@ -10,6 +10,15 @@ import type { DriftRecord } from "@/lib/types";
 type SortKey = "naturalKey" | "resourceType" | "changeType" | "blastRadius" | "detectedAt";
 type Direction = "ascending" | "descending";
 
+interface RemediationPreview {
+  driftIds: string[];
+  resources: { naturalKey: string; resourceType: string; verb: string; verbReason: string }[];
+  waves: string[][];
+  deletionWaves: string[][];
+  patches: { naturalKey: string; field: string; symbol: string }[];
+  guardRefusals: { naturalKey: string; reason: string }[];
+}
+
 const PAGE_SIZE = 25;
 
 function compare(a: DriftRecord, b: DriftRecord, key: SortKey): number {
@@ -60,6 +69,7 @@ export function DriftTable({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<RemediationPreview | null>(null);
 
   const { canDispose, canRemediate } = driftActionControls(capabilities);
   const canAct = canDispose || canRemediate;
@@ -105,6 +115,8 @@ export function DriftTable({
   );
   const selectedItems = items.filter((item) => selectedIds.includes(item.id));
   const selectedDriftIds = selectedItems.map((item) => item.id);
+  const currentPreview = preview && JSON.stringify([...preview.driftIds].sort())
+    === JSON.stringify([...selectedDriftIds].sort()) ? preview : null;
   const expandedItem = pageItems.find((item) => item.id === expandedId) ?? null;
   const pageIsSelected = pageItems.length > 0 && pageItems.every((item) => selectedIds.includes(item.id));
 
@@ -125,6 +137,7 @@ export function DriftTable({
   }
 
   function toggleSelected(id: string) {
+    setPreview(null);
     setSelectedIds((current) =>
       current.includes(id)
         ? current.filter((candidate) => candidate !== id)
@@ -135,6 +148,7 @@ export function DriftTable({
   }
 
   function togglePageSelection() {
+    setPreview(null);
     setSelectedIds((current) => {
       const next = new Set(current);
       if (pageIsSelected) {
@@ -197,7 +211,25 @@ export function DriftTable({
     }
   }
 
+  async function previewSelected() {
+    setSubmitting(true);
+    setPreview(null);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const result = await actionRequest("/api/actions/remediate/selection", {
+        driftIds: selectedDriftIds,
+      }) as RemediationPreview;
+      setPreview(result);
+    } catch {
+      setActionError("The remediation preview could not be loaded. No remediation was requested.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function remediateSelected() {
+    if (!currentPreview || currentPreview.guardRefusals.length > 0) return;
     const justification = requireReason();
     if (!justification) return;
 
@@ -212,6 +244,7 @@ export function DriftTable({
           justification,
         }),
       );
+      setPreview(null);
       setActionMessage(
         `Remediation for ${selectedDriftIds.length} ${selectedDriftIds.length === 1 ? "deviation requires" : "deviations requires"} approval before a job is created.`,
       );
@@ -365,19 +398,51 @@ export function DriftTable({
               </>
             ) : null}
             {canRemediate ? (
-              <button className="remediate-button" disabled={submitting} onClick={() => void remediateSelected()} type="button">
-                Request remediation
+              <button className="remediate-button" disabled={submitting} onClick={() => void previewSelected()} type="button">
+                Preview remediation
               </button>
             ) : null}
             <button
               className="secondary-action"
               disabled={submitting}
-              onClick={() => setSelectedIds([])}
+              onClick={() => { setSelectedIds([]); setPreview(null); }}
               type="button"
             >
               Clear selection
             </button>
           </div>
+          {currentPreview ? (
+            <section aria-labelledby="remediation-preview-heading" aria-live="polite">
+              <h4 id="remediation-preview-heading">Remediation preview</h4>
+              <p>Current live state determines these verbs. Safety checks run again at execution.</p>
+              <table className="data-table">
+                <thead><tr><th scope="col">Resource</th><th scope="col">Planned verb</th></tr></thead>
+                <tbody>{currentPreview.resources.map((resource) => (
+                  <tr key={resource.naturalKey}>
+                    <th scope="row">{resource.naturalKey}</th>
+                    <td>{resource.verb} — {resource.verbReason}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <h4>Wave ordering</h4>
+              <ol>
+                {currentPreview.waves.map((keys, index) => <li key={`write-${index}`}>Apply: {keys.join(", ")}</li>)}
+                {currentPreview.patches.length > 0 ? <li>Deferred references: {currentPreview.patches.map((patch) => `${patch.naturalKey} at ${patch.field} → ${patch.symbol}`).join(", ")}</li> : null}
+                {currentPreview.deletionWaves.map((keys, index) => <li key={`delete-${index}`}>Delete: {keys.join(", ")}</li>)}
+              </ol>
+              {currentPreview.guardRefusals.length > 0 ? (
+                <div role="alert">
+                  <h4>Guard refusals</h4>
+                  <ul>{currentPreview.guardRefusals.map((refusal, index) => (
+                    <li key={index}>{refusal.naturalKey}: {refusal.reason}</li>
+                  ))}</ul>
+                </div>
+              ) : <p>No guard refusals found in this preview.</p>}
+              <button disabled={submitting || currentPreview.guardRefusals.length > 0} onClick={() => void remediateSelected()} type="button">
+                Confirm and request approval
+              </button>
+            </section>
+          ) : null}
           {actionMessage ? <p aria-live="polite" className="action-message">{actionMessage}</p> : null}
           {actionError ? <p className="action-error" role="alert">{actionError}</p> : null}
         </section>
@@ -395,6 +460,7 @@ export function DriftTable({
                         <input
                           aria-label={`Select all ${pageItems.length} deviations on this page`}
                           checked={pageIsSelected}
+                          disabled={submitting}
                           onChange={togglePageSelection}
                           type="checkbox"
                         />
@@ -430,6 +496,7 @@ export function DriftTable({
                           <input
                             aria-label={`Select ${item.naturalKey}`}
                             checked={selectedIds.includes(item.id)}
+                            disabled={submitting}
                             onChange={() => toggleSelected(item.id)}
                             type="checkbox"
                           />

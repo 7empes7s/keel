@@ -105,11 +105,14 @@ export function readObservation(entry, {
   const legacyCount = typeof entry === 'number' ? entry : entry?.itemCount;
   const legacyOutcome = typeof entry === 'number'
     ? (entry > 0 ? 'complete' : 'unknown')
-    : entry?.outcome === 'complete' ? 'complete'
-      : entry?.outcome === 'failed' ? 'failed'
-        : 'unknown';
-  const startedAt = asIsoInstant(snapshotWindow?.startedAt);
-  const endedAt = asIsoInstant(snapshotWindow?.endedAt);
+    : entry?.outcome === 'complete' || entry?.outcome === 'complete-empty' ? 'complete'
+      : entry?.outcome === 'partial' ? 'partial'
+        : entry?.outcome === 'failed' ? 'failed'
+          : 'unknown';
+  // A structured entry carries its own observation window; only entries
+  // without one fall back to the enclosing snapshot run bounds.
+  const startedAt = asIsoInstant(entry?.startedAt) ?? asIsoInstant(snapshotWindow?.startedAt);
+  const endedAt = asIsoInstant(entry?.completedAt) ?? asIsoInstant(snapshotWindow?.endedAt);
   return Object.freeze({
     contractVersion: 0,
     legacy: true,

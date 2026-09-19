@@ -61,7 +61,18 @@ function CoverageTable({ items }: { items: CoverageType[] }) {
               <td data-label="Protection state">
                 <ProtectionBadge item={item} />
                 {item.reportStatus === "never-collected" ? (
-                  <small className="cell-note">Descriptor exists; never collected</small>
+                  <small className="cell-note">
+                    {item.outcome === "not-requested"
+                      ? "Not requested in the latest run"
+                      : "Descriptor exists; never collected"}
+                  </small>
+                ) : null}
+                {item.outcome === "partial" ? (
+                  <small className="cell-note">
+                    Partial read{item.detail?.graphCode ? ` · ${item.detail.graphCode}` : ""}
+                    {item.itemCount !== null ? ` · ${item.itemCount.toLocaleString("en-GB")} items seen` : ""}
+                    {" — completeness failed"}
+                  </small>
                 ) : null}
               </td>
               <td data-label="Fidelity evidence">{fidelityDetail(item)}</td>

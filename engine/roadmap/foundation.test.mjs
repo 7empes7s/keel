@@ -218,6 +218,16 @@ const setSnapshotTimes = async (id, startedAt, completedAt) => client.query(
   'UPDATE snapshot SET started_at = $2, completed_at = $3 WHERE id = $1',
   [id, startedAt, completedAt],
 );
+// Structured digest entries (task-47) carry their own per-type observation
+// window, which readers prefer over the snapshot run bounds; pin both here.
+const setDigestWindow = async (id, startedAt, completedAt) => {
+  const { rows } = await client.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [id]);
+  const digest = Object.fromEntries(Object.entries(rows[0].coverage_digest).map(([type, entry]) => [
+    type,
+    entry && typeof entry === 'object' && 'startedAt' in entry ? { ...entry, startedAt, completedAt } : entry,
+  ]));
+  await client.query('UPDATE snapshot SET coverage_digest = $2 WHERE id = $1', [id, JSON.stringify(digest)]);
+};
 
 try {
   client = await database.connect();
@@ -256,8 +266,10 @@ try {
   const tierTenant = 'sha256:foundation-tiers';
   const tier1 = await collectSnapshot(client, { reader, tenantRef: tierTenant, tenantId: 'fixture-tenant', tier: 'tier1' });
   await setSnapshotTimes(tier1.snapshotId, '2026-09-15T08:00:00Z', '2026-09-15T08:05:00Z');
+  await setDigestWindow(tier1.snapshotId, '2026-09-15T08:00:00Z', '2026-09-15T08:05:00Z');
   const tier2 = await collectSnapshot(client, { reader, tenantRef: tierTenant, tenantId: 'fixture-tenant', tier: 'tier2' });
   await setSnapshotTimes(tier2.snapshotId, '2026-09-15T09:00:00Z', '2026-09-15T09:05:00Z');
+  await setDigestWindow(tier2.snapshotId, '2026-09-15T09:00:00Z', '2026-09-15T09:05:00Z');
 
   const tierReport = await buildCoverageReport(client, {
     tenantRef: tierTenant, catalog: CATALOG, descriptors: DESCRIPTORS,

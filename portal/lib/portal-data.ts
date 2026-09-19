@@ -57,6 +57,16 @@ function fidelity(value: unknown): Fidelity | null {
     : null;
 }
 
+function coverageOutcome(value: unknown): CoverageType["outcome"] {
+  return value === "complete" ||
+    value === "complete-empty" ||
+    value === "partial" ||
+    value === "failed" ||
+    value === "not-requested"
+    ? value
+    : null;
+}
+
 function protectionState(
   reportStatus: string,
   declared: Fidelity | null,
@@ -87,6 +97,7 @@ function normalizeCoverageType(raw: UnknownRecord): CoverageType {
   const declared = fidelity(rawFidelity?.declared);
   const measured = fidelity(verifiedBy?.measuredFidelity);
   const reportStatus = String(raw.status) as CoverageType["reportStatus"];
+  const rawDetail = (raw.detail ?? null) as UnknownRecord | null;
 
   return {
     type: String(raw.type),
@@ -96,6 +107,20 @@ function normalizeCoverageType(raw: UnknownRecord): CoverageType {
     itemCount: typeof raw.itemCount === "number" ? raw.itemCount : null,
     lastCollectedAt: iso(raw.lastCollectedAt),
     adapter: typeof raw.adapter === "string" ? raw.adapter : null,
+    outcome: coverageOutcome(raw.outcome),
+    detail: rawDetail
+      ? {
+          httpStatus: typeof rawDetail.httpStatus === "number" ? rawDetail.httpStatus : null,
+          graphCode: typeof rawDetail.graphCode === "string" ? rawDetail.graphCode : null,
+          message: typeof rawDetail.message === "string" ? rawDetail.message : null,
+          endpoint: typeof rawDetail.endpoint === "string" ? rawDetail.endpoint : null,
+          apiVersion: typeof rawDetail.apiVersion === "string" ? rawDetail.apiVersion : null,
+          pagesCompleted:
+            typeof rawDetail.pagesCompleted === "number" ? rawDetail.pagesCompleted : null,
+          startedAt: iso(rawDetail.startedAt),
+          completedAt: iso(rawDetail.completedAt),
+        }
+      : null,
     fidelity: {
       declared,
       measured,

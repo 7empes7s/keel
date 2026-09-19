@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { capabilitiesForPrincipal } from "../../engine/authz/principals.mjs";
+import { grantRole } from "../../engine/authz/administration.mjs";
 import { guardedPrincipalList, guardedPrincipalWrite, type PrincipalView } from "@/lib/principals";
 import { resolveIdentity, CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
@@ -56,10 +57,16 @@ test("live portal requests see role writes immediately and display the engine ca
     const active = (await response.json()).principals[0] as PrincipalView;
     assert.deepEqual(active.capabilities, await capabilitiesForPrincipal(client, active));
     assert.equal((await guardedPrincipalWrite("revoke", DATA_SURFACES.principalRevokeApi, deps)(request("revoke", id, ["roles"], { grantId }))).status, 403);
+    // Disabling the last live admin is the same lockout: refused with 403.
+    assert.equal((await guardedPrincipalWrite("disable", DATA_SURFACES.principalDisableApi, deps)(request("disable", id, ["users"], {}))).status, 403);
+    // With a second live admin in place, the disable proceeds.
+    const backupId = "00000000-0000-0000-0000-000000000002";
+    await client.query("INSERT INTO principal(id,email) VALUES ($1,'backup@test')", [backupId]);
+    await grantRole(client, { principalId: backupId, role: "admin", grantedBy: id });
     assert.equal((await guardedPrincipalWrite("disable", DATA_SURFACES.principalDisableApi, deps)(request("disable", id, ["users"], {}))).status, 200);
     // A separate authorized operator can still inspect a disabled identity.
     const disabledResponse = await list(request("", "other-admin", ["users"]));
-    const disabled = (await disabledResponse.json()).principals[0] as PrincipalView;
+    const disabled = (await disabledResponse.json()).principals.find((p: PrincipalView) => p.id === id) as PrincipalView;
     assert.ok(disabled.disabled_at);
     assert.equal(disabled.role_grants[0].active_until, null);
     assert.deepEqual(disabled.capabilities, await capabilitiesForPrincipal(client, disabled));

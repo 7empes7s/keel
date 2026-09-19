@@ -8,9 +8,13 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   const result = await collectWithOutcomes(reader, { tenantId });
   const resources = canonicalizeAll(result.collected).filter((r) => !tier || r.criticality === tier);
   // A tier-filtered snapshot must not claim coverage for data it doesn't store.
+  // Excluded types are recorded explicitly as not-requested — distinguishable
+  // from a completed empty read — and readers skip those mentions so they
+  // never shadow an older genuine observation of the same type.
   const coverageDigest = Object.fromEntries(DESCRIPTORS
-    .filter((d) => !tier || d.criticality === tier)
-    .map((d) => [d.type, result.coverageDigest[d.type]]));
+    .map((d) => [d.type, !tier || d.criticality === tier
+      ? result.coverageDigest[d.type]
+      : { outcome: 'not-requested', itemCount: null }]));
   const snapshotId = await createSnapshot(client, { tenantRef });
   for (const resource of resources) {
     const versionId = await insertResourceVersion(client, {

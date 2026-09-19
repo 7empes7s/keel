@@ -8,6 +8,24 @@ export type ProtectionState =
 
 export type Fidelity = "full" | "partial" | "read-only" | "unprotectable";
 
+export type CoverageOutcome =
+  | "complete"
+  | "complete-empty"
+  | "partial"
+  | "failed"
+  | "not-requested";
+
+export interface CoverageOutcomeDetail {
+  httpStatus: number | null;
+  graphCode: string | null;
+  message: string | null;
+  endpoint: string | null;
+  apiVersion: string | null;
+  pagesCompleted: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
 export interface CoverageType {
   type: string;
   reportStatus: "covered" | "failed" | "not-covered" | "never-collected";
@@ -16,6 +34,8 @@ export interface CoverageType {
   itemCount: number | null;
   lastCollectedAt: string | null;
   adapter: string | null;
+  outcome: CoverageOutcome | null;
+  detail: CoverageOutcomeDetail | null;
   fidelity: {
     declared: Fidelity | null;
     measured: Fidelity | null;

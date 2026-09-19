@@ -56,6 +56,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/actions/restore/selection/route.ts",
   },
+  restoreDryRunArtifactApi: {
+    capability: "read",
+    source: "api/actions/restore/dry-run/[id]/route.ts",
+  },
   remediateSelectionApi: {
     capability: "read",
     source: "api/actions/remediate/selection/route.ts",

@@ -23,7 +23,9 @@ export function isEligibleBaselineSource(snapshot, { tenantRef }) {
 
   return DESCRIPTORS.every(({ type }) => {
     const coverage = snapshot.coverage_digest[type];
-    return isRecord(coverage) && coverage.outcome === 'complete';
+    // A completed empty read is a strict coverage success, exactly like a
+    // non-empty one; partial, failed and not-requested never qualify.
+    return isRecord(coverage) && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty');
   });
 }
 

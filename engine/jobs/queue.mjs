@@ -1,3 +1,4 @@
+import { envelopeForJob, createEventSink } from '../telemetry/events.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
@@ -10,7 +11,7 @@ import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 // The portal enqueues a `job` row; a `keel-worker` process claims and executes it.
 //
 // claimNext() MUST stay a single atomic statement — `UPDATE ... WHERE id = (SELECT ...
-// FOR UPDATE SKIP LOCKED) RETURNING *`. Do not "optimize" this into a SELECT followed by
+// FOR UPDATE SKIP LOCKED) RETURNING *, started_at::text AS event_started_at`. Do not "optimize" this into a SELECT followed by
 // an UPDATE; that reintroduces the exact race two workers claiming the same job.
 
 // A worker updates its heartbeat this often while it owns a running job. Reclamation waits
@@ -35,20 +36,20 @@ export async function enqueue(client, {
      VALUES ($1, $2, $3, $4, COALESCE($5, now()))
      ON CONFLICT (kind, idempotency_key) WHERE idempotency_key IS NOT NULL
      DO NOTHING
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null],
   );
   if (rows[0]) return rows[0];
   // A job with this kind and key already exists (or won a concurrent insert) — return it
   // rather than starting a second one.
   const { rows: existing } = await client.query(
-    `SELECT * FROM job WHERE kind = $1 AND idempotency_key = $2`,
+    `SELECT *, started_at::text AS event_started_at FROM job WHERE kind = $1 AND idempotency_key = $2`,
     [kind, idempotencyKey],
   );
   return existing[0];
 }
 
-export async function claimNext(client, { workerId }) {
+export async function claimNext(client, { workerId, eventSink = createEventSink() }) {
   const { rows } = await client.query(
     `UPDATE job
      SET status = 'running', started_at = now(), heartbeat_at = now(), worker_id = $1
@@ -59,9 +60,10 @@ export async function claimNext(client, { workerId }) {
        FOR UPDATE SKIP LOCKED
        LIMIT 1
      )
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [workerId],
   );
+  if (rows[0]) emitJobEvent(rows[0], 'job.claimed', eventSink);
   return rows[0] ?? null;
 }
 
@@ -70,7 +72,7 @@ export async function complete(client, { id, result }) {
     `UPDATE job
      SET status = 'succeeded', result = $2, finished_at = now(), heartbeat_at = NULL
      WHERE id = $1
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [id, result ?? null],
   );
   return rows[0] ?? null;
@@ -81,7 +83,7 @@ export async function fail(client, { id, error }) {
     `UPDATE job
      SET status = 'failed', error = $2, finished_at = now(), heartbeat_at = NULL
      WHERE id = $1
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [id, error ?? null],
   );
   return rows[0] ?? null;
@@ -89,7 +91,7 @@ export async function fail(client, { id, error }) {
 
 export async function listJobs(client, { limit = 50 } = {}) {
   const { rows } = await client.query(
-    `SELECT * FROM job ORDER BY created_at DESC LIMIT $1`,
+    `SELECT *, started_at::text AS event_started_at FROM job ORDER BY created_at DESC LIMIT $1`,
     [limit],
   );
   return rows;
@@ -100,7 +102,7 @@ export async function touchHeartbeat(client, { id, workerId }) {
     `UPDATE job
      SET heartbeat_at = now()
      WHERE id = $1 AND status = 'running' AND worker_id = $2
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [id, workerId],
   );
   return rows[0] ?? null;
@@ -115,8 +117,13 @@ export async function resetOrphaned(client) {
      SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
      WHERE status = 'running'
        AND (heartbeat_at IS NULL OR heartbeat_at < now() - ($1 * interval '1 millisecond'))
-     RETURNING *`,
+     RETURNING *, started_at::text AS event_started_at`,
     [ORPHANED_HEARTBEAT_STALE_MS],
   );
   return rows;
+}
+
+// Internal projection only; callers keep their existing admission/execution gates.
+export function emitJobEvent(job, eventType, sink = createEventSink(), options = {}) {
+  try { sink(envelopeForJob(job, { ...options, eventType })); } catch { /* logs are not audit authority */ }
 }

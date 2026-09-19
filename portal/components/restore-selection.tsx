@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { postAction } from "@/lib/action-client";
 import type { RestoreResource } from "@/lib/portal-data";
@@ -10,6 +10,7 @@ import { words } from "@/lib/presentation";
 import { formatTimestamp } from "@/lib/presentation";
 
 const PAGE_SIZE = 25;
+const DRY_RUN_POLL_MS = 3000;
 
 interface AdditionReason {
   requiredBy: string;
@@ -42,6 +43,27 @@ interface SelectionPreview {
   missingRequirements: Addition[];
 }
 
+interface DryRunResourceResult {
+  naturalKey: string;
+  reason?: string;
+  error?: string;
+}
+
+interface DryRunResults {
+  applied: DryRunResourceResult[];
+  skipped: DryRunResourceResult[];
+  failed: DryRunResourceResult[];
+  notRemediable: DryRunResourceResult[];
+}
+
+interface DryRunArtifact {
+  id: string;
+  status: "completed" | "refused" | "failed";
+  closureKeys: string[];
+  guardRefusals: GuardRefusal[];
+  results: DryRunResults;
+}
+
 function describeSnapshot(snapshot: SnapshotOption): string {
   const captured = formatTimestamp(snapshot.completedAt ?? snapshot.startedAt);
   return `${captured} — ${snapshot.resourceCount.toLocaleString("en-GB")} resources`;
@@ -66,13 +88,32 @@ async function previewSelection(
   return (await response.json()) as SelectionPreview;
 }
 
-// Restore selection (portal-design §4.1). The operator picks resources; EVERY change
-// is previewed against the server, and the server-computed closure is shown — what was
-// added and why. Deselecting something another selection requires is refused with the
-// requiring resource and field as the reason. The submit posts the RAW selection
-// (never the client-side closure) to the approval-gated restore action; the CLI
-// recomputes the closure from the snapshot at execution. All of this is convenience:
-// the server-side path is the control.
+async function fetchJobStatus(jobId: string): Promise<string | null> {
+  const response = await fetch(`/api/jobs/${jobId}`, { cache: "no-store" });
+  if (!response.ok) return null;
+  const { job } = (await response.json()) as { job: { status: string } };
+  return job.status;
+}
+
+async function fetchDryRunArtifact(artifactId: string): Promise<DryRunArtifact | null> {
+  const response = await fetch(`/api/actions/restore/dry-run/${artifactId}`, { cache: "no-store" });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`dry-run fetch failed (${response.status})`);
+  const { artifact } = (await response.json()) as { artifact: DryRunArtifact };
+  return artifact;
+}
+
+// Restore selection (portal-design §4.1, plan task 8). The operator picks resources;
+// EVERY change is previewed against the server, and the server-computed closure is
+// shown — what was added and why. Promotion is a structural flow, not a mode switch:
+// a raw selection may only start a dry run (POST .../restore/dry-run); once the
+// worker computes it, its ACTUAL planned changes and refusals are rendered here from
+// the persisted, immutable artifact; only THAT completed artifact can be confirmed
+// (POST .../restore, {artifactId}) — there is no field in this component that can
+// request enforce directly. The server-side path is the control throughout: the
+// dry-run route strips everything but the validated scope fields, the confirm route
+// re-validates the artifact before creating an approval request, and cli/keel-restore.mjs
+// re-validates it again — against a fresh read of the target — before it ever writes.
 export function RestoreSelection({
   canRestore,
   resources,
@@ -94,12 +135,19 @@ export function RestoreSelection({
   const [refusal, setRefusal] = useState<string | null>(null);
   const [collectorConfig, setCollectorConfig] = useState("/etc/keel/tenant-target.json");
   const [targetConfig, setTargetConfig] = useState("/etc/keel/restorer-target.json");
-  const [mode, setMode] = useState<"dry-run" | "enforce">("dry-run");
   const [justification, setJustification] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The dry run in flight: set once .../restore/dry-run enqueues a job, cleared once
+  // its artifact is fetched (success) or it fails outright.
+  const [dryRunJobId, setDryRunJobId] = useState<string | null>(null);
+  const [dryRunArtifactId, setDryRunArtifactId] = useState<string | null>(null);
+  const [dryRunStatus, setDryRunStatus] = useState<"running" | "failed" | null>(null);
+  const [artifact, setArtifact] = useState<DryRunArtifact | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resourceTypes = useMemo(
     () => [...new Set(resources.map((resource) => resource.resourceType))].sort(),
@@ -123,6 +171,18 @@ export function RestoreSelection({
   const closureKeys = new Set(preview?.closureKeys ?? []);
   const addedByKey = new Map((preview?.added ?? []).map((a) => [a.naturalKey, a]));
 
+  useEffect(() => () => {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+  }, []);
+
+  function resetDryRun() {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    setDryRunJobId(null);
+    setDryRunArtifactId(null);
+    setDryRunStatus(null);
+    setArtifact(null);
+  }
+
   async function applySelection(next: string[]): Promise<boolean> {
     setPreviewing(true);
     setError(null);
@@ -130,6 +190,7 @@ export function RestoreSelection({
       const nextPreview = await previewSelection(snapshotId, next);
       setSelected(next);
       setPreview(nextPreview);
+      resetDryRun();
       return true;
     } catch {
       setError("The selection preview could not be computed. The selection was not changed.");
@@ -164,6 +225,7 @@ export function RestoreSelection({
       }
       setSelected(candidate);
       setPreview(candidatePreview);
+      resetDryRun();
     } catch {
       setError("The selection preview could not be computed. The selection was not changed.");
     } finally {
@@ -177,7 +239,31 @@ export function RestoreSelection({
     await applySelection([]);
   }
 
-  async function submit() {
+  function pollDryRun(jobId: string, artifactId: string) {
+    pollTimer.current = setTimeout(async () => {
+      try {
+        const status = await fetchJobStatus(jobId);
+        if (status === "failed" || status === "cancelled") {
+          setDryRunStatus("failed");
+          setError("The dry run failed to complete. Adjust the selection or credential configs and try again.");
+          return;
+        }
+        if (status === "succeeded") {
+          const found = await fetchDryRunArtifact(artifactId);
+          if (found) {
+            setArtifact(found);
+            setDryRunStatus(null);
+            return;
+          }
+        }
+        pollDryRun(jobId, artifactId);
+      } catch {
+        pollDryRun(jobId, artifactId);
+      }
+    }, DRY_RUN_POLL_MS);
+  }
+
+  async function startDryRun() {
     if (selected.length === 0) {
       setError("Select at least one resource to restore.");
       return;
@@ -190,30 +276,63 @@ export function RestoreSelection({
     setSubmitting(true);
     setMessage(null);
     setError(null);
+    resetDryRun();
     try {
       const { payload } = await postAction(
-        "/api/actions/restore",
+        "/api/actions/restore/dry-run",
         {
           snapshotId,
           selection: selected,
           collectorConfig: collectorConfig.trim(),
           targetConfig: targetConfig.trim(),
-          ...(mode === "enforce" ? { mode } : {}),
+        },
+        idempotencyKey,
+      );
+      const job = payload.job as { id: string };
+      const artifactId = payload.artifactId as string;
+      if (!job || typeof job.id !== "string" || typeof artifactId !== "string") {
+        setError("Unexpected response: the dry run did not produce a job.");
+        return;
+      }
+      setIdempotencyKey(crypto.randomUUID());
+      setDryRunJobId(job.id);
+      setDryRunArtifactId(artifactId);
+      setDryRunStatus("running");
+      pollDryRun(job.id, artifactId);
+    } catch {
+      setError("The dry run could not be started.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function confirm() {
+    if (!dryRunArtifactId || !artifact || artifact.status !== "completed") return;
+
+    setSubmitting(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const { payload } = await postAction(
+        "/api/actions/restore",
+        {
+          artifactId: dryRunArtifactId,
           ...(justification.trim() ? { justification: justification.trim() } : {}),
         },
         idempotencyKey,
       );
       if (payload.approvalRequest) {
         setMessage(
-          "Restore requested — pending approval. Nothing has been restored; a job is created only when a different principal approves.",
+          "Restore requested — pending approval. Nothing has been restored; a job is created only when a different principal approves the exact dry run reviewed above.",
         );
         setIdempotencyKey(crypto.randomUUID());
+        resetDryRun();
         router.refresh();
       } else {
-        setError("Unexpected response: the restore did not produce an approval request.");
+        setError("Unexpected response: the confirmation did not produce an approval request.");
       }
     } catch {
-      setError("The restore request could not be created.");
+      setError("The restore confirmation could not be created.");
     } finally {
       setSubmitting(false);
     }
@@ -412,7 +531,7 @@ export function RestoreSelection({
             <label className="filter-field">
               <span>Collector credential config (read-only)</span>
               <input
-                disabled={submitting}
+                disabled={submitting || dryRunStatus === "running"}
                 onChange={(event) => setCollectorConfig(event.target.value)}
                 value={collectorConfig}
               />
@@ -420,63 +539,175 @@ export function RestoreSelection({
             <label className="filter-field">
               <span>Restorer credential config (write)</span>
               <input
-                disabled={submitting}
+                disabled={submitting || dryRunStatus === "running"}
                 onChange={(event) => setTargetConfig(event.target.value)}
                 value={targetConfig}
               />
             </label>
-            <label className="filter-field">
-              <span>Mode</span>
-              <select
-                disabled={submitting}
-                onChange={(event) => setMode(event.target.value as "dry-run" | "enforce")}
-                value={mode}
-              >
-                <option value="dry-run">Dry run — plan only, no writes</option>
-                <option value="enforce">Enforce — writes to the target tenant</option>
-              </select>
-            </label>
-            <label className="filter-field">
-              <span>Approval justification</span>
-              <input
-                disabled={submitting}
-                onChange={(event) => setJustification(event.target.value)}
-                placeholder="Why is this restore appropriate?"
-                value={justification}
-              />
-            </label>
           </div>
 
-          <div className="drift-action-buttons">
-            <button
-              disabled={
-                !canRestore
-                || submitting
-                || previewing
-                || preview.guardRefusals.length > 0
-              }
-              onClick={() => void submit()}
-              type="button"
-            >
-              Request restore
-            </button>
-            <button
-              className="secondary-action"
-              disabled={submitting || previewing}
-              onClick={() => void clearSelection()}
-              type="button"
-            >
-              Clear selection
-            </button>
-          </div>
+          {!artifact ? (
+            <div className="drift-action-buttons">
+              <button
+                disabled={
+                  !canRestore
+                  || submitting
+                  || previewing
+                  || dryRunStatus === "running"
+                  || preview.guardRefusals.length > 0
+                }
+                onClick={() => void startDryRun()}
+                type="button"
+              >
+                {dryRunStatus === "running" ? "Running dry run…" : "Start dry run"}
+              </button>
+              <button
+                className="secondary-action"
+                disabled={submitting || previewing || dryRunStatus === "running"}
+                onClick={() => void clearSelection()}
+                type="button"
+              >
+                Clear selection
+              </button>
+            </div>
+          ) : null}
           <p className="selection-scope">
-            Restore requires approval: submitting creates an approval request, not a job.
-            The approver sees exactly this selection; the closure is recomputed from the
-            snapshot when the approved job runs.
+            Restore is a two-step promotion: a dry run computes and persists the exact
+            plan — every resource result and guard outcome — then a DIFFERENT approver
+            confirms that same immutable plan. There is no way to request enforcement
+            directly from a selection.
           </p>
-          {message ? <p aria-live="polite" className="action-message">{message}</p> : null}
         </section>
       ) : null}
+
+      {dryRunStatus === "running" ? (
+        <section aria-live="polite" className="drift-action-panel">
+          <p className="section-kicker">Dry run</p>
+          <p>Running the dry run against the target tenant — this only reads; nothing is written.</p>
+        </section>
+      ) : null}
+
+      {artifact ? (
+        <section aria-labelledby="restore-dry-run-heading" className="drift-action-panel">
+          <div>
+            <p className="section-kicker">Dry-run result</p>
+            <h3 id="restore-dry-run-heading">
+              {artifact.status === "completed"
+                ? "Ready to confirm"
+                : artifact.status === "refused"
+                  ? "Refused — cannot be promoted"
+                  : "Failed — cannot be promoted"}
+            </h3>
+          </div>
+
+          <ul>
+            <li>{artifact.results.applied.length} resource(s) would apply cleanly</li>
+            {artifact.results.skipped.length ? (
+              <li>{artifact.results.skipped.length} resource(s) refused by a safety guard</li>
+            ) : null}
+            {artifact.results.failed.length ? (
+              <li>{artifact.results.failed.length} resource(s) would fail</li>
+            ) : null}
+            {artifact.results.notRemediable.length ? (
+              <li>{artifact.results.notRemediable.length} resource(s) have not-remediable residual drift</li>
+            ) : null}
+          </ul>
+
+          {artifact.results.applied.length ? (
+            <div>
+              <p className="severity-label">PLANNED CHANGES</p>
+              <ul>
+                {artifact.results.applied.map((entry) => (
+                  <li key={entry.naturalKey}>
+                    <code className="natural-key">{entry.naturalKey}</code>
+                    {entry.reason ? ` — ${entry.reason}` : " — would apply"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {artifact.guardRefusals.length ? (
+            <div className="data-error" role="alert">
+              <p className="severity-label">GUARD REFUSALS</p>
+              <ul>
+                {artifact.guardRefusals.map((guardRefusal) => (
+                  <li key={guardRefusal.naturalKey}>
+                    <code className="natural-key">{guardRefusal.naturalKey}</code>
+                    {" — "}
+                    {guardRefusal.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {artifact.results.failed.length ? (
+            <div className="data-error" role="alert">
+              <p className="severity-label">WOULD FAIL</p>
+              <ul>
+                {artifact.results.failed.map((entry) => (
+                  <li key={entry.naturalKey}>
+                    <code className="natural-key">{entry.naturalKey}</code>
+                    {entry.error ? ` — ${entry.error}` : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {artifact.status === "completed" ? (
+            <>
+              <div className="filter-bar">
+                <label className="filter-field">
+                  <span>Approval justification</span>
+                  <input
+                    disabled={submitting}
+                    onChange={(event) => setJustification(event.target.value)}
+                    placeholder="Why is this restore appropriate?"
+                    value={justification}
+                  />
+                </label>
+              </div>
+              <div className="drift-action-buttons">
+                <button
+                  disabled={!canRestore || submitting}
+                  onClick={() => void confirm()}
+                  type="button"
+                >
+                  Confirm restore
+                </button>
+                <button
+                  className="secondary-action"
+                  disabled={submitting}
+                  onClick={() => resetDryRun()}
+                  type="button"
+                >
+                  Discard
+                </button>
+              </div>
+              <p className="selection-scope">
+                Confirming creates an approval request referencing exactly this dry run,
+                never a job. A different approver must approve it, and the CLI recomputes
+                this plan and the target&apos;s current state once more before it writes.
+              </p>
+            </>
+          ) : (
+            <div className="drift-action-buttons">
+              <button
+                className="secondary-action"
+                disabled={submitting}
+                onClick={() => resetDryRun()}
+                type="button"
+              >
+                Start a new dry run
+              </button>
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {message ? <p aria-live="polite" className="action-message">{message}</p> : null}
 
       {error ? <p className="action-error" role="alert">{error}</p> : null}
     </section>

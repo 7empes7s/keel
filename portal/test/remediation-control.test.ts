@@ -72,8 +72,13 @@ test("drift remediation previews before confirming, blocks refusals, and invalid
     await settle();
     assert.deepEqual(calls, [{ path: "/api/actions/remediate/selection", body: { driftIds: ["one"] } }]);
     assert.equal(button("Confirm and request approval")?.props.disabled, true);
+    // Populate a justification while the preview is refused: the guard-refusal
+    // check itself — not the empty-reason gate — must block the submission.
+    const refusedReason = find(render(), (element) => element.props.placeholder === "Why is this disposition appropriate?");
+    assert.ok(refusedReason);
+    (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "justified" } });
     click("Confirm and request approval");
-    assert.equal(calls.length, 1, "a refused preview cannot submit even through its handler");
+    assert.equal(calls.length, 1, "a refused preview cannot submit even with a justification through its handler");
     select("two");
     assert.equal(button("Confirm and request approval"), undefined, "changing selection invalidates the preview");
     select("two");

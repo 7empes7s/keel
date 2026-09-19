@@ -8,12 +8,15 @@ import {
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
+  PromotionRefusedError,
   SelfApprovalError,
   approveRequest,
   listApprovalRequests,
   rejectRequest,
   requestApproval,
 } from './approvals.mjs';
+import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
+import { createSnapshot } from '../store/db.mjs';
 import { verifyChain } from './evidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
@@ -39,16 +42,20 @@ try {
     return rows[0] ?? null;
   }
 
-  // Requesting a requiresApproval action creates a request, never a job.
+  // Requesting a requiresApproval action creates a request, never a job. This
+  // generic mechanism test deliberately avoids action: 'restore' — plan task 8 gives
+  // restore promotion its own artifact-backed validation, so a plain, params-only
+  // approval-gated action exercises the generic request/approve/reject/expire
+  // machinery without tripping that restore-specific gate.
   const request = await requestApproval(client, {
     tenantRef,
-    action: 'restore',
+    action: 'baseline-activate',
     params: { naturalKey: 'group:alpha' },
     requestedBy: 'principal-restorer',
     justification: 'change ticket 42',
   });
   assert.equal(request.status, 'pending');
-  assert.equal(request.action, 'restore');
+  assert.equal(request.action, 'baseline-activate');
   assert.deepEqual(request.params, { naturalKey: 'group:alpha' });
   assert.equal(request.requested_by, 'principal-restorer');
   assert.equal(request.justification, 'change ticket 42');
@@ -78,7 +85,7 @@ try {
   assert.equal(approved.status, 'approved');
   assert.equal(approved.decided_by, 'principal-approver');
   assert.ok(approved.decided_at, 'the decision is timestamped');
-  assert.equal(job.kind, 'restore');
+  assert.equal(job.kind, 'baseline-activate');
   assert.deepEqual(job.params, { naturalKey: 'group:alpha' });
   assert.equal(job.requested_by, 'principal-restorer');
   assert.equal(job.status, 'queued');
@@ -99,7 +106,7 @@ try {
   // An expired request cannot be approved: it expires *closed* and stays closed.
   const stale = await requestApproval(client, {
     tenantRef,
-    action: 'restore',
+    action: 'baseline-activate',
     params: { naturalKey: 'group:stale' },
     requestedBy: 'principal-restorer',
     justification: 'stale parameters',
@@ -305,6 +312,99 @@ try {
     }),
     (error) => error instanceof ApprovalNotFoundError,
   );
+
+  // --- plan task 8: restore promotion fails closed without a completed artifact ---
+  const restoreRequestWithNoArtifact = await requestApproval(client, {
+    tenantRef,
+    action: 'restore',
+    params: {},
+    requestedBy: 'principal-restorer',
+  });
+  await assert.rejects(
+    approveRequest(client, { tenantRef, id: restoreRequestWithNoArtifact.id, decidedBy: 'principal-approver' }),
+    (error) => error instanceof PromotionRefusedError,
+    'a restore approval with no artifactId must be refused, not minted',
+  );
+  assert.equal((await requestRow(restoreRequestWithNoArtifact.id)).status, 'pending');
+
+  const restoreSnapshotId = await createSnapshot(client, { tenantRef });
+  const completedArtifact = await createDryRunArtifact(client, {
+    id: randomUUID(),
+    tenantRef,
+    snapshotId: restoreSnapshotId,
+    selection: ['group:Admins'],
+    closureKeys: ['group:Admins'],
+    targetTenantId: 'target-tenant',
+    collectorConfigPath: '/etc/keel/tenant-target.json',
+    targetConfigPath: '/etc/keel/restorer-target.json',
+    reconciliationResources: null,
+    waves: [['group:Admins']],
+    patches: [],
+    guardRefusals: [],
+    results: { applied: [{ naturalKey: 'group:Admins', targetId: null }], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: 'fingerprint-completed',
+    digest: 'digest-completed',
+    status: 'completed',
+    requestedBy: 'principal-restorer',
+  });
+  const artifactDerivedJobParams = {
+    mode: 'enforce',
+    artifactId: completedArtifact.id,
+    snapshotId: completedArtifact.snapshotId,
+    selection: completedArtifact.selection,
+    closureKeys: completedArtifact.closureKeys,
+    targetTenantId: completedArtifact.targetTenantId,
+    collectorConfigPath: completedArtifact.collectorConfigPath,
+    targetConfigPath: completedArtifact.targetConfigPath,
+    reconciliationResources: completedArtifact.reconciliationResources,
+  };
+
+  // This must use a completed artifact. A refused artifact masks the derivation check
+  // because it is rejected for the wrong reason; this fixture proves the minted job
+  // uses the ARTIFACT's own values, never the request's, even when the request's
+  // other params are present and actively disagree with what the artifact recorded —
+  // snapshot, selection, and target alike. Nothing here is validated against the
+  // artifact and rejected on mismatch; it is simply never read, so there is no
+  // param shape left for a future caller to smuggle a mutable restore parameter
+  // through.
+  const mismatchedSnapshotId = await createSnapshot(client, { tenantRef });
+  const restoreRequestWithMismatchedParams = await requestApproval(client, {
+    tenantRef,
+    action: 'restore',
+    params: {
+      artifactId: completedArtifact.id,
+      snapshotId: mismatchedSnapshotId,
+      selection: ['group:Everyone'],
+      targetConfigPath: '/etc/keel/a-different-restorer-target.json',
+    },
+    requestedBy: 'principal-restorer',
+  });
+  const { job: mismatchedParamsJob } = await approveRequest(client, {
+    tenantRef, id: restoreRequestWithMismatchedParams.id, decidedBy: 'principal-approver',
+  });
+  assert.equal(mismatchedParamsJob.kind, 'restore');
+  assert.deepEqual(
+    mismatchedParamsJob.params,
+    artifactDerivedJobParams,
+    'the minted job scope must be derived from the artifact — the mismatched snapshot/selection/target on the request must never reach it',
+  );
+  assert.equal(
+    (await requestRow(restoreRequestWithMismatchedParams.id)).status,
+    'approved',
+    'a valid artifactId promotes even when other request params disagree with the artifact — they are discarded, not compared',
+  );
+
+  const restoreRequestWithCompletedArtifact = await requestApproval(client, {
+    tenantRef,
+    action: 'restore',
+    params: { artifactId: completedArtifact.id },
+    requestedBy: 'principal-restorer',
+  });
+  const { job: restoreJob } = await approveRequest(client, {
+    tenantRef, id: restoreRequestWithCompletedArtifact.id, decidedBy: 'principal-approver',
+  });
+  assert.equal(restoreJob.kind, 'restore');
+  assert.deepEqual(restoreJob.params, artifactDerivedJobParams);
 
   // The evidence chain contains both the request and the decision, and verifies.
   const { rows: evidenceRows } = await client.query(

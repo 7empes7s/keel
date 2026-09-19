@@ -14,6 +14,24 @@ const GRAPH = {
 
 const GRAPH_HOSTS = new Set(['graph.microsoft.com']);
 
+const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
+const BEARER_PATTERN = /bearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const LONG_TOKEN_PATTERN = /[A-Za-z0-9_-]{48,}/g;
+
+/**
+ * Error messages are persisted in coverage digests and surfaced in reports,
+ * and Graph occasionally echoes request material back in them. Strip bearer
+ * tokens, JWT-shaped strings and long token-shaped runs before any message
+ * leaves the read path; ordinary prose and Graph error codes pass through.
+ */
+export function redactSecrets(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replace(JWT_PATTERN, '[redacted]')
+    .replace(BEARER_PATTERN, 'Bearer [redacted]')
+    .replace(LONG_TOKEN_PATTERN, '[redacted]');
+}
+
 /**
  * The access token may only ever be sent to Graph itself. @odata.nextLink
  * values arrive as absolute URLs and are followed verbatim, so without this
@@ -53,7 +71,7 @@ export class GraphReader {
   async get(version, path, { consistencyLevel = false, maxRetries = 5 } = {}) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) {
-      return { ok: false, status: 0, code: 'UnsafeUrl', error: `refused request to non-Graph host: ${url}` };
+      return { ok: false, status: 0, code: 'UnsafeUrl', error: redactSecrets(`refused request to non-Graph host: ${url}`) };
     }
     // Accept-Language is required on every Graph request, not just this one.
     // Measured live 2026-09-08: GET
@@ -106,7 +124,7 @@ export class GraphReader {
         return {
           ok: false,
           status: res.status,
-          error: body?.error?.message ?? res.statusText,
+          error: redactSecrets(body?.error?.message ?? res.statusText),
           code: body?.error?.code,
         };
       }
@@ -117,12 +135,15 @@ export class GraphReader {
   /**
    * Follow @odata.nextLink. Returns whatever was retrieved even when the walk
    * stops early, with `capped` set, so a bounded read is never mistaken for a
-   * complete one.
+   * complete one. A mid-walk failure keeps the items and page count gathered
+   * before it: callers can record a partial outcome with a real partial count
+   * instead of discarding the evidence or claiming completeness.
    */
   async collect(version, path, { pageCap = Infinity, consistencyLevel = false } = {}) {
     const items = [];
     let next = path;
     let pages = 0;
+    let lastStatus = null;
     let firstError = null;
 
     while (next && pages < pageCap) {
@@ -132,13 +153,14 @@ export class GraphReader {
         break;
       }
       pages++;
+      lastStatus = res.status;
       const value = res.body?.value;
       if (Array.isArray(value)) items.push(...value);
       else if (res.body) items.push(res.body); // singleton resource
       next = res.body?.['@odata.nextLink'] ?? null;
     }
 
-    return { items, pages, capped: Boolean(next), error: firstError };
+    return { items, pages, status: lastStatus, capped: Boolean(next), error: firstError };
   }
 
   #recordLatency(path, ms) {

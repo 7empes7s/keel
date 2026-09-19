@@ -3,6 +3,7 @@ import {
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
+  PromotionRefusedError,
   SelfApprovalError,
   approveRequest,
   rejectRequest,
@@ -429,6 +430,10 @@ export function guardedApprovalDecision(
         if (
           error instanceof ApprovalClosedError
           || error instanceof ApprovalExpiredError
+          // Plan task 8: a restore promotion whose dry-run artifact is absent,
+          // incomplete, refused, or failed fails closed the same way a closed or
+          // expired request does — a conflict, not a mint.
+          || error instanceof PromotionRefusedError
         ) {
           return Response.json(
             { error: "conflict" },

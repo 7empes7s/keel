@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
+import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
+import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
+import { GET as dryRunArtifactRoute } from "@/app/api/actions/restore/dry-run/[id]/route";
 import { POST as selectionPreviewRoute } from "@/app/api/actions/restore/selection/route";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -129,6 +132,20 @@ function post(
   });
 }
 
+function get(
+  path: string,
+  options: { principalId?: string; capabilities?: string[] } = {},
+): Request {
+  const headers = new Headers();
+  if (options.principalId !== undefined) {
+    headers.set(PRINCIPAL_ID_HEADER, options.principalId);
+  }
+  if (options.capabilities !== undefined) {
+    headers.set(CAPABILITIES_HEADER, options.capabilities.join(" "));
+  }
+  return new Request(`http://localhost${path}`, { headers });
+}
+
 const restorer = { principalId: "principal-restorer", capabilities: ["read", "restore"] };
 
 test("the selection preview refuses callers without read or restore", async () => {
@@ -223,8 +240,10 @@ test("the preview reports a deselect that would break the closure", async () => 
   );
 });
 
-test("a restore POST with a selection creates an approval request, never a job", async () => {
+test("a direct restore enforce POST is refused before it creates an approval request or job", async () => {
   const selection = ["conditionalAccessPolicy:Protect-Admins"];
+  const { rows: approvalsBefore } = await client.query(`SELECT id FROM approval_request WHERE action = 'restore'`);
+  const { rows: jobsBefore } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
   const response = await restoreRoute(
     post("/api/actions/restore", {
       ...restorer,
@@ -233,24 +252,128 @@ test("a restore POST with a selection creates an approval request, never a job",
         selection,
         collectorConfig: "/etc/keel/tenant-target.json",
         targetConfig: "/etc/keel/restorer-target.json",
+        mode: "enforce",
         justification: "recovery rehearsal",
       },
     }),
   );
 
-  assert.equal(response.status, 202, "restore requires approval and must create a request");
-  const { approvalRequest } = await response.json();
-  assert.equal(approvalRequest.status, "pending");
-  assert.equal(approvalRequest.action, "restore");
-  assert.equal(approvalRequest.requestedBy, "principal-restorer");
-  // The request preserves the RAW selection — the closure is recomputed at execution.
-  assert.deepEqual(approvalRequest.params, {
+  assert.equal(response.status, 400, "a raw selection can never request enforce");
+  const { rows: approvalsAfter } = await client.query(`SELECT id FROM approval_request WHERE action = 'restore'`);
+  const { rows: jobsAfter } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+  assert.equal(approvalsAfter.length, approvalsBefore.length);
+  assert.equal(jobsAfter.length, jobsBefore.length);
+});
+
+test("a raw selection starts a dry run, then only its completed artifact can request approval", async () => {
+  const selection = ["conditionalAccessPolicy:Protect-Admins"];
+  const dryRun = await dryRunRoute(
+    post("/api/actions/restore/dry-run", {
+      ...restorer,
+      body: {
+        snapshotId,
+        selection,
+        collectorConfig: "/etc/keel/tenant-target.json",
+        targetConfig: "/etc/keel/restorer-target.json",
+      },
+    }),
+  );
+  assert.equal(dryRun.status, 202);
+  const { job, artifactId } = await dryRun.json();
+  assert.equal(job.kind, "restore");
+  assert.equal(typeof artifactId, "string");
+  assert.deepEqual(job.params, {
     snapshotId,
     selection,
     collectorConfig: "/etc/keel/tenant-target.json",
     targetConfig: "/etc/keel/restorer-target.json",
+    artifactId,
   });
 
-  const { rows } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
-  assert.equal(rows.length, 0, "a restore request must never enqueue a job directly");
+  await createDryRunArtifact(client, {
+    id: artifactId,
+    tenantRef: currentTenantRef,
+    snapshotId,
+    selection,
+    closureKeys: ["conditionalAccessPolicy:Protect-Admins", "group:Admins"],
+    targetTenantId: "target-tenant",
+    collectorConfigPath: "/etc/keel/tenant-target.json",
+    targetConfigPath: "/etc/keel/restorer-target.json",
+    reconciliationResources: null,
+    waves: [["group:Admins"], ["conditionalAccessPolicy:Protect-Admins"]],
+    patches: [],
+    guardRefusals: [],
+    results: { applied: [{ naturalKey: "group:Admins" }], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: "fixture-fingerprint",
+    digest: "fixture-digest",
+    status: "completed",
+    requestedBy: "principal-restorer",
+  });
+
+  const confirmed = await restoreRoute(
+    post("/api/actions/restore", {
+      ...restorer,
+      body: { artifactId, justification: "recovery rehearsal" },
+    }),
+  );
+  assert.equal(confirmed.status, 202);
+  const { approvalRequest } = await confirmed.json();
+  assert.equal(approvalRequest.status, "pending");
+  assert.equal(approvalRequest.action, "restore");
+  assert.deepEqual(approvalRequest.params, { artifactId });
+});
+
+// Plan task 8, step 2: confirmation renders the dry run's ACTUAL planned changes and
+// refusals from the persisted artifact — never a client-side guess. This is the route
+// portal/components/restore-selection.tsx polls to show the operator what promotion
+// would do, so its response must carry the real per-resource results, not a summary.
+test("the dry-run artifact route serves the full per-resource results the dry run persisted", async () => {
+  const selection = ["group:Admins"];
+  const artifactResults = {
+    applied: [{ naturalKey: "group:Admins", targetId: null }],
+    skipped: [{ naturalKey: "group:Synced", reason: "AD-synced" }],
+    failed: [{ naturalKey: "group:Unrelated", error: "boom" }],
+    notRemediable: [],
+  };
+  const artifact = await createDryRunArtifact(client, {
+    id: "aaaaaaaa-0000-4000-8000-000000000042",
+    tenantRef: currentTenantRef,
+    snapshotId,
+    selection,
+    closureKeys: ["group:Admins"],
+    targetTenantId: "target-tenant",
+    collectorConfigPath: "/etc/keel/tenant-target.json",
+    targetConfigPath: "/etc/keel/restorer-target.json",
+    reconciliationResources: null,
+    waves: [["group:Admins"]],
+    patches: [],
+    guardRefusals: [{ naturalKey: "group:Synced", reason: "AD-synced" }],
+    results: artifactResults,
+    currentStateFingerprint: "fixture-fingerprint",
+    digest: "fixture-digest",
+    status: "completed",
+    requestedBy: "principal-restorer",
+  });
+
+  const unauthenticated = await dryRunArtifactRoute(
+    get(`/api/actions/restore/dry-run/${artifact.id}`),
+  );
+  assert.equal(unauthenticated.status, 403);
+
+  const response = await dryRunArtifactRoute(
+    get(`/api/actions/restore/dry-run/${artifact.id}`, restorer),
+  );
+  assert.equal(response.status, 200);
+  const { artifact: served } = await response.json();
+  assert.deepEqual(
+    served.results,
+    artifactResults,
+    "every per-resource result (applied, skipped, failed, notRemediable) must reach the caller",
+  );
+  assert.deepEqual(served.guardRefusals, [{ naturalKey: "group:Synced", reason: "AD-synced" }]);
+
+  const notFound = await dryRunArtifactRoute(
+    get("/api/actions/restore/dry-run/bbbbbbbb-0000-4000-8000-000000000099", restorer),
+  );
+  assert.equal(notFound.status, 404, "an unknown artifact id must not be distinguishable from another tenant's");
 });

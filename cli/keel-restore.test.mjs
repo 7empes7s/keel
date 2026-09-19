@@ -1,16 +1,25 @@
 import { strict as assert } from 'node:assert';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
-import { runCli } from './keel-restore.mjs';
+import { runCli, runRestore } from './keel-restore.mjs';
 
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
 assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for restore CLI tests');
 
-const argv = [
+// Plan task 8: an enforce run always promotes a completed dry-run artifact — a plan
+// scope can no longer reach --enforce directly (see the "plan-scoped bypass" test
+// below). These write-path fixtures (provenance rewriting, wave/patch failure
+// handling) are about runRestore's enforce mechanics, not the artifact-validation
+// logic itself (covered separately by dryRunArtifact.test.mjs and the
+// artifactPromotionFakes tests below) — so restoreFakes() supplies an already-
+// completed fake artifact and stubs validateArtifactForExecution, letting these
+// fixtures promote directly via --artifact instead of re-deriving one through a real
+// dry run (which cannot itself observe real target ids for not-yet-created
+// resources and so can never reach 'completed' for a create-then-reference scope).
+const FIXTURE_ARTIFACT_ID = '99999999-0000-4000-8000-000000000099';
+const artifactArgv = [
   'node', 'keel-restore.mjs',
-  '--plan', 'fixture-plan',
-  '--target-config', '/fixtures/restorer.json',
-  '--collector-config', '/fixtures/collector.json',
+  '--artifact', FIXTURE_ARTIFACT_ID,
   '--enforce',
 ];
 const configs = new Map([
@@ -100,9 +109,6 @@ function restoreFakes({
   const state = { connectUrls: [], clientEnds: 0, writes: [], waveCalls: [], waveResults: [], priorStates: [] };
   const client = {
     query: async (sql, values) => {
-      if (/SELECT \* FROM plan/.test(sql)) {
-        return { rows: [{ id: 'fixture-plan', source_snapshot: 'source-snapshot', clean: true }] };
-      }
       if (/INSERT INTO rollback_entry/.test(sql)) {
         state.priorStates.push(values);
         return { rows: [] };
@@ -110,6 +116,20 @@ function restoreFakes({
       throw new Error(`unexpected test-database query: ${sql}`);
     },
     end: async () => { state.clientEnds += 1; },
+  };
+  // Plan task 8: an enforce run only ever promotes a completed dry-run artifact. This
+  // fixture's own selection scope is what the artifact freezes — the closure is still
+  // recomputed for real from resourceSet by the REAL dependencyClosure.
+  const fakeArtifact = {
+    id: FIXTURE_ARTIFACT_ID,
+    status: 'completed',
+    snapshotId: 'source-snapshot',
+    selection: resourceSet.versions.map((v) => v.natural_key),
+    reconciliationResources: null,
+    collectorConfigPath: '/fixtures/collector.json',
+    targetConfigPath: '/fixtures/restorer.json',
+    digest: 'fixture-digest',
+    currentStateFingerprint: 'fixture-fingerprint',
   };
   const bodiesByPath = new Map();
 
@@ -184,17 +204,23 @@ function restoreFakes({
         state.waveResults.push(result);
         return result;
       },
+      getDryRunArtifactById: async () => fakeArtifact,
+      // This is exhaustively covered elsewhere (dryRunArtifact.test.mjs,
+      // artifactPromotionFakes below) — stubbed here so these write-path fixtures
+      // don't have to also fabricate a digest/fingerprint that matches what this
+      // fixture's own fake resources would freshly recompute.
+      validateArtifactForExecution: () => ({ ok: true }),
     },
   };
 }
 
-async function runFixture(dependencies) {
+async function runFixture(dependencies, { logger = { log() {}, error() {} } } = {}) {
   return runCli({
-    argv,
+    argv: artifactArgv,
     readFile: readFixture,
     dbUrl: testDbUrl,
     dependencies,
-    logger: { log() {}, error() {} },
+    logger,
   });
 }
 
@@ -491,6 +517,299 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   });
   assert.equal(exitCode, 1);
   assert.ok(errors.some((e) => e.includes('mutually exclusive')));
+}
+
+// --- plan task 8: restore promotion requires an immutable dry-run artifact ---
+
+// A direct selection-scoped enforce (no --artifact) is refused before it ever reaches
+// the database, the target reader, or the writer — the direct-bypass this task closes.
+{
+  const errors = [];
+  const exitCode = await runCli({
+    argv: [
+      'node', 'keel-restore.mjs',
+      '--snapshot-id', 'source-snapshot', '--select', 'group:Admins',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json',
+      '--enforce',
+    ],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    dependencies: {
+      connect: async () => { throw new Error('a refused direct enforce must never connect to the database'); },
+    },
+    logger: { log() {}, error: (err) => errors.push(String(err)) },
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some((e) => e.includes('requires --artifact')));
+}
+
+// The same direct-bypass gate must hold inside runRestore() itself, independent of
+// the CLI argv parser above — cli/keel-remediate.mjs imports and calls runRestore()
+// directly, never going through main()'s argv-level copy of this check.
+await assert.rejects(
+  runRestore({
+    snapshotId: 'source-snapshot',
+    selection: ['group:Admins'],
+    targetConfig: { tenantId: 'target-tenant' },
+    collectorConfig: { tenantId: 'target-tenant', clientId: 'collector-client' },
+    mode: 'enforce',
+    dbUrl: testDbUrl,
+    dependencies: {
+      connect: async () => { throw new Error('a refused direct enforce must never connect to the database'); },
+    },
+    logger: { log() {} },
+  }),
+  (error) => error.message.includes('requires artifactId'),
+  'runRestore() must itself refuse a raw snapshot/selection enforce, not rely solely on the CLI argv parser',
+);
+
+// The same internal gate must independently hold for a PLAN scope too — not just
+// selection. cli/keel-remediate.mjs and cli/keel-worker.mjs both call runRestore()
+// directly, never through main()'s argv parser, so a plan-scoped enforce that only
+// the argv-level check refused (and not this one) would still be reachable from
+// those callers. This is the exact variant a narrowed runRestore()-internal guard
+// (e.g. one that special-cased planId) would let through undetected.
+await assert.rejects(
+  runRestore({
+    planId: 'fixture-plan',
+    targetConfig: { tenantId: 'target-tenant' },
+    collectorConfig: { tenantId: 'target-tenant', clientId: 'collector-client' },
+    mode: 'enforce',
+    dbUrl: testDbUrl,
+    dependencies: {
+      connect: async () => { throw new Error('a refused direct plan enforce must never connect to the database'); },
+    },
+    logger: { log() {} },
+  }),
+  (error) => error.message.includes('requires artifactId'),
+  'runRestore() must itself refuse a raw plan-scoped enforce, not rely solely on the CLI argv parser',
+);
+
+// A saved plan is not an exception to immutable review. This closes the previously
+// surviving plan-scoped bypass before it opens a database connection.
+{
+  const errors = [];
+  const exitCode = await runCli({
+    argv: [
+      'node', 'keel-restore.mjs', '--plan', 'fixture-plan',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json',
+      '--enforce',
+    ],
+    readFile: readFixture,
+    dbUrl: testDbUrl,
+    dependencies: {
+      connect: async () => { throw new Error('a refused plan enforce must never connect to the database'); },
+    },
+    logger: { log() {}, error: (err) => errors.push(String(err)) },
+  });
+  assert.equal(exitCode, 1);
+  assert.ok(errors.some((error) => error.includes('requires --artifact')));
+}
+
+function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}) {
+  const state = { writes: [], clientEnds: 0 };
+  const client = {
+    query: async (sql) => {
+      if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
+      if (/INSERT INTO rollback_entry/.test(sql)) return { rows: [] };
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    end: async () => { state.clientEnds += 1; },
+  };
+
+  class FakeReader {
+    async collect() { return { items: [], capped: false, error: null }; }
+    async get(_version, path) {
+      if (path === '/policies/authenticationMethodsPolicy') return { ok: true, status: 200, body: { id: 'methods' } };
+      if (path === '/policies/identitySecurityDefaultsEnforcementPolicy') return { ok: true, status: 200, body: { id: 'defaults', isEnabled: false } };
+      if (path.startsWith('/users/')) return { ok: true, status: 200, body: { id: 'break-glass-id', accountEnabled: true } };
+      throw new Error(`unexpected reader read: ${path}`);
+    }
+  }
+
+  const bodiesByPath = new Map();
+  class FakeWriter {
+    async write(_version, path, options) {
+      state.writes.push({ path, options });
+      bodiesByPath.set(`${path}/target-admins-id`, options.body);
+      return { ok: true, status: 201, body: { id: 'target-admins-id' } };
+    }
+    async read(_version, path) {
+      return { ok: true, status: 200, body: bodiesByPath.get(path) };
+    }
+  }
+
+  return {
+    state,
+    dependencies: {
+      connect: async (url) => {
+        assert.equal(url, testDbUrl, 'promotion fixtures use KEEL_DB_TEST_URL only');
+        return client;
+      },
+      getResourceVersions: async () => [{
+        id: 'v-admins', natural_key: 'group:Admins', resource_type: 'group',
+        payload: { displayName: 'Admins', mailNickname: 'admins' }, blast_radius: 'access-affecting',
+      }],
+      getReferences: async () => [],
+      planWaves: () => ({ waves: [['group:Admins']], patches: [] }),
+      buildReconciliationPlan: async (_reader, resources) => ({
+        resources: resources.map((resource) => ({ ...resource, verb: 'create' })),
+      }),
+      getToken: async () => ({ accessToken: 'fake-token' }),
+      GraphReader: FakeReader,
+      collectM1: async () => [],
+      canonicalizeAll: () => [
+        {
+          naturalKey: 'roleAssignment:GlobalAdministrator:break-glass', resourceType: 'roleAssignment',
+          sourceId: 'target-break-glass-role-id', payload: { principalId: 'break-glass-id' },
+        },
+        ...(targetHasAdminsGroup ? [{
+          naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id',
+          payload: { displayName: 'Admins', mailNickname: 'admins' },
+        }] : []),
+      ],
+      GraphWriter: FakeWriter,
+      ThrottleGovernor: class { async acquire() {} },
+      createDryRunArtifact: async (_client, fields) => {
+        const artifact = { ...fields, createdAt: new Date().toISOString() };
+        artifacts.set(fields.id, artifact);
+        return artifact;
+      },
+      getDryRunArtifactById: async (_client, { id }) => artifacts.get(id) ?? null,
+    },
+  };
+}
+
+function runDryRunArtifact(artifactId, dependencies, errors = []) {
+  return runCli({
+    argv: [
+      'node', 'keel-restore.mjs', '--snapshot-id', 'source-snapshot', '--select', 'group:Admins',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json',
+      '--persist-artifact', artifactId, '--requested-by', 'principal-restorer',
+    ],
+    readFile: readFixture, dbUrl: testDbUrl, dependencies,
+    logger: { log() {}, error: (error) => errors.push(String(error)) },
+  });
+}
+
+function runArtifactPromotion(artifactId, dependencies, errors = []) {
+  return runCli({
+    argv: ['node', 'keel-restore.mjs', '--artifact', artifactId, '--enforce'],
+    readFile: readFixture, dbUrl: testDbUrl, dependencies,
+    logger: { log() {}, error: (error) => errors.push(String(error)) },
+  });
+}
+
+// A clean dry run persists a completed artifact, and promoting it with an unchanged
+// target succeeds. The promotion receives only the artifact id and actually writes.
+{
+  const artifacts = new Map();
+  const dryRun = artifactPromotionFakes(artifacts);
+  assert.equal(await runDryRunArtifact('11111111-0000-4000-8000-000000000001', dryRun.dependencies), 0);
+  assert.equal(dryRun.state.writes.length, 0, 'a dry run must never write');
+  const artifact = artifacts.get('11111111-0000-4000-8000-000000000001');
+  assert.equal(artifact.status, 'completed');
+  assert.deepEqual(artifact.selection, ['group:Admins']);
+  assert.deepEqual(artifact.closureKeys, ['group:Admins']);
+  assert.deepEqual(
+    artifact.results,
+    {
+      applied: [{ naturalKey: 'group:Admins', targetId: null }],
+      skipped: [], failed: [], notRemediable: [],
+    },
+    'the persisted dry-run artifact retains the actual per-resource result',
+  );
+
+  const promotion = artifactPromotionFakes(artifacts);
+  assert.equal(await runArtifactPromotion(artifact.id, promotion.dependencies), 0);
+  assert.equal(promotion.state.writes.length, 1, 'a completed immutable artifact promotes one write');
+}
+
+// Promotion must recheck the configs loaded from the artifact's paths, even when
+// the dry run and the caller supplied separated credentials. Files can change
+// between review and promotion without changing the immutable artifact itself.
+{
+  const artifacts = new Map();
+  const dryRun = artifactPromotionFakes(artifacts);
+  const artifactId = '33333333-0000-4000-8000-000000000003';
+  assert.equal(await runDryRunArtifact(artifactId, dryRun.dependencies), 0);
+  assert.equal(artifacts.get(artifactId).status, 'completed');
+  const collectorConfig = JSON.parse(readFixture('/fixtures/collector.json'));
+  const targetConfig = JSON.parse(readFixture('/fixtures/restorer.json'));
+
+  for (const field of ['clientId', 'certPath', 'keyPath', 'tenantId']) {
+    const promotion = artifactPromotionFakes(artifacts);
+    const configReads = [];
+    let tokenCalls = 0;
+    promotion.dependencies.getToken = async () => {
+      tokenCalls += 1;
+      return { accessToken: 'fake-token' };
+    };
+    await assert.rejects(runRestore({
+      artifactId,
+      mode: 'enforce',
+      collectorConfig,
+      targetConfig,
+      readFile: (path) => {
+        configReads.push(path);
+        const config = JSON.parse(readFixture(path));
+        if (path === '/fixtures/restorer.json') {
+          config[field] = field === 'tenantId' ? 'different-tenant' : collectorConfig[field];
+        }
+        return JSON.stringify(config);
+      },
+      dbUrl: testDbUrl,
+      dependencies: promotion.dependencies,
+      logger: { log() {} },
+    }), field === 'tenantId'
+      ? /Collector tenantId must match the Restorer tenantId/
+      : /restore requires separate Collector and Restorer registrations and certificates/,
+    `promotion must reject the freshly loaded ${field}, regardless of the caller's configs`);
+    assert.deepEqual(configReads, ['/fixtures/collector.json', '/fixtures/restorer.json']);
+    assert.equal(tokenCalls, 0, 'credential separation is checked before acquiring either token');
+    assert.deepEqual(promotion.state.writes, [], 'non-separated credentials must never write');
+    assert.equal(promotion.state.clientEnds, 1, 'refused promotion closes its database client');
+  }
+
+  const separatedPromotion = artifactPromotionFakes(artifacts);
+  assert.equal(await runArtifactPromotion(artifactId, separatedPromotion.dependencies), 0);
+  assert.equal(separatedPromotion.state.writes.length, 1, 'the same artifact still promotes with separated credentials');
+  assert.equal(separatedPromotion.state.clientEnds, 1);
+}
+
+// Persistence failures must reach the CLI caller, including duplicate artifact IDs.
+{
+  const dryRun = artifactPromotionFakes(new Map());
+  const errors = [];
+  let persistenceAttempts = 0;
+  dryRun.dependencies.createDryRunArtifact = async () => {
+    persistenceAttempts += 1;
+    throw Object.assign(new Error('duplicate key value violates unique constraint "restore_dry_run_pkey"'), {
+      code: '23505',
+    });
+  };
+  assert.equal(await runDryRunArtifact('11111111-0000-4000-8000-000000000001', dryRun.dependencies, errors), 1);
+  assert.equal(persistenceAttempts, 1);
+  assert.ok(errors.some((error) => error.includes('restore_dry_run_pkey')));
+  assert.equal(dryRun.state.clientEnds, 1, 'a rejected artifact write still closes the database client');
+  assert.equal(dryRun.state.writes.length, 0, 'a rejected dry run performs no Graph writes');
+}
+
+// Mutation (b): the target changed between dry run and promotion. Skipping the
+// fingerprint comparison would make this test write; the promotion instead refuses
+// before a single write and forces a fresh dry run.
+{
+  const artifacts = new Map();
+  const dryRun = artifactPromotionFakes(artifacts);
+  await runDryRunArtifact('22222222-0000-4000-8000-000000000002', dryRun.dependencies);
+  const promotion = artifactPromotionFakes(artifacts, { targetHasAdminsGroup: true });
+  const errors = [];
+  assert.equal(
+    await runArtifactPromotion('22222222-0000-4000-8000-000000000002', promotion.dependencies, errors),
+    1,
+  );
+  assert.equal(promotion.state.writes.length, 0, 'a stale artifact must never write');
+  assert.ok(errors.some((error) => error.includes('target has changed since the dry run')));
 }
 
 console.log('keel-restore.test.mjs — all assertions passed');

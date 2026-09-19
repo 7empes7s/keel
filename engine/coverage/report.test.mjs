@@ -27,7 +27,8 @@ try {
   // are completed empty reads; one fails, and a distinct type is then omitted
   // from the persisted digest to model silence (e.g. an older collector).
   const { snapshotId, coverageDigest } = await collectSnapshot(client, { reader, tenantRef, tenantId: 'fixture-tenant' });
-  assert.deepEqual(coverageDigest.namedLocation, { outcome: 'complete', itemCount: 0 });
+  assert.equal(coverageDigest.namedLocation.outcome, 'complete-empty');
+  assert.equal(coverageDigest.namedLocation.itemCount, 0);
   assert.equal(coverageDigest.roleAssignment.outcome, 'failed');
   assert.equal((await getResourceVersions(client, { snapshotId })).length, 6);
   delete coverageDigest.conditionalAccessPolicy;
@@ -118,8 +119,10 @@ try {
   // Tier filtering must keep successful empty outcomes for the selected tier,
   // and must not claim coverage for excluded resources.
   const tierRun = await collectSnapshot(client, { reader, tenantRef: 'sha256:tier-only', tenantId: 'fixture-tenant', tier: 'tier1' });
-  assert.deepEqual(tierRun.coverageDigest.namedLocation, { outcome: 'complete', itemCount: 0 });
-  assert.equal(Object.hasOwn(tierRun.coverageDigest, 'user'), false);
+  assert.equal(tierRun.coverageDigest.namedLocation.outcome, 'complete-empty');
+  assert.equal(tierRun.coverageDigest.namedLocation.itemCount, 0);
+  // Tier-excluded types are explicitly not-requested, never a claimed coverage.
+  assert.deepEqual(tierRun.coverageDigest.user, { outcome: 'not-requested', itemCount: null });
   const stored = await getResourceVersions(client, { snapshotId: tierRun.snapshotId });
   assert.equal(stored.length, 5);
   assert.ok(stored.every((r) => r.criticality === 'tier1'));

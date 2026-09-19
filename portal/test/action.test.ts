@@ -21,7 +21,6 @@ import { POST as backupRoute } from "@/app/api/actions/backup/route";
 import { POST as collectRoute } from "@/app/api/actions/collect/route";
 import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
-import { POST as restoreRoute } from "@/app/api/actions/restore/route";
 import { GET as showJobRoute } from "@/app/api/jobs/[id]/route";
 import { GET as listJobsRoute } from "@/app/api/jobs/route";
 import { BaselineCreateForm } from "@/components/baseline-create-form";
@@ -161,7 +160,6 @@ const actionRoutes: {
     requiresApproval: true,
   },
   { name: "dispose", post: disposeRoute, capability: "dispose-accept", requiresApproval: false },
-  { name: "restore", post: restoreRoute, capability: "restore", requiresApproval: true },
   {
     name: "remediate",
     post: remediateRoute,
@@ -543,7 +541,7 @@ test("every denial and every recorded attempt lands in the evidence chain", asyn
   assert.ok(
     requestRows.some(
       (row) =>
-        row.actor === "principal-restorer" && row.subject.action === "restore",
+        row.actor === "principal-operator" && row.subject.action === "baseline-activate",
     ),
     "the approval request must be recorded",
   );

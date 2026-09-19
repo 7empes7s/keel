@@ -179,11 +179,21 @@ test("direct API promotion cannot bypass any refusal shown in preview", async ()
   assert.equal(approved.status, 202);
   const { job } = await approved.json();
   const skipped: unknown[] = [];
-  const result = await runRemediate({
+  // Task 8 reconciliation: an enforce run must first persist its immutable dry-run
+  // artifact, and a dry run whose guards refused resources is itself 'refused' — so
+  // the artifact-only promotion is refused before any write. The applyWave spy still
+  // proves the real guards independently reproduced every preview refusal.
+  await assert.rejects(runRemediate({
     driftIds: job.params.driftIds,
     mode: job.params.mode,
     collectorConfig: config,
     targetConfig: { ...config, clientId: "restorer" },
+    targetConfigPath: "/fixtures/task-46-restorer.json",
+    collectorConfigPath: "/fixtures/task-46-collector.json",
+    requestedBy: "operator",
+    readFile: (path: string) => JSON.stringify(
+      path.includes("restorer") ? { ...config, clientId: "restorer" } : config,
+    ),
     acceptDegradation: false,
     dbUrl: database.url,
     logger: { ...console, log() {} },
@@ -192,8 +202,7 @@ test("direct API promotion cannot bypass any refusal shown in preview", async ()
       skipped.push(...(result.skipped as unknown[]));
       return result;
     } },
-  });
-  assert.ok(result);
+  }), /restore promotion refused/);
   assert.deepEqual(skipped, preview.guardRefusals, "the real enforce guards must independently reproduce every preview refusal");
   assert.equal(writes, 0, "direct promotion must never write a refused resource");
 });

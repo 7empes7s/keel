@@ -17,6 +17,8 @@ function coverageType(overrides: Partial<CoverageType> = {}): CoverageType {
     itemCount: 3,
     lastCollectedAt: "2026-09-08T12:00:00.000Z",
     adapter: "graph-conditional-access",
+    outcome: "complete",
+    detail: null,
     fidelity: {
       declared: "full",
       measured: "full",

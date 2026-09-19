@@ -21,6 +21,10 @@ import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
+import {
+  classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
+  createDryRunArtifact, getDryRunArtifactById, validateArtifactForExecution,
+} from '../engine/restore/dryRunArtifact.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -65,8 +69,20 @@ export async function runRestore({
   previewOnly = false,
   targetConfig,
   collectorConfig,
+  collectorConfigPath,
+  targetConfigPath,
   mode,
   acceptDegradation,
+  // Plan task 8: the ONLY way to reach an enforce run from a snapshot/selection scope.
+  // artifactId promotes a previously-created, completed dry-run artifact — its own
+  // frozen snapshot, selection and target config paths are what get restored, never
+  // whatever the caller supplies alongside it (hence the mutual-exclusivity check
+  // below). persistArtifactId is the opposite direction: it asks a DRY run to persist
+  // its result under this id, so it can be reviewed and later promoted.
+  artifactId,
+  persistArtifactId,
+  requestedBy,
+  readFile = readFileSync,
   dbUrl = process.env.KEEL_DB_URL,
   dependencies = {},
   logger = console,
@@ -87,16 +103,35 @@ export async function runRestore({
     ThrottleGovernor: ThrottleGovernorClass = ThrottleGovernor,
     applyWave: applyWaveFn = applyWave,
     applyPatches: applyPatchesFn = applyPatches,
+    getDryRunArtifactById: getDryRunArtifactByIdFn = getDryRunArtifactById,
+    createDryRunArtifact: createDryRunArtifactFn = createDryRunArtifact,
+    computePlanDigest: computePlanDigestFn = computePlanDigest,
+    computeCurrentStateFingerprint: computeCurrentStateFingerprintFn = computeCurrentStateFingerprint,
+    classifyDryRunStatus: classifyDryRunStatusFn = classifyDryRunStatus,
+    validateArtifactForExecution: validateArtifactForExecutionFn = validateArtifactForExecution,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
   // dependency closure is recomputed here, server-side, from the snapshot — never
-  // trusted from the client. Exactly one of planId or (snapshotId + selection).
+  // trusted from the client. Exactly one of planId, (snapshotId + selection), or
+  // artifactId (an enforce promotion, which supplies its own frozen scope below).
+  if (artifactId !== undefined && (planId !== undefined || snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined)) {
+    throw new Error('artifactId is mutually exclusive with planId/snapshotId/selection/reconciliationResources — a promotion is driven entirely by its dry-run artifact');
+  }
+  if (artifactId !== undefined && mode !== 'enforce') {
+    throw new Error('artifactId may only be used with mode "enforce"');
+  }
+  if (persistArtifactId !== undefined) {
+    if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
+    if (planId !== undefined || snapshotId === undefined) {
+      throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
+    }
+  }
   if (planId !== undefined && (snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined)) {
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
-  if (planId === undefined && snapshotId === undefined) {
-    throw new Error('a restore scope is required: planId, or snapshotId with a selection');
+  if (planId === undefined && snapshotId === undefined && artifactId === undefined) {
+    throw new Error('a restore scope is required: planId, snapshotId with a selection, or artifactId');
   }
   if (selection !== undefined) {
     if (snapshotId === undefined) throw new Error('selection requires snapshotId');
@@ -112,12 +147,36 @@ export async function runRestore({
       throw new Error('reconciliationResources must be a non-empty array');
     }
   }
+  // Plan task 8: every enforce scope, including a legacy saved plan, must promote a
+  // completed dry-run artifact. A clean plan is not an immutable dry-run review.
+  // Automated remediation first produces its own artifact, then reaches this same
+  // artifact-only branch.
+  if (mode === 'enforce' && artifactId === undefined) {
+    throw new Error('enforce requires artifactId (promote a completed dry-run artifact; a direct enforce is refused)');
+  }
 
   let client;
   try {
     client = await connectFn(dbUrl);
     let sourceSnapshot = snapshotId;
     let plan = null;
+    let artifact = null;
+
+    if (artifactId !== undefined) {
+      artifact = await getDryRunArtifactByIdFn(client, { id: artifactId });
+      if (!artifact) throw new Error(`restore promotion refused: dry-run artifact not found: ${artifactId}`);
+      if (artifact.status !== 'completed') {
+        throw new Error(`restore promotion refused: dry-run artifact ${artifactId} is not complete (status: ${artifact.status})`);
+      }
+      sourceSnapshot = artifact.snapshotId;
+      selection = artifact.selection;
+      reconciliationResources = artifact.reconciliationResources ?? undefined;
+      collectorConfigPath = artifact.collectorConfigPath;
+      targetConfigPath = artifact.targetConfigPath;
+      collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
+      targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
+      assertSeparateRestorer(collectorConfig, targetConfig);
+    }
     if (planId !== undefined) {
       const { rows } = await client.query('SELECT * FROM plan WHERE id = $1', [planId]);
       plan = rows[0];
@@ -143,6 +202,16 @@ export async function runRestore({
         references: refsByVersion.get(v.id) ?? [], blastRadius: v.blast_radius, restorePriority: 100,
       }));
 
+    let closureKeys = null;
+    const artifactScopeReconciliationResources = reconciliationResources;
+    // A remediation reconciliation scope has no snapshot-selection argument (its raw
+    // scope is the drift-derived resource keys, including desired-absence deletes).
+    // Persist that exact scope as the artifact's raw selection while continuing to
+    // execute it through reconciliationResources; promotion restores both fields from
+    // the one immutable record.
+    const immutableSelection = selection
+      ?? reconciliationResources?.map((resource) => resource.naturalKey)
+      ?? [];
     if (reconciliationResources !== undefined) {
       const desiredKeys = reconciliationResources
         .filter((resource) => resource.payload !== null)
@@ -151,6 +220,7 @@ export async function runRestore({
       const additions = reconciliationResources.filter((resource) => resource.payload === null);
       resources = [...closure.resources, ...additions]
         .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
+      closureKeys = resources.map((resource) => resource.naturalKey);
       for (const unresolved of closure.unresolvedReferences) {
         logger.log(`unresolved reference: ${unresolved.from} at ${unresolved.field} -> ${unresolved.symbol} (no resource in this snapshot provides it)`);
       }
@@ -161,6 +231,7 @@ export async function runRestore({
       // are logged, because silently dropping them is how dangling restores happen.
       const closure = dependencyClosureFn(resources, selection);
       resources = closure.resources;
+      closureKeys = closure.keys;
       for (const unresolved of closure.unresolvedReferences) {
         logger.log(`unresolved reference: ${unresolved.from} at ${unresolved.field} -> ${unresolved.symbol} (no resource in this snapshot provides it)`);
       }
@@ -218,12 +289,45 @@ export async function runRestore({
       };
     }
 
+    // Plan task 8, step 4: a promotion recomputes the plan digest and the
+    // current-state fingerprint fresh — from THIS snapshot/selection/closure and a
+    // fresh read of the target — and refuses to write on any mismatch. A changed
+    // snapshot, selection, or dependency closure changes the digest; a target that
+    // drifted since the dry run ran changes the fingerprint. Either one fails the
+    // whole run closed, before a single write.
+    if (artifact) {
+      const freshDigest = computePlanDigestFn({
+        snapshotId: sourceSnapshot,
+        selection: immutableSelection,
+        closureKeys,
+        targetTenantId: targetConfig.tenantId,
+        collectorConfigPath,
+        targetConfigPath,
+        reconciliationResources: artifactScopeReconciliationResources,
+        waves,
+        patches,
+      });
+      const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
+      const validation = validateArtifactForExecutionFn(artifact, {
+        digest: freshDigest,
+        currentStateFingerprint: freshFingerprint,
+      });
+      if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
+    }
+
     const seeds = {
       [`${targetConfig.tenantId}/entra/write`]: { capacity: 100, refillPerSecond: 100 / 20 }, // Intune-tier seed, spec §11.1
     };
     const governor = new ThrottleGovernorClass(seeds);
     const runId = planId !== undefined ? `run-${planId}` : `run-selection-${sourceSnapshot}`;
     const appliedIds = new Map();
+    // Accumulated across every wave and the deferred-patch phase. Ordinarily a
+    // failure throws immediately (below) — retry is safe, since applies are
+    // idempotent by natural key, spec §9.3 — but persistArtifactId asks for the
+    // COMPLETE per-resource picture of a dry run even when part of it fails or is
+    // refused, so a persisting run collects instead of throwing and lets
+    // classifyDryRunStatus below decide the artifact's terminal status.
+    const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
 
     for (const [i, waveKeys] of waves.entries()) {
       const wave = phaseOneResources(
@@ -242,47 +346,113 @@ export async function runRestore({
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      results.applied.push(...result.applied);
+      results.skipped.push(...result.skipped);
+      results.failed.push(...result.failed);
+      results.notRemediable.push(...(result.notRemediable ?? []));
       for (const { naturalKey, targetId } of result.applied) {
         if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
       }
       if (result.failed.length) {
-        throw new Error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+        if (persistArtifactId === undefined) {
+          throw new Error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+        }
+        break;
       }
     }
 
-    const patchResult = await applyPatchesFn(writer, governor, patches, {
-      targetTenant: targetConfig.tenantId, mode, appliedIds,
-    });
-    logger.log(`patched ${patchResult.applied.length}, patchFailed ${patchResult.failed.length}`);
-    if (patchResult.failed.length) {
-      throw new Error('deferred patch had failures — stopping run');
-    }
-
-    for (const [i, waveKeys] of deletionWaves.entries()) {
-      const wave = deletes.filter((resource) => waveKeys.includes(resource.naturalKey));
-      logger.log(`delete wave ${i + 1}/${deletionWaves.length}: ${wave.length} resources`);
-      const result = await applyWaveFn(writer, governor, wave, {
-        targetTenant: targetConfig.tenantId,
-        mode,
-        existingTargetIds,
-        appliedIds,
-        rollbackClient: client,
-        runId,
-        deletionGuardOptions,
-        signInPathGate: { reader: targetReader, protectedPrincipalIds },
+    if (results.failed.length === 0) {
+      const patchResult = await applyPatchesFn(writer, governor, patches, {
+        targetTenant: targetConfig.tenantId, mode, appliedIds,
       });
-      logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
-      for (const { naturalKey, targetId } of result.applied) {
-        if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
+      logger.log(`patched ${patchResult.applied.length}, patchFailed ${patchResult.failed.length}`);
+      results.applied.push(...patchResult.applied);
+      results.failed.push(...patchResult.failed);
+      if (patchResult.failed.length && persistArtifactId === undefined) {
+        throw new Error('deferred patch had failures — stopping run');
       }
-      if (result.failed.length) {
-        throw new Error('delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+    }
+
+    if (results.failed.length === 0) {
+      for (const [i, waveKeys] of deletionWaves.entries()) {
+        const wave = deletes.filter((resource) => waveKeys.includes(resource.naturalKey));
+        logger.log(`delete wave ${i + 1}/${deletionWaves.length}: ${wave.length} resources`);
+        const result = await applyWaveFn(writer, governor, wave, {
+          targetTenant: targetConfig.tenantId,
+          mode,
+          existingTargetIds,
+          appliedIds,
+          rollbackClient: client,
+          runId,
+          deletionGuardOptions,
+          signInPathGate: { reader: targetReader, protectedPrincipalIds },
+        });
+        logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+        results.applied.push(...result.applied);
+        results.skipped.push(...result.skipped);
+        results.failed.push(...result.failed);
+        results.notRemediable.push(...(result.notRemediable ?? []));
+        for (const { naturalKey, targetId } of result.applied) {
+          if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
+        }
+        if (result.failed.length) {
+          if (persistArtifactId === undefined) {
+            throw new Error('delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+          }
+          break;
+        }
       }
+    }
+
+    let createdArtifactId = null;
+    if (persistArtifactId !== undefined) {
+      const { rows: snapshotRows } = await client.query(
+        'SELECT tenant_ref FROM snapshot WHERE id = $1', [sourceSnapshot],
+      );
+      const tenantRef = snapshotRows[0]?.tenant_ref;
+      if (!tenantRef) throw new Error(`snapshot not found: ${sourceSnapshot}`);
+
+      const status = classifyDryRunStatusFn({ failed: results.failed, skipped: results.skipped });
+      const digest = computePlanDigestFn({
+        snapshotId: sourceSnapshot,
+        selection: immutableSelection,
+        closureKeys,
+        targetTenantId: targetConfig.tenantId,
+        collectorConfigPath,
+        targetConfigPath,
+        reconciliationResources: artifactScopeReconciliationResources,
+        waves,
+        patches,
+      });
+      const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
+
+      await createDryRunArtifactFn(client, {
+        id: persistArtifactId,
+        tenantRef,
+        snapshotId: sourceSnapshot,
+        selection: immutableSelection,
+        closureKeys,
+        targetTenantId: targetConfig.tenantId,
+        collectorConfigPath,
+        targetConfigPath,
+        reconciliationResources: artifactScopeReconciliationResources,
+        waves,
+        patches,
+        guardRefusals: results.skipped,
+        results,
+        currentStateFingerprint,
+        digest,
+        status,
+        requestedBy: requestedBy ?? 'unknown',
+      });
+      createdArtifactId = persistArtifactId;
+      logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
     }
 
     return {
-      plan, resources, waves, deletionWaves, patches, appliedIds,
-      selection: selection ?? reconciliationResources?.map((resource) => resource.naturalKey) ?? null,
+      plan, resources, waves, deletionWaves, patches, appliedIds, results,
+      selection: immutableSelection.length ? immutableSelection : null,
+      artifactId: createdArtifactId ?? artifactId ?? null,
     };
   } finally {
     await client?.end();
@@ -299,6 +469,24 @@ export async function main({
   const planId = arg('plan', undefined, argv);
   const snapshotId = arg('snapshot-id', undefined, argv);
   const selection = argAll('select', argv);
+  const artifactId = arg('artifact', undefined, argv);
+  const persistArtifactId = arg('persist-artifact', undefined, argv);
+  const requestedBy = arg('requested-by', undefined, argv);
+  const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+
+  // Plan task 8: --artifact promotes a completed dry-run artifact and is the ONLY way
+  // to reach --enforce for every restore scope — it carries its own frozen
+  // snapshot, selection and target config paths, so it is mutually exclusive with
+  // every other scope flag.
+  if (artifactId !== undefined && (planId || snapshotId || selection.length)) {
+    throw new Error('--artifact is mutually exclusive with --plan/--snapshot-id/--select — a promotion is driven entirely by its dry-run artifact');
+  }
+  if (artifactId !== undefined && mode !== 'enforce') {
+    throw new Error('--artifact may only be used with --enforce');
+  }
+  if (persistArtifactId !== undefined && mode === 'enforce') {
+    throw new Error('--persist-artifact may only be used for a dry run, never with --enforce');
+  }
   // --plan and --snapshot-id/--select are two scopes for the one apply path; mixing
   // them is a usage error, and so is either half of the selection scope on its own.
   if (planId && (snapshotId || selection.length)) {
@@ -306,13 +494,28 @@ export async function main({
   }
   if (!snapshotId && selection.length) throw new Error('--select requires --snapshot-id');
   if (snapshotId && !selection.length) throw new Error('--snapshot-id requires at least one --select <naturalKey>');
-  if (!planId && !snapshotId) throw new Error('--plan <id> or --snapshot-id <id> with --select <naturalKey> required');
-  const targetConfig = JSON.parse(readFile(arg('target-config', undefined, argv), 'utf8'));
-  const collectorConfigPath = arg('collector-config', undefined, argv);
-  if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
-  const collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
-  assertSeparateRestorer(collectorConfig, targetConfig);
-  const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+  if (!planId && !snapshotId && !artifactId) {
+    throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, or --artifact <id> required');
+  }
+  if (mode === 'enforce' && !artifactId) {
+    throw new Error('enforce requires --artifact <id> (promote a completed dry-run artifact; a direct enforce is refused)');
+  }
+
+  // A promotion (--artifact) loads its own frozen target/collector config paths from
+  // the artifact row inside runRestore — argv never supplies them for that scope.
+  let targetConfig;
+  let collectorConfig;
+  let collectorConfigPath;
+  let targetConfigPath;
+  if (artifactId === undefined) {
+    targetConfigPath = arg('target-config', undefined, argv);
+    if (!targetConfigPath) throw new Error('--target-config <path> required');
+    targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
+    collectorConfigPath = arg('collector-config', undefined, argv);
+    if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
+    collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
+    assertSeparateRestorer(collectorConfig, targetConfig);
+  }
 
   return runRestore({
     planId,
@@ -320,7 +523,13 @@ export async function main({
     selection: selection.length ? selection : undefined,
     targetConfig,
     collectorConfig,
+    collectorConfigPath,
+    targetConfigPath,
     mode,
+    artifactId,
+    persistArtifactId,
+    requestedBy,
+    readFile,
     acceptDegradation: flag('accept-degradation', argv),
     dbUrl,
     dependencies,

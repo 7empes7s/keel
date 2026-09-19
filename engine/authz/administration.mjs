@@ -49,7 +49,35 @@ export async function revokeRole(client, { principalId, grantId, revokedBy }) {
 }
 
 export async function disablePrincipal(client, principalId) {
-  const { rows } = await client.query('UPDATE principal SET disabled_at = now() WHERE id = $1 RETURNING *', [principalId]);
-  if (!rows[0]) throw new PrincipalNotFoundError('principal not found');
-  return rows[0];
+  await client.query('BEGIN');
+  try {
+    // Serialize disables and grant changes while checking the remaining live admins.
+    await client.query('LOCK TABLE principal, role_grant IN SHARE ROW EXCLUSIVE MODE');
+    const { rows } = await client.query('SELECT * FROM principal WHERE id = $1', [principalId]);
+    const principal = rows[0];
+    if (!principal) throw new PrincipalNotFoundError('principal not found');
+    // Disabling the last live admin zeroes out administration with no recovery
+    // path; the same self-lockout rule as revokeRole applies regardless of actor.
+    if (!principal.disabled_at) {
+      const ownLiveAdmin = await client.query(
+        `SELECT rg.id FROM role_grant rg
+         WHERE rg.principal_id = $1 AND rg.role = 'admin'
+           AND rg.active_from <= now() AND (rg.active_until IS NULL OR rg.active_until > now())`, [principalId],
+      );
+      if (ownLiveAdmin.rows.length) {
+        const remaining = await client.query(
+          `SELECT rg.id FROM role_grant rg JOIN principal p ON p.id = rg.principal_id
+           WHERE p.id <> $1 AND rg.role = 'admin' AND p.disabled_at IS NULL
+             AND rg.active_from <= now() AND (rg.active_until IS NULL OR rg.active_until > now())`, [principalId],
+        );
+        if (!remaining.rows.length) throw new SelfLockoutError('disabling this principal would leave no live admin');
+      }
+    }
+    const result = await client.query('UPDATE principal SET disabled_at = now() WHERE id = $1 RETURNING *', [principalId]);
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
 }

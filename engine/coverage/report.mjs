@@ -19,6 +19,7 @@
 
 import { TYPE_COVERAGE_CTES, readCoverageOutcome, readOutcome, readOutcomeDetail, readTypeObservation } from './snapshots.mjs';
 import { OBSERVATION_CONTRACT_VERSION } from '../contracts/observation.mjs';
+import { capabilitySummaryFor } from './capabilities.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {
@@ -55,6 +56,10 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       criticality: entry.criticality ?? null,
       blastRadius: entry.blastRadius ?? null,
       remappable: null,
+      // Evidence-backed write-operation claims (roadmap task-52) — a
+      // not-covered catalogue entry still has its own capability claims,
+      // independent of read-coverage status.
+      writeCapability: capabilitySummaryFor(entry.type),
     });
   }
 
@@ -141,7 +146,14 @@ function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, di
     },
     criticality: descriptor.criticality,
     blastRadius: descriptor.blastRadius,
+    // remappable is a narrow reference-resolution fact (can this type be a
+    // cross-tenant reference TARGET), kept for backward compatibility.
+    // writeCapability (roadmap task-52) is the evidence-backed answer to the
+    // actual question a caller usually wants: can this type itself be
+    // created/updated/deleted/restored, and how strong is the proof.
+    // Neither is derived from the other — see capabilities.mjs's header.
     remappable: descriptor.remappable,
+    writeCapability: capabilitySummaryFor(descriptor.type),
   };
 }
 

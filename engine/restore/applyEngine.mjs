@@ -3,6 +3,8 @@ import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { verbCapability } from '../reconcile/verb.mjs';
+import { graphPathFor } from '../coverage/capabilities.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
@@ -220,6 +222,23 @@ export async function applyWave(writer, governor, wave, {
   for (const resource of wave) {
     if (resource.verb === 'noop') {
       applied.push({ naturalKey: resource.naturalKey, targetId: resource.targetId ?? null });
+      continue;
+    }
+
+    // Roadmap task-52: fail closed before any guard, journal write or writer
+    // call — an unevidenced (resourceType, verb) pair must never reach
+    // Graph. Mirrors the exact verb normalisation the branches below use: a
+    // verb that names none of 'delete'/'restore-soft-deleted'/'update'
+    // (including an absent verb) falls through to the create path.
+    const effectiveVerb = resource.verb === 'delete' || resource.verb === 'restore-soft-deleted' || resource.verb === 'update'
+      ? resource.verb
+      : 'create';
+    const capabilityGate = verbCapability(resource.resourceType, effectiveVerb);
+    if (!capabilityGate.supported) {
+      failed.push({
+        naturalKey: resource.naturalKey,
+        error: `unsupported operation: ${resource.resourceType} ${effectiveVerb} is not a registered write capability (claim: ${capabilityGate.capability?.claim ?? 'unsupported'})`,
+      });
       continue;
     }
 
@@ -614,6 +633,17 @@ export async function applyPatches(writer, governor, patches, {
       return { applied, failed };
     }
 
+    // A deferred reference patch is a PATCH — the same write capability an
+    // 'update' verb requires. Fail closed before any writer call here too.
+    const patchCapability = verbCapability(resourceType, 'update');
+    if (!patchCapability.supported) {
+      failed.push({
+        naturalKey: patch.naturalKey,
+        reason: `unsupported operation: ${resourceType} update is not a registered write capability (claim: ${patchCapability.capability?.claim ?? 'unsupported'})`,
+      });
+      return { applied, failed };
+    }
+
     let body = setAtPath({}, patch.field, targetId);
     if (resourceType === 'conditionalAccessPolicy') body = enforceReportOnly(body);
 
@@ -657,14 +687,13 @@ export async function applyPatches(writer, governor, patches, {
   return { applied, failed };
 }
 
+/** Sourced from engine/coverage/capabilities.mjs's registry (roadmap
+ * task-52) — the single place a resourceType's write path is declared.
+ * This is a defensive fallback only: verbCapability() above already refuses
+ * an unregistered (resourceType, verb) pair before any call site below is
+ * reached. */
 function pathFor(resourceType) {
-  const paths = {
-    group: '/groups',
-    roleAssignment: '/roleManagement/directory/roleAssignments',
-    namedLocation: '/identity/conditionalAccess/namedLocations',
-    conditionalAccessPolicy: '/identity/conditionalAccess/policies',
-  };
-  const path = paths[resourceType];
+  const path = graphPathFor(resourceType);
   if (!path) throw new Error(`no write path for resource type ${resourceType}`);
   return path;
 }

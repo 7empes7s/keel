@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { decideVerb } from './verb.mjs';
+import { decideVerb, verbCapability } from './verb.mjs';
 
 assert.deepEqual(
   decideVerb({ desired: { payloadHash: 'abc123' }, live: null, softDeleted: true }),
@@ -58,5 +58,16 @@ assert.equal(update.verb, 'update');
 assert.equal(noop.verb, 'noop');
 
 assert.throws(() => decideVerb({ desired: { payloadHash: 'abc123' }, live: undefined, softDeleted: false }));
+
+// Roadmap task-52: verbCapability answers "can applyWave do this" —
+// independent of decideVerb's "what does the diff require" above. A noop
+// is always attemptable (applyWave never writes for it); a registered type
+// with a genuinely unregistered verb, or an entirely unregistered type,
+// must both read unsupported.
+assert.deepEqual(verbCapability('group', 'noop'), { supported: true, capability: null });
+assert.equal(verbCapability('group', 'update').supported, true);
+assert.equal(verbCapability('roleAssignment', 'restore-soft-deleted').supported, false);
+assert.equal(verbCapability('domain', 'update').supported, false);
+assert.equal(verbCapability('domain', 'update').capability.claim, 'unsupported');
 
 console.log('verb.test.mjs — all assertions passed');

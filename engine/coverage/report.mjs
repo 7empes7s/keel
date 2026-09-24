@@ -19,6 +19,8 @@
 
 import { TYPE_COVERAGE_CTES, readCoverageOutcome, readOutcome, readOutcomeDetail, readTypeObservation } from './snapshots.mjs';
 import { OBSERVATION_CONTRACT_VERSION } from '../contracts/observation.mjs';
+import { capabilitySummaryFor } from './capabilities.mjs';
+import { diagnoseFailure } from './diagnosis.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {
@@ -31,12 +33,26 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   const generatedAt = (now ?? new Date()).toISOString();
   const { snapshot, byType, latestDigest } = await latestCompletedSnapshots(client, tenantRef);
   const drillEvidence = await loadDrillEvidence(client, tenantRef);
+  const diagnosisEvidence = await loadDiagnosisEvidence(client, tenantRef, byType);
 
   const descriptorByType = new Map(descriptors.map((d) => [d.type, d]));
   const types = [];
 
   for (const descriptor of descriptors) {
-    types.push(coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt, tenantRef, latestDigest?.[descriptor.type]));
+    const entry = coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt, tenantRef, latestDigest?.[descriptor.type]);
+    // Diagnosis (roadmap task-53) is an ADDITIONAL field on a failed entry.
+    // It never changes status/covered/outcome/detail — the raw collection
+    // outcome stays exactly as observed, diagnosis or not.
+    entry.diagnosis = entry.status === 'failed'
+      ? diagnoseFailure({
+        feature: descriptor.type,
+        failure: { httpStatus: entry.detail?.httpStatus ?? null, graphCode: entry.detail?.graphCode ?? null },
+        evidence: diagnosisEvidence,
+        tenantRef,
+        now: new Date(generatedAt),
+      })
+      : null;
+    types.push(entry);
   }
   for (const entry of catalog) {
     if (descriptorByType.has(entry.type)) continue;
@@ -52,9 +68,14 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       observation: null,
       outcome: null,
       detail: null,
+      diagnosis: null,
       criticality: entry.criticality ?? null,
       blastRadius: entry.blastRadius ?? null,
       remappable: null,
+      // Evidence-backed write-operation claims (roadmap task-52) — a
+      // not-covered catalogue entry still has its own capability claims,
+      // independent of read-coverage status.
+      writeCapability: capabilitySummaryFor(entry.type),
     });
   }
 
@@ -141,7 +162,14 @@ function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, di
     },
     criticality: descriptor.criticality,
     blastRadius: descriptor.blastRadius,
+    // remappable is a narrow reference-resolution fact (can this type be a
+    // cross-tenant reference TARGET), kept for backward compatibility.
+    // writeCapability (roadmap task-52) is the evidence-backed answer to the
+    // actual question a caller usually wants: can this type itself be
+    // created/updated/deleted/restored, and how strong is the proof.
+    // Neither is derived from the other — see capabilities.mjs's header.
     remappable: descriptor.remappable,
+    writeCapability: capabilitySummaryFor(descriptor.type),
   };
 }
 
@@ -199,4 +227,69 @@ async function loadDrillEvidence(client, tenantRef) {
     [tenantRef, DRILL_EVIDENCE_KIND],
   );
   return new Map(rows.map((row) => [row.subject.resourceType, row]));
+}
+
+// The three evidence dimensions a diagnosis joins (roadmap task-53), each
+// backed by its own collected type. Time qualification (stale/future), the
+// newest-mention-decides rule and the cross-tenant refusal are enforced by
+// engine/coverage/diagnosis.mjs; this loader only assembles newest mentions
+// and their payloads, tenant-scoped like every other report read.
+const DIAGNOSIS_EVIDENCE_TYPES = Object.freeze({
+  sku: 'subscribedSku',
+  consent: 'oauth2PermissionGrant',
+  roles: 'roleAssignment',
+});
+
+function asIsoInstant(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value === 'string' && !Number.isNaN(Date.parse(value))) return new Date(value).toISOString();
+  return null;
+}
+
+/**
+ * The newest mention of each evidence type, exactly as the coverage CTE
+ * selected it (newest including failures — an older success is never
+ * substituted). Payloads load only from the snapshot behind a completed
+ * newest mention; a failed/partial newest mention carries none, so stale
+ * payloads can never justify a diagnosis after the read started failing.
+ */
+async function loadDiagnosisEvidence(client, tenantRef, byType) {
+  const evidence = {};
+  for (const [dimension, resourceType] of Object.entries(DIAGNOSIS_EVIDENCE_TYPES)) {
+    const mention = byType.get(resourceType);
+    if (!mention) {
+      evidence[dimension] = [];
+      continue;
+    }
+    const entry = mention.coverage_entry;
+    const covered = readCoverageOutcome(entry).covered;
+    const outcome = readOutcome(entry) ?? (covered ? 'complete' : 'unknown');
+    const observedAt = asIsoInstant(entry?.completedAt) ?? asIsoInstant(mention.completed_at);
+    let payloads = [];
+    if (covered) {
+      const { rows } = await client.query(
+        `SELECT payload FROM resource_version WHERE snapshot_id = $1 AND resource_type = $2`,
+        [mention.snapshot_id, resourceType],
+      );
+      payloads = rows.map((row) => row.payload);
+    }
+    const mentionBase = { outcome, observedAt, tenantRef };
+    if (dimension === 'sku') {
+      evidence.sku = [{ ...mentionBase, skus: payloads }];
+    } else if (dimension === 'consent') {
+      const grantedScopes = new Set();
+      for (const grant of payloads) {
+        for (const scope of String(grant?.scope ?? '').split(/\s+/)) {
+          if (scope) grantedScopes.add(scope);
+        }
+      }
+      evidence.consent = [{ ...mentionBase, grantedScopes: [...grantedScopes] }];
+    } else {
+      evidence.roles = [{
+        ...mentionBase,
+        assignedRoleIds: payloads.map((assignment) => assignment?.roleDefinitionId).filter((id) => typeof id === 'string'),
+      }];
+    }
+  }
+  return evidence;
 }

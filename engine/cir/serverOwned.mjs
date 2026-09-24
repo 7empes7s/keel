@@ -4,6 +4,13 @@
  *                 excluded from PATCH, and reported as not-auto-remediable.
  *  - everything else is writable: in the hash and in PATCH bodies.
  *
+ * fieldClass() below remains the only place these three classes are decided — do not
+ * duplicate this split elsewhere. engine/contracts/fieldProjection.mjs (roadmap task-51)
+ * builds on top of it for the operations this file does not cover: sensitive-export
+ * exclusion and per-type unknown-field flagging for create/update, for types reviewed
+ * closely enough to name every field they can carry. It never redefines serverOwned/
+ * immutable/writable itself.
+ *
  * group classification corrected 2026-09-07 per group-update.md's PATCH table: mailNickname and
  * securityEnabled are writable, not immutable; server-owned fields (classification, mail,
  * onPremisesX, securityIdentifier, theme, etc.) were previously unclassified, which caused

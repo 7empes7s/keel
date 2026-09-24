@@ -132,3 +132,15 @@ export const REFERENCEABLE_TYPES = new Set([
   'domain',
   'subscribedSku',
 ]);
+
+const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
+
+/**
+ * The catalogue entry for a resource type, or null when the type is not part
+ * of the measured estate. engine/coverage/diagnosis.mjs registers feature
+ * prerequisites through this lookup so a prerequisite is always source-linked
+ * to a real measured endpoint — never to a type string nothing collects.
+ */
+export function catalogEntryFor(type) {
+  return CATALOG_BY_TYPE.get(type) ?? null;
+}

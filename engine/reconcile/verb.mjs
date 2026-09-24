@@ -1,3 +1,5 @@
+import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
+
 /** Spec M2.4. desired/live are { payloadHash } or null; softDeleted is a boolean.
  * Returns one of: 'create' | 'update' | 'noop' | 'delete' | 'restore-soft-deleted'. */
 export function decideVerb({ desired, live, softDeleted }) {
@@ -54,4 +56,19 @@ export function decideVerb({ desired, live, softDeleted }) {
   }
 
   throw new Error('Unrecognised desired/live/softDeleted combination');
+}
+
+/**
+ * Fail-closed capability gate ahead of any writer call (roadmap task-52).
+ * decideVerb() above answers "what does the diff require"; this answers
+ * "can applyWave actually perform that verb for this resourceType" — two
+ * independent questions that must never be merged into one function. An
+ * unregistered (resourceType, verb) pair is refused here, before
+ * applyEngine.mjs's deletion/sync guards, rollback journal or writer ever
+ * run for that resource.
+ */
+export function verbCapability(resourceType, verb) {
+  if (verb === 'noop') return { supported: true, capability: null };
+  const capability = capabilityFor(resourceType, verb);
+  return { supported: isSupportedClaim(capability.claim), capability };
 }

@@ -1,9 +1,13 @@
 import { isDeepStrictEqual } from 'node:util';
 import { fieldClass } from '../cir/serverOwned.mjs';
+import { classifyForOperation, reviewStateFor } from '../contracts/fieldProjection.mjs';
 
-/** Spec M2.4.2. Leaves only what Graph accepts in a PATCH body: drops serverOwned AND
- * immutable fields, using engine/cir/serverOwned.mjs as the single source of truth.
- * Do NOT define a second field list here — one definition, two consumers (Task 1). */
+/** Spec M2.3/M2.4.2 (roadmap task-51). Leaves only what Graph accepts in a PATCH
+ * body: drops serverOwned and immutable fields via classifyForOperation('update', ...),
+ * which resolves through engine/cir/serverOwned.mjs's fieldClass() as the single
+ * source of truth and additionally narrows a writable field outside a reviewed
+ * type's known-field list to 'unknown' (excluded here, reported by unknownFields()
+ * below) instead of letting an unrecognized field silently become writable. */
 export function writableProjection(payload, resourceType) {
   // Validate the type even for an empty payload: unknown types must not be
   // allowed to reach Graph with a pass-through PATCH body.
@@ -20,12 +24,28 @@ function project(value, resourceType, path = '') {
     const projected = {};
     for (const key of Object.keys(value)) {
       const dottedPath = path ? `${path}.${key}` : key;
-      if (fieldClass(dottedPath, resourceType) !== 'writable') continue;
+      if (classifyForOperation('update', dottedPath, resourceType) !== 'writable') continue;
       projected[key] = project(value[key], resourceType, dottedPath);
     }
     return projected;
   }
   return value;
+}
+
+/**
+ * Top-level fields of `payload` that a reviewed type's known-field list does
+ * not name — excluded from writableProjection's output above and surfaced
+ * here so a caller can flag them for review instead of the field silently
+ * vanishing from every future write. An unreviewed type (no field-projection
+ * registration) returns null: without a reviewed known-field list there is
+ * nothing to compare against, so the question is unanswered, not answered
+ * with an empty list.
+ */
+export function unknownFields(payload, resourceType) {
+  fieldClass('', resourceType);
+  if (reviewStateFor(resourceType) === 'unreviewed') return null;
+  return Object.keys(payload ?? {})
+    .filter((key) => classifyForOperation('update', key, resourceType) === 'unknown');
 }
 
 export function immutableDrift(desired, live, resourceType) {

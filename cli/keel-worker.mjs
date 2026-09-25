@@ -18,6 +18,8 @@ import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
@@ -521,9 +523,22 @@ export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTE
   }
 }
 
+// Optional one-shot collection seam. The normal queue loop stays disabled for
+// audit ingestion unless a trusted caller explicitly invokes this bounded worker.
+export async function runAuditIngestion(client, options) {
+  return ingestAudit(client, options);
+}
+
+export async function runAuditCommand(client, config, { report = false } = {}) {
+  if (report) return readAuditEvidence(client, config);
+  const adapter = config.fixturePages === undefined ? undefined
+    : createFixtureAuditAdapter({ tenantRef: config.managedTenantRef, pages: config.fixturePages });
+  return runAuditIngestion(client, { ...config, adapter });
+}
+
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000]');
+    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate]');
     return;
   }
 
@@ -535,6 +550,20 @@ async function main() {
   const pollIntervalMs = Number(arg('poll-interval-ms', 2000));
 
   const client = await connect(dbUrl);
+
+  // Explicit local migration, archive reference or synthetic fixture execution.
+  // No Graph route or restorer credential is loaded by this command.
+  if (process.argv.includes('--audit-migrate') || process.argv.includes('--audit-config')) {
+    try {
+      if (process.argv.includes('--audit-migrate')) await migrateAuditIngestion(client);
+      else {
+        const config = JSON.parse(await readFile(arg('audit-config'), 'utf8'));
+        const result = await runAuditCommand(client, config, { report: process.argv.includes('--audit-report') });
+        console.log(JSON.stringify(result));
+      }
+    } finally { await client.end(); }
+    return;
+  }
 
   const reclaimed = await resetOrphaned(client);
   if (reclaimed.length > 0) {

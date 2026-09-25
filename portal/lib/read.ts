@@ -22,6 +22,12 @@ export const DATA_SURFACES = {
   subscriptionsApi: { capability: "configuration", source: "api/subscriptions/route.ts" },
   deliveriesApi: { capability: "read", source: "api/deliveries/route.ts" },
   notificationsPage: { capability: "read", source: "notifications/page.tsx" },
+  integrationsApi: { capability: "read", source: "api/integrations/route.ts" },
+  integrationsQuarantinedApi: {
+    capability: "read",
+    source: "api/integrations/[id]/quarantined/route.ts",
+  },
+  integrationsPage: { capability: "read", source: "integrations/page.tsx" },
   policiesApi: { capability: "policies", source: "api/policies/route.ts" },
   policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },
   policyEnabledApi: { capability: "policies", source: "api/policies/[id]/enabled/route.ts" },

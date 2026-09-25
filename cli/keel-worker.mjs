@@ -12,6 +12,8 @@
 // 25); the enqueue-time check is never trusted here.
 import { createEventSink, jobCorrelationId, redactPayload } from '../engine/telemetry/events.mjs';
 import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
+import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
+import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -43,11 +45,15 @@ const PROCESS_GROUP_POLL_MS = 25;
 const MAX_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 // Roadmap task-79: SIEM export destination kinds resolve to delivery adapters here.
-// The real Azure Monitor / webhook / CEF adapters land in tasks 80/81 and register
-// themselves in this map; until then a destination whose kind has no adapter drains
-// as `no-adapter` — its events stay durably pending instead of being dropped or
-// falsely acknowledged.
-export const SIEM_ADAPTERS = Object.freeze({});
+// Roadmap task-81 registers the generic webhook and CEF sinks below with production
+// defaults (global fetch, node:dgram, env: credential references). The Azure Monitor
+// adapter lands in task-80 and registers itself in this same map; until a kind has an
+// adapter here a destination of that kind drains as `no-adapter` — its events stay
+// durably pending instead of being dropped or falsely acknowledged.
+export const SIEM_ADAPTERS = Object.freeze({
+  webhook: createWebhookAdapter(),
+  cef: createCefAdapter(),
+});
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);

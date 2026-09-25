@@ -434,3 +434,46 @@ CREATE TABLE IF NOT EXISTS siem_replay_checkpoint (
   replay_requested_at        timestamptz,
   updated_at                 timestamptz NOT NULL DEFAULT now()
 );
+
+-- Task 85 (WS5): versioned benchmark control evaluation. One benchmark_evaluation row
+-- per control evaluation run for a tenant; framework/edition/profile/evaluator_version
+-- are recorded on EVERY row (never inferred from current registry state) so a later
+-- registry edit can never rewrite the meaning of a historical result. The verdict CHECK
+-- deliberately excludes 'exception' — an exception is never stored as a row's own
+-- verdict, only ever as a benchmark_exception overlay referencing the evaluation, so a
+-- waived failure keeps its original 'fail' verdict and evidence intact (mutation check:
+-- erase underlying finding under exception). Comparing results across a different
+-- edition/evaluator_version is an application-level refusal
+-- (engine/benchmarks/evaluate.mjs's compareEvaluationsAcrossEditions), not a schema
+-- constraint — an edition change must never be conflated with tenant drift, and this
+-- table is never read by drift detection.
+CREATE TABLE IF NOT EXISTS benchmark_evaluation (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  control_id          text NOT NULL,
+  framework           text NOT NULL,
+  edition             text NOT NULL,
+  profile             text NOT NULL,
+  evaluator_version   int NOT NULL,
+  verdict             text NOT NULL CHECK (verdict IN ('pass','fail','unknown','not-applicable')),
+  reason              text,
+  evidence_refs       jsonb NOT NULL DEFAULT '[]'::jsonb,
+  observation_windows jsonb NOT NULL DEFAULT '[]'::jsonb,
+  evidence_seq        bigint REFERENCES evidence(seq),
+  evaluated_at        timestamptz NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS benchmark_evaluation_tenant_control_idx
+  ON benchmark_evaluation (tenant_ref, control_id, evaluated_at DESC);
+
+CREATE TABLE IF NOT EXISTS benchmark_exception (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  evaluation_id uuid NOT NULL REFERENCES benchmark_evaluation(id),
+  actor         text NOT NULL,
+  reason        text NOT NULL,
+  granted_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS benchmark_exception_evaluation_idx
+  ON benchmark_exception (evaluation_id);

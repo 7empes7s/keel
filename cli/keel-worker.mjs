@@ -11,6 +11,7 @@
 // re-authorized at execution time against its requester's current grants (plan task
 // 25); the enqueue-time check is never trusted here.
 import { createEventSink, jobCorrelationId, redactPayload } from '../engine/telemetry/events.mjs';
+import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -40,6 +41,13 @@ export const JOB_TIMEOUT_MS = Object.freeze({
 const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
 const PROCESS_GROUP_POLL_MS = 25;
 const MAX_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
+
+// Roadmap task-79: SIEM export destination kinds resolve to delivery adapters here.
+// The real Azure Monitor / webhook / CEF adapters land in tasks 80/81 and register
+// themselves in this map; until then a destination whose kind has no adapter drains
+// as `no-adapter` — its events stay durably pending instead of being dropped or
+// falsely acknowledged.
+export const SIEM_ADAPTERS = Object.freeze({});
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -494,6 +502,19 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }
 }
 
+// Roadmap task-79: drain due SIEM outbox events between job polls. The outbox is
+// durable, so a drain failure must not kill the worker: it is logged redacted and the
+// next poll retries. Exported so the task-79 boundary tests drive this exact isolation
+// seam with injected adapters and a failing client.
+export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTERS, now, log = console.error } = {}) {
+  try {
+    return await drainDueDestinations(client, { adapters, now });
+  } catch (err) {
+    log(`worker ${workerId}: SIEM outbox drain failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    return null;
+  }
+}
+
 async function main() {
   if (process.argv.includes('--help')) {
     console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000]');
@@ -537,6 +558,9 @@ async function main() {
   while (!shuttingDown) {
     const job = await claimNext(client, { workerId });
     if (!job) {
+      // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
+      // durable, so a drain failure must not kill the worker: the next poll retries.
+      await drainSiemOutbox(client, { workerId });
       await sleep(pollIntervalMs);
       continue;
     }

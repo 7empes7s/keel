@@ -13,11 +13,12 @@ const links = [
   { href: "/jobs", label: "Jobs", short: "07" },
   { href: "/policies", label: "Policies", short: "08" },
   { href: "/notifications", label: "Notifications", short: "09" },
-  { href: "/principals", label: "Principals", short: "10" },
-  { href: "/evidence", label: "Evidence", short: "11" },
+  { href: "/integrations", label: "Integrations", short: "10" },
+  { href: "/principals", label: "Principals", short: "11" },
+  { href: "/evidence", label: "Evidence", short: "12" },
 ];
 
-const approvalLink = { href: "/approvals", label: "Approvals", short: "12" };
+const approvalLink = { href: "/approvals", label: "Approvals", short: "13" };
 
 interface NavCapabilities {
   canRead?: boolean;
@@ -39,6 +40,7 @@ export function visibleNavLinks({
     && (link.href !== "/jobs" || canRead)
     && (link.href !== "/evidence" || canRead)
     && (link.href !== "/notifications" || canRead)
+    && (link.href !== "/integrations" || canRead)
     && (link.href !== "/policies" || canPolicies));
   return canApprove ? [...gated, approvalLink] : gated;
 }

@@ -70,6 +70,8 @@ function rollbackClient() {
   return { query: async () => ({ rows: [] }) };
 }
 
+const deletionRefusals = new Map();
+
 // Step 1: PATCH is a merge, so an added property must remain residual drift
 // rather than being counted as a successful apply.
 const desiredPatch = {
@@ -145,12 +147,15 @@ assert.deepEqual(deletedNaturalKeys, [
 
 // Step 3: break-glass deletion is non-overridable both at the guard and the
 // execution path, regardless of arguments accepted by those functions.
+// resourceType is 'group' (registered for delete in capabilities.mjs) so this
+// scenario actually reaches refuseUnsafeDeletion() rather than being refused
+// earlier by task-52's fail-closed capability gate.
 const breakGlassResource = {
-  naturalKey: 'user:emergency.access@example.test',
-  resourceType: 'user',
+  naturalKey: 'group:emergency-access',
+  resourceType: 'group',
   targetId: 'break-glass-user-id',
   verb: 'delete',
-  payload: { id: 'break-glass-user-id', userPrincipalName: 'emergency.access@example.test' },
+  payload: { id: 'break-glass-user-id', displayName: 'Emergency Access', mailNickname: 'emergency-access' },
 };
 const breakGlassRefusal = refuseUnsafeDeletion(breakGlassResource, deletionGuardOptions);
 assert.equal(breakGlassRefusal.refused, true);
@@ -183,6 +188,32 @@ assert.equal(breakGlassResult.applied.length, 0);
 assert.equal(breakGlassResult.skipped.length, 1);
 assert.match(breakGlassResult.skipped[0].reason, /break-glass/i);
 assert.equal(breakGlassWriter.calls.length, 0);
+deletionRefusals.set(breakGlassResource.resourceType, breakGlassResult);
+
+// Step 3b: a delete-verb resource for a resourceType with no registration in
+// capabilities.mjs is refused by task-52's fail-closed capability gate
+// itself — landing in failed, before refuseUnsafeDeletion() or any writer
+// call ever runs.
+const unsupportedResource = {
+  naturalKey: 'authenticationStrengthPolicy:unregistered',
+  resourceType: 'authenticationStrengthPolicy',
+  targetId: 'unregistered-target-id',
+  verb: 'delete',
+  payload: { id: 'unregistered-target-id' },
+};
+const unsupportedWriter = updateWriter({});
+const unsupportedResult = await applyWave(unsupportedWriter, governor(), [unsupportedResource], {
+  targetTenant: 'target',
+  mode: 'enforce',
+  deletionGuardOptions,
+  rollbackClient: rollbackClient(),
+  runId: 'contract-m2-unsupported-capability',
+});
+assert.equal(unsupportedResult.applied.length, 0);
+assert.equal(unsupportedResult.failed.length, 1);
+assert.match(unsupportedResult.failed[0].error, /unsupported operation/i);
+assert.equal(unsupportedWriter.calls.length, 0);
+deletionRefusals.set(unsupportedResource.resourceType, unsupportedResult);
 
 // Step 4: equal materialized snapshots create no drift rows.
 const baselineSnapshot = [{
@@ -328,5 +359,17 @@ assert.equal(
   immutableWriter.calls.filter((call) => call.kind === 'write' && call.opts.method === 'PATCH').length,
   1,
 );
+
+// Both refusal paths must have executed before the M2 contract can pass.
+// Keep this result check outside either case so dropping a case fails too.
+assert.deepEqual([...deletionRefusals].map(([resourceType, result]) => ({
+  resourceType,
+  applied: result.applied.length,
+  failed: result.failed.length,
+  skipped: result.skipped.length,
+})), [
+  { resourceType: 'group', applied: 0, failed: 0, skipped: 1 },
+  { resourceType: 'authenticationStrengthPolicy', applied: 0, failed: 1, skipped: 0 },
+]);
 
 console.log('contract-m2.test.mjs — all assertions passed');

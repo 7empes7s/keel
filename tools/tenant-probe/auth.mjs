@@ -90,3 +90,55 @@ export function decodeRoles(accessToken) {
     tenantId: claims.tid,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Token/secret exfiltration guard (roadmap task-74)
+//
+// Plans and prerequisite reports carry object ids, scope names and credential
+// REFERENCES only — never a token, client secret or authorization header
+// (Global Constraint #7). assertTokenFree walks a value about to be persisted
+// or rendered and throws before a token-shaped string or a secret-named field
+// can leak into it. It is called by engine/bootstrap/plan.mjs on every plan it
+// returns, so a mutated writer that logs a token into the prerequisite report
+// throws instead of emitting it.
+// ---------------------------------------------------------------------------
+
+// A JWT is three base64url segments; the header segment always starts with
+// the base64url of '{"', which is 'eyJ'. Bearer tokens acquired through
+// getToken() above match this shape.
+const JWT_PATTERN = /^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{2,}$/;
+
+// Field names that hold credential material. Matched against the KEY, not the
+// value, so a field named `accessToken` is refused even when its value does
+// not look like a JWT (e.g. an opaque v1 token or a client secret).
+const SECRET_FIELD_PATTERN =
+  /(access[_-]?token|refresh[_-]?token|id[_-]?token|client[_-]?secret|client[_-]?assertion|secret[_-]?value|private[_-]?key|password|authorization)/i;
+
+export function assertTokenFree(value, name = 'value') {
+  const visit = (node, path) => {
+    if (typeof node === 'string') {
+      if (JWT_PATTERN.test(node.trim())) {
+        throw new TypeError(
+          `${path} contains a token-shaped value — plans and reports carry credential references only, never tokens (Global Constraint #7)`,
+        );
+      }
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => visit(item, `${path}[${index}]`));
+      return;
+    }
+    if (node !== null && typeof node === 'object') {
+      for (const [key, item] of Object.entries(node)) {
+        if (SECRET_FIELD_PATTERN.test(key) && typeof item === 'string' && item.length > 0) {
+          throw new TypeError(
+            `${path}.${key} is a secret-named field — plans and reports carry credential references only, never secret values (Global Constraint #7)`,
+          );
+        }
+        visit(item, `${path}.${key}`);
+      }
+    }
+  };
+  visit(value, name);
+  return value;
+}

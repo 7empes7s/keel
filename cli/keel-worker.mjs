@@ -12,6 +12,7 @@
 // 25); the enqueue-time check is never trusted here.
 import { createEventSink, jobCorrelationId, redactPayload } from '../engine/telemetry/events.mjs';
 import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
+import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
 import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
 import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
 import { spawn } from 'node:child_process';
@@ -49,10 +50,11 @@ const MAX_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
 // Roadmap task-79: SIEM export destination kinds resolve to delivery adapters here.
 // Roadmap task-81 registers the generic webhook and CEF sinks below with production
 // defaults (global fetch, node:dgram, env: credential references). The Azure Monitor
-// adapter lands in task-80 and registers itself in this same map; until a kind has an
+// adapter is registered by task-80 in this same map; until a kind has an
 // adapter here a destination of that kind drains as `no-adapter` — its events stay
 // durably pending instead of being dropped or falsely acknowledged.
 export const SIEM_ADAPTERS = Object.freeze({
+  [SENTINEL_DESTINATION_KIND]: createSentinelAdapter(),
   webhook: createWebhookAdapter(),
   cef: createCefAdapter(),
 });

@@ -24,7 +24,9 @@ import {
   seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
 } from '../engine/govern/baseline.mjs';
 import { applyDisposition } from '../engine/govern/disposition.mjs';
-import { verifyChain } from '../engine/govern/evidence.mjs';
+import { verifyAnchoredChain } from '../engine/govern/anchor.mjs';
+import { can } from '../engine/authz/can.mjs';
+import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { getActiveBaseline } from '../engine/store/governance.mjs';
 
@@ -35,7 +37,7 @@ function usage() {
   keel-govern.mjs baseline list [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
   keel-govern.mjs baseline activate --label <name> | --id <uuid> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
   keel-govern.mjs disposition <driftId> --action accept|rollback|ignore --actor <actor> --reason <reason> [--expires <iso8601>] [--confirm]
-  keel-govern.mjs evidence verify [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+  keel-govern.mjs evidence verify --principal-id <uuid> [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 
 Rollback without --confirm prints only the scoped plan. A confirmed rollback requires
 --restorer-config <path>; its reads use --config (the Collector registration) and
@@ -318,12 +320,12 @@ async function disposition(driftId) {
 async function verifyEvidence() {
   const tenantRef = tenantRefFor(readConfig());
   await withClient(async (client) => {
-    const result = await verifyChain(client, { tenantRef });
-    if (result.ok) {
-      console.log('evidence: ok');
-      return;
-    }
-    console.log(`evidence: broken at seq ${result.brokenAtSeq}`);
+    const principalId = requiredArg('principal-id');
+    const result = await verifyAnchoredChain(client, { tenantRef,
+      authorize: async () => can(client, await findPrincipalById(client, principalId), 'read'),
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.ok) process.exitCode = 1;
   });
 }
 

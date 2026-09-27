@@ -17,6 +17,8 @@
  * later tasks; an unregistered gate is a verification failure, not a pass.
  */
 
+import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
+import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -103,14 +105,40 @@ function validateReleaseReadinessSubject(evidence) {
   return failures;
 }
 
+/** NIST gate never treats content admission as successful tenant qualification. */
+function validateNistSubject(evidence, { tenantRef, build }) {
+  const failures = [];
+  if (!tenantRef || !build) failures.push('NIST expected tenant/build identity required');
+  if (evidence.build !== build) failures.push('NIST build mismatch');
+  if (evidence.operation !== 'nist-benchmark-evaluate') failures.push('NIST operation mismatch');
+  if (evidence.credentialMode !== 'collector') failures.push('NIST requires collector credentials');
+  try {
+    const { pin } = loadNistProfile();
+    const subject = evidence.subject;
+    for (const [field, expected] of Object.entries({ sourceUrl: pin.sourceUrl, sourceDigest: pin.sha256,
+      catalogVersion: pin.catalogVersion, profile: 'AC-IA-AU-CM', prerequisite: 'task-86' })) {
+      if (subject?.[field] !== expected) failures.push(`NIST prerequisite/source mismatch: ${field}`);
+    }
+    const results = subject?.fixtureResults;
+    if (!Array.isArray(results) || results.length !== NIST_MAPPINGS.length
+      || NIST_MAPPINGS.some(([id]) => results.filter(r => r?.controlId === id
+        && r.pass === 'pass' && r.fail === 'fail' && r.missing === 'unknown').length !== 1)) {
+      failures.push('NIST expected control fixtures missing or failed');
+    }
+  } catch { failures.push('NIST pinned catalog prerequisite failed'); }
+  return failures;
+}
+
 // Later tasks register additional gates here; an absent gate fails closed.
 const GATE_VALIDATORS = {
   'release-readiness': validateReleaseReadinessSubject,
+  'nist-benchmark-acceptance': validateNistSubject,
 };
 
 export function verifyEvidence(evidence, {
   gate = null,
   tenantRef = null,
+  build = null,
   requireLive = false,
   now = new Date(),
   maxAgeHours = DEFAULT_MAX_AGE_HOURS,
@@ -121,6 +149,10 @@ export function verifyEvidence(evidence, {
   const failures = [];
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
     return { ok: false, failures: ['evidence is not an object'] };
+  }
+
+  if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
+    return { ok: false, failures: ['NIST external runner evidence pending'] };
   }
 
   // Schema.
@@ -161,6 +193,14 @@ export function verifyEvidence(evidence, {
     failures.push(`missing proof: runner (${runner.reason}); artifact (${artifact.reason})`);
   }
 
+  if (evidence.gate === 'nist-benchmark-acceptance') {
+    if (evidence.proof?.artifact && !artifact.ok) failures.push(artifact.reason);
+    if (!runner.ok) failures.push(`NIST runner proof required (${runner.reason})`);
+    if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic || runner.synthetic)) {
+      failures.push('NIST fixture evidence cannot claim live qualification');
+    }
+  }
+
   // --require-live rejects synthetic fixtures and unproven live claims.
   if (requireLive) {
     if (evidence.synthetic) failures.push('--require-live rejects synthetic fixtures');
@@ -174,7 +214,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence));
+  else failures.push(...validator(evidence, { tenantRef, build }));
 
   return { ok: failures.length === 0, failures };
 }
@@ -207,7 +247,8 @@ function main() {
   }
   const result = verifyEvidenceFile(evidencePath, {
     gate: arg('gate'),
-    tenantRef: arg('tenant'),
+    tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF),
+    build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),
   });

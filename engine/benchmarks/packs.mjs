@@ -4,7 +4,7 @@ import { can } from '../authz/can.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { controlFor } from './registry.mjs';
 import { evaluateControl } from './evaluate.mjs';
-import { sourceDigest, validateLicense } from '../../tools/qualification/benchmarkLicense.mjs';
+import { sourceDigest, validateLicense, nistPackInput } from '../../tools/qualification/benchmarkLicense.mjs';
 
 const imported = new WeakSet();
 function freeze(value) {
@@ -89,4 +89,10 @@ export async function evaluatePack({ pack, observations = {}, now = new Date(), 
   })));
   return freeze({ contractVersion: 1, tenantRef: context.tenantRef, packCacheKey: cacheKey(pack),
     results, evidenceLinks, qualification: 'fixture-tested' });
+}
+
+/** Task 119: reviewed public-domain catalog, existing authorization/evaluation seam. */
+export async function importNistPack(context) {
+  await authorize(context, 'configuration');
+  return importPack({ ...context, ...nistPackInput(context.tenantRef) });
 }

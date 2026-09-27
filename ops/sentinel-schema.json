@@ -1,0 +1,77 @@
+{
+  "$comment": "KEEL Azure Monitor / Microsoft Sentinel ingestion schema (roadmap task-80). Operator-managed: KEEL never provisions these Azure resources. Create the custom table and DCR manually (or via your own IaC), grant the dedicated sender app registration the Monitoring Metrics Publisher role on the DCR, then configure the KEEL destination with the endpoint, dcrImmutableId and credentialRef. The column list here is the stream declaration the adapter emits; engine/telemetry/adapters/sentinel.mjs SENTINEL_COLUMNS must match exactly (asserted by engine/roadmap/sentinel-adapter.test.mjs). Delivery is at-least-once — query through the logical dedup view in ops/sentinel-dedup.kql.",
+  "docSource": {
+    "url": "https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-ingestion-api-overview",
+    "retrievedAt": "2026-09-26",
+    "apiVersion": "2023-01-01",
+    "credentialMode": "entra-app-client-credentials",
+    "tokenAudience": "https://monitor.azure.com",
+    "limits": "https://learn.microsoft.com/en-us/azure/azure-monitor/fundamentals/service-limits"
+  },
+  "tableName": "KeelEvents_CL",
+  "streamName": "Custom-KeelEvents",
+  "columns": [
+    { "name": "TimeGenerated", "type": "datetime", "description": "Source event time (envelope observedAt); the table's time column." },
+    { "name": "KeelEventId", "type": "string", "description": "Deterministic task-77 KEEL event id; stable across retries and replays. Part of the dedup key." },
+    { "name": "TenantRef", "type": "string", "description": "KEEL tenant scope of the event. Part of the dedup key." },
+    { "name": "SourceIdentity", "type": "string", "description": "Tenant-specific source identity, keel:<tenantRef>." },
+    { "name": "DestinationId", "type": "string", "description": "KEEL SIEM destination (outbox sink) id. Part of the dedup key." },
+    { "name": "EventType", "type": "string", "description": "Envelope event type (e.g. drift.detected, evidence.<kind>, job.failed)." },
+    { "name": "CorrelationId", "type": "string", "description": "Task-77 correlation id (e.g. job:<id>, evidence-stream:<tenantRef>)." },
+    { "name": "CausationId", "type": "string", "description": "Optional id of the causing event; empty when none." },
+    { "name": "SourceComponent", "type": "string", "description": "Emitting component (e.g. keel-worker, govern/evidence)." },
+    { "name": "SourceInstanceId", "type": "string", "description": "Emitting instance; empty when not applicable." },
+    { "name": "SourceSequence", "type": "long", "description": "Source-provided ordering; -1 when the source has no sequence. Gaps are meaningful." },
+    { "name": "ObservedAt", "type": "datetime", "description": "Source event time (same value as TimeGenerated)." },
+    { "name": "EmittedAt", "type": "datetime", "description": "Emission time of this envelope." },
+    { "name": "EnvelopeVersion", "type": "long", "description": "Task-77 envelope schema version." },
+    { "name": "PayloadJson", "type": "string", "description": "Canonical JSON of the redacted, size-capped envelope payload." },
+    { "name": "PayloadBytes", "type": "long", "description": "Captured payload byte count after redaction/capping." },
+    { "name": "RedactedFields", "type": "long", "description": "Number of fields redacted from the payload." },
+    { "name": "Truncated", "type": "boolean", "description": "True when the payload exceeded the capture budget and was replaced by a digest stub." }
+  ],
+  "dcrTemplate": {
+    "$comment": "Skeleton DCR for direct ingestion (kind Direct). Replace <region>, <workspaceResourceId> and (if used) <dataCollectionEndpointId>. Create the KeelEvents_CL table with the columns above FIRST, or let the portal create table+DCR from sample data. Grant the sender app registration Monitoring Metrics Publisher on the created DCR.",
+    "location": "<region>",
+    "kind": "Direct",
+    "properties": {
+      "streamDeclarations": {
+        "Custom-KeelEvents": {
+          "columns": [
+            { "name": "TimeGenerated", "type": "datetime" },
+            { "name": "KeelEventId", "type": "string" },
+            { "name": "TenantRef", "type": "string" },
+            { "name": "SourceIdentity", "type": "string" },
+            { "name": "DestinationId", "type": "string" },
+            { "name": "EventType", "type": "string" },
+            { "name": "CorrelationId", "type": "string" },
+            { "name": "CausationId", "type": "string" },
+            { "name": "SourceComponent", "type": "string" },
+            { "name": "SourceInstanceId", "type": "string" },
+            { "name": "SourceSequence", "type": "long" },
+            { "name": "ObservedAt", "type": "datetime" },
+            { "name": "EmittedAt", "type": "datetime" },
+            { "name": "EnvelopeVersion", "type": "long" },
+            { "name": "PayloadJson", "type": "string" },
+            { "name": "PayloadBytes", "type": "long" },
+            { "name": "RedactedFields", "type": "long" },
+            { "name": "Truncated", "type": "boolean" }
+          ]
+        }
+      },
+      "destinations": {
+        "logAnalytics": [
+          { "workspaceResourceId": "<workspaceResourceId>", "name": "LogAnalyticsDest" }
+        ]
+      },
+      "dataFlows": [
+        {
+          "streams": ["Custom-KeelEvents"],
+          "destinations": ["LogAnalyticsDest"],
+          "transformKql": "source",
+          "outputStream": "Custom-KeelEvents_CL"
+        }
+      ]
+    }
+  }
+}

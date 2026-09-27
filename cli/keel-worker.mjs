@@ -11,10 +11,16 @@
 // re-authorized at execution time against its requester's current grants (plan task
 // 25); the enqueue-time check is never trusted here.
 import { createEventSink, jobCorrelationId, redactPayload } from '../engine/telemetry/events.mjs';
+import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
+import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
+import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
+import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
+import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
@@ -40,6 +46,18 @@ export const JOB_TIMEOUT_MS = Object.freeze({
 const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
 const PROCESS_GROUP_POLL_MS = 25;
 const MAX_CHILD_OUTPUT_BYTES = 16 * 1024 * 1024;
+
+// Roadmap task-79: SIEM export destination kinds resolve to delivery adapters here.
+// Roadmap task-81 registers the generic webhook and CEF sinks below with production
+// defaults (global fetch, node:dgram, env: credential references). The Azure Monitor
+// adapter is registered by task-80 in this same map; until a kind has an
+// adapter here a destination of that kind drains as `no-adapter` — its events stay
+// durably pending instead of being dropped or falsely acknowledged.
+export const SIEM_ADAPTERS = Object.freeze({
+  [SENTINEL_DESTINATION_KIND]: createSentinelAdapter(),
+  webhook: createWebhookAdapter(),
+  cef: createCefAdapter(),
+});
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -494,9 +512,35 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }
 }
 
+// Roadmap task-79: drain due SIEM outbox events between job polls. The outbox is
+// durable, so a drain failure must not kill the worker: it is logged redacted and the
+// next poll retries. Exported so the task-79 boundary tests drive this exact isolation
+// seam with injected adapters and a failing client.
+export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTERS, now, log = console.error } = {}) {
+  try {
+    return await drainDueDestinations(client, { adapters, now });
+  } catch (err) {
+    log(`worker ${workerId}: SIEM outbox drain failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    return null;
+  }
+}
+
+// Optional one-shot collection seam. The normal queue loop stays disabled for
+// audit ingestion unless a trusted caller explicitly invokes this bounded worker.
+export async function runAuditIngestion(client, options) {
+  return ingestAudit(client, options);
+}
+
+export async function runAuditCommand(client, config, { report = false } = {}) {
+  if (report) return readAuditEvidence(client, config);
+  const adapter = config.fixturePages === undefined ? undefined
+    : createFixtureAuditAdapter({ tenantRef: config.managedTenantRef, pages: config.fixturePages });
+  return runAuditIngestion(client, { ...config, adapter });
+}
+
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000]');
+    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate]');
     return;
   }
 
@@ -508,6 +552,20 @@ async function main() {
   const pollIntervalMs = Number(arg('poll-interval-ms', 2000));
 
   const client = await connect(dbUrl);
+
+  // Explicit local migration, archive reference or synthetic fixture execution.
+  // No Graph route or restorer credential is loaded by this command.
+  if (process.argv.includes('--audit-migrate') || process.argv.includes('--audit-config')) {
+    try {
+      if (process.argv.includes('--audit-migrate')) await migrateAuditIngestion(client);
+      else {
+        const config = JSON.parse(await readFile(arg('audit-config'), 'utf8'));
+        const result = await runAuditCommand(client, config, { report: process.argv.includes('--audit-report') });
+        console.log(JSON.stringify(result));
+      }
+    } finally { await client.end(); }
+    return;
+  }
 
   const reclaimed = await resetOrphaned(client);
   if (reclaimed.length > 0) {
@@ -537,6 +595,9 @@ async function main() {
   while (!shuttingDown) {
     const job = await claimNext(client, { workerId });
     if (!job) {
+      // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
+      // durable, so a drain failure must not kill the worker: the next poll retries.
+      await drainSiemOutbox(client, { workerId });
       await sleep(pollIntervalMs);
       continue;
     }

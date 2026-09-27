@@ -1,0 +1,20 @@
+// sentinel-dedup.kql — logical deduplication view for KEEL SIEM events in
+// Microsoft Sentinel / Azure Monitor (roadmap task-80).
+//
+// Why this view exists: KEEL delivery is AT-LEAST-ONCE
+// (engine/telemetry/outbox.mjs RECEIVER_DEDUP_CONTRACT). The same event can be
+// physically ingested more than once — retry after an uncertain acknowledgement,
+// crash after remote acceptance before the checkpoint commit, or an
+// operator-requested replay — always under the SAME KEEL event id.
+// x-ms-client-request-id is diagnostic only and is NOT a dedup key.
+//
+// Dedup key: (TenantRef, DestinationId, KeelEventId) — the receiver dedup
+// contract fields. This view collapses physical duplicates to one logical event,
+// keeping the row with the latest TimeGenerated (identical events differ, if at
+// all, only in ingestion lag). Always query KeelEventsLogical (or run this
+// query), never the raw KeelEvents_CL table, when counting or alerting.
+
+let KeelEventsLogical =
+    KeelEvents_CL
+    | summarize arg_max(TimeGenerated, *) by TenantRef, DestinationId, KeelEventId;
+KeelEventsLogical

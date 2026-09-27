@@ -1,0 +1,44 @@
+{
+  "contractVersion": 1,
+  "gate": "nist-benchmark-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "efeb7af8be9cd393b1abe369dbb9009af940e77b",
+  "operation": "nist-benchmark-evaluate",
+  "credentialMode": "collector",
+  "observedAt": "2026-09-27T08:50:38.986Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "sourceUrl": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+    "sourceDigest": "01f37cf90ea99d92242c936cbfbdebcc338eef1f71454e2acac36cc56e9bc062",
+    "catalogVersion": "5.2.0",
+    "profile": "AC-IA-AU-CM",
+    "prerequisite": "task-86",
+    "fixtureResults": [
+      {
+        "controlId": "keel-custom.role-assignment.admin-count-at-most",
+        "pass": "pass",
+        "fail": "fail",
+        "missing": "unknown"
+      },
+      {
+        "controlId": "keel-custom.named-location.no-untrusted-all-countries",
+        "pass": "pass",
+        "fail": "fail",
+        "missing": "unknown"
+      },
+      {
+        "controlId": "keel-custom.group.role-assignable-not-synced",
+        "pass": "pass",
+        "fail": "fail",
+        "missing": "unknown"
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "94efd315b4e2579ca22d121a1d4fc043f392ee3e19c983387713da755cdbdaed"
+    }
+  }
+}

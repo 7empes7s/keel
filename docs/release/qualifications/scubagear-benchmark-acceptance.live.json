@@ -1,0 +1,352 @@
+{
+  "contractVersion": 1,
+  "gate": "scubagear-benchmark-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "d6aa539b806c901ad0cb9f89fc72a6bb5bfbc416",
+  "operation": "scubagear.benchmark-acceptance",
+  "credentialMode": "collector",
+  "observedAt": "2026-09-27T08:56:00.205Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "sourceCommitSha": "8fd29cb8f1a47f33b8c8b3e304e71fa55117002b",
+    "manifestVerified": true,
+    "workloadsImported": [
+      "aad",
+      "exo"
+    ],
+    "policiesEvaluated": [
+      {
+        "policyId": "MS.AAD.1.1v1",
+        "nistControlIds": [
+          "CM-7"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.2.1v1",
+        "nistControlIds": [
+          "AC-2(12)",
+          "AC-2(13)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.2.2v1",
+        "nistControlIds": [
+          "AC-2(12)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.2.3v1",
+        "nistControlIds": [
+          "AC-2(12)",
+          "AC-2(13)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.1v1",
+        "nistControlIds": [
+          "IA-2(1)",
+          "IA-2(2)",
+          "IA-5c",
+          "IA-5g",
+          "IA-2(8)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.2v2",
+        "nistControlIds": [
+          "IA-2(1)",
+          "IA-2(2)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.3v2",
+        "nistControlIds": [
+          "IA-2(1)",
+          "IA-2(2)",
+          "IA-5c",
+          "IA-5g",
+          "IA-2(8)",
+          "IA-2(13)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.4v1",
+        "nistControlIds": [
+          "CM-7"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.5v2",
+        "nistControlIds": [
+          "CM-7b",
+          "IA-5c"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.6v1",
+        "nistControlIds": [
+          "IA-2(1)",
+          "IA-5c",
+          "IA-5g",
+          "IA-2(8)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.7v1",
+        "nistControlIds": [
+          "AC-20b",
+          "IA-3"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.8v1",
+        "nistControlIds": [
+          "AC-20b",
+          "IA-3"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.3.9v1",
+        "nistControlIds": [
+          "CM-7"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.4.1v1",
+        "nistControlIds": [
+          "AU-4"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.5.1v1",
+        "nistControlIds": [
+          "AC-6(10)",
+          "CM-5"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.5.2v1",
+        "nistControlIds": [
+          "AC-6(10)",
+          "CM-5"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.5.3v1",
+        "nistControlIds": [
+          "CM-4"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.6.1v1",
+        "nistControlIds": [
+          "IA-5(1)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.1v1",
+        "nistControlIds": [
+          "AC-6(5)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.2v1",
+        "nistControlIds": [
+          "AC-5"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.3v1",
+        "nistControlIds": [
+          "AC-6(5)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.4v1",
+        "nistControlIds": [
+          "AC-2"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.5v1",
+        "nistControlIds": [
+          "AC-2"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.6v1",
+        "nistControlIds": [
+          "AC-6(1)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.7v1",
+        "nistControlIds": [
+          "AC-2(1)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.8v1",
+        "nistControlIds": [
+          "AC-6(9)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.7.9v1",
+        "nistControlIds": [
+          "AC-6(9)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.8.1v1",
+        "nistControlIds": [
+          "AC-6"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.8.2v1",
+        "nistControlIds": [
+          "AC-6(10)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.8.3v1",
+        "nistControlIds": [
+          "AC-3"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.AAD.9.1v1",
+        "nistControlIds": [
+          "AC-3",
+          "AC-6",
+          "CM-7(4)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.1.1v2",
+        "nistControlIds": [
+          "AC-4"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.13.1v1",
+        "nistControlIds": [
+          "AU-12c"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.2.2v3",
+        "nistControlIds": [
+          "AC-2d"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.3.1v1",
+        "nistControlIds": [
+          "SC-8"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.4.1v1",
+        "nistControlIds": [
+          "SI-8"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.4.2v1",
+        "nistControlIds": [
+          "SI-8"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.4.3v1",
+        "nistControlIds": [
+          "SI-4(5)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.4.4v1",
+        "nistControlIds": [
+          "SI-4(5)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.5.1v1",
+        "nistControlIds": [
+          "CM-7"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.6.1v1",
+        "nistControlIds": [
+          "AC-3",
+          "SC-7(10)(a)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.6.2v1",
+        "nistControlIds": [
+          "AC-3",
+          "SC-7(10)(a)"
+        ],
+        "verdict": "unknown"
+      },
+      {
+        "policyId": "MS.EXO.7.1v1",
+        "nistControlIds": [
+          "SI-8"
+        ],
+        "verdict": "unknown"
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b99aed11b60c04511b654531e4f3bff01b554ab706c5f8fe5a25a1cb4adcd1ac"
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "framework": "CISA SCuBA M365 Secure Configuration Baselines (ScubaGear)",
+  "publisher": "Cybersecurity and Infrastructure Security Agency (CISA), part of the U.S. Department of Homeland Security",
+  "format": "Open Policy Agent (OPA) Rego policies + Markdown baseline documents + CSV control mappings",
+  "sourceUrl": "https://github.com/cisagov/ScubaGear",
+  "commitSha": "8fd29cb8f1a47f33b8c8b3e304e71fa55117002b",
+  "archiveUrl": "https://github.com/cisagov/ScubaGear/archive/8fd29cb8f1a47f33b8c8b3e304e71fa55117002b.tar.gz",
+  "archiveSha256": "254e7f2c42f8203307d8ab98a642d83d1550aef703f8c531942e67c536d6cbe6",
+  "retrievedAt": "2026-09-24T14:38:00Z",
+  "retrievedBy": "watcher (direct download from GitHub, pinned to a specific commit, verified via API metadata)",
+  "localPath": "/var/lib/keel/reference-data/scubagear/",
+  "localManifest": "/var/lib/keel/reference-data/scubagear/MANIFEST.sha256",
+  "workloadsCovered": ["aad (Entra ID)", "defender", "exo (Exchange Online)", "powerbi", "powerplatform", "securitysuite", "sharepoint", "teams"],
+  "crossFrameworkMappings": [
+    "mappings/scuba-to-nist-sp-800-53-r5-fedramp-high.csv (maps directly onto the NIST SP 800-53 Rev 5 catalog already pinned at docs/roadmap/benchmark-content/nist-sp800-53-rev5-pin.json)",
+    "mappings/scuba-baseline-policy-migrations.csv"
+  ],
+  "licensing": {
+    "status": "public domain (CC0-1.0 Universal)",
+    "basis": "U.S. Government work product, additionally explicitly dedicated to the public domain via CC0-1.0. No purchase, membership, attribution, or redistribution-rights artifact is required.",
+    "attributionRequired": false,
+    "commercialUseRestricted": false
+  },
+  "whyThisOverCis": "Unlike CIS Benchmarks, ScubaGear's baselines are executable, machine-readable Rego policies purpose-built for M365 tenant configuration (not a generic controls catalog) and are CC0 — even more permissive than a typical open-source license. Directly covers the same workloads KEEL already manages (Entra/Exchange/SharePoint/Teams), and its own NIST 800-53 mapping lets KEEL cite one coherent cross-framework evidence chain: a ScubaGear check -> a specific NIST control ID -> the already-pinned official NIST catalog entry.",
+  "note": "Found and pinned 2026-09-24 per operator direction to research other open-source benchmarks/baselines for comparison and remediation. Considered and rejected in the same pass: EIDSCA (Cloud-Architekt/AzureAD-Attack-Defense) has NO license file at all (all-rights-reserved by default under copyright law) -- do not bundle its content without the author's explicit permission, despite being publicly visible and referenced by Maester. Maester (maester365/maester) is MIT-licensed and a legitimate, actively-maintained (1108+ stars) M365/Entra test-automation framework worth knowing about, but it is a TEST RUNNER that consumes baselines (including EIDSCA) rather than an independent baseline source itself -- not pinned as content here to avoid transitively pulling in EIDSCA's unlicensed material. Microsoft Cloud Security Benchmark (MicrosoftDocs/SecurityBenchmarks) is CC-BY-4.0 (usable, needs attribution) and could be pinned as a third, more Azure-IaaS/PaaS-oriented framework in a follow-up if KEEL's scope grows beyond M365 SaaS workloads -- not pinned yet since it wasn't asked for and ScubaGear+NIST already cover the requested comparison/remediation use case for M365."
+}

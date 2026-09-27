@@ -1,0 +1,21 @@
+{
+  "framework": "NIST SP 800-53 Rev 5.2.0 (Controls and SP 800-53A Rev 5.2.0 Assessment Procedures)",
+  "publisher": "National Institute of Standards and Technology (U.S. Department of Commerce)",
+  "format": "OSCAL catalog, JSON",
+  "sourceUrl": "https://raw.githubusercontent.com/usnistgov/oscal-content/main/nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog.json",
+  "sourceRepo": "https://github.com/usnistgov/oscal-content",
+  "catalogVersion": "5.2.0",
+  "catalogLastModified": "2026-05-11T16:01:09.00000-00:00",
+  "retrievedAt": "2026-09-24T12:07:00Z",
+  "retrievedBy": "watcher (direct curl from this host, verified against the official usnistgov GitHub org)",
+  "sha256": "01f37cf90ea99d92242c936cbfbdebcc338eef1f71454e2acac36cc56e9bc062",
+  "localPath": "/var/lib/keel/reference-data/nist-sp800-53-rev5.2.0-catalog.json",
+  "controlGroupCount": 20,
+  "licensing": {
+    "status": "public domain",
+    "basis": "U.S. Government work product under 17 U.S.C. § 105 — not subject to domestic copyright. No purchase, membership, or redistribution-rights artifact is required to cite, bundle, or automate against this content, unlike CIS Benchmarks.",
+    "attributionRequired": false,
+    "commercialUseRestricted": false
+  },
+  "note": "Pivoted from CIS to NIST 2026-09-24 per operator direction (\"let's start with NIST then, it's free\"). Superseds the CIS-licensing external-prerequisite gate on roadmap task-119: NIST content needs no rights manifest at all, so the gate that task exists to prove is trivially satisfied by citing this pin. The full 10.4MB OSCAL catalog is kept outside git at localPath (large, mechanically re-derivable, verify via sha256) — only this small pin record is committed."
+}

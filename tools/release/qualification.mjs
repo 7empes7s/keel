@@ -17,10 +17,21 @@
  * later tasks; an unregistered gate is a verification failure, not a pass.
  */
 
+import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
+import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+const SCUBAGEAR_PIN_PATH = new URL('../../docs/roadmap/benchmark-content/scubagear-pin.json', import.meta.url).pathname;
+const SCUBAGEAR_REQUIRED_WORKLOADS = Object.freeze(['aad', 'exo']);
+const SCUBAGEAR_WORKLOAD_REGO_FILE = Object.freeze({
+  aad: 'AADConfig.rego', exo: 'EXOConfig.rego', defender: 'DefenderConfig.rego',
+  powerbi: 'PowerBIConfig.rego', powerplatform: 'PowerPlatformConfig.rego',
+  securitysuite: 'SecuritySuiteConfig.rego', sharepoint: 'SharepointConfig.rego', teams: 'TeamsConfig.rego',
+});
+export const SCUBAGEAR_BENCHMARK_OPERATION = 'scubagear.benchmark-acceptance';
 
 export const QUALIFICATION_CONTRACT_VERSION = 1;
 export const QUALIFICATION_EVIDENCE_LEVELS = Object.freeze(['fixture-tested', 'live-qualified']);
@@ -103,14 +114,193 @@ function validateReleaseReadinessSubject(evidence) {
   return failures;
 }
 
+/** NIST gate never treats content admission as successful tenant qualification. */
+function validateNistSubject(evidence, { tenantRef, build }) {
+  const failures = [];
+  if (!tenantRef || !build) failures.push('NIST expected tenant/build identity required');
+  if (evidence.build !== build) failures.push('NIST build mismatch');
+  if (evidence.operation !== 'nist-benchmark-evaluate') failures.push('NIST operation mismatch');
+  if (evidence.credentialMode !== 'collector') failures.push('NIST requires collector credentials');
+  try {
+    const { pin } = loadNistProfile();
+    const subject = evidence.subject;
+    for (const [field, expected] of Object.entries({ sourceUrl: pin.sourceUrl, sourceDigest: pin.sha256,
+      catalogVersion: pin.catalogVersion, profile: 'AC-IA-AU-CM', prerequisite: 'task-86' })) {
+      if (subject?.[field] !== expected) failures.push(`NIST prerequisite/source mismatch: ${field}`);
+    }
+    const results = subject?.fixtureResults;
+    if (!Array.isArray(results) || results.length !== NIST_MAPPINGS.length
+      || NIST_MAPPINGS.some(([id]) => results.filter(r => r?.controlId === id
+        && r.pass === 'pass' && r.fail === 'fail' && r.missing === 'unknown').length !== 1)) {
+      failures.push('NIST expected control fixtures missing or failed');
+    }
+  } catch { failures.push('NIST pinned catalog prerequisite failed'); }
+  return failures;
+}
+
+/**
+ * Task-126: import a bounded, hash-verified profile of CISA ScubaGear Rego
+ * policies (public-domain, CC0-1.0 — no purchased license applies, exactly
+ * as task-119 reads NIST's public-domain status from its own pin) and cite
+ * each imported check's mapped NIST SP 800-53 Rev 5 control id as an
+ * evidence link. This never claims compliance certification and never
+ * executes a policy against tenant data — it only proves which checks were
+ * imported, from which byte-verified source, mapped to which control ids.
+ */
+function loadScubaGearPin(pinPath) {
+  let pin;
+  try {
+    pin = JSON.parse(readFileSync(pinPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`ScubaGear pin unreadable: ${error.message}`);
+  }
+  if (!/public domain/i.test(pin?.licensing?.status ?? '')) {
+    throw new Error(`ScubaGear pin licensing status is not public domain: ${pin?.licensing?.status ?? 'missing'}`);
+  }
+  if (pin.licensing.attributionRequired !== false || pin.licensing.commercialUseRestricted !== false) {
+    throw new Error('ScubaGear pin licensing scope is not the expected unrestricted public-domain grant');
+  }
+  for (const field of ['commitSha', 'localPath', 'localManifest']) {
+    if (typeof pin[field] !== 'string' || !pin[field].trim()) {
+      throw new Error(`ScubaGear pin is missing required field: ${field}`);
+    }
+  }
+  return pin;
+}
+
+function readScubaGearManifest(manifestPath) {
+  const entries = new Map();
+  for (const line of readFileSync(manifestPath, 'utf8').split('\n')) {
+    const match = /^([0-9a-f]{64})\s+(\.\/.+?)\s*$/.exec(line);
+    if (match) entries.set(match[2], match[1]);
+  }
+  return entries;
+}
+
+/** Refuses (throws on) any file whose bytes don't match MANIFEST.sha256 — never silently trusted. */
+function verifyScubaGearFile(localPath, manifest, relativePath) {
+  const expected = manifest.get(relativePath);
+  if (!expected) throw new Error(`no MANIFEST.sha256 entry for ${relativePath}`);
+  const bytes = readFileSync(resolve(localPath, relativePath));
+  const actual = createHash('sha256').update(bytes).digest('hex');
+  if (actual !== expected) throw new Error(`MANIFEST.sha256 hash mismatch for ${relativePath}`);
+  return bytes;
+}
+
+function extractScubaGearPolicyIds(regoSource) {
+  const ids = new Set();
+  for (const match of regoSource.matchAll(/"PolicyId":\s*"([^"]+)"/g)) ids.add(match[1]);
+  return [...ids].sort();
+}
+
+function parseScubaToNistMapping(csvText) {
+  const map = new Map();
+  const [, ...rows] = csvText.split(/\r?\n/).filter((line) => line.length > 0);
+  for (const row of rows) {
+    const match = /^([^,]+),(.+)$/.exec(row);
+    if (!match) continue;
+    const policyId = match[1].trim();
+    const rawValue = match[2].trim().replace(/^"(.*)"$/, '$1');
+    const controlIds = rawValue.split(',').map((v) => v.trim()).filter(Boolean);
+    if (controlIds.length) map.set(policyId, controlIds);
+  }
+  return map;
+}
+
+/** Server/CLI integration seam: a fixture-tested import, never a live tenant evaluation. */
+export function importScubaGearProfile({ pinPath = SCUBAGEAR_PIN_PATH, workloads = SCUBAGEAR_REQUIRED_WORKLOADS } = {}) {
+  const pin = loadScubaGearPin(pinPath);
+  const manifest = readScubaGearManifest(pin.localManifest);
+  const mappingBytes = verifyScubaGearFile(pin.localPath, manifest, './mappings/scuba-to-nist-sp-800-53-r5-fedramp-high.csv');
+  const mapping = parseScubaToNistMapping(mappingBytes.toString('utf8'));
+
+  const policies = [];
+  for (const workload of workloads) {
+    const file = SCUBAGEAR_WORKLOAD_REGO_FILE[workload];
+    if (!file) throw new Error(`unknown ScubaGear workload: ${workload}`);
+    const relativePath = `./Rego/${file}`;
+    const regoBytes = verifyScubaGearFile(pin.localPath, manifest, relativePath);
+    for (const policyId of extractScubaGearPolicyIds(regoBytes.toString('utf8'))) {
+      const nistControlIds = mapping.get(policyId);
+      if (!nistControlIds) continue; // no NIST evidence link to surface; never surfaced as an unlinked claim
+      policies.push({ policyId, workload, sourceFile: relativePath, nistControlIds });
+    }
+  }
+  if (policies.length === 0) throw new Error('no ScubaGear policies were imported');
+  return Object.freeze({
+    commitSha: pin.commitSha,
+    workloads: Object.freeze([...workloads]),
+    policies: Object.freeze(policies.map((p) => Object.freeze({ ...p, nistControlIds: Object.freeze(p.nistControlIds) }))),
+  });
+}
+
+/** Gate validator for the task-126 ScubaGear benchmark-acceptance record. */
+function validateScubaGearBenchmarkAcceptanceSubject(evidence, { build } = {}) {
+  const failures = [];
+  if (evidence.operation !== SCUBAGEAR_BENCHMARK_OPERATION) {
+    failures.push(`operation mismatch: expected '${SCUBAGEAR_BENCHMARK_OPERATION}', got '${evidence.operation ?? 'missing'}'`);
+  }
+  const subject = evidence.subject;
+  if (!subject || typeof subject !== 'object') return [...failures, 'subject is missing'];
+
+  let profile;
+  try {
+    profile = importScubaGearProfile();
+  } catch (error) {
+    return [...failures, `ScubaGear profile import failed: ${error.message}`];
+  }
+  const importedIds = new Map(profile.policies.map((p) => [p.policyId, p]));
+  if (build && evidence.build !== build) failures.push('ScubaGear build mismatch');
+  if (evidence.credentialMode !== 'collector') failures.push('ScubaGear requires collector credential mode');
+
+  if (subject.sourceCommitSha !== profile.commitSha) {
+    failures.push(`ScubaGear source commit mismatch: expected '${profile.commitSha}', got '${subject.sourceCommitSha ?? 'missing'}'`);
+  }
+  if (subject.manifestVerified !== true) {
+    failures.push('subject does not attest MANIFEST.sha256 verification of every imported policy file');
+  }
+  if (!Array.isArray(subject.workloadsImported)
+    || !SCUBAGEAR_REQUIRED_WORKLOADS.every((w) => subject.workloadsImported.includes(w))) {
+    failures.push(`subject must import at least the ${SCUBAGEAR_REQUIRED_WORKLOADS.join(', ')} workload baselines`);
+  }
+  if (!Array.isArray(subject.policiesEvaluated) || subject.policiesEvaluated.length === 0) {
+    failures.push('no ScubaGear policies evaluated');
+  } else {
+    const evaluatedWorkloads = new Set();
+    for (const entry of subject.policiesEvaluated) {
+      const imported = importedIds.get(entry?.policyId);
+      if (imported) evaluatedWorkloads.add(imported.workload);
+      if (imported && canonical(entry.nistControlIds) !== canonical(imported.nistControlIds)) {
+        failures.push(`policy '${entry.policyId}' NIST mapping mismatch`);
+      }
+      if (typeof entry?.policyId !== 'string' || !importedIds.has(entry.policyId)) {
+        failures.push(`policy '${entry?.policyId ?? 'missing'}' is not part of the verified imported profile`);
+      }
+      if (!Array.isArray(entry?.nistControlIds) || entry.nistControlIds.length === 0) {
+        failures.push(`policy '${entry?.policyId}' is missing its mapped NIST SP 800-53 control id(s)`);
+      }
+      if (!['pass', 'fail', 'not-applicable', 'unknown'].includes(entry?.verdict)) {
+        failures.push(`policy '${entry?.policyId}' has an invalid verdict`);
+      }
+    }
+    if (!SCUBAGEAR_REQUIRED_WORKLOADS.every(w => evaluatedWorkloads.has(w))) {
+      failures.push('evaluated policies must cover aad and exo');
+    }
+  }
+  return failures;
+}
+
 // Later tasks register additional gates here; an absent gate fails closed.
 const GATE_VALIDATORS = {
   'release-readiness': validateReleaseReadinessSubject,
+  'nist-benchmark-acceptance': validateNistSubject,
+  'scubagear-benchmark-acceptance': validateScubaGearBenchmarkAcceptanceSubject,
 };
 
 export function verifyEvidence(evidence, {
   gate = null,
   tenantRef = null,
+  build = null,
   requireLive = false,
   now = new Date(),
   maxAgeHours = DEFAULT_MAX_AGE_HOURS,
@@ -121,6 +311,10 @@ export function verifyEvidence(evidence, {
   const failures = [];
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
     return { ok: false, failures: ['evidence is not an object'] };
+  }
+
+  if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
+    return { ok: false, failures: ['NIST external runner evidence pending'] };
   }
 
   // Schema.
@@ -161,6 +355,14 @@ export function verifyEvidence(evidence, {
     failures.push(`missing proof: runner (${runner.reason}); artifact (${artifact.reason})`);
   }
 
+  if (evidence.gate === 'nist-benchmark-acceptance') {
+    if (evidence.proof?.artifact && !artifact.ok) failures.push(artifact.reason);
+    if (!runner.ok) failures.push(`NIST runner proof required (${runner.reason})`);
+    if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic || runner.synthetic)) {
+      failures.push('NIST fixture evidence cannot claim live qualification');
+    }
+  }
+
   // --require-live rejects synthetic fixtures and unproven live claims.
   if (requireLive) {
     if (evidence.synthetic) failures.push('--require-live rejects synthetic fixtures');
@@ -174,7 +376,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence));
+  else failures.push(...validator(evidence, { tenantRef, build }));
 
   return { ok: failures.length === 0, failures };
 }
@@ -207,7 +409,8 @@ function main() {
   }
   const result = verifyEvidenceFile(evidencePath, {
     gate: arg('gate'),
-    tenantRef: arg('tenant'),
+    tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF),
+    build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),
   });

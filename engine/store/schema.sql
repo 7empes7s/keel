@@ -378,3 +378,102 @@ CREATE TABLE IF NOT EXISTS restore_dry_run (
 );
 CREATE INDEX IF NOT EXISTS restore_dry_run_tenant_created_idx
   ON restore_dry_run (tenant_ref, created_at DESC);
+
+-- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
+-- configured sink; one outbox row per (destination, source event) so a replayed or
+-- retried delivery always carries the SAME task-77 event id; one replay checkpoint per
+-- destination recording the highest outbox sequence the sink has acknowledged. The
+-- checkpoint advances only inside the same transaction that marks an event
+-- acknowledged, so a crash after remote acceptance but before commit leaves the event
+-- pending and it is redelivered under its original id (at-least-once; receivers dedup
+-- on the event id). config holds credential REFERENCES only — never secret values.
+CREATE TABLE IF NOT EXISTS siem_destination (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref  text NOT NULL,
+  name        text NOT NULL,
+  kind        text NOT NULL,
+  config      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  enabled     boolean NOT NULL DEFAULT true,
+  revoked_at  timestamptz,
+  created_by  text NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_ref, name)
+);
+
+CREATE TABLE IF NOT EXISTS siem_outbox_event (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  outbox_seq        bigserial NOT NULL UNIQUE,
+  tenant_ref        text NOT NULL,
+  destination_id    uuid NOT NULL REFERENCES siem_destination(id),
+  event_id          text NOT NULL,
+  envelope          jsonb NOT NULL,
+  status            text NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','delivering','acknowledged','quarantined')),
+  attempts          int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  max_attempts      int NOT NULL DEFAULT 8 CHECK (max_attempts > 0),
+  next_attempt_at   timestamptz NOT NULL DEFAULT now(),
+  last_error        text,
+  acknowledged_at   timestamptz,
+  quarantined_at    timestamptz,
+  quarantine_reason text,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (destination_id, event_id)
+);
+CREATE INDEX IF NOT EXISTS siem_outbox_event_due_idx
+  ON siem_outbox_event (destination_id, status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS siem_outbox_event_tenant_idx
+  ON siem_outbox_event (tenant_ref, destination_id);
+
+CREATE TABLE IF NOT EXISTS siem_replay_checkpoint (
+  destination_id             uuid PRIMARY KEY REFERENCES siem_destination(id),
+  tenant_ref                 text NOT NULL,
+  last_acknowledged_seq      bigint NOT NULL DEFAULT 0,
+  last_acknowledged_event_id text,
+  replay_from_seq            bigint,
+  replay_requested_by        text,
+  replay_requested_at        timestamptz,
+  updated_at                 timestamptz NOT NULL DEFAULT now()
+);
+
+-- Task 85 (WS5): versioned benchmark control evaluation. One benchmark_evaluation row
+-- per control evaluation run for a tenant; framework/edition/profile/evaluator_version
+-- are recorded on EVERY row (never inferred from current registry state) so a later
+-- registry edit can never rewrite the meaning of a historical result. The verdict CHECK
+-- deliberately excludes 'exception' — an exception is never stored as a row's own
+-- verdict, only ever as a benchmark_exception overlay referencing the evaluation, so a
+-- waived failure keeps its original 'fail' verdict and evidence intact (mutation check:
+-- erase underlying finding under exception). Comparing results across a different
+-- edition/evaluator_version is an application-level refusal
+-- (engine/benchmarks/evaluate.mjs's compareEvaluationsAcrossEditions), not a schema
+-- constraint — an edition change must never be conflated with tenant drift, and this
+-- table is never read by drift detection.
+CREATE TABLE IF NOT EXISTS benchmark_evaluation (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  control_id          text NOT NULL,
+  framework           text NOT NULL,
+  edition             text NOT NULL,
+  profile             text NOT NULL,
+  evaluator_version   int NOT NULL,
+  verdict             text NOT NULL CHECK (verdict IN ('pass','fail','unknown','not-applicable')),
+  reason              text,
+  evidence_refs       jsonb NOT NULL DEFAULT '[]'::jsonb,
+  observation_windows jsonb NOT NULL DEFAULT '[]'::jsonb,
+  evidence_seq        bigint REFERENCES evidence(seq),
+  evaluated_at        timestamptz NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS benchmark_evaluation_tenant_control_idx
+  ON benchmark_evaluation (tenant_ref, control_id, evaluated_at DESC);
+
+CREATE TABLE IF NOT EXISTS benchmark_exception (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  evaluation_id uuid NOT NULL REFERENCES benchmark_evaluation(id),
+  actor         text NOT NULL,
+  reason        text NOT NULL,
+  granted_at    timestamptz NOT NULL DEFAULT now(),
+  expires_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS benchmark_exception_evaluation_idx
+  ON benchmark_exception (evaluation_id);

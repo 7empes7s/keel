@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync, sign } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { publishCheckpoint } from "../../engine/govern/anchor.mjs";
+import { createLocalStorageAdapter } from "../../engine/storage/local.mjs";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
@@ -34,7 +40,15 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
   const tenant = "evidence-portal-test";
   const deps = { databaseUrl: () => database.url, connect: () => database.connect(), tenantRef: () => tenant };
   const list = guardedEvidenceList(deps);
-  const verify = guardedEvidenceVerify(deps);
+  const root = await mkdtemp(join(tmpdir(), "portal-anchor-"));
+  const key = generateKeyPairSync("ed25519");
+  const storageOptions = { root, dependencies: {} };
+  const options = { tenantRef: tenant, build: "fixture", mode: "fixture", keyId: "v1",
+    storageRef: "independent-fixture", storage: createLocalStorageAdapter(storageOptions),
+    trust: { independent: true, storageRef: "independent-fixture", qualification: "fixture-tested",
+      rootKeyId: "v1", keys: { v1: { publicKey: key.publicKey, qualification: "fixture-tested" } } },
+    authorize: async () => true, signer: (bytes: Buffer) => sign(null, bytes, key.privateKey), checkpointRef: "" };
+  const verify = guardedEvidenceVerify(deps, async () => options);
   try {
     await fixture.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
     for (let index = 0; index < 5; index++) {
@@ -42,7 +56,9 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     }
     await appendEvidence(fixture, { tenantRef: "other-tenant", kind: "policy-evaluation", subject: { secret: true }, actor: "other" });
     const { rows } = await fixture.query("SELECT * FROM evidence WHERE tenant_ref = $1 ORDER BY seq DESC", [tenant]);
-    assert.deepEqual(await (await verify(request())).json(), { ok: true });
+    assert.equal((await (await guardedEvidenceVerify(deps)(request())).json()).status, "unanchored");
+    options.checkpointRef = await publishCheckpoint(fixture, options);
+    assert.equal((await (await verify(request())).json()).status, "verified");
     const query = "kind=policy-evaluation&from=2000-01-01&to=2100-01-01&limit=2";
     const firstResponse = await list(request(`?${query}`));
     assert.equal(firstResponse.headers.get("cache-control"), "no-store");
@@ -73,19 +89,21 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     // Corruption is confined to this disposable test schema. The real verifier must detect it.
     await fixture.query("UPDATE evidence SET record_hash = $1 WHERE seq = $2", ["tampered", rows[2].seq]);
     const tampered = await (await verify(request())).json();
-    assert.deepEqual(tampered, { ok: false, brokenAtSeq: rows[2].seq });
+    assert.deepEqual(tampered, { ok: false, brokenAtSeq: rows[2].seq, status: "broken-at-sequence" as const });
     assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: tampered })), /evidence-broken/);
     await fixture.query("UPDATE evidence SET record_hash = $1 WHERE seq = $2", [rows[2].record_hash, rows[2].seq]);
     await fixture.query("DELETE FROM evidence WHERE seq = $1", [rows[0].seq]);
-    assert.deepEqual(await (await verify(request())).json(), { ok: false, reason: "truncated", expectedSeq: rows[0].seq, actualSeq: rows[1].seq });
+    assert.deepEqual(await (await verify(request())).json(), { ok: false, status: "truncated", expectedSeq: rows[0].seq, actualSeq: rows[1].seq });
   } finally {
     await fixture.end();
     await database.cleanup();
+    await rm(root, { recursive: true, force: true });
   }
 });
 
 test("chain indicator distinguishes verified, failed, and unavailable states", () => {
-  assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: true } })), /evidence-intact/);
+  assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: true, status: "verified", anchoredThroughSeq: "5", unanchoredRecords: 0 } })), /evidence-intact/);
+  assert.match(renderToStaticMarkup(createElement(ChainIndicator, { integrity: { ok: false, status: "unanchored" } })), /Evidence chain unanchored/);
   const unavailable = renderToStaticMarkup(createElement(ChainIndicator, { integrity: null }));
   assert.match(unavailable, /Chain integrity unavailable/);
   assert.doesNotMatch(unavailable, /evidence-intact|evidence-broken/);

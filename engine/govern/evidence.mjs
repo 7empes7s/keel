@@ -119,7 +119,5 @@ export async function verifyChain(client, { tenantRef }) {
   return { ok: true };
 }
 
-// Residual risk: an actor with write access to both evidence and evidence_head can still forge a
-// consistent chain. The anchor raises the bar from deleting a row to rewriting the whole chain and
-// its anchor atomically; genuine non-repudiation needs periodic anchoring outside this database,
-// signing the head hash to an append-only external store. That is out of M2 scope.
+// This checks internal consistency only. Operator-facing verification uses
+// verifyAnchoredChain in anchor.mjs to compare an independently trusted checkpoint.

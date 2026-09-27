@@ -251,8 +251,8 @@ assert.ok(
 );
 assertSchemaJobKindCoverage(schemaSql, JOB_HANDLERS, JOB_KIND_CAPABILITIES);
 const fixtureSchemaSql = schemaSql.replace(
-  ",'notify'));",
-  ",'notify','fixture-schema-kind'));",
+  ",'api-drift'));",
+  ",'api-drift','fixture-schema-kind'));",
 );
 assert.notEqual(fixtureSchemaSql, schemaSql, 'the fixture must add a schema-accepted kind');
 assert.throws(
@@ -281,6 +281,7 @@ assert.deepEqual(
     prune: 'collect',
     offsite: 'configuration',
     'drift-detect': 'collect',
+    'api-drift': 'collect',
     backup: 'backup',
     'baseline-create': 'baseline-create',
     'baseline-activate': 'baseline-create',

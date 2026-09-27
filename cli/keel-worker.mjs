@@ -253,6 +253,24 @@ export const JOB_HANDLERS = {
       return args;
     },
   },
+  // Plan task 62: scheduled Microsoft API/catalog metadata comparison. Read-only,
+  // anonymous HTTPS fetches of the configured official metadata sources; findings
+  // persist as review candidates only. The script enforces its own per-source
+  // timeout and size bounds; the whitelisted params can only steer it at an
+  // operator-written tenant config or source list, never at an arbitrary flag.
+  'api-drift': {
+    script: join(__dirname, '../tools/qualification/apiDrift.mjs'),
+    argsFor(params = {}) {
+      const args = [];
+      if (params.config !== undefined) {
+        args.push('--config', requireString(params.config, 'params.config'));
+      }
+      if (params.sources !== undefined) {
+        args.push('--sources', requireString(params.sources, 'params.sources'));
+      }
+      return args;
+    },
+  },
   // Plan task 16: a backup IS a tiered collection — the tiered systemd units run
   // keel-collect.mjs --tier tierN, so the job dispatches to that exact script rather
   // than reimplementing any of its logic. The tier is whitelisted here even though

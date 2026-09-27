@@ -13,12 +13,17 @@ export function initialSchedules(now = new Date()) {
   const offsite = new Date(now);
   offsite.setUTCHours(5, 0, 0, 0);
   if (offsite <= now) offsite.setUTCDate(offsite.getUTCDate() + 1);
+  // Task 62: official Graph metadata drifts slowly; a weekly comparison is the
+  // default cadence, operator-tunable through the schedule row like every other kind.
+  const weeklyMetadata = new Date(weekly);
+  weeklyMetadata.setUTCHours(3, 0, 0, 0);
   return [
     { jobKind: 'collect', tier: 'tier1', cadence: { every: 'hour', n: 1, atTime: null }, nextDueAt: hourly },
     { jobKind: 'collect', tier: 'tier2', cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
     { jobKind: 'collect', tier: 'tier3', cadence: { every: 'week', n: 1, atTime: '00:00' }, cronOverride: '0 0 * * 1', nextDueAt: weekly },
     { jobKind: 'prune', tier: null, cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
     { jobKind: 'offsite', tier: null, cadence: { every: 'day', n: 1, atTime: '05:00' }, nextDueAt: offsite },
+    { jobKind: 'api-drift', tier: null, cadence: { every: 'week', n: 1, atTime: '03:00' }, cronOverride: '0 3 * * 1', nextDueAt: weeklyMetadata },
   ];
 }
 

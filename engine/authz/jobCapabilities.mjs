@@ -16,6 +16,9 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   prune: 'collect',
   offsite: 'configuration',
   'drift-detect': 'collect',
+  // Task 62: read-only, anonymous metadata comparison run on the same operator
+  // cadence as collection; it writes review candidates, never tenant state.
+  'api-drift': 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',
   'baseline-activate': 'baseline-create',

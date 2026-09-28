@@ -82,7 +82,7 @@ registerFieldProjection('user', {
 
 registerFieldProjection('group', {
   knownFields: [
-    'id', 'displayName', 'mailNickname', 'groupTypes', 'securityEnabled', 'mailEnabled',
+    'id', 'displayName', 'description', 'mailNickname', 'groupTypes', 'securityEnabled', 'mailEnabled',
     'membershipRule', 'membershipRuleProcessingState', 'onPremisesSyncEnabled',
     'isAssignableToRole', 'visibility', 'createdDateTime',
     // Not in the current $select but present on unfiltered reads (see

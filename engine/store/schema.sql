@@ -536,3 +536,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS api_drift_candidate_dedupe_idx
   ON api_drift_candidate (tenant_ref, source_key, kind, path, COALESCE(field, ''));
 CREATE INDEX IF NOT EXISTS api_drift_candidate_tenant_detected_idx
   ON api_drift_candidate (tenant_ref, detected_at DESC);
+
+-- Task 48: tenant-scoped historical identity context. One row per observed
+-- (tenant, type, Graph source id) records the natural key that id resolved to,
+-- the observation window (first/last seen) and the snapshot that last evidenced
+-- it. A row is live while tombstoned_at is null; only a successful FULL per-type
+-- enumeration (outcome complete/complete-empty) may tombstone ids it did not
+-- observe — failed/partial reads prove nothing about absence. Seeded from
+-- preexisting successful snapshots without rewriting their stored keys.
+CREATE TABLE IF NOT EXISTS resource_symbol (
+  tenant_ref      text NOT NULL,
+  resource_type   text NOT NULL,
+  source_id       text NOT NULL,
+  natural_key     text NOT NULL,
+  first_seen_at   timestamptz NOT NULL DEFAULT now(),
+  last_seen_at    timestamptz NOT NULL DEFAULT now(),
+  source_snapshot uuid REFERENCES snapshot(id),
+  tombstoned_at   timestamptz,
+  PRIMARY KEY (tenant_ref, resource_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS resource_symbol_live_idx
+  ON resource_symbol (tenant_ref, resource_type) WHERE tombstoned_at IS NULL;

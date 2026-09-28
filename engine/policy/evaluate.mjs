@@ -9,6 +9,7 @@
 // trusting the policy's configuration. evaluateDrift always writes evidence — a
 // no-match evaluation is recorded exactly like a match — so "why did nothing
 // happen" is answerable from the evidence chain alone.
+import { createHash } from 'node:crypto';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
@@ -42,6 +43,86 @@ export function policyMatches(policy, drift) {
  * max_blast_radius, whatever it matched. Never configurable away. */
 export function exceedsMaxBlastRadius(drift, policy) {
   return BLAST_RADIUS_RANK[drift.blast_radius] > BLAST_RADIUS_RANK[policy.max_blast_radius];
+}
+
+// Roadmap task-55: the same guardrail re-applied AFTER dependency expansion. The
+// enqueue-time check above sees only the original drift row; a remediation's real
+// impact is the maximum blast radius over the actual operations its expanded
+// dependency closure will perform, compared against the policy ceiling re-read live
+// at execution — never a caller-supplied ceiling.
+
+/** Rank of a blast-radius label, or null when the label is not a known level. */
+export function blastRadiusRank(label) {
+  return Object.hasOwn(BLAST_RADIUS_RANK, label) ? BLAST_RADIUS_RANK[label] : null;
+}
+
+/** Is `blastRadius` strictly above `ceiling`? Fails closed: an unrecognized label on
+ * either side is treated as exceeding, never as passing. */
+export function exceedsBlastRadiusCeiling(blastRadius, ceiling) {
+  const impactRank = blastRadiusRank(blastRadius);
+  const ceilingRank = blastRadiusRank(ceiling);
+  if (impactRank === null || ceilingRank === null) return true;
+  return impactRank > ceilingRank;
+}
+
+/** Maximum impact over the ACTUAL operations a plan will perform after closure:
+ * every resource with a write verb (create/update/delete/restore-soft-deleted) plus
+ * every resource carrying a deferred reference patch. noop resources perform no
+ * write and contribute nothing. An unrecognized blast-radius label always wins the
+ * maximum, so it cannot slip under a ceiling. Returns { maxBlastRadius, operations }
+ * with maxBlastRadius null when the plan performs no operation at all. */
+export function maxOperationImpact(resources, patches = []) {
+  const patchKeys = new Set((patches ?? []).map((patch) => patch.naturalKey));
+  const operations = (resources ?? [])
+    .filter((resource) => (resource.verb && resource.verb !== 'noop') || patchKeys.has(resource.naturalKey))
+    .map((resource) => ({
+      naturalKey: resource.naturalKey,
+      resourceType: resource.resourceType,
+      verb: resource.verb ?? 'patch',
+      blastRadius: resource.blastRadius ?? null,
+    }))
+    .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
+
+  // `null` is both "no operation seen yet" and a legitimate (unrecognized-label)
+  // operation value, so a plain `maxBlastRadius === null` check cannot tell them
+  // apart: once an unrecognized-label operation set maxBlastRadius to null, the
+  // next operation would hit the "not yet set" branch again and silently overwrite
+  // it, letting the unrecognized label slip under a ceiling instead of always
+  // winning the maximum. hasImpact disambiguates the two.
+  let maxBlastRadius = null;
+  let hasImpact = false;
+  for (const operation of operations) {
+    if (!hasImpact) {
+      maxBlastRadius = operation.blastRadius;
+      hasImpact = true;
+      continue;
+    }
+    const operationRank = blastRadiusRank(operation.blastRadius);
+    const maxRank = blastRadiusRank(maxBlastRadius);
+    if (operationRank === null || (maxRank !== null && operationRank > maxRank)) {
+      maxBlastRadius = operation.blastRadius;
+    }
+  }
+  return { maxBlastRadius, operations };
+}
+
+/** The policy's constraint version: a content fingerprint over every field that
+ * governs whether and how automation may act. Recorded in the immutable dry-run
+ * artifact at planning time and recomputed from the live policy row at promotion —
+ * any change (ceiling, enable/pause state, rate limit, run-as identity) invalidates
+ * the promotion and forces a fresh dry run. Key order is fixed so the fingerprint
+ * is deterministic. */
+export function policyConstraintVersion(policy) {
+  return createHash('sha256').update(JSON.stringify({
+    action: policy.action,
+    enabled: policy.enabled,
+    maxBlastRadius: policy.max_blast_radius,
+    maxActionsPerWindow: policy.max_actions_per_window ?? null,
+    windowSeconds: policy.window_seconds ?? null,
+    runAsPrincipalId: policy.run_as_principal_id ?? null,
+    runAsRepairRequired: policy.run_as_repair_required === true,
+    paused: policy.paused_at != null,
+  })).digest('hex');
 }
 
 function outcomeFor(policy, drift) {

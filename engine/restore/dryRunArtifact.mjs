@@ -40,10 +40,13 @@ function sha256(text) {
 /** The plan's identity: everything that must never change without a fresh dry run.
  * Deliberately excludes anything read live from the target — that is
  * computeCurrentStateFingerprint's job — so this digest is reproducible from the
- * snapshot and its own selection alone, at both dry-run creation and promotion. */
+ * snapshot and its own selection alone, at both dry-run creation and promotion.
+ * automationContext (task-55: policy identity/version and expanded scope) is folded
+ * in only when present, so artifacts persisted before that field existed keep the
+ * exact digest inputs they were created with and remain promotable. */
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
-  reconciliationResources, waves, patches,
+  reconciliationResources, waves, patches, automationContext,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -55,6 +58,7 @@ export function computePlanDigest({
     reconciliationResources,
     waves,
     patches,
+    ...(automationContext ? { automationContext } : {}),
   }));
 }
 
@@ -90,7 +94,7 @@ export function classifyDryRunStatus({ failed, skipped }) {
 export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
-  currentStateFingerprint, digest, status, requestedBy,
+  currentStateFingerprint, digest, status, requestedBy, automationContext,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -99,18 +103,19 @@ export async function createDryRunArtifact(client, {
     `INSERT INTO restore_dry_run
        (id, tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id,
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
-        results, current_state_fingerprint, digest, status, requested_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        results, current_state_fingerprint, digest, status, requested_by, automation_context)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
       // every jsonb column here that holds an array must be stringified explicitly.
-      // The plain-object columns (results) are left as-is; pg JSON-serializes those
-      // correctly, arrays and all, once they are nested rather than top-level.
+      // The plain-object columns (results, automation_context) are left as-is; pg
+      // JSON-serializes those correctly, arrays and all, once they are nested rather
+      // than top-level.
       id, tenantRef, snapshotId, JSON.stringify(selection), JSON.stringify(closureKeys), targetTenantId,
       collectorConfigPath, targetConfigPath, JSON.stringify(reconciliationResources ?? null), JSON.stringify(waves),
       JSON.stringify(patches), JSON.stringify(guardRefusals ?? []), results, currentStateFingerprint, digest,
-      status, requestedBy,
+      status, requestedBy, automationContext ?? null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -152,6 +157,7 @@ function normalizeArtifact(row) {
     digest: row.digest,
     status: row.status,
     requestedBy: row.requested_by,
+    automationContext: row.automation_context ?? null,
     createdAt: row.created_at,
   };
 }

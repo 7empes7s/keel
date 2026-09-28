@@ -6,7 +6,9 @@
  * classification reuses tenant-probe's classify()/buildIndex() verbatim — that
  * logic already carries the hard-won corrections from the 99.7% measurement
  * (SENTINEL fix, WELL_KNOWN app ids, built-in role templates) and must not be
- * re-derived here.
+ * re-derived here. Task 48 adds an optional persistent identity context
+ * (engine/store/resourceSymbols.mjs) as a fallback lookup; see
+ * canonicalizeAll's own comment.
  */
 import { classify, buildIndex, walkGuids, ownIdentifiers } from '../../tools/tenant-probe/references.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -51,12 +53,20 @@ function keyFor(type, obj, ctx) {
  * GUID references cannot be keyed off `obj.id` unconditionally — nothing
  * can ever reference either type by a GUID it doesn't have, so skipping the
  * mapping when `id` is absent is a safe no-op rather than a crash.
+ *
+ * CONTEXT_EXCLUDED_TYPES is exported for engine/store/resourceSymbols.mjs:
+ * global template catalogues are excluded from the persistent identity
+ * context for the same reason they are excluded from the in-batch map here —
+ * their ids are global constants, not tenant identity, and resolving them
+ * from history would bypass classify()'s global handling.
  */
+export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directorySettingTemplate']);
+
 function idKey(obj, type) {
   // Global templates can share ids with active role definitions. Collecting
   // the catalogue must not overwrite those tenant symbols or change existing
   // role-assignment keys. buildIndex already classifies templates as global.
-  if (type === 'directoryRoleTemplate' || type === 'directorySettingTemplate') return null;
+  if (CONTEXT_EXCLUDED_TYPES.has(type)) return null;
   return obj?.id != null ? String(obj.id).toLowerCase() : null;
 }
 
@@ -93,7 +103,18 @@ const GLOBAL_ROLE_SYMBOLS = new Map([
   ['62e90394-69f5-4237-9190-012177145e10', 'global:GlobalAdministrator'],
 ]);
 
-export function canonicalizeAll(collected) {
+/**
+ * canonicalizeAll(collected, { context }) — `context` is the optional
+ * tenant-scoped persistent identity context loaded by
+ * engine/store/resourceSymbols.mjs (Map<lowercase source id, { symbol, type }>).
+ * It is a FALLBACK only: the current batch (and global constants) always win
+ * over history. A reference or composed key part resolved from context is
+ * recorded as stale provenance on the resource's provenance jsonb — separate
+ * from the payload the semantic hash covers — and the reference carries
+ * `stale: true`. Ids absent from both the batch and the context stay
+ * unresolved (`unknown:<guid>`), exactly as before.
+ */
+export function canonicalizeAll(collected, { context } = {}) {
   const index = buildIndex(collected);
   const idToSymbol = new Map();
   const resources = [];
@@ -108,7 +129,7 @@ export function canonicalizeAll(collected) {
     }
     const idk = idKey(obj, type);
     if (idk) idToSymbol.set(idk, key);
-    const resource = buildResource(type, obj, key, index, idToSymbol);
+    const resource = buildResource(type, obj, key, index, idToSymbol, context);
     byKey.set(key, resource);
     resources.push(resource);
   };
@@ -129,32 +150,49 @@ export function canonicalizeAll(collected) {
   // Pass 1b: materialize the self-contained resources.
   for (const { type, obj, key } of selfContained) addResource(type, obj, key);
 
-  // Pass 2: roleAssignment, using pass 1's symbol lookup.
-  const resolveSymbol = (guid) =>
-    idToSymbol.get(guid.toLowerCase()) ?? GLOBAL_ROLE_SYMBOLS.get(guid.toLowerCase()) ?? null;
+  // Pass 2: roleAssignment, using pass 1's symbol lookup. The current batch
+  // and global constants override the persistent context; a key part resolved
+  // from history is recorded as stale provenance on the resource.
   const roleAssignments = collected.find(([t]) => t === 'roleAssignment')?.[1] ?? [];
   for (const obj of roleAssignments) {
+    const staleKeyParts = [];
+    const resolveSymbol = (guid) => {
+      const current = idToSymbol.get(guid.toLowerCase()) ?? GLOBAL_ROLE_SYMBOLS.get(guid.toLowerCase());
+      if (current) return current;
+      const historical = context?.get(guid.toLowerCase()) ?? null;
+      if (historical) staleKeyParts.push(guid.toLowerCase());
+      return historical?.symbol ?? null;
+    };
     const key = keyFor('roleAssignment', obj, { resolveSymbol });
     addResource('roleAssignment', obj, key);
+    const stored = byKey.get(key);
+    if (stored && staleKeyParts.length > 0) {
+      stored.provenance.symbolContext = { ...(stored.provenance.symbolContext ?? {}), staleKeyParts };
+    }
   }
 
   if (collisions.length) throw new NaturalKeyCollisionError(collisions);
   return resources;
 }
 
-function buildResource(type, obj, key, index, idToSymbol) {
+function buildResource(type, obj, key, index, idToSymbol, context) {
   const catalogEntry = CATALOG_BY_TYPE.get(type);
   const ownIds = ownIdentifiers(type, obj);
   const references = [];
   const seen = new Set();
+  const staleReferences = [];
   for (const { path, guid } of referenceValues(obj, idToSymbol)) {
     if (seen.has(path)) continue;
     seen.add(path);
+    const batchSymbol = idToSymbol.get(guid.toLowerCase());
+    const historical = batchSymbol ? null : (context?.get(guid.toLowerCase()) ?? null);
     const c = classifyCanonicalReference({
-      path, guid, ownIds, index, resolvedSymbol: idToSymbol.get(guid.toLowerCase()),
+      path, guid, ownIds, index, resolvedSymbol: batchSymbol ?? historical?.symbol,
     });
     if (c.klass === 'identity' || c.klass === 'nonReference') continue;
-    references.push({ field: path, symbol: symbolFor(c, guid), required: true, klass: c.klass });
+    const stale = c.klass === 'resolvable' && historical != null;
+    if (stale) staleReferences.push(path);
+    references.push({ field: path, symbol: symbolFor(c, guid), required: true, klass: c.klass, ...(stale ? { stale: true } : {}) });
   }
   return {
     naturalKey: key,
@@ -178,6 +216,10 @@ function buildResource(type, obj, key, index, idToSymbol) {
       // places. Understating fidelity ('read-only') is safe; a wrong 'full'
       // is a product defect, so unknown types must default to 'read-only'.
       fidelity: FIDELITY[type] ?? 'read-only',
+      // Stale provenance lives here — in the provenance jsonb, never in the
+      // payload — so the semantic hash is unaffected by which lookup
+      // (current batch vs. persistent context) resolved a reference.
+      ...(staleReferences.length > 0 ? { symbolContext: { staleReferences } } : {}),
     },
     sourceId: obj.id,
   };

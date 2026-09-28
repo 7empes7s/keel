@@ -127,3 +127,27 @@ export async function resetOrphaned(client) {
 export function emitJobEvent(job, eventType, sink = createEventSink(), options = {}) {
   try { sink(envelopeForJob(job, { ...options, eventType })); } catch { /* logs are not audit authority */ }
 }
+
+// Task 62: scheduled Microsoft API/catalog drift detection. One job per tenant per
+// cadence period: the idempotency key folds tenant and period together, so a scheduler
+// (or an operator) firing the same period twice gets the existing job back instead of
+// queuing a duplicate comparison. The kind is a normal queued job — admission and
+// execution authorization stay on the existing capabilityForJobKind inventory.
+export function apiDriftIdempotencyKey(tenantRef, periodKey) {
+  if (typeof tenantRef !== 'string' || tenantRef.length === 0) {
+    throw new TypeError('tenantRef is required for an api-drift idempotency key');
+  }
+  if (typeof periodKey !== 'string' || periodKey.length === 0) {
+    throw new TypeError('periodKey is required for an api-drift idempotency key');
+  }
+  return `api-drift:${tenantRef}:${periodKey}`;
+}
+
+export async function enqueueApiDriftRun(client, { tenantRef, requestedBy, periodKey, params = {} }) {
+  return enqueue(client, {
+    kind: 'api-drift',
+    params,
+    requestedBy,
+    idempotencyKey: apiDriftIdempotencyKey(tenantRef, periodKey),
+  });
+}

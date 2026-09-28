@@ -1,4 +1,4 @@
-import { verifyChain } from "../../engine/govern/evidence.mjs";
+import { verifyAnchoredChain } from "../../engine/govern/anchor.mjs";
 import { guarded, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -14,12 +14,13 @@ export interface EvidenceData {
   nextBefore: string | null;
   generatedAt: string;
 }
-export type ChainIntegrity = { ok: true } | {
-  ok: false;
+export type ChainIntegrity = {
+  ok: boolean;
+  status: "verified" | "broken-at-sequence" | "truncated" | "unanchored";
   brokenAtSeq?: string;
-  reason?: "truncated";
-  expectedSeq?: string | null;
-  actualSeq?: string | null;
+  reason?: string;
+  anchoredThroughSeq?: string;
+  unanchoredRecords?: number;
 };
 
 export function guardedEvidenceList(deps: GuardDeps = {}) {
@@ -51,8 +52,9 @@ export function guardedEvidenceList(deps: GuardDeps = {}) {
   }, deps);
 }
 
-export function guardedEvidenceVerify(deps: GuardDeps = {}) {
+export function guardedEvidenceVerify(deps: GuardDeps = {},
+  anchorOptions: (tenantRef: string) => Promise<Record<string, unknown>> = async () => ({})) {
   return guarded({ action: "evidence:verify", capability: "read" }, async ({ client, tenantRef }) => {
-    return Response.json(await verifyChain(client, { tenantRef }), { headers: NO_STORE });
+    return Response.json(await verifyAnchoredChain(client, { ...await anchorOptions(tenantRef), tenantRef, authorize: async () => true }), { headers: NO_STORE });
   }, deps);
 }

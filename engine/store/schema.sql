@@ -141,7 +141,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -330,7 +330,7 @@ IF to_regclass('schedule') IS NULL THEN
 CREATE TABLE schedule (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_ref    text NOT NULL,
-  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite'
+  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift'
   tier          text,                -- 'tier1' | 'tier2' | 'tier3' | null (job kinds with no tier concept)
   cadence       jsonb NOT NULL,      -- { "every": "hour"|"day"|"week", "n": 1, "atTime": "05:00" | null }
   cron_override text,                -- raw cron expression; when set, takes precedence over `cadence`
@@ -477,3 +477,53 @@ CREATE TABLE IF NOT EXISTS benchmark_exception (
 );
 CREATE INDEX IF NOT EXISTS benchmark_exception_evaluation_idx
   ON benchmark_exception (evaluation_id);
+
+-- Task 62: Microsoft API / catalog drift detection. api_drift_source pins the last
+-- successfully fetched official metadata source (digest, HTTP Date, ETag, extracted
+-- version and the compact comparison model) per tenant and source. A failed, timed-out
+-- or oversized fetch updates last_status/last_error ONLY — the pin and model are
+-- retained, so a network failure can never read as "no changes". api_drift_candidate
+-- holds REVIEW CANDIDATES ONLY: no row here ever registers a type, a permission or a
+-- write verb (engine/coverage/capabilities.mjs remains the only path off
+-- 'unsupported', and nothing in the drift path calls it).
+CREATE TABLE IF NOT EXISTS api_drift_source (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref       text NOT NULL,
+  source_key       text NOT NULL,
+  url              text NOT NULL,
+  etag             text,
+  digest           text,
+  source_date      text,
+  metadata_version text,
+  model            jsonb,
+  last_status      text NOT NULL DEFAULT 'never-run'
+                   CHECK (last_status IN ('never-run','fetched','not-modified','unknown','timeout','oversized')),
+  last_error       text,
+  last_checked_at  timestamptz,
+  last_changed_at  timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_ref, source_key)
+);
+
+CREATE TABLE IF NOT EXISTS api_drift_candidate (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  source_key    text NOT NULL,
+  source_url    text NOT NULL,
+  kind          text NOT NULL CHECK (kind IN ('added-endpoint','removed-endpoint','changed-field')),
+  resource_type text,
+  path          text NOT NULL,
+  field         text,
+  detail        jsonb NOT NULL DEFAULT '{}'::jsonb,
+  proof         jsonb NOT NULL,
+  status        text NOT NULL DEFAULT 'review' CHECK (status IN ('review')),
+  detected_at   timestamptz NOT NULL DEFAULT now()
+);
+-- A repeat fetch of unchanged metadata must not duplicate findings: the dedupe key is
+-- the finding identity (tenant, source, kind, path, field), collapsed like schedule's
+-- NULL tier. Persistence uses ON CONFLICT DO NOTHING against this index.
+CREATE UNIQUE INDEX IF NOT EXISTS api_drift_candidate_dedupe_idx
+  ON api_drift_candidate (tenant_ref, source_key, kind, path, COALESCE(field, ''));
+CREATE INDEX IF NOT EXISTS api_drift_candidate_tenant_detected_idx
+  ON api_drift_candidate (tenant_ref, detected_at DESC);

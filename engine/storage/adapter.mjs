@@ -167,3 +167,20 @@ export function assertStorageAdapter(adapter) {
   }
   return adapter;
 }
+
+/** Trust metadata is supplied by the operator outside the primary evidence DB. */
+export function assertIndependentAnchorStorage(storage, { storageRef, trust, mode = 'production' }) {
+  assertStorageAdapter(storage);
+  assertNoEmbeddedCredential(storageRef, 'storageRef');
+  if (!storageRef || !trust || trust.storageRef !== storageRef || trust.independent !== true) {
+    throw new Error('independent external storage trust unavailable');
+  }
+  if (!['fixture', 'production'].includes(mode)
+    || (mode === 'production' && (trust.qualification !== 'live-qualified'
+      || storage.capabilities.operations.read !== 'live-qualified'
+      || storage.capabilities.immutability !== 'live-qualified'))
+    || (mode === 'fixture' && !['fixture-tested', 'live-qualified'].includes(trust.qualification))) {
+    throw new Error('external storage trust is not qualified for this mode');
+  }
+  return storage;
+}

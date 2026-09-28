@@ -379,6 +379,15 @@ CREATE TABLE IF NOT EXISTS restore_dry_run (
 CREATE INDEX IF NOT EXISTS restore_dry_run_tenant_created_idx
   ON restore_dry_run (tenant_ref, created_at DESC);
 
+-- Roadmap task-55: an automation-triggered remediation records, inside its immutable
+-- dry-run artifact, the exact policy identity + constraint version it was planned
+-- under and the expanded closure scope its maximum impact was computed over. Promotion
+-- re-resolves the live policy rows and refuses when either the version or the
+-- post-closure impact no longer matches. Nullable: additive for pre-existing
+-- (operator-driven) artifacts, which carry no automation context and promote exactly
+-- as before. Retry-safe and forward-compatible.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS automation_context jsonb;
+
 -- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
 -- configured sink; one outbox row per (destination, source event) so a replayed or
 -- retried delivery always carries the SAME task-77 event id; one replay checkpoint per

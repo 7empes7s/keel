@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
+import { resolveQueuedAutomationPolicies } from '../engine/policy/execute.mjs';
 import { assertSeparateRestorer, runRestore } from './keel-restore.mjs';
 
 function arg(name, fallback, argv = process.argv) {
@@ -114,14 +115,24 @@ export async function runRemediate({
     connect: connectFn = connect,
     resolveRestoreScope: resolveRestoreScopeFn = resolveRestoreScope,
     runRestore: runRestoreFn = runRestore,
+    resolveQueuedAutomationPolicies: resolveQueuedAutomationPoliciesFn = resolveQueuedAutomationPolicies,
     createArtifactId = randomUUID,
   } = dependencies;
 
   let client;
   let scope;
+  let automationPolicyIds = [];
   try {
     client = await connectFn(dbUrl);
     scope = await resolveRestoreScopeFn(client, { driftIds });
+    // Roadmap task-55: rediscover server-side, at execution time, which automation
+    // policies are still queued on these drift ids (the job payload carries only
+    // drift ids by design). A human remediation has no auto_remediation_execution
+    // rows and keeps its unchanged, operator-driven path. Only policy identities
+    // travel onward — runRestore re-derives the ceiling and run-as constraints from
+    // the live policy rows, at both the dry run and again at artifact promotion.
+    automationPolicyIds = (await resolveQueuedAutomationPoliciesFn(client, { driftIds }))
+      .map((policy) => policy.id);
   } finally {
     await client?.end();
   }
@@ -145,6 +156,7 @@ export async function runRemediate({
       collectorConfigPath,
       mode: 'dry-run',
       persistArtifactId: artifactId,
+      ...(automationPolicyIds.length ? { automationPolicyIds } : {}),
       requestedBy,
       readFile,
       acceptDegradation,

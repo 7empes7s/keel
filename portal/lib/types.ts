@@ -26,6 +26,67 @@ export interface CoverageOutcomeDetail {
   completedAt: string | null;
 }
 
+// Evidence-backed operation capability (roadmap task-52), surfaced per
+// operation so a claim level is never collapsed into a single boolean —
+// declared/fixture-tested/live-qualified/unsupported/unknown all render as
+// distinct, literal labels.
+export type CapabilityClaim =
+  | "declared"
+  | "fixture-tested"
+  | "live-qualified"
+  | "unsupported"
+  | "unknown";
+
+export interface WriteOperationCapability {
+  claim: CapabilityClaim;
+  credentialMode: "collector" | "restorer" | null;
+  idOutcome: string | null;
+  handler: string | null;
+  proofRef: string | null;
+  projection: "reviewed-empty" | "unreviewed" | "has-rules";
+}
+
+export interface WriteCapabilitySummary {
+  resourceType: string;
+  operations: {
+    create: WriteOperationCapability;
+    update: WriteOperationCapability;
+    delete: WriteOperationCapability;
+    "restore-soft-deleted": WriteOperationCapability;
+  };
+}
+
+// Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,
+// consent scope or role, additional to (never a replacement for) the raw
+// outcome/detail above.
+export type DiagnosisState =
+  | "missing-license"
+  | "disabled-plan"
+  | "missing-scope"
+  | "missing-role"
+  | "unknown";
+
+export interface CoverageDiagnosis {
+  diagnosis: DiagnosisState;
+  reason?: string;
+  original: { httpStatus: number | null; graphCode: string | null };
+  confirmed?: Record<string, unknown>;
+}
+
+export interface DeclaredEndpoint {
+  path: string;
+  apiVersion: string;
+}
+
+// The versioned observation anchoring this entry (roadmap task-45), linking
+// this row to the same evidence a backup/drift/benchmark view would cite.
+export interface CoverageObservation {
+  observationId: string;
+  window: { startedAt: string; endedAt: string } | null;
+  completeness: string;
+  evidenceLevel: string;
+}
+
 export interface CoverageType {
   type: string;
   reportStatus: "covered" | "failed" | "not-covered" | "never-collected";
@@ -44,6 +105,15 @@ export interface CoverageType {
   criticality: string | null;
   blastRadius: string | null;
   remappable: boolean | null;
+  // The rest are optional: existing fixtures built before roadmap task-54
+  // (e.g. portal/test/staleness.test.ts) omit them, and every consumer must
+  // treat an absent field exactly like an explicit null.
+  declaredEndpoint?: DeclaredEndpoint | null;
+  irrecoverableFields?: string[] | null;
+  relationshipCompleteness?: "unknown";
+  diagnosis?: CoverageDiagnosis | null;
+  writeCapability?: WriteCapabilitySummary | null;
+  observation?: CoverageObservation | null;
 }
 
 export interface CoverageSummary {

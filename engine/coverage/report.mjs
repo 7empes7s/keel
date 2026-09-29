@@ -15,12 +15,26 @@
  *    { declared, verifiedBy }, and verifiedBy stays null until a restore drill
  *    writes measured fidelity back as evidence. A declared 'full' is never
  *    presented as verified.
+ *
+ * A fourth mechanism (roadmap task-54) prevents a declared 'full' fidelity
+ * badge from reading as unconditionally complete: every entry also carries
+ * irrecoverableFields (fields Graph itself owns and no write path can ever
+ * restore, from engine/cir/serverOwned.mjs's existing registry — never
+ * re-derived here), a declared endpoint/version distinct from the measured
+ * one a collection observed, and an honestly-unknown relationshipCompleteness
+ * until a future task actually collects relationship/edge observations.
+ * Cross-type window comparison stays reportObservationWindows()'s job below
+ * (task-45): grouping by exact window, never a blanket "simultaneous"
+ * verdict — real per-type collection timestamps differ down to the
+ * millisecond even within one run, so a boolean simultaneity claim across
+ * the whole report would misreport reality far more often than not.
  */
 
 import { TYPE_COVERAGE_CTES, readCoverageOutcome, readOutcome, readOutcomeDetail, readTypeObservation } from './snapshots.mjs';
 import { OBSERVATION_CONTRACT_VERSION } from '../contracts/observation.mjs';
 import { capabilitySummaryFor } from './capabilities.mjs';
 import { diagnoseFailure } from './diagnosis.mjs';
+import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {
@@ -36,10 +50,11 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   const diagnosisEvidence = await loadDiagnosisEvidence(client, tenantRef, byType);
 
   const descriptorByType = new Map(descriptors.map((d) => [d.type, d]));
+  const catalogByType = new Map(catalog.map((c) => [c.type, c]));
   const types = [];
 
   for (const descriptor of descriptors) {
-    const entry = coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt, tenantRef, latestDigest?.[descriptor.type]);
+    const entry = coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt, tenantRef, latestDigest?.[descriptor.type], catalogByType.get(descriptor.type));
     // Diagnosis (roadmap task-53) is an ADDITIONAL field on a failed entry.
     // It never changes status/covered/outcome/detail — the raw collection
     // outcome stays exactly as observed, diagnosis or not.
@@ -76,6 +91,15 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       // not-covered catalogue entry still has its own capability claims,
       // independent of read-coverage status.
       writeCapability: capabilitySummaryFor(entry.type),
+      // The catalog always declares a path/version even with no collecting
+      // descriptor; there is simply nothing measured yet to compare it to.
+      declaredEndpoint: { path: entry.path, apiVersion: entry.version },
+      // No field-classification registry entry exists for an uncollected
+      // type — never guessed from CATALOG or descriptors.mjs.
+      irrecoverableFields: null,
+      // No relationship/edge observation exists for any catalogue type yet
+      // (roadmap task-57/58 introduce that collection) — honestly unknown.
+      relationshipCompleteness: 'unknown',
     });
   }
 
@@ -108,7 +132,19 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   };
 }
 
-function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, digestEntry) {
+// Fields Graph itself owns for this type — SERVER_OWNED_ALWAYS applies to
+// every collected type, SERVER_OWNED.get(type) adds type-specific fields.
+// This is the SAME registry engine/cir/serverOwned.mjs already uses for
+// hashing/PATCH projection (spec M2.3); it is reused here, never
+// re-derived, so a future classification fix in that file automatically
+// keeps this report accurate. A type absent from SERVER_OWNED (nothing in
+// DESCRIPTORS) reads null — an honest unknown, never an invented empty list.
+function irrecoverableFieldsFor(resourceType) {
+  if (!SERVER_OWNED.has(resourceType)) return null;
+  return [...new Set([...SERVER_OWNED_ALWAYS, ...SERVER_OWNED.get(resourceType)])].sort();
+}
+
+function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, digestEntry, catalogEntry) {
   const lastCollectedAt = observation?.completed_at ?? null;
   let status;
   let itemCount = null;
@@ -170,6 +206,17 @@ function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, di
     // Neither is derived from the other — see capabilities.mjs's header.
     remappable: descriptor.remappable,
     writeCapability: capabilitySummaryFor(descriptor.type),
+    // Declared endpoint/version (roadmap task-54): from the catalog
+    // registration itself, present even before any collection ever ran —
+    // distinct from detail.endpoint/detail.apiVersion above, which is
+    // measured and only populated once an observation carries it. No
+    // catalog entry (a descriptor with nothing registered for it) reads null.
+    declaredEndpoint: catalogEntry ? { path: catalogEntry.path, apiVersion: catalogEntry.version } : null,
+    irrecoverableFields: irrecoverableFieldsFor(descriptor.type),
+    // No relationship/edge observation exists for any catalogue type yet
+    // (roadmap task-57/58 introduce that collection) — honestly unknown
+    // rather than a fabricated claim, for every type including this one.
+    relationshipCompleteness: 'unknown',
   };
 }
 

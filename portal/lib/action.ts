@@ -14,6 +14,7 @@ import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs } from "../../engine/jobs/queue.mjs";
 import { connect } from "../../engine/store/db.mjs";
+import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -356,6 +357,50 @@ export function guardedJobList(
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Schedule edits are local configuration writes, using the scheduler's own validation
+// and update boundary. Tenant ownership is checked before handing it a schedule id.
+export function guardedScheduleUpdate(deps: GuardDeps = {}) {
+  return guarded(
+    { action: "schedules:update", capability: "configuration", recordAttempt: true },
+    async ({ client, principalId, tenantRef, request }) => {
+      const { id, ...changes } = await readActionParams(request);
+      if (typeof id !== "string" || !UUID_PATTERN.test(id)) return notFound();
+      const { rows: [row] } = await client.query(
+        "SELECT * FROM schedule WHERE id = $1 AND tenant_ref = $2", [id, tenantRef],
+      );
+      if (!row) return notFound();
+      const cadence = changes.cadence as Record<string, unknown> | null | undefined;
+      if (!Object.keys(changes).length
+        || Object.keys(changes).some((key) => !["cadence", "cron_override", "enabled"].includes(key))
+        || ("enabled" in changes && typeof changes.enabled !== "boolean")
+        || ("cron_override" in changes && changes.cron_override !== null && typeof changes.cron_override !== "string")
+        || ("cadence" in changes && (!cadence || typeof cadence !== "object" || Array.isArray(cadence)
+          || Object.keys(cadence).some((key) => !["every", "n", "atTime"].includes(key))
+          || !["hour", "day", "week"].includes(String(cadence.every))
+          || (cadence.atTime != null && typeof cadence.atTime !== "string")))) {
+        throw new InvalidActionRequest();
+      }
+      try {
+        const candidate = { ...row, ...changes };
+        // Keep the builder's saved cadence valid even while raw cron takes precedence.
+        validateSchedule({ ...candidate, cron_override: null });
+        validateSchedule(candidate);
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "invalid_schedule" },
+          { status: 400, headers: NO_STORE });
+      }
+      try {
+        const schedule = await updateSchedule(client, { id: principalId }, id, changes);
+        return Response.json({ schedule }, { headers: NO_STORE });
+      } catch (error) {
+        if (error instanceof Error && error.message === "not authorized to edit schedules") return forbidden();
+        throw error;
+      }
+    },
+    deps,
+  );
+}
 
 export function guardedJobShow(
   deps: GuardDeps = {},

@@ -93,6 +93,7 @@ test("every server-rendered data page rejects before its loader without a read g
     notifications,
     principals,
     evidence,
+    schedules,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -109,6 +110,7 @@ test("every server-rendered data page rejects before its loader without a read g
     import("../app/notifications/page"),
     import("../app/principals/page"),
     import("../app/evidence/page"),
+    import("../app/schedules/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -131,6 +133,7 @@ test("every server-rendered data page rejects before its loader without a read g
     ["/notifications", notifications],
     ["/principals", principals],
     ["/evidence", evidence],
+    ["/schedules", schedules],
   ] as const) {
     await renderWithoutReadGrant(
       route,
@@ -160,6 +163,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     notifications,
     principals,
     evidence,
+    schedules,
     workUnitModule,
     workModule,
   ] = await Promise.all([
@@ -176,6 +180,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     import("../app/notifications/page"),
     import("../app/principals/page"),
     import("../app/evidence/page"),
+    import("../app/schedules/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -198,6 +203,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     ["/notifications", notifications],
     ["/principals", principals],
     ["/evidence", evidence],
+    ["/schedules", schedules],
   ] as const) {
     await renderWithoutReadGrant(
       route,
@@ -321,9 +327,9 @@ test("requireReadAccess rejects a read grant without a principal identifier", as
   );
 });
 
-test("jobs pages do not reach their API database loader for unauthenticated or no-read requests", async () => {
-  const [jobs, job, workUnitModule, workModule] = await Promise.all([
-    import("../app/jobs/page"), import("../app/jobs/[id]/page"),
+test("jobs and schedules pages do not reach their API database loader for unauthenticated or no-read requests", async () => {
+  const [jobs, job, schedules, workUnitModule, workModule] = await Promise.all([
+    import("../app/jobs/page"), import("../app/jobs/[id]/page"), import("../app/schedules/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
   ]);
@@ -344,7 +350,7 @@ test("jobs pages do not reach their API database loader for unauthenticated or n
     return originalRead(...args);
   }) as typeof fs.readFileSync;
   try {
-    for (const [route, module] of [["/jobs", jobs], ["/jobs/[id]", job]] as const) {
+    for (const [route, module] of [["/jobs", jobs], ["/jobs/[id]", job], ["/schedules", schedules]] as const) {
       loaderCalls = 0;
       const page = defaultPage(module);
       for (const requestHeaders of [

@@ -8,7 +8,11 @@
  * (SENTINEL fix, WELL_KNOWN app ids, built-in role templates) and must not be
  * re-derived here. Task 48 adds an optional persistent identity context
  * (engine/store/resourceSymbols.mjs) as a fallback lookup; see
- * canonicalizeAll's own comment.
+ * canonicalizeAll's own comment. Task 50 layers an optional recovery context
+ * (engine/store/resourceLineage.mjs's loadRecoveryContext) as a SECOND, lower
+ * -priority fallback for the one case task 48's context structurally cannot
+ * cover: a tombstoned id whose lineage has an evidenced recovery link to a
+ * brand-new successor id.
  */
 import { classify, buildIndex, walkGuids, ownIdentifiers } from '../../tools/tenant-probe/references.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -113,8 +117,15 @@ const GLOBAL_ROLE_SYMBOLS = new Map([
  * from the payload the semantic hash covers — and the reference carries
  * `stale: true`. Ids absent from both the batch and the context stay
  * unresolved (`unknown:<guid>`), exactly as before.
+ *
+ * `lineage` (engine/store/resourceLineage.mjs's loadRecoveryContext) is a
+ * SECOND fallback, consulted only when both the current batch and `context`
+ * fail to resolve a guid: it covers a tombstoned id whose lineage has an
+ * evidenced recovery link to a brand-new successor. Like `context`, a
+ * resolution through it is recorded as stale provenance — never current
+ * authorization for a write.
  */
-export function canonicalizeAll(collected, { context } = {}) {
+export function canonicalizeAll(collected, { context, lineage } = {}) {
   const index = buildIndex(collected);
   const idToSymbol = new Map();
   const resources = [];
@@ -129,7 +140,7 @@ export function canonicalizeAll(collected, { context } = {}) {
     }
     const idk = idKey(obj, type);
     if (idk) idToSymbol.set(idk, key);
-    const resource = buildResource(type, obj, key, index, idToSymbol, context);
+    const resource = buildResource(type, obj, key, index, idToSymbol, context, lineage);
     byKey.set(key, resource);
     resources.push(resource);
   };
@@ -160,8 +171,13 @@ export function canonicalizeAll(collected, { context } = {}) {
       const current = idToSymbol.get(guid.toLowerCase()) ?? GLOBAL_ROLE_SYMBOLS.get(guid.toLowerCase());
       if (current) return current;
       const historical = context?.get(guid.toLowerCase()) ?? null;
-      if (historical) staleKeyParts.push(guid.toLowerCase());
-      return historical?.symbol ?? null;
+      if (historical) {
+        staleKeyParts.push(guid.toLowerCase());
+        return historical.symbol;
+      }
+      const recovered = lineage?.get(guid.toLowerCase()) ?? null;
+      if (recovered) staleKeyParts.push(guid.toLowerCase());
+      return recovered?.symbol ?? null;
     };
     const key = keyFor('roleAssignment', obj, { resolveSymbol });
     addResource('roleAssignment', obj, key);
@@ -175,7 +191,7 @@ export function canonicalizeAll(collected, { context } = {}) {
   return resources;
 }
 
-function buildResource(type, obj, key, index, idToSymbol, context) {
+function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
   const catalogEntry = CATALOG_BY_TYPE.get(type);
   const ownIds = ownIdentifiers(type, obj);
   const references = [];
@@ -186,11 +202,12 @@ function buildResource(type, obj, key, index, idToSymbol, context) {
     seen.add(path);
     const batchSymbol = idToSymbol.get(guid.toLowerCase());
     const historical = batchSymbol ? null : (context?.get(guid.toLowerCase()) ?? null);
+    const recovered = (batchSymbol || historical) ? null : (lineage?.get(guid.toLowerCase()) ?? null);
     const c = classifyCanonicalReference({
-      path, guid, ownIds, index, resolvedSymbol: batchSymbol ?? historical?.symbol,
+      path, guid, ownIds, index, resolvedSymbol: batchSymbol ?? historical?.symbol ?? recovered?.symbol,
     });
     if (c.klass === 'identity' || c.klass === 'nonReference') continue;
-    const stale = c.klass === 'resolvable' && historical != null;
+    const stale = c.klass === 'resolvable' && (historical != null || recovered != null);
     if (stale) staleReferences.push(path);
     references.push({ field: path, symbol: symbolFor(c, guid), required: true, klass: c.klass, ...(stale ? { stale: true } : {}) });
   }

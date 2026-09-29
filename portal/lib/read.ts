@@ -10,6 +10,8 @@ interface HeaderSource {
 }
 
 export const DATA_SURFACES = {
+  schedulesApi: { capability: "read", source: "api/schedules/route.ts" },
+  schedulesPage: { capability: "read", source: "schedules/page.tsx" },
   evidenceApi: { capability: "read", source: "api/evidence/route.ts" },
   evidenceVerifyApi: { capability: "read", source: "api/evidence/verify/route.ts" },
   evidencePage: { capability: "read", source: "evidence/page.tsx" },

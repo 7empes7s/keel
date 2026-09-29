@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
+import { test } from 'node:test';
 import {
   classifyDryRunStatus,
   computeCurrentStateFingerprint,
@@ -50,6 +51,16 @@ for (const [field, value] of [
   const changed = computePlanDigest({ ...basePlan, [field]: value });
   assert.notEqual(changed, computePlanDigest(basePlan), `changing ${field} must change the plan digest`);
 }
+
+test('manual-restore plan digest is unchanged from pre-task-55 artifacts', () => {
+  const fields = { snapshotId: 'snap-pin-1', selection: ['group:Admins'], closureKeys: ['group:Admins'],
+    targetTenantId: 'tenant-pin', collectorConfigPath: '/etc/keel/collector.json', targetConfigPath: '/etc/keel/target.json',
+    reconciliationResources: null, waves: [['group:Admins']], patches: [] };
+  const legacy = '5166cb535775f6877b0ed03be4ed6ab6e6f1cf8e9c1824f60123c56b04390de7';
+  assert.equal(computePlanDigest(fields), legacy);
+  assert.equal(computePlanDigest({ ...fields, automationContext: undefined }), legacy);
+  assert.equal(computePlanDigest({ ...fields, automationContext: null }), legacy);
+});
 
 // --- computeCurrentStateFingerprint: the target's current shape, restricted to the closure ---
 
@@ -160,9 +171,11 @@ try {
   assert.equal(created.status, 'completed');
   assert.deepEqual(created.selection, fields.selection);
   assert.deepEqual(created.results, fields.results);
+  assert.equal(created.automationContext, null);
 
   const fetched = await getDryRunArtifact(client, { id: fields.id, tenantRef });
   assert.deepEqual(fetched, created);
+  assert.equal(fetched.automationContext, null);
 
   // A colliding ID must raise PostgreSQL's unique_violation, never replace the
   // reviewed changes or promotion decision (nor silently discard the new write).

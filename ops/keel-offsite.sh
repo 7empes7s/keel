@@ -53,24 +53,16 @@ fail() {
 
 # --- locate the most recent dump -------------------------------------------------
 
-LATEST_DATE_DIR=""
-LATEST_DATE=""
-for d in "$BACKUP_ROOT"/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
-  [ -d "$d" ] || continue
-  candidate="$d/keel-db.sql.gz"
-  [ -f "$candidate" ] || continue
-  this_date="$(basename "$d")"
-  if [ -z "$LATEST_DATE" ] || [[ "$this_date" > "$LATEST_DATE" ]]; then
-    LATEST_DATE="$this_date"
-    LATEST_DATE_DIR="$d"
-  fi
-done
-
-if [ -z "$LATEST_DATE_DIR" ]; then
-  fail "no keel-db.sql.gz found under $BACKUP_ROOT/<YYYY-MM-DD>/"
-fi
-
-LOCAL_DUMP="$LATEST_DATE_DIR/keel-db.sql.gz"
+# Serialize verification through durable shipment recording, including manual runs.
+exec 9>"$BACKUP_ROOT/.keel-offsite.lock"
+flock -x 9
+MANIFEST_TOOL="$(dirname "$(readlink -f "$0")")/../engine/schedules/offsite.mjs"
+SHIPPED_MANIFEST="$BACKUP_ROOT/keel-db-shipped-manifest.json"
+PINNED_MANIFEST="$(mktemp "$BACKUP_ROOT/.keel-offsite-manifest.XXXXXX")"
+trap 'rm -f "$PINNED_MANIFEST"' EXIT
+cp "$BACKUP_ROOT/keel-db-manifest.json" "$PINNED_MANIFEST"
+LOCAL_DUMP="$(node "$MANIFEST_TOOL" verify "$PINNED_MANIFEST" "$SHIPPED_MANIFEST")"
+LATEST_DATE="$(basename "$(dirname "$LOCAL_DUMP")")"
 REMOTE_NAME="keel-db-${LATEST_DATE}.sql.gz"
 
 log "candidate dump: $LOCAL_DUMP (dated $LATEST_DATE)"
@@ -108,6 +100,8 @@ if [ "$LOCAL_SHA_STATUS" -ne 0 ] || [ -z "$LOCAL_SHA256" ]; then
   fail "could not compute local sha256 for $LOCAL_DUMP (sha256sum exited $LOCAL_SHA_STATUS)"
 fi
 log "local sha256: $LOCAL_SHA256"
+MANIFEST_SHA256="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).checksum)' "$PINNED_MANIFEST")"
+[ "$LOCAL_SHA256" = "$MANIFEST_SHA256" ] || fail "dump changed after manifest verification"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "DRY RUN: verification passed. Would ship $LOCAL_DUMP -> $REMOTE_USER_HOST:$REMOTE_DIR/$REMOTE_NAME"
@@ -158,6 +152,7 @@ if ! ssh "${SSH_OPTS[@]}" "$REMOTE_USER_HOST" "mv '$REMOTE_TMP' '$REMOTE_PATH'";
   fail "could not promote $REMOTE_TMP to $REMOTE_PATH on remote host"
 fi
 log "offsite copy in place: ${REMOTE_USER_HOST}:${REMOTE_PATH}"
+node "$MANIFEST_TOOL" record "$PINNED_MANIFEST" "$SHIPPED_MANIFEST"
 
 # --- prune remote copies older than retention -------------------------------------
 

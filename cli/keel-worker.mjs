@@ -200,7 +200,7 @@ export const JOB_HANDLERS = {
     acceptsDbUrl: false,
     argsFor(params = {}) {
       if (params === null || typeof params !== 'object' || Array.isArray(params)
-          || Object.keys(params).some((key) => key !== 'dryRun')
+          || Object.keys(params).some((key) => !['dryRun', 'tenantRef'].includes(key))
           || (params.dryRun !== undefined && typeof params.dryRun !== 'boolean')) {
         throw new Error('offsite params must contain only an optional boolean dryRun');
       }
@@ -247,6 +247,8 @@ export const JOB_HANDLERS = {
     script: join(__dirname, 'keel-drift.mjs'),
     argsFor(params = {}) {
       const args = ['detect'];
+      if (params.snapshotId !== undefined) args.push('--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'));
+      if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       if (params.config !== undefined) {
         args.push('--config', requireString(params.config, 'params.config'));
       }
@@ -494,39 +496,60 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     return;
   }
 
-  const startedAt = Date.now();
-  emitJobEvent(job, 'job.running', eventSink);
-  const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
-  const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
-    env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job) },
-  });
-  onInFlightChange({ job, terminate: execution.terminate });
-  const heartbeat = setInterval(() => {
-    touchHeartbeat(client, { id: job.id, workerId: job.worker_id }).catch((err) => {
-      console.error(`job ${job.id}: heartbeat failed — ${err.message}`);
-    });
-  }, JOB_HEARTBEAT_INTERVAL_MS);
+  // Both entry points run the same collection. Hold the session lock until
+  // the child exits, even if a stale heartbeat requeues its job in the meantime.
+  const collection = ['collect', 'backup'].includes(job.kind);
+  if (collection) {
+    const { rows: [lock] } = await client.query(
+      "SELECT pg_try_advisory_lock(hashtext(current_database()), hashtext('keel:collection')) AS acquired",
+    );
+    if (!lock.acquired) {
+      await client.query(
+        `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL,
+         worker_id = NULL, not_before = now() + interval '5 seconds' WHERE id = $1`, [job.id],
+      );
+      return;
+    }
+  }
   try {
-    const { stdout, stderr } = await execution.completed;
-    const output = { stdout, stderr, durationMs: Date.now() - startedAt };
-    const completed = await complete(client, {
-      id: job.id,
-      result: handler.resultFor ? handler.resultFor(output, job.params ?? {}) : output,
+    const startedAt = Date.now();
+    emitJobEvent(job, 'job.running', eventSink);
+    const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
+    const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
+      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job) },
     });
-    emitJobEvent(completed ?? job, 'job.succeeded', eventSink);
-    await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
-    console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
-  } catch (err) {
-    const message = [
-      err.code !== undefined ? `exit code ${err.code}` : err.message,
-      err.stderr ? `stderr: ${err.stderr}` : null,
-      err.stdout ? `stdout: ${err.stdout}` : null,
-    ].filter(Boolean).join('\n');
-    await failJob(message);
-    console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${redactPayload(message)}`);
+    onInFlightChange({ job, terminate: execution.terminate });
+    const heartbeat = setInterval(() => {
+      touchHeartbeat(client, { id: job.id, workerId: job.worker_id }).catch((err) => {
+        console.error(`job ${job.id}: heartbeat failed — ${err.message}`);
+      });
+    }, JOB_HEARTBEAT_INTERVAL_MS);
+    try {
+      const { stdout, stderr } = await execution.completed;
+      const output = { stdout, stderr, durationMs: Date.now() - startedAt };
+      const completed = await complete(client, {
+        id: job.id,
+        result: handler.resultFor ? handler.resultFor(output, job.params ?? {}) : output,
+      });
+      emitJobEvent(completed ?? job, 'job.succeeded', eventSink);
+      await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
+      console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
+    } catch (err) {
+      const message = [
+        err.code !== undefined ? `exit code ${err.code}` : err.message,
+        err.stderr ? `stderr: ${err.stderr}` : null,
+        err.stdout ? `stdout: ${err.stdout}` : null,
+      ].filter(Boolean).join('\n');
+      await failJob(message);
+      console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${redactPayload(message)}`);
+    } finally {
+      clearInterval(heartbeat);
+      onInFlightChange(null);
+    }
   } finally {
-    clearInterval(heartbeat);
-    onInFlightChange(null);
+    if (collection) await client.query(
+      "SELECT pg_advisory_unlock(hashtext(current_database()), hashtext('keel:collection'))",
+    );
   }
 }
 

@@ -17,14 +17,21 @@ import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineRecord,
   BaselinesData,
+  CapabilityClaim,
   CoverageData,
+  CoverageDiagnosis,
+  CoverageObservation,
   CoverageType,
   DashboardAlert,
   DashboardData,
+  DeclaredEndpoint,
+  DiagnosisState,
   DriftData,
   DriftRecord,
   Fidelity,
   ProtectionState,
+  WriteCapabilitySummary,
+  WriteOperationCapability,
 } from "@/lib/types";
 
 interface KeelClient {
@@ -91,6 +98,89 @@ function protectionState(
   }
 }
 
+const CAPABILITY_CLAIMS: readonly CapabilityClaim[] = [
+  "declared", "fixture-tested", "live-qualified", "unsupported", "unknown",
+];
+const DIAGNOSIS_STATES: readonly DiagnosisState[] = [
+  "missing-license", "disabled-plan", "missing-scope", "missing-role", "unknown",
+];
+const PROJECTION_STATES = ["reviewed-empty", "unreviewed", "has-rules"] as const;
+
+function capabilityClaim(value: unknown): CapabilityClaim {
+  return CAPABILITY_CLAIMS.includes(value as CapabilityClaim) ? (value as CapabilityClaim) : "unknown";
+}
+
+function normalizeOperationCapability(raw: UnknownRecord): WriteOperationCapability {
+  return {
+    claim: capabilityClaim(raw.claim),
+    credentialMode: raw.credentialMode === "collector" || raw.credentialMode === "restorer"
+      ? raw.credentialMode
+      : null,
+    idOutcome: typeof raw.idOutcome === "string" ? raw.idOutcome : null,
+    handler: typeof raw.handler === "string" ? raw.handler : null,
+    proofRef: typeof raw.proofRef === "string" ? raw.proofRef : null,
+    projection: PROJECTION_STATES.includes(raw.projection as typeof PROJECTION_STATES[number])
+      ? (raw.projection as WriteOperationCapability["projection"])
+      : "unreviewed",
+  };
+}
+
+function normalizeWriteCapability(raw: unknown): WriteCapabilitySummary | null {
+  const record = raw as UnknownRecord | null;
+  const operations = record?.operations as UnknownRecord | undefined;
+  if (!record || !operations) return null;
+  return {
+    resourceType: String(record.resourceType),
+    operations: {
+      create: normalizeOperationCapability((operations.create ?? {}) as UnknownRecord),
+      update: normalizeOperationCapability((operations.update ?? {}) as UnknownRecord),
+      delete: normalizeOperationCapability((operations.delete ?? {}) as UnknownRecord),
+      "restore-soft-deleted": normalizeOperationCapability(
+        (operations["restore-soft-deleted"] ?? {}) as UnknownRecord,
+      ),
+    },
+  };
+}
+
+function normalizeDiagnosis(raw: unknown): CoverageDiagnosis | null {
+  const record = raw as UnknownRecord | null;
+  if (!record) return null;
+  const rawOriginal = (record.original ?? null) as UnknownRecord | null;
+  return {
+    diagnosis: DIAGNOSIS_STATES.includes(record.diagnosis as DiagnosisState)
+      ? (record.diagnosis as DiagnosisState)
+      : "unknown",
+    reason: typeof record.reason === "string" ? record.reason : undefined,
+    original: {
+      httpStatus: typeof rawOriginal?.httpStatus === "number" ? rawOriginal.httpStatus : null,
+      graphCode: typeof rawOriginal?.graphCode === "string" ? rawOriginal.graphCode : null,
+    },
+    confirmed: record.confirmed && typeof record.confirmed === "object"
+      ? (record.confirmed as Record<string, unknown>)
+      : undefined,
+  };
+}
+
+function normalizeDeclaredEndpoint(raw: unknown): DeclaredEndpoint | null {
+  const record = raw as UnknownRecord | null;
+  if (!record || typeof record.path !== "string" || typeof record.apiVersion !== "string") return null;
+  return { path: record.path, apiVersion: record.apiVersion };
+}
+
+function normalizeObservation(raw: unknown): CoverageObservation | null {
+  const record = raw as UnknownRecord | null;
+  if (!record || typeof record.observationId !== "string") return null;
+  const rawWindow = (record.window ?? null) as UnknownRecord | null;
+  return {
+    observationId: record.observationId,
+    window: rawWindow && typeof rawWindow.startedAt === "string" && typeof rawWindow.endedAt === "string"
+      ? { startedAt: rawWindow.startedAt, endedAt: rawWindow.endedAt }
+      : null,
+    completeness: typeof record.completeness === "string" ? record.completeness : "unknown",
+    evidenceLevel: typeof record.evidenceLevel === "string" ? record.evidenceLevel : "unknown",
+  };
+}
+
 function normalizeCoverageType(raw: UnknownRecord): CoverageType {
   const rawFidelity = (raw.fidelity ?? null) as UnknownRecord | null;
   const verifiedBy = (rawFidelity?.verifiedBy ?? null) as UnknownRecord | null;
@@ -129,6 +219,14 @@ function normalizeCoverageType(raw: UnknownRecord): CoverageType {
     criticality: typeof raw.criticality === "string" ? raw.criticality : null,
     blastRadius: typeof raw.blastRadius === "string" ? raw.blastRadius : null,
     remappable: typeof raw.remappable === "boolean" ? raw.remappable : null,
+    declaredEndpoint: normalizeDeclaredEndpoint(raw.declaredEndpoint),
+    irrecoverableFields: Array.isArray(raw.irrecoverableFields)
+      ? raw.irrecoverableFields.filter((field): field is string => typeof field === "string")
+      : null,
+    relationshipCompleteness: "unknown",
+    diagnosis: normalizeDiagnosis(raw.diagnosis),
+    writeCapability: normalizeWriteCapability(raw.writeCapability),
+    observation: normalizeObservation(raw.observation),
   };
 }
 

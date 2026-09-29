@@ -953,6 +953,8 @@ dd {
 .stale-badge,
 .blast-badge,
 .change-badge,
+.diagnosis-badge,
+.claim-badge,
 .tier-label,
 .boolean-value {
   display: inline-flex;
@@ -1036,6 +1038,128 @@ dd {
 .tier1 {
   background: var(--failed-bg);
   color: var(--failed);
+}
+
+/* Roadmap task-54: capability matrix badges. A confirmed diagnosis or a
+   claim below live-qualified is deliberately colored like a partial/failed
+   state — never rendered as a neutral checkmark that would collapse the
+   distinction the underlying data makes on purpose. */
+.diagnosis-missing-license,
+.diagnosis-disabled-plan,
+.diagnosis-missing-scope,
+.diagnosis-missing-role {
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.diagnosis-unknown {
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
+}
+
+.claim-live-qualified {
+  background: var(--protected-bg);
+  color: var(--protected);
+}
+
+.claim-fixture-tested {
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.claim-declared {
+  background: var(--readonly-bg);
+  color: var(--readonly);
+}
+
+.claim-unsupported,
+.claim-unknown {
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
+}
+
+.capability-matrix {
+  font-size: 0.75rem;
+}
+
+.capability-matrix > summary {
+  cursor: pointer;
+  color: var(--text-soft);
+  font-weight: 680;
+  white-space: normal;
+}
+
+.capability-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: var(--space-xs) 0 0;
+}
+
+.capability-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.capability-row dt {
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 680;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.capability-row dd {
+  margin: 0;
+}
+
+.endpoint-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-detail + .endpoint-detail {
+  margin-top: var(--space-2xs);
+}
+
+.field-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.field-list code {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+.operation-claims {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.operation-claims li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+.observation-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.observation-links {
+  display: flex;
+  gap: var(--space-sm);
 }
 
 .tier2 {

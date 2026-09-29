@@ -34,6 +34,162 @@ function fidelityDetail(item: CoverageType) {
   );
 }
 
+// Roadmap task-54: a per-type expandable capability matrix. A native
+// <details> disclosure keeps the main table scannable while still rendering
+// every required evidence dimension — endpoint/version, pagination, the
+// prerequisite diagnosis, operation-specific write status, the honestly-
+// unknown relationship completeness, irrecoverable fields and the linked
+// observation — so a "full" fidelity badge in the row above is never the
+// only thing a reader sees. <details>/<summary> is native keyboard- and
+// narrow-screen-accessible without any additional script.
+function observationQuery(item: CoverageType) {
+  const observation = item.observation;
+  return new URLSearchParams({
+    observationId: observation?.observationId ?? "",
+    resourceType: item.type,
+    startedAt: observation?.window?.startedAt ?? "",
+    endedAt: observation?.window?.endedAt ?? "",
+  }).toString();
+}
+
+function capabilityMatrix(item: CoverageType) {
+  const irrecoverable = item.irrecoverableFields ?? null;
+  const summaryLabel = irrecoverable && irrecoverable.length > 0
+    ? `${irrecoverable.length} field${irrecoverable.length === 1 ? "" : "s"} not write-recoverable`
+    : "Capability & evidence";
+
+  return (
+    <details className="capability-matrix">
+      <summary>{summaryLabel} · Relationships {item.relationshipCompleteness ?? "unknown"}</summary>
+      <dl className="capability-detail-list">
+        <div className="capability-row">
+          <dt>Endpoint</dt>
+          <dd>
+            {item.declaredEndpoint ? (
+              <span className="endpoint-detail">
+                <code>{item.declaredEndpoint.path}</code>
+                <small>{item.declaredEndpoint.apiVersion} · declared</small>
+              </span>
+            ) : (
+              <span className="muted-value">Unknown</span>
+            )}
+            {item.detail?.endpoint ? (
+              <span className="endpoint-detail">
+                <code>{item.detail.endpoint}</code>
+                <small>
+                  {item.detail.apiVersion ?? "unknown version"} · measured
+                </small>
+              </span>
+            ) : null}
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Pagination evidence</dt>
+          <dd>
+            {item.detail?.pagesCompleted === null || item.detail?.pagesCompleted === undefined ? (
+              <span className="muted-value">Unknown</span>
+            ) : (
+              <span>
+                {item.detail.pagesCompleted.toLocaleString("en-GB")} page
+                {item.detail.pagesCompleted === 1 ? "" : "s"} completed
+              </span>
+            )}
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Prerequisite diagnosis</dt>
+          <dd>
+            {item.diagnosis ? (
+              <span className={`diagnosis-badge diagnosis-${item.diagnosis.diagnosis}`}>
+                {words(item.diagnosis.diagnosis)}
+              </span>
+            ) : (
+              <span className="muted-value">Not diagnosed</span>
+            )}
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Relationship completeness</dt>
+          <dd>
+            <span className="muted-value">{words(item.relationshipCompleteness ?? "unknown")}</span>
+            <small className="cell-note">No relationship/edge collection exists yet</small>
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Irrecoverable fields</dt>
+          <dd>
+            {irrecoverable === null ? (
+              <span className="muted-value">Unknown</span>
+            ) : irrecoverable.length === 0 ? (
+              <span className="muted-value">None declared</span>
+            ) : (
+              <span className="field-list">
+                {irrecoverable.map((field) => (
+                  <code key={field}>{field}</code>
+                ))}
+              </span>
+            )}
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Write capability by operation</dt>
+          <dd>
+            {item.writeCapability ? (
+              <ul className="operation-claims">
+                {Object.entries(item.writeCapability.operations).map(([operation, capability]) => (
+                  <li key={operation}>
+                    <strong>{words(operation)}</strong>
+                    <span className={`claim-badge claim-${capability.claim}`}>
+                      {words(capability.claim)}
+                    </span>
+                    <small>Projection review: {capability.projection}</small>
+                    <small>Proof: <code>{capability.proofRef ?? "Unknown"}</code></small>
+                    <small>Credential mode: {capability.credentialMode ?? "Unknown"}</small>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="muted-value">Unknown</span>
+            )}
+          </dd>
+        </div>
+
+        <div className="capability-row">
+          <dt>Observation</dt>
+          <dd>
+            {item.observation ? (
+              <span className="observation-detail">
+                <code>{item.observation.observationId}</code>
+                {item.observation.window ? (
+                  <small>
+                    {formatTimestamp(item.observation.window.startedAt)} –{" "}
+                    {formatTimestamp(item.observation.window.endedAt)}
+                  </small>
+                ) : (
+                  <small className="unverified-copy">Window unknown</small>
+                )}
+                <small>Completeness: {item.observation.completeness} · Evidence: {item.observation.evidenceLevel}</small>
+                <small>Benchmark comparison unavailable until a benchmark view records a matching observation.</small>
+                <nav aria-label={`Linked views for ${item.type}`} className="observation-links">
+                  <a href={`/backups?${observationQuery(item)}`}>Backups</a>
+                  <a href={`/drift?${observationQuery(item)}`}>Drift</a>
+                </nav>
+              </span>
+            ) : (
+              <span className="muted-value">No observation recorded</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </details>
+  );
+}
+
 function CoverageTable({ items }: { items: CoverageType[] }) {
   return (
     <div className="table-scroll">
@@ -50,6 +206,7 @@ function CoverageTable({ items }: { items: CoverageType[] }) {
             <th className="number-column" scope="col">Items</th>
             <th scope="col">Collection freshness</th>
             <th scope="col">Last collection</th>
+            <th scope="col">Capability & evidence</th>
           </tr>
         </thead>
         <tbody>
@@ -125,6 +282,7 @@ function CoverageTable({ items }: { items: CoverageType[] }) {
                   {formatTimestamp(item.lastCollectedAt)}
                 </time>
               </td>
+              <td data-label="Capability & evidence">{capabilityMatrix(item)}</td>
             </tr>
           ))}
         </tbody>
@@ -175,6 +333,13 @@ export function CoverageReport({ data }: { data: CoverageData }) {
 
   return (
     <>
+      {new Set(data.types.flatMap((item) => item.observation?.window
+        ? [`${item.observation.window.startedAt}/${item.observation.window.endedAt}`] : [])).size > 1 ? (
+        <aside className="honesty-note" aria-label="Observation mismatch">
+          <strong>Observation windows differ.</strong>
+          <p>These observations are not simultaneous. Compare the observation IDs and windows before linking evidence across views.</p>
+        </aside>
+      ) : null}
       <section aria-labelledby="posture-heading" className="posture-section">
         <div className="section-heading-row">
           <div>

@@ -4,6 +4,7 @@
 // node keel-drift.mjs detect --config /etc/keel/tenant.json [--db-url $KEEL_DB_URL]
 // node keel-drift.mjs list [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 // node keel-drift.mjs show <driftId> [--db-url $KEEL_DB_URL]
+import { snapshotHasFullCoverage } from '../engine/schedules/completions.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
@@ -124,8 +125,10 @@ function isObject(value) {
 }
 
 async function detect() {
-  const config = readConfig();
-  const tenantRef = tenantRefFor(config);
+  const suppliedSnapshotId = arg('snapshot-id');
+  const config = suppliedSnapshotId ? null : readConfig();
+  const tenantRef = suppliedSnapshotId ? arg('tenant-ref') : tenantRefFor(config);
+  if (!tenantRef) throw new Error('--tenant-ref is required with --snapshot-id');
   const client = await connect(dbUrl());
   try {
     const baseline = await getActiveBaseline(client, { tenantRef });
@@ -133,28 +136,38 @@ async function detect() {
 
     // /etc/keel/tenant.json is the Collector registration. GraphReader has no
     // write method, so this collection path cannot issue a tenant mutation.
-    const { accessToken } = await getToken(config);
-    const reader = new GraphReader(async () => accessToken);
-    const resources = canonicalizeAll(await collectM1(reader));
-    const snapshotId = await createSnapshot(client, { tenantRef });
-    const coverageDigest = {};
+    let snapshotId = suppliedSnapshotId;
+    if (suppliedSnapshotId) {
+      const { rows: [snapshot] } = await client.query('SELECT * FROM snapshot WHERE id = $1 AND tenant_ref = $2', [snapshotId, tenantRef]);
+      if (!snapshotHasFullCoverage(snapshot)) throw new Error('drift-detect deferred: snapshot coverage is incomplete');
+    } else {
+      const { accessToken } = await getToken(config);
+      const reader = new GraphReader(async () => accessToken);
+      const resources = canonicalizeAll(await collectM1(reader));
+      snapshotId = await createSnapshot(client, { tenantRef });
+      const coverageDigest = {};
 
-    for (const resource of resources) {
-      coverageDigest[resource.resourceType] = (coverageDigest[resource.resourceType] ?? 0) + 1;
-      const versionId = await insertResourceVersion(client, {
-        snapshotId,
-        resource: { ...resource, fidelity: resource.provenance.fidelity },
-      });
-      await insertReferences(client, { fromVersion: versionId, references: resource.references });
+      for (const resource of resources) {
+        coverageDigest[resource.resourceType] = (coverageDigest[resource.resourceType] ?? 0) + 1;
+        const versionId = await insertResourceVersion(client, {
+          snapshotId,
+          resource: { ...resource, fidelity: resource.provenance.fidelity },
+        });
+        await insertReferences(client, { fromVersion: versionId, references: resource.references });
+      }
+      await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
     }
-    await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
 
     const [before, after, dispositions] = await Promise.all([
       baselineRows(client, baseline.id),
       getResourceVersions(client, { snapshotId }),
       activeIgnoreDispositions(client, tenantRef),
     ]);
-    const drift = diffSnapshots(before, after);
+    const coveredTypes = suppliedSnapshotId
+      ? Object.entries((await client.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId])).rows[0].coverage_digest)
+        .filter(([, entry]) => ['complete', 'complete-empty'].includes(entry?.outcome)).map(([type]) => type)
+      : null;
+    const drift = diffSnapshots(coveredTypes ? before.filter((row) => coveredTypes.includes(row.resource_type)) : before, after);
     const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
     const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));
 

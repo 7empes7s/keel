@@ -1,0 +1,15 @@
+[Unit]
+Description=KEEL schedule execution engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/keel
+Environment=TZ=UTC
+EnvironmentFile=/etc/keel/db.env
+ExecStart=/usr/bin/node /opt/keel/cli/keel-scheduler.mjs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keel-scheduler

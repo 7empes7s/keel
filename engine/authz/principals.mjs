@@ -30,6 +30,13 @@ export async function findPrincipalById(client, id) {
 
 export async function capabilitiesForPrincipal(client, principal, at = new Date()) {
   if (!principal?.id || principal.disabled_at) return [];
+  // System identities still pass through the normal disabled-principal and worker checks.
+  if (principal.system_kind === 'scheduler') {
+    const { rows } = await client.query(
+      "SELECT id FROM principal WHERE id = $1 AND system_kind = 'scheduler' AND disabled_at IS NULL", [principal.id],
+    );
+    return rows.length ? ['collect', 'configuration'] : [];
+  }
   const { rows } = await client.query(
     `SELECT rg.role
        FROM role_grant rg

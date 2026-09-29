@@ -348,6 +348,12 @@ END IF;
 END
 $schedule$;
 
+-- Task 43: a system identity has an exact, code-defined capability set, not a new role.
+ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind text
+  CHECK (system_kind = 'scheduler');
+CREATE UNIQUE INDEX IF NOT EXISTS principal_system_kind_idx ON principal(system_kind)
+  WHERE system_kind IS NOT NULL;
+
 -- Plan task 8 (portal-design §4.1): restore promotion requires an IMMUTABLE dry-run
 -- review, never a mutable selection. A dry run persists here — the exact source
 -- snapshot, raw selection, server-computed closure, target identity, waves, deferred

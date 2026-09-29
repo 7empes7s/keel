@@ -43,7 +43,7 @@ export default async function CoveragePage() {
         <strong>Declaration is not verification.</strong>
         <p>
           A fidelity declaration describes adapter intent. It is shown as verified only
-          when recovery-drill evidence exists. Zero-item collections are FAILED, and
+          when recovery-drill evidence exists. A completed zero-item collection is successful, and
           catalog types without a collecting descriptor are Not covered.
         </p>
         <span>

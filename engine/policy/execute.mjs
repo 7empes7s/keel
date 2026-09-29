@@ -38,6 +38,65 @@ import { findPrincipalById } from '../authz/principals.mjs';
 export const AUTOMATION_KILL_SWITCH_PATH = '/var/lib/keel/AUTOMATION_DISABLED';
 export const AUTOMATION_EXECUTION_EVIDENCE_KIND = 'automation-execution';
 
+/** Roadmap task-55: rediscover, server-side at execution time, which automation
+ * policies are still waiting on a remediate job for the given drift ids. The job
+ * payload deliberately carries only drift ids (see auto_remediation_execution), so
+ * this durable link table is the execution-time path back to the policy — the same
+ * table the worker's terminal outcome already uses. Only 'queued' rows constrain: a
+ * terminal row is history, and a human remediation has no row at all. */
+export async function resolveQueuedAutomationPolicies(client, { driftIds }) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT p.*
+       FROM auto_remediation_execution e
+       JOIN policy p ON p.id = e.policy_id
+      WHERE e.drift_id = ANY($1::uuid[])
+        AND e.status = 'queued'
+      ORDER BY p.created_at, p.id`,
+    [driftIds],
+  );
+  return rows;
+}
+
+/** Re-read automation policy rows fresh by id. Constraints are always derived from
+ * these live rows, never from anything a caller computed earlier; a policy that
+ * vanished between enqueue and execution fails closed. */
+export async function getAutomationPolicies(client, { policyIds }) {
+  const { rows } = await client.query(
+    'SELECT * FROM policy WHERE id = ANY($1::uuid[])',
+    [policyIds],
+  );
+  const found = new Set(rows.map((row) => row.id));
+  const missing = policyIds.filter((id) => !found.has(id));
+  if (missing.length > 0) throw new Error(`automation policy not found: ${missing.join(', ')}`);
+  return rows;
+}
+
+/** The execution-time policy state gate, mirroring executeAutoRemediation's own
+ * refusals: a policy disabled, paused, or awaiting run-as repair since enqueue must
+ * not act. Throws rather than returning an outcome because this runs inside the
+ * restore path, where the worker's terminal outcome records the refusal. */
+export async function assertExecutableAutomationPolicy(client, policy) {
+  if (existsSync(AUTOMATION_KILL_SWITCH_PATH)) {
+    throw new Error('automation-disabled: refusing automatic remediation');
+  }
+  if (policy.action !== 'auto_remediate') {
+    throw new Error(`automation policy ${policy.id} is no longer auto_remediate — refusing automatic remediation`);
+  }
+  if (!policy.enabled) {
+    throw new Error(`automation policy ${policy.id} is disabled — refusing automatic remediation`);
+  }
+  if (policy.paused_at) {
+    throw new Error(`automation policy ${policy.id} is paused — refusing automatic remediation`);
+  }
+  if (policy.run_as_repair_required) {
+    throw new Error(`automation policy ${policy.id} requires run-as repair — refusing automatic remediation`);
+  }
+  const runAsPrincipal = await findPrincipalById(client, policy.run_as_principal_id);
+  if (!(await can(client, runAsPrincipal, 'remediate', new Date()))) {
+    throw new Error(`run-as-not-authorized: automation policy ${policy.id} — refusing automatic remediation`);
+  }
+}
+
 async function countQueuedOrExecutedActions(client, { tenantRef, policyId, windowSeconds }) {
   const { rows } = await client.query(
     `SELECT count(*)::int AS count

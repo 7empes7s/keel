@@ -71,6 +71,14 @@ test('update narrows an unnamed field on a reviewed type to unknown; writablePro
   assert.equal(classifyForOperation('update', 'mailEnabled', 'group'), 'immutable');
   assert.equal(classifyForOperation('update', 'id', 'group'), 'serverOwned');
   assert.equal(classifyForOperation('update', 'someBrandNewField', 'user'), 'unknown');
+  // task-128: description was omitted from group's knownFields (task-51 regression),
+  // stripping it from every group PATCH and stalling restore convergence.
+  assert.equal(classifyForOperation('update', 'description', 'group'), 'writable');
+  assert.deepEqual(
+    writableProjection({ displayName: 'x', description: 'd' }, 'group'),
+    { displayName: 'x', description: 'd' },
+    'description survives the group writable projection',
+  );
 
   const payload = {
     id: 'u1',

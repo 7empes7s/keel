@@ -145,6 +145,9 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
           }],
         };
       },
+      // No auto_remediation_execution rows for this drift: the run keeps the
+      // operator-driven path, so no automationPolicyIds reach the dry-run call.
+      resolveQueuedAutomationPolicies: async () => [],
       runRestore: async (options) => {
         calls.push(options);
         if (options.mode === 'dry-run') return { artifactId: options.persistArtifactId };
@@ -164,6 +167,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
   assert.equal(calls[0].mode, 'dry-run');
   assert.equal(calls[0].persistArtifactId, 'automatic-remediation-artifact');
   assert.equal(calls[0].requestedBy, 'policy-run-as-principal');
+  assert.equal(calls[0].automationPolicyIds, undefined, 'no queued automation rows means no automation context on the dry run');
   assert.deepEqual(
     calls[1],
     {

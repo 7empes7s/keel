@@ -1,12 +1,31 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { getToken } from '../../tools/tenant-probe/auth.mjs';
-import { GraphReader } from '../../tools/tenant-probe/graph.mjs';
 import { collectM1, M1_TYPES } from './entraAdapter.mjs';
 
-const config = JSON.parse(readFileSync('/etc/keel/tenant.json', 'utf8'));
-let token = await getToken(config);
-const reader = new GraphReader(async () => token.accessToken);
+// Task 48's validation runs entirely against fixtures. Keep the collection
+// and canonicalization assertions without authenticating to a live tenant.
+const userId = '11111111-1111-1111-1111-111111111111';
+const orgId = '99999999-9999-9999-9999-999999999999';
+const fixtures = new Map([
+  ['/organization', [{ id: orgId, displayName: 'Fixture Org' }]],
+  ['/users', [{ id: userId, userPrincipalName: 'ana@contoso.test' }]],
+  ['/identity/conditionalAccess/policies', [{
+    id: '22222222-2222-2222-2222-222222222222',
+    displayName: 'Fixture MFA', state: 'enabledForReportingButNotEnforced',
+    conditions: { users: { includeUsers: [userId] } },
+  }]],
+  ['/roleManagement/directory/roleAssignments', [{
+    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    roleDefinitionId: '62e90394-69f5-4237-9190-012177145e10',
+    principalId: userId, directoryScopeId: '/',
+  }]],
+]);
+const requests = [];
+const reader = {
+  async collect(version, path) {
+    requests.push(path);
+    return { items: structuredClone(fixtures.get(path.split('?')[0]) ?? []), pages: 1, status: 200, error: null };
+  },
+};
 
 const collected = await collectM1(reader);
 const byType = Object.fromEntries(collected);
@@ -18,17 +37,22 @@ for (const type of M1_TYPES) {
   assert.ok(Array.isArray(byType[type]));
 }
 
-// The sandbox tenant has at least one Conditional Access policy and at least
-// one active role assignment (confirmed during the probe's own measurement
-// run) — a genuinely empty result here would indicate the query is wrong, not
-// that the tenant is empty.
+// Nonempty fixtures must reach the canonicalizer; empty types remain present.
 assert.ok(byType.conditionalAccessPolicy.length > 0, 'expected at least 1 CA policy');
 assert.ok(byType.roleAssignment.length > 0, 'expected at least 1 role assignment');
+assert.equal(requests.length, M1_TYPES.length);
+assert.ok(requests.some((path) => path.includes(`/organization/${orgId}/`)),
+  'organization-scoped reads use the observed organization id');
 
 // canonicalizeAll must accept this shape without throwing.
 const { canonicalizeAll } = await import('../cir/canonicalize.mjs');
 const resources = canonicalizeAll(collected);
 assert.ok(resources.length >= byType.group.length + byType.roleAssignment.length
   + byType.namedLocation.length + byType.conditionalAccessPolicy.length + byType.user.length);
+assert.equal(resources.find((r) => r.resourceType === 'roleAssignment').naturalKey,
+  'roleAssignment:global:GlobalAdministrator@user:ana@contoso.test@/');
+assert.equal(resources.find((r) => r.resourceType === 'conditionalAccessPolicy')
+  .references.find((r) => r.field === 'conditions.users.includeUsers[0]').symbol,
+  'user:ana@contoso.test');
 
 console.log(`entraAdapter.test.mjs — collected ${resources.length} resources — all assertions passed`);

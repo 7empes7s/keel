@@ -557,3 +557,65 @@ CREATE TABLE IF NOT EXISTS resource_symbol (
 );
 CREATE INDEX IF NOT EXISTS resource_symbol_live_idx
   ON resource_symbol (tenant_ref, resource_type) WHERE tombstoned_at IS NULL;
+
+-- Task 50: stable resource lineage across rename and recovery. A lineage is the
+-- durable logical identity of one tenant-scoped resource: the row keyed by
+-- (tenant, type, source id) is the SAME row across every rename of that id — a
+-- Graph object keeps its own id when renamed, so this id is never regenerated
+-- by a rename, only by a genuinely new or recreated object. A brand-new source
+-- id observed for the first time always starts a brand-new lineage row, even
+-- when its current name collides with a name a different (tombstoned) lineage
+-- once held: name reuse alone must never merge two lineages. tombstoned_at
+-- mirrors resource_symbol's rule (task 48): only a successful full per-type
+-- enumeration may tombstone a lineage its run did not observe.
+CREATE TABLE IF NOT EXISTS resource_lineage (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref     text NOT NULL,
+  resource_type  text NOT NULL,
+  source_id      text NOT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  tombstoned_at  timestamptz,
+  UNIQUE (tenant_ref, resource_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS resource_lineage_live_idx
+  ON resource_lineage (tenant_ref, resource_type) WHERE tombstoned_at IS NULL;
+
+-- Every natural key a lineage has ever been observed under, with an EXPLICIT
+-- validity window. At most one row per lineage has valid_until IS NULL (the
+-- current name); every closed row is a historical alias only. Resolving a
+-- reference against a closed alias must always be carried as stale, never as
+-- current authorization — only the live (valid_until IS NULL) alias is a
+-- legitimate target for a live write.
+CREATE TABLE IF NOT EXISTS resource_lineage_alias (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lineage_id      uuid NOT NULL REFERENCES resource_lineage(id) ON DELETE CASCADE,
+  natural_key     text NOT NULL,
+  valid_from      timestamptz NOT NULL,
+  valid_until     timestamptz,
+  source_snapshot uuid REFERENCES snapshot(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS resource_lineage_alias_current_idx
+  ON resource_lineage_alias (lineage_id) WHERE valid_until IS NULL;
+CREATE INDEX IF NOT EXISTS resource_lineage_alias_key_idx
+  ON resource_lineage_alias (natural_key);
+
+-- The only mechanism allowed to unify two DIFFERENT source ids (and therefore
+-- two different resource_lineage rows) into one continuous history: a
+-- recreation the collector cannot see as a same-id rename (e.g. an object
+-- permanently deleted and manually rebuilt under a fresh Graph id). evidence
+-- is mandatory and opaque here (the caller's own proof, e.g. a restore run's
+-- provenance) — this table never infers a link from name reuse alone, and a
+-- predecessor must already be tombstoned before it can be "recovered from".
+CREATE TABLE IF NOT EXISTS resource_lineage_recovery (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref       text NOT NULL,
+  predecessor_id   uuid NOT NULL REFERENCES resource_lineage(id),
+  successor_id     uuid NOT NULL REFERENCES resource_lineage(id),
+  evidence         jsonb NOT NULL,
+  recorded_by      text NOT NULL,
+  recorded_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (predecessor_id, successor_id),
+  CHECK (predecessor_id <> successor_id)
+);
+CREATE INDEX IF NOT EXISTS resource_lineage_recovery_successor_idx
+  ON resource_lineage_recovery (successor_id);

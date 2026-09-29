@@ -176,9 +176,9 @@ test("the route and page inventory is closed around each declared capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
-      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage", "evidencePage"].includes(declaration.name)) {
+      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage", "evidencePage", "schedulesPage"].includes(declaration.name)) {
         const guard = content.indexOf(`await requireReadAccess(${reference})`);
-        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals|Evidence)\(/);
+        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals|Evidence|Schedules)\(/);
         assert.ok(loader > guard, `${source} must guard before its API loader`);
       }
     } else if (/api\/principals\/\[id\]\//.test(source)) {
@@ -187,6 +187,11 @@ test("the route and page inventory is closed around each declared capability", (
     } else if (source === "api/policies/[id]/enabled/route.ts" || source === "api/policies/[id]/clear-pause/route.ts") {
       assert.match(content, new RegExp(`export\\s+const\\s+POST\\s*=\\s+guardedPolicyUpdate\\([^,]+,\\s*${reference}\\)`));
     } else {
+      if (source === "api/schedules/route.ts") {
+        assert.match(content, /export const POST = guardedScheduleUpdate\(\)/);
+        const actions = readFileSync(new URL("../lib/action.ts", import.meta.url), "utf8");
+        assert.match(actions.slice(actions.indexOf("export function guardedScheduleUpdate")), /return guarded\(\s*\{ action: "schedules:update", capability: "configuration", recordAttempt: true \}/);
+      }
       if (source === "api/policies/route.ts") {
         assert.match(content, /export const POST = guardedPolicyCreate\(DATA_SURFACES.policiesApi\)/);
       }

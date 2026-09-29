@@ -46,7 +46,7 @@ function sha256(text) {
  * exact digest inputs they were created with and remain promotable. */
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
-  reconciliationResources, waves, patches, automationContext,
+  reconciliationResources, waves, patches, automationContext = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -94,7 +94,7 @@ export function classifyDryRunStatus({ failed, skipped }) {
 export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
-  currentStateFingerprint, digest, status, requestedBy, automationContext,
+  currentStateFingerprint, digest, status, requestedBy, automationContext = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);

@@ -25,6 +25,13 @@ import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
   createDryRunArtifact, getDryRunArtifactById, validateArtifactForExecution,
 } from '../engine/restore/dryRunArtifact.mjs';
+import {
+  exceedsBlastRadiusCeiling, maxOperationImpact, policyConstraintVersion,
+} from '../engine/policy/evaluate.mjs';
+import {
+  AUTOMATION_EXECUTION_EVIDENCE_KIND, assertExecutableAutomationPolicy, getAutomationPolicies,
+} from '../engine/policy/execute.mjs';
+import { appendEvidence } from '../engine/govern/evidence.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -81,6 +88,13 @@ export async function runRestore({
   // its result under this id, so it can be reviewed and later promoted.
   artifactId,
   persistArtifactId,
+  // Roadmap task-55: the automation policies a remediation is executing under,
+  // discovered server-side by cli/keel-remediate.mjs from the durable
+  // auto_remediation_execution link table. Only identities travel here — the
+  // ceiling and every other constraint are re-derived from the live policy rows
+  // below, never trusted from the caller. Absent for operator-driven restores,
+  // which keeps their behavior exactly as before.
+  automationPolicyIds,
   requestedBy,
   readFile = readFileSync,
   dbUrl = process.env.KEEL_DB_URL,
@@ -109,6 +123,7 @@ export async function runRestore({
     computeCurrentStateFingerprint: computeCurrentStateFingerprintFn = computeCurrentStateFingerprint,
     classifyDryRunStatus: classifyDryRunStatusFn = classifyDryRunStatus,
     validateArtifactForExecution: validateArtifactForExecutionFn = validateArtifactForExecution,
+    getAutomationPolicies: getAutomationPoliciesFn = getAutomationPolicies,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
@@ -147,6 +162,17 @@ export async function runRestore({
       throw new Error('reconciliationResources must be a non-empty array');
     }
   }
+  // Task 55: on a promotion the automation context comes from the immutable artifact
+  // itself; a caller may never substitute different policy identities alongside it.
+  if (automationPolicyIds !== undefined) {
+    if (artifactId !== undefined) {
+      throw new Error('automationPolicyIds is supplied by the dry-run artifact on promotion, never by the caller');
+    }
+    if (!Array.isArray(automationPolicyIds) || automationPolicyIds.length === 0
+      || automationPolicyIds.some((id) => typeof id !== 'string' || id.length === 0)) {
+      throw new Error('automationPolicyIds must be a non-empty array of policy ids');
+    }
+  }
   // Plan task 8: every enforce scope, including a legacy saved plan, must promote a
   // completed dry-run artifact. A clean plan is not an immutable dry-run review.
   // Automated remediation first produces its own artifact, then reaches this same
@@ -171,6 +197,12 @@ export async function runRestore({
       sourceSnapshot = artifact.snapshotId;
       selection = artifact.selection;
       reconciliationResources = artifact.reconciliationResources ?? undefined;
+      // Task 55: an automation-planned artifact re-resolves its recorded policy
+      // identities from the live rows below; an artifact without automation context
+      // (every operator-driven dry run) promotes exactly as before.
+      if (artifact.automationContext) {
+        automationPolicyIds = artifact.automationContext.policies.map((policy) => policy.id);
+      }
       collectorConfigPath = artifact.collectorConfigPath;
       targetConfigPath = artifact.targetConfigPath;
       collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
@@ -269,6 +301,73 @@ export async function runRestore({
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
     const { waves: deletionWaves } = planDeletionWavesFn(deletes);
 
+    // Roadmap task-55: automation limits are re-resolved server-side at execution,
+    // AFTER dependency expansion. The enqueue-time guardrail saw only the original
+    // drift row; here the maximum impact is computed over the actual operations the
+    // expanded closure will perform, and compared against the ceiling re-read from
+    // the live policy rows — never a caller-supplied ceiling. Exceeding it returns
+    // the existing blocked-max-blast-radius refusal (recorded, then thrown so the
+    // worker's terminal outcome can never be 'executed'), before any write.
+    let automationContext = artifact?.automationContext ?? null;
+    if (automationPolicyIds !== undefined) {
+      const automationPolicies = await getAutomationPoliciesFn(client, { policyIds: automationPolicyIds });
+      for (const policy of automationPolicies) await assertExecutableAutomationPolicy(client, policy);
+      const maxBlastRadiusCeiling = automationPolicies.reduce(
+        (strictest, policy) => (exceedsBlastRadiusCeiling(policy.max_blast_radius, strictest)
+          ? strictest
+          : policy.max_blast_radius),
+        'tenant-lockout',
+      );
+      const impact = maxOperationImpact(resources, patches);
+      if (impact.operations.length > 0 && exceedsBlastRadiusCeiling(impact.maxBlastRadius, maxBlastRadiusCeiling)) {
+        const refusalTenantRef = artifact?.tenantRef
+          ?? (await client.query('SELECT tenant_ref FROM snapshot WHERE id = $1', [sourceSnapshot])).rows[0]?.tenant_ref;
+        if (refusalTenantRef) {
+          await appendEvidence(client, {
+            tenantRef: refusalTenantRef,
+            kind: AUTOMATION_EXECUTION_EVIDENCE_KIND,
+            subject: {
+              policyIds: automationPolicies.map((policy) => policy.id),
+              outcome: 'blocked-max-blast-radius',
+              maxImpact: impact.maxBlastRadius,
+              maxBlastRadiusCeiling,
+              expandedScope: closureKeys,
+            },
+            actor: 'policy-automation',
+          });
+        }
+        throw new Error(
+          `blocked-max-blast-radius: expanded closure impact ${impact.maxBlastRadius} exceeds the current automation policy ceiling ${maxBlastRadiusCeiling} — refusing before any write`,
+        );
+      }
+      if (automationContext) {
+        // Promotion-time policy version check: the policy constraints recorded in
+        // the immutable artifact are compared against the live rows. A policy (or
+        // grant-relevant field) changed between the dry run and promotion
+        // invalidates the plan — a new dry run is required, never a quiet proceed.
+        for (const recorded of automationContext.policies) {
+          const current = automationPolicies.find((policy) => policy.id === recorded.id);
+          if (!current || policyConstraintVersion(current) !== recorded.version) {
+            throw new Error(
+              `restore promotion refused: automation policy ${recorded.id} constraints changed since the dry run — a new dry run is required`,
+            );
+          }
+        }
+      } else {
+        // The dry-run leg: bind policy identity/version and the expanded scope the
+        // impact was computed over into the immutable plan evidence.
+        automationContext = {
+          policies: automationPolicies.map((policy) => ({
+            id: policy.id, name: policy.name, version: policyConstraintVersion(policy),
+          })),
+          maxBlastRadiusCeiling,
+          maxImpact: impact.maxBlastRadius,
+          expandedScope: closureKeys,
+          operations: impact.operations,
+        };
+      }
+    }
+
     // Human preview shares scope, current-state verb resolution and ordering with
     // enforcement, but returns before acquiring Restorer credentials or a writer.
     if (previewOnly) {
@@ -306,6 +405,7 @@ export async function runRestore({
         reconciliationResources: artifactScopeReconciliationResources,
         waves,
         patches,
+        automationContext,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -423,6 +523,7 @@ export async function runRestore({
         reconciliationResources: artifactScopeReconciliationResources,
         waves,
         patches,
+        automationContext,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
 
@@ -444,6 +545,7 @@ export async function runRestore({
         digest,
         status,
         requestedBy: requestedBy ?? 'unknown',
+        automationContext,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);

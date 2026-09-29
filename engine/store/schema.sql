@@ -379,6 +379,15 @@ CREATE TABLE IF NOT EXISTS restore_dry_run (
 CREATE INDEX IF NOT EXISTS restore_dry_run_tenant_created_idx
   ON restore_dry_run (tenant_ref, created_at DESC);
 
+-- Roadmap task-55: an automation-triggered remediation records, inside its immutable
+-- dry-run artifact, the exact policy identity + constraint version it was planned
+-- under and the expanded closure scope its maximum impact was computed over. Promotion
+-- re-resolves the live policy rows and refuses when either the version or the
+-- post-closure impact no longer matches. Nullable: additive for pre-existing
+-- (operator-driven) artifacts, which carry no automation context and promote exactly
+-- as before. Retry-safe and forward-compatible.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS automation_context jsonb;
+
 -- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
 -- configured sink; one outbox row per (destination, source event) so a replayed or
 -- retried delivery always carries the SAME task-77 event id; one replay checkpoint per
@@ -527,3 +536,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS api_drift_candidate_dedupe_idx
   ON api_drift_candidate (tenant_ref, source_key, kind, path, COALESCE(field, ''));
 CREATE INDEX IF NOT EXISTS api_drift_candidate_tenant_detected_idx
   ON api_drift_candidate (tenant_ref, detected_at DESC);
+
+-- Task 48: tenant-scoped historical identity context. One row per observed
+-- (tenant, type, Graph source id) records the natural key that id resolved to,
+-- the observation window (first/last seen) and the snapshot that last evidenced
+-- it. A row is live while tombstoned_at is null; only a successful FULL per-type
+-- enumeration (outcome complete/complete-empty) may tombstone ids it did not
+-- observe — failed/partial reads prove nothing about absence. Seeded from
+-- preexisting successful snapshots without rewriting their stored keys.
+CREATE TABLE IF NOT EXISTS resource_symbol (
+  tenant_ref      text NOT NULL,
+  resource_type   text NOT NULL,
+  source_id       text NOT NULL,
+  natural_key     text NOT NULL,
+  first_seen_at   timestamptz NOT NULL DEFAULT now(),
+  last_seen_at    timestamptz NOT NULL DEFAULT now(),
+  source_snapshot uuid REFERENCES snapshot(id),
+  tombstoned_at   timestamptz,
+  PRIMARY KEY (tenant_ref, resource_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS resource_symbol_live_idx
+  ON resource_symbol (tenant_ref, resource_type) WHERE tombstoned_at IS NULL;

@@ -1,12 +1,16 @@
 import { collectWithOutcomes } from './entraAdapter.mjs';
-import { DESCRIPTORS } from './descriptors.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion, insertReferences } from '../store/db.mjs';
 import { loadSymbolContext, recordSymbolContext, seedSymbolContext } from '../store/resourceSymbols.mjs';
 
 /** Persist outcomes independently of resources, including completed empty reads. */
 export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier }) {
-  const result = await collectWithOutcomes(reader, { tenantId });
+  // Tier selection (task 49) happens inside collectWithOutcomes, before any
+  // HTTP read: an excluded type's endpoint is never called, so `collected`
+  // below already holds only the requested tier's types (or every type when
+  // tier is unset) and result.coverageDigest already carries the
+  // not-requested marker for everything this run did not fetch.
+  const result = await collectWithOutcomes(reader, { tenantId, tier });
   // Tenant-scoped historical identity context (task-48): resolve references
   // and composed keys for types absent from this run against the aliases
   // evidenced by earlier successful enumerations. On the first run after the
@@ -31,17 +35,8 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
     context = new Map([...context].filter(([, alias]) => !fullyEnumerated.has(alias.type)));
   }
   const canonical = canonicalizeAll(result.collected, { context });
-  const resources = canonical.filter((r) => !tier || r.criticality === tier);
-  // A tier-filtered snapshot must not claim coverage for data it doesn't store.
-  // Excluded types are recorded explicitly as not-requested — distinguishable
-  // from a completed empty read — and readers skip those mentions so they
-  // never shadow an older genuine observation of the same type.
-  const coverageDigest = Object.fromEntries(DESCRIPTORS
-    .map((d) => [d.type, !tier || d.criticality === tier
-      ? result.coverageDigest[d.type]
-      : { outcome: 'not-requested', itemCount: null }]));
   const snapshotId = await createSnapshot(client, { tenantRef });
-  for (const resource of resources) {
+  for (const resource of canonical) {
     const versionId = await insertResourceVersion(client, {
       snapshotId, resource: { ...resource, fidelity: resource.provenance.fidelity },
     });
@@ -49,13 +44,14 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   }
   // "complete" means the run finished; coverageDigest carries per-type success.
   // Storage/canonicalization errors still abort without a completed snapshot.
-  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
-  // Context is recorded from the full canonicalization (every successfully
-  // read type, before the tier storage filter) and the adapter's real
-  // outcomes, so collections at any tier update the tenant's identity
-  // context while only successful full enumerations may tombstone.
+  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: result.coverageDigest });
+  // Context is recorded from this run's canonicalization and the adapter's
+  // real outcomes: only types this run actually fetched can be 'complete' or
+  // 'complete-empty', so a tier-excluded type's historical aliases are left
+  // untouched here (neither refreshed nor tombstoned) rather than fetched to
+  // service its own context update.
   await recordSymbolContext(client, {
     tenantRef, snapshotId, resources: canonical, coverageDigest: result.coverageDigest,
   });
-  return { snapshotId, coverageDigest };
+  return { snapshotId, coverageDigest: result.coverageDigest };
 }

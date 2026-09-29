@@ -193,33 +193,91 @@ test('reproduction: tier1 roleAssignment to tier2 user keeps its resolved key wh
     'historical snapshot keys are never rewritten');
 });
 
-test('all tiers update context; tier-excluded types stay not-requested in storage', async (t) => {
+test('tier-scoped collection never reaches an excluded endpoint; its historical context is left untouched', async (t) => {
   const client = await freshSchema(t);
   const tenantRef = 'sha256:symbol-context-tiers';
 
-  // A tier1 run stores only tier1 resources — the tier2 user is filtered out
-  // of storage — but it was successfully read, so it still updates the
-  // tenant's identity context.
+  // A tier1 run reaches no tier2 endpoint at all (task 49: the adapter is
+  // selected by tier before any HTTP read), so it proves nothing new about
+  // the tier2 user and must not touch its existing identity context either
+  // way. A prior mock reader here made /users? return real data and let it
+  // be reached, then asserted the run "still recorded" that identity — that
+  // encoded the pre-task-49 behavior of fetching every type and filtering
+  // storage afterward; this reader throws if /users is ever requested so a
+  // regression back to that behavior fails loudly.
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push(path);
+      if (path.startsWith('/organization')) return ORG_OK;
+      if (path.startsWith('/roleManagement/directory/roleAssignments')) return ok([assignment(U1)]);
+      if (path.startsWith('/users')) throw new Error('tier1 must never call the tier2 users endpoint');
+      return { items: [], pages: 1, status: 200, error: null };
+    },
+  };
   const run = await collectSnapshot(client, {
-    reader: fakeReader({
-      '/organization': ORG_OK,
-      '/users?': ok([user(U1, 'ana@contoso.test')]),
-      '/roleManagement/directory/roleAssignments': ok([assignment(U1)]),
-    }),
-    tenantRef, tenantId: 'fixture-tenant', tier: 'tier1',
+    reader, tenantRef, tenantId: 'fixture-tenant', tier: 'tier1',
   });
   assert.deepEqual(run.coverageDigest.user, { outcome: 'not-requested', itemCount: null },
     'storage coverage keeps the not-requested marker');
+  assert.equal(calls.some((p) => p.startsWith('/users')), false,
+    'reader call log contains only requested-tier endpoints');
   const { rows: storedUsers } = await client.query(
     `SELECT 1 FROM resource_version WHERE snapshot_id = $1 AND resource_type = 'user'`,
     [run.snapshotId],
   );
   assert.equal(storedUsers.length, 0, 'tier-excluded resources are not stored');
   const context = await loadSymbolContext(client, { tenantRef });
-  assert.equal(context.get(U1)?.symbol, 'user:ana@contoso.test',
-    'a tier-filtered run still records the identities it observed');
+  assert.equal(context.get(U1), undefined,
+    'a tier-filtered run never observed the tier2 user, so it records no identity for it');
   assert.equal(context.get(RA1)?.symbol,
-    'roleAssignment:global:GlobalAdministrator@user:ana@contoso.test@/');
+    'roleAssignment:global:GlobalAdministrator@unknown:11111111-1111-1111-1111-111111111111@/',
+    'without prior history the cross-tier principal reference stays unresolved, never fabricated');
+});
+
+test('cross-tier reproduction: a tier1 roleAssignment resolves its tier2 principal from prior history, without refetching it', async (t) => {
+  const client = await freshSchema(t);
+  const tenantRef = 'sha256:symbol-context-tier-repro';
+
+  // Run A: a full (unscoped) collection observes the tier2 user and records
+  // its identity in the persistent context.
+  await collectSnapshot(client, {
+    reader: fakeReader({
+      '/organization': ORG_OK,
+      '/users?': ok([user(U1, 'ana@contoso.test')]),
+      '/roleManagement/directory/roleAssignments': ok([assignment(U1)]),
+    }),
+    tenantRef, tenantId: 'fixture-tenant',
+  });
+
+  // Run B: an hourly tier1-only run. Its reader throws if the tier2 /users
+  // endpoint is ever called — proving the tier1 roleAssignment resolves its
+  // principal reference from Run A's persisted history, not a live refetch.
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push(path);
+      if (path.startsWith('/organization')) return ORG_OK;
+      if (path.startsWith('/roleManagement/directory/roleAssignments')) return ok([assignment(U1)]);
+      if (path.startsWith('/users')) throw new Error('tier1 must never call the tier2 users endpoint');
+      return { items: [], pages: 1, status: 200, error: null };
+    },
+  };
+  const run = await collectSnapshot(client, {
+    reader, tenantRef, tenantId: 'fixture-tenant', tier: 'tier1',
+  });
+  assert.equal(calls.some((p) => p.startsWith('/users')), false,
+    'reader call log contains only requested-tier endpoints');
+  assert.deepEqual(run.coverageDigest.user, { outcome: 'not-requested', itemCount: null });
+  const [rowB] = await roleAssignmentRows(client, run.snapshotId);
+  assert.equal(rowB.natural_key, 'roleAssignment:global:GlobalAdministrator@user:ana@contoso.test@/',
+    'the tier1 roleAssignment resolves its tier2 principal from history, the real user/roleAssignment cross-tier case');
+  assert.deepEqual(rowB.provenance.symbolContext.staleKeyParts, [U1]);
+
+  // The pre-existing tier2 identity is preserved exactly as Run A left it —
+  // a tier1 run neither refreshes nor tombstones a type it never fetched.
+  const context = await loadSymbolContext(client, { tenantRef });
+  assert.equal(context.get(U1)?.symbol, 'user:ana@contoso.test');
 });
 
 test('tombstones: only a successful full enumeration may tombstone; failed/partial reads cannot', async (t) => {

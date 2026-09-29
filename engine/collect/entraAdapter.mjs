@@ -143,15 +143,29 @@ function outcomeEntry(raw) {
  * Only completed enumerations enter `collected`; a failed/partial read has
  * unknown cardinality, never an invented zero. Keep collectM1 fail-fast for
  * planning and restore callers that require a complete input set.
+ *
+ * `scope.tier`, when set, selects adapters by descriptor criticality BEFORE
+ * any HTTP read (task 49): an excluded type's endpoint is never called, and
+ * its digest entry is the explicit not-requested marker, never a fetched-
+ * then-discarded complete/complete-empty outcome. Cross-tier reference
+ * resolution for excluded types falls back to the persisted historical
+ * identity context (engine/store/resourceSymbols.mjs) at the snapshot layer
+ * instead. An unset tier keeps full collection, unchanged.
  */
 export async function collectWithOutcomes(reader, scope = {}) {
+  const { tier, ...rest } = scope;
   const collected = [];
   const coverageDigest = {};
-  const context = { ...scope };
+  const context = { ...rest };
   for (const type of M1_TYPES) {
+    const { descriptor, adapter } = get(type);
+    if (tier && descriptor.criticality !== tier) {
+      coverageDigest[type] = { outcome: 'not-requested', itemCount: null };
+      continue;
+    }
     const attemptStartedAt = new Date();
     try {
-      const raw = await get(type).adapter.collectRaw(reader, context);
+      const raw = await adapter.collectRaw(reader, context);
       coverageDigest[type] = outcomeEntry(raw);
       if (raw.error === null && !raw.capped && Array.isArray(raw.items)) {
         collected.push([type, raw.items]);

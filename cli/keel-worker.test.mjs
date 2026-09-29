@@ -122,6 +122,8 @@ function makeAuthzFakeClient({ principal = null, grants = [] } = {}) {
         authzFailed.push(params);
         return { rows: [{ id: params[0], status: 'failed', error: params[1] }] };
       }
+      if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }] };
+      if (sql.includes('pg_advisory_unlock')) return { rows: [] };
       if (sql.includes('FROM principal WHERE id::text = $1')) {
         return { rows: principal && principal.id === params[0] ? [principal] : [] };
       }

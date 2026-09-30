@@ -69,13 +69,17 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
         now: new Date(generatedAt),
       })
       : null;
-    if (descriptor.type === 'group' && relationshipState.entries.size > 0) {
-      // Task 57: group member/owner edges are now observed per parent. Never
-      // 'complete' — other child families (app grants, assignments) are not
-      // collected, and a stale/unknown parent read is still counted as such.
-      const families = summarizeRelationshipState(relationshipState);
-      entry.relationshipCompleteness = 'partial';
-      entry.relationships = { families, parents: new Set([...relationshipState.entries.values()].map((e) => e.parentSourceId)).size };
+    // Relationship observations (tasks 57/58) are reported per parent type.
+    // Never 'complete': other child families are not collected, and a stale,
+    // unknown or unsupported parent read is counted as exactly that.
+    const families = summarizeRelationshipState(relationshipState, { parentType: descriptor.type });
+    if (Object.keys(families).length > 0) {
+      const observed = Object.values(families).some((bucket) => bucket.current + bucket.stale > 0);
+      entry.relationshipCompleteness = observed ? 'partial' : 'unknown';
+      entry.relationships = {
+        families,
+        parents: new Set([...relationshipState.entries.values()].filter((e) => e.parentType === descriptor.type).map((e) => e.parentSourceId)).size,
+      };
     }
     types.push(entry);
   }

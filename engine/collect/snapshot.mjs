@@ -2,7 +2,7 @@ import { collectWithOutcomes } from './entraAdapter.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion, insertReferences } from '../store/db.mjs';
 import { loadSymbolContext, recordSymbolContext, seedSymbolContext } from '../store/resourceSymbols.mjs';
-import { collectRelationships, recordRelationships, DEFAULT_RELATIONSHIP_FAMILIES } from './relationships.mjs';
+import { collectRelationships, recordRelationships, parentTypesForFamilies, DEFAULT_RELATIONSHIP_FAMILIES } from './relationships.mjs';
 
 /** Persist outcomes independently of resources, including completed empty reads. */
 export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false }) {
@@ -62,9 +62,14 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   let relationshipSummary = null;
   if (relationships) {
     const families = relationships?.families ?? DEFAULT_RELATIONSHIP_FAMILIES;
+    // Parents are the collected resources whose type a requested family applies
+    // to; `parentTypes` names extra types to request explicitly (a type with no
+    // registered read is recorded `unsupported`, never read generically).
+    const parentTypes = parentTypesForFamilies(families);
+    for (const extra of relationships?.parentTypes ?? []) parentTypes.add(extra);
     const parents = canonical
-      .filter((resource) => resource.resourceType === 'group' && resource.sourceId)
-      .map((resource) => ({ sourceId: resource.sourceId, naturalKey: resource.naturalKey }));
+      .filter((resource) => parentTypes.has(resource.resourceType) && resource.sourceId)
+      .map((resource) => ({ type: resource.resourceType, sourceId: resource.sourceId, naturalKey: resource.naturalKey }));
     const observations = await collectRelationships(reader, { tenantRef, parents, families });
     const targetContext = await loadSymbolContext(client, { tenantRef });
     await recordRelationships(client, { snapshotId, tenantRef, observations, context: targetContext });

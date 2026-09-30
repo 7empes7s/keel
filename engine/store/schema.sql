@@ -670,3 +670,16 @@ CREATE TABLE IF NOT EXISTS relationship_edge (
   target_natural_key text,
   PRIMARY KEY (set_id, target_source_id)
 );
+
+-- Task 58: an edge is identified by edge_key (a composite for families where a
+-- bare target id is not enough — an Intune include AND exclude assignment of
+-- the same group are two edges), with `attributes` carrying what must be
+-- preserved but is not identity (assignment filter, intent, settings digest).
+-- Additive and retry-safe: pre-existing task-57 rows are backfilled with
+-- edge_key = target_source_id. The old primary key would forbid two edges to
+-- one target, so it is replaced by a unique index on the edge identity.
+ALTER TABLE relationship_edge ADD COLUMN IF NOT EXISTS edge_key text;
+ALTER TABLE relationship_edge ADD COLUMN IF NOT EXISTS attributes jsonb;
+UPDATE relationship_edge SET edge_key = target_source_id WHERE edge_key IS NULL;
+ALTER TABLE relationship_edge DROP CONSTRAINT IF EXISTS relationship_edge_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS relationship_edge_identity_idx ON relationship_edge (set_id, edge_key);

@@ -126,7 +126,22 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
   return drift;
 }
 
-const EDGE_RESOURCE_TYPE = { member: 'groupMembership', owner: 'groupOwnership', transitiveMember: 'groupTransitiveMembership' };
+const EDGE_RESOURCE_TYPE = {
+  member: 'groupMembership', owner: 'groupOwnership', transitiveMember: 'groupTransitiveMembership',
+  appOwner: 'applicationOwnership', servicePrincipalOwner: 'servicePrincipalOwnership',
+  appRoleGrant: 'appRoleGrant', assignment: 'policyAssignment',
+};
+
+// Order-insensitive comparison of an edge's attributes (assignment filter,
+// intent, settings digest). Null and absent attributes are the same.
+function attributesKey(value) {
+  if (value === null || value === undefined) return 'null';
+  if (Array.isArray(value)) return `[${value.map(attributesKey).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${attributesKey(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
 
 /**
  * Task 57: edge drift, independent of parent payload drift. `baseline` and
@@ -151,6 +166,11 @@ export function diffRelationships(baseline, observed) {
   const unverified = [];
   for (const [key, after] of observed.entries) {
     const before = baseline.entries.get(key);
+    if (after.failure?.outcome === 'unsupported') {
+      // No registered read for this parent type: never a comparison, never drift.
+      unverified.push({ key, family: after.family, parentSourceId: after.parentSourceId, reason: 'unsupported-relationship', failure: after.failure });
+      continue;
+    }
     if (!before || before.targets === null) {
       unverified.push({ key, family: after.family, parentSourceId: after.parentSourceId, reason: 'no-baseline' });
       continue;
@@ -163,14 +183,18 @@ export function diffRelationships(baseline, observed) {
       });
       continue;
     }
-    const beforeIds = new Map(before.targets.map((t) => [t.targetId, t]));
-    const afterIds = new Map(after.targets.map((t) => [t.targetId, t]));
-    const emit = (changeType, target) => drift.push({
-      naturalKey: `edge:${after.edgeType}:${after.parentSourceId}:${target.targetId}`,
+    // Edge identity is edgeKey (falls back to targetId for rows written before
+    // task 58); a same-key edge whose attributes differ is 'modified'.
+    const identity = (t) => t.edgeKey ?? t.targetId;
+    const beforeIds = new Map(before.targets.map((t) => [identity(t), t]));
+    const afterIds = new Map(after.targets.map((t) => [identity(t), t]));
+    const emit = (changeType, target, previous = null) => drift.push({
+      naturalKey: `edge:${after.edgeType}:${after.parentSourceId}:${identity(target)}`,
       resourceType: EDGE_RESOURCE_TYPE[after.family] ?? `edge:${after.family}`,
       changeType,
-      beforeHash: changeType === 'removed' ? target.targetId : null,
-      afterHash: changeType === 'added' ? target.targetId : null,
+      beforeHash: changeType === 'added' ? null : identity(target) + (previous ? `#${attributesKey(previous.attributes)}` : ''),
+      afterHash: changeType === 'removed' ? null : identity(target) + (previous ? `#${attributesKey(target.attributes)}` : ''),
+      ...(changeType === 'modified' ? { beforeAttributes: previous.attributes ?? null, afterAttributes: target.attributes ?? null } : {}),
       blastRadius: 'access-affecting',
       parentSourceId: after.parentSourceId,
       parentNaturalKey: after.parentNaturalKey,
@@ -179,7 +203,11 @@ export function diffRelationships(baseline, observed) {
       targetNaturalKey: target.targetNaturalKey ?? null,
       derived: after.direction === 'transitive',
     });
-    for (const [id, target] of afterIds) if (!beforeIds.has(id)) emit('added', target);
+    for (const [id, target] of afterIds) {
+      const previous = beforeIds.get(id);
+      if (!previous) emit('added', target);
+      else if (attributesKey(previous.attributes) !== attributesKey(target.attributes)) emit('modified', target, previous);
+    }
     for (const [id, target] of beforeIds) if (!afterIds.has(id)) emit('removed', target);
   }
   return { drift, unverified };

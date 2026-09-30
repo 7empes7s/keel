@@ -2,9 +2,10 @@ import { collectWithOutcomes } from './entraAdapter.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion, insertReferences } from '../store/db.mjs';
 import { loadSymbolContext, recordSymbolContext, seedSymbolContext } from '../store/resourceSymbols.mjs';
+import { collectRelationships, recordRelationships, DEFAULT_RELATIONSHIP_FAMILIES } from './relationships.mjs';
 
 /** Persist outcomes independently of resources, including completed empty reads. */
-export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier }) {
+export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false }) {
   // Tier selection (task 49) happens inside collectWithOutcomes, before any
   // HTTP read: an excluded type's endpoint is never called, so `collected`
   // below already holds only the requested tier's types (or every type when
@@ -53,5 +54,24 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   await recordSymbolContext(client, {
     tenantRef, snapshotId, resources: canonical, coverageDigest: result.coverageDigest,
   });
-  return { snapshotId, coverageDigest: result.coverageDigest };
+  // Relationship (edge) observations (task-57) are separate child reads per
+  // group, recorded beside — never inside — the type digest, so a failed edge
+  // read cannot alter a type's own outcome. Opt-in: `relationships: true`, or
+  // { families: [...] }. Only groups from a successfully enumerated type are
+  // read, and each parent x family keeps its own outcome.
+  let relationshipSummary = null;
+  if (relationships) {
+    const families = relationships?.families ?? DEFAULT_RELATIONSHIP_FAMILIES;
+    const parents = canonical
+      .filter((resource) => resource.resourceType === 'group' && resource.sourceId)
+      .map((resource) => ({ sourceId: resource.sourceId, naturalKey: resource.naturalKey }));
+    const observations = await collectRelationships(reader, { tenantRef, parents, families });
+    const targetContext = await loadSymbolContext(client, { tenantRef });
+    await recordRelationships(client, { snapshotId, tenantRef, observations, context: targetContext });
+    relationshipSummary = observations.reduce((acc, obs) => {
+      acc[obs.outcome] = (acc[obs.outcome] ?? 0) + 1;
+      return acc;
+    }, {});
+  }
+  return { snapshotId, coverageDigest: result.coverageDigest, ...(relationshipSummary ? { relationships: relationshipSummary } : {}) };
 }

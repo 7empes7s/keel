@@ -125,3 +125,62 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
 
   return drift;
 }
+
+const EDGE_RESOURCE_TYPE = { member: 'groupMembership', owner: 'groupOwnership', transitiveMember: 'groupTransitiveMembership' };
+
+/**
+ * Task 57: edge drift, independent of parent payload drift. `baseline` and
+ * `observed` are loadRelationshipState() results (engine/collect/
+ * relationships.mjs). A membership-only change surfaces here even when the
+ * parent resource's own hash is unchanged.
+ *
+ * Only a CURRENT observed edge set is authority for an 'added'/'removed'
+ * entry. A stale/unknown observed set (the newest child read failed or was
+ * partial) never produces removals — it is reported in `unverified` with the
+ * original failure, so a failed read can never be mistaken for an emptied
+ * group. A baseline with no targets (never read completely) likewise cannot
+ * anchor a comparison. States from two different tenants are refused.
+ * Transitive drift is flagged `derived: true`: it is an expansion result, not
+ * a direct edge a write could remove.
+ */
+export function diffRelationships(baseline, observed) {
+  if (baseline.tenantRef !== observed.tenantRef) {
+    throw new Error('cannot diff relationship state across tenants');
+  }
+  const drift = [];
+  const unverified = [];
+  for (const [key, after] of observed.entries) {
+    const before = baseline.entries.get(key);
+    if (!before || before.targets === null) {
+      unverified.push({ key, family: after.family, parentSourceId: after.parentSourceId, reason: 'no-baseline' });
+      continue;
+    }
+    if (after.state !== 'current') {
+      unverified.push({
+        key, family: after.family, parentSourceId: after.parentSourceId,
+        reason: after.state === 'stale' ? 'stale-child-read' : 'child-read-never-complete',
+        failure: after.failure, lastKnownAt: after.observedAt,
+      });
+      continue;
+    }
+    const beforeIds = new Map(before.targets.map((t) => [t.targetId, t]));
+    const afterIds = new Map(after.targets.map((t) => [t.targetId, t]));
+    const emit = (changeType, target) => drift.push({
+      naturalKey: `edge:${after.edgeType}:${after.parentSourceId}:${target.targetId}`,
+      resourceType: EDGE_RESOURCE_TYPE[after.family] ?? `edge:${after.family}`,
+      changeType,
+      beforeHash: changeType === 'removed' ? target.targetId : null,
+      afterHash: changeType === 'added' ? target.targetId : null,
+      blastRadius: 'access-affecting',
+      parentSourceId: after.parentSourceId,
+      parentNaturalKey: after.parentNaturalKey,
+      edgeType: after.edgeType,
+      targetId: target.targetId,
+      targetNaturalKey: target.targetNaturalKey ?? null,
+      derived: after.direction === 'transitive',
+    });
+    for (const [id, target] of afterIds) if (!beforeIds.has(id)) emit('added', target);
+    for (const [id, target] of beforeIds) if (!afterIds.has(id)) emit('removed', target);
+  }
+  return { drift, unverified };
+}

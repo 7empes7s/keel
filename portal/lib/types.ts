@@ -110,7 +110,7 @@ export interface CoverageType {
   // treat an absent field exactly like an explicit null.
   declaredEndpoint?: DeclaredEndpoint | null;
   irrecoverableFields?: string[] | null;
-  relationshipCompleteness?: "unknown";
+  relationshipCompleteness?: "unknown" | "partial";
   diagnosis?: CoverageDiagnosis | null;
   writeCapability?: WriteCapabilitySummary | null;
   observation?: CoverageObservation | null;

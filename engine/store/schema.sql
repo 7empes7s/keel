@@ -625,3 +625,48 @@ CREATE TABLE IF NOT EXISTS resource_lineage_recovery (
 );
 CREATE INDEX IF NOT EXISTS resource_lineage_recovery_successor_idx
   ON resource_lineage_recovery (successor_id);
+
+-- Task 57: first-class relationship (edge) observations. A parent resource's
+-- payload never proves its edges: group members and owners are read as
+-- SEPARATE paginated child collections. One relationship_edge_set row records
+-- one child read (parent x family) inside one snapshot, with its own outcome,
+-- pagination evidence, API source and window; relationship_edge holds the
+-- targets that read observed. outcome vocabulary matches the type digest:
+-- complete / complete-empty / partial / failed. Edges of a partial or failed
+-- set are retained only as what was observed — never as a complete edge set —
+-- and a failed set carries no edges, so an empty edge table is never
+-- confused with a failed read. tenant_ref is repeated on both tables so
+-- every read path can qualify by tenant without trusting a join.
+CREATE TABLE IF NOT EXISTS relationship_edge_set (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot_id      uuid NOT NULL REFERENCES snapshot(id),
+  tenant_ref       text NOT NULL,
+  parent_type      text NOT NULL,
+  parent_source_id text NOT NULL,
+  parent_natural_key text,
+  family           text NOT NULL,
+  edge_type        text NOT NULL,
+  direction        text NOT NULL,
+  outcome          text NOT NULL,
+  item_count       int,
+  pages_completed  int,
+  endpoint         text,
+  api_version      text,
+  started_at       timestamptz,
+  completed_at     timestamptz,
+  http_status      int,
+  graph_code       text,
+  error            text,
+  UNIQUE (snapshot_id, parent_type, parent_source_id, family)
+);
+CREATE INDEX IF NOT EXISTS relationship_edge_set_parent_idx
+  ON relationship_edge_set (tenant_ref, parent_type, parent_source_id, family, completed_at);
+
+CREATE TABLE IF NOT EXISTS relationship_edge (
+  set_id             uuid NOT NULL REFERENCES relationship_edge_set(id) ON DELETE CASCADE,
+  tenant_ref         text NOT NULL,
+  target_source_id   text NOT NULL,
+  target_type        text,
+  target_natural_key text,
+  PRIMARY KEY (set_id, target_source_id)
+);

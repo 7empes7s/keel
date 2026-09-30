@@ -94,7 +94,21 @@ Recorded from the operator. These refine the external admission gates; no task i
   break-glass and emergency-access accounts or the Global Reader account. Do not enforce Conditional Access or
   MFA policy and do not touch security defaults. Only create, edit or delete `KEEL-RT-*` fixtures and new
   objects the work itself made. Keep the GlobalAdmin certificate valid.
-- **Open:** an Azure subscription for task-117 (Sentinel) is unconfirmed; recheck when that task comes up.
+- **task-117 (Sentinel) — deferred, worked around.** No Azure subscription is available and none is expected soon.
+  The Sentinel adapter (task-80) stays fixture-tested only and ships disabled. Generic webhook and CEF export
+  (task-81) is the supported SIEM path for the nucleus. task-117 no longer blocks release: task-124 lists Sentinel
+  as "fixture-tested, live-unqualified, deferred" and never as live-qualified. Revisit when a subscription exists.
+- **task-114 (storage) — decided: local copy, honest ceiling.** Storage provider is not the point; the nucleus must
+  be proven first, and further storage channels come later. Backups go to a local copy on a separate volume
+  (the disk is about 90% full). The local adapter keeps `retentionLock` and `immutability` unsupported, so
+  task-114 is rescoped to qualify what a local copy can prove: independent recovery read and manifest
+  verification from that copy (task-68/69 machinery). Storage immutability is reported unqualified in the release
+  ledger (option 3 above), not claimed. No lock-capable target is required for the nucleus release.
+- **Consequence for gates.** The no-overclaiming rule is unchanged: unqualified items are reported as such, not
+  hidden and not treated as passed. Only the hard "must be live-qualified" blocking of task-114's lock canary and
+  task-117 is lifted for task-124; the queue holds and task-124's dependency list need a matching edit before
+  either task is dispatched.
+- **Open:** none for storage or Sentinel. task-118 still waits on task-97.
 
 ## Task index
 

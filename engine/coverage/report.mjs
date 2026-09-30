@@ -34,6 +34,7 @@ import { TYPE_COVERAGE_CTES, readCoverageOutcome, readOutcome, readOutcomeDetail
 import { OBSERVATION_CONTRACT_VERSION } from '../contracts/observation.mjs';
 import { capabilitySummaryFor } from './capabilities.mjs';
 import { diagnoseFailure } from './diagnosis.mjs';
+import { loadRelationshipState, summarizeRelationshipState } from '../collect/relationships.mjs';
 import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
@@ -48,6 +49,7 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
   const { snapshot, byType, latestDigest } = await latestCompletedSnapshots(client, tenantRef);
   const drillEvidence = await loadDrillEvidence(client, tenantRef);
   const diagnosisEvidence = await loadDiagnosisEvidence(client, tenantRef, byType);
+  const relationshipState = await loadRelationshipState(client, { tenantRef });
 
   const descriptorByType = new Map(descriptors.map((d) => [d.type, d]));
   const catalogByType = new Map(catalog.map((c) => [c.type, c]));
@@ -67,6 +69,14 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
         now: new Date(generatedAt),
       })
       : null;
+    if (descriptor.type === 'group' && relationshipState.entries.size > 0) {
+      // Task 57: group member/owner edges are now observed per parent. Never
+      // 'complete' — other child families (app grants, assignments) are not
+      // collected, and a stale/unknown parent read is still counted as such.
+      const families = summarizeRelationshipState(relationshipState);
+      entry.relationshipCompleteness = 'partial';
+      entry.relationships = { families, parents: new Set([...relationshipState.entries.values()].map((e) => e.parentSourceId)).size };
+    }
     types.push(entry);
   }
   for (const entry of catalog) {

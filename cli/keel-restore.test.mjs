@@ -479,6 +479,34 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   ]);
 }
 
+// Roadmap task-59: the delete is refused at execution when the CURRENT live
+// state still has a dependent the plan neither deletes nor rewrites — before
+// any write — instead of only logging the dangling reference.
+{
+  const group = {
+    naturalKey: 'group:Finance', resourceType: 'group', targetId: 'target-group-id',
+    payload: null, live: { targetId: 'target-group-id', payload: { id: 'target-group-id' } },
+    references: [], blastRadius: 'access-affecting', restorePriority: 100, verb: 'delete',
+  };
+  const fixture = restoreFakes({
+    applyWave: async () => { throw new Error('no wave may run when a live dependent would be left dangling'); },
+    planWaves: () => ({ waves: [], patches: [] }),
+  });
+  fixture.dependencies.buildReconciliationPlan = async () => ({ resources: [group] });
+  fixture.dependencies.canonicalizeAll = () => [
+    { naturalKey: 'group:Finance', resourceType: 'group', sourceId: 'target-group-id', payload: {}, references: [] },
+    {
+      naturalKey: 'conditionalAccessPolicy:Finance-MFA', resourceType: 'conditionalAccessPolicy', sourceId: 'target-ca-id', payload: {},
+      references: [{ field: 'conditions.users.includeGroups[0]', symbol: 'group:Finance', required: true }],
+    },
+  ];
+  const errors = [];
+  const exitCode = await runFixture(fixture.dependencies, { logger: { log() {}, error: (e) => errors.push(String(e)) } });
+  assert.equal(exitCode, 1);
+  assert.equal(fixture.state.waveCalls.length, 0);
+  assert.match(errors.join('\n'), /blocked-dependent-impact: deleting group:Finance would leave conditionalAccessPolicy:Finance-MFA referencing it/);
+}
+
 // --select without --snapshot-id (and vice versa) is a usage error, not a partial run.
 {
   const errors = [];

@@ -16,6 +16,7 @@ import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
 import { dependencyClosure } from '../engine/restore/selection.mjs';
+import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
@@ -108,6 +109,7 @@ export async function runRestore({
     planWaves: planWavesFn = planWaves,
     planDeletionWaves: planDeletionWavesFn = planDeletionWaves,
     dependencyClosure: dependencyClosureFn = dependencyClosure,
+    assessDeletePlan: assessDeletePlanFn = assessDeletePlan,
     buildReconciliationPlan: buildReconciliationPlanFn = buildReconciliationPlan,
     getToken: getTokenFn = getToken,
     GraphReader: GraphReaderClass = GraphReader,
@@ -300,6 +302,21 @@ export async function runRestore({
     const deletes = resources.filter((resource) => resource.verb === 'delete');
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
     const { waves: deletionWaves } = planDeletionWavesFn(deletes);
+
+    // Roadmap task-59: delete impact is re-evaluated at execution against the
+    // CURRENT live state just collected. A resource still referencing one being
+    // deleted — and neither deleted nor rewritten by this plan — would be left
+    // dangling, so the run refuses before any write. (Before task 59 such
+    // references were only logged.) Relationship-edge coverage is not
+    // evaluated in this path and is reported as such.
+    const deleteAssessment = assessDeletePlanFn({ liveResources: targetResources, plannedResources: resources });
+    if (deleteAssessment.refusals.length > 0) {
+      const first = deleteAssessment.refusals[0];
+      throw new Error(
+        `blocked-dependent-impact: deleting ${first.deleting} would leave ${first.dependent} referencing it at ${first.field}`
+        + `${deleteAssessment.refusals.length > 1 ? ` (and ${deleteAssessment.refusals.length - 1} more)` : ''} — refusing before any write`,
+      );
+    }
 
     // Roadmap task-55: automation limits are re-resolved server-side at execution,
     // AFTER dependency expansion. The enqueue-time guardrail saw only the original

@@ -120,6 +120,7 @@ export function BaselineCreateForm({
           </div>
           <div>
             <button
+              className="btn btn-primary"
               disabled={disabled || submitting}
               onClick={() => void submit()}
               type="button"

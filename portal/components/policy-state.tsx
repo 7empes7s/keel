@@ -1,11 +1,11 @@
 import type { Policy } from "@/lib/policies";
 
 export function KillSwitchBadge({ disabled }: { disabled: boolean }) {
-  return <span role="status" className="state-badge">{disabled ? "Automation globally halted" : "Automation kill switch inactive"}</span>;
+  return <span role="status" className={`state-badge kill-switch ${disabled ? "kill-switch-halted" : "kill-switch-inactive"}`}>{disabled ? "Automation globally halted" : "Automation kill switch inactive"}</span>;
 }
 
 export function PolicyState({ policy }: { policy: Policy }) {
-  return <dl>
+  return <dl className="kv-grid">
     <dt>Enabled</dt><dd>{policy.enabled ? "Yes" : "No"}</dd>
     <dt>Paused at</dt><dd>{policy.paused_at ?? "Not paused"}</dd>
     <dt>Run-as repair required</dt><dd>{policy.run_as_repair_required ? "Yes" : "No"}</dd>

@@ -67,26 +67,28 @@ export function ScheduleEditor({ schedule }: { schedule: Schedule }) {
     }
   }
 
-  return <div>
-    <button type="button" aria-expanded={editing} aria-controls={formId} onClick={open} disabled={saving}>Edit {schedule.job_kind}{schedule.tier ? ` ${schedule.tier}` : ""}</button>
-    {editing ? <form id={formId} onSubmit={save} aria-label={`Edit ${schedule.job_kind} ${schedule.tier ?? "schedule"}`}>
+  return <div className="schedule-editor">
+    <button className="btn btn-secondary btn-sm" type="button" aria-expanded={editing} aria-controls={formId} onClick={open} disabled={saving}>Edit {schedule.job_kind}{schedule.tier ? ` ${schedule.tier}` : ""}</button>
+    {editing ? <form className="form-card" id={formId} onSubmit={save} aria-label={`Edit ${schedule.job_kind} ${schedule.tier ?? "schedule"}`}>
       <fieldset disabled={saving}>
         <legend>Cadence</legend>
-        <label><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enabled</label>
-        <label><input type="checkbox" checked={raw} onChange={(event) => setRaw(event.target.checked)} /> Use raw cron expression</label>
+        <label className="check-field"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enabled</label>
+        <label className="check-field"><input type="checkbox" checked={raw} onChange={(event) => setRaw(event.target.checked)} /> Use raw cron expression</label>
         {raw ? <label className="filter-field"><span>Cron expression (UTC)</span>
           <input required value={cron} onChange={(event) => setCron(event.target.value)} aria-describedby={`${formId}-cron-help`} />
-          <span id={`${formId}-cron-help`}>Five fields: minute, hour, day of month, month, day of week.</span>
+          <small className="field-help" id={`${formId}-cron-help`}>Five fields: minute, hour, day of month, month, day of week.</small>
         </label> : <div className="filter-bar">
           <label className="filter-field"><span>Every</span><input type="number" required min="1" max="10000" step="1" value={n} onChange={(event) => setN(event.target.value)} /></label>
           <label className="filter-field"><span>Unit</span><select value={every} onChange={(event) => setEvery(event.target.value as Schedule["cadence"]["every"])}>
             <option value="hour">Hours</option><option value="day">Days</option><option value="week">Weeks</option>
           </select></label>
           <label className="filter-field"><span>Time of day (local, optional)</span><input type="time" value={time} onChange={(event) => { setTime(event.target.value); setTimeChanged(true); }} /></label>
-          <p>Local time is converted to UTC when saved. Stored UTC times stay fixed through daylight saving changes.{every === "hour" ? " Hourly schedules use the minute of the selected time." : ""}</p>
+          <p className="field-help">Local time is converted to UTC when saved. Stored UTC times stay fixed through daylight saving changes.{every === "hour" ? " Hourly schedules use the minute of the selected time." : ""}</p>
         </div>}
-        <button type="submit">{saving ? "Saving…" : "Save schedule"}</button>
-        <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+        <div className="form-actions">
+          <button className="btn btn-primary" aria-busy={saving || undefined} disabled={saving} type="submit">{saving ? "Saving…" : "Save schedule"}</button>
+          <button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>Cancel</button>
+        </div>
       </fieldset>
     </form> : null}
     {message ? <p className="action-message" role="status">{message}</p> : null}

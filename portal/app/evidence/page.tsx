@@ -35,12 +35,12 @@ export default async function EvidencePage({ searchParams }: {
     <PageHeader eyebrow="Governance" title="Evidence" description="Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive." generatedAt={data?.generatedAt} />
     <ChainIndicator integrity={integrity} />
     <form action="/evidence" className="evidence-filters">
-      <label>Kind <input name="kind" defaultValue={query.get("kind") ?? ""} placeholder="policy-evaluation" /></label>
-      <label>From (UTC date or ISO timestamp) <input name="from" defaultValue={query.get("from") ?? ""} placeholder="2026-09-01" /></label>
-      <label>To (UTC date or ISO timestamp) <input name="to" defaultValue={query.get("to") ?? ""} placeholder="2026-09-30T23:59:59Z" /></label>
+      <label><span>Kind</span> <input name="kind" defaultValue={query.get("kind") ?? ""} placeholder="policy-evaluation" /></label>
+      <label><span>From (UTC date or ISO timestamp)</span> <input name="from" defaultValue={query.get("from") ?? ""} placeholder="2026-09-01" /></label>
+      <label><span>To (UTC date or ISO timestamp)</span> <input name="to" defaultValue={query.get("to") ?? ""} placeholder="2026-09-30T23:59:59Z" /></label>
       {query.has("limit") ? <input type="hidden" name="limit" value={query.get("limit")!} /> : null}
       <button className="secondary-action" type="submit">Filter and verify chain</button>
     </form>
-    {invalid ? <p role="alert">Invalid filters. Use UTC dates or ISO timestamps, an ordered date range, and a limit from 1 to 200.</p> : data ? <EvidenceTimeline data={data} query={query.toString()} /> : <DataUnavailable surface="Evidence" />}
+    {invalid ? <p className="action-error" role="alert">Invalid filters. Use UTC dates or ISO timestamps, an ordered date range, and a limit from 1 to 200.</p> : data ? <EvidenceTimeline data={data} query={query.toString()} /> : <DataUnavailable surface="Evidence" />}
   </>;
 }

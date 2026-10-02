@@ -33,9 +33,13 @@ export default async function RootLayout({
     throw new Error("Verified Cloudflare Access identity is missing");
   }
 
-  const canApprove = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
+  const capabilities = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
-    .includes("approve");
+    .filter(Boolean);
+  const canApprove = capabilities.includes("approve");
+  // Everything beyond read is something this operator can change; say so plainly
+  // instead of a fixed label that stopped being true once write surfaces shipped.
+  const actions = capabilities.filter((capability) => capability !== "read");
 
   return (
     <html lang="en">
@@ -62,7 +66,9 @@ export default async function RootLayout({
               <span className="operator-email" title={email}>
                 {email}
               </span>
-              <span className="read-only-label">Read-only surfaces</span>
+              <span className="access-label" title={actions.join(", ") || undefined}>
+                {actions.length ? `Read + ${actions.length} action ${actions.length === 1 ? "capability" : "capabilities"}` : "Read-only access"}
+              </span>
             </div>
           </aside>
           <main className="workspace" id="main-content">

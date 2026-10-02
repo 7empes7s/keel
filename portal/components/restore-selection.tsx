@@ -549,6 +549,7 @@ export function RestoreSelection({
           {!artifact ? (
             <div className="drift-action-buttons">
               <button
+                className="primary-action"
                 disabled={
                   !canRestore
                   || submitting
@@ -671,6 +672,7 @@ export function RestoreSelection({
               </div>
               <div className="drift-action-buttons">
                 <button
+                  className="danger-action"
                   disabled={!canRestore || submitting}
                   onClick={() => void confirm()}
                   type="button"

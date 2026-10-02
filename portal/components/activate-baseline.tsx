@@ -48,6 +48,8 @@ export function ActivateBaseline({
   return (
     <span className="activate-control">
       <button
+        aria-busy={submitting || undefined}
+        className="btn btn-primary btn-sm"
         disabled={disabled || submitting}
         onClick={() => void requestActivation()}
         type="button"

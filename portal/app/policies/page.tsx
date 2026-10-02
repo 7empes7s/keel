@@ -22,8 +22,8 @@ export default async function PoliciesPage() {
   return <>
     <PageHeader eyebrow="Governance" title="Policies" description="Automation policies and their current state." generatedAt={data.generatedAt} />
     <KillSwitchBadge disabled={data.automationDisabled} />
-    {data.policies.length === 0 ? <p>No policies configured.</p> : data.policies.map((policy) => <section key={policy.id}>
-      <h2><Link href={`/policies/${policy.id}`}>{policy.name}</Link></h2>
+    {data.policies.length === 0 ? <p className="empty-state">No policies configured.</p> : data.policies.map((policy) => <section className="item-card" key={policy.id}>
+      <h2><Link className="item-title-link" href={`/policies/${policy.id}`}>{policy.name}</Link></h2>
       <PolicyState policy={policy} />
     </section>)}
   </>;

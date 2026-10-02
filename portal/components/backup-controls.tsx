@@ -69,11 +69,14 @@ export function BackupControls({ disabled }: { disabled: boolean }) {
         </div>
       </div>
 
-      <div className="filter-bar">
+      <div className="tier-cards">
         {TIERS.map((tier) => (
-          <div className="filter-field" key={tier.id}>
+          <div className={`tier-card ${tier.id}-card`} key={tier.id}>
+            <strong>{tier.label}</strong>
             <span>{tier.description}</span>
             <button
+              aria-busy={submittingTier === tier.id || undefined}
+              className="btn btn-primary"
               disabled={disabled || submittingTier !== null}
               onClick={() => void backUpNow(tier.id)}
               type="button"

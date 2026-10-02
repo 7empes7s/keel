@@ -5,12 +5,21 @@ import { useRouter } from "next/navigation";
 import type { Channel, Subscription, Delivery } from "@/lib/notifications";
 
 export function DeliveryTable({ deliveries }: { deliveries: Delivery[] }) {
-  return <section aria-labelledby="deliveries-heading"><h2 id="deliveries-heading">Recent deliveries</h2>
-    {deliveries.length === 0 ? <p>No deliveries yet.</p> : <div className="table-scroll"><table><thead><tr>
+  return <section aria-labelledby="deliveries-heading" className="report-section">
+    <div className="section-heading-row report-heading">
+      <div><p className="section-kicker">Outbound</p><h2 id="deliveries-heading">Recent deliveries</h2></div>
+      <span className="result-count">{deliveries.length} shown</span>
+    </div>
+    {deliveries.length === 0 ? <p className="empty-state">No deliveries yet.</p> : <div className="table-scroll"><table className="data-table"><thead><tr>
       {["Event kind", "Severity", "Channel", "Status", "Attempts", "Last error", "Next attempt"].map((title) => <th key={title} scope="col">{title}</th>)}
     </tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id}>
-      <td>{delivery.event.kind}</td><td>{delivery.event.severity}</td><td>{delivery.channel_kind} · {delivery.channel_id}</td>
-      <td>{delivery.status}</td><td>{delivery.attempts}</td><td>{delivery.last_error ?? "—"}</td><td>{delivery.next_attempt_at ?? "—"}</td>
+      <th data-label="Event kind" scope="row"><code className="natural-key">{delivery.event.kind}</code></th>
+      <td data-label="Severity"><span className={`severity-pill severity-${delivery.event.severity}`}>{delivery.event.severity}</span></td>
+      <td className="wrap-value" data-label="Channel">{delivery.channel_kind} · {delivery.channel_id}</td>
+      <td data-label="Status"><span className={`delivery-status delivery-${delivery.status}`}>{delivery.status}</span></td>
+      <td className="number-column" data-label="Attempts">{delivery.attempts}</td>
+      <td className="wrap-value" data-label="Last error">{delivery.last_error ?? "—"}</td>
+      <td data-label="Next attempt">{delivery.next_attempt_at ? <time dateTime={delivery.next_attempt_at}>{delivery.next_attempt_at}</time> : "—"}</td>
     </tr>)}</tbody></table></div>}
   </section>;
 }
@@ -44,28 +53,48 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
     void write("/api/subscriptions", "POST", { channelId: form.get("channelId"), eventGlob: form.get("eventGlob"), minSeverity: form.get("minSeverity") });
   }
   return <>
-    {error ? <p role="alert">{error}</p> : null}
-    <section aria-labelledby="channels-heading"><h2 id="channels-heading">Channels</h2>
-      {channels.length === 0 ? <p>No channels configured.</p> : <ul>{channels.map((channel) => <li key={channel.id}>
-        <strong>{channel.kind}</strong> · {channel.id} · {channel.enabled ? "Enabled" : "Disabled"}
-        <pre>{JSON.stringify(channel.config, null, 2)}</pre>
-        {channel.enabled ? <button disabled={busy} onClick={() => void write(`/api/channels/${channel.id}/disable`, "POST")}>Disable channel</button> : null}
+    {error ? <p className="action-error" role="alert">{error}</p> : null}
+    <section aria-labelledby="channels-heading" className="report-section">
+      <div className="section-heading-row report-heading">
+        <div><p className="section-kicker">Where alerts go</p><h2 id="channels-heading">Channels</h2></div>
+        <span className="result-count">{channels.length} configured</span>
+      </div>
+      {channels.length === 0 ? <p className="empty-state">No channels configured.</p> : <ul className="item-list">{channels.map((channel) => <li className="item-card" key={channel.id}>
+        <div className="item-card-head">
+          <strong>{channel.kind}</strong>
+          <span className={channel.enabled ? "active-indicator" : "inactive-indicator"}>{channel.enabled ? "Enabled" : "Disabled"}</span>
+          <code className="item-id">{channel.id}</code>
+        </div>
+        <pre className="config-block">{JSON.stringify(channel.config, null, 2)}</pre>
+        {channel.enabled ? <div className="form-actions"><button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void write(`/api/channels/${channel.id}/disable`, "POST")} type="button">Disable channel</button></div> : null}
       </li>)}</ul>}
-      <form onSubmit={createChannel}><fieldset disabled={busy}><legend>Create channel</legend>
-        <label>Kind <select name="kind"><option value="webhook">Webhook</option><option value="email">Email</option></select></label>
-        <label>Config (JSON) <textarea name="config" required defaultValue={'{"url":"https://example.com/webhook"}'} /></label>
-        <p>Webhook: url. Email: to, from, and optional subject.</p><button type="submit">Create channel</button>
+      <form className="form-card" onSubmit={createChannel}><fieldset disabled={busy}><legend>Create channel</legend>
+        <div className="form-grid">
+          <label className="filter-field"><span>Kind</span><select name="kind"><option value="webhook">Webhook</option><option value="email">Email</option></select></label>
+          <label className="filter-field form-grid-wide"><span>Config (JSON)</span><textarea name="config" required defaultValue={'{"url":"https://example.com/webhook"}'} /></label>
+        </div>
+        <p className="field-help">Webhook: url. Email: to, from, and optional subject.</p>
+        <div className="form-actions"><button aria-busy={busy || undefined} className="btn btn-primary" type="submit">Create channel</button></div>
       </fieldset></form>
     </section>
-    <section aria-labelledby="subscriptions-heading"><h2 id="subscriptions-heading">Subscriptions</h2>
-      {subscriptions.length === 0 ? <p>No subscriptions configured.</p> : <ul>{subscriptions.map((subscription) => <li key={subscription.id}>
-        {subscription.event_glob} · {subscription.min_severity} · {subscription.channel_id} <button disabled={busy} onClick={() => void write(`/api/subscriptions/${subscription.id}`, "DELETE")}>Delete subscription</button>
+    <section aria-labelledby="subscriptions-heading" className="report-section">
+      <div className="section-heading-row report-heading">
+        <div><p className="section-kicker">Routing rules</p><h2 id="subscriptions-heading">Subscriptions</h2></div>
+        <span className="result-count">{subscriptions.length} active</span>
+      </div>
+      {subscriptions.length === 0 ? <p className="empty-state">No subscriptions configured.</p> : <ul className="item-list">{subscriptions.map((subscription) => <li className="item-card item-card-row" key={subscription.id}>
+        <code className="natural-key">{subscription.event_glob}</code>
+        <span className={`severity-pill severity-${subscription.min_severity}`}>≥ {subscription.min_severity}</span>
+        <code className="item-id">{subscription.channel_id}</code>
+        <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void write(`/api/subscriptions/${subscription.id}`, "DELETE")} type="button">Delete subscription</button>
       </li>)}</ul>}
-      <form onSubmit={createSubscription}><fieldset disabled={busy || channels.length === 0}><legend>Create subscription</legend>
-        <label>Channel <select name="channelId" required>{channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.kind} · {channel.id}</option>)}</select></label>
-        <label>Event glob <input name="eventGlob" required defaultValue="*" /></label>
-        <label>Minimum severity <select name="minSeverity">{["notice", "warning", "critical"].map((severity) => <option key={severity}>{severity}</option>)}</select></label>
-        <button type="submit">Create subscription</button>
+      <form className="form-card" onSubmit={createSubscription}><fieldset disabled={busy || channels.length === 0}><legend>Create subscription</legend>
+        <div className="form-grid">
+          <label className="filter-field"><span>Channel</span><select name="channelId" required>{channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.kind} · {channel.id}</option>)}</select></label>
+          <label className="filter-field"><span>Event glob</span><input name="eventGlob" required defaultValue="*" /></label>
+          <label className="filter-field"><span>Minimum severity</span><select name="minSeverity">{["notice", "warning", "critical"].map((severity) => <option key={severity}>{severity}</option>)}</select></label>
+        </div>
+        <div className="form-actions"><button aria-busy={busy || undefined} className="btn btn-primary" type="submit">Create subscription</button></div>
       </fieldset></form>
     </section>
   </>;

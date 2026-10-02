@@ -8,7 +8,7 @@ export function JobDetail({ job }: { job: JobRecord }) {
       <JobTable headingId="job-heading" jobs={[job]} kicker="Outcome" title={job.kind} />
       <section className="report-section" aria-labelledby="execution-heading">
         <h2 id="execution-heading">Execution</h2>
-        <dl>
+        <dl className="kv-grid">
           <dt>Worker ID</dt><dd className="wrap-value">{job.workerId ?? "—"}</dd>
           <dt>Started</dt><dd>{formatTimestamp(job.startedAt)}</dd>
           <dt>Heartbeat</dt><dd>{formatTimestamp(job.heartbeatAt)}</dd>

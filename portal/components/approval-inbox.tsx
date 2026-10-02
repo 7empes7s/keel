@@ -107,15 +107,17 @@ export function ApprovalInbox({
                         </time>
                       </td>
                       <td data-label="Decision">
-                        <div>
+                        <div className="decision-controls">
                           <button
+                            aria-busy={submitting || undefined}
+                            className="btn btn-primary"
                             disabled={submitting}
                             onClick={() => decide(request, "approve")}
                             type="button"
                           >
                             Approve
                           </button>
-                          <label>
+                          <label className="filter-field">
                             <span>Rejection reason</span>
                             <input
                               disabled={submitting}
@@ -129,6 +131,7 @@ export function ApprovalInbox({
                             />
                           </label>
                           <button
+                            className="btn btn-danger"
                             disabled={submitting}
                             onClick={() => decide(request, "reject")}
                             type="button"

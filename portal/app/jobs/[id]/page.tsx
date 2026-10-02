@@ -31,7 +31,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   return (
     <>
       <PageHeader eyebrow="Operations" title="Job details" description={job.id} />
-      <Link href="/jobs">All jobs</Link>
+      <Link className="text-link back-link" href="/jobs"><span aria-hidden="true">←</span> All jobs</Link>
       <JobDetail job={job} />
       <JobRefresher active={job.status === "queued" || job.status === "running"} />
     </>

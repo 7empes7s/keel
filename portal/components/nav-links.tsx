@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 const links = [
   { href: "/", label: "Dashboard", short: "01" },
@@ -50,9 +51,23 @@ export function visibleNavLinks({
 export function NavLinks({ canRead = false, canPolicies = false, canUsers = false, canApprove = false }: NavCapabilities) {
   const pathname = usePathname();
   const visibleLinks = visibleNavLinks({ canRead, canPolicies, canUsers, canApprove });
+  const navRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
+
+  // The active marker is one element that glides between links rather than each link
+  // drawing its own, so a route change reads as movement from where you were.
+  useLayoutEffect(() => {
+    const active = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    setIndicator(active ? { top: active.offsetTop, height: active.offsetHeight } : null);
+  }, [pathname, visibleLinks.length]);
+
+  const indicatorStyle = indicator
+    ? ({ "--indicator-y": `${indicator.top}px`, "--indicator-h": `${indicator.height}px` } as CSSProperties)
+    : undefined;
 
   return (
-    <nav aria-label="Primary navigation" className="primary-nav">
+    <nav aria-label="Primary navigation" className="primary-nav" ref={navRef} style={indicatorStyle}>
+      {indicator ? <span aria-hidden="true" className="nav-indicator" /> : null}
       {visibleLinks.map((link) => {
         const current =
           link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);

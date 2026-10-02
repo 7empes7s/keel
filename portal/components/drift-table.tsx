@@ -438,7 +438,7 @@ export function DriftTable({
                   ))}</ul>
                 </div>
               ) : <p>No guard refusals found in this preview.</p>}
-              <button disabled={submitting || currentPreview.guardRefusals.length > 0} onClick={() => void remediateSelected()} type="button">
+              <button className="danger-action" disabled={submitting || currentPreview.guardRefusals.length > 0} onClick={() => void remediateSelected()} type="button">
                 Confirm and request approval
               </button>
             </section>

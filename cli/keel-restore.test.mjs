@@ -840,4 +840,68 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
   assert.ok(errors.some((error) => error.includes('target has changed since the dry run')));
 }
 
+// Dependent-impact refusals in a preview or dry run are reported, not thrown: the
+// operator sees the full plan with the delete refused, a persisted dry run would
+// classify as refused (so the artifact gate blocks promotion), and nothing is
+// written. Only a run that can write throws — and a missing mode counts as one.
+{
+  const dependentImpactFixture = () => {
+    const group = {
+      naturalKey: 'group:Finance', resourceType: 'group', targetId: 'target-group-id',
+      payload: null, live: { targetId: 'target-group-id', payload: { id: 'target-group-id' } },
+      references: [], blastRadius: 'access-affecting', restorePriority: 100, verb: 'delete',
+    };
+    const fixture = restoreFakes({ planWaves: () => ({ waves: [], patches: [] }) });
+    fixture.dependencies.buildReconciliationPlan = async () => ({ resources: [group] });
+    fixture.dependencies.canonicalizeAll = () => [
+      { naturalKey: 'group:Finance', resourceType: 'group', sourceId: 'target-group-id', payload: {}, references: [] },
+      {
+        naturalKey: 'conditionalAccessPolicy:Finance-MFA', resourceType: 'conditionalAccessPolicy', sourceId: 'target-ca-id', payload: {},
+        references: [{ field: 'conditions.users.includeGroups[0]', symbol: 'group:Finance', required: true }],
+      },
+      {
+        naturalKey: 'roleAssignment:GlobalAdministrator:break-glass', resourceType: 'roleAssignment', sourceId: 'target-break-glass-role-id',
+        payload: { principalId: 'break-glass-id' },
+      },
+    ];
+    return fixture;
+  };
+  const scope = {
+    snapshotId: 'source-snapshot',
+    selection: ['group:Finance'],
+    collectorConfig: { tenantId: 'target-tenant', clientId: 'collector-client' },
+    targetConfig: { tenantId: 'target-tenant', clientId: 'restorer-client' },
+    dbUrl: testDbUrl,
+    logger: { log() {} },
+  };
+  const dependentImpact = /^blocked-dependent-impact: deleting group:Finance would leave conditionalAccessPolicy:Finance-MFA referencing it at conditions\.users\.includeGroups\[0\]$/;
+
+  const preview = dependentImpactFixture();
+  const previewResult = await runRestore({ ...scope, mode: 'dry-run', previewOnly: true, dependencies: preview.dependencies });
+  const previewRefusal = previewResult.guardRefusals.find((refusal) => refusal.naturalKey === 'group:Finance');
+  assert.ok(previewRefusal, 'the preview must report the dependent-impact delete as a refusal');
+  assert.match(previewRefusal.reason, dependentImpact);
+  assert.equal(previewResult.guardRefusals.filter((refusal) => refusal.naturalKey === 'group:Finance').length, 1,
+    'a key is reported once even when several dependents or guards refuse it');
+  assert.equal(preview.state.waveCalls.length, 0, 'a preview never runs a wave');
+  assert.deepEqual(preview.state.writes, []);
+
+  const dryRun = dependentImpactFixture();
+  const dryRunResult = await runRestore({ ...scope, mode: 'dry-run', dependencies: dryRun.dependencies });
+  assert.ok(dryRunResult.results.skipped.some((entry) => entry.naturalKey === 'group:Finance' && dependentImpact.test(entry.reason)),
+    'a dry run reports the refused delete as skipped');
+  assert.ok(!dryRunResult.results.applied.some((entry) => entry.naturalKey === 'group:Finance'),
+    'a refused delete is never reported as applied');
+  assert.deepEqual(dryRun.state.writes, [], 'a dry run writes nothing');
+
+  const noMode = dependentImpactFixture();
+  await assert.rejects(
+    runRestore({ ...scope, mode: undefined, dependencies: noMode.dependencies }),
+    /blocked-dependent-impact: deleting group:Finance/,
+    'any mode other than an explicit dry run must refuse before a wave runs',
+  );
+  assert.equal(noMode.state.waveCalls.length, 0);
+  assert.deepEqual(noMode.state.writes, []);
+}
+
 console.log('keel-restore.test.mjs — all assertions passed');

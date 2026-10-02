@@ -4312,3 +4312,56 @@ section.wizard-panel {
 .wizard-closure > div:first-child {
   grid-column: auto;
 }
+
+/* --- Brand mark -------------------------------------------------------------
+   The one signature motion: on first load the hull tips and rights itself, the
+   way a keel brings a boat back level. The layout persists across navigation,
+   so it plays once per visit, not on every page. */
+
+.brand-mark {
+  overflow: hidden;
+  border-color: color-mix(in oklab, var(--accent) 70%, var(--line));
+  background:
+    linear-gradient(180deg, transparent 49%, color-mix(in oklab, var(--accent) 12%, transparent) 49%),
+    var(--sidebar);
+}
+
+.brand-mark svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  overflow: visible;
+}
+
+.keel-hull,
+.keel-fin,
+.keel-sail {
+  fill: var(--accent);
+}
+
+.keel-jib {
+  opacity: 0.6;
+}
+
+.brand-mark svg > path {
+  transform-box: view-box;
+  transform-origin: 16px 14.5px;
+  animation: keel-right 1.6s cubic-bezier(0.3, 1.4, 0.5, 1) 200ms both;
+}
+
+
+.brand:hover .brand-mark svg > path {
+  animation: keel-rock 1.2s var(--ease-in-out);
+}
+
+@keyframes keel-right {
+  0% { transform: rotate(-14deg); }
+  45% { transform: rotate(5deg); }
+  70% { transform: rotate(-2deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes keel-rock {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-6deg); }
+  65% { transform: rotate(3deg); }
+}

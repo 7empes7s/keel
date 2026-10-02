@@ -4681,3 +4681,337 @@ section.wizard-panel {
     width: auto;
   }
 }
+
+/* ==========================================================================
+   Coverage, baselines, job detail, policy detail.
+   ========================================================================== */
+
+/* Coverage: state cards with their share of the catalog. */
+.state-selector {
+  border: 0;
+  gap: var(--space-xs);
+}
+
+.state-count,
+.state-count + .state-count {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  align-items: flex-start;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.state-count:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.state-count[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.state-count strong {
+  font-family: var(--font-sans);
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 760;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.state-share {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: var(--surface-muted);
+}
+
+.state-share > span {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  animation: grow-x 700ms var(--ease-out) 200ms both;
+}
+
+.share-protected > span { background: var(--protected); }
+.share-partially-protected > span { background: var(--partial); }
+.share-read-only > span { background: var(--readonly); }
+.share-unprotectable > span { background: var(--unprotectable); }
+.share-failed > span { background: var(--failed); }
+.share-not-covered > span { background: var(--uncovered); }
+
+/* The resource type stays visible while the wide table scrolls sideways. */
+.coverage-table thead th:first-child,
+.coverage-table tbody th:first-child {
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.coverage-table thead th:first-child {
+  background: var(--surface-muted);
+}
+
+.coverage-group {
+  border: 1px solid var(--line);
+}
+
+.capability-matrix > summary {
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.capability-matrix > summary:hover {
+  color: var(--accent);
+}
+
+.capability-matrix[open] > .capability-detail-list {
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  animation: rise-in var(--duration-base) var(--ease-out) both;
+}
+
+/* Baselines */
+.active-row {
+  background: color-mix(in oklab, var(--protected) 7%, transparent);
+}
+
+.active-row > :first-child {
+  box-shadow: inset 3px 0 0 var(--protected);
+}
+
+.resource-bar-cell {
+  display: inline-grid;
+  min-width: 6rem;
+  justify-items: end;
+  gap: 0.3rem;
+}
+
+.resource-bar {
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: var(--surface-muted);
+}
+
+.resource-bar > span {
+  display: block;
+  height: 100%;
+  margin-left: auto;
+  background: var(--accent);
+  transform-origin: right center;
+  animation: grow-x 700ms var(--ease-out) 150ms both;
+}
+
+/* Job detail */
+.job-summary {
+  --tone: var(--line-strong);
+  display: grid;
+  margin-top: var(--space-xl);
+  padding: var(--space-lg);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--tone);
+  background: var(--surface);
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 1fr);
+  align-items: center;
+  gap: var(--space-xl);
+}
+
+.job-summary-succeeded { --tone: var(--protected); }
+.job-summary-failed { --tone: var(--failed); }
+.job-summary-running,
+.job-summary-queued { --tone: var(--partial); }
+
+.job-summary-main {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-xs);
+}
+
+.job-summary-main h2 code {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+}
+
+.job-summary-facts {
+  margin: 0;
+}
+
+.job-timeline {
+  display: grid;
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+}
+
+.job-timeline li {
+  position: relative;
+  display: grid;
+  padding: var(--space-md) var(--space-sm) 0 0;
+  border-top: 2px solid var(--line);
+  gap: var(--space-2xs);
+}
+
+.job-timeline li::before {
+  position: absolute;
+  top: -0.4rem;
+  left: 0;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--canvas);
+  content: "";
+}
+
+.job-timeline .timeline-done {
+  border-top-color: var(--accent);
+}
+
+.job-timeline .timeline-done::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.timeline-label {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.job-timeline time {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.job-timeline small {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.timeline-pending time {
+  color: var(--text-muted);
+}
+
+.job-data-grid {
+  display: grid;
+  margin-top: var(--space-md);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.job-data-grid h3,
+.job-error-block h3 {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.job-error-block {
+  margin-top: var(--space-md);
+}
+
+.job-error-empty .job-error {
+  border-color: var(--line);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+/* Policy detail */
+.policy-groups {
+  display: grid;
+  margin-top: var(--space-md);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.policy-group {
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.policy-group h3 {
+  margin-bottom: var(--space-xs);
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.policy-group .kv-grid {
+  margin-top: 0;
+  border-top: 0;
+}
+
+.policy-group .kv-grid dt,
+.policy-group .kv-grid dd {
+  border-bottom-color: color-mix(in oklab, var(--line) 60%, transparent);
+}
+
+.policy-meta {
+  margin-top: var(--space-sm);
+}
+
+@media (max-width: 46rem) {
+  .job-summary,
+  .job-data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: var(--space-lg);
+  }
+
+  .coverage-table thead th:first-child,
+  .coverage-table tbody th:first-child {
+    position: static;
+  }
+}
+
+/* Coverage columns sized to their content instead of eleven equal slices. */
+.coverage-table {
+  min-width: 100rem;
+}
+
+.coverage-table thead th {
+  white-space: normal;
+}
+
+.coverage-table th:nth-child(1) { width: 13rem; }
+.coverage-table th:nth-child(2) { width: 10rem; }
+.coverage-table th:nth-child(3) { width: 10rem; }
+.coverage-table th:nth-child(4) { width: 11rem; }
+.coverage-table th:nth-child(5) { width: 6rem; }
+.coverage-table th:nth-child(6) { width: 9rem; }
+.coverage-table th:nth-child(7) { width: 7rem; }
+.coverage-table th:nth-child(8) { width: 5rem; }
+.coverage-table th:nth-child(9) { width: 8rem; }
+.coverage-table th:nth-child(10) { width: 9rem; }
+.coverage-table th:nth-child(11) { width: 16rem; }
+
+.coverage-table tbody th .resource-type {
+  overflow-wrap: anywhere;
+}
+
+.job-timeline li {
+  align-content: start;
+}

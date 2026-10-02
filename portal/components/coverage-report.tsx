@@ -359,6 +359,9 @@ export function CoverageReport({ data }: { data: CoverageData }) {
             >
               <StateBadge state={candidate} />
               <strong>{stateCounts[candidate]}</strong>
+              <span aria-hidden="true" className={`state-share share-${candidate}`}>
+                <span style={{ width: `${data.summary.total ? (stateCounts[candidate] / data.summary.total) * 100 : 0}%` }} />
+              </span>
             </button>
           ))}
         </div>

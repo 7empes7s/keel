@@ -52,8 +52,11 @@
   --focus-ring: 0 0 0 3px color-mix(in oklch, var(--accent) 28%, transparent);
 }
 
+/* Light palette. Applies when the OS prefers light and the operator has not pinned
+   dark, or when they pinned light. Dark is the bare :root default above. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
     --canvas: oklch(0.965 0.007 255);
     --sidebar: oklch(0.925 0.012 255);
     --surface: oklch(0.99 0.004 255);
@@ -82,6 +85,41 @@
 
     --shadow-raised: 0 1px 2px oklch(0.2 0.02 255 / 0.06), 0 12px 32px -18px oklch(0.2 0.02 255 / 0.28);
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: oklch(0.965 0.007 255);
+  --sidebar: oklch(0.925 0.012 255);
+  --surface: oklch(0.99 0.004 255);
+  --surface-raised: oklch(1 0.003 255);
+  --surface-muted: oklch(0.945 0.008 255);
+  --text: oklch(0.225 0.025 255);
+  --text-soft: oklch(0.41 0.027 255);
+  --text-muted: oklch(0.51 0.025 255);
+  --line: oklch(0.84 0.018 255);
+  --line-strong: oklch(0.69 0.025 255);
+  --accent: oklch(0.51 0.12 64);
+  --accent-soft: oklch(0.91 0.055 78);
+
+  --protected: oklch(0.41 0.12 151);
+  --protected-bg: oklch(0.92 0.045 151);
+  --partial: oklch(0.47 0.13 70);
+  --partial-bg: oklch(0.93 0.055 82);
+  --readonly: oklch(0.43 0.11 243);
+  --readonly-bg: oklch(0.92 0.04 235);
+  --unprotectable: oklch(0.47 0.11 325);
+  --unprotectable-bg: oklch(0.925 0.04 325);
+  --failed: oklch(0.47 0.17 25);
+  --failed-bg: oklch(0.93 0.055 25);
+  --uncovered: oklch(0.43 0.02 255);
+  --uncovered-bg: oklch(0.91 0.012 255);
+
+  --shadow-raised: 0 1px 2px oklch(0.2 0.02 255 / 0.06), 0 12px 32px -18px oklch(0.2 0.02 255 / 0.28);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 * {
@@ -3015,4 +3053,417 @@ section.item-card + section.item-card {
 
 .workspace:has(.live-indicator) {
   padding-bottom: calc(var(--space-3xl) + 2rem);
+}
+
+/* ==========================================================================
+   Navigation groups, theme toggle, command palette, confirmation dialogs.
+   ========================================================================== */
+
+.sidebar {
+  overflow-y: auto;
+  gap: var(--space-lg);
+  scrollbar-width: thin;
+}
+
+.primary-nav {
+  gap: var(--space-md);
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-group-label {
+  margin: 0 0 var(--space-2xs);
+  padding: 0 var(--space-sm);
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nav-link {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  font-size: 0.875rem;
+}
+
+.nav-badge {
+  display: inline-flex;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--sidebar);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  animation: badge-in var(--duration-slow) var(--ease-out) both;
+}
+
+.nav-toggle {
+  display: none;
+}
+
+/* --- Theme toggle ---------------------------------------------------------- */
+
+.theme-toggle {
+  display: grid;
+  margin-top: var(--space-xs);
+  padding: 2px;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.theme-option {
+  min-height: 1.85rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.theme-option:hover {
+  color: var(--text);
+}
+
+.theme-option[aria-checked="true"] {
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--line-strong);
+  color: var(--text);
+}
+
+/* Colour changes from the toggle cross-fade instead of snapping. */
+html,
+body,
+.sidebar,
+.item-card,
+.form-card,
+.data-table,
+.tier-card {
+  transition:
+    background-color var(--duration-slow) var(--ease-out),
+    border-color var(--duration-slow) var(--ease-out),
+    color var(--duration-slow) var(--ease-out);
+}
+
+/* --- Command palette ------------------------------------------------------- */
+
+.palette-trigger {
+  display: flex;
+  min-height: 2.25rem;
+  padding: 0 var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.palette-trigger:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+kbd {
+  display: inline-flex;
+  min-width: 1.4rem;
+  padding: 0.05rem 0.3rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+.command-palette,
+.confirm-dialog {
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100svh - 4rem));
+  margin: 12vh auto auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow: 0 30px 80px -20px oklch(0 0 0 / 0.55);
+  color: var(--text);
+}
+
+.command-palette[open],
+.confirm-dialog[open] {
+  animation: dialog-in var(--duration-base) var(--ease-out) both;
+}
+
+.command-palette::backdrop,
+.confirm-dialog::backdrop {
+  background: oklch(0.12 0.02 255 / 0.55);
+  backdrop-filter: blur(3px);
+  animation: fade-in var(--duration-base) var(--ease-out) both;
+}
+
+.command-palette-body {
+  display: grid;
+  max-height: inherit;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.command-input {
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0 var(--space-md);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  font-size: 1rem;
+}
+
+.command-input:focus-visible {
+  outline: none;
+}
+
+.command-list {
+  margin: 0;
+  padding: var(--space-2xs);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.command-item {
+  display: flex;
+  min-height: 2.5rem;
+  padding: 0 var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  gap: var(--space-md);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.command-item small {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.command-item[aria-selected="true"] {
+  border-left-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.command-empty {
+  padding: var(--space-lg) var(--space-sm);
+  color: var(--text-muted);
+}
+
+.command-footer {
+  display: flex;
+  margin: 0;
+  padding: var(--space-xs) var(--space-md);
+  border-top: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  gap: var(--space-md);
+}
+
+.command-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+/* --- Confirmation dialog --------------------------------------------------- */
+
+.confirm-dialog {
+  width: min(30rem, calc(100vw - 2rem));
+  margin-top: 18vh;
+  border-top: 3px solid var(--failed);
+}
+
+.confirm-dialog-body {
+  display: grid;
+  padding: var(--space-lg);
+  gap: var(--space-xs);
+}
+
+.confirm-dialog h2 {
+  font-size: 1.125rem;
+}
+
+.confirm-dialog-description p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.confirm-dialog .form-actions {
+  justify-content: flex-end;
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --- Mobile: a menu button opens the grouped nav as a drawer --------------- */
+
+@media (max-width: 62rem) {
+  .sidebar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    max-height: 100svh;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+  }
+
+  .brand {
+    margin-right: auto;
+  }
+
+  .palette-trigger {
+    gap: var(--space-sm);
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+    min-height: 2.25rem;
+    padding: 0 var(--space-sm);
+    align-items: center;
+    border: 1px solid var(--line-strong);
+    background: var(--surface-raised);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    gap: var(--space-xs);
+  }
+
+  .nav-toggle-icon,
+  .nav-toggle-icon::before,
+  .nav-toggle-icon::after {
+    display: block;
+    width: 0.875rem;
+    height: 2px;
+    background: currentColor;
+    transition: transform var(--duration-base) var(--ease-out), opacity var(--duration-fast);
+  }
+
+  .nav-toggle-icon {
+    position: relative;
+  }
+
+  .nav-toggle-icon::before,
+  .nav-toggle-icon::after {
+    position: absolute;
+    left: 0;
+    content: "";
+  }
+
+  .nav-toggle-icon::before { top: -5px; }
+  .nav-toggle-icon::after { top: 5px; }
+
+  .nav-toggle[aria-expanded="true"] .nav-toggle-icon { background: transparent; }
+  .nav-toggle[aria-expanded="true"] .nav-toggle-icon::before { transform: translateY(5px) rotate(45deg); }
+  .nav-toggle[aria-expanded="true"] .nav-toggle-icon::after { transform: translateY(-5px) rotate(-45deg); }
+
+  .primary-nav,
+  .primary-nav[data-open] {
+    display: none;
+    width: 100%;
+    padding: var(--space-sm) 0 var(--space-xs);
+    overflow: visible;
+    flex-basis: 100%;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: var(--space-md);
+  }
+
+  .primary-nav[data-open] {
+    display: grid;
+    border-top: 1px solid var(--line);
+    animation: rise-in var(--duration-base) var(--ease-out) both;
+  }
+
+  .primary-nav .nav-link {
+    min-width: 0;
+    min-height: 2.5rem;
+    padding: 0 var(--space-sm);
+    font-size: 0.875rem;
+    justify-items: start;
+  }
+
+  .operator-context {
+    display: none;
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .primary-nav[data-open] ~ .operator-context {
+    display: flex;
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--line);
+  }
+
+  .primary-nav[data-open] ~ .operator-context .operator-email,
+  .primary-nav[data-open] ~ .operator-context .access-label {
+    display: block;
+  }
+}
+
+@media (max-width: 46rem) {
+  .sidebar {
+    position: sticky;
+  }
+
+  .palette-trigger kbd {
+    display: none;
+  }
+
+  .primary-nav[data-open] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media print {
+  .palette-trigger,
+  .nav-toggle,
+  .theme-toggle,
+  .live-indicator {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  *::backdrop {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
 }

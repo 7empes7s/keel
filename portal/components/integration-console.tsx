@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { Destination, DestinationStatus, QuarantinedEvent } from "@/lib/integrations";
 
 function statusFor(statuses: DestinationStatus[], id: string): DestinationStatus | null {
@@ -81,7 +82,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
             <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void loadQuarantined(destination.id)} type="button">Show quarantined events</button>
             {canConfiguration ? (paused
               ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST")} type="button">Resume destination</button>
-              : <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/revoke`, "POST")} type="button">Pause destination</button>) : null}
+              : <ConfirmButton confirmLabel="Pause destination" description={<p>{destination.name} stops receiving evidence events until it is resumed. New events queue up as pending, so the SIEM falls behind while it is paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST")} size="sm" title={`Pause ${destination.name}?`}>Pause destination</ConfirmButton>) : null}
           </div>
           {events ? (events.length === 0 ? <p className="field-help">No quarantined events.</p> : <ul className="quarantine-list">{events.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
             {quarantinedEvent.event_id} · {quarantinedEvent.quarantine_reason ?? "—"} · {quarantinedEvent.quarantined_at}

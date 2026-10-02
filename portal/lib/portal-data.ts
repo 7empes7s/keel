@@ -35,6 +35,7 @@ import type {
 } from "@/lib/types";
 
 interface KeelClient {
+  query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
   end(): Promise<void>;
 }
 
@@ -304,6 +305,46 @@ async function activeDriftFor(
     .map(normalizeDrift);
 }
 
+export const DRIFT_TREND_DAYS = 30;
+
+// Zero-fills the window so every day is one point: a gap in detection is a real zero,
+// not a missing sample, and the x-axis stays linear in time.
+export function fillDriftTrend(
+  rows: Array<{ day: string; count: number }>,
+  end: Date,
+  days = DRIFT_TREND_DAYS,
+): Array<{ day: string; count: number }> {
+  const counts = new Map(rows.map((row) => [row.day, row.count]));
+  const last = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  return Array.from({ length: days }, (_, index) => {
+    const day = new Date(last - (days - 1 - index) * 86_400_000).toISOString().slice(0, 10);
+    return { day, count: counts.get(day) ?? 0 };
+  });
+}
+
+async function driftTrendFor(
+  client: KeelClient,
+  ref: string,
+  activeBaselineId: string | null,
+  end: Date,
+): Promise<Array<{ day: string; count: number }>> {
+  if (!activeBaselineId) return fillDriftTrend([], end);
+  const { rows } = await client.query(
+    `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+            count(*)::int AS count
+       FROM drift
+      WHERE tenant_ref = $1
+        AND baseline_id = $2
+        AND detected_at >= $3
+      GROUP BY 1`,
+    [ref, activeBaselineId, new Date(end.getTime() - DRIFT_TREND_DAYS * 86_400_000)],
+  );
+  return fillDriftTrend(
+    rows.map((row) => ({ day: String(row.day), count: Number(row.count) })),
+    end,
+  );
+}
+
 export async function getCoverageData(): Promise<CoverageData> {
   const ref = tenantRef();
   return withClient((client) => coverageFor(client, ref));
@@ -479,6 +520,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     })) as { ok: boolean; chainLength: number };
     const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
     const coverageData = await coverageFor(client, ref);
+    const generatedAt = new Date();
+    const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
 
     const openDriftByBlastRadius = [...new Set([
       ...BLAST_RADIUS_ORDER,
@@ -496,12 +539,13 @@ export async function getDashboardData(): Promise<DashboardData> {
         }
       : null;
     const data: DashboardData = {
-      generatedAt: new Date().toISOString(),
+      generatedAt: generatedAt.toISOString(),
       activeBaseline,
       lastCollection,
       lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
       openDriftByBlastRadius,
       openDriftTotal: drift.length,
+      driftTrend,
       coverage: coverageData.summary,
       evidence: {
         ok: Boolean(evidenceRaw.ok),

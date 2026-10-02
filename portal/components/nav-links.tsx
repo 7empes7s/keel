@@ -2,26 +2,38 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-const links = [
-  { href: "/", label: "Dashboard", short: "01" },
-  { href: "/coverage", label: "Coverage", short: "02" },
-  { href: "/drift", label: "Drift", short: "03" },
-  { href: "/baselines", label: "Baselines", short: "04" },
-  { href: "/backups", label: "Backups", short: "05" },
-  { href: "/restore", label: "Restore", short: "06" },
-  { href: "/jobs", label: "Jobs", short: "07" },
-  { href: "/policies", label: "Policies", short: "08" },
-  { href: "/notifications", label: "Notifications", short: "09" },
-  { href: "/integrations", label: "Integrations", short: "10" },
-  { href: "/principals", label: "Principals", short: "11" },
-  { href: "/evidence", label: "Evidence", short: "12" },
-  { href: "/schedules", label: "Schedules", short: "13" },
+// Grouped by the job an operator is doing, not numbered: during an incident the
+// question is "where do I recover" or "who must approve", not "which page is 06".
+export const NAV_GROUPS = ["Posture", "Recovery", "Operations", "Governance", "Settings"] as const;
+export type NavGroup = (typeof NAV_GROUPS)[number];
+
+export interface NavLink {
+  href: string;
+  label: string;
+  group: NavGroup;
+}
+
+const links: NavLink[] = [
+  { href: "/", label: "Dashboard", group: "Posture" },
+  { href: "/coverage", label: "Coverage", group: "Posture" },
+  { href: "/drift", label: "Drift", group: "Posture" },
+  { href: "/baselines", label: "Baselines", group: "Recovery" },
+  { href: "/backups", label: "Backups", group: "Recovery" },
+  { href: "/restore", label: "Restore", group: "Recovery" },
+  { href: "/jobs", label: "Jobs", group: "Operations" },
+  { href: "/schedules", label: "Schedules", group: "Operations" },
+  { href: "/policies", label: "Policies", group: "Operations" },
+  { href: "/evidence", label: "Evidence", group: "Governance" },
+  { href: "/principals", label: "Principals", group: "Governance" },
+  { href: "/notifications", label: "Notifications", group: "Settings" },
+  { href: "/integrations", label: "Integrations", group: "Settings" },
 ];
 
-const approvalLink = { href: "/approvals", label: "Approvals", short: "14" };
+const approvalLink: NavLink = { href: "/approvals", label: "Approvals", group: "Governance" };
 
-interface NavCapabilities {
+export interface NavCapabilities {
   canRead?: boolean;
   canPolicies?: boolean;
   canUsers?: boolean;
@@ -47,29 +59,91 @@ export function visibleNavLinks({
   return canApprove ? [...gated, approvalLink] : gated;
 }
 
-export function NavLinks({ canRead = false, canPolicies = false, canUsers = false, canApprove = false }: NavCapabilities) {
+export function groupNavLinks(visible: NavLink[]) {
+  return NAV_GROUPS.map((group) => ({
+    group,
+    // Approvals leads its group: it is the one surface that waits on a person.
+    links: visible
+      .filter((link) => link.group === group)
+      .sort((a, b) => Number(b.href === "/approvals") - Number(a.href === "/approvals")),
+  })).filter((section) => section.links.length > 0);
+}
+
+export function isCurrentPath(pathname: string | null, href: string): boolean {
+  if (!pathname) return false;
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
+export function NavLinks({
+  canRead = false,
+  canPolicies = false,
+  canUsers = false,
+  canApprove = false,
+  pendingApprovals = null,
+}: NavCapabilities & { pendingApprovals?: number | null }) {
   const pathname = usePathname();
   const visibleLinks = visibleNavLinks({ canRead, canPolicies, canUsers, canApprove });
+  const sections = groupNavLinks(visibleLinks);
+  const navRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
+  const [open, setOpen] = useState(false);
+
+  // The active marker is one element that glides between links rather than each link
+  // drawing its own, so a route change reads as movement from where you were.
+  useLayoutEffect(() => {
+    const active = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    setIndicator(active ? { top: active.offsetTop, height: active.offsetHeight } : null);
+    setOpen(false);
+  }, [pathname, visibleLinks.length]);
+
+  const indicatorStyle = indicator
+    ? ({ "--indicator-y": `${indicator.top}px`, "--indicator-h": `${indicator.height}px` } as CSSProperties)
+    : undefined;
+  const current = visibleLinks.find((link) => isCurrentPath(pathname, link.href));
 
   return (
-    <nav aria-label="Primary navigation" className="primary-nav">
-      {visibleLinks.map((link) => {
-        const current =
-          link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-        return (
-          <Link
-            aria-current={current ? "page" : undefined}
-            className="nav-link"
-            href={link.href}
-            key={link.href}
-          >
-            <span aria-hidden="true" className="nav-index">
-              {link.short}
-            </span>
-            <span>{link.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
+    <>
+      <button
+        aria-controls="primary-nav"
+        aria-expanded={open}
+        className="nav-toggle"
+        onClick={() => setOpen((value) => !value)}
+        type="button"
+      >
+        <span aria-hidden="true" className="nav-toggle-icon" />
+        <span>{current?.label ?? "Menu"}</span>
+      </button>
+      <nav
+        aria-label="Primary navigation"
+        className="primary-nav"
+        data-open={open || undefined}
+        id="primary-nav"
+        ref={navRef}
+        style={indicatorStyle}
+      >
+        {indicator ? <span aria-hidden="true" className="nav-indicator" /> : null}
+        {sections.map((section) => (
+          <div className="nav-group" key={section.group}>
+            <p className="nav-group-label">{section.group}</p>
+            {section.links.map((link) => (
+              <Link
+                aria-current={isCurrentPath(pathname, link.href) ? "page" : undefined}
+                className="nav-link"
+                href={link.href}
+                key={link.href}
+              >
+                <span>{link.label}</span>
+                {link.href === "/approvals" && pendingApprovals ? (
+                  <span className="nav-badge" title={`${pendingApprovals} pending approval requests`}>
+                    {pendingApprovals > 99 ? "99+" : pendingApprovals}
+                    <span className="visually-hidden"> pending</span>
+                  </span>
+                ) : null}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </nav>
+    </>
   );
 }

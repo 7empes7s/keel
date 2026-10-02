@@ -16,14 +16,14 @@ export function EvidenceTimeline({ data, query }: { data: EvidenceData; query: s
   const first = new URLSearchParams(query);
   first.delete("before");
   return <section aria-label="Evidence timeline">
-    {data.entries.length === 0 ? <p>No evidence matches these filters.</p> : <ol className="evidence-timeline">
-      {data.entries.map((entry) => <li key={entry.seq}>
+    {data.entries.length === 0 ? <p className="empty-state">No evidence matches these filters.</p> : <ol className="evidence-timeline">
+      {data.entries.map((entry) => <li className="evidence-entry" key={entry.seq}>
         <h2>#{entry.seq} · {entry.kind}</h2>
-        <p><time dateTime={entry.occurred_at}>{entry.occurred_at}</time> · {entry.actor}</p>
+        <p className="evidence-meta"><time dateTime={entry.occurred_at}>{entry.occurred_at}</time> · {entry.actor}</p>
         <pre className="job-payload">{JSON.stringify(entry.subject, null, 2)}</pre>
       </li>)}
     </ol>}
-    <nav aria-label="Evidence pagination">
+    <nav aria-label="Evidence pagination" className="pagination-links">
       {new URLSearchParams(query).has("before") ? <Link className="secondary-action" href={`/evidence?${first}`}>Newest entries</Link> : null}
       {data.nextBefore ? <Link className="secondary-action" href={`/evidence?${next}`}>Older entries</Link> : null}
     </nav>

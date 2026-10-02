@@ -1,15 +1,8 @@
 import Link from "next/link";
 
+import { JobStatusBadge } from "@/components/job-status-badge";
 import { formatTimestamp } from "@/lib/presentation";
 import type { JobRecord } from "@/lib/portal-jobs";
-
-const STATUS_LABEL: Record<string, string> = {
-  queued: "Queued",
-  running: "Running",
-  succeeded: "Succeeded",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
 
 // Recent-job listing shared by the baselines and backups surfaces (plan task 16):
 // kind, status, created/finished times, and the error when a job failed.
@@ -51,14 +44,12 @@ export function JobTable({
             </thead>
             <tbody>
               {jobs.map((job) => (
-                <tr key={job.id}>
+                <tr className={`job-row job-row-${job.status}`} key={job.id}>
                   <th data-label="Kind" scope="row">
                     <Link href={`/jobs/${encodeURIComponent(job.id)}`}><code className="natural-key">{job.kind}</code></Link>
                   </th>
                   <td data-label="Status">
-                    <span className={`job-status job-status-${job.status}`}>
-                      {STATUS_LABEL[job.status] ?? job.status}
-                    </span>
+                    <JobStatusBadge status={job.status} />
                   </td>
                   <td data-label="Created">
                     <time dateTime={job.createdAt ?? undefined}>

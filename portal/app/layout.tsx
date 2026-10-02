@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import Link from "next/link";
 
 import "@fontsource-variable/public-sans";
@@ -9,9 +9,15 @@ import "./globals.css";
 
 import { DATA_SURFACES, readAccess } from "@/lib/read";
 
+import { CommandPalette } from "@/components/command-palette";
+import { KeelMark } from "@/components/keel-mark";
 import { NavLinks } from "@/components/nav-links";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Toaster } from "@/components/toaster";
+import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
+import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "KEEL Operator Portal",
@@ -33,12 +39,28 @@ export default async function RootLayout({
     throw new Error("Verified Cloudflare Access identity is missing");
   }
 
-  const canApprove = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
+  const capabilities = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
-    .includes("approve");
+    .filter(Boolean);
+  const canApprove = capabilities.includes("approve");
+  // Everything beyond read is something this operator can change; say so plainly
+  // instead of a fixed label that stopped being true once write surfaces shipped.
+  const actions = capabilities.filter((capability) => capability !== "read");
+  const theme = parseThemePreference((await cookies()).get(THEME_COOKIE)?.value);
+
+  // Only approvers see the count, and a failed read hides the badge rather than
+  // breaking every page's chrome.
+  let pendingApprovals: number | null = null;
+  if (approvalInboxAccess(requestHeaders)) {
+    try {
+      pendingApprovals = await getPendingApprovalCount();
+    } catch {
+      pendingApprovals = null;
+    }
+  }
 
   return (
-    <html lang="en">
+    <html data-theme={theme === "system" ? undefined : theme} lang="en">
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content
@@ -47,14 +69,15 @@ export default async function RootLayout({
           <aside className="sidebar">
             <Link aria-label="KEEL dashboard" className="brand" href="/">
               <span className="brand-mark" aria-hidden="true">
-                K
+                <KeelMark />
               </span>
               <span>
                 <strong>KEEL</strong>
                 <small>Operator portal</small>
               </span>
             </Link>
-            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} />
+            <CommandPalette canApprove={canApprove} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
+            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} pendingApprovals={pendingApprovals} />
             <div className="operator-context">
               <span className="auth-state">
                 <span aria-hidden="true" className="auth-dot" /> Authenticated
@@ -62,13 +85,17 @@ export default async function RootLayout({
               <span className="operator-email" title={email}>
                 {email}
               </span>
-              <span className="read-only-label">Read-only surfaces</span>
+              <span className="access-label" title={actions.join(", ") || undefined}>
+                {actions.length ? `Read + ${actions.length} action ${actions.length === 1 ? "capability" : "capabilities"}` : "Read-only access"}
+              </span>
+              <ThemeToggle initial={theme} />
             </div>
           </aside>
           <main className="workspace" id="main-content">
             {children}
           </main>
         </div>
+        <Toaster />
       </body>
     </html>
   );

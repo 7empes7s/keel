@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "ui:build": "node ui-harness/build.mjs",
+    "test:ui": "node ui-harness/build.mjs && playwright test -c ui-harness/playwright.config.ts",
+    "test:ui:update": "node ui-harness/build.mjs && playwright test -c ui-harness/playwright.config.ts --update-snapshots"
   },
   "engines": {
     "node": ">=20.9.0"
@@ -21,10 +24,18 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.56.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "0.28.2",
     "tsx": "^4.20.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@axe-core/playwright": {
+      "playwright-core": "1.56.1"
+    }
   }
 }

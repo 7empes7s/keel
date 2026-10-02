@@ -4365,3 +4365,319 @@ section.wizard-panel {
   30% { transform: rotate(-6deg); }
   65% { transform: rotate(3deg); }
 }
+
+/* ==========================================================================
+   Drift: quick filters, sticky toolbar, inline field diff, selection dock.
+   ========================================================================== */
+
+.quick-filters {
+  display: flex;
+  margin-bottom: var(--space-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.quick-filter {
+  display: inline-flex;
+  min-height: 2rem;
+  padding: 0 var(--space-sm);
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 650;
+  gap: var(--space-xs);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.quick-filter strong {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-filter:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.quick-filter[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.quick-filter:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.quick-filter-divider {
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 var(--space-2xs);
+  background: var(--line);
+}
+
+/* Filters stay reachable while scrolling a long drift list. */
+.drift-toolbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  background: color-mix(in oklab, var(--canvas) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.drift-row {
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.drift-row > :first-child {
+  box-shadow: inset 3px 0 0 transparent;
+}
+
+.blast-row-tenant-lockout > :first-child { box-shadow: inset 3px 0 0 var(--failed); }
+.blast-row-access-affecting > :first-child { box-shadow: inset 3px 0 0 var(--partial); }
+
+.drift-row-selected {
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+}
+
+.drift-row-open,
+.drift-row-open:hover {
+  background: var(--surface-raised);
+}
+
+.diff-row > td {
+  padding: 0 !important;
+  background: var(--surface-muted);
+}
+
+.diff-row:hover {
+  background: transparent !important;
+}
+
+.drift-diff {
+  display: grid;
+  padding: var(--space-lg);
+  border-top: 1px solid var(--line-strong);
+  gap: var(--space-md);
+  animation: rise-in var(--duration-base) var(--ease-out) both;
+}
+
+.drift-diff-head {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.drift-diff-head h3 {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.drift-diff-head .field-help {
+  margin: 0;
+}
+
+.diff-table {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  table-layout: fixed;
+}
+
+.diff-table th:first-child {
+  width: 30%;
+}
+
+.diff-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.diff-field code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.diff-kind {
+  padding: 0 0.35rem;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.diff-changed .diff-kind { color: var(--partial); }
+.diff-added .diff-kind { color: var(--protected); }
+.diff-removed .diff-kind { color: var(--failed); }
+
+.diff-table pre {
+  margin: 0;
+  padding: var(--space-2xs) var(--space-xs);
+  border: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-changed .diff-before,
+.diff-removed .diff-before {
+  background: var(--failed-bg);
+  color: var(--failed);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in oklab, var(--failed) 45%, transparent);
+}
+
+.diff-changed .diff-after,
+.diff-added .diff-after {
+  background: var(--protected-bg);
+  color: var(--protected);
+}
+
+.diff-full > summary {
+  width: fit-content;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.diff-full > summary:hover {
+  color: var(--accent);
+}
+
+.diff-full[open] > summary {
+  margin-bottom: var(--space-sm);
+}
+
+.diff-full .difference-payloads {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.selection-dock {
+  position: fixed;
+  z-index: 40;
+  bottom: var(--space-lg);
+  left: 50%;
+  display: flex;
+  padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-md);
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklab, var(--surface-raised) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-raised);
+  font-size: 0.8125rem;
+  gap: var(--space-sm);
+  transform: translateX(-50%);
+  animation: dock-in var(--duration-slow) var(--ease-out) both;
+}
+
+.selection-dock strong {
+  font-family: var(--font-mono);
+}
+
+.remediation-preview {
+  display: grid;
+  padding: var(--space-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  grid-column: 1 / -1;
+  gap: var(--space-sm);
+  animation: rise-in var(--duration-slow) var(--ease-out) both;
+}
+
+.remediation-preview h4 {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.remediation-preview p {
+  margin: 0;
+}
+
+.remediation-preview > .danger-action {
+  justify-self: start;
+}
+
+.verb-chip {
+  display: inline-flex;
+  margin-right: var(--space-xs);
+  padding: 0 0.4rem;
+  border: 1px solid currentColor;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.verb-update,
+.verb-patch { color: var(--partial); }
+.verb-create { color: var(--protected); }
+.verb-delete { color: var(--failed); }
+
+.wave-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  counter-reset: wave;
+  gap: var(--space-2xs);
+  list-style: none;
+}
+
+.wave-list li {
+  display: flex;
+  padding: var(--space-xs) var(--space-sm);
+  align-items: baseline;
+  border-left: 2px solid var(--line-strong);
+  background: var(--surface-muted);
+  counter-increment: wave;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  gap: var(--space-sm);
+  overflow-wrap: anywhere;
+}
+
+.wave-list li::before {
+  color: var(--accent);
+  content: "W" counter(wave);
+  font-weight: 800;
+}
+
+@keyframes dock-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+@media (max-width: 62rem) {
+  .drift-toolbar {
+    position: static;
+  }
+}
+
+@media (max-width: 46rem) {
+  .selection-dock {
+    right: var(--space-md);
+    left: var(--space-md);
+    justify-content: space-between;
+    transform: none;
+    animation-name: rise-in;
+  }
+
+  .diff-table {
+    table-layout: auto;
+  }
+
+  .diff-table th:first-child {
+    width: auto;
+  }
+}

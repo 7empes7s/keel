@@ -309,14 +309,34 @@ export async function runRestore({
     // dangling, so the run refuses before any write. (Before task 59 such
     // references were only logged.) Relationship-edge coverage is not
     // evaluated in this path and is reported as such.
+    //
+    // Only a run that can write fails here. A preview or dry run reports each such
+    // delete as a guard refusal instead, so the operator sees the full plan and a
+    // persisted dry-run artifact classifies as 'refused' — which the artifact gate
+    // then refuses to promote. Either way the delete never reaches a writer.
     const deleteAssessment = assessDeletePlanFn({ liveResources: targetResources, plannedResources: resources });
-    if (deleteAssessment.refusals.length > 0) {
+    // Fail closed: applyWave writes in any mode other than exactly 'dry-run'.
+    if (deleteAssessment.refusals.length > 0 && !previewOnly && mode !== 'dry-run') {
       const first = deleteAssessment.refusals[0];
       throw new Error(
         `blocked-dependent-impact: deleting ${first.deleting} would leave ${first.dependent} referencing it at ${first.field}`
         + `${deleteAssessment.refusals.length > 1 ? ` (and ${deleteAssessment.refusals.length - 1} more)` : ''} — refusing before any write`,
       );
     }
+    const dependentImpactRefusals = new Map();
+    for (const refusal of deleteAssessment.refusals) {
+      if (dependentImpactRefusals.has(refusal.deleting)) continue;
+      dependentImpactRefusals.set(refusal.deleting, {
+        naturalKey: refusal.deleting,
+        reason: `blocked-dependent-impact: deleting ${refusal.deleting} would leave ${refusal.dependent} referencing it at ${refusal.field}`,
+      });
+    }
+    // A key another guard already refuses is not deleted anyway; report it once.
+    const withDependentImpact = (refusals) => [
+      ...refusals,
+      ...[...dependentImpactRefusals.values()]
+        .filter((refusal) => !refusals.some((existing) => existing.naturalKey === refusal.naturalKey)),
+    ];
 
     // Roadmap task-55: automation limits are re-resolved server-side at execution,
     // AFTER dependency expansion. The enqueue-time guardrail saw only the original
@@ -388,12 +408,12 @@ export async function runRestore({
     // Human preview shares scope, current-state verb resolution and ordering with
     // enforcement, but returns before acquiring Restorer credentials or a writer.
     if (previewOnly) {
-      const guardRefusals = await previewApplyPlan({
+      const guardRefusals = withDependentImpact(await previewApplyPlan({
         resources, waves, deletionWaves, patches, existingTargetIds,
         deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
         targetTenant: collectorConfig.tenantId,
-      });
+      }));
       return {
         snapshotId: sourceSnapshot,
         resources: resources.map(({ naturalKey, resourceType, verb, verbReason }) => ({
@@ -519,6 +539,15 @@ export async function runRestore({
           break;
         }
       }
+    }
+
+    // Only a dry run reaches this point with dependent-impact refusals (any other
+    // mode threw above), and a dry run writes nothing. Its guards still evaluated
+    // those deletes, exactly as the preview does; the refusal decides the outcome,
+    // so such a delete is reported as skipped, never as applied.
+    if (dependentImpactRefusals.size > 0) {
+      results.applied = results.applied.filter((entry) => !dependentImpactRefusals.has(entry.naturalKey));
+      results.skipped = withDependentImpact(results.skipped);
     }
 
     let createdArtifactId = null;

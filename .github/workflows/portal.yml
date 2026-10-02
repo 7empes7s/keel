@@ -1,0 +1,113 @@
+name: Portal
+
+on:
+  pull_request:
+    paths:
+      - "portal/**"
+      - "engine/**"
+      - "cli/**"
+      - ".github/workflows/portal.yml"
+  push:
+    branches: [master]
+    paths:
+      - "portal/**"
+      - "engine/**"
+      - "cli/**"
+      - ".github/workflows/portal.yml"
+
+concurrency:
+  group: portal-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    name: Typecheck, build and UI checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            portal/package-lock.json
+            engine/package-lock.json
+      - name: Install engine dependencies
+        run: npm ci
+        working-directory: engine
+      - name: Install portal dependencies
+        run: npm ci
+        working-directory: portal
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: portal
+      - name: Production build
+        run: npm run build
+        working-directory: portal
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: portal
+      - name: Accessibility, screenshot and interaction checks
+        run: npm run test:ui
+        working-directory: portal
+        env:
+          CI: "true"
+      - name: Upload UI report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-report
+          path: |
+            portal/ui-harness/playwright-report
+            portal/ui-harness/test-results
+          retention-days: 14
+
+  tests:
+    name: Portal tests (Postgres)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_DB: keel_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KEEL_DB_TEST_URL: postgres://keel@localhost:5432/keel_test
+      KEEL_TENANT_CONFIG_PATH: ${{ github.workspace }}/ci-tenant.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            portal/package-lock.json
+            engine/package-lock.json
+      - name: Prepare database and tenant config
+        # Test files run in parallel and each applies the schema; creating the
+        # extension once up front avoids a race on CREATE EXTENSION.
+        run: |
+          psql "$KEEL_DB_TEST_URL" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto"
+          echo '{"tenantId":"00000000-0000-0000-0000-0000000000c1"}' > "$KEEL_TENANT_CONFIG_PATH"
+      - name: Install engine dependencies
+        run: npm ci
+        working-directory: engine
+      - name: Install portal dependencies
+        run: npm ci
+        working-directory: portal
+      - name: Run portal tests
+        run: npm test
+        working-directory: portal

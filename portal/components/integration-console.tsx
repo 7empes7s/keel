@@ -15,17 +15,19 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The write in flight, so only the control that started it shows a spinner.
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const [quarantined, setQuarantined] = useState<Record<string, QuarantinedEvent[]>>({});
 
-  async function write(url: string, method: string, body?: unknown) {
+  async function write(url: string, method: string, body?: unknown, action = `${method} ${url}`) {
     if (!canConfiguration || busy) return;
-    setBusy(true); setError(null);
+    setBusy(true); setBusyAction(action); setError(null);
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Integration update failed"); }
       router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Integration update failed"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setBusyAction(null); }
   }
 
   async function loadQuarantined(id: string) {
@@ -43,7 +45,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
     const form = new FormData(event.currentTarget);
     try {
       const config: unknown = JSON.parse(String(form.get("config")));
-      void write("/api/integrations", "POST", { name: form.get("name"), kind: form.get("kind"), config });
+      void write("/api/integrations", "POST", { name: form.get("name"), kind: form.get("kind"), config }, "register");
     } catch { setError("Destination config must be valid JSON."); }
   }
 
@@ -105,7 +107,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
           <label className="filter-field form-grid-wide"><span>Config (JSON)</span><textarea name="config" required defaultValue={'{"url":"https://example.com/ingest"}'} /></label>
         </div>
         <p className="field-help">Webhook: url, optional auth (bearer/hmac-sha256 with a credential reference). CEF: transport (https or udp), url or host/port, acknowledgement (none or http-response).</p>
-        <div className="form-actions"><button aria-busy={busy || undefined} className="btn btn-primary" type="submit">Register destination</button></div>
+        <div className="form-actions"><button aria-busy={busyAction === "register" || undefined} className="btn btn-primary" type="submit">Register destination</button></div>
       </fieldset></form>
     </section> : null}
   </>;

@@ -31,27 +31,29 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The write in flight, so only the control that started it shows a spinner.
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   if (!canConfiguration) return null;
-  async function write(url: string, method: string, body?: unknown) {
+  async function write(url: string, method: string, body?: unknown, action = `${method} ${url}`) {
     if (!canConfiguration || busy) return;
-    setBusy(true); setError(null);
+    setBusy(true); setBusyAction(action); setError(null);
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Notification update failed"); }
       router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Notification update failed"); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setBusyAction(null); }
   }
   function createChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    try { const config: unknown = JSON.parse(String(form.get("config"))); void write("/api/channels", "POST", { kind: form.get("kind"), config }); }
+    try { const config: unknown = JSON.parse(String(form.get("config"))); void write("/api/channels", "POST", { kind: form.get("kind"), config }, "create-channel"); }
     catch { setError("Channel config must be valid JSON."); }
   }
   function createSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void write("/api/subscriptions", "POST", { channelId: form.get("channelId"), eventGlob: form.get("eventGlob"), minSeverity: form.get("minSeverity") });
+    void write("/api/subscriptions", "POST", { channelId: form.get("channelId"), eventGlob: form.get("eventGlob"), minSeverity: form.get("minSeverity") }, "create-subscription");
   }
   return <>
     {error ? <p className="action-error" role="alert">{error}</p> : null}
@@ -75,7 +77,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
           <label className="filter-field form-grid-wide"><span>Config (JSON)</span><textarea name="config" required defaultValue={'{"url":"https://example.com/webhook"}'} /></label>
         </div>
         <p className="field-help">Webhook: url. Email: to, from, and optional subject.</p>
-        <div className="form-actions"><button aria-busy={busy || undefined} className="btn btn-primary" type="submit">Create channel</button></div>
+        <div className="form-actions"><button aria-busy={busyAction === "create-channel" || undefined} className="btn btn-primary" type="submit">Create channel</button></div>
       </fieldset></form>
     </section>
     <section aria-labelledby="subscriptions-heading" className="report-section">
@@ -95,7 +97,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
           <label className="filter-field"><span>Event glob</span><input name="eventGlob" required defaultValue="*" /></label>
           <label className="filter-field"><span>Minimum severity</span><select name="minSeverity">{["notice", "warning", "critical"].map((severity) => <option key={severity}>{severity}</option>)}</select></label>
         </div>
-        <div className="form-actions"><button aria-busy={busy || undefined} className="btn btn-primary" type="submit">Create subscription</button></div>
+        <div className="form-actions"><button aria-busy={busyAction === "create-subscription" || undefined} className="btn btn-primary" type="submit">Create subscription</button></div>
       </fieldset></form>
     </section>
   </>;

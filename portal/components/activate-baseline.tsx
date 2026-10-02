@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { toast } from "@/lib/toast";
 
 // Per-baseline activate control (plan task 16). Activation requires approval: the
 // route answers 202 with an approval request and NO baseline changes, so the control
@@ -33,6 +34,7 @@ export function ActivateBaseline({
       );
       if (payload.approvalRequest) {
         setMessage("Activation requested — pending approval. The active baseline has not changed.");
+        toast({ tone: "info", title: "Activation sent for approval", detail: "The active baseline has not changed yet.", href: "/approvals", hrefLabel: "Open approvals" });
         setIdempotencyKey(crypto.randomUUID());
         router.refresh();
       } else {

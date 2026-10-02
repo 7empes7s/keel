@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { formatTimestamp } from "@/lib/presentation";
+import { toast } from "@/lib/toast";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 
 function displayParams(params: unknown): string {
@@ -51,6 +52,7 @@ export function ApprovalInbox({
       if (!response.ok) {
         throw new Error(`approval decision failed (${response.status})`);
       }
+      toast({ tone: decision === "approve" ? "success" : "info", title: decision === "approve" ? "Request approved" : "Request rejected", detail: request.action });
       router.refresh();
     } catch {
       setError("The approval decision could not be completed. Refresh the inbox before retrying.");

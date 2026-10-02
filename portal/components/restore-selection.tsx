@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { toast } from "@/lib/toast";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 import { words } from "@/lib/presentation";
@@ -355,6 +356,7 @@ export function RestoreSelection({
         );
         setIdempotencyKey(crypto.randomUUID());
         resetDryRun();
+        toast({ tone: "info", title: "Restore sent for approval", detail: "Nothing is restored until a different approver signs off.", href: "/approvals", hrefLabel: "Open approvals" });
         router.refresh();
       } else {
         setError("Unexpected response: the confirmation did not produce an approval request.");

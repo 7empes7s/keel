@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { localTimeToUTC, utcTimeToLocal } from "../../engine/schedules/timeOfDay.mjs";
 import type { Schedule } from "@/lib/schedules";
+import { toast } from "@/lib/toast";
 
 export function ScheduleEditor({ schedule }: { schedule: Schedule }) {
   const router = useRouter();
@@ -59,6 +60,7 @@ export function ScheduleEditor({ schedule }: { schedule: Schedule }) {
       if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Schedule could not be saved.");
       setEditing(false);
       setMessage("Schedule saved.");
+      toast({ title: `${schedule.job_kind}${schedule.tier ? ` ${schedule.tier}` : ""} schedule saved` });
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Schedule could not be saved.");

@@ -3846,6 +3846,11 @@ kbd {
   top: 50%;
   left: 3.75rem;
   display: grid;
+  width: 5.2rem;
+  height: 5.2rem;
+  border-radius: 50%;
+  background: var(--surface);
+  align-content: center;
   justify-items: center;
   transform: translate(-50%, -50%);
 }
@@ -5161,4 +5166,10 @@ section.wizard-panel {
 
 @media print {
   .toaster { display: none !important; }
+}
+
+/* Muted labels fall under 4.5:1 on the tinted warning and error cells. */
+.stat-warn dt,
+.stat-bad dt {
+  color: var(--text-soft);
 }

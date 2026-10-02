@@ -10,6 +10,7 @@ import "./globals.css";
 import { DATA_SURFACES, readAccess } from "@/lib/read";
 
 import { CommandPalette } from "@/components/command-palette";
+import { KeelMark } from "@/components/keel-mark";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
@@ -67,7 +68,7 @@ export default async function RootLayout({
           <aside className="sidebar">
             <Link aria-label="KEEL dashboard" className="brand" href="/">
               <span className="brand-mark" aria-hidden="true">
-                K
+                <KeelMark />
               </span>
               <span>
                 <strong>KEEL</strong>

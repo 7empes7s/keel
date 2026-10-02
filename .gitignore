@@ -13,3 +13,6 @@ node_modules/
 
 # Raw agent dispatch transcripts — debug artifacts, not source.
 .review-logs/
+portal/ui-harness/dist/
+portal/ui-harness/test-results/
+portal/ui-harness/playwright-report/

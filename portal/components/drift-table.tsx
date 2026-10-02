@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { BlastBadge, ChangeBadge } from "@/components/status-badge";
+import { DriftDiff } from "@/components/drift-diff";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
+import { toast } from "@/lib/toast";
 import { BLAST_RADIUS_ORDER, formatTimestamp, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
 
@@ -28,11 +30,6 @@ function compare(a: DriftRecord, b: DriftRecord, key: SortKey): number {
     return (aRank < 0 ? 99 : aRank) - (bRank < 0 ? 99 : bRank);
   }
   return a[key].localeCompare(b[key]);
-}
-
-function displayPayload(payload: unknown): string {
-  if (payload === null) return "Not present";
-  return JSON.stringify(payload, null, 2) ?? "Not captured";
 }
 
 async function actionRequest(path: string, body: Record<string, unknown>): Promise<unknown> {
@@ -119,6 +116,14 @@ export function DriftTable({
     === JSON.stringify([...selectedDriftIds].sort()) ? preview : null;
   const expandedItem = pageItems.find((item) => item.id === expandedId) ?? null;
   const pageIsSelected = pageItems.length > 0 && pageItems.every((item) => selectedIds.includes(item.id));
+  const blastCounts = blastRadii.map((radius) => ({
+    value: radius,
+    count: openItems.filter((item) => item.blastRadius === radius).length,
+  }));
+  const changeCounts = (["added", "modified", "removed"] as const).map((change) => ({
+    value: change,
+    count: openItems.filter((item) => item.changeType === change).length,
+  }));
 
   function resetTablePosition() {
     setPage(1);
@@ -204,6 +209,7 @@ export function DriftTable({
       setActionMessage(
         `${action === "accept" ? "Accepted" : "Ignored"} ${disposedIds.length} ${disposedIds.length === 1 ? "deviation" : "deviations"}.`,
       );
+      toast({ title: `${action === "accept" ? "Accepted" : "Ignored"} ${disposedIds.length} ${disposedIds.length === 1 ? "deviation" : "deviations"}` });
     } catch {
       setActionError("The disposition could not be completed. No additional deviations were submitted.");
     } finally {
@@ -245,6 +251,7 @@ export function DriftTable({
         }),
       );
       setPreview(null);
+      toast({ tone: "info", title: "Remediation sent for approval", detail: `${selectedDriftIds.length} ${selectedDriftIds.length === 1 ? "deviation" : "deviations"}; no job runs until approved.`, href: "/approvals", hrefLabel: "Open approvals" });
       setActionMessage(
         `Remediation for ${selectedDriftIds.length} ${selectedDriftIds.length === 1 ? "deviation requires" : "deviations requires"} approval before a job is created.`,
       );
@@ -279,7 +286,43 @@ export function DriftTable({
         </span>
       </div>
 
-      <div className="filter-bar drift-filters">
+      {openItems.length ? (
+        <div aria-label="Quick filters" className="quick-filters" role="group">
+          {blastCounts.map((entry) => (
+            <button
+              aria-pressed={blastRadius === entry.value}
+              className={`quick-filter blast-chip-${entry.value}`}
+              key={entry.value}
+              onClick={() => {
+                setBlastRadius(blastRadius === entry.value ? "all" : entry.value);
+                resetTablePosition();
+              }}
+              type="button"
+            >
+              <span aria-hidden="true" className={`legend-swatch blast-fill-${entry.value}`} />
+              {words(entry.value)} <strong>{entry.count}</strong>
+            </button>
+          ))}
+          <span aria-hidden="true" className="quick-filter-divider" />
+          {changeCounts.map((entry) => (
+            <button
+              aria-pressed={changeType === entry.value}
+              className="quick-filter"
+              disabled={entry.count === 0}
+              key={entry.value}
+              onClick={() => {
+                setChangeType(changeType === entry.value ? "all" : entry.value);
+                resetTablePosition();
+              }}
+              type="button"
+            >
+              {words(entry.value)} <strong>{entry.count}</strong>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="filter-bar drift-filters drift-toolbar">
         <label className="filter-field search-field">
           <span>Find natural key</span>
           <input
@@ -412,33 +455,36 @@ export function DriftTable({
             </button>
           </div>
           {currentPreview ? (
-            <section aria-labelledby="remediation-preview-heading" aria-live="polite">
-              <h4 id="remediation-preview-heading">Remediation preview</h4>
-              <p>Current live state determines these verbs. Safety checks run again at execution.</p>
+            <section aria-labelledby="remediation-preview-heading" aria-live="polite" className="remediation-preview">
+              <div>
+                <p className="section-kicker">Remediation preview</p>
+                <h4 id="remediation-preview-heading">What remediation would do</h4>
+                <p className="field-help">Current live state determines these verbs. Safety checks run again at execution.</p>
+              </div>
               <table className="data-table">
                 <thead><tr><th scope="col">Resource</th><th scope="col">Planned verb</th></tr></thead>
                 <tbody>{currentPreview.resources.map((resource) => (
                   <tr key={resource.naturalKey}>
                     <th scope="row">{resource.naturalKey}</th>
-                    <td>{resource.verb} — {resource.verbReason}</td>
+                    <td><span className={`verb-chip verb-${resource.verb}`}>{resource.verb}</span> {resource.verbReason}</td>
                   </tr>
                 ))}</tbody>
               </table>
               <h4>Wave ordering</h4>
-              <ol>
+              <ol className="wave-list">
                 {currentPreview.waves.map((keys, index) => <li key={`write-${index}`}>Apply: {keys.join(", ")}</li>)}
                 {currentPreview.patches.length > 0 ? <li>Deferred references: {currentPreview.patches.map((patch) => `${patch.naturalKey} at ${patch.field} → ${patch.symbol}`).join(", ")}</li> : null}
                 {currentPreview.deletionWaves.map((keys, index) => <li key={`delete-${index}`}>Delete: {keys.join(", ")}</li>)}
               </ol>
               {currentPreview.guardRefusals.length > 0 ? (
-                <div role="alert">
-                  <h4>Guard refusals</h4>
+                <div className="data-error" role="alert">
+                  <p className="severity-label">GUARD REFUSALS</p>
                   <ul>{currentPreview.guardRefusals.map((refusal, index) => (
                     <li key={index}>{refusal.naturalKey}: {refusal.reason}</li>
                   ))}</ul>
                 </div>
-              ) : <p>No guard refusals found in this preview.</p>}
-              <button disabled={submitting || currentPreview.guardRefusals.length > 0} onClick={() => void remediateSelected()} type="button">
+              ) : <p className="action-message">No guard refusals found in this preview.</p>}
+              <button className="danger-action" disabled={submitting || currentPreview.guardRefusals.length > 0} onClick={() => void remediateSelected()} type="button">
                 Confirm and request approval
               </button>
             </section>
@@ -446,6 +492,21 @@ export function DriftTable({
           {actionMessage ? <p aria-live="polite" className="action-message">{actionMessage}</p> : null}
           {actionError ? <p className="action-error" role="alert">{actionError}</p> : null}
         </section>
+      ) : null}
+
+      {canAct && selectedItems.length > 0 ? (
+        <div aria-label="Selection" className="selection-dock" role="region">
+          <span><strong>{selectedItems.length}</strong> selected</span>
+          <a className="btn btn-primary btn-sm" href="#selected-drift-heading">Review actions</a>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={submitting}
+            onClick={() => { setSelectedIds([]); setPreview(null); }}
+            type="button"
+          >
+            Deselect all
+          </button>
+        </div>
       ) : null}
 
       {visible.length ? (
@@ -490,7 +551,8 @@ export function DriftTable({
                 {pageItems.map((item) => {
                   const comparisonOpen = expandedItem?.id === item.id;
                   return (
-                    <tr key={item.id}>
+                    <Fragment key={item.id}>
+                    <tr className={`drift-row blast-row-${item.blastRadius}${comparisonOpen ? " drift-row-open" : ""}${selectedIds.includes(item.id) ? " drift-row-selected" : ""}`}>
                       {canAct ? (
                         <td data-label="Select">
                           <input
@@ -525,30 +587,19 @@ export function DriftTable({
                         </button>
                       </td>
                     </tr>
+                    {comparisonOpen ? (
+                      <tr className="diff-row">
+                        <td colSpan={canAct ? 7 : 6}>
+                          <DriftDiff item={item} />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
-
-          {expandedItem ? (
-            <section aria-labelledby={`drift-diff-heading-${expandedItem.id}`} className="drift-difference" id={`drift-diff-${expandedItem.id}`}>
-              <div className="difference-heading">
-                <p className="section-kicker">Explicit comparison</p>
-                <h3 id={`drift-diff-heading-${expandedItem.id}`}>{expandedItem.naturalKey}</h3>
-              </div>
-              <div className="difference-payloads">
-                <section aria-label="Baseline before">
-                  <h4>Baseline before</h4>
-                  <pre>{displayPayload(expandedItem.before)}</pre>
-                </section>
-                <section aria-label="Observed after">
-                  <h4>Observed after</h4>
-                  <pre>{displayPayload(expandedItem.after)}</pre>
-                </section>
-              </div>
-            </section>
-          ) : null}
 
           {pageCount > 1 ? (
             <nav aria-label="Drift pagination" className="pagination">

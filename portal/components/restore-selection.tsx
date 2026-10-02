@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { toast } from "@/lib/toast";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 import { words } from "@/lib/presentation";
@@ -101,6 +102,34 @@ async function fetchDryRunArtifact(artifactId: string): Promise<DryRunArtifact |
   if (!response.ok) throw new Error(`dry-run fetch failed (${response.status})`);
   const { artifact } = (await response.json()) as { artifact: DryRunArtifact };
   return artifact;
+}
+
+type RestoreStep = "select" | "dry-run" | "review" | "confirm" | "track";
+
+const STEPS: { id: RestoreStep; label: string }[] = [
+  { id: "select", label: "Select" },
+  { id: "dry-run", label: "Dry run" },
+  { id: "review", label: "Review" },
+  { id: "confirm", label: "Confirm" },
+  { id: "track", label: "Track" },
+];
+
+export function RestoreStepper({ current, failed = false }: { current: RestoreStep; failed?: boolean }) {
+  // Confirm is reached only through a completed review, so it marks Review done too.
+  const index = STEPS.findIndex((step) => step.id === current);
+  return (
+    <ol aria-label="Restore steps" className="wizard-steps">
+      {STEPS.map((step, position) => {
+        const state = position < index ? "done" : position === index ? (failed ? "failed" : "current") : "upcoming";
+        return (
+          <li aria-current={position === index ? "step" : undefined} className={`wizard-step step-${state}`} key={step.id}>
+            <span aria-hidden="true" className="wizard-step-marker">{state === "done" ? "✓" : state === "failed" ? "!" : position + 1}</span>
+            <span className="wizard-step-label">{step.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 // Restore selection (portal-design §4.1, plan task 8). The operator picks resources;
@@ -327,6 +356,7 @@ export function RestoreSelection({
         );
         setIdempotencyKey(crypto.randomUUID());
         resetDryRun();
+        toast({ tone: "info", title: "Restore sent for approval", detail: "Nothing is restored until a different approver signs off.", href: "/approvals", hrefLabel: "Open approvals" });
         router.refresh();
       } else {
         setError("Unexpected response: the confirmation did not produce an approval request.");
@@ -338,259 +368,339 @@ export function RestoreSelection({
     }
   }
 
+  // The wizard step is derived from the existing promotion state, never stored on its
+  // own, so it cannot disagree with what the server has actually been asked to do.
+  const step: RestoreStep = message
+    ? "track"
+    : artifact
+      ? (artifact.status === "completed" ? "confirm" : "review")
+      : dryRunStatus === "running"
+        ? "dry-run"
+        : "select";
+  const selectionLocked = step !== "select";
+  const closureSize = preview?.closureKeys.length ?? 0;
+  const currentSnapshot = snapshots.find((snapshot) => snapshot.id === snapshotId) ?? null;
+
   return (
-    <section aria-labelledby="restore-selection-heading" className="report-section">
+    <section aria-labelledby="restore-selection-heading" className="report-section restore-wizard">
       <div className="section-heading-row report-heading">
         <div>
-          <p className="section-kicker">Dependency-closed selection</p>
-          <h2 id="restore-selection-heading">Choose what to restore</h2>
+          <p className="section-kicker">Dependency-closed restore</p>
+          <h2 id="restore-selection-heading">Plan a restore</h2>
         </div>
         <span aria-live="polite" className="result-count">
-          {visible.length} of {resources.length}
+          {closureSize ? `${closureSize} in closure` : `${resources.length} restorable`}
         </span>
       </div>
 
-      <div className="filter-bar">
-        <label className="filter-field">
-          <span>Snapshot</span>
-          <select
-            disabled={submitting}
-            onChange={(event) => router.push(`/restore?snapshot=${event.target.value}`)}
-            value={snapshotId}
-          >
-            {snapshots.map((snapshot) => (
-              <option key={snapshot.id} value={snapshot.id}>
-                {describeSnapshot(snapshot)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filter-field search-field">
-          <span>Find natural key</span>
-          <input
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Search key"
-            type="search"
-            value={query}
-          />
-        </label>
-        <label className="filter-field">
-          <span>Resource type</span>
-          <select
-            onChange={(event) => {
-              setResourceType(event.target.value);
-              setPage(1);
-            }}
-            value={resourceType}
-          >
-            <option value="all">All resource types</option>
-            {resourceTypes.map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <RestoreStepper current={step} failed={artifact !== null && artifact.status !== "completed"} />
 
-      {visible.length ? (
-        <>
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">Select</th>
-                  <th scope="col">Natural key</th>
-                  <th scope="col">Resource type</th>
-                  <th scope="col">Blast radius</th>
-                  <th scope="col">Selection</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((resource) => {
-                  const isSelected = selected.includes(resource.naturalKey);
-                  const isAdded = !isSelected && closureKeys.has(resource.naturalKey);
-                  const addition = addedByKey.get(resource.naturalKey);
-                  return (
-                    <tr key={resource.naturalKey}>
-                      <td data-label="Select">
-                        <input
-                          aria-label={`Select ${resource.naturalKey}`}
-                          checked={isSelected}
-                          disabled={!canRestore || previewing || submitting}
-                          onChange={() => void toggle(resource.naturalKey)}
-                          type="checkbox"
-                        />
-                      </td>
-                      <th data-label="Natural key" scope="row">
-                        <code className="natural-key">{resource.naturalKey}</code>
-                      </th>
-                      <td data-label="Resource type">
-                        <span className="resource-type">{resource.resourceType}</span>
-                      </td>
-                      <td data-label="Blast radius">{words(resource.blastRadius)}</td>
-                      <td data-label="Selection">
-                        {isSelected ? "Selected" : null}
-                        {isAdded && addition ? (
-                          <span className="selection-scope">
-                            Added — required by {formatReasons(addition.reasons)}
-                          </span>
-                        ) : null}
-                        {refusedKeys.has(resource.naturalKey) ? (
-                          <span className="action-error"> Refused — AD-synced</span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {step === "track" ? (
+        <section aria-labelledby="restore-track-heading" className="wizard-panel wizard-track">
+          <p className="section-kicker">Step 5 · Track</p>
+          <h3 id="restore-track-heading">Restore requested, pending approval</h3>
+          <p aria-live="polite">{message}</p>
+          <ol className="track-timeline">
+            <li className="track-done">Dry run computed and persisted</li>
+            <li className="track-done">Approval request created</li>
+            <li className="track-current">A different approver reviews the same dry run</li>
+            <li>The CLI re-checks the target, then writes; the job appears below</li>
+          </ol>
+          <div className="form-actions">
+            <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
+            <button
+              className="btn btn-ghost"
+              disabled={submitting || previewing}
+              onClick={() => void clearSelection()}
+              type="button"
+            >
+              Plan another restore
+            </button>
           </div>
-
-          {pageCount > 1 ? (
-            <nav aria-label="Restore resource pagination" className="pagination">
-              <span>Page {currentPage} of {pageCount}</span>
-              <div>
-                <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">
-                  Previous
-                </button>
-                <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">
-                  Next
-                </button>
-              </div>
-            </nav>
-          ) : null}
-        </>
-      ) : (
-        <p className="empty-state">
-          {resources.length
-            ? "No resources match these filters."
-            : "This snapshot has no restorable resources."}
-        </p>
-      )}
-
-      {refusal ? <p className="action-error" role="alert">{refusal}</p> : null}
-
-      {preview && preview.closureKeys.length > 0 ? (
-        <section aria-labelledby="restore-closure-heading" className="drift-action-panel">
-          <div>
-            <p className="section-kicker">What will be restored</p>
-            <h3 id="restore-closure-heading">
-              {preview.closureKeys.length} {preview.closureKeys.length === 1 ? "resource" : "resources"} in the closure
-              {" "}({preview.selected.length} selected, {preview.added.length} added)
-            </h3>
-          </div>
-
-          {preview.added.length ? (
-            <ul>
-              {preview.added.map((addition) => (
-                <li key={addition.naturalKey}>
-                  <code className="natural-key">{addition.naturalKey}</code>
-                  {" — required by "}
-                  {formatReasons(addition.reasons)}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>The selection is already dependency-closed; nothing was added.</p>
-          )}
-
-          {preview.unresolvedReferences.length ? (
-            <div className="data-error" role="alert">
-              <p className="severity-label">UNRESOLVED REFERENCES</p>
-              <ul>
-                {preview.unresolvedReferences.map((reference) => (
-                  <li key={`${reference.from}:${reference.field}`}>
-                    {reference.from} at {reference.field} → {reference.symbol} — no resource
-                    in this snapshot provides it; the restore will fail unless it exists in
-                    the target.
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {preview.guardRefusals.length ? (
-            <div className="data-error" role="alert">
-              <p className="severity-label">REFUSED AT SELECTION TIME</p>
-              <ul>
-                {preview.guardRefusals.map((guardRefusal) => (
-                  <li key={guardRefusal.naturalKey}>
-                    <code className="natural-key">{guardRefusal.naturalKey}</code>
-                    {" — "}
-                    {guardRefusal.reason}
-                  </li>
-                ))}
-              </ul>
-              <p>Remove the refused resources from the selection before submitting.</p>
-            </div>
-          ) : null}
-
-          <div className="filter-bar">
-            <label className="filter-field">
-              <span>Collector credential config (read-only)</span>
-              <input
-                disabled={submitting || dryRunStatus === "running"}
-                onChange={(event) => setCollectorConfig(event.target.value)}
-                value={collectorConfig}
-              />
-            </label>
-            <label className="filter-field">
-              <span>Restorer credential config (write)</span>
-              <input
-                disabled={submitting || dryRunStatus === "running"}
-                onChange={(event) => setTargetConfig(event.target.value)}
-                value={targetConfig}
-              />
-            </label>
-          </div>
-
-          {!artifact ? (
-            <div className="drift-action-buttons">
-              <button
-                disabled={
-                  !canRestore
-                  || submitting
-                  || previewing
-                  || dryRunStatus === "running"
-                  || preview.guardRefusals.length > 0
-                }
-                onClick={() => void startDryRun()}
-                type="button"
-              >
-                {dryRunStatus === "running" ? "Running dry run…" : "Start dry run"}
-              </button>
-              <button
-                className="secondary-action"
-                disabled={submitting || previewing || dryRunStatus === "running"}
-                onClick={() => void clearSelection()}
-                type="button"
-              >
-                Clear selection
-              </button>
-            </div>
-          ) : null}
-          <p className="selection-scope">
-            Restore is a two-step promotion: a dry run computes and persists the exact
-            plan — every resource result and guard outcome — then a DIFFERENT approver
-            confirms that same immutable plan. There is no way to request enforcement
-            directly from a selection.
-          </p>
         </section>
       ) : null}
 
-      {dryRunStatus === "running" ? (
-        <section aria-live="polite" className="drift-action-panel">
-          <p className="section-kicker">Dry run</p>
-          <p>Running the dry run against the target tenant — this only reads; nothing is written.</p>
+      {selectionLocked && step !== "track" ? (
+        <div className="wizard-summary">
+          <div>
+            <p className="section-kicker">Step 1 · Selection</p>
+            <p>
+              <strong>{closureSize}</strong> {closureSize === 1 ? "resource" : "resources"}
+              {currentSnapshot ? ` from ${describeSnapshot(currentSnapshot)}` : null}
+              {preview ? ` (${preview.selected.length} selected, ${preview.added.length} added)` : null}
+            </p>
+          </div>
+          <button
+            className="btn btn-ghost btn-sm"
+            disabled={submitting || dryRunStatus === "running"}
+            onClick={() => resetDryRun()}
+            type="button"
+          >
+            Edit selection
+          </button>
+        </div>
+      ) : null}
+
+      {step === "select" ? (
+        <div className="wizard-panel">
+          <div className="filter-bar">
+            <label className="filter-field">
+              <span>Snapshot</span>
+              <select
+                disabled={submitting}
+                onChange={(event) => router.push(`/restore?snapshot=${event.target.value}`)}
+                value={snapshotId}
+              >
+                {snapshots.map((snapshot) => (
+                  <option key={snapshot.id} value={snapshot.id}>
+                    {describeSnapshot(snapshot)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="filter-field search-field">
+              <span>Find natural key</span>
+              <input
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search key"
+                type="search"
+                value={query}
+              />
+            </label>
+            <label className="filter-field">
+              <span>Resource type</span>
+              <select
+                onChange={(event) => {
+                  setResourceType(event.target.value);
+                  setPage(1);
+                }}
+                value={resourceType}
+              >
+                <option value="all">All resource types</option>
+                {resourceTypes.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {visible.length ? (
+            <>
+              <div className="table-scroll">
+                <table className="data-table restore-table" aria-busy={previewing || undefined}>
+                  <thead>
+                    <tr>
+                      <th scope="col">Select</th>
+                      <th scope="col">Natural key</th>
+                      <th scope="col">Resource type</th>
+                      <th scope="col">Blast radius</th>
+                      <th scope="col">Selection</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageItems.map((resource) => {
+                      const isSelected = selected.includes(resource.naturalKey);
+                      const isAdded = !isSelected && closureKeys.has(resource.naturalKey);
+                      const addition = addedByKey.get(resource.naturalKey);
+                      const isRefused = refusedKeys.has(resource.naturalKey);
+                      return (
+                        <tr
+                          className={isRefused ? "row-refused" : isSelected ? "row-selected" : isAdded ? "row-added" : undefined}
+                          key={resource.naturalKey}
+                        >
+                          <td data-label="Select">
+                            <input
+                              aria-label={`Select ${resource.naturalKey}`}
+                              checked={isSelected}
+                              disabled={!canRestore || previewing || submitting}
+                              onChange={() => void toggle(resource.naturalKey)}
+                              type="checkbox"
+                            />
+                          </td>
+                          <th data-label="Natural key" scope="row">
+                            <code className="natural-key">{resource.naturalKey}</code>
+                          </th>
+                          <td data-label="Resource type">
+                            <span className="resource-type">{resource.resourceType}</span>
+                          </td>
+                          <td data-label="Blast radius">{words(resource.blastRadius)}</td>
+                          <td data-label="Selection">
+                            {isSelected ? <span className="selection-chip chip-selected">Selected</span> : null}
+                            {isAdded && addition ? (
+                              <span className="selection-chip chip-added" title={`Required by ${formatReasons(addition.reasons)}`}>
+                                Added — required by {formatReasons(addition.reasons)}
+                              </span>
+                            ) : null}
+                            {isRefused ? (
+                              <span className="selection-chip chip-refused"> Refused — AD-synced</span>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {pageCount > 1 ? (
+                <nav aria-label="Restore resource pagination" className="pagination">
+                  <span>Page {currentPage} of {pageCount}</span>
+                  <div>
+                    <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">
+                      Previous
+                    </button>
+                    <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">
+                      Next
+                    </button>
+                  </div>
+                </nav>
+              ) : null}
+            </>
+          ) : (
+            <p className="empty-state">
+              {resources.length
+                ? "No resources match these filters."
+                : "This snapshot has no restorable resources."}
+            </p>
+          )}
+
+          {refusal ? <p className="action-error" role="alert">{refusal}</p> : null}
+
+          {preview && preview.closureKeys.length > 0 ? (
+            <section aria-labelledby="restore-closure-heading" className="drift-action-panel wizard-closure">
+              <div>
+                <p className="section-kicker">What will be restored</p>
+                <h3 id="restore-closure-heading">
+                  {preview.closureKeys.length} {preview.closureKeys.length === 1 ? "resource" : "resources"} in the closure
+                  {" "}({preview.selected.length} selected, {preview.added.length} added)
+                </h3>
+              </div>
+
+              {preview.added.length ? (
+                <ul className="closure-list">
+                  {preview.added.map((addition) => (
+                    <li key={addition.naturalKey}>
+                      <code className="natural-key">{addition.naturalKey}</code>
+                      {" — required by "}
+                      {formatReasons(addition.reasons)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>The selection is already dependency-closed; nothing was added.</p>
+              )}
+
+              {preview.unresolvedReferences.length ? (
+                <div className="data-error" role="alert">
+                  <p className="severity-label">UNRESOLVED REFERENCES</p>
+                  <ul>
+                    {preview.unresolvedReferences.map((reference) => (
+                      <li key={`${reference.from}:${reference.field}`}>
+                        {reference.from} at {reference.field} → {reference.symbol} — no resource
+                        in this snapshot provides it; the restore will fail unless it exists in
+                        the target.
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {preview.guardRefusals.length ? (
+                <div className="data-error" role="alert">
+                  <p className="severity-label">REFUSED AT SELECTION TIME</p>
+                  <ul>
+                    {preview.guardRefusals.map((guardRefusal) => (
+                      <li key={guardRefusal.naturalKey}>
+                        <code className="natural-key">{guardRefusal.naturalKey}</code>
+                        {" — "}
+                        {guardRefusal.reason}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>Remove the refused resources from the selection before submitting.</p>
+                </div>
+              ) : null}
+
+              <div className="filter-bar">
+                <label className="filter-field">
+                  <span>Collector credential config (read-only)</span>
+                  <input
+                    disabled={submitting || dryRunStatus === "running"}
+                    onChange={(event) => setCollectorConfig(event.target.value)}
+                    value={collectorConfig}
+                  />
+                </label>
+                <label className="filter-field">
+                  <span>Restorer credential config (write)</span>
+                  <input
+                    disabled={submitting || dryRunStatus === "running"}
+                    onChange={(event) => setTargetConfig(event.target.value)}
+                    value={targetConfig}
+                  />
+                </label>
+              </div>
+
+              <div className="drift-action-buttons">
+                <button
+                  aria-busy={submitting || undefined}
+                  className="primary-action"
+                  disabled={
+                    !canRestore
+                    || submitting
+                    || previewing
+                    || preview.guardRefusals.length > 0
+                  }
+                  onClick={() => void startDryRun()}
+                  type="button"
+                >
+                  Next: start dry run
+                </button>
+                <button
+                  className="secondary-action"
+                  disabled={submitting || previewing}
+                  onClick={() => void clearSelection()}
+                  type="button"
+                >
+                  Clear selection
+                </button>
+              </div>
+              <p className="selection-scope">
+                Restore is a two-step promotion: a dry run computes and persists the exact
+                plan — every resource result and guard outcome — then a DIFFERENT approver
+                confirms that same immutable plan. There is no way to request enforcement
+                directly from a selection.
+              </p>
+            </section>
+          ) : (
+            <p className="wizard-hint">
+              Select the resources to restore. Anything they reference is added automatically and
+              shown here before you continue.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {step === "dry-run" ? (
+        <section aria-live="polite" className="wizard-panel wizard-running">
+          <p className="section-kicker">Step 2 · Dry run</p>
+          <h3>Running the dry run against the target tenant</h3>
+          <div aria-hidden="true" className="progress-indeterminate"><span /></div>
+          <p>This only reads; nothing is written. The plan is persisted when it completes, usually within a minute.</p>
+          {dryRunJobId ? (
+            <p className="selection-scope">Job <code>{dryRunJobId}</code> · checking every {DRY_RUN_POLL_MS / 1000}s</p>
+          ) : null}
         </section>
       ) : null}
 
       {artifact ? (
-        <section aria-labelledby="restore-dry-run-heading" className="drift-action-panel">
+        <section aria-labelledby="restore-dry-run-heading" className={`wizard-panel wizard-review review-${artifact.status}`}>
           <div>
-            <p className="section-kicker">Dry-run result</p>
+            <p className="section-kicker">
+              {artifact.status === "completed" ? "Step 3 · Review the plan" : "Step 3 · Review"}
+            </p>
             <h3 id="restore-dry-run-heading">
               {artifact.status === "completed"
                 ? "Ready to confirm"
@@ -600,23 +710,17 @@ export function RestoreSelection({
             </h3>
           </div>
 
-          <ul>
-            <li>{artifact.results.applied.length} resource(s) would apply cleanly</li>
-            {artifact.results.skipped.length ? (
-              <li>{artifact.results.skipped.length} resource(s) refused by a safety guard</li>
-            ) : null}
-            {artifact.results.failed.length ? (
-              <li>{artifact.results.failed.length} resource(s) would fail</li>
-            ) : null}
-            {artifact.results.notRemediable.length ? (
-              <li>{artifact.results.notRemediable.length} resource(s) have not-remediable residual drift</li>
-            ) : null}
-          </ul>
+          <dl className="stat-strip review-stats">
+            <div><dt>Would apply</dt><dd>{artifact.results.applied.length}</dd></div>
+            <div className={artifact.results.skipped.length ? "stat-warn" : undefined}><dt>Refused by guard</dt><dd>{artifact.results.skipped.length}</dd></div>
+            <div className={artifact.results.failed.length ? "stat-bad" : undefined}><dt>Would fail</dt><dd>{artifact.results.failed.length}</dd></div>
+            <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
+          </dl>
 
           {artifact.results.applied.length ? (
             <div>
               <p className="severity-label">PLANNED CHANGES</p>
-              <ul>
+              <ul className="closure-list">
                 {artifact.results.applied.map((entry) => (
                   <li key={entry.naturalKey}>
                     <code className="natural-key">{entry.naturalKey}</code>
@@ -657,7 +761,8 @@ export function RestoreSelection({
           ) : null}
 
           {artifact.status === "completed" ? (
-            <>
+            <div className="wizard-confirm">
+              <p className="section-kicker">Step 4 · Confirm</p>
               <div className="filter-bar">
                 <label className="filter-field">
                   <span>Approval justification</span>
@@ -671,6 +776,8 @@ export function RestoreSelection({
               </div>
               <div className="drift-action-buttons">
                 <button
+                  aria-busy={submitting || undefined}
+                  className="danger-action"
                   disabled={!canRestore || submitting}
                   onClick={() => void confirm()}
                   type="button"
@@ -691,7 +798,7 @@ export function RestoreSelection({
                 never a job. A different approver must approve it, and the CLI recomputes
                 this plan and the target&apos;s current state once more before it writes.
               </p>
-            </>
+            </div>
           ) : (
             <div className="drift-action-buttons">
               <button
@@ -706,8 +813,6 @@ export function RestoreSelection({
           )}
         </section>
       ) : null}
-
-      {message ? <p aria-live="polite" className="action-message">{message}</p> : null}
 
       {error ? <p className="action-error" role="alert">{error}</p> : null}
     </section>

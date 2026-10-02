@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { toast } from "@/lib/toast";
 import { formatTimestamp } from "@/lib/presentation";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 
@@ -62,6 +63,7 @@ export function BaselineCreateForm({
       const job = payload.job as { id: string };
       setJobId(job.id);
       setMessage(`Baseline creation queued (job ${job.id}). The new baseline becomes active when the job completes.`);
+      toast({ title: "Baseline creation queued", detail: "It becomes active when the job completes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
       setIdempotencyKey(crypto.randomUUID());
       setLabel("");
       setDescription("");
@@ -120,6 +122,7 @@ export function BaselineCreateForm({
           </div>
           <div>
             <button
+              className="btn btn-primary"
               disabled={disabled || submitting}
               onClick={() => void submit()}
               type="button"

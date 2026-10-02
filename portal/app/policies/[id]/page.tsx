@@ -24,6 +24,9 @@ export default async function PolicyPage({ params }: { params: Promise<{ id: str
   return <>
     <PageHeader eyebrow="Governance" title={policy.name} description="Current policy configuration and automation state." />
     <PolicyState policy={policy} />
-    <dl><dt>Policy ID</dt><dd>{policy.id}</dd><dt>Created by</dt><dd>{policy.created_by}</dd><dt>Created at</dt><dd>{policy.created_at}</dd></dl>
+    <section aria-label="Policy record" className="policy-group policy-meta">
+      <h3>Record</h3>
+      <dl className="kv-grid"><dt>Policy ID</dt><dd>{policy.id}</dd><dt>Created by</dt><dd>{policy.created_by}</dd><dt>Created at</dt><dd>{policy.created_at}</dd></dl>
+    </section>
   </>;
 }

@@ -58,6 +58,7 @@ export default async function BaselinesPage() {
     );
   }
 
+  const maxResources = Math.max(1, ...data.baselines.map((baseline) => baseline.resourceCount));
   const jobsActive = jobs.some(
     (job) => job.status === "queued" || job.status === "running",
   );
@@ -70,12 +71,6 @@ export default async function BaselinesPage() {
         generatedAt={data.generatedAt}
         marker={canBaseline ? "Actionable" : "Read-only"}
         title="Baselines"
-      />
-
-      <BaselineCreateForm
-        completedSnapshotsExist={completedSnapshotsExist}
-        disabled={!canBaseline}
-        snapshots={snapshots}
       />
 
       <section aria-labelledby="baseline-list-heading" className="report-section">
@@ -127,7 +122,12 @@ export default async function BaselinesPage() {
                       )}
                     </td>
                     <td className="number-column" data-label="Resources">
-                      {baseline.resourceCount.toLocaleString("en-GB")}
+                      <span className="resource-bar-cell">
+                        {baseline.resourceCount.toLocaleString("en-GB")}
+                        <span aria-hidden="true" className="resource-bar">
+                          <span style={{ width: `${(baseline.resourceCount / maxResources) * 100}%` }} />
+                        </span>
+                      </span>
                     </td>
                     <td data-label="Actions">
                       {baseline.active ? null : (
@@ -146,6 +146,12 @@ export default async function BaselinesPage() {
           <p className="empty-state">No baselines are recorded for this tenant.</p>
         )}
       </section>
+
+      <BaselineCreateForm
+        completedSnapshotsExist={completedSnapshotsExist}
+        disabled={!canBaseline}
+        snapshots={snapshots}
+      />
 
       <JobTable
         headingId="baseline-jobs-heading"

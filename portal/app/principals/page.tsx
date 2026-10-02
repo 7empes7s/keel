@@ -20,6 +20,6 @@ export default async function PrincipalsPage() {
   }
   return <>
     <PageHeader eyebrow="Administration" title="Principals" description="Identities, role grants, and effective capabilities." generatedAt={data.generatedAt} />
-    {data.principals.length === 0 ? <p>No principals configured.</p> : data.principals.map((principal) => <PrincipalDetails key={principal.id} principal={principal} />)}
+    {data.principals.length === 0 ? <p className="empty-state">No principals configured.</p> : <div className="item-list">{data.principals.map((principal) => <PrincipalDetails key={principal.id} principal={principal} />)}</div>}
   </>;
 }

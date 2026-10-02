@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { formatTimestamp } from "@/lib/presentation";
+import { toast } from "@/lib/toast";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 
 function displayParams(params: unknown): string {
@@ -25,6 +26,9 @@ export function ApprovalInbox({
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which button was pressed, so only that one shows the busy spinner; both stay
+  // disabled while either decision for the request is in flight.
+  const [submittingDecision, setSubmittingDecision] = useState<"approve" | "reject" | null>(null);
 
   async function decide(request: ApprovalRequestRecord, decision: "approve" | "reject") {
     const reason = reasons[request.id]?.trim() ?? "";
@@ -34,6 +38,7 @@ export function ApprovalInbox({
     }
 
     setSubmittingId(request.id);
+    setSubmittingDecision(decision);
     setError(null);
     try {
       const response = await fetch(
@@ -47,11 +52,13 @@ export function ApprovalInbox({
       if (!response.ok) {
         throw new Error(`approval decision failed (${response.status})`);
       }
+      toast({ tone: decision === "approve" ? "success" : "info", title: decision === "approve" ? "Request approved" : "Request rejected", detail: request.action });
       router.refresh();
     } catch {
       setError("The approval decision could not be completed. Refresh the inbox before retrying.");
     } finally {
       setSubmittingId(null);
+      setSubmittingDecision(null);
     }
   }
 
@@ -107,15 +114,17 @@ export function ApprovalInbox({
                         </time>
                       </td>
                       <td data-label="Decision">
-                        <div>
+                        <div className="decision-controls">
                           <button
+                            aria-busy={(submitting && submittingDecision === "approve") || undefined}
+                            className="btn btn-primary"
                             disabled={submitting}
                             onClick={() => decide(request, "approve")}
                             type="button"
                           >
                             Approve
                           </button>
-                          <label>
+                          <label className="filter-field">
                             <span>Rejection reason</span>
                             <input
                               disabled={submitting}
@@ -129,6 +138,8 @@ export function ApprovalInbox({
                             />
                           </label>
                           <button
+                            aria-busy={(submitting && submittingDecision === "reject") || undefined}
+                            className="btn btn-danger"
                             disabled={submitting}
                             onClick={() => decide(request, "reject")}
                             type="button"

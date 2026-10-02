@@ -25,6 +25,9 @@ export function ApprovalInbox({
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which button was pressed, so only that one shows the busy spinner; both stay
+  // disabled while either decision for the request is in flight.
+  const [submittingDecision, setSubmittingDecision] = useState<"approve" | "reject" | null>(null);
 
   async function decide(request: ApprovalRequestRecord, decision: "approve" | "reject") {
     const reason = reasons[request.id]?.trim() ?? "";
@@ -34,6 +37,7 @@ export function ApprovalInbox({
     }
 
     setSubmittingId(request.id);
+    setSubmittingDecision(decision);
     setError(null);
     try {
       const response = await fetch(
@@ -52,6 +56,7 @@ export function ApprovalInbox({
       setError("The approval decision could not be completed. Refresh the inbox before retrying.");
     } finally {
       setSubmittingId(null);
+      setSubmittingDecision(null);
     }
   }
 
@@ -109,7 +114,7 @@ export function ApprovalInbox({
                       <td data-label="Decision">
                         <div className="decision-controls">
                           <button
-                            aria-busy={submitting || undefined}
+                            aria-busy={(submitting && submittingDecision === "approve") || undefined}
                             className="btn btn-primary"
                             disabled={submitting}
                             onClick={() => decide(request, "approve")}
@@ -131,6 +136,7 @@ export function ApprovalInbox({
                             />
                           </label>
                           <button
+                            aria-busy={(submitting && submittingDecision === "reject") || undefined}
                             className="btn btn-danger"
                             disabled={submitting}
                             onClick={() => decide(request, "reject")}

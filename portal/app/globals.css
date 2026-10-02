@@ -5015,3 +5015,150 @@ section.wizard-panel {
 .job-timeline li {
   align-content: start;
 }
+
+/* ==========================================================================
+   Toasts: top-right, newest at the bottom, paused while hovered or focused.
+   ========================================================================== */
+
+.toaster {
+  position: fixed;
+  z-index: 70;
+  top: calc(var(--space-md) + env(safe-area-inset-top, 0px));
+  right: var(--space-md);
+  width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.toaster ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: var(--space-xs);
+  list-style: none;
+}
+
+.toast {
+  --tone: var(--protected);
+  position: relative;
+  display: grid;
+  padding: var(--space-sm) var(--space-sm) var(--space-sm) var(--space-md);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--tone);
+  background: color-mix(in oklab, var(--surface-raised) 94%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-raised);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-sm);
+  pointer-events: auto;
+  animation: toast-enter var(--duration-slow) var(--ease-out) both;
+}
+
+.toast-info { --tone: var(--readonly); }
+.toast-warning { --tone: var(--partial); }
+
+.toast-leaving {
+  animation: toast-exit 200ms var(--ease-in-out) both;
+}
+
+.toast-icon {
+  display: grid;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--tone) 18%, transparent);
+  color: var(--tone);
+  font-size: 0.75rem;
+  font-weight: 800;
+  place-items: center;
+}
+
+.toast-body {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.toast-body strong {
+  font-size: 0.875rem;
+}
+
+.toast-body p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.toast-link {
+  width: fit-content;
+  margin-top: var(--space-2xs);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.toast-link:hover {
+  text-decoration: underline;
+}
+
+.toast-close {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+/* The bar shows the time left before the toast dismisses itself. */
+.toast-timer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--tone);
+  opacity: 0.5;
+  transform-origin: left center;
+  animation: toast-timer 6s linear both;
+}
+
+.toast-timer-paused {
+  animation-play-state: paused;
+}
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translateX(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes toast-exit {
+  to { opacity: 0; transform: translateX(16px); }
+}
+
+@keyframes toast-timer {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@media (max-width: 46rem) {
+  .toaster {
+    top: auto;
+    right: var(--space-md);
+    bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+    left: var(--space-md);
+    width: auto;
+  }
+}
+
+@media print {
+  .toaster { display: none !important; }
+}

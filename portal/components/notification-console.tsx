@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { toast } from "@/lib/toast";
 import type { Channel, Subscription, Delivery } from "@/lib/notifications";
 
 export function DeliveryTable({ deliveries }: { deliveries: Delivery[] }) {
@@ -25,6 +26,13 @@ export function DeliveryTable({ deliveries }: { deliveries: Delivery[] }) {
   </section>;
 }
 
+const TOAST_TITLES: Record<string, string> = {
+  "create-channel": "Channel created",
+  "create-subscription": "Subscription created",
+  "disable-channel": "Channel disabled",
+  "delete-subscription": "Subscription deleted",
+};
+
 export function NotificationConsole({ canConfiguration, channels, subscriptions }: {
   canConfiguration: boolean; channels: Channel[]; subscriptions: Subscription[];
 }) {
@@ -40,6 +48,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Notification update failed"); }
+      toast({ title: TOAST_TITLES[action] ?? "Notification settings updated" });
       router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Notification update failed"); }
     finally { setBusy(false); setBusyAction(null); }
@@ -69,7 +78,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
           <code className="item-id">{channel.id}</code>
         </div>
         <pre className="config-block">{JSON.stringify(channel.config, null, 2)}</pre>
-        {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Disable channel" description={<p>Alerts routed to this {channel.kind} channel stop being delivered immediately, including critical drift alerts. Subscriptions that use it stay configured.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST")} size="sm" title={`Disable ${channel.kind} channel ${channel.id}?`}>Disable channel</ConfirmButton></div> : null}
+        {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Disable channel" description={<p>Alerts routed to this {channel.kind} channel stop being delivered immediately, including critical drift alerts. Subscriptions that use it stay configured.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST", undefined, "disable-channel")} size="sm" title={`Disable ${channel.kind} channel ${channel.id}?`}>Disable channel</ConfirmButton></div> : null}
       </li>)}</ul>}
       <form className="form-card" onSubmit={createChannel}><fieldset disabled={busy}><legend>Create channel</legend>
         <div className="form-grid">
@@ -89,7 +98,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
         <code className="natural-key">{subscription.event_glob}</code>
         <span className={`severity-pill severity-${subscription.min_severity}`}>≥ {subscription.min_severity}</span>
         <code className="item-id">{subscription.channel_id}</code>
-        <ConfirmButton confirmLabel="Delete subscription" description={<p>Events matching <code>{subscription.event_glob}</code> at {subscription.min_severity} or above will no longer be sent to {subscription.channel_id}. This cannot be undone; recreate the subscription to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE")} size="sm" title="Delete this subscription?">Delete subscription</ConfirmButton>
+        <ConfirmButton confirmLabel="Delete subscription" description={<p>Events matching <code>{subscription.event_glob}</code> at {subscription.min_severity} or above will no longer be sent to {subscription.channel_id}. This cannot be undone; recreate the subscription to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this subscription?">Delete subscription</ConfirmButton>
       </li>)}</ul>}
       <form className="form-card" onSubmit={createSubscription}><fieldset disabled={busy || channels.length === 0}><legend>Create subscription</legend>
         <div className="form-grid">

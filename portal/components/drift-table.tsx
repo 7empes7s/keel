@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState } from "react";
 import { BlastBadge, ChangeBadge } from "@/components/status-badge";
 import { DriftDiff } from "@/components/drift-diff";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
+import { toast } from "@/lib/toast";
 import { BLAST_RADIUS_ORDER, formatTimestamp, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
 
@@ -208,6 +209,7 @@ export function DriftTable({
       setActionMessage(
         `${action === "accept" ? "Accepted" : "Ignored"} ${disposedIds.length} ${disposedIds.length === 1 ? "deviation" : "deviations"}.`,
       );
+      toast({ title: `${action === "accept" ? "Accepted" : "Ignored"} ${disposedIds.length} ${disposedIds.length === 1 ? "deviation" : "deviations"}` });
     } catch {
       setActionError("The disposition could not be completed. No additional deviations were submitted.");
     } finally {
@@ -249,6 +251,7 @@ export function DriftTable({
         }),
       );
       setPreview(null);
+      toast({ tone: "info", title: "Remediation sent for approval", detail: `${selectedDriftIds.length} ${selectedDriftIds.length === 1 ? "deviation" : "deviations"}; no job runs until approved.`, href: "/approvals", hrefLabel: "Open approvals" });
       setActionMessage(
         `Remediation for ${selectedDriftIds.length} ${selectedDriftIds.length === 1 ? "deviation requires" : "deviations requires"} approval before a job is created.`,
       );

@@ -3,11 +3,19 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { toast } from "@/lib/toast";
 import type { Destination, DestinationStatus, QuarantinedEvent } from "@/lib/integrations";
 
 function statusFor(statuses: DestinationStatus[], id: string): DestinationStatus | null {
   return statuses.find((status) => status.destinationId === id) ?? null;
 }
+
+const TOAST_TITLES: Record<string, string> = {
+  register: "Destination registered",
+  replay: "Replay requested",
+  resume: "Destination resumed",
+  pause: "Destination paused",
+};
 
 export function IntegrationConsole({ canConfiguration, destinations, statuses }: {
   canConfiguration: boolean; destinations: Destination[]; statuses: DestinationStatus[];
@@ -25,6 +33,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Integration update failed"); }
+      toast({ title: TOAST_TITLES[action] ?? "Integration updated" });
       router.refresh();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Integration update failed"); }
     finally { setBusy(false); setBusyAction(null); }
@@ -52,7 +61,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
   function replay(id: string, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void write(`/api/integrations/${id}/replay`, "POST", { fromSeq: Number(form.get("fromSeq") ?? 0) });
+    void write(`/api/integrations/${id}/replay`, "POST", { fromSeq: Number(form.get("fromSeq") ?? 0) }, "replay");
   }
 
   return <>
@@ -83,8 +92,8 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
           <div className="form-actions">
             <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void loadQuarantined(destination.id)} type="button">Show quarantined events</button>
             {canConfiguration ? (paused
-              ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST")} type="button">Resume destination</button>
-              : <ConfirmButton confirmLabel="Pause destination" description={<p>{destination.name} stops receiving evidence events until it is resumed. New events queue up as pending, so the SIEM falls behind while it is paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST")} size="sm" title={`Pause ${destination.name}?`}>Pause destination</ConfirmButton>) : null}
+              ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume destination</button>
+              : <ConfirmButton confirmLabel="Pause destination" description={<p>{destination.name} stops receiving evidence events until it is resumed. New events queue up as pending, so the SIEM falls behind while it is paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST", undefined, "pause")} size="sm" title={`Pause ${destination.name}?`}>Pause destination</ConfirmButton>) : null}
           </div>
           {events ? (events.length === 0 ? <p className="field-help">No quarantined events.</p> : <ul className="quarantine-list">{events.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
             {quarantinedEvent.event_id} · {quarantinedEvent.quarantine_reason ?? "—"} · {quarantinedEvent.quarantined_at}

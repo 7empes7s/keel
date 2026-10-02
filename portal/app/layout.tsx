@@ -13,6 +13,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { KeelMark } from "@/components/keel-mark";
 import { NavLinks } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Toaster } from "@/components/toaster";
 import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
@@ -94,6 +95,7 @@ export default async function RootLayout({
             {children}
           </main>
         </div>
+        <Toaster />
       </body>
     </html>
   );

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { toast } from "@/lib/toast";
 
 const TIERS = [
   {
@@ -51,6 +52,7 @@ export function BackupControls({ disabled }: { disabled: boolean }) {
       const job = payload.job as { id: string };
       setJobId(job.id);
       setMessage(`${tier} backup queued (job ${job.id}). View the job for progress.`);
+      toast({ title: `${TIERS.find((item) => item.id === tier)?.label ?? tier} backup queued`, detail: `Job ${job.id}`, href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
       setIdempotencyKeys((current) => ({ ...current, [tier]: crypto.randomUUID() }));
       router.refresh();
     } catch {

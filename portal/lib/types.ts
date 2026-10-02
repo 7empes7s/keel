@@ -187,6 +187,9 @@ export interface DashboardData {
   lastCompletedCollectionAt: string | null;
   openDriftByBlastRadius: Array<{ blastRadius: string; count: number }>;
   openDriftTotal: number;
+  // Drift rows detected per UTC day against the active baseline, oldest first, one
+  // entry per day for the trend window (zero-filled), so the sparkline is to scale.
+  driftTrend: Array<{ day: string; count: number }>;
   coverage: CoverageSummary;
   evidence: { ok: boolean; chainLength: number };
   alerts: DashboardAlert[];

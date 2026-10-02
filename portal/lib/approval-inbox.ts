@@ -137,3 +137,15 @@ export async function getApprovalInboxData(): Promise<ApprovalInboxData> {
     };
   });
 }
+
+// The sidebar badge: how many requests wait on an approver. Callers check
+// approvalInboxAccess first; this reads only the count, never request detail.
+export async function getPendingApprovalCount(): Promise<number> {
+  return withClient(async (client) => {
+    const pending = await listApprovalRequests(client, {
+      statuses: ["pending"],
+      limit: APPROVAL_INBOX_LIMIT,
+    });
+    return pending.length;
+  });
+}

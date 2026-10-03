@@ -1,4 +1,4 @@
-import { PROTECTION_STATE_LABEL, words } from "@/lib/presentation";
+import { PROTECTION_STATE_LABEL, displayEnum } from "@/lib/presentation";
 import type { CoverageType, ProtectionState } from "@/lib/types";
 
 export function ProtectionBadge({ item }: { item: CoverageType }) {
@@ -18,11 +18,11 @@ export function ProtectionBadge({ item }: { item: CoverageType }) {
 }
 
 export function BlastBadge({ value }: { value: string }) {
-  return <span className={`blast-badge blast-${value}`}>{words(value)}</span>;
+  return <span className={`blast-badge blast-${value}`}>{displayEnum("blastRadius", value)}</span>;
 }
 
 export function ChangeBadge({ value }: { value: string }) {
-  return <span className={`change-badge change-${value}`}>{words(value)}</span>;
+  return <span className={`change-badge change-${value}`}>{displayEnum("changeType", value)}</span>;
 }
 
 export function StateBadge({ state }: { state: ProtectionState }) {

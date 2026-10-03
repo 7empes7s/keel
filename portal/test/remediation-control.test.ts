@@ -47,7 +47,7 @@ test("drift remediation previews before confirming, blocks refusals, and invalid
     (element.props.onClick as () => void)();
   };
   const select = (id: string) => {
-    const element = find(render(), (element) => element.props["aria-label"] === `Select group:${id}`);
+    const element = find(render(), (element) => element.props["aria-label"] === `Select ${id} (group)`);
     assert.ok(element);
     (element.props.onChange as () => void)();
   };
@@ -68,13 +68,13 @@ test("drift remediation previews before confirming, blocks refusals, and invalid
   try {
     select("one");
     assert.equal(button("Confirm and request approval"), undefined);
-    click("Preview remediation");
+    click("Preview roll back");
     await settle();
     assert.deepEqual(calls, [{ path: "/api/actions/remediate/selection", body: { driftIds: ["one"] } }]);
     assert.equal(button("Confirm and request approval")?.props.disabled, true);
     // Populate a justification while the preview is refused: the guard-refusal
     // check itself — not the empty-reason gate — must block the submission.
-    const refusedReason = find(render(), (element) => element.props.placeholder === "Why is this disposition appropriate?");
+    const refusedReason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(refusedReason);
     (refusedReason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "justified" } });
     click("Confirm and request approval");
@@ -83,10 +83,10 @@ test("drift remediation previews before confirming, blocks refusals, and invalid
     assert.equal(button("Confirm and request approval"), undefined, "changing selection invalidates the preview");
     select("two");
     refused = false;
-    click("Preview remediation");
+    click("Preview roll back");
     await settle();
     assert.equal(button("Confirm and request approval")?.props.disabled, false);
-    const reason = find(render(), (element) => element.props.placeholder === "Why is this disposition appropriate?");
+    const reason = find(render(), (element) => element.props.placeholder === "Why is this decision right?");
     assert.ok(reason);
     (reason.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: "reviewed" } });
     click("Confirm and request approval");

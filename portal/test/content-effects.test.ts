@@ -25,7 +25,10 @@ test("effects have plain-language labels", () => {
 test("each effect shows the field change and its not-backed-up disclosure", () => {
   const html = renderToStaticMarkup(createElement(ContentEffectList, { effects: [effect] }));
   assert.match(html, /Shortens retention/);
-  assert.match(html, /<code>retentionDuration\.days<\/code>/);
+  // Task-131: the setting is named in words, the resource by name; the key is not shown.
+  assert.match(html, /Finance \(retention label\)/);
+  assert.doesNotMatch(html, /retentionLabel:Finance/);
+  assert.match(html, /<span class="content-effect-field">Retention duration › days<\/span>/);
   assert.match(html, /<code class="value-before">2555<\/code>.*→.*<code class="value-after">30<\/code>/);
   assert.match(html, /backs up configuration, not content/);
 });

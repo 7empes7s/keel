@@ -46,7 +46,9 @@ import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
 import { alertsVerdict, type AlertItem } from "@/lib/alerts-view";
+import { ReadinessView } from "@/components/readiness-view";
 import { ResilienceView } from "@/components/resilience-view";
+import { readinessVerdict, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
@@ -596,6 +598,90 @@ const RESILIENCE_EMPTY: ResilienceData = {
   storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
 };
 
+// Task-94: emergency access. bg1 passes every check; bg2 is reached by a policy that
+// is switched on, has no recorded method and is overdue for its test, and it was used
+// an hour ago with two changes after the sign-in. READINESS_READY is the same tenant
+// once bg2 is fixed and the alert was reviewed.
+const BG1 = "b9000000-0000-4000-8000-000000000001";
+const BG2 = "b9000000-0000-4000-8000-000000000002";
+const pass = (reason: string, evidence: Dimension["evidence"] = {}): Dimension => ({ status: "pass", reason, evidence });
+const bgPolicies = (bg2Reached: boolean) => [
+  { policy: "conditionalAccessPolicy:Require MFA for all", treatment: "excluded" as const, reason: "excluded-directly" },
+  { policy: "conditionalAccessPolicy:Block legacy auth", treatment: bg2Reached ? "applies" as const : "excluded" as const, reason: bg2Reached ? "included" : "excluded-directly" },
+  { policy: "conditionalAccessPolicy:Report only risk", treatment: "report-only" as const, reason: "not-enforced" },
+];
+const BG1_ACCOUNT: ReadinessAccount = {
+  accountId: BG1, label: "bg1@contoso.onmicrosoft.com", resourceKey: "user:bg1@contoso.onmicrosoft.com",
+  validationIntervalDays: 90, rotationIntervalDays: 180, registeredAt: "2026-06-01T08:00:00Z",
+  lastValidatedAt: "2026-09-12T10:00:00Z", lastRotatedAt: "2026-08-01T10:00:00Z",
+  methodEvidence: { basis: "observed", occurredAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] },
+  overall: "ready",
+  dimensions: {
+    cloudOnlyIdentity: pass("cloud-only-member-account", { naturalKey: "user:bg1@contoso.onmicrosoft.com", domain: "contoso.onmicrosoft.com" }),
+    phishingResistantCredential: pass("phishing-resistant-method", { basis: "observed", recordedAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] }),
+    policyExclusions: pass("excluded-from-every-enforced-policy", { policies: bgPolicies(false) }),
+    privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG1}@/` }),
+    lastValidation: pass("validated-recently", { lastValidatedAt: "2026-09-12T10:00:00Z", dueAt: "2026-12-11T10:00:00Z", intervalDays: 90 }),
+  },
+  reminders: [
+    { kind: "validation", intervalDays: 90, last: "2026-09-12T10:00:00Z", dueAt: "2026-12-11T10:00:00Z", status: "scheduled" },
+    { kind: "rotation", intervalDays: 180, last: "2026-08-01T10:00:00Z", dueAt: "2027-01-28T10:00:00Z", status: "scheduled" },
+  ],
+};
+const BG2_ACCOUNT: ReadinessAccount = {
+  ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com",
+  rotationIntervalDays: null, lastValidatedAt: "2026-06-20T10:00:00Z", lastRotatedAt: null, methodEvidence: null, overall: "not-ready",
+  dimensions: {
+    ...BG1_ACCOUNT.dimensions,
+    phishingResistantCredential: { status: "unknown", reason: "no-method-evidence", evidence: {} },
+    policyExclusions: { status: "fail", reason: "enforced-policy-applies", evidence: { policies: bgPolicies(true) } },
+    privilegedAccessPath: pass("active-global-administrator", { assignment: `roleAssignment:GlobalAdministrator@${BG2}@/` }),
+    lastValidation: { status: "due", reason: "validation-overdue", evidence: { lastValidatedAt: "2026-06-20T10:00:00Z", dueSince: "2026-09-18T10:00:00Z", intervalDays: 90 } },
+  },
+  reminders: [{ kind: "validation", intervalDays: 90, last: "2026-06-20T10:00:00Z", dueAt: "2026-09-18T10:00:00Z", status: "due" }],
+};
+const READINESS_SURFACES: ReadinessData["surfaces"] = [
+  { surface: "conditionalAccess", status: "evaluated", reason: "collected" },
+  { surface: "conditionalAccessRiskConditions", status: "evaluated", reason: "evaluated-as-conditional-access", policies: 1 },
+  { surface: "authenticationMethodsPolicy", status: "evaluated", reason: "collected" },
+  { surface: "roleEligibility", status: "evaluated", reason: "collected" },
+  { surface: "roleActivationRules", status: "unsupported", reason: "activation-rules-not-collected" },
+  { surface: "identityProtectionRiskPolicies", status: "unsupported", reason: "legacy-risk-policies-not-collected" },
+  { surface: "securityDefaults", status: "unsupported", reason: "security-defaults-not-collected" },
+  { surface: "applicationAccessRestrictions", status: "unsupported", reason: "application-restrictions-not-collected" },
+];
+const READINESS: ReadinessData = {
+  generatedAt: now, configured: true, overall: "not-ready", reason: "account-not-ready",
+  accounts: [BG1_ACCOUNT, BG2_ACCOUNT],
+  surfaces: READINESS_SURFACES,
+  inventory: { user: { status: "covered", observedAt: "2026-10-02T08:00:00Z" }, conditionalAccessPolicy: { status: "covered", observedAt: "2026-10-02T08:00:00Z" } },
+  canary: { status: "watching", reason: "covered", sources: { "sign-in": { status: "covered", readUntil: "2026-10-02T09:30:00Z" }, audit: { status: "covered", readUntil: "2026-10-02T09:30:00Z" } } },
+  alerts: [{
+    id: "a1e70000-0000-4000-8000-000000000094", resourceKey: "user:bg2@contoso.onmicrosoft.com", condition: "emergency-account-used",
+    state: "open", severity: "critical", active: true, occurrence: 1, firstOpenedAt: "2026-10-02T08:40:00Z", lastFiringAt: "2026-10-02T08:40:00Z",
+    ackDeadlineAt: "2026-10-02T08:55:00Z", lastEventId: "breakglass-sign-in:si-7f21",
+    detail: {
+      accountId: BG2, label: "bg2@contoso.onmicrosoft.com", auditEventId: "si-7f21", correlationId: `breakglass:${BG2}:si-7f21`, expectedTest: false, changeCount: 2,
+      changes: [
+        { auditEventId: "au-9c10", occurredAt: "2026-10-02T08:45:00Z", targetType: "conditionalAccessPolicy", targetId: "c9000000-0000-4000-8000-0000000000c1", operation: "update", activity: "Update conditional access policy" },
+        { auditEventId: "au-9c11", occurredAt: "2026-10-02T08:47:00Z", targetType: "group", targetId: "c9000000-0000-4000-8000-0000000000c2", operation: "update", activity: "Add member to group" },
+      ],
+    },
+  }],
+};
+const READINESS_READY: ReadinessData = {
+  ...READINESS, overall: "ready", reason: "every-account-ready",
+  accounts: [BG1_ACCOUNT, { ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com" }],
+  alerts: [{ ...READINESS.alerts[0], state: "resolved", active: false }],
+};
+
+function readinessPage(data: ReadinessData) {
+  const verdict = readinessVerdict(data);
+  return <>{header("Restore", "Emergency access", "Whether the emergency accounts would let an administrator in when everything else fails, and whether anyone has used them.")}
+    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><ReadinessView data={data} /></div></>;
+}
+
 function resiliencePage(data: ResilienceData) {
   const verdict = resilienceVerdict(data.metrics, data.generatedAt);
   return <>{header("Restore", "Resilience", "How recent a recovery KEEL could make if this server were lost, and how long a recovery has taken.")}
@@ -642,6 +728,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
+    case "/readiness": return readinessPage(READINESS);
+    case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/drift": {
       const verdict = changesVerdict(DRIFT, BASELINES[0].setAt, now);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}

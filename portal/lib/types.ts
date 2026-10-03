@@ -206,6 +206,20 @@ export interface DashboardData {
   coverage: CoverageSummary;
   evidence: { ok: boolean; chainLength: number };
   alerts: DashboardAlert[];
+  // Roadmap task-129: the memorable number, computed by the engine from the coverage
+  // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).
+  headline: ProtectionHeadline;
+}
+
+export interface ProtectionHeadline {
+  state: "collection" | "proven" | "unproven";
+  tone: "good" | "attention" | "critical";
+  headline: string;
+  sentence: string;
+  action: { label: string; href: string } | null;
+  counts: { backedUp: number; restorable: number; failing: number; failed: number; stale: number; neverCollected: number };
+  lastProvenRestoreAt: string | null;
+  failingSince: string | null;
 }
 
 // Portal experience contract, rule 2: a field that holds another object's id is

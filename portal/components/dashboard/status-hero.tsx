@@ -1,58 +1,39 @@
-import type { DashboardAlert } from "@/lib/types";
+import Link from "next/link";
 
-export type PostureTone = "critical" | "warning" | "healthy";
+import type { DashboardAlert, ProtectionHeadline } from "@/lib/types";
 
-export function postureFor(alerts: DashboardAlert[]): { tone: PostureTone; headline: string; summary: string } {
-  const critical = alerts.filter((alert) => alert.severity === "critical").length;
-  const warning = alerts.filter((alert) => alert.severity === "warning").length;
-  if (critical) {
-    return {
-      tone: "critical",
-      headline: "Action needed",
-      summary: `${critical} critical ${critical === 1 ? "issue" : "issues"}${warning ? ` and ${warning} ${warning === 1 ? "warning" : "warnings"}` : ""} below. Recovery may not be trustworthy until they are resolved.`,
-    };
-  }
-  if (warning) {
-    return {
-      tone: "warning",
-      headline: "Degraded",
-      summary: `${warning} ${warning === 1 ? "warning" : "warnings"} below. Recovery is possible, but some protection is weaker than it should be.`,
-    };
-  }
-  // KEEL claims only what it checked: absence of detected problems, not "all good".
+// Portal experience contract, Overview verdict: one headline word, one sentence (the
+// memorable number from the engine), one tone and at most one primary action. Alerts
+// can only make the tone worse; they never replace the number, and the hedge of what
+// was and was not checked lives in the record layer.
+export type VerdictTone = "good" | "attention" | "critical";
+
+const TONE_RANK: Record<VerdictTone, number> = { good: 0, attention: 1, critical: 2 };
+
+export function overviewVerdict(headline: ProtectionHeadline, alerts: DashboardAlert[]): {
+  tone: VerdictTone; headline: string; sentence: string; action: ProtectionHeadline["action"];
+} {
+  const critical = alerts.some((alert) => alert.severity === "critical");
+  const warning = alerts.some((alert) => alert.severity === "warning");
+  const alertTone: VerdictTone = critical ? "critical" : warning ? "attention" : "good";
+  const tone = TONE_RANK[alertTone] > TONE_RANK[headline.tone] ? alertTone : headline.tone;
   return {
-    tone: "healthy",
-    headline: "No issues detected",
-    summary: "Baseline, collection, coverage and evidence checks all passed on this read.",
+    tone,
+    headline: critical && headline.state !== "collection" ? "Action needed" : headline.headline,
+    sentence: headline.sentence,
+    action: headline.action,
   };
 }
 
-export function StatusHero({
-  alerts,
-  facts,
-}: {
-  alerts: DashboardAlert[];
-  facts: Array<{ label: string; value: string; tone?: "good" | "bad" }>;
-}) {
-  const posture = postureFor(alerts);
+export function OverviewVerdict({ headline, alerts }: { headline: ProtectionHeadline; alerts: DashboardAlert[] }) {
+  const verdict = overviewVerdict(headline, alerts);
   return (
-    <section aria-labelledby="posture-heading" className={`status-hero status-${posture.tone}`}>
-      <div className="status-hero-main">
-        <p className="status-hero-kicker">
-          <span aria-hidden="true" className="status-hero-dot" />
-          Tenant posture
-        </p>
-        <h2 id="posture-heading">{posture.headline}</h2>
-        <p>{posture.summary}</p>
+    <section aria-labelledby="verdict-heading" className={`verdict verdict-${verdict.tone}`} data-layer="verdict">
+      <div>
+        <h2 className="verdict-headline" id="verdict-heading">{verdict.headline}</h2>
+        <p className="verdict-sentence">{verdict.sentence}</p>
       </div>
-      <dl className="status-hero-facts">
-        {facts.map((fact) => (
-          <div className={fact.tone ? `fact-${fact.tone}` : undefined} key={fact.label}>
-            <dt>{fact.label}</dt>
-            <dd>{fact.value}</dd>
-          </div>
-        ))}
-      </dl>
+      {verdict.action ? <Link className="btn btn-primary primary" href={verdict.action.href}>{verdict.action.label}</Link> : null}
     </section>
   );
 }

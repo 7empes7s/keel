@@ -20,12 +20,11 @@ export default async function Home() {
     return (
       <>
         <PageHeader
-          description="Baseline, collection, drift, and coverage posture for the protected tenant."
-          eyebrow="Overview"
-          marker="Live read"
-          title="Operational state"
+          description="Is this tenant protected right now, and what needs you?"
+          section="Overview"
+          title="Overview"
         />
-        <DataUnavailable surface="Dashboard data" />
+        <DataUnavailable surface="The overview" />
       </>
     );
   }

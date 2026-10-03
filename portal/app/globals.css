@@ -5631,3 +5631,29 @@ section.wizard-panel {
 .incident-point-explanation time,
 .incident-intervals time,
 .incident-link time { font: inherit; color: inherit; }
+
+/* Task-129: tabs for the pages a navigation section absorbs. */
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs, 0.25rem);
+  margin: 0 0 var(--space-md);
+  border-bottom: 1px solid var(--line);
+}
+.section-tab {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.section-tab:hover { color: var(--text); }
+.section-tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent, currentColor); }
+.section-tab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.verdict-headline { margin: 0 0 var(--space-2xs, 0.25rem); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-soft); }
+.verdict-good .verdict-headline { color: var(--protected); }
+.verdict-attention .verdict-headline { color: var(--partial); }
+.verdict-critical .verdict-headline { color: var(--failed); }

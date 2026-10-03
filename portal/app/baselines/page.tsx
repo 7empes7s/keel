@@ -49,7 +49,7 @@ export default async function BaselinesPage() {
       <>
         <PageHeader
           description="Named recovery reference points and their captured resource counts."
-          eyebrow="Recovery history"
+          section="Changes"
           marker={canBaseline ? "Actionable" : "Read-only"}
           title="Baselines"
         />
@@ -67,7 +67,7 @@ export default async function BaselinesPage() {
     <>
       <PageHeader
         description="Named recovery reference points and their captured resource counts."
-        eyebrow="Recovery history"
+        section="Changes"
         generatedAt={data.generatedAt}
         marker={canBaseline ? "Actionable" : "Read-only"}
         title="Baselines"

@@ -20,7 +20,7 @@ export default async function NotificationsPage() {
     if (!response.ok) throw new Error("Delivery history unavailable");
     history = await response.json();
   } catch {
-    return <><PageHeader eyebrow="Operations" title="Notifications" description="Notification delivery history and configuration." /><DataUnavailable surface="Delivery history" /></>;
+    return <><PageHeader section="Settings" title="Notifications" description="Notification delivery history and configuration." /><DataUnavailable surface="Delivery history" /></>;
   }
   let channels: Channel[] = [];
   let subscriptions: Subscription[] = [];
@@ -37,7 +37,7 @@ export default async function NotificationsPage() {
     } catch { configurationUnavailable = true; }
   }
   return <>
-    <PageHeader eyebrow="Operations" title="Notifications" description="Notification delivery history and configuration." generatedAt={history.generatedAt} />
+    <PageHeader section="Settings" title="Notifications" description="Notification delivery history and configuration." generatedAt={history.generatedAt} />
     <DeliveryTable deliveries={history.deliveries} />
     {configurationUnavailable ? <DataUnavailable surface="Notification configuration" /> : <NotificationConsole canConfiguration={canConfiguration} channels={channels} subscriptions={subscriptions} />}
   </>;

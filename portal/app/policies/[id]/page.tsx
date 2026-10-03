@@ -22,7 +22,7 @@ export default async function PolicyPage({ params }: { params: Promise<{ id: str
   if (!response.ok) return <DataUnavailable surface="Policy" />;
   const { policy } = await response.json() as { policy: Policy };
   return <>
-    <PageHeader eyebrow="Governance" title={policy.name} description="Current policy configuration and automation state." />
+    <PageHeader section="Settings" title={policy.name} description="Current policy configuration and automation state." />
     <PolicyState policy={policy} />
     <section aria-label="Policy record" className="policy-group policy-meta">
       <h3>Record</h3>

@@ -26,7 +26,7 @@ export default async function DriftPage() {
       <>
         <PageHeader
           description="Unresolved changes measured against the active recovery baseline."
-          eyebrow="Governance"
+          section="Changes"
           marker={actionable ? "Actionable" : "Read-only"}
           title="Drift"
         />
@@ -39,7 +39,7 @@ export default async function DriftPage() {
     <>
       <PageHeader
         description="Unresolved changes measured against the active recovery baseline."
-        eyebrow="Governance"
+        section="Changes"
         generatedAt={data.generatedAt}
         marker={actionable ? "Actionable" : "Read-only"}
         title="Drift"

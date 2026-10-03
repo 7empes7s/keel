@@ -11,12 +11,13 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 
 import { CommandPalette } from "@/components/command-palette";
 import { KeelMark } from "@/components/keel-mark";
-import { NavLinks } from "@/components/nav-links";
+import { NavLinks, SectionTabs } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/toaster";
 import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
+import { accessSummary } from "@/lib/presentation";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -43,8 +44,7 @@ export default async function RootLayout({
     .split(" ")
     .filter(Boolean);
   const canApprove = capabilities.includes("approve");
-  // Everything beyond read is something this operator can change; say so plainly
-  // instead of a fixed label that stopped being true once write surfaces shipped.
+  // What this operator can do, in words; the raw capability codes stay in the title.
   const actions = capabilities.filter((capability) => capability !== "read");
   const theme = parseThemePreference((await cookies()).get(THEME_COOKIE)?.value);
 
@@ -86,12 +86,13 @@ export default async function RootLayout({
                 {email}
               </span>
               <span className="access-label" title={actions.join(", ") || undefined}>
-                {actions.length ? `Read + ${actions.length} action ${actions.length === 1 ? "capability" : "capabilities"}` : "Read-only access"}
+                {accessSummary(capabilities)}
               </span>
               <ThemeToggle initial={theme} />
             </div>
           </aside>
           <main className="workspace" id="main-content">
+            <SectionTabs canApprove={canApprove} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
             {children}
           </main>
         </div>

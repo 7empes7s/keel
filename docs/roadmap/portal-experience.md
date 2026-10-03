@@ -288,3 +288,63 @@ authorization, the approval model, artifact-only restore promotion, evidence
 hashing, or any engine reader's data. Where a reader must return a name beside
 an id (the `Ref` shape), that is an additive change to `portal/lib` readers and
 the engine functions they call, covered by each task's boundary test.
+
+## Status
+
+### 2026-10-03: task-129 shipped (shell, navigation, Overview, mechanical checks)
+
+- **Navigation.** The sidebar has the seven entries, in contract order
+  (`portal/components/nav-links.tsx`, `NAV_MAP`).
+  - Each entry absorbs existing pages, which keep their routes and appear as
+    tabs inside the entry (`SectionTabs`). For example, Protect holds Backups,
+    Schedules and Configuration types, and Restore holds Restore and Incidents.
+  - An entry links to the first page the viewer may open, and is hidden when
+    there is none.
+  - The command palette lists every page under its section and still finds a
+    page by its former name ("evidence", "coverage", "drift", "principals").
+- **Eyebrow.** `PageHeader` takes a typed `section` instead of free text.
+  `portal/test/experience-contract.test.ts` checks that every page passes the
+  section that owns its route.
+- **Overview.**
+  - The verdict is the memorable number, computed by
+    `engine/coverage/protectionHeadline.mjs` from the same coverage report the
+    page reads, plus fidelity-drill evidence. It is never a constant.
+  - The three states read "N configuration types have not been backed up since
+    …" (or "failed their last backup" / "have never been backed up"), "KEEL can
+    restore N of M configuration types today. Last proven restore: …" and "KEEL
+    backs up M configuration types. No restore has been proven on this tenant
+    yet."
+  - The headline is "Protected" only when a restore has been proven. Before
+    that it is "Backed up", so the page does not overclaim.
+  - Alerts can only make the tone worse. They never replace the number.
+  - The hedge (what was and was not checked), raw statuses, the evidence chain
+    length and the timestamps are under "Technical details for this overview".
+  - The duplicate timestamps and the "Catalog honesty" caption are removed.
+- **Copy.**
+  - `DataUnavailable` no longer names the database engine.
+  - The sidebar says what the viewer can do in words ("You can approve, restore,
+    undo and 9 more") instead of a capability count.
+  - Stored codes go through `displayEnum()` in `portal/lib/presentation.ts`.
+- **Mechanical checks.** Checks 1 to 4, 6 and 7 run on every UI-harness route
+  (`portal/ui-harness/ui.spec.ts`). Check 5 and the eyebrow check run in
+  `portal/test/experience-contract.test.ts`, and check 8 is the existing axe,
+  screenshot and interaction suites.
+  - Overview, Incidents and the shell pass.
+  - Fifteen routes are allowlisted until task-130 and task-131 rebuild them.
+    The allowlist's size is asserted, so it can only shrink.
+
+**Limits and decisions:**
+
+- **No merged pages yet.** The absorbed pages are not yet merged into single
+  pages, so `/protect`, `/changes`, `/activity` and `/settings` do not exist.
+  Their sections link to the first member page instead of redirecting to a
+  merged page. Merging is task-131's job (Protect, Changes, Restore) and
+  task-130's (Activity, Settings). No route was removed, so nothing needed a
+  redirect.
+- **Alert copy reworded.** "What is kept" lists the dashboard alert copy, but
+  that copy used banned terms ("catalog type", "evidence chain", "blast
+  radius"). The alerts keep their meaning and severity, reworded into the
+  vocabulary table.
+- **Overview number has no live data yet.** Without fidelity-drill evidence, the
+  number reads in its "no restore has been proven" form. Live drills arrive with
+  tasks 72 and 73.

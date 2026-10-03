@@ -30,7 +30,7 @@ export default async function IncidentsPage({
   } catch {
     return (
       <>
-        <PageHeader description={description} eyebrow="Recovery" marker={canInvestigate ? "Actionable" : "Read-only"} title="Incidents" />
+        <PageHeader description={description} section="Restore" marker={canInvestigate ? "Actionable" : "Read-only"} title="Incidents" />
         <DataUnavailable surface="Incident data" />
       </>
     );
@@ -40,7 +40,7 @@ export default async function IncidentsPage({
     <>
       <PageHeader
         description={description}
-        eyebrow="Recovery"
+        section="Restore"
         generatedAt={data.generatedAt}
         marker={canInvestigate ? "Actionable" : "Read-only"}
         title="Incidents"

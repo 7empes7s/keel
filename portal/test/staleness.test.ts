@@ -104,8 +104,8 @@ test("the dashboard alert appears only when at least one type is stale", () => {
 
   assert.deepEqual(staleAlerts, [{
     severity: "warning",
-    title: "1 catalog type is stale",
-    detail: "Run a collection for the stale types; they were collected successfully but are no longer recent enough for their tier.",
+    title: "1 configuration type is out of date",
+    detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup.",
   }]);
-  assert.equal(freshAlerts.some((alert) => alert.title.includes("stale")), false);
+  assert.equal(freshAlerts.some((alert) => alert.title.includes("out of date")), false);
 });

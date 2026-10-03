@@ -32,7 +32,7 @@ export default async function EvidencePage({ searchParams }: {
     if (response.ok) integrity = await response.json();
   } catch { /* Never present failed verification requests as a valid chain. */ }
   return <>
-    <PageHeader eyebrow="Governance" title="Evidence" description="Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive." generatedAt={data?.generatedAt} />
+    <PageHeader section="Activity" title="Evidence" description="Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive." generatedAt={data?.generatedAt} />
     <ChainIndicator integrity={integrity} />
     <form action="/evidence" className="evidence-filters">
       <label><span>Kind</span> <input name="kind" defaultValue={query.get("kind") ?? ""} placeholder="policy-evaluation" /></label>

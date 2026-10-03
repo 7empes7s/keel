@@ -1,0 +1,15 @@
+{
+  "contractVersion": 1,
+  "gate": "deployed-acceptance",
+  "status": "pending",
+  "pendingReasons": [
+    "no deployed candidate build captured: run tools/release/deployed-acceptance.mjs capture on the host",
+    "no authenticated operator probe session"
+  ],
+  "tenantRef": null,
+  "build": null,
+  "operation": "deployed-acceptance.read-probe",
+  "credentialMode": "operator-session",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true
+}

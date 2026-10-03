@@ -129,6 +129,11 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "activity/page.tsx",
   },
+  // Task-73: measured recovery point and recovery time.
+  resiliencePage: {
+    capability: "read",
+    source: "resilience/page.tsx",
+  },
   // Task-76: setup shows which grants exist and who started a provisioning run.
   setupApi: { capability: "configuration", source: "api/setup/route.ts" },
   setupPage: { capability: "configuration", source: "setup/page.tsx" },

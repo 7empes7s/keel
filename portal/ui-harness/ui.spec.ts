@@ -404,15 +404,24 @@ test("a failed restore's undo lists what will be undone, kept, and lost, then as
   const undone = page.locator(".compensation-section").filter({ hasText: "WILL BE UNDONE" });
   await expect(undone.getByText("Revert description, visibility")).toBeVisible();
   await expect(undone.getByText("Delete the object this restore created")).toBeVisible();
-  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" }).getByText("conditionalAccessPolicy:Require MFA for admins", { exact: true })).toBeVisible();
-  await expect(page.locator(".compensation-section").filter({ hasText: "CANNOT BE UNDONE" }).getByText("group:Contractors", { exact: true })).toBeVisible();
-  await expect(page.getByText("not atomic")).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" }).getByText("Require MFA for admins (Conditional Access policy)", { exact: true })).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" })).toContainText("session controls changed after this restore, so KEEL will not overwrite the later change.");
+  await expect(page.locator(".compensation-section").filter({ hasText: "CANNOT BE UNDONE" }).getByText("Contractors (group)", { exact: true })).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "NEEDS MANUAL REVIEW" })).toContainText("amara.okafor@contoso.example (user) as member of Finance (group)");
+  await expect(page.locator(".compensation-statement")).toContainText("not atomic");
+  // The planned undo speaks in words too; keys, raw reasons and ids stay in its record.
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  const records = (await page.locator('.compensation-panel [data-layer="record"]').allTextContents()).join("\n");
+  for (const kept of ["c0de0000-0000-4000-8000-000000000010", "7f3c0000-0000-4000-8000-000000000010", "group:Contractors",
+    "concurrent-change: sessionControls changed after this restore wrote it", "group:Finance|member|user:amara.okafor@contoso.example"]) {
+    expect(records, `record keeps ${kept}`).toContain(kept);
+  }
 
   const request = page.getByRole("button", { name: "Request approval to undo" });
   await expect(request).toBeDisabled();
   await page.getByLabel("Why undo this restore?").fill("Wrong snapshot restored over Finance");
   await request.click();
-  await expect(page.locator(".compensation-requested")).toHaveText(/Sent for approval/);
+  await expect(page.locator(".compensation-requested")).toHaveText("Sent to approvers. Nothing changes until one of them approves.");
 });
 
 for (const theme of ["dark", "light"] as const) {

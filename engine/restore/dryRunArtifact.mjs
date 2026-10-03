@@ -43,10 +43,14 @@ function sha256(text) {
  * snapshot and its own selection alone, at both dry-run creation and promotion.
  * automationContext (task-55: policy identity/version and expanded scope) is folded
  * in only when present, so artifacts persisted before that field existed keep the
- * exact digest inputs they were created with and remain promotable. */
+ * exact digest inputs they were created with and remain promotable.
+ * relationshipOperations (task-61: ordered group member/owner edge adds/removes)
+ * follow the same rule — folded in only when the plan carries at least one, so a
+ * plan with no edge work keeps its pre-task-61 digest, while an artifact persisted
+ * without edge operations can never be promoted into a run that has some. */
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
-  reconciliationResources, waves, patches, automationContext = null,
+  reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -59,14 +63,21 @@ export function computePlanDigest({
     waves,
     patches,
     ...(automationContext ? { automationContext } : {}),
+    ...(relationshipOperations?.length ? { relationshipOperations } : {}),
   }));
 }
 
 /** What the target looks like right now, restricted to the resources this restore
  * would touch. Recomputed fresh at execution: any drift in the target between the
  * dry run and promotion — a resource created, changed, or removed out from under the
- * plan — changes this fingerprint and refuses the enforce run before it writes. */
-export function computeCurrentStateFingerprint(targetResources, closureKeys) {
+ * plan — changes this fingerprint and refuses the enforce run before it writes.
+ *
+ * Task-61: a parent object's payload never carries its membership, so the live edge
+ * sets of every group whose edges the plan reconciles are folded in separately
+ * (`relationships`: { parentNaturalKey, family, outcome, targetIds }). A member added
+ * or removed concurrently — even legitimately — changes the fingerprint and forces a
+ * new dry run. Folded in only when present, so edge-free plans keep their old value. */
+export function computeCurrentStateFingerprint(targetResources, closureKeys, { relationships = null } = {}) {
   const closureSet = new Set(closureKeys ?? []);
   const relevant = (targetResources ?? [])
     .filter((resource) => closureSet.has(resource.naturalKey))
@@ -76,7 +87,16 @@ export function computeCurrentStateFingerprint(targetResources, closureKeys) {
       payload: resource.payload ?? null,
     }))
     .sort((a, b) => a.naturalKey.localeCompare(b.naturalKey));
-  return sha256(canonicalStringify(relevant));
+  if (!relationships?.length) return sha256(canonicalStringify(relevant));
+  const edges = relationships
+    .map((entry) => ({
+      parentNaturalKey: entry.parentNaturalKey,
+      family: entry.family,
+      outcome: entry.outcome ?? null,
+      targetIds: sortedUnique((entry.targetIds ?? []).map((id) => String(id).toLowerCase())),
+    }))
+    .sort((a, b) => `${a.parentNaturalKey}|${a.family}`.localeCompare(`${b.parentNaturalKey}|${b.family}`));
+  return sha256(canonicalStringify({ resources: relevant, relationships: edges }));
 }
 
 /** Step 1: a dry run's terminal status is explicit, never inferred by a caller
@@ -94,7 +114,7 @@ export function classifyDryRunStatus({ failed, skipped }) {
 export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
-  currentStateFingerprint, digest, status, requestedBy, automationContext = null,
+  currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -103,8 +123,9 @@ export async function createDryRunArtifact(client, {
     `INSERT INTO restore_dry_run
        (id, tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id,
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
-        results, current_state_fingerprint, digest, status, requested_by, automation_context)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        results, current_state_fingerprint, digest, status, requested_by, automation_context,
+        relationship_operations)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -116,6 +137,7 @@ export async function createDryRunArtifact(client, {
       collectorConfigPath, targetConfigPath, JSON.stringify(reconciliationResources ?? null), JSON.stringify(waves),
       JSON.stringify(patches), JSON.stringify(guardRefusals ?? []), results, currentStateFingerprint, digest,
       status, requestedBy, automationContext ?? null,
+      relationshipOperations?.length ? JSON.stringify(relationshipOperations) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -158,6 +180,9 @@ function normalizeArtifact(row) {
     status: row.status,
     requestedBy: row.requested_by,
     automationContext: row.automation_context ?? null,
+    // Task-61: null for every artifact persisted before edge restore existed (and
+    // for plans with no edge work) — read as "no edge operations", never guessed.
+    relationshipOperations: row.relationship_operations ?? null,
     createdAt: row.created_at,
   };
 }

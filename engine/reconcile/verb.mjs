@@ -72,3 +72,27 @@ export function verbCapability(resourceType, verb) {
   const capability = capabilityFor(resourceType, verb);
   return { supported: isSupportedClaim(capability.claim), capability };
 }
+
+/**
+ * Roadmap task-61: the edge-verb table, the relationship counterpart of
+ * decideVerb(). One target of one parent/family edge set:
+ *   desired      — the snapshot's set contains this target
+ *   live         — the current (complete) live read contains it
+ *   removalProven — the desired set is a COMPLETE inventory with every target
+ *                  resolved, so a live edge missing from it is provably extra
+ * Returns 'edge-add' | 'edge-remove' | 'noop' | 'refuse-remove'. A live edge
+ * absent from a desired set that cannot prove its absence is never removed.
+ */
+export function decideEdgeVerb({ desired, live, removalProven }) {
+  if (typeof desired !== 'boolean' || typeof live !== 'boolean' || typeof removalProven !== 'boolean') {
+    throw new Error('Unrecognised edge state: expected booleans desired/live/removalProven');
+  }
+  if (desired && !live) return { verb: 'edge-add', reason: 'desired present; live absent' };
+  if (desired && live) return { verb: 'noop', reason: 'desired present; live present' };
+  if (!desired && live) {
+    return removalProven
+      ? { verb: 'edge-remove', reason: 'desired absent from a complete inventory; live present' }
+      : { verb: 'refuse-remove', reason: 'live present; desired inventory cannot prove absence' };
+  }
+  return { verb: 'noop', reason: 'desired absent; live absent' };
+}

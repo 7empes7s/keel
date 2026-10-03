@@ -114,6 +114,10 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await page.getByLabel("Select conditionalAccessPolicy:Block legacy auth").click();
   await page.getByRole("button", { name: "Next: start dry run" }).click();
   await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
+  // Task-61: a restored group's membership changes are listed apart from object changes.
+  await expect(page.getByText("MEMBERSHIP CHANGES")).toBeVisible();
+  await expect(page.locator(".edge-op.edge-add").first()).toContainText("user:amara.okafor@contoso.example");
+  await expect(page.locator(".edge-op.edge-remove").first()).toContainText("as member of");
   await page.getByPlaceholder("Why is this restore appropriate?").fill("Roll back INC-2291");
   await page.getByRole("button", { name: "Confirm restore" }).click();
   await expect(page.getByRole("heading", { name: "Restore requested, pending approval" })).toBeVisible();

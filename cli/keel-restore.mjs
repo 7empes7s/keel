@@ -33,6 +33,10 @@ import {
   AUTOMATION_EXECUTION_EVIDENCE_KIND, assertExecutableAutomationPolicy, getAutomationPolicies,
 } from '../engine/policy/execute.mjs';
 import { appendEvidence } from '../engine/govern/evidence.mjs';
+import { collectRelationships, loadSnapshotRelationships } from '../engine/collect/relationships.mjs';
+import {
+  RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
+} from '../engine/restore/relationshipWriter.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -126,6 +130,9 @@ export async function runRestore({
     classifyDryRunStatus: classifyDryRunStatusFn = classifyDryRunStatus,
     validateArtifactForExecution: validateArtifactForExecutionFn = validateArtifactForExecution,
     getAutomationPolicies: getAutomationPoliciesFn = getAutomationPolicies,
+    loadSnapshotRelationships: loadSnapshotRelationshipsFn = loadSnapshotRelationships,
+    collectRelationships: collectRelationshipsFn = collectRelationships,
+    applyRelationshipOperations: applyRelationshipOperationsFn = applyRelationshipOperations,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
@@ -303,6 +310,55 @@ export async function runRestore({
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
     const { waves: deletionWaves } = planDeletionWavesFn(deletes);
 
+    // Roadmap task-61: group member/owner edges of the restored groups, reconciled
+    // toward what the source snapshot observed through qualified $ref operations.
+    // Selection scope only (an operator-reviewed restore and its promotion); a
+    // remediation or legacy plan scope leaves edges untouched, as before. A snapshot
+    // that never observed a group's edges (legacy, or collected without
+    // relationships) plans nothing for it — absence of evidence is never an empty set.
+    let relationshipPlan = { operations: [], refusals: [], notes: [], observed: [] };
+    if (selection !== undefined && reconciliationResources === undefined) {
+      const groupParents = resources.filter((resource) => resource.resourceType === 'group' && resource.verb !== 'delete');
+      const desiredEdges = groupParents.length === 0
+        ? new Map()
+        : await loadSnapshotRelationshipsFn(client, {
+          snapshotId: sourceSnapshot,
+          families: RELATIONSHIP_RESTORE_FAMILIES,
+          parentNaturalKeys: groupParents.map((resource) => resource.naturalKey),
+        });
+      if (desiredEdges.size > 0) {
+        const edgeParents = groupParents
+          .filter((resource) => RELATIONSHIP_RESTORE_FAMILIES.some((family) => desiredEdges.has(`${resource.naturalKey}|${family}`)))
+          .map((resource) => ({
+            naturalKey: resource.naturalKey,
+            verb: resource.verb,
+            liveTargetId: resource.live?.state === 'present' ? resource.live.targetId : null,
+          }));
+        const liveParents = edgeParents.filter((parent) => typeof parent.liveTargetId === 'string');
+        const liveObservations = liveParents.length === 0 ? [] : await collectRelationshipsFn(targetReader, {
+          tenantRef: collectorConfig.tenantId,
+          parents: liveParents.map((parent) => ({ type: 'group', sourceId: parent.liveTargetId, naturalKey: parent.naturalKey })),
+          families: RELATIONSHIP_RESTORE_FAMILIES,
+        });
+        const naturalKeyById = new Map([...existingTargetIds].map(([naturalKey, id]) => [String(id).toLowerCase(), naturalKey]));
+        relationshipPlan = planRelationshipOperations({
+          parents: edgeParents,
+          desired: desiredEdges,
+          live: new Map(liveObservations.map((obs) => [`${obs.parentNaturalKey}|${obs.family}`, obs])),
+          resolveTargetId: (naturalKey) => existingTargetIds.get(naturalKey) ?? null,
+          pendingCreates: new Set(resources
+            .filter((resource) => resource.verb === 'create' || resource.verb === 'restore-soft-deleted')
+            .map((resource) => resource.naturalKey)),
+          naturalKeyForTargetId: (id) => naturalKeyById.get(id) ?? null,
+          protectedPrincipalIds,
+        });
+        for (const note of relationshipPlan.notes) logger.log(`relationship edges not reconciled: ${note.note}`);
+        logger.log(`relationship edges: ${relationshipPlan.operations.length} planned, ${relationshipPlan.refusals.length} refused`);
+      }
+    }
+    const relationshipOperations = relationshipPlan.operations;
+    const relationshipFingerprint = { relationships: relationshipPlan.observed };
+
     // Roadmap task-59: delete impact is re-evaluated at execution against the
     // CURRENT live state just collected. A resource still referencing one being
     // deleted — and neither deleted nor rewritten by this plan — would be left
@@ -408,12 +464,15 @@ export async function runRestore({
     // Human preview shares scope, current-state verb resolution and ordering with
     // enforcement, but returns before acquiring Restorer credentials or a writer.
     if (previewOnly) {
-      const guardRefusals = withDependentImpact(await previewApplyPlan({
-        resources, waves, deletionWaves, patches, existingTargetIds,
-        deletionGuardOptions,
-        signInPathGate: { reader: targetReader, protectedPrincipalIds },
-        targetTenant: collectorConfig.tenantId,
-      }));
+      const guardRefusals = withDependentImpact([
+        ...await previewApplyPlan({
+          resources, waves, deletionWaves, patches, existingTargetIds,
+          deletionGuardOptions,
+          signInPathGate: { reader: targetReader, protectedPrincipalIds },
+          targetTenant: collectorConfig.tenantId,
+        }),
+        ...relationshipPlan.refusals,
+      ]);
       return {
         snapshotId: sourceSnapshot,
         resources: resources.map(({ naturalKey, resourceType, verb, verbReason }) => ({
@@ -421,6 +480,7 @@ export async function runRestore({
         })),
         waves, deletionWaves,
         patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
+        relationshipOperations,
         guardRefusals,
       };
     }
@@ -443,8 +503,9 @@ export async function runRestore({
         waves,
         patches,
         automationContext,
+        relationshipOperations,
       });
-      const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
+      const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
         digest: freshDigest,
         currentStateFingerprint: freshFingerprint,
@@ -510,6 +571,30 @@ export async function runRestore({
       }
     }
 
+    // Task-61: planning refusals for edges are guard refusals of this run (a dry run
+    // carrying any is 'refused' and can never be promoted). Edge writes run after
+    // every object exists (so a member created by this run resolves through
+    // appliedIds) and before any delete.
+    results.skipped.push(...relationshipPlan.refusals);
+    if (results.failed.length === 0 && relationshipOperations.length > 0) {
+      const edgeResult = await applyRelationshipOperationsFn(writer, governor, relationshipOperations, {
+        reader: targetReader,
+        mode,
+        targetTenant: targetConfig.tenantId,
+        parentTargetIds: new Map([...existingTargetIds, ...appliedIds]),
+        targetIds: new Map([...existingTargetIds, ...appliedIds]),
+        rollbackClient: client,
+        runId,
+      });
+      logger.log(`edges: applied ${edgeResult.applied.length}, skipped ${edgeResult.skipped.length}, failed ${edgeResult.failed.length}`);
+      results.applied.push(...edgeResult.applied);
+      results.skipped.push(...edgeResult.skipped);
+      results.failed.push(...edgeResult.failed);
+      if (edgeResult.failed.length && persistArtifactId === undefined) {
+        throw new Error('relationship edge operations had failures — stopping run (each edge is re-read before any retry, so a retry never adds a member twice)');
+      }
+    }
+
     if (results.failed.length === 0) {
       for (const [i, waveKeys] of deletionWaves.entries()) {
         const wave = deletes.filter((resource) => waveKeys.includes(resource.naturalKey));
@@ -570,8 +655,9 @@ export async function runRestore({
         waves,
         patches,
         automationContext,
+        relationshipOperations,
       });
-      const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys);
+      const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
       await createDryRunArtifactFn(client, {
         id: persistArtifactId,
@@ -592,13 +678,14 @@ export async function runRestore({
         status,
         requestedBy: requestedBy ?? 'unknown',
         automationContext,
+        relationshipOperations,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
     }
 
     return {
-      plan, resources, waves, deletionWaves, patches, appliedIds, results,
+      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };

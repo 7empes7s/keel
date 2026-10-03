@@ -18,6 +18,7 @@
  */
 
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
+import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -290,11 +291,167 @@ function validateScubaGearBenchmarkAcceptanceSubject(evidence, { build } = {}) {
   return failures;
 }
 
+/**
+ * Task-113: authenticated deployed release acceptance. The evidence is an
+ * imported record from tools/release/deployed-acceptance.mjs, captured by the
+ * operator against the deployed candidate with an authenticated session:
+ * read-only GET probes of the coverage matrix, collection history, schedules
+ * and restore review API contracts, each repeated without a session to record
+ * the authorization behavior, plus the deployed checkout's revision. The
+ * record must carry both a non-synthetic runner signature and the digest of
+ * the raw capture transcript, and the transcript must agree with the signed
+ * subject. Nothing here probes, restores or redeploys anything.
+ */
+export const DEPLOYED_ACCEPTANCE_GATE = 'deployed-acceptance';
+export const DEPLOYED_ACCEPTANCE_OPERATION = 'deployed-acceptance.read-probe';
+export const DEPLOYED_ACCEPTANCE_CREDENTIAL_MODE = 'operator-session';
+export const DEPLOYED_ACCEPTANCE_MAX_AGE_HOURS = 24 * 7;
+// Every probe must fall inside this window before the record's observedAt.
+export const DEPLOYED_ACCEPTANCE_PROBE_WINDOW_MS = 60 * 60 * 1000;
+// An unauthenticated request must be refused or redirected to sign-in.
+export const DEPLOYED_ACCEPTANCE_REFUSAL_STATUSES = Object.freeze([301, 302, 303, 307, 308, 401, 403]);
+// A nil-form id no dry run can carry: an authorized deployed route answers its
+// JSON not_found contract without reading or changing any restore.
+export const RESTORE_REVIEW_PROBE_ID = '00000000-0000-4000-8000-000000000000';
+
+// Closed probe inventory. prerequisite names the roadmap task whose deployed
+// surface the probe proves; a missing or failing probe is a missing prerequisite.
+export const DEPLOYED_ACCEPTANCE_PROBES = Object.freeze([
+  Object.freeze({ surface: 'coverage-matrix', prerequisite: 'task-54', path: '/api/coverage',
+    expect: Object.freeze({ status: 200, keys: Object.freeze(['generatedAt', 'snapshot', 'summary', 'types']) }) }),
+  Object.freeze({ surface: 'collection-history', prerequisite: 'task-46', path: '/api/jobs?limit=20',
+    expect: Object.freeze({ status: 200, keys: Object.freeze(['generatedAt', 'jobs']) }) }),
+  Object.freeze({ surface: 'schedules', prerequisite: 'task-44', path: '/api/schedules',
+    expect: Object.freeze({ status: 200, keys: Object.freeze(['deferrals', 'forecasts', 'generatedAt', 'schedules']) }) }),
+  Object.freeze({ surface: 'restore-review', prerequisite: null, path: `/api/actions/restore/dry-run/${RESTORE_REVIEW_PROBE_ID}`,
+    expect: Object.freeze({ status: 404, keys: Object.freeze(['error']), errorCode: 'not_found' }) }),
+]);
+export const DEPLOYED_ACCEPTANCE_PREREQUISITES = Object.freeze(
+  DEPLOYED_ACCEPTANCE_PROBES.filter((p) => p.prerequisite).map((p) => p.prerequisite),
+);
+
+/** Contract failures of one captured probe against its spec ([] = satisfied). */
+export function deployedProbeFailures(spec, probe, { observedAt } = {}) {
+  const failures = [];
+  const name = spec.surface;
+  if (probe?.path !== spec.path) failures.push(`${name}: probed path '${probe?.path ?? 'missing'}' is not '${spec.path}'`);
+  const auth = probe?.authenticated;
+  if (!auth || typeof auth !== 'object') return [...failures, `${name}: no authenticated probe recorded`];
+  if (auth.httpStatus !== spec.expect.status) {
+    failures.push(`${name}: authenticated status ${auth.httpStatus ?? 'missing'}, contract expects ${spec.expect.status}`);
+  }
+  if (!/^application\/json\b/.test(auth.contentType ?? '')) failures.push(`${name}: response is not JSON`);
+  const keys = Array.isArray(auth.keys) ? auth.keys : [];
+  const missing = spec.expect.keys.filter((key) => !keys.includes(key));
+  if (missing.length) failures.push(`${name}: response contract missing ${missing.join(', ')}`);
+  if (spec.expect.errorCode !== undefined && auth.errorCode !== spec.expect.errorCode) {
+    failures.push(`${name}: error code '${auth.errorCode ?? 'missing'}', contract expects '${spec.expect.errorCode}'`);
+  }
+  if (typeof auth.bodySha256 !== 'string' || !/^[0-9a-f]{64}$/.test(auth.bodySha256)) failures.push(`${name}: no body digest`);
+  const unauth = probe.unauthenticated;
+  if (!unauth || !DEPLOYED_ACCEPTANCE_REFUSAL_STATUSES.includes(unauth.httpStatus)) {
+    failures.push(`${name}: unauthenticated request was not refused (status ${unauth?.httpStatus ?? 'missing'})`);
+  }
+  if (observedAt !== undefined) {
+    for (const [label, at] of [['authenticated', auth.observedAt], ['unauthenticated', unauth?.observedAt]]) {
+      const t = Date.parse(at);
+      if (Number.isNaN(t) || t > observedAt + 5 * 60 * 1000 || observedAt - t > DEPLOYED_ACCEPTANCE_PROBE_WINDOW_MS) {
+        failures.push(`${name}: ${label} probe time is outside the observation window`);
+      }
+    }
+  }
+  return failures;
+}
+
+function readCaptureArtifact(artifact, evidenceDir) {
+  try {
+    return JSON.parse(readFileSync(resolve(evidenceDir, artifact.path), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Gate validator for the task-113 deployed-acceptance record. */
+function validateDeployedAcceptanceSubject(evidence, {
+  tenantRef, build, now = new Date(), hmacKey, evidenceDir = process.cwd(), trustedRunners = TRUSTED_RUNNERS,
+} = {}) {
+  const failures = [];
+  if (!tenantRef) failures.push('deployed acceptance requires the expected tenant identity');
+  if (!build) failures.push('deployed acceptance requires the expected candidate build');
+  if (build && evidence.build !== build) failures.push(`build mismatch: evidence is '${evidence.build}', candidate is '${build}'`);
+  if (evidence.operation !== DEPLOYED_ACCEPTANCE_OPERATION) {
+    failures.push(`operation mismatch: expected '${DEPLOYED_ACCEPTANCE_OPERATION}', got '${evidence.operation ?? 'missing'}'`);
+  }
+  if (evidence.credentialMode !== DEPLOYED_ACCEPTANCE_CREDENTIAL_MODE) {
+    failures.push(`deployed acceptance requires credential mode '${DEPLOYED_ACCEPTANCE_CREDENTIAL_MODE}'`);
+  }
+
+  const observedAt = Date.parse(evidence.observedAt);
+  if (!Number.isNaN(observedAt) && now.getTime() - observedAt > DEPLOYED_ACCEPTANCE_MAX_AGE_HOURS * 60 * 60 * 1000) {
+    failures.push(`deployed acceptance evidence is stale (older than ${DEPLOYED_ACCEPTANCE_MAX_AGE_HOURS}h)`);
+  }
+
+  // Both proofs are required: the runner signature binds the record, the
+  // artifact digest binds the raw capture transcript the record summarizes.
+  const runner = verifyRunnerProof(evidence, evidence.proof?.runner, { hmacKey, trustedRunners });
+  if (!runner.ok) failures.push(`deployed acceptance runner proof required (${runner.reason})`);
+  else if (runner.synthetic && evidence.evidenceLevel === 'live-qualified') {
+    failures.push('fixture runner evidence cannot claim live qualification');
+  }
+  if (evidence.synthetic && evidence.evidenceLevel === 'live-qualified') {
+    failures.push('synthetic evidence cannot claim live qualification');
+  }
+  const artifactProof = verifyArtifactDigest(evidence.proof?.artifact, evidenceDir);
+  if (!artifactProof.ok) failures.push(`deployed acceptance capture transcript required (${artifactProof.reason})`);
+
+  const subject = evidence.subject;
+  if (!subject || typeof subject !== 'object') return [...failures, 'subject is missing'];
+
+  const deployment = subject.deployment;
+  if (!deployment || typeof deployment.revision !== 'string' || !deployment.revision) {
+    failures.push('missing prerequisite: deployed revision identity');
+  } else {
+    if (deployment.revision !== evidence.build) failures.push('deployed revision does not match the candidate build');
+    if (deployment.dirty !== false) failures.push('deployed checkout is not clean (or unknown)');
+  }
+
+  const probes = Array.isArray(subject.probes) ? subject.probes : [];
+  for (const probe of probes) {
+    if (!DEPLOYED_ACCEPTANCE_PROBES.some((spec) => spec.surface === probe?.surface)) {
+      failures.push(`probe surface '${probe?.surface ?? 'missing'}' is outside the closed inventory`);
+    }
+  }
+  for (const spec of DEPLOYED_ACCEPTANCE_PROBES) {
+    const matching = probes.filter((p) => p?.surface === spec.surface);
+    const label = spec.prerequisite ? `missing prerequisite ${spec.prerequisite} (${spec.surface})` : `missing probe (${spec.surface})`;
+    if (matching.length !== 1) {
+      failures.push(`${label}: expected exactly one probe, found ${matching.length}`);
+      continue;
+    }
+    const probeFailures = deployedProbeFailures(spec, matching[0],
+      { observedAt: Number.isNaN(observedAt) ? undefined : observedAt });
+    if (probeFailures.length) failures.push(`${label}: ${probeFailures.join('; ')}`);
+  }
+
+  if (artifactProof.ok) {
+    const transcript = readCaptureArtifact(evidence.proof.artifact, evidenceDir);
+    if (!transcript) failures.push('capture transcript is not JSON');
+    else {
+      if (transcript.build !== evidence.build) failures.push('capture transcript build differs from the record');
+      if (transcript.tenantRef !== evidence.tenantRef) failures.push('capture transcript tenant differs from the record');
+      if (canonical(transcript.deployment) !== canonical(subject.deployment)) failures.push('capture transcript deployment differs from the record');
+      if (canonical(transcript.probes) !== canonical(subject.probes)) failures.push('capture transcript probes differ from the record');
+    }
+  }
+  return failures;
+}
+
 // Later tasks register additional gates here; an absent gate fails closed.
 const GATE_VALIDATORS = {
   'release-readiness': validateReleaseReadinessSubject,
   'nist-benchmark-acceptance': validateNistSubject,
   'scubagear-benchmark-acceptance': validateScubaGearBenchmarkAcceptanceSubject,
+  [DEPLOYED_ACCEPTANCE_GATE]: validateDeployedAcceptanceSubject,
 };
 
 export function verifyEvidence(evidence, {
@@ -315,6 +472,10 @@ export function verifyEvidence(evidence, {
 
   if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
     return { ok: false, failures: ['NIST external runner evidence pending'] };
+  }
+  if (evidence.gate === DEPLOYED_ACCEPTANCE_GATE && evidence.status !== undefined) {
+    const reasons = Array.isArray(evidence.pendingReasons) ? evidence.pendingReasons : [];
+    return { ok: false, failures: [`deployed acceptance external evidence ${evidence.status}`, ...reasons] };
   }
 
   // Schema.
@@ -376,7 +537,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence, { tenantRef, build }));
+  else failures.push(...validator(evidence, { tenantRef, build, now, hmacKey, evidenceDir, trustedRunners }));
 
   return { ok: failures.length === 0, failures };
 }
@@ -396,6 +557,16 @@ function arg(name, fallback) {
   return i > -1 ? process.argv[i + 1] : fallback;
 }
 
+/** The tenant reference of the host's tenant config, or null when absent. */
+export function configuredTenantRef(path = process.env.KEEL_TENANT_CONFIG_PATH) {
+  if (!path) return null;
+  try {
+    return tenantRefFor(JSON.parse(readFileSync(path, 'utf8')).tenantId);
+  } catch {
+    return null;
+  }
+}
+
 function main() {
   const command = process.argv[2];
   if (command !== 'verify' || process.argv.includes('--help')) {
@@ -407,9 +578,11 @@ function main() {
     console.error('missing --evidence <file>');
     process.exit(2);
   }
+  const gate = arg('gate');
   const result = verifyEvidenceFile(evidencePath, {
-    gate: arg('gate'),
-    tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF),
+    gate,
+    tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF
+      ?? (gate === DEPLOYED_ACCEPTANCE_GATE ? configuredTenantRef() : undefined)),
     build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),

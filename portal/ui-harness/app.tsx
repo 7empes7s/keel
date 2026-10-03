@@ -34,7 +34,9 @@ import { CompensationPanel } from "@/components/compensation-panel";
 import { IncidentRecovery } from "@/components/incident-recovery";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
+import { ComplianceReport } from "@/components/compliance-report";
+import { baselinesVerdict, complianceVerdict } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
@@ -225,10 +227,69 @@ const EVIDENCE = [
   { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "action-attempt", actor: "marouanedefili@gmail.com", subject: { action: "backup", decision: "attempted" } },
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
 ];
-const BASELINES = [
-  { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "marouanedefili@gmail.com", href: "/principals" }, active: true, resourceCount: 4812 },
-  { id: "b1170000-0000-4000-8000-000000000117", label: "Before migration", description: null, setAt: "2026-09-01T09:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "scheduler", href: null }, active: false, resourceCount: 4590 },
+const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
+  basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
+  window: { startedAt: capturedAt.replace(/:\d\dZ$/, ":00Z"), completedAt: capturedAt },
+  types: ["conditionalAccessPolicy", "group", "namedLocation", "roleAssignment", "user", "application"],
+});
+const COMPARED = (added: number, modified: number, removed: number): BaselineChanges => ({
+  state: "compared", comparedSnapshotId: "0b5e0000-0000-4000-8000-0000000000d6", comparedAt: "2026-10-02T09:12:00Z",
+  added, modified, removed, total: added + modified + removed,
+});
+const BASELINES: BaselineRecord[] = [
+  { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "marouanedefili@gmail.com", href: "/principals" }, active: true, resourceCount: 4812,
+    version: 1, supersedesId: null, supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-29T13:40:00Z", "0b5e0000-0000-4000-8000-0000000000c8"), changesSinceCapture: COMPARED(1, 2, 0) },
+  { id: "b1170000-0000-4000-8000-000000000117", label: "Before migration (v2)", description: null, setAt: "2026-09-01T09:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "scheduler", href: null }, active: false, resourceCount: 4590,
+    version: 2, supersedesId: "b1160000-0000-4000-8000-000000000116", supersededById: null, supersededAt: null, capture: CAPTURED("2026-09-01T08:30:00Z", "0b5e0000-0000-4000-8000-0000000000a9"), changesSinceCapture: COMPARED(30, 9, 2) },
+  { id: "b1160000-0000-4000-8000-000000000116", label: "Before migration", description: null, setAt: "2026-08-20T10:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "scheduler", href: null }, active: false, resourceCount: 4502,
+    version: 1, supersedesId: null, supersededById: "b1170000-0000-4000-8000-000000000117", supersededAt: "2026-09-01T09:00:00Z", capture: CAPTURED("2026-08-20T09:30:00Z", null, "legacy-resource-versions"), changesSinceCapture: COMPARED(44, 12, 3) },
 ];
+const CAPTURE_SOURCES = [{ id: "0b5e0000-0000-4000-8000-0000000000d6", completedAt: "2026-10-02T09:12:00Z" }];
+
+// Roadmap task-87: every finding state the compliance view distinguishes.
+const evidenceWindow = (resourceType: string, startedAt: string, endedAt: string, snapshotId: string | null) => ({
+  resourceType, window: { startedAt, endedAt }, snapshotId, completedAt: snapshotId ? endedAt : null,
+});
+const ROLE_EVIDENCE = evidenceWindow("roleAssignment", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6");
+const COMPLIANCE: ComplianceData = {
+  generatedAt: now,
+  activeBaseline: BASELINES[0],
+  summary: { controls: 4, exposed: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
+  storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
+  findings: [
+    { id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.role-assignment.admin-count-at-most", title: "Global Administrator assignment count stays at or below a set limit",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4182",
+      exceptionState: "expired", exposed: true,
+      exception: { id: "e7c10000-0000-4000-8000-0000000000c1", owner: "secops@contoso.com", reason: "Two break-glass accounts during the migration", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-01T10:00:00Z", expiresAt: "2026-09-30T00:00:00Z" },
+      evidence: [ROLE_EVIDENCE],
+      links: {
+        backup: { state: "linked", linked: [ROLE_EVIDENCE], mismatched: [] },
+        change: { state: "linked",
+          linked: [{ id: "d7100000-0000-4000-8000-0000000000d1", naturalKey: "roleAssignment:Global Administrator · adele@contoso.com", resourceType: "roleAssignment", changeType: "added", snapshotId: "0b5e0000-0000-4000-8000-0000000000d6", detectedAt: "2026-10-02T09:14:00Z" }],
+          mismatched: [{ id: "d7100000-0000-4000-8000-0000000000d2", naturalKey: "roleAssignment:Global Administrator · grady@contoso.com", resourceType: "roleAssignment", changeType: "added", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", detectedAt: "2026-09-30T09:14:00Z" }] },
+        restorePlan: { state: "linked", linked: [{ requestId: "a9e10000-0000-4000-8000-000000000100", dryRunId: "7f3c0000-0000-4000-8000-000000000011", snapshotId: "0b5e0000-0000-4000-8000-0000000000d6", createdAt: "2026-10-02T09:30:00Z", expiresAt: "2026-10-03T09:30:00Z" }], mismatched: [] },
+      } },
+    { id: "e7a10000-0000-4000-8000-0000000000e2", controlId: "keel-custom.named-location.no-untrusted-all-countries", title: "No named location marks unknown-country traffic as trusted",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4183",
+      exceptionState: "authorized", exposed: false,
+      exception: { id: "e7c10000-0000-4000-8000-0000000000c2", owner: "network@contoso.com", reason: "Branch offices route through a trusted proxy until the November cutover.", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z" },
+      evidence: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")],
+      links: {
+        backup: { state: "linked", linked: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] },
+        change: { state: "none", linked: [], mismatched: [] },
+        restorePlan: { state: "none", linked: [], mismatched: [] },
+      } },
+    { id: "e7a10000-0000-4000-8000-0000000000e3", controlId: "keel-custom.group.role-assignable-not-synced", title: "Role-assignable groups are not synchronized from on-premises AD",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
+      exceptionState: "none", exposed: false, exception: null, evidence: [],
+      links: { backup: { state: "none", linked: [], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
+    { id: "e7a10000-0000-4000-8000-0000000000e4", controlId: "keel-custom.conditional-access.block-legacy", title: "Legacy authentication is blocked",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "pass", reason: null, evaluatedAt: "2026-09-28T09:20:00Z", evidenceSeq: "3990",
+      exceptionState: "none", exposed: false, exception: null,
+      evidence: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)],
+      links: { backup: { state: "mismatch", linked: [], mismatched: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
+  ],
+};
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 
 // Task-131: every configuration-type state task-54 tested, mirrored into the Protect
@@ -454,11 +515,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict text={integrationsVerdict(DESTINATIONS, DESTINATION_STATUSES)} tone="attention" />
       <div data-layer="explanation"><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>;
     case "/baselines": return <>{header("Changes", "Baselines", "How the tenant should look: the reference every change is measured against.")}
-      <Verdict text="The active baseline is “Post-migration golden state”, set 2 days ago." />
+      <Verdict text={baselinesVerdict(BASELINES[0], now)} />
       <div data-layer="explanation">
-        <BaselineRegister baselines={BASELINES} canBaseline now={now} />
+        <BaselineRegister baselines={BASELINES} canBaseline now={now} snapshots={CAPTURE_SOURCES} />
         <JobTable headingId="baseline-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} kicker="Recent" now={now} title="Baseline jobs" />
       </div></>;
+    case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Changes", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><ComplianceReport data={COMPLIANCE} now={now} /></div></>; }
     case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
       <Verdict text="1 person can use KEEL; 1 can approve." />
       <div className="item-list" data-layer="explanation">

@@ -122,6 +122,8 @@ jobs:
           roadmap/named-objects.test.mjs roadmap/protect-page.test.mjs
           roadmap/coverage-ui.test.mjs roadmap/baseline-compliance-ui.test.mjs
           roadmap/ownership.test.mjs roadmap/drill-harness.test.mjs
+          roadmap/alert-state.test.mjs
+          roadmap/alert-escalation.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

@@ -19,6 +19,7 @@ import {
 import { getActiveBaseline, listOpenDrift, recordDrift } from '../engine/store/governance.mjs';
 import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
+import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
 
 function usage() {
   console.log(`usage:
@@ -188,6 +189,17 @@ async function detect() {
         blastRadius: item.blastRadius,
       });
     }
+
+    // Task 82: drift rows become alert observations at the snapshot's completion
+    // instant, so an older snapshot re-detected later cannot close a newer alert.
+    const { rows: [observed] } = await client.query('SELECT completed_at, started_at FROM snapshot WHERE id = $1', [snapshotId]);
+    await syncDriftAlerts(client, {
+      tenantRef,
+      snapshotId,
+      observedAt: observed.completed_at ?? observed.started_at,
+      drift,
+      coveredTypes: coveredTypes ?? [...new Set([...before, ...after].map((row) => row.resource_type))],
+    });
 
     const suppressed = drift.filter((item) => isSuppressed(item, dispositions, new Date()));
     console.log(`snapshot ${snapshotId} complete`);

@@ -72,6 +72,34 @@ export function createProjection(payload, resourceType) {
   return { body, unknown };
 }
 
+/**
+ * Roadmap task-109: compares two name/value lists (a directory setting's
+ * `values`) by name, never by position. Returns
+ *   duplicates     — names the desired list repeats;
+ *   undefinedNames — desired names the live list does not define;
+ *   unobserved     — live names the desired list never observed;
+ *   changed        — names present in both whose values differ.
+ * A missing list reads as empty, so nothing is ever inferred from absence.
+ */
+export function namedValueDrift(desired, live) {
+  const asList = (values) => (Array.isArray(values) ? values : []);
+  const desiredList = asList(desired);
+  const liveByName = new Map(asList(live).map((entry) => [entry?.name, entry?.value]));
+  const seen = new Set();
+  const duplicates = [];
+  const undefinedNames = [];
+  const changed = [];
+  for (const entry of desiredList) {
+    const name = entry?.name;
+    if (seen.has(name)) { duplicates.push(name); continue; }
+    seen.add(name);
+    if (!liveByName.has(name)) undefinedNames.push(name);
+    else if (!isDeepStrictEqual(entry?.value ?? null, liveByName.get(name) ?? null)) changed.push(name);
+  }
+  const unobserved = [...liveByName.keys()].filter((name) => !seen.has(name));
+  return { duplicates, undefinedNames, unobserved, changed };
+}
+
 export function immutableDrift(desired, live, resourceType) {
   // Validate the type even when both objects are empty.
   fieldClass('', resourceType);

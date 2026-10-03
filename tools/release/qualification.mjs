@@ -18,6 +18,7 @@
  */
 
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
+import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { DRILL_LIMITS, DRILL_MANIFEST_KIND, DRILL_MANIFEST_VERSION } from '../rehearsal/qualification.mjs';
@@ -700,6 +701,8 @@ const GATE_VALIDATORS = {
     validateNativeLiveAcceptance(evidence, { tenantRef, build, artifactBytes: artifact.ok ? artifact.bytes : null }),
   [DEPLOYED_ACCEPTANCE_GATE]: validateDeployedAcceptanceSubject,
   [DRILL_LIVE_GATE]: validateDrillLiveAcceptanceSubject,
+  // Task-120: SharePoint configuration workload live acceptance.
+  [SHAREPOINT_LIVE_GATE]: validateSharePointLiveSubject,
 };
 
 export function verifyEvidence(evidence, {
@@ -720,6 +723,9 @@ export function verifyEvidence(evidence, {
 
   if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
     return { ok: false, failures: ['NIST external runner evidence pending'] };
+  }
+  if (evidence.gate === SHAREPOINT_LIVE_GATE && evidence.status === 'pending') {
+    return { ok: false, failures: ['SharePoint live evidence pending: no record has been captured'] };
   }
   if (evidence.gate === DRILL_LIVE_GATE && evidence.status === 'pending') {
     return { ok: false, failures: ['drill-live-acceptance external execution/cleanup evidence pending'] };
@@ -793,6 +799,16 @@ export function verifyEvidence(evidence, {
     if (!artifact.ok) failures.push(`native recovery raw capture required (${artifact.reason})`);
     if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic !== false || runner.synthetic)) {
       failures.push('native recovery fixture evidence cannot claim live qualification');
+    }
+  }
+
+  // Task-120: both proofs are required — the runner signature over the record and
+  // the digest of the raw capture log it was built from.
+  if (evidence.gate === SHAREPOINT_LIVE_GATE) {
+    if (!runner.ok) failures.push(`SharePoint runner proof required (${runner.reason})`);
+    if (!artifact.ok) failures.push(`SharePoint capture artifact required (${artifact.reason})`);
+    if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic !== false || runner.synthetic)) {
+      failures.push('SharePoint fixture evidence cannot claim live qualification');
     }
   }
 

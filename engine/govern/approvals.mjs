@@ -14,6 +14,8 @@ import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
+import { approvalEligibility, approvalInboxPredicate } from '../authz/entityScope.mjs';
+import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
@@ -36,6 +38,24 @@ export class SelfApprovalError extends Error {}
 // repeating mutable restore parameters. Promotion fails closed — this error, never a
 // silent mint — if that artifact is absent, incomplete, refused, or failed.
 export class PromotionRefusedError extends Error {}
+// Task 90: the decider is outside the request's entity scope. The request stays
+// pending for an eligible (often central) approver; `handoff` says who that is.
+export class ApprovalScopeError extends Error {
+  constructor(message, { reason, handoff = null } = {}) {
+    super(message);
+    this.reason = reason;
+    this.handoff = handoff;
+  }
+}
+// Task 90: the request's resources changed owner, or its requester lost the grant it
+// was made under. The request is closed as expired, so it can never be decided on the
+// ownership it was made under; the requester must ask again.
+export class ApprovalInvalidatedError extends ApprovalExpiredError {
+  constructor(message, { reason } = {}) {
+    super(message);
+    this.reason = reason;
+  }
+}
 
 function approvalStatuses(statuses) {
   if (!Array.isArray(statuses) || statuses.length === 0) {
@@ -58,13 +78,18 @@ function approvalListLimit(limit) {
 // are the immutable action payload an approver must review; credential material belongs
 // to neither this table nor this reader. Pending rows become effectively expired at read
 // time, so an inbox can never present a stale request as actionable.
+// Task 90: `approverScope` (from can.mjs#capabilityScope for 'approve') limits the inbox
+// in SQL, so an entity approver never receives another entity's request, nor a count
+// that includes one. Omitted, the reader is the central (pre-task-90) inbox.
 export async function listApprovalRequests(client, {
   statuses = APPROVAL_STATUSES,
   limit = DEFAULT_APPROVAL_LIST_LIMIT,
+  approverScope = { central: true },
 } = {}) {
+  const scope = approvalInboxPredicate(approverScope, { nextParam: 3 });
   const { rows } = await client.query(
     `SELECT id, action, params, requested_by, justification, status,
-            decided_by, decided_at, reason, created_at, expires_at,
+            decided_by, decided_at, reason, created_at, expires_at, entity_scope,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
               ELSE status
@@ -74,21 +99,27 @@ export async function listApprovalRequests(client, {
              WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
              ELSE status
            END = ANY($1::text[])
+       AND ${scope.sql}
      ORDER BY created_at DESC, id DESC
      LIMIT $2`,
-    [approvalStatuses(statuses), approvalListLimit(limit)],
+    [approvalStatuses(statuses), approvalListLimit(limit), ...scope.values],
   );
   return rows;
 }
 
+// Task 90: `entityScope` is entityScope.mjs#captureApprovalScope's server-side capture
+// of the resources this request concerns. Omitted, the request is central-only.
+/** @param {any} client
+ * @param {{ tenantRef: string, action: string, params?: any, requestedBy: string, justification?: string | null, ttlMs?: number, entityScope?: any }} options
+ */
 export async function requestApproval(client, {
-  tenantRef, action, params, requestedBy, justification, ttlMs = DEFAULT_APPROVAL_TTL_MS,
+  tenantRef, action, params, requestedBy, justification, ttlMs = DEFAULT_APPROVAL_TTL_MS, entityScope = null,
 }) {
   const { rows } = await client.query(
-    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at)
-     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'))
+    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope)
+     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6)
      RETURNING *`,
-    [action, params ?? {}, requestedBy, justification ?? null, ttlMs],
+    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope],
   );
   const request = rows[0];
 
@@ -116,6 +147,32 @@ async function lockRequest(client, id) {
 
 // A pending request past its TTL expires *closed*: the row is marked 'expired' before
 // the decision is refused, so a retry can never find it pending again.
+// Task 90: eligibility is checked inside the decision transaction, on current grants
+// and current ownership. It runs whenever the request carries a captured scope, and
+// for every request when the caller asks (`enforceScope`, which the portal always
+// does). An invalidated request is closed as expired and that is committed before
+// the refusal, exactly like a TTL expiry.
+async function checkEligibility(client, { tenantRef, request, decidedBy, enforceScope, approverScope }) {
+  if (!enforceScope && request.entity_scope == null) return null;
+  const verdict = await approvalEligibility(client, {
+    tenantRef,
+    entityScope: request.entity_scope,
+    approverId: decidedBy,
+    approverScope,
+    requesterId: request.requested_by,
+    requesterCapability: capabilityForJobKind(request.action),
+  });
+  if (verdict.eligible) return null;
+  if (verdict.invalidate) {
+    await client.query(
+      `UPDATE approval_request SET status = 'expired', decided_at = now(), reason = $2 WHERE id = $1`,
+      [request.id, `invalidated: ${verdict.reason}`],
+    );
+    return new ApprovalInvalidatedError(`approval request invalidated: ${verdict.reason}`, { reason: verdict.reason });
+  }
+  return new ApprovalScopeError(`approver is not eligible: ${verdict.reason}`, verdict);
+}
+
 async function closeIfExpired(client, request) {
   if (request.status === 'pending' && new Date(request.expires_at) <= new Date()) {
     const { rows } = await client.query(
@@ -129,7 +186,10 @@ async function closeIfExpired(client, request) {
   return request;
 }
 
-export async function approveRequest(client, { tenantRef, id, decidedBy }) {
+/** @param {any} client
+ * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any }} options
+ */
+export async function approveRequest(client, { tenantRef, id, decidedBy, enforceScope = false, approverScope = null }) {
   let decided;
   await client.query('BEGIN');
   let committed = false;
@@ -153,6 +213,12 @@ export async function approveRequest(client, { tenantRef, id, decidedBy }) {
     if (decidedBy === request.requested_by) {
       throw new SelfApprovalError('an approver can never approve their own request');
     }
+    const ineligible = await checkEligibility(client, { tenantRef, request, decidedBy, enforceScope, approverScope });
+    if (ineligible instanceof ApprovalInvalidatedError) {
+      await client.query('COMMIT');
+      committed = true;
+    }
+    if (ineligible) throw ineligible;
 
     // Plan task 8: a restore promotion is never minted from the request's own params —
     // it references a completed dry-run artifact, checked fresh, inside this same
@@ -232,7 +298,10 @@ export async function approveRequest(client, { tenantRef, id, decidedBy }) {
   return decided;
 }
 
-export async function rejectRequest(client, { tenantRef, id, decidedBy, reason }) {
+/** @param {any} client
+ * @param {{ tenantRef: string, id: string, decidedBy: string, reason?: any, enforceScope?: boolean, approverScope?: any }} options
+ */
+export async function rejectRequest(client, { tenantRef, id, decidedBy, reason, enforceScope = false, approverScope = null }) {
   let rejected;
   await client.query('BEGIN');
   let committed = false;
@@ -252,6 +321,12 @@ export async function rejectRequest(client, { tenantRef, id, decidedBy, reason }
     if (typeof reason !== 'string' || reason.trim().length === 0) {
       throw new ApprovalReasonRequiredError('a rejection reason is required');
     }
+    const ineligible = await checkEligibility(client, { tenantRef, request, decidedBy, enforceScope, approverScope });
+    if (ineligible instanceof ApprovalInvalidatedError) {
+      await client.query('COMMIT');
+      committed = true;
+    }
+    if (ineligible) throw ineligible;
     const { rows } = await client.query(
       `UPDATE approval_request
        SET status = 'rejected', decided_by = $2, decided_at = now(), reason = $3

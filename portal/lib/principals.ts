@@ -7,7 +7,9 @@ const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface PrincipalView {
   id: string; email: string; display_name?: string | null; system_kind?: string | null; disabled_at: string | null; capabilities: string[];
-  role_grants: { id: string; role: string; active_from: string; active_until: string | null; granted_by?: string | null }[];
+  role_grants: { id: string; role: string; active_from: string; active_until: string | null; granted_by?: string | null; scope?: string }[];
+  // Task 90: capabilities held only through entity-scoped grants, by entity code.
+  entity_capabilities?: Record<string, string[]>;
 }
 
 export function guardedPrincipalList(deps: GuardDeps = {}) {
@@ -23,11 +25,12 @@ export function guardedPrincipalWrite(operation: "grant" | "revoke" | "disable",
     const body = await readActionParams(request);
     if (operation === "grant" && (typeof body.role !== "string"
       || (body.activeFrom != null && typeof body.activeFrom !== "string")
-      || (body.activeUntil != null && typeof body.activeUntil !== "string"))) throw new InvalidActionRequest();
+      || (body.activeUntil != null && typeof body.activeUntil !== "string")
+      || (body.entityCode != null && typeof body.entityCode !== "string"))) throw new InvalidActionRequest();
     if (operation === "revoke" && (typeof body.grantId !== "string" || !UUID.test(body.grantId))) throw new InvalidActionRequest();
     try {
       const result = operation === "grant"
-        ? await grantRole(client, { principalId, role: body.role as string, grantedBy: actor, activeFrom: body.activeFrom as string | null | undefined, activeUntil: body.activeUntil as string | null | undefined })
+        ? await grantRole(client, { principalId, role: body.role as string, grantedBy: actor, activeFrom: body.activeFrom as string | null | undefined, activeUntil: body.activeUntil as string | null | undefined, entityCode: (body.entityCode as string | null | undefined) ?? null })
         : operation === "revoke" ? await revokeRole(client, { principalId, grantId: body.grantId, revokedBy: actor })
         : await disablePrincipal(client, principalId);
       return Response.json({ result }, { status: operation === "grant" ? 201 : 200, headers: NO_STORE });

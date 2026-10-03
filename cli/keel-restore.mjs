@@ -31,6 +31,7 @@ import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
+import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
@@ -107,6 +108,22 @@ const THROTTLE_SEEDS = {
   // tenant exists (Task 23 is exactly that re-verification).
   __placeholder__: null,
 };
+
+/**
+ * Roadmap task-109: the source snapshot's per-type coverage entries, read only
+ * when the plan holds a governed administrative delete (applyWave authorises
+ * one only from a complete observation of its collection). Scoped to the
+ * snapshot's own tenant: another tenant's snapshot reads as no evidence (null).
+ */
+export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
+  if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
+  const { rows } = await client.query(
+    'SELECT coverage_digest FROM snapshot WHERE id = $1 AND tenant_ref = $2',
+    [snapshotId, tenantRef],
+  );
+  const digest = rows[0]?.coverage_digest;
+  return digest && typeof digest === 'object' && !Array.isArray(digest) ? digest : null;
+}
 
 export async function runRestore({
   planId,
@@ -412,6 +429,13 @@ export async function runRestore({
     };
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
     resources = reconciliation.resources;
+    // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
+    // snapshot did not contain) is authorised only by a complete observation of
+    // that collection in the source snapshot. Read only when such a delete is
+    // planned; applyWave refuses it when the entry is missing or partial.
+    const observedCoverage = await observedCoverageFor(client, {
+      resources, snapshotId: sourceSnapshot, tenantRef: sourceTenantRef,
+    });
     // Roadmap task-64: how each resource is recovered (soft-delete restore, in-place
     // update, recreate, manual handoff, refusal), with its retained/new id, deadline,
     // credential and proof. Bound into the plan digest and persisted with the dry run;
@@ -685,6 +709,7 @@ export async function runRestore({
         restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
         deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
+        observedCoverage,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       results.applied.push(...result.applied);
@@ -751,6 +776,7 @@ export async function runRestore({
           restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
+          observedCoverage,
         });
         logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
         results.applied.push(...result.applied);

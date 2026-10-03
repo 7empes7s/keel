@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "gate": "sharepoint-live-acceptance",
+  "status": "pending",
+  "operation": "sharepoint.configuration-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true,
+  "note": "Placeholder. No live SharePoint capture exists. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/sharepoint-live-acceptance.md, Operator steps."
+}

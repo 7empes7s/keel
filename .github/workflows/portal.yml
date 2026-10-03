@@ -128,6 +128,7 @@ jobs:
           roadmap/policy-disclosure.test.mjs
           roadmap/fidelity-expansion.test.mjs
           roadmap/policy-fidelity.test.mjs
+          roadmap/administrative-fidelity.test.mjs
           roadmap/drill-harness.test.mjs
           roadmap/recovery-metrics.test.mjs
           roadmap/schedule-forecast.test.mjs
@@ -138,6 +139,9 @@ jobs:
           roadmap/sharepoint-read.test.mjs
           roadmap/hybrid-contract.test.mjs
           roadmap/sharepoint-write.test.mjs
+          roadmap/sharepoint-live-acceptance.test.mjs
+          roadmap/drill-live-acceptance.test.mjs
+          roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs

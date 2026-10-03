@@ -6015,6 +6015,19 @@ section.wizard-panel {
   margin-left: auto;
 }
 
+/* Roadmap task-91: who made a change, beneath its comparison. */
+.change-attribution {
+  display: grid;
+  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  border-top: 1px solid var(--line-strong);
+  gap: var(--space-xs);
+}
+
+.change-attribution-headline,
+.change-attribution-route {
+  overflow-wrap: anywhere;
+}
+
 /* Roadmap task-73: Resilience. One card per measurement; a sentence first, the
    plan and what does not count below it, the record last. */
 .resilience-grid {

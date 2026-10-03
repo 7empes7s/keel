@@ -157,6 +157,32 @@ function covers(scope, entities) {
 }
 
 /**
+ * The captured scope of a request re-read against CURRENT ownership (task 91 routes on
+ * this; approvalEligibility decides on it). Returns
+ *   { changed: true }                      - a resource changed owner (state or entity)
+ *   { expired: true }                      - unchanged, but its evidence has expired
+ *   { centralOnly, entities }              - unchanged and fresh
+ * The captured ownership is only the reference point that detects a change.
+ */
+export async function rereadApprovalOwnership(client, { tenantRef, entityScope, at = new Date() }) {
+  let expired = false;
+  const current = [];
+  for (const captured of entityScope.resources) {
+    const now = captured.lineageId
+      ? { ...captured, ...await currentOwnership(client, tenantRef, captured.lineageId) }
+      : { ...captured, state: 'unattributed', entityCode: null, entityCodes: [] };
+    if (!sameOwner(captured, now)) return { changed: true };
+    if (now.state !== 'unattributed' && !(now.expiresAt && new Date(now.expiresAt) > at)) expired = true;
+    current.push(now);
+  }
+  if (expired) return { expired: true };
+  return {
+    centralOnly: entityScope.centralOnly === true || current.some((entry) => entry.state !== 'owned'),
+    entities: [...new Set(current.filter((entry) => entry.state === 'owned').map((entry) => entry.entityCode))].sort(),
+  };
+}
+
+/**
  * May `approverId` decide a request bound to `entityScope` at `at`?
  *
  * Returns { eligible: true, via: 'central' | 'entity' } or
@@ -181,19 +207,10 @@ export async function approvalEligibility(client, {
 
   // Ownership is re-read now. A change of owner invalidates the request; evidence that
   // has merely expired refuses until it is re-resolved.
-  const current = [];
-  for (const captured of entityScope.resources) {
-    const now = captured.lineageId
-      ? { ...captured, ...await currentOwnership(client, tenantRef, captured.lineageId) }
-      : { ...captured, state: 'unattributed', entityCode: null, entityCodes: [] };
-    if (!sameOwner(captured, now)) return { eligible: false, reason: 'ownership-changed', invalidate: true };
-    if (now.state !== 'unattributed' && !(now.expiresAt && new Date(now.expiresAt) > at)) {
-      return { eligible: false, reason: 'ownership-expired', handoff: 'central' };
-    }
-    current.push(now);
-  }
-  const centralOnly = entityScope.centralOnly === true || current.some((entry) => entry.state !== 'owned');
-  const entities = [...new Set(current.filter((entry) => entry.state === 'owned').map((entry) => entry.entityCode))].sort();
+  const reread = await rereadApprovalOwnership(client, { tenantRef, entityScope, at });
+  if (reread.changed) return { eligible: false, reason: 'ownership-changed', invalidate: true };
+  if (reread.expired) return { eligible: false, reason: 'ownership-expired', handoff: 'central' };
+  const { centralOnly, entities } = reread;
 
   // An entity-decidable request rests on the requester's entity grant, so losing it
   // invalidates the request. (Every job is re-authorized against its requester again

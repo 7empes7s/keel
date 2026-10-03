@@ -575,6 +575,7 @@ h3 {
 .inactive-indicator,
 .collection-status {
   display: inline-flex;
+  gap: 0.4em;
   width: fit-content;
   min-height: 1.55rem;
   padding: 0.15rem var(--space-xs);
@@ -1076,19 +1077,13 @@ dd {
   color: var(--readonly);
 }
 
-.change-added {
-  background: var(--readonly-bg);
-  color: var(--readonly);
-}
-
-.change-modified {
-  background: var(--partial-bg);
-  color: var(--partial);
-}
-
+/* The kind of change is neutral: colour on a change row belongs to its impact
+   (lockout, access, cosmetic), which reuses these same hues. */
+.change-added,
+.change-modified,
 .change-removed {
-  background: var(--failed-bg);
-  color: var(--failed);
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
 }
 
 .tier1 {
@@ -2486,9 +2481,9 @@ section.item-card + section.item-card {
   gap: var(--space-sm);
 }
 
+/* No text-transform: titles carry addresses, hosts and operator-chosen names. */
 .item-card-head strong {
   font-size: 1rem;
-  text-transform: capitalize;
 }
 
 .item-card-row {
@@ -5405,8 +5400,32 @@ section.wizard-panel {
   display: grid;
   grid-template-columns: 9rem minmax(0, 22rem) auto;
   justify-content: start;
-  align-items: center;
+  align-items: end;
   gap: var(--space-2xs);
+}
+
+.completion-field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.completion-field label {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.completion-hint {
+  grid-column: 1 / -1;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.completion-summary {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
 }
 
 .completion-form select,
@@ -5885,4 +5904,41 @@ section.wizard-panel {
 
 .technical-details[open] > summary::before {
   content: "\25BE\FE0E";
+}
+
+/* People: each role on its own line with Remove beside it, and Add a role laid out
+   as one row (select, then its button) with Disable set apart at the far end. */
+.grant-list {
+  display: grid;
+  gap: var(--space-2xs, 0.25rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.principal-controls {
+  align-items: end;
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--line);
+}
+
+.principal-controls .inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-xs);
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.principal-controls > .btn-danger {
+  margin-left: auto;
 }

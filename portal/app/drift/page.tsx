@@ -8,7 +8,7 @@ import { BaselineContext } from "@/components/baseline-context";
 import { Verdict } from "@/components/verdict";
 import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
-import { getDriftData } from "@/lib/portal-data";
+import { displayItems, getDriftData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DriftData } from "@/lib/types";
 
@@ -51,7 +51,7 @@ export default async function DriftPage() {
             </p>
           ) : null}
           <BaselineContext baseline={data.baseline} now={data.generatedAt} />
-          <DriftTable capabilities={capabilities} items={data.items} now={data.generatedAt} />
+          <DriftTable capabilities={capabilities} items={displayItems(data.items)} now={data.generatedAt} summary={data.summary} />
         </div>
       ) : null}
     </>

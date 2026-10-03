@@ -1,6 +1,7 @@
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { naturalKeyFor } from '../cir/naturalKey.mjs';
-import { buildLiveIndex } from './liveState.mjs';
+import { SOFT_DELETABLE, buildLiveIndex } from './liveState.mjs';
+import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
 import { decideVerb } from './verb.mjs';
 
 function keyForLiveObject(targetResources) {
@@ -31,10 +32,17 @@ function keyForLiveObject(targetResources) {
 /** Builds the one executable reconciliation plan for both restore and remediation.
  * Current facts are collected with the reader, desired state comes from the supplied
  * resource set, and decideVerb remains the only write-verb table. */
-export async function buildReconciliationPlan(reader, resources, { targetResources = [] } = {}) {
+export async function buildReconciliationPlan(reader, resources, { targetResources = [], nativeLookups = null, now = new Date() } = {}) {
   const { targetByNaturalKey, naturalKeyForLiveObject } = keyForLiveObject(targetResources);
   const resourceTypes = [...new Set(resources.map((resource) => resource.resourceType))];
-  const liveIndex = await buildLiveIndex(reader, { resourceTypes, naturalKeyFor: naturalKeyForLiveObject });
+  // Task-64: a failed deleted-items read is kept per type, so an absent object
+  // of that type is refused rather than recreated beside a possible original.
+  const deletedLookupFailures = new Map();
+  const liveIndex = await buildLiveIndex(reader, {
+    resourceTypes,
+    naturalKeyFor: naturalKeyForLiveObject,
+    onDeletedLookupFailure: (resourceType, error) => deletedLookupFailures.set(resourceType, error.message),
+  });
   const resolved = [];
   const noops = [];
 
@@ -61,9 +69,16 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
       verb: decision.verb,
       verbReason: decision.reason,
     };
+    planned.recovery = selectRecoveryMechanism(planned, {
+      deletedLookup: !SOFT_DELETABLE.has(resource.resourceType)
+        ? 'not-applicable'
+        : deletedLookupFailures.has(resource.resourceType) ? 'failed' : 'ok',
+      nativeLookup: nativeLookups?.get(resource.naturalKey) ?? null,
+      now,
+    });
     resolved.push(planned);
     if (decision.verb === 'noop') noops.push({ naturalKey: resource.naturalKey, reason: decision.reason });
   }
 
-  return { resources: resolved, noops, liveIndex };
+  return { resources: resolved, noops, liveIndex, deletedLookupFailures };
 }

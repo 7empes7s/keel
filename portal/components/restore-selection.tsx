@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { toast } from "@/lib/toast";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
@@ -75,6 +76,8 @@ interface DryRunArtifact {
   guardRefusals: GuardRefusal[];
   results: DryRunResults;
   relationshipOperations?: RelationshipOperation[] | null;
+  // Roadmap task-64: null on artifacts persisted before mechanisms were recorded.
+  recoveryMechanisms?: RecoveryMechanism[] | null;
 }
 
 const EDGE_RESULT_PREFIX = "edge:";
@@ -743,6 +746,10 @@ export function RestoreSelection({
                 ))}
               </ul>
             </div>
+          ) : null}
+
+          {artifact.recoveryMechanisms?.length ? (
+            <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />
           ) : null}
 
           {artifact.relationshipOperations?.length ? (

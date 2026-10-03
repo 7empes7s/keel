@@ -302,7 +302,11 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
   const desiredHr = { displayName: 'HR', mailNickname: 'HR' };
   const priorFinance = { id: 'target-finance-id', displayName: 'Finance drifted', mailNickname: 'Finance' };
   const priorAdded = { id: 'target-added-id', displayName: 'Added after baseline', mailNickname: 'Added' };
-  const priorHr = { id: 'target-hr-id', displayName: 'HR', mailNickname: 'HR', deletedDateTime: '2026-09-08T00:00:00Z' };
+  // Task-64: deleted inside the 30-day retention window whenever the test runs.
+  const priorHr = {
+    id: 'target-hr-id', displayName: 'HR', mailNickname: 'HR',
+    deletedDateTime: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  };
   const roleAssignment = {
     id: 'target-break-glass-role-id', roleDefinitionId: globalAdministrator,
     principalId: 'break-glass-id', directoryScopeId: '/',

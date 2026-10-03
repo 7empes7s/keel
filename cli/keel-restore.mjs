@@ -37,6 +37,7 @@ import { collectRelationships, loadSnapshotRelationships } from '../engine/colle
 import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
+import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -305,6 +306,19 @@ export async function runRestore({
     };
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
     resources = reconciliation.resources;
+    // Roadmap task-64: how each resource is recovered (soft-delete restore, in-place
+    // update, recreate, manual handoff, refusal), with its retained/new id, deadline,
+    // credential and proof. Bound into the plan digest and persisted with the dry run;
+    // applyWave re-checks it before any write.
+    const recoveryMechanisms = resources
+      .filter((resource) => resource.recovery && resource.recovery.mechanism !== 'none')
+      .map((resource) => planMechanism(resource.recovery))
+      .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
+    for (const recovery of recoveryMechanisms) {
+      if (recovery.mechanism === 'manual' || recovery.mechanism === 'refused') {
+        logger.log(`recovery ${recovery.mechanism}: ${recovery.naturalKey} — ${recovery.reason}`);
+      }
+    }
     const writesBeforeDeletes = resources.filter((resource) => resource.verb !== 'delete');
     const deletes = resources.filter((resource) => resource.verb === 'delete');
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
@@ -481,6 +495,7 @@ export async function runRestore({
         waves, deletionWaves,
         patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
         relationshipOperations,
+        recoveryMechanisms,
         guardRefusals,
       };
     }
@@ -504,6 +519,9 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        // An artifact persisted before task-64 carries no mechanisms and keeps its
+        // original digest inputs; every newer artifact binds them.
+        recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -656,6 +674,7 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        recoveryMechanisms,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
@@ -679,13 +698,14 @@ export async function runRestore({
         requestedBy: requestedBy ?? 'unknown',
         automationContext,
         relationshipOperations,
+        recoveryMechanisms,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
     }
 
     return {
-      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations,
+      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };

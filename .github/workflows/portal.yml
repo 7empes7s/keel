@@ -116,7 +116,8 @@ jobs:
         # several suites share the one test database.
         run: >-
           node --test --test-concurrency=1
-          roadmap/relationship-restore.test.mjs restore/*.test.mjs reconcile/*.test.mjs
+          roadmap/relationship-restore.test.mjs roadmap/fidelity-ledger.test.mjs
+          restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs
         working-directory: engine

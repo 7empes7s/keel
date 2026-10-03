@@ -30,6 +30,8 @@ import type {
   DriftRecord,
   Fidelity,
   ProtectionState,
+  QualificationDecision,
+  TypeQualification,
   WriteCapabilitySummary,
   WriteOperationCapability,
 } from "@/lib/types";
@@ -143,6 +145,25 @@ function normalizeWriteCapability(raw: unknown): WriteCapabilitySummary | null {
   };
 }
 
+const QUALIFICATION_DECISIONS: QualificationDecision[] = ["automated", "manual", "unknown"];
+
+function normalizeQualification(raw: unknown): TypeQualification | null {
+  const record = raw as UnknownRecord | null;
+  if (!record || !QUALIFICATION_DECISIONS.includes(record.decision as QualificationDecision)) return null;
+  const remapping: Record<string, boolean> = {};
+  if (record.remapping && typeof record.remapping === "object") {
+    for (const [operation, qualified] of Object.entries(record.remapping as UnknownRecord)) {
+      if (typeof qualified === "boolean") remapping[operation] = qualified;
+    }
+  }
+  return {
+    decision: record.decision as QualificationDecision,
+    reason: typeof record.reason === "string" ? record.reason : null,
+    softRestoreCandidate: record.softRestoreCandidate === true,
+    remapping,
+  };
+}
+
 function normalizeDiagnosis(raw: unknown): CoverageDiagnosis | null {
   const record = raw as UnknownRecord | null;
   if (!record) return null;
@@ -227,6 +248,7 @@ function normalizeCoverageType(raw: UnknownRecord): CoverageType {
     relationshipCompleteness: "unknown",
     diagnosis: normalizeDiagnosis(raw.diagnosis),
     writeCapability: normalizeWriteCapability(raw.writeCapability),
+    qualification: normalizeQualification(raw.qualification),
     observation: normalizeObservation(raw.observation),
   };
 }

@@ -150,12 +150,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/coverage": {
       const ct = (type: string, protectionState: string, extra: Record<string, unknown> = {}) => ({ type, reportStatus: protectionState === "failed" ? "failed" : protectionState === "not-covered" ? "not-covered" : "covered", protectionState, stale: false, itemCount: 42, lastCollectedAt: "2026-10-02T09:12:00Z", adapter: "graph.v1." + type, outcome: "complete", detail: null, fidelity: { declared: "full", measured: null, verifiedAt: null }, criticality: "tier1", blastRadius: "access-affecting", remappable: true, relationshipCompleteness: "unknown", ...extra });
       const types = [
-        ct("conditionalAccessPolicy", "protected", { blastRadius: "tenant-lockout", itemCount: 14, fidelity: { declared: "full", measured: "full", verifiedAt: "2026-09-20T10:00:00Z" } }),
+        ct("conditionalAccessPolicy", "protected", { qualification: { decision: "automated", reason: "create/update/delete are registered; writes are forced report-only", softRestoreCandidate: false, remapping: { create: true, update: true } }, blastRadius: "tenant-lockout", itemCount: 14, fidelity: { declared: "full", measured: "full", verifiedAt: "2026-09-20T10:00:00Z" } }),
         ct("namedLocation", "protected", { itemCount: 6 }),
         ct("group", "partially-protected", { itemCount: 312, fidelity: { declared: "partial", measured: null, verifiedAt: null } }),
         ct("deviceConfiguration", "protected", { criticality: "tier2", blastRadius: "cosmetic", itemCount: 58 }),
         ct("servicePrincipal", "read-only", { criticality: "tier2", itemCount: 140 }),
-        ct("directoryRoleTemplate", "unprotectable", { criticality: "tier3", remappable: false, itemCount: 98 }),
+        ct("directoryRoleTemplate", "unprotectable", { qualification: { decision: "manual", reason: "Microsoft-published template catalogue", softRestoreCandidate: false, remapping: {} }, criticality: "tier3", remappable: false, itemCount: 98 }),
         ct("authenticationMethodsPolicy", "failed", { itemCount: 0, outcome: "failed" }),
         ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null }),
       ];

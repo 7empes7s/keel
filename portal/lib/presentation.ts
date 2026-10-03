@@ -242,6 +242,7 @@ export const DISPLAY_ENUMS = {
     "incident-recovery-check": "Checks after an incident restore",
     "fidelity-drill": "Test restores",
     "recovery-drill": "Recovery drills",
+    "offsite-copy": "Off-site copies",
     "baseline-resnapshot": "Baseline re-captures",
     "benchmark-evaluation": "Control checks",
     "benchmark-exception": "Control exceptions",

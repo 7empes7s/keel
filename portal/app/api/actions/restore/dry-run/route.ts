@@ -13,6 +13,8 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Plan task 8, step 2: the structural flow's first half. "A raw selection may start a
 // dry run — never request enforce." This route enqueues exactly a dry run: params are
 // built explicitly from validated fields below, never a raw passthrough of the
@@ -29,9 +31,9 @@ export const POST = guarded(
   { action: "restore:dry-run", capability: "restore", recordAttempt: true },
   async ({ client, principalId, request }) => {
     const body = await readActionParams(request);
-    const { snapshotId, selection, collectorConfig, targetConfig } = body;
+    const { snapshotId, selection, collectorConfig, targetConfig, incidentId } = body;
     const unexpected = Object.keys(body).filter(
-      (key) => !["snapshotId", "selection", "collectorConfig", "targetConfig"].includes(key),
+      (key) => !["snapshotId", "selection", "collectorConfig", "targetConfig", "incidentId"].includes(key),
     );
 
     if (unexpected.length > 0) {
@@ -57,10 +59,20 @@ export const POST = guarded(
       throw new InvalidActionRequest("targetConfig is required");
     }
 
+    // Roadmap task-71: optionally plan the dry run under an incident. Only the id
+    // travels; the CLI re-derives the recovery point qualification, exclusions and
+    // any override from the database, at the dry run and again at promotion.
+    if (incidentId !== undefined && (typeof incidentId !== "string" || !UUID_PATTERN.test(incidentId))) {
+      throw new InvalidActionRequest("incidentId must be an incident id");
+    }
+
     const artifactId = randomUUID();
     const job = (await enqueue(client, {
       kind: "restore",
-      params: { snapshotId, selection, collectorConfig, targetConfig, artifactId },
+      params: {
+        snapshotId, selection, collectorConfig, targetConfig, artifactId,
+        ...(incidentId !== undefined ? { incidentId } : {}),
+      },
       requestedBy: principalId,
       idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
       notBefore: undefined,

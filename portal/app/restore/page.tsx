@@ -8,7 +8,9 @@ import { PageHeader } from "@/components/page-header";
 import { RestoreSelection } from "@/components/restore-selection";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
+  getIncidentSummary,
   getRestoreResources,
+  type IncidentSummary,
   type RestoreResourcesData,
 } from "@/lib/portal-data";
 import {
@@ -29,7 +31,7 @@ const RESTORE_JOB_KINDS = ["restore"];
 export default async function RestorePage({
   searchParams,
 }: {
-  searchParams: Promise<{ snapshot?: string }>;
+  searchParams: Promise<{ snapshot?: string; incident?: string }>;
 }) {
   await connection();
   await requireReadAccess(DATA_SURFACES.restorePage);
@@ -37,12 +39,13 @@ export default async function RestorePage({
     .split(" ")
     .filter((capability) => capability.length > 0);
   const canRestore = capabilities.includes("restore");
-  const requestedSnapshot = (await searchParams).snapshot;
+  const { snapshot: requestedSnapshot, incident: requestedIncident } = await searchParams;
 
   let snapshots: SnapshotOption[];
   let jobs: JobRecord[];
   let resourceData: RestoreResourcesData | null = null;
   let snapshotId: string | null = null;
+  let incident: IncidentSummary | null = null;
   try {
     [snapshots, jobs] = await Promise.all([
       getRestoreSnapshotOptions(),
@@ -55,6 +58,8 @@ export default async function RestorePage({
     if (snapshotId) {
       resourceData = await getRestoreResources(snapshotId);
     }
+    // Roadmap task-71: a restore planned from the Incidents page carries its incident.
+    if (requestedIncident) incident = await getIncidentSummary(requestedIncident);
   } catch {
     return (
       <>
@@ -87,7 +92,8 @@ export default async function RestorePage({
         <RestoreSelection
           canApprove={capabilities.includes("approve")}
           canRestore={canRestore}
-          key={snapshotId}
+          incident={incident}
+          key={`${snapshotId}:${incident?.id ?? ""}`}
           resources={resourceData.resources}
           snapshotId={snapshotId}
           snapshots={snapshots}

@@ -1,6 +1,7 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
+import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import {
   getActiveBaseline,
   listOpenDrift,
@@ -443,6 +444,72 @@ export async function getRestoreResources(
         blastRadius: String(row.blast_radius),
       })),
     };
+  });
+}
+
+// Roadmap task-71: incident-qualified recovery points. Every value comes from the
+// engine's tenant-scoped readers; the recommended point is the engine's (the newest
+// QUALIFIED snapshot), never recomputed here.
+export interface IncidentSummary {
+  id: string;
+  title: string;
+  owner: string;
+  status: "open" | "closed";
+  openedAt: string | null;
+  closedAt: string | null;
+}
+
+export interface IncidentRecoveryPoint {
+  snapshotId: string;
+  observedFrom: string | null;
+  observedTo: string | null;
+  inCompromiseWindow: boolean;
+  status: "qualified" | "unsuitable" | "unassessed";
+  stale: boolean;
+  reasons: string[];
+  pinned: boolean;
+  assessment: {
+    version: number;
+    verdict: "clean" | "compromised";
+    exclusions: { naturalKey: string; field: string | null; reason: string }[];
+    assessedBy: string | null;
+    assessedAt: string | null;
+    fingerprint: string;
+  } | null;
+}
+
+export interface IncidentDetail {
+  incident: IncidentSummary;
+  intervals: { id: string; startsAt: string | null; endsAt: string | null; reason: string | null; recordedBy: string | null }[];
+  pins: { id: string; snapshotId: string; reason: string; pinnedBy: string; pinnedAt: string | null }[];
+  points: IncidentRecoveryPoint[];
+  recommended: string | null;
+}
+
+export interface IncidentRecoveryData {
+  generatedAt: string;
+  incidents: IncidentSummary[];
+  selected: IncidentDetail | null;
+}
+
+export async function getIncidentRecoveryData(requestedId?: string): Promise<IncidentRecoveryData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const incidents = (await listIncidents(client, { tenantRef: ref })) as IncidentSummary[];
+    const chosen = incidents.find((incident) => incident.id === requestedId) ?? incidents[0] ?? null;
+    const selected = chosen
+      ? ((await listIncidentRecoveryPoints(client, { tenantRef: ref, incidentId: chosen.id })) as unknown as IncidentDetail)
+      : null;
+    return { generatedAt: new Date().toISOString(), incidents, selected };
+  });
+}
+
+/** One incident of this tenant by id, or null (another tenant's incident reads as absent). */
+export async function getIncidentSummary(incidentId: string): Promise<IncidentSummary | null> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const incidents = (await listIncidents(client, { tenantRef: ref })) as IncidentSummary[];
+    return incidents.find((incident) => incident.id === incidentId) ?? null;
   });
 }
 

@@ -404,6 +404,13 @@ export const JOB_HANDLERS = {
         args.push('--persist-artifact', requireString(params.artifactId, 'params.artifactId'));
         args.push('--requested-by', requireString(job.requested_by, 'job.requested_by'));
       }
+      // Roadmap task-71: a selection dry run may be planned under an incident. Only
+      // the id travels; qualification, exclusions and any override are re-derived
+      // from the database inside the CLI.
+      if (params.incidentId !== undefined) {
+        if (hasPlan) throw new Error('params.incidentId requires the snapshot/selection scope');
+        args.push('--incident', requireString(params.incidentId, 'params.incidentId'));
+      }
       if (params.acceptDegradation !== undefined) {
         if (params.acceptDegradation !== true) throw new Error('params.acceptDegradation must be true when present');
         args.push('--accept-degradation');

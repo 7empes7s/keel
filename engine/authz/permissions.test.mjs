@@ -1,9 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { ROLE_CAPABILITIES, capabilitiesForRole } from './permissions.mjs';
 
-// --- the matrix contains exactly the five documented roles (§3.2) ---
+// --- the matrix contains exactly the documented roles (§3.2, plus task-71's investigator) ---
 assert.deepEqual(Object.keys(ROLE_CAPABILITIES).sort(), [
-  'admin', 'approver', 'operator', 'restorer', 'viewer',
+  'admin', 'approver', 'investigator', 'operator', 'restorer', 'viewer',
 ]);
 
 // --- each role grants exactly its documented capabilities and no others ---
@@ -12,6 +12,7 @@ assert.deepEqual([...ROLE_CAPABILITIES.operator].sort(), [
   'backup', 'baseline-create', 'collect', 'dispose-accept',
 ]);
 assert.deepEqual([...ROLE_CAPABILITIES.approver].sort(), ['approve']);
+assert.deepEqual([...ROLE_CAPABILITIES.investigator].sort(), ['investigate']);
 assert.deepEqual([...ROLE_CAPABILITIES.restorer].sort(), [
   'remediate', 'restore', 'rollback',
 ]);

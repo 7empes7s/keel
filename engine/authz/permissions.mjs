@@ -7,6 +7,7 @@ export const ROLE_CAPABILITIES = Object.freeze({
   viewer: Object.freeze(['read']),
   operator: Object.freeze(['collect', 'backup', 'baseline-create', 'dispose-accept']),
   approver: Object.freeze(['approve']),
+  investigator: Object.freeze(['investigate']),
   restorer: Object.freeze(['restore', 'remediate', 'rollback']),
   admin: Object.freeze(['users', 'roles', 'policies', 'configuration']),
 });

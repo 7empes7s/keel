@@ -567,13 +567,13 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(withoutNulls(r.body), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
+        isNotFound(r) || (r?.ok === true && canonicalHash(forVerification(withoutNulls(r.body), resource), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
       if (reRead?.ok === false) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
-      const live = withoutNulls(reRead?.body ?? reRead);
+      const live = forVerification(withoutNulls(reRead?.body ?? reRead), resource);
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)) {
         const residual = residualDiff(normalisedDesired, live, resource.resourceType);
         const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
@@ -623,7 +623,7 @@ export async function applyWave(writer, governor, wave, {
         failed.push(failure);
         continue;
       }
-      const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
+      const actualHash = canonicalHash(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
       const desiredHash = canonicalHash(payload, resource.resourceType);
       if (actualHash === desiredHash) { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
       failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but actual hash ${actualHash} does not match desired hash ${desiredHash} — manual reconciliation required` });
@@ -657,7 +657,7 @@ export async function applyWave(writer, governor, wave, {
       failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
-    const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
+    const actualHash = canonicalHash(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
     const desiredHash = canonicalHash(payload, resource.resourceType);
     if (actualHash !== desiredHash) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
@@ -688,6 +688,27 @@ export async function applyWave(writer, governor, wave, {
  * symmetrically to both sides so it cannot blind drift in either direction; NOT applied to
  * canonicalHash, whose output is persisted as payload_hash. Top-level only — canonicalize()
  * already strips server-owned fields recursively. */
+// Roadmap task-71: a field an incident assessment excluded as malicious is never
+// written, so post-write verification compares only what the plan writes: those exact
+// paths are left out of the live side. Every other field still verifies, and the
+// excluded value itself is checked separately after recovery (incident post-restore
+// checks). A no-op for every resource without exclusions.
+function forVerification(value, resource) {
+  const paths = resource.excludedFields;
+  if (!paths?.length || !value || typeof value !== 'object') return value;
+  let out = value;
+  for (const path of paths) out = withoutPath(out, String(path).split('.'));
+  return out;
+}
+
+function withoutPath(value, [head, ...rest]) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, head)) return value;
+  const copy = { ...value };
+  if (rest.length === 0) delete copy[head];
+  else copy[head] = withoutPath(copy[head], rest);
+  return copy;
+}
+
 function withoutNulls(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const out = {};

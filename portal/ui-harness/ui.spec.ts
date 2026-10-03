@@ -11,6 +11,7 @@ const PAGES = [
   { name: "drift", hash: "/drift" },
   { name: "backups", hash: "/backups" },
   { name: "restore", hash: "/restore" },
+  { name: "incidents", hash: "/incidents" },
   { name: "jobs", hash: "/jobs" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
@@ -194,6 +195,27 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
     cell.evaluate((element) => element.getBoundingClientRect().width),
   ]);
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
+});
+
+// Task-71: the incident view recommends the newest qualified point, keeps the
+// assessment form honest, and fits a phone.
+test("the incident view recommends the qualified point, not the newest, and refuses exclusions on a compromised verdict", async ({ page }) => {
+  await open(page, "/incidents", "dark");
+  const rows = page.locator("tr.incident-point");
+  await expect(rows.nth(0)).toContainText("Unsuitable");
+  await expect(rows.nth(0)).not.toContainText("Recommended");
+  await expect(rows.nth(1)).toContainText("Recommended");
+  await expect(rows.nth(1)).toContainText("not proof of a clean state");
+
+  await rows.nth(2).getByRole("button", { name: "Assess" }).click();
+  await page.getByLabel("Verdict").selectOption("compromised");
+  await page.getByLabel("Rationale").fill("captured the backdoor");
+  await page.getByLabel(/Malicious exclusions/).fill("group:backdoor | attacker group");
+  await page.getByRole("button", { name: "Record assessment" }).click();
+  await expect(page.getByRole("alert")).toContainText("Exclusions apply only to a clean verdict");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
 // Task-70: undo of a failed restore — planned against the live tenant, reviewed,

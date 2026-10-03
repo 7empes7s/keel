@@ -51,7 +51,7 @@ function sha256(text) {
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null, contentEffects = null, compensation = null,
+  recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -76,6 +76,10 @@ export function computePlanDigest({
     // Task-70: a compensation dry run binds its whole inverse plan (operations,
     // conflicts, irrecoverable effects, manual items). Null for forward restores.
     ...(compensation ? { compensation } : {}),
+    // Task-71: a restore under an incident binds the recovery point qualification,
+    // the assessment version + fingerprint, exclusions, override and post-restore
+    // checks. Null for every other restore, which keeps their digest.
+    ...(incidentRecovery ? { incidentRecovery } : {}),
   }));
 }
 
@@ -127,7 +131,7 @@ export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null, contentEffects = null, compensation = null,
+  recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -137,8 +141,8 @@ export async function createDryRunArtifact(client, {
        (id, tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id,
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
-        relationship_operations, recovery_mechanisms, content_effects, compensation)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+        relationship_operations, recovery_mechanisms, content_effects, compensation, incident_recovery)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -154,6 +158,7 @@ export async function createDryRunArtifact(client, {
       recoveryMechanisms ? JSON.stringify(recoveryMechanisms) : null,
       contentEffects?.length ? JSON.stringify(contentEffects) : null,
       compensation ? JSON.stringify(compensation) : null,
+      incidentRecovery ? JSON.stringify(incidentRecovery) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -205,6 +210,8 @@ function normalizeArtifact(row) {
     contentEffects: row.content_effects ?? null,
     // Task-70: set only on a compensation dry run.
     compensation: row.compensation ?? null,
+    // Task-71: set only on a restore planned under an incident.
+    incidentRecovery: row.incident_recovery ?? null,
     createdAt: row.created_at,
   };
 }

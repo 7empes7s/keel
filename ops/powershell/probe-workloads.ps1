@@ -11,7 +11,12 @@
   COLLECTOR credential (read path — /etc/keel/tenant.json by default), then one or
   more representative READ-ONLY cmdlet calls. Emits a flat JSON array to stdout:
 
-    [ { workload, connected, cmdlet, ok, count, error }, ... ]
+    [ { workload, connected, cmdlet, ok, count, error,
+        module, moduleVersion, capturedAt, synthetic }, ... ]
+
+  Roadmap task-101: every row also records the PowerShell module and version it ran
+  under, when it was captured, and synthetic = false (a real tenant read). Proof is
+  bound to that version; tools/qualification/workloads.mjs --capture reads this output.
 
   One row per (workload, cmdlet) attempt, plus one workload-level row recording the
   connection result itself (cmdlet = $null). A connection failure produces exactly one
@@ -58,6 +63,7 @@ function Write-Diag {
 }
 
 $results = [System.Collections.Generic.List[object]]::new()
+$capturedAt = (Get-Date).ToUniversalTime().ToString('o')
 
 function Add-Result {
     param(
@@ -258,6 +264,8 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Add-Result -Workload 'exo' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OrganizationConfig' -Block { Get-OrganizationConfig }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TransportRule' -Block { Get-TransportRule }
+        # Task 101: mailbox client-access settings (configuration only, no mailbox content).
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CASMailbox' -Block { Get-CASMailbox -ResultSize 1 }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"
@@ -285,6 +293,8 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionCompliancePolicy' -Block { Get-RetentionCompliancePolicy }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpCompliancePolicy' -Block { Get-DlpCompliancePolicy }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-Label' -Block { Get-Label }
+                # Task 101: label publication (policies), not labels applied to items.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-LabelPolicy' -Block { Get-LabelPolicy }
             }
             if ($Workloads -contains 'defender') {
                 Add-Result -Workload 'defender' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
@@ -349,7 +359,9 @@ try {
     $rows.Add([ordered]@{ workload = "spo"; connected = $true; cmdlet = $null; ok = $true; count = $null; error = $null })
     foreach ($c in @(
             @{ name = "Get-PnPTenant"; block = { Get-PnPTenant } },
-            @{ name = "Get-PnPSite"; block = { Get-PnPSite } }
+            @{ name = "Get-PnPSite"; block = { Get-PnPSite } },
+            @{ name = "Get-PnPTenantSite"; block = { Get-PnPTenantSite } },
+            @{ name = "Get-PnPTenantSite -IncludeOneDriveSites"; block = { Get-PnPTenantSite -IncludeOneDriveSites } }
         )) {
         try {
             $out = & $c.block
@@ -411,8 +423,35 @@ ConvertTo-Json -InputObject $rows -Depth 6
     }
 }
 
+# --- Task 101: stamp each row with the module version it ran under ---
+# Rows from the spo child process arrive as PSCustomObject, the rest as ordered
+# dictionaries; both are rebuilt into one shape here. The version is the highest
+# installed one, which is what Import-Module loaded above.
+$moduleFor = @{ exo = 'ExchangeOnlineManagement'; scc = 'ExchangeOnlineManagement'; defender = 'ExchangeOnlineManagement'; teams = 'MicrosoftTeams'; spo = 'PnP.PowerShell' }
+$versionOf = @{}
+foreach ($name in ($moduleFor.Values | Sort-Object -Unique)) {
+    $installed = Get-Module -ListAvailable -Name $name | Sort-Object Version -Descending | Select-Object -First 1
+    $versionOf[$name] = if ($installed) { $installed.Version.ToString() } else { $null }
+}
+$stamped = [System.Collections.Generic.List[object]]::new()
+foreach ($row in $results) {
+    $module = $moduleFor[[string]$row.workload]
+    $stamped.Add([ordered]@{
+            workload      = $row.workload
+            connected     = $row.connected
+            cmdlet        = $row.cmdlet
+            ok            = $row.ok
+            count         = $row.count
+            error         = $row.error
+            module        = $module
+            moduleVersion = if ($module) { $versionOf[$module] } else { $null }
+            capturedAt    = $capturedAt
+            synthetic     = $false
+        })
+}
+
 # --- Emit canonical JSON to stdout ONLY ---
 # Bound via -InputObject (not the pipeline) so 0-, 1-, and N-element results all
 # serialize as a JSON array — PowerShell's pipeline unwraps a single-element
 # collection into a bare object otherwise, a well-known ConvertTo-Json gotcha.
-ConvertTo-Json -InputObject $results -Depth 6
+ConvertTo-Json -InputObject $stamped -Depth 6

@@ -16,10 +16,10 @@ export default async function SchedulesPage() {
     if (!response.ok) throw new Error("Schedules unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader eyebrow="Operations" title="Schedules" description="Collection and maintenance cadence." /><DataUnavailable surface="Schedules" /></>;
+    return <><PageHeader section="Protect" title="Schedules" description="Collection and maintenance cadence." /><DataUnavailable surface="Schedules" /></>;
   }
   return <>
-    <PageHeader eyebrow="Operations" title="Schedules" description="Collection and maintenance cadence. Run times are shown in UTC." generatedAt={data.generatedAt} />
+    <PageHeader section="Protect" title="Schedules" description="Collection and maintenance cadence. Run times are shown in UTC." generatedAt={data.generatedAt} />
     <ScheduleTable schedules={data.schedules} deferrals={data.deferrals} canEdit={access.capabilities.includes("configuration")} />
   </>;
 }

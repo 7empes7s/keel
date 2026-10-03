@@ -14,7 +14,7 @@ import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
 import {
   IncidentQualificationSummary, RecoveryPointTable, exclusionLabel, incidentVerdict, parseExclusions, recoveryPointStatusLabel,
 } from "@/components/incident-recovery";
-import { visibleNavLinks } from "@/components/nav-links";
+import { visibleNavEntries, visibleNavLinks } from "@/components/nav-links";
 import { getIncidentRecoveryData, type IncidentDetail } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -129,8 +129,10 @@ test("the restore review names the incident, the approver and the checked resour
   assert.match(html, /Authorized by \(principal ID\)<\/dt><dd><code>3f9c2b1e-/);
 });
 
-test("incident recovery is reached from Restore, not a new navigation entry", () => {
-  assert.equal(visibleNavLinks({ canRead: true, canPolicies: true, canUsers: true, canApprove: true }).some((entry) => entry.href === "/incidents"), false);
+test("incident recovery is a page inside Restore, not a new navigation entry", () => {
+  const capabilities = { canRead: true, canPolicies: true, canUsers: true, canApprove: true };
+  assert.equal(visibleNavEntries(capabilities).some((entry) => entry.href === "/incidents"), false);
+  assert.equal(visibleNavLinks(capabilities).find((page) => page.href === "/incidents")?.group, "Restore");
 });
 
 // ------------------------------------------------------- routes and loader (DB)

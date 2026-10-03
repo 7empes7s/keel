@@ -28,7 +28,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       job = (await response.json() as { job: JobRecord }).job;
     }
   } catch {
-    return <><PageHeader eyebrow="Operations" title="Job details" description="Job execution and outcome." /><DataUnavailable surface="Job details" /></>;
+    return <><PageHeader section="Activity" title="Job details" description="Job execution and outcome." /><DataUnavailable surface="Job details" /></>;
   }
   if (!job) notFound();
   // Roadmap task-65: an enforced restore (it always promotes a dry-run artifact)
@@ -43,7 +43,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const enforced = restoreRef && jobParams.mode === "enforce" && (job.status === "succeeded" || job.status === "failed");
   return (
     <>
-      <PageHeader eyebrow="Operations" title="Job details" description={job.id} />
+      <PageHeader section="Activity" title="Job details" description={job.id} />
       <Link className="text-link back-link" href="/jobs"><span aria-hidden="true">←</span> All jobs</Link>
       <JobDetail job={job} />
       {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}

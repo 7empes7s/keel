@@ -16,10 +16,10 @@ export default async function PrincipalsPage() {
     if (!response.ok) throw new Error("Principals unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader eyebrow="Administration" title="Principals" description="Identities, role grants, and effective capabilities." /><DataUnavailable surface="Principals" /></>;
+    return <><PageHeader section="Settings" title="Principals" description="Identities, role grants, and effective capabilities." /><DataUnavailable surface="Principals" /></>;
   }
   return <>
-    <PageHeader eyebrow="Administration" title="Principals" description="Identities, role grants, and effective capabilities." generatedAt={data.generatedAt} />
+    <PageHeader section="Settings" title="Principals" description="Identities, role grants, and effective capabilities." generatedAt={data.generatedAt} />
     {data.principals.length === 0 ? <p className="empty-state">No principals configured.</p> : <div className="item-list">{data.principals.map((principal) => <PrincipalDetails key={principal.id} principal={principal} />)}</div>}
   </>;
 }

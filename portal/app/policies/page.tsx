@@ -17,10 +17,10 @@ export default async function PoliciesPage() {
     if (!response.ok) throw new Error("Policies unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader eyebrow="Governance" title="Policies" description="Automation policies and their current state." /><DataUnavailable surface="Policies" /></>;
+    return <><PageHeader section="Settings" title="Policies" description="Automation policies and their current state." /><DataUnavailable surface="Policies" /></>;
   }
   return <>
-    <PageHeader eyebrow="Governance" title="Policies" description="Automation policies and their current state." generatedAt={data.generatedAt} />
+    <PageHeader section="Settings" title="Policies" description="Automation policies and their current state." generatedAt={data.generatedAt} />
     <KillSwitchBadge disabled={data.automationDisabled} />
     {data.policies.length === 0 ? <p className="empty-state">No policies configured.</p> : data.policies.map((policy) => <section className="item-card" key={policy.id}>
       <h2><Link className="item-title-link" href={`/policies/${policy.id}`}>{policy.name}</Link></h2>

@@ -1,4 +1,5 @@
 import "./next-async-storage";
+import { visibleNavLinks } from "@/components/nav-links";
 import { GET as listPoliciesRoute, POST as createPolicyRoute } from "@/app/api/policies/route";
 import { GET as showPolicyRoute } from "@/app/api/policies/[id]/route";
 import { POST as enablePolicyRoute } from "@/app/api/policies/[id]/enabled/route";
@@ -721,8 +722,9 @@ test("notification routes enforce configuration while viewers can read recent de
   const controls = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
     React.createElement(NotificationConsole, { canConfiguration: true, channels: [channel], subscriptions: [subscription] })));
   for (const label of ["Create channel", "Disable channel", "Create subscription", "Delete subscription"]) assert.ok(controls.includes(label));
-  const nav = readFileSync(new URL("../components/nav-links.tsx", import.meta.url), "utf8");
-  assert.ok(nav.includes('link.href !== "/notifications" || canRead'));
+  for (const canRead of [true, false]) {
+    assert.equal(visibleNavLinks({ canRead }).some((link) => link.href === "/notifications"), canRead);
+  }
 
   const { default: NotificationsPage } = await import("@/app/notifications/page");
   const { workAsyncStorage } = await import("next/dist/server/app-render/work-async-storage.external.js");

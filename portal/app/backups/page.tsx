@@ -30,7 +30,7 @@ export default async function BackupsPage() {
       <>
         <PageHeader
           description="On-demand tiered backups and their job progress."
-          eyebrow="Protection"
+          section="Protect"
           marker={canBackup ? "Actionable" : "Read-only"}
           title="Backups"
         />
@@ -47,7 +47,7 @@ export default async function BackupsPage() {
     <>
       <PageHeader
         description="On-demand tiered backups and their job progress. A backup runs the same tiered collection as the backup schedule."
-        eyebrow="Protection"
+        section="Protect"
         generatedAt={new Date().toISOString()}
         marker={canBackup ? "Actionable" : "Read-only"}
         title="Backups"

@@ -64,7 +64,7 @@ export default async function RestorePage({
       <>
         <PageHeader
           description="Dependency-closed restore from a snapshot, requiring approval before anything runs."
-          eyebrow="Recovery"
+          section="Restore"
           marker={canRestore ? "Actionable" : "Read-only"}
           title="Restore"
         />
@@ -81,7 +81,7 @@ export default async function RestorePage({
     <>
       <PageHeader
         description="Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references — the closure is shown, never hidden — and a restore only runs after approval."
-        eyebrow="Recovery"
+        section="Restore"
         generatedAt={resourceData?.generatedAt ?? new Date().toISOString()}
         marker={canRestore ? "Actionable" : "Read-only"}
         title="Restore"

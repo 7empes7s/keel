@@ -59,7 +59,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
         id: `page:${link.href}`,
         label: link.label,
         hint: isCurrentPath(pathname, link.href) ? "Current page" : section.group,
-        keywords: section.group,
+        keywords: [section.group, link.aliases ?? ""].join(" ").trim(),
         run: () => router.push(link.href),
       })),
     );

@@ -197,33 +197,60 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
 });
 
-// Portal experience contract, mechanical checks 1-3, 6 and 7. Scoped to the pages
-// already rebuilt to the contract; task-129 runs them on every route.
+// Portal experience contract, mechanical checks (roadmap task-129). They run on every
+// harness route. A route not yet rebuilt to the contract may fail them only through
+// this allowlist, which task-130 and task-131 empty; its size is asserted, so it can
+// only shrink. Check 5 (display map) and the eyebrow check live in
+// portal/test/experience-contract.test.ts; check 8 is the axe, screenshot and
+// interaction suites in this file.
 const BANNED_TERMS = [
   "natural key", "disposition", "fidelity", "qualification", "qualified", "live-qualified", "fixture-tested",
-  "capability", "closure", "dependency-closed", "projection", "field class", "blast radius", "guard refusal",
-  "wave", "verb", "artifact", "promotion", "enforce", "compensation", "observation", "descriptor", "adapter",
-  "catalog type", "evidence chain", "anchor", "checkpoint", "kill switch", "tenant_ref", "CIR", "symbol",
+  "capability", "capabilities", "closure", "dependency-closed", "projection", "field class", "blast radius",
+  "guard refusal", "wave", "verb", "artifact", "promotion", "enforce", "compensation", "observation", "descriptor",
+  "adapter", "catalog type", "evidence chain", "anchor", "checkpoint", "kill switch", "tenant_ref", "CIR", "symbol",
   "lineage", "Postgres", "worker", "heartbeat", "fingerprint",
 ];
-const CONTRACT_PAGES = ["/incidents"];
+const CONTRACT_PENDING = new Set([
+  // task-131: Protect, Changes and Restore in plain words.
+  "coverage", "drift", "backups", "restore",
+  // task-130: named objects and labelled records.
+  "jobs", "job-failed", "job-restore-completion", "job-restore-undo", "policies", "policy", "approvals",
+  "evidence", "principals", "notifications", "integrations",
+]);
+const CONTRACT_PENDING_MAX = 15;
 
-async function textOutsideRecord(page: Page): Promise<string> {
+test("contract allowlist only shrinks and names real routes", () => {
+  expect(CONTRACT_PENDING.size).toBeLessThanOrEqual(CONTRACT_PENDING_MAX);
+  for (const name of CONTRACT_PENDING) expect(PAGES.some((entry) => entry.name === name), name).toBe(true);
+});
+
+async function textOutside(page: Page, root: string, excluded: string): Promise<string> {
   // Each text node on its own line, so adjacent blocks never run together.
-  return page.locator("main#main-content").evaluate((main) => {
-    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+  return page.locator(root).evaluate((element, skip) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const parts: string[] = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (!node.parentElement?.closest('[data-layer="record"]')) parts.push(node.textContent ?? "");
+      if (!node.parentElement?.closest(skip)) parts.push(node.textContent ?? "");
     }
     return parts.join("\n");
-  });
+  }, excluded);
 }
 
-for (const hash of CONTRACT_PAGES) {
-  test(`contract · ${hash} · glance, identifiers, vocabulary, one primary action, labelled record`, async ({ page }) => {
+function expectPlainText(visible: string) {
+  expect(visible, "identifier test: UUID").not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  expect(visible, "identifier test: hex").not.toMatch(/\b[0-9a-f]{32,}\b/i);
+  expect(visible, "identifier test: resource key").not.toMatch(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/);
+  for (const term of BANNED_TERMS) {
+    expect(visible, `vocabulary test: "${term}"`).not.toMatch(new RegExp(`\\b${term.replace("-", "\\-")}s?\\b`, "i"));
+  }
+}
+
+for (const { name, hash } of PAGES) {
+  test(`contract · ${name}`, async ({ page }) => {
+    test.skip(CONTRACT_PENDING.has(name), "allowlisted until task-130/131 rebuilds this page");
     await page.setViewportSize({ width: 1440, height: 900 });
     await open(page, hash, "dark");
+    // 1. Glance test.
     await expect(page.locator("main#main-content h1")).toHaveCount(1);
     const verdict = page.locator('[data-layer="verdict"]');
     await expect(verdict).toHaveCount(1);
@@ -231,22 +258,44 @@ for (const hash of CONTRACT_PAGES) {
     const sentence = (await verdict.locator(".verdict-sentence").innerText()).trim();
     expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
     expect(sentence).not.toMatch(/\d{7,}|[{}[\]"]/);
+    // 6. Single primary action.
     expect(await verdict.locator("button.primary, a.primary").count()).toBeLessThanOrEqual(1);
-
-    const visible = await textOutsideRecord(page);
-    expect(visible).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-    expect(visible).not.toMatch(/\b[0-9a-f]{32,}\b/i);
-    expect(visible).not.toMatch(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/);
-    for (const term of BANNED_TERMS) {
-      expect(visible, `banned term "${term}" outside the record layer`).not.toMatch(new RegExp(`\\b${term.replace("-", "\\-")}\\b`, "i"));
+    // 2 and 3. Identifiers and vocabulary stay in the record layer.
+    expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+    // 4. Reference test: a rendered reference is a name, never an id.
+    for (const text of await page.locator("main#main-content a[data-ref]").allTextContents()) {
+      expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/i);
     }
-
-    // Honesty is moved, not lost: every record field is labelled.
+    // 7. Record completeness: honesty is moved, not lost; every record field is labelled.
     const records = page.locator('[data-layer="record"]');
     expect(await records.count()).toBeGreaterThan(0);
-    for (const label of await records.locator("dt").allTextContents()) expect(label.trim().length).toBeGreaterThan(0);
+    for (const field of await records.locator(".technical-field").all()) {
+      expect((await field.locator("dt").textContent())?.trim().length ?? 0).toBeGreaterThan(0);
+      expect((await field.locator("dd").textContent())?.trim().length ?? 0).toBeGreaterThan(0);
+    }
   });
 }
+
+test("contract · shell: seven entries, plain words, the eyebrow is the section", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/", "dark");
+  const entries = page.locator("#primary-nav a.nav-link");
+  await expect(entries).toHaveCount(7);
+  expect(await Promise.all((await entries.all()).map((entry) => entry.locator("span").first().innerText())))
+    .toEqual(["Overview", "Protect", "Changes", "Restore", "Approvals", "Activity", "Settings"]);
+  expectPlainText(await textOutside(page, "aside.sidebar", ".nope"));
+  // A page absorbed into a section is reached through that section's tabs.
+  for (const { hash, section, tab } of [
+    { hash: "/coverage", section: "Protect", tab: "Configuration types" },
+    { hash: "/incidents", section: "Restore", tab: "Incidents" },
+    { hash: "/evidence", section: "Activity", tab: "Audit record" },
+  ]) {
+    await open(page, hash, "dark");
+    await expect(page.locator(".eyebrow").first()).toHaveText(section);
+    await expect(page.locator('#primary-nav a[aria-current]')).toContainText(section);
+    await expect(page.locator(".section-tabs a[aria-current='page']")).toHaveText(tab);
+  }
+});
 
 // Task-71: the incident view recommends the newest cleared snapshot, keeps the check
 // form honest, keeps ids in Technical details, and fits a phone.

@@ -21,7 +21,7 @@ export default async function ApprovalsPage() {
       <>
         <PageHeader
           description="Review pending operator requests and retain a newest-first decision record."
-          eyebrow="Governance"
+          section="Approvals"
           generatedAt={data.generatedAt}
           marker="Approval required"
           title="Approvals"
@@ -34,7 +34,7 @@ export default async function ApprovalsPage() {
       <>
         <PageHeader
           description="Review pending operator requests and retain a newest-first decision record."
-          eyebrow="Governance"
+          section="Approvals"
           marker="Approval required"
           title="Approvals"
         />

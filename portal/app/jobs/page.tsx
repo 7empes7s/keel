@@ -28,11 +28,11 @@ export default async function JobsPage({ searchParams }: {
     if (!response.ok) throw new Error("Job history unavailable");
     data = await response.json() as JobsData;
   } catch {
-    return <><PageHeader eyebrow="Operations" title="Jobs" description="Job history and outcomes, newest first." /><DataUnavailable surface="Job history" /></>;
+    return <><PageHeader section="Activity" title="Jobs" description="Job history and outcomes, newest first." /><DataUnavailable surface="Job history" /></>;
   }
   return (
     <>
-      <PageHeader eyebrow="Operations" title="Jobs" description="Job history and outcomes, newest first." generatedAt={data.generatedAt} />
+      <PageHeader section="Activity" title="Jobs" description="Job history and outcomes, newest first." generatedAt={data.generatedAt} />
       <JobTable headingId="jobs-heading" jobs={data.jobs} kicker="Queue" title="Recent jobs" />
       {data.jobs.length === limit ? <Link className="secondary-action" href={`/jobs?limit=${limit + 50}`}>Load 50 more jobs</Link> : null}
       <JobRefresher active={data.jobs.some((job) => job.status === "queued" || job.status === "running")} />

@@ -5,8 +5,7 @@
  * for every mutation. Collection remains on the Collector registration;
  * mutations use the separate Restorer registration.
  */
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getToken } from '../tenant-probe/auth.mjs';
 import { GraphReader } from '../tenant-probe/graph.mjs';
@@ -26,8 +25,10 @@ import {
   insertResourceVersion,
 } from '../../engine/store/db.mjs';
 import { getActiveBaseline, recordDrift } from '../../engine/store/governance.mjs';
-
-const DISPOSABLE_PREFIX = 'group:keel-rehearsal-';
+import {
+  DISPOSABLE_PREFIX, assertDrillTarget, buildDrillManifest, isDisposableTarget, tenantRefFor as tenantRefForId,
+  validateDrillPlan,
+} from './qualification.mjs';
 
 const INTENDED_SEQUENCE = [
   '1. create group keel-rehearsal-<ISO timestamp> (Restorer credential)',
@@ -95,7 +96,7 @@ function readConfig(path) {
 }
 
 function tenantRefFor(config) {
-  return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
+  return tenantRefForId(config.tenantId);
 }
 
 function assertSeparateRestorer(collector, restorer) {
@@ -111,8 +112,10 @@ function assertSeparateRestorer(collector, restorer) {
   }
 }
 
-function rehearsalGroup(timestamp) {
-  const displayName = `keel-rehearsal-${timestamp}`;
+function rehearsalGroup(timestamp, drillObject) {
+  // A drill names its one object in the plan; the legacy rehearsal derives it
+  // from the run's timestamp.
+  const displayName = drillObject ? drillObject.slice('group:'.length) : `keel-rehearsal-${timestamp}`;
   // Graph mail nicknames are the group natural key. Keep the ISO timestamp in
   // the display name and make its nickname-safe spelling unique as well.
   const mailNickname = displayName.replace(/[^A-Za-z0-9-]/g, '-');
@@ -302,10 +305,10 @@ function groupNaturalKey(resources, groupId) {
   return resource.naturalKey;
 }
 
-function disposableWriter(writer, naturalKey) {
+function disposableWriter(writer, naturalKey, guard = assertDisposable) {
   return {
     write: async (...args) => {
-      assertDisposable(naturalKey);
+      guard(naturalKey);
       return writer.write(...args);
     },
     read: (...args) => writer.read(...args),
@@ -378,19 +381,76 @@ export async function hardDelete({ writer, reader, client, naturalKey, groupId, 
   }
 }
 
+const gone = (result) => result?.ok || result?.status === 404;
+
 /** The rehearsal's step 7 only runs on the happy path. Any earlier failure would otherwise leave a
- * live disposable group in the tenant — observed 2026-09-08. This is best-effort cleanup, not
- * evidence: it deliberately skips the rollback journal that hardDelete writes, and it never throws,
- * so it cannot mask the failure that triggered it. */
-async function cleanupOrphan({ writer, groupId, naturalKey, log }) {
+ * live disposable group in the tenant — observed 2026-09-08. It deliberately skips the rollback
+ * journal that hardDelete writes, and it never throws, so it cannot mask the failure that
+ * triggered it. It returns what it observed instead (task 72): `verified` only when both DELETEs
+ * were accepted (or the object was already gone) and the deleted-items read then 404s; anything
+ * else is `failed`, which the caller must surface rather than log and forget. */
+export async function cleanupOrphan({ writer, reader, groupId, naturalKey, log, delayMs }) {
   try {
     assertDisposable(naturalKey);
-    await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} });
-    await writeWithRetry(writer, 'v1.0', `/directory/deletedItems/${groupId}`, { method: 'DELETE', body: {} });
+    const soft = await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} }, { delayMs });
+    if (!gone(soft)) throw new Error(`DELETE /groups/${groupId} returned ${soft?.status}`);
+    const hard = await writeWithRetry(writer, 'v1.0', `/directory/deletedItems/${groupId}`,
+      { method: 'DELETE', body: {} }, { delayMs });
+    if (!gone(hard)) throw new Error(`DELETE /directory/deletedItems/${groupId} returned ${hard?.status}`);
+    if (reader) {
+      const absent = await getWithRetry(reader, 'v1.0', `/directory/deletedItems/${groupId}`,
+        (r) => r.ok === false && r.status === 404, { delayMs });
+      if (absent.ok || absent.status !== 404) throw new Error(`group ${groupId} is still in deletedItems`);
+    }
     log(`cleanup: removed orphaned rehearsal group ${groupId}`);
+    return { status: 'verified' };
   } catch (error) {
     log(`cleanup FAILED for ${groupId}: ${error.message}`);
+    return { status: 'failed', detail: `${naturalKey} (${groupId}) may still exist: ${error.message}` };
   }
+}
+
+function countingWriter(writer, counter) {
+  return {
+    write: async (...args) => {
+      counter.writes += 1;
+      return writer.write(...args);
+    },
+    read: (...args) => writer.read(...args),
+  };
+}
+
+function readDrillPlan(drillPlan) {
+  return typeof drillPlan === 'string' ? JSON.parse(readFileSync(drillPlan, 'utf8')) : drillPlan;
+}
+
+/**
+ * Task 72 offline validation: checks the drill plan against the configured
+ * Collector tenant and the drill bounds. It constructs no credential, writer or
+ * database connection, so it cannot write, and its manifest never counts as a
+ * recovery drill.
+ */
+function validateOffline({ drillPlan, collectorConfigPath, log, now }) {
+  const startedAt = now();
+  if (!drillPlan) throw new Error('offline validation needs a drill plan (--plan)');
+  const plan = readDrillPlan(drillPlan);
+  const collector = readConfig(collectorConfigPath);
+  const { valid, problems } = validateDrillPlan(plan, { collectorTenantId: collector.tenantId });
+  const objects = Array.isArray(plan?.objects) ? plan.objects.filter(isDisposableTarget) : [];
+  const drill = buildDrillManifest({
+    mode: 'offline',
+    tenantRef: tenantRefFor(collector),
+    objects,
+    startedAt,
+    finishedAt: now(),
+    outcome: valid ? 'validated' : 'invalid',
+    writes: 0,
+    cleanup: { status: 'not-needed' },
+    problems,
+  });
+  log(`offline: plan ${valid ? 'valid' : 'invalid'}; no writes issued; this is not a recovery drill`);
+  for (const problem of problems) log(`offline: ${problem}`);
+  return { mode: 'offline', valid, problems, drill };
 }
 
 /**

@@ -202,6 +202,9 @@ function normalizeExpansion(raw: unknown): TypeExpansion | null {
     status: record.status as ExpansionStatus,
     restoreScope: record.restoreScope as RestoreScope,
     reason: record.reason,
+    qualifiedSubtypes: Array.isArray(record.qualifiedSubtypes)
+      ? record.qualifiedSubtypes.filter((value): value is string => typeof value === "string")
+      : [],
   };
 }
 
@@ -509,7 +512,8 @@ export async function getDriftData(): Promise<DriftData> {
 
 // Plan task 17 (portal-design §4.1): the restore surface lists the resources an
 // operator can select from one snapshot. The filter mirrors cli/keel-restore.mjs —
-// users and authentication strength policies are read-only in M1 and never written —
+// users are never written; authentication strengths are listed since roadmap
+// task-108 (the engine writes custom ones and skips built-in ones as immutable) —
 // and the query is scoped to this tenant's snapshot so another tenant's snapshot id is
 // indistinguishable from one that does not exist.
 export interface RestoreResource {
@@ -540,7 +544,7 @@ export async function getRestoreResources(
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
-         AND rv.resource_type NOT IN ('user', 'authenticationStrengthPolicy')
+         AND rv.resource_type <> 'user'
        ORDER BY rv.natural_key`,
       [snapshotId, ref],
     );

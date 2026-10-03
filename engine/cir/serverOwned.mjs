@@ -85,7 +85,12 @@ IMMUTABLE.set('roleAssignment', new Set([
   'principalId', 'principalOrganizationId', 'directoryScopeId', 'roleDefinitionId',
 ]));
 
-IMMUTABLE.set('authenticationStrengthPolicy', new Set(['allowedCombinations']));
+// allowedCombinations changes only through the updateAllowedCombinations action,
+// never a PATCH. Roadmap task-108: policyType (builtIn/custom) and
+// requirementsSatisfied are computed by Entra. They are immutable, not
+// serverOwned, so the configuration hash of every stored snapshot is unchanged
+// (no legacy re-hash) and a change to them still reads as real drift.
+IMMUTABLE.set('authenticationStrengthPolicy', new Set(['allowedCombinations', 'policyType', 'requirementsSatisfied']));
 
 // Roadmap task-107. Immutable, not serverOwned, so the configuration hash is
 // unchanged for every stored snapshot (no legacy re-hash) and a change to these

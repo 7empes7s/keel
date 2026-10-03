@@ -165,11 +165,13 @@ const INTENT_VIEW = `
          o.email AS owner_email, o.display_name AS owner_display_name,
          a.email AS approver_email, a.display_name AS approver_display_name,
          r.occurred_at AS revoked_at, r.actor AS revoked_by, r.detail AS revoke_detail,
+         rp.email AS revoker_email, rp.display_name AS revoker_display_name,
          s.occurred_at AS settled_at, s.detail AS settle_detail
     FROM change_intent i
     LEFT JOIN principal o ON o.id = i.owner_principal_id
     LEFT JOIN principal a ON a.id = i.approver_principal_id
     LEFT JOIN change_intent_event r ON r.intent_id = i.id AND r.kind = 'revoked'
+    LEFT JOIN principal rp ON rp.id::text = r.actor
     LEFT JOIN change_intent_event s ON s.intent_id = i.id AND s.kind = 'settled'`;
 
 function person(id, email, displayName) {
@@ -193,7 +195,7 @@ function rowToIntent(row) {
     approvedAt: iso(row.approved_at),
     decisionDigest: row.decision_digest,
     revokedAt: iso(row.revoked_at),
-    revokedBy: row.revoked_by ?? null,
+    revokedBy: row.revoked_by ? person(row.revoked_by, row.revoker_email, row.revoker_display_name) : null,
     revokeReason: row.revoke_detail?.reason ?? null,
     settledAt: iso(row.settled_at),
     settlement: row.settle_detail && Object.keys(row.settle_detail).length > 0 ? row.settle_detail : null,
@@ -269,8 +271,11 @@ export function changeIntentDecision({
  * CHANGE_INTENT_MAX_WINDOW_MS. Returns the stored intent.
  */
 export async function createChangeIntent(client, {
-  tenantRef, approverPrincipalId, ownerPrincipalId, driftId, fields, naturalKey, resourceType, transitions,
-  reason, externalChangeId = null, windowStart, windowEnd, now = new Date(),
+  tenantRef, approverPrincipalId, ownerPrincipalId,
+  driftId = /** @type {string | null} */ (null), fields = /** @type {string[] | null} */ (null),
+  naturalKey = /** @type {string | null} */ (null), resourceType = /** @type {string | null} */ (null),
+  transitions = /** @type {Array<Record<string, unknown>> | null} */ (null),
+  reason, externalChangeId = /** @type {string | null} */ (null), windowStart, windowEnd, now = new Date(),
 }) {
   if (typeof reason !== 'string' || reason.trim().length === 0 || reason.length > 1000) {
     throw new ChangeIntentError('invalid', 'a reason is required');

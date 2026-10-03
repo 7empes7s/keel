@@ -1,4 +1,5 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
+import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
@@ -31,6 +32,7 @@ import type {
   DriftRecord,
   Fidelity,
   ProtectionState,
+  ProtectionHeadline,
   QualificationDecision,
   Ref,
   TypeQualification,
@@ -280,13 +282,17 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
   };
 }
 
-async function coverageFor(client: KeelClient, ref: string): Promise<CoverageData> {
-  const raw = (await buildCoverageReport(client, {
+async function rawCoverageReport(client: KeelClient, ref: string): Promise<UnknownRecord> {
+  return (await buildCoverageReport(client, {
     tenantRef: ref,
     catalog: CATALOG,
     descriptors: DESCRIPTORS,
     now: new Date(),
   })) as UnknownRecord;
+}
+
+async function coverageFor(client: KeelClient, ref: string, report?: UnknownRecord): Promise<CoverageData> {
+  const raw = report ?? await rawCoverageReport(client, ref);
   const rawSummary = raw.summary as UnknownRecord;
   const types = (raw.types as UnknownRecord[]).map(normalizeCoverageType);
 
@@ -629,46 +635,46 @@ export function buildAlerts({
   if (!activeBaseline) {
     alerts.push({
       severity: "critical",
-      title: "No active baseline",
-      detail: "Drift cannot be evaluated until a baseline is active.",
+      title: "No baseline is active",
+      detail: "KEEL cannot tell what changed until a baseline is set.",
     });
   } else if (activeBaseline.resourceCount === 0) {
     alerts.push({
       severity: "critical",
-      title: "Active baseline is empty",
-      detail: "It contains zero resources and cannot represent tenant state.",
+      title: "The active baseline is empty",
+      detail: "It holds no resources, so it cannot describe how the tenant should look.",
     });
   }
 
   if (!lastCollection) {
     alerts.push({
       severity: "critical",
-      title: "No collection exists",
-      detail: "KEEL has no recorded tenant snapshot.",
+      title: "Nothing has been backed up",
+      detail: "KEEL holds no snapshot of this tenant, so there is nothing to restore from.",
     });
   } else if (lastCollection.status !== "complete") {
     alerts.push({
       severity: "warning",
-      title: `Latest collection is ${lastCollection.status.toUpperCase()}`,
+      title: lastCollection.status === "running" ? "The latest backup is still running" : "The latest backup did not finish",
       detail: lastCollection.completedAt
-        ? "The latest snapshot did not complete successfully."
-        : "The latest snapshot has no completion timestamp.",
+        ? "Its snapshot did not complete successfully."
+        : "Its snapshot has no finish time yet.",
     });
   }
 
   if (coverage.failed > 0) {
     alerts.push({
       severity: "critical",
-      title: `${coverage.failed} ${coverage.failed === 1 ? "type" : "types"} FAILED collection`,
-      detail: "The last completed collection returned zero items. KEEL does not count this as coverage.",
+      title: `${coverage.failed} configuration ${coverage.failed === 1 ? "type" : "types"} failed ${coverage.failed === 1 ? "its" : "their"} last backup`,
+      detail: "KEEL does not count a failed read as backed up. Retry the backup or check permissions.",
     });
   }
 
   if (coverage.stale > 0) {
     alerts.push({
       severity: "warning",
-      title: `${coverage.stale} ${coverage.stale === 1 ? "catalog type is" : "catalog types are"} stale`,
-      detail: "Run a collection for the stale types; they were collected successfully but are no longer recent enough for their tier.",
+      title: `${coverage.stale} configuration ${coverage.stale === 1 ? "type is" : "types are"} out of date`,
+      detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup.",
     });
   }
 
@@ -676,16 +682,16 @@ export function buildAlerts({
   if (uncovered > 0) {
     alerts.push({
       severity: "warning",
-      title: `${uncovered} catalog ${uncovered === 1 ? "type is" : "types are"} not covered`,
-      detail: "These known configuration surfaces have no successful non-zero collection.",
+      title: `${uncovered} configuration ${uncovered === 1 ? "type is" : "types are"} not backed up`,
+      detail: "KEEL knows these configuration types but has no successful backup of them.",
     });
   }
 
   if (!evidence.ok) {
     alerts.push({
       severity: "critical",
-      title: "Evidence chain integrity failed",
-      detail: "Governance evidence cannot be trusted until the chain is investigated.",
+      title: "The audit record failed its integrity check",
+      detail: "Who-did-what records cannot be trusted until this is investigated.",
     });
   }
 
@@ -710,7 +716,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       tenantRef: ref,
     })) as { ok: boolean; chainLength: number };
     const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
-    const coverageData = await coverageFor(client, ref);
+    const rawCoverage = await rawCoverageReport(client, ref);
+    const coverageData = await coverageFor(client, ref, rawCoverage);
+    // Task-129: the Overview sentence comes from this same report, never a constant.
+    const headline = protectionHeadline(rawCoverage.types as never) as ProtectionHeadline;
     const generatedAt = new Date();
     const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
 
@@ -743,6 +752,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         chainLength: Number(evidenceRaw.chainLength),
       },
       alerts: [],
+      headline,
     };
 
     data.alerts = buildAlerts(data);

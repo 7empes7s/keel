@@ -121,3 +121,127 @@ export const ASSESSMENT_VERDICT_LABELS = {
   clean: "Clean",
   compromised: "Unsafe",
 } as const;
+
+// What a viewer can do, in words (contract vocabulary: "what you can do here", never
+// "capabilities"). Order follows the work: decide, recover, operate, administer.
+const CAPABILITY_VERBS: Record<string, string> = {
+  approve: "approve",
+  restore: "restore",
+  rollback: "undo",
+  remediate: "fix changes",
+  investigate: "investigate incidents",
+  "dispose-accept": "decide on changes",
+  collect: "run backups",
+  backup: "run backups",
+  "baseline-create": "create baselines",
+  policies: "manage policies",
+  users: "manage people",
+  roles: "grant roles",
+  configuration: "change settings",
+};
+
+export function accessSummary(capabilities: string[]): string {
+  const verbs = [...new Set(capabilities.filter((capability) => capability !== "read")
+    .map((capability) => CAPABILITY_VERBS[capability] ?? words(capability).toLowerCase()))];
+  if (verbs.length === 0) return capabilities.includes("read") ? "You can view" : "No access";
+  // Three verbs at most; the rest are counted, and the full list is in the title.
+  const shown = verbs.length > 3 ? [...verbs.slice(0, 3), `${verbs.length - 3} more`] : verbs;
+  const list = shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`;
+  return `You can ${list}`;
+}
+
+// Portal experience contract, rule 4: every stored code the portal renders goes
+// through this one map. A value missing from it renders as its words (and
+// portal/test/experience-contract.test.ts fails for any value the fixtures use).
+export const DISPLAY_ENUMS = {
+  jobKind: {
+    collect: "Backup of every type",
+    backup: "Backup",
+    prune: "Clean-up of old snapshots",
+    "drift-detect": "Change check",
+    offsite: "Off-site copy",
+    restore: "Restore",
+    "restore-dry-run": "Dry run of a restore",
+    remediate: "Roll back changes",
+    "baseline-create": "Baseline creation",
+    "baseline-activate": "Baseline activation",
+    "policy-evaluate": "Policy run",
+    notify: "Notification",
+    "api-drift": "Microsoft API check",
+  },
+  jobStatus: {
+    queued: "Waiting to start",
+    running: "Running",
+    succeeded: "Finished",
+    failed: "Failed",
+    cancelled: "Cancelled",
+  },
+  policyAction: {
+    alert: "Alert only",
+    require_approval: "Ask for approval",
+    auto_remediate: "Roll back automatically",
+    "dispose-accept": "Accept automatically",
+  },
+  blastRadius: {
+    "tenant-lockout": "Could lock out admins",
+    "access-affecting": "Affects access",
+    cosmetic: "Cosmetic",
+  },
+  changeType: {
+    added: "Added",
+    modified: "Changed",
+    removed: "Removed",
+  },
+  decision: {
+    accept: "Accept",
+    rollback: "Roll back",
+    ignore: "Ignore",
+  },
+  approvalStatus: {
+    pending: "Waiting for a decision",
+    approved: "Approved",
+    rejected: "Rejected",
+    expired: "Expired",
+  },
+  deliveryStatus: {
+    queued: "Waiting to send",
+    delivering: "Sending",
+    retrying: "Retrying",
+    delivered: "Delivered",
+    failed: "Failed",
+    cancelled: "Cancelled",
+  },
+  exportStatus: {
+    pending: "Waiting to send",
+    delivering: "Sending",
+    acknowledged: "Received",
+    quarantined: "Held back",
+  },
+  severity: {
+    notice: "Notice",
+    warning: "Warning",
+    critical: "Critical",
+  },
+  role: {
+    viewer: "Viewer",
+    operator: "Operator",
+    approver: "Approver",
+    restorer: "Restorer",
+    investigator: "Investigator",
+    admin: "Admin",
+  },
+  eventKind: {
+    "drift.detected": "A change was detected",
+    "approval.decided": "An approval was decided",
+    "job.started": "A job started",
+    "collection.completed": "A backup finished",
+  },
+} as const;
+
+export type DisplayEnumGroup = keyof typeof DISPLAY_ENUMS;
+
+export function displayEnum(group: DisplayEnumGroup, value: string | null | undefined): string {
+  if (!value) return "Unknown";
+  const map = DISPLAY_ENUMS[group] as Record<string, string>;
+  return map[value] ?? words(value.replaceAll("_", "-").replaceAll(".", " "));
+}

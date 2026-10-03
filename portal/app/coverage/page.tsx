@@ -20,7 +20,7 @@ export default async function CoveragePage() {
       <>
         <PageHeader
           description="Every known configuration type, including failed collections and missing adapters."
-          eyebrow="Protection inventory"
+          section="Protect"
           marker="Read-only"
           title="Coverage"
         />
@@ -33,7 +33,7 @@ export default async function CoveragePage() {
     <>
       <PageHeader
         description="Every known configuration type, including failed collections and missing adapters."
-        eyebrow="Protection inventory"
+        section="Protect"
         generatedAt={data.generatedAt}
         marker="Read-only"
         title="Coverage"

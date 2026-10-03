@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { postureFor } from "@/components/dashboard/status-hero";
+import { overviewVerdict } from "@/components/dashboard/status-hero";
+import type { ProtectionHeadline } from "@/lib/types";
 import { DRIFT_TREND_DAYS, fillDriftTrend } from "@/lib/portal-data";
 
 test("the drift trend has one zero-filled point per UTC day, ending today", () => {
@@ -14,11 +15,20 @@ test("the drift trend has one zero-filled point per UTC day, ending today", () =
   assert.equal(trend.reduce((sum, point) => sum + point.count, 0), 6, "days outside the window are dropped");
 });
 
-test("posture is the worst alert severity, and never claims more than was checked", () => {
+test("the verdict keeps the engine's sentence; alerts can only make its tone worse", () => {
   const critical = { severity: "critical" as const, title: "a", detail: "" };
   const warning = { severity: "warning" as const, title: "b", detail: "" };
-  assert.equal(postureFor([warning, critical]).tone, "critical");
-  assert.match(postureFor([warning, critical]).summary, /1 critical issue and 1 warning/);
-  assert.equal(postureFor([warning]).headline, "Degraded");
-  assert.equal(postureFor([]).headline, "No issues detected");
+  const proven: ProtectionHeadline = {
+    state: "proven", tone: "good", headline: "Protected",
+    sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.",
+    action: null, counts: { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 },
+    lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null,
+  };
+  assert.deepEqual(overviewVerdict(proven, []), { tone: "good", headline: "Protected", sentence: proven.sentence, action: null });
+  assert.equal(overviewVerdict(proven, [warning]).tone, "attention");
+  assert.equal(overviewVerdict(proven, [warning]).headline, "Protected");
+  const withCritical = overviewVerdict(proven, [warning, critical]);
+  assert.equal(withCritical.tone, "critical");
+  assert.equal(withCritical.headline, "Action needed");
+  assert.equal(withCritical.sentence, proven.sentence, "the number is never replaced by an alert");
 });

@@ -4169,6 +4169,17 @@ section.wizard-panel {
   background: var(--surface-muted);
 }
 
+/* Task-61: membership edge changes in the restore review. */
+.edge-list .edge-add { border-left-color: var(--accent); }
+.edge-list .edge-remove { border-left-color: var(--failed); }
+
+.edge-action {
+  display: inline-block;
+  min-width: 4.75rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
 .restore-table[aria-busy="true"] tbody {
   opacity: 0.6;
   transition: opacity var(--duration-base) var(--ease-out);

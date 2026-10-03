@@ -172,6 +172,22 @@ function graphFailure(naturalKey, result) {
   return failure;
 }
 
+// Parent types whose edges are relationship observations (task-57), and the
+// navigation properties that would write those edges through the parent.
+const RELATIONSHIP_NAVIGATION = new Map([
+  ['group', ['members', 'owners', 'transitiveMembers']],
+  ['application', ['owners']],
+  ['servicePrincipal', ['owners', 'appRoleAssignments']],
+]);
+
+function relationshipNavigationFields(resourceType, payload) {
+  const navigation = RELATIONSHIP_NAVIGATION.get(resourceType);
+  if (!navigation || !payload || typeof payload !== 'object') return [];
+  return Object.keys(payload).filter((field) => navigation.some(
+    (name) => field === name || field === `${name}@odata.bind` || field === `${name}@delta`,
+  ));
+}
+
 async function journalBeforeMutation(rollbackClient, { runId, naturalKey, priorState }) {
   if (!rollbackClient) return true;
   try {
@@ -240,6 +256,22 @@ export async function applyWave(writer, governor, wave, {
         error: `unsupported operation: ${resource.resourceType} ${effectiveVerb} is not a registered write capability (claim: ${capabilityGate.capability?.claim ?? 'unsupported'})`,
       });
       continue;
+    }
+
+    // Roadmap task-61: an edge is never written through its parent. A group
+    // payload carrying membership/ownership navigation (a `members` array, an
+    // `owners@odata.bind`, ...) is refused here; edges go only through the
+    // qualified $ref handlers in relationshipWriter.mjs, which read, journal and
+    // verify each edge individually.
+    if (resource.verb !== 'delete') {
+      const smuggled = relationshipNavigationFields(resource.resourceType, resource.payload);
+      if (smuggled.length > 0) {
+        failed.push({
+          naturalKey: resource.naturalKey,
+          error: `relationship-via-parent refused: ${resource.resourceType} payload carries ${smuggled.join(', ')} — edges are written only through qualified $ref operations`,
+        });
+        continue;
+      }
     }
 
     if (resource.verb === 'delete') {

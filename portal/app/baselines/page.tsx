@@ -8,7 +8,7 @@ import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
-import { ago } from "@/lib/presentation";
+import { baselinesVerdict } from "@/lib/compliance-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getBaselinesData } from "@/lib/portal-data";
 import {
@@ -72,14 +72,12 @@ export default async function BaselinesPage() {
         title="Baselines"
       />
       <Verdict
-        text={active
-          ? `The active baseline is “${active.label ?? "Unnamed baseline"}”, set ${ago(active.setAt, data.generatedAt)}.`
-          : "No baseline is active, so KEEL cannot tell what changed."}
+        text={baselinesVerdict(active, data.generatedAt)}
         tone={active ? "good" : "critical"}
       />
 
       <div data-layer="explanation">
-      <BaselineRegister baselines={data.baselines} canBaseline={canBaseline} now={data.generatedAt} />
+      <BaselineRegister baselines={data.baselines} canBaseline={canBaseline} now={data.generatedAt} snapshots={snapshots} />
 
       <BaselineCreateForm
         completedSnapshotsExist={completedSnapshotsExist}

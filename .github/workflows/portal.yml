@@ -127,6 +127,7 @@ jobs:
           roadmap/change-attribution.test.mjs
           roadmap/fidelity-expansion.test.mjs
           roadmap/policy-fidelity.test.mjs
+          roadmap/administrative-fidelity.test.mjs
           roadmap/drill-harness.test.mjs
           roadmap/recovery-metrics.test.mjs
           roadmap/schedule-forecast.test.mjs

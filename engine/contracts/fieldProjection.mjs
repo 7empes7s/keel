@@ -128,6 +128,19 @@ registerFieldProjection('authenticationStrengthPolicy', {
   ],
 });
 
+// Roadmap task-109: the administrative-configuration subset. Anything Graph
+// adds later stays 'unknown': never written, and reported.
+registerFieldProjection('groupSetting', {
+  knownFields: ['id', 'displayName', 'templateId', 'values'],
+});
+
+registerFieldProjection('administrativeUnit', {
+  knownFields: [
+    'id', 'displayName', 'description', 'visibility', 'isMemberManagementRestricted',
+    'membershipType', 'membershipRule', 'membershipRuleProcessingState',
+  ],
+});
+
 // Roadmap task-107: the first application/service-principal subset. Only the
 // fields named here can reach a create or update body; anything else Graph adds
 // later is 'unknown', excluded and flagged rather than silently written.

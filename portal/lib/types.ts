@@ -66,6 +66,20 @@ export interface TypeQualification {
   softRestoreCandidate: boolean;
   // Per write operation that rewrites references: is remapping to a different id proven?
   remapping: Record<string, boolean>;
+  // Roadmap task-107: the expansion batch the type belongs to. Null on legacy reports.
+  expansion?: TypeExpansion | null;
+}
+
+export type ExpansionStatus = "qualified-subset" | "manual" | "unsupported" | "research-needed";
+export type RestoreScope = "none" | "partial" | "full";
+
+export interface TypeExpansion {
+  batch: string;
+  batchLabel: string;
+  status: ExpansionStatus;
+  // Derived from registered operations only, never declared.
+  restoreScope: RestoreScope;
+  reason: string;
 }
 
 // Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,

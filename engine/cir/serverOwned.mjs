@@ -87,6 +87,21 @@ IMMUTABLE.set('roleAssignment', new Set([
 
 IMMUTABLE.set('authenticationStrengthPolicy', new Set(['allowedCombinations']));
 
+// Roadmap task-107. Immutable, not serverOwned, so the configuration hash is
+// unchanged for every stored snapshot (no legacy re-hash) and a change to these
+// fields still reads as real drift, reported not-auto-remediable. appId and
+// publisherDomain are assigned by Entra; credential material can never be read
+// back (Graph returns hints and key metadata, never a secret or private key), so
+// no PATCH may carry it. The create path drops them too (qualification.mjs's
+// CREATE_EXCLUDED_FIELDS) and a recreate leaves owned credential completion items.
+IMMUTABLE.set('application', new Set(['appId', 'publisherDomain', 'passwordCredentials', 'keyCredentials']));
+// A service principal is bound to its application by appId for its whole life;
+// the rest is published from the application, never authored on the principal.
+IMMUTABLE.set('servicePrincipal', new Set([
+  'appId', 'appDisplayName', 'appOwnerOrganizationId', 'servicePrincipalNames', 'servicePrincipalType',
+  'signInAudience', 'appRoles', 'oauth2PermissionScopes', 'passwordCredentials', 'keyCredentials',
+]));
+
 // namedLocation needs no entries — every field it collects (displayName, isTrusted,
 // ipRanges, countriesAndRegions, includeUnknownCountriesAndRegions) is writable, so
 // the empty default SERVER_OWNED/IMMUTABLE sets are already correct.

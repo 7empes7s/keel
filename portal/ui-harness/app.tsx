@@ -44,6 +44,8 @@ import { integrationsVerdict } from "@/lib/integrations-view";
 import type { Policy } from "@/lib/policies";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
+import { AlertInbox } from "@/components/alert-inbox";
+import { alertsVerdict, type AlertItem } from "@/lib/alerts-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -140,6 +142,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
   if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
+  if (url.endsWith("/api/actions/alerts")) return json({ alert: { id: INBOX_ALERTS[0].id, state: "acknowledged" } });
   if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });
   return json({ job: { id: "preview-job" }, approvalRequest: { id: "preview" } });
 }) as typeof fetch;
@@ -443,6 +446,48 @@ const SETUP: SetupState = {
 };
 const setupVerdictFixture = setupVerdict(SETUP);
 
+// Task-83: an overdue, escalated alert; an acknowledged one; a resolved one.
+const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"] | null, toState: AlertItem["state"], reason: string, at: string, actorName: string | null = null) =>
+  ({ id, occurrence, fromState, toState, reason, actor: actorName ? "8c1e0000-0000-4000-8000-0000000000a1" : "condition:drift-detect", actorName, at, eventId: null });
+const INBOX_ALERTS: AlertItem[] = [
+  {
+    id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift",
+    state: "reopened", conditionActive: true, severity: "warning", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
+    occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
+    acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
+    escalated: true, escalationError: null, cause: { changeType: "modified", resourceType: "conditionalAccessPolicy", snapshotId: "5a9f0000-0000-4000-8000-000000000031" },
+    lastEventId: "drift:5a9f0000-0000-4000-8000-000000000031:conditionalAccessPolicy:Block legacy auth",
+    history: [
+      alertEntry("1", 1, null, "open", "condition-firing", "2026-09-30T08:00:00Z"),
+      alertEntry("2", 1, "open", "acknowledged", "acknowledged", "2026-09-30T08:20:00Z", "Marouane"),
+      alertEntry("3", 1, "acknowledged", "resolved", "condition-resolved", "2026-10-01T08:00:00Z"),
+      alertEntry("4", 2, "resolved", "reopened", "condition-recurred", "2026-10-02T08:10:00Z"),
+      alertEntry("5", 2, "reopened", "reopened", "escalated-ack-deadline-missed", "2026-10-02T09:10:00Z"),
+    ],
+  },
+  {
+    id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", control: "baseline", condition: "drift",
+    state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
+    occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
+    acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: null,
+    cause: { changeType: "removed", resourceType: "group", snapshotId: "5a9f0000-0000-4000-8000-000000000032" },
+    lastEventId: "drift:5a9f0000-0000-4000-8000-000000000032:group:Finance",
+    history: [alertEntry("6", 1, null, "open", "condition-firing", "2026-10-02T09:30:00Z")],
+  },
+  {
+    id: "a1e70000-0000-4000-8000-000000000003", resourceKey: "group:Break-glass admins", control: "baseline", condition: "drift",
+    state: "resolved", conditionActive: false, severity: "critical", occurrence: 1, firstOpenedAt: "2026-09-28T10:00:00Z",
+    occurrenceStartedAt: "2026-09-28T10:00:00Z", lastFiringAt: "2026-09-28T10:00:00Z", ackDeadlineAt: "2026-09-28T10:30:00Z",
+    acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
+    escalated: false, escalationError: null, cause: { changeType: "modified", resourceType: "group", snapshotId: null },
+    lastEventId: "drift-clear:5a9f0000-0000-4000-8000-000000000030:group:Break-glass admins",
+    history: [
+      alertEntry("7", 1, null, "open", "condition-firing", "2026-09-28T10:00:00Z"),
+      alertEntry("8", 1, "open", "resolved", "resolved-by-operator", "2026-09-28T10:12:00Z", "Marouane"),
+    ],
+  },
+];
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -528,6 +573,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div className="item-list" data-layer="explanation">
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
+    case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Changes", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }
     case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
       <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
       <div className="item-list" data-layer="explanation">

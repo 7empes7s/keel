@@ -4,6 +4,7 @@ import { findPrincipalById } from '../authz/principals.mjs';
 import { defineEvent } from '../telemetry/events.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { auditSizing } from './auditSizing.mjs';
+import { insertAttributionFact, migrateChangeAttribution, minimizeAttributionFact, pruneAttributionFacts } from './attribution.mjs';
 
 // Explicit, additive and retry-safe migration; never invoked by a read or disabled worker.
 export async function migrateAuditIngestion(client) {
@@ -27,6 +28,8 @@ export async function migrateAuditIngestion(client) {
     );
     CREATE INDEX IF NOT EXISTS audit_ingest_run_tenant ON audit_ingest_run(tenant_ref, source, started_at DESC);
   `);
+  // Task 91: minimized attribution facts beside the minimized events.
+  await migrateChangeAttribution(client);
 }
 
 function safeRef(value) {
@@ -91,7 +94,7 @@ export async function ingestAudit(client, options) {
   if (!locked.rows[0].locked) return { status: 'busy' };
   const runId = randomUUID(), started = Date.now();
   const evidence = { status: 'running', requests: 0, observedEvents: 0, insertedEvents: 0, storedBytes: 0,
-    retentionGap: null, synthetic: archiveRef === undefined ? adapter.synthetic : false,
+    retentionGap: null, retentionDays, synthetic: archiveRef === undefined ? adapter.synthetic : false,
     window: { from, until }, transitions: ['running'] };
   let runCreated = false;
   const save = async (status) => {
@@ -158,7 +161,7 @@ export async function ingestAudit(client, options) {
         events = page.events.map((event) => {
           const occurredAt = instant(event.occurredAt);
           if (occurredAt < windowFrom || occurredAt > until) throw new Error('event outside window');
-          return { id: safeRef(event.id), occurredAt };
+          return { id: safeRef(event.id), occurredAt, fact: minimizeAttributionFact(source, event) };
         });
       } catch { status = 'invalid-page'; break; }
       await authorize(client, options, 'collect');
@@ -173,12 +176,19 @@ export async function ingestAudit(client, options) {
           const result = await client.query(`INSERT INTO audit_ingest_event(tenant_ref,source,source_event_id,occurred_at)
             VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantRef, source, event.id, event.occurredAt]);
           insertedEvents += result.rowCount;
-          storedBytes += result.rowCount * Buffer.byteLength(JSON.stringify(event));
+          storedBytes += result.rowCount * Buffer.byteLength(JSON.stringify({ id: event.id, occurredAt: event.occurredAt }));
+          // Task 91: the minimized attribution fact is stored with its event, in this
+          // transaction, so a fact never outlives a page whose cursor did not advance.
+          if (event.fact && result.rowCount) {
+            const facts = await insertAttributionFact(client, { tenantRef, eventId: event.id, occurredAt: event.occurredAt, fact: event.fact });
+            storedBytes += facts * Buffer.byteLength(JSON.stringify(event.fact));
+          }
         }
         await client.query(`UPDATE audit_ingest_state SET cursor=$3, window_from=$4, window_until=$5, complete=$6,
           retention_gap=COALESCE($7::jsonb,retention_gap)
           WHERE tenant_ref=$1 AND source=$2`, [tenantRef, source, nextCursor, windowFrom, until, nextCursor === null, gap]);
         await client.query(`DELETE FROM audit_ingest_event WHERE tenant_ref=$1 AND source=$2 AND occurred_at < $3::timestamptz - $4 * interval '1 day'`, [tenantRef, source, until, retentionDays]);
+        await pruneAttributionFacts(client, { tenantRef, source, until, retentionDays });
         evidence.observedEvents += events.length;
         evidence.insertedEvents += insertedEvents;
         evidence.storedBytes += storedBytes;

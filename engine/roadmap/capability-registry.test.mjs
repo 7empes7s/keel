@@ -36,6 +36,8 @@ const REGISTERED = Object.freeze({
   // Roadmap task-107: the first application/service-principal subset.
   application: ['create', 'update', 'restore-soft-deleted'],
   servicePrincipal: ['create'],
+  // Roadmap task-108: custom authentication strengths only.
+  authenticationStrengthPolicy: ['create', 'update'],
 });
 
 function governor() {

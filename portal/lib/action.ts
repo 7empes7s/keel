@@ -20,6 +20,7 @@ import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
+import { acknowledgeForecastWarning } from "../../engine/schedules/forecast.mjs";
 
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, entityScopeFrom } from "@/lib/principal";
@@ -404,6 +405,25 @@ export function guardedScheduleUpdate(deps: GuardDeps = {}) {
         "SELECT * FROM schedule WHERE id = $1 AND tenant_ref = $2", [id, tenantRef],
       );
       if (!row) return notFound();
+      // Roadmap task-110: acknowledging a measured load warning is its own request. It
+      // never changes the cadence, and the engine re-checks the configuration grant.
+      if ("acknowledgeForecast" in changes) {
+        if (Object.keys(changes).length !== 1) throw new InvalidActionRequest();
+        try {
+          const acknowledgement = await acknowledgeForecastWarning(client, { id: principalId }, {
+            tenantRef, scheduleId: id, codes: changes.acknowledgeForecast,
+          });
+          return Response.json({ acknowledgement }, { headers: NO_STORE });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          if (message === "not authorized to edit schedules") return forbidden();
+          if (message === "schedule not found") return notFound();
+          if (message === "forecast_warning_not_current" || message === "invalid forecast warning codes") {
+            return Response.json({ error: message }, { status: 400, headers: NO_STORE });
+          }
+          throw error;
+        }
+      }
       const cadence = changes.cadence as Record<string, unknown> | null | undefined;
       if (!Object.keys(changes).length
         || Object.keys(changes).some((key) => !["cadence", "cron_override", "enabled"].includes(key))

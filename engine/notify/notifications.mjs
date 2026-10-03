@@ -9,6 +9,9 @@ import { spawn } from 'node:child_process';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { enqueue } from '../jobs/queue.mjs';
+import {
+  ADAPTER_KINDS, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports, validateChannelConfig,
+} from './adapters.mjs';
 
 export const DELIVERY_RETRY_BASE_MS = 30 * 1000;
 export const DELIVERY_RETRY_MAX_MS = 60 * 60 * 1000;
@@ -65,10 +68,16 @@ export function retryDelayMs(attempt) {
   );
 }
 
+export const CHANNEL_KINDS = Object.freeze(['webhook', 'email', ...ADAPTER_KINDS]);
+export const CHANNEL_KIND_ERROR = `channel.kind must be one of ${CHANNEL_KINDS.join(', ')}`;
+
 export async function createChannel(client, { kind, config, enabled = true }) {
-  if (!['webhook', 'email'].includes(kind)) {
-    throw new Error('channel.kind must be webhook or email');
+  if (!CHANNEL_KINDS.includes(kind)) {
+    throw new Error(CHANNEL_KIND_ERROR);
   }
+  // Task 84: provider channels hold credential references only, and an unsupported
+  // endpoint or provider is refused here rather than stored as if it could send.
+  if (ADAPTER_KINDS.includes(kind)) validateChannelConfig(kind, config ?? {});
   const { rows } = await client.query(
     `INSERT INTO channel (kind, config, enabled)
      VALUES ($1,$2,$3)
@@ -130,20 +139,9 @@ export async function dispatchAlert(client, {
 
     const deliveries = [];
     for (const subscription of selectedChannels.values()) {
-      const { rows } = await client.query(
-        `INSERT INTO delivery (event, channel_id, requested_by, max_attempts)
-         VALUES ($1,$2,$3,$4)
-         RETURNING *`,
-        [event, subscription.channel_id, requestedBy, maxAttempts],
-      );
-      const delivery = rows[0];
-      const job = await enqueue(client, {
-        kind: 'notify',
-        params: { deliveryId: delivery.id },
-        requestedBy,
-        idempotencyKey: `delivery:${delivery.id}:attempt:1`,
-      });
-      deliveries.push({ delivery, job });
+      deliveries.push(await queueDelivery(client, {
+        event, channelId: subscription.channel_id, requestedBy, maxAttempts,
+      }));
     }
     await client.query('COMMIT');
     committed = true;
@@ -151,6 +149,45 @@ export async function dispatchAlert(client, {
   } finally {
     if (!committed) await client.query('ROLLBACK');
   }
+}
+
+// One durable delivery and its first notify job, inside the caller's transaction. The
+// caller has already authorized `requestedBy` (dispatchAlert, or task-83 escalation,
+// which addresses its configured channel directly instead of through subscriptions).
+export async function queueDelivery(client, {
+  event, channelId, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS,
+}) {
+  requireEvent(event);
+  const { rows } = await client.query(
+    `INSERT INTO delivery (event, channel_id, requested_by, max_attempts)
+     VALUES ($1,$2,$3,$4)
+     RETURNING *`,
+    [event, channelId, requestedBy, maxAttempts],
+  );
+  const delivery = rows[0];
+  const job = await enqueue(client, {
+    kind: 'notify',
+    params: { deliveryId: delivery.id },
+    requestedBy,
+    idempotencyKey: `delivery:${delivery.id}:attempt:1`,
+  });
+  return { delivery, job };
+}
+
+// Task 83: an escalation is only worth sending while its alert occurrence is still
+// unacknowledged and active. It is re-checked here, immediately before the transport,
+// because the acknowledgement can land at any point after the escalation was queued.
+async function alertPreconditionFailure(client, event) {
+  if (!event?.requiresUnacknowledged) return null;
+  const { rows: [alert] } = await client.query(
+    'SELECT state, occurrence, condition_active FROM alert WHERE id::text = $1',
+    [String(event.alertId ?? '')],
+  );
+  if (!alert) return 'alert no longer exists';
+  if (alert.occurrence !== event.occurrence) return 'alert occurrence changed before the escalation was sent';
+  if (!alert.condition_active) return 'alert resolved before the escalation was sent';
+  if (!['open', 'reopened'].includes(alert.state)) return `alert ${alert.state} before the escalation was sent`;
+  return null;
 }
 
 // `dispatchEvent` is the notification-model name used by callers that do not think
@@ -216,15 +253,16 @@ async function sendEmail({ channel, event }) {
 export const DEFAULT_TRANSPORTS = Object.freeze({
   webhook: sendWebhook,
   email: sendEmail,
+  ...createAdapterTransports(),
 });
 
-async function markUnavailableChannel(client, delivery, error) {
+async function markUnavailableChannel(client, delivery, error, receipt = null) {
   const { rows } = await client.query(
     `UPDATE delivery
-        SET status = 'cancelled', last_error = $2
+        SET status = 'cancelled', last_error = $2, provider_receipt = COALESCE($3, provider_receipt)
       WHERE id = $1
       RETURNING *`,
-    [delivery.id, error],
+    [delivery.id, error, receipt],
   );
   return rows[0];
 }
@@ -265,37 +303,51 @@ export async function attemptDelivery(client, {
     };
   }
 
+  const stale = await alertPreconditionFailure(client, delivery.event);
+  if (stale) return { delivery: await markUnavailableChannel(client, delivery, stale), attempted: false };
+
   try {
     const transport = transports[channel.kind];
     if (typeof transport !== 'function') {
       throw new Error(`no transport registered for channel kind: ${channel.kind}`);
     }
-    await transport({ channel, event: delivery.event });
+    const sent = await transport({ channel, event: delivery.event, delivery });
     const { rows } = await client.query(
       `UPDATE delivery
-          SET status = 'delivered', delivered_at = now(), last_error = NULL
+          SET status = 'delivered', delivered_at = now(), last_error = NULL,
+              provider_receipt = COALESCE($2, provider_receipt)
         WHERE id = $1
         RETURNING *`,
-      [delivery.id],
+      [delivery.id, sent?.receipt ?? null],
     );
     return { delivery: rows[0], attempted: true };
   } catch (cause) {
     const error = cause instanceof Error ? cause.message : String(cause);
-    const retry = delivery.attempts < delivery.max_attempts;
+    // Task 84: a provider adapter says what kind of failure this was. Missing setup is
+    // not retried (nothing was sent); a provider refusal is final; throttling waits for
+    // the provider's Retry-After instead of KEEL's own backoff.
+    const outcome = cause instanceof NotificationSendError ? cause.outcome : 'retry';
+    const receipt = cause instanceof NotificationSendError ? cause.receipt : null;
+    if (outcome === 'unconfigured') {
+      return { delivery: await markUnavailableChannel(client, delivery, error, receipt), attempted: false };
+    }
+    const retry = outcome === 'retry' && delivery.attempts < delivery.max_attempts;
     const status = retry ? 'retrying' : 'failed';
-    const nextAttemptAt = retry
-      ? new Date(now.getTime() + retryDelayMs(delivery.attempts))
-      : null;
+    const waitMs = cause instanceof NotificationSendError && cause.retryAfterMs !== null
+      ? Math.min(cause.retryAfterMs, MAX_RETRY_AFTER_MS)
+      : retryDelayMs(delivery.attempts);
+    const nextAttemptAt = retry ? new Date(now.getTime() + waitMs) : null;
 
     await client.query('BEGIN');
     let committed = false;
     try {
       const { rows } = await client.query(
         `UPDATE delivery
-            SET status = $2, last_error = $3, next_attempt_at = COALESCE($4, next_attempt_at)
+            SET status = $2, last_error = $3, next_attempt_at = COALESCE($4, next_attempt_at),
+                provider_receipt = COALESCE($5, provider_receipt)
           WHERE id = $1
           RETURNING *`,
-        [delivery.id, status, error, nextAttemptAt],
+        [delivery.id, status, error, nextAttemptAt, receipt],
       );
       const failedDelivery = rows[0];
       if (retry) {

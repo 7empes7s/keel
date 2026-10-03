@@ -5809,3 +5809,16 @@ section.wizard-panel {
 .problem-badge.problem-failed { color: var(--failed); background: var(--failed-bg); }
 .problem-badge.problem-stale { color: var(--partial); background: var(--partial-bg); }
 .problem-badge.problem-never { color: var(--uncovered); background: var(--uncovered-bg); }
+
+/* Roadmap task-76: guided setup steps. */
+.setup-steps { display: grid; gap: 0.5rem; margin: 0.75rem 0 0; padding: 0; list-style: none; counter-reset: setup-step; }
+.setup-step { padding: 0.75rem 0.875rem; border: 1px solid var(--line); border-radius: 0.5rem; counter-increment: setup-step; }
+.setup-step-done { background: var(--surface-muted); }
+.setup-step-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.item-card .setup-step-head h3 { margin: 0; color: var(--text); font-size: 0.95rem; font-weight: 650; letter-spacing: normal; text-transform: none; overflow-wrap: anywhere; }
+.item-card .setup-step-head h3::before { content: counter(setup-step) ". "; color: var(--text-soft); }
+.setup-step .field-help { margin: 0.375rem 0 0; overflow-wrap: anywhere; }
+.setup-workloads { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0; padding: 0; border: 0; }
+.setup-workloads legend { float: left; margin-right: 0.25rem; font-weight: 600; }
+.setup-workloads label { display: inline-flex; align-items: center; gap: 0.375rem; }
+.setup-actions { flex-wrap: wrap; align-items: center; }

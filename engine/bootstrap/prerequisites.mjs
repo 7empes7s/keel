@@ -157,6 +157,11 @@ export function prerequisiteForWorkload(workload) {
   return REGISTRY.get(workload) ?? null;
 }
 
+/** Every registered workload prerequisite, in registration order (task-76 setup page). */
+export function registeredWorkloads() {
+  return [...REGISTRY.values()];
+}
+
 /**
  * Every grant name a set of registered workloads may request, per kind. This
  * is the derivation the plan's requested grants are checked against — a

@@ -23,6 +23,7 @@ const PAGES = [
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
+  { name: "setup", hash: "/setup" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -272,6 +273,7 @@ const RECORD_IDS: Record<string, string[]> = {
   integrations: ["de570000-0000-4000-8000-0000000000e1"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "0 0 * * 1"],
+  setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
 };
@@ -430,4 +432,27 @@ test("the undo plan fits a phone without sideways scrolling", async ({ page }) =
   await open(page, "/jobs/r10", "light");
   await planUndo(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+// Task-76: a setup step is done only when KEEL has seen it in the tenant, so the page
+// offers no way to tick one off; continuing re-checks the tenant through the route.
+test("setup shows the step waiting on the operator and continues through the guarded route", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup", "dark");
+  const read = page.locator("section", { has: page.getByRole("heading", { name: "Read access for backups" }) });
+  await expect(read.locator(".setup-step-waiting-for-you h3")).toHaveText('Give keel-collector the Intune role "Read Only Operator"');
+  await expect(read.locator(".setup-step-waiting-for-you .pill")).toHaveText("Waiting for you");
+  await expect(page.getByRole("button", { name: /mark|done|complete/i })).toHaveCount(0);
+  await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toBeVisible();
+  // The harness answers fetch in-page, so record the call where the page's reload keeps it.
+  await page.evaluate(() => {
+    const stub = window.fetch;
+    window.fetch = (input, init) => {
+      if (String(input).endsWith("/api/actions/setup")) sessionStorage.setItem("setup-call", String(init?.body));
+      return stub(input, init);
+    };
+  });
+  await read.getByRole("button", { name: "Continue setup" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("setup-call"))).not.toBeNull();
+  expect(JSON.parse((await page.evaluate(() => sessionStorage.getItem("setup-call")))!)).toEqual({ resume: "5e7a" + "0b".repeat(30) });
 });

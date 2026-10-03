@@ -1258,7 +1258,7 @@ dd {
 
 .drift-table,
 .baselines-table {
-  min-width: 54rem;
+  min-width: 72rem;
   border: 1px solid var(--line);
   background: var(--surface);
 }
@@ -2411,6 +2411,31 @@ input[type="checkbox"] {
   width: min(40rem, 100%);
   margin-top: 0;
   animation: rise-in var(--duration-slow) var(--ease-out) both;
+}
+
+/* Roadmap task-110: the measured load estimate beside each collect schedule. */
+.forecast-cell {
+  display: grid;
+  min-width: 16rem;
+  gap: 0.25rem;
+}
+
+.forecast-cell p {
+  margin: 0;
+}
+
+.forecast-warning {
+  padding-left: var(--space-xs);
+  border-left: 3px solid var(--partial);
+}
+
+.forecast-warning.forecast-accepted {
+  border-left-color: var(--line-strong);
+}
+
+.forecast-note {
+  color: var(--text-soft);
+  font-size: 0.875em;
 }
 
 .decision-controls {
@@ -5860,7 +5885,9 @@ section.wizard-panel {
   }
 
   .data-table th:empty,
-  .data-table td:empty {
+  .data-table td:empty,
+  .data-table tbody tr:last-child th:empty,
+  .data-table tbody tr:last-child td:empty {
     display: none;
   }
 
@@ -5904,6 +5931,51 @@ section.wizard-panel {
 
 .technical-details[open] > summary::before {
   content: "\25BE\FE0E";
+}
+
+/* Roadmap task-87: baseline capture notes, re-capture action, compliance findings. */
+.capture-note {
+  display: block;
+  margin-top: var(--space-2xs);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.baseline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.finding-card .item-card-head {
+  justify-content: space-between;
+}
+
+.finding-card .item-card-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.finding-card p {
+  margin: var(--space-2xs) 0 0;
+}
+
+.finding-open {
+  border-color: color-mix(in oklab, var(--failed) 45%, var(--line));
+}
+
+.finding-exception {
+  color: var(--text-soft);
+}
+
+.finding-exception-open {
+  color: var(--failed);
+  font-weight: 600;
 }
 
 /* People: each role on its own line with Remove beside it, and Add a role laid out

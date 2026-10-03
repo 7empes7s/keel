@@ -28,6 +28,7 @@ import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
+import { sweepEscalations } from '../engine/notify/escalation.mjs';
 import {
   emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -295,11 +296,16 @@ export const JOB_HANDLERS = {
   'baseline-create': {
     script: join(__dirname, 'keel-baseline-create.mjs'),
     argsFor(params = {}, job = {}) {
-      const args = [
-        '--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'),
-        '--label', requireString(params.label, 'params.label'),
-        '--set-by', requireString(job.requested_by, 'job.requested_by'),
-      ];
+      const args = ['--snapshot-id', requireString(params.snapshotId, 'params.snapshotId')];
+      // Task-87: a re-snapshot names the baseline it supersedes and may keep its
+      // derived "(vN)" label; a new baseline always needs a label.
+      if (params.supersedesBaselineId !== undefined) {
+        args.push('--supersedes', requireString(params.supersedesBaselineId, 'params.supersedesBaselineId'));
+        if (params.label !== undefined) args.push('--label', requireString(params.label, 'params.label'));
+      } else {
+        args.push('--label', requireString(params.label, 'params.label'));
+      }
+      args.push('--set-by', requireString(job.requested_by, 'job.requested_by'));
       if (params.description !== undefined) {
         args.push('--description', requireString(params.description, 'params.description'));
       }
@@ -590,6 +596,18 @@ export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTE
   }
 }
 
+// Task 83: between job polls, escalate alerts whose acknowledgement deadline passed.
+// Deadlines live on the alert rows, so a restarted worker finds every overdue alert;
+// the claim is atomic per occurrence, so several workers never escalate it twice.
+export async function sweepAlertEscalations(client, { workerId, now, log = console.error } = {}) {
+  try {
+    return await sweepEscalations(client, { now, log });
+  } catch (err) {
+    log(`worker ${workerId}: alert escalation sweep failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    return null;
+  }
+}
+
 // Optional one-shot collection seam. The normal queue loop stays disabled for
 // audit ingestion unless a trusted caller explicitly invokes this bounded worker.
 export async function runAuditIngestion(client, options) {
@@ -680,6 +698,7 @@ async function main() {
       // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
       // durable, so a drain failure must not kill the worker: the next poll retries.
       await drainSiemOutbox(client, { workerId });
+      await sweepAlertEscalations(client, { workerId });
       await sleep(pollIntervalMs);
       continue;
     }

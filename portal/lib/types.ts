@@ -56,6 +56,18 @@ export interface WriteCapabilitySummary {
   };
 }
 
+// Roadmap task-63: the explicit recovery decision for a catalogue type. Legacy
+// reports without it read as null, never as "automated".
+export type QualificationDecision = "automated" | "manual" | "unknown";
+
+export interface TypeQualification {
+  decision: QualificationDecision;
+  reason: string | null;
+  softRestoreCandidate: boolean;
+  // Per write operation that rewrites references: is remapping to a different id proven?
+  remapping: Record<string, boolean>;
+}
+
 // Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,
 // consent scope or role, additional to (never a replacement for) the raw
 // outcome/detail above.
@@ -113,6 +125,7 @@ export interface CoverageType {
   relationshipCompleteness?: "unknown" | "partial";
   diagnosis?: CoverageDiagnosis | null;
   writeCapability?: WriteCapabilitySummary | null;
+  qualification?: TypeQualification | null;
   observation?: CoverageObservation | null;
 }
 

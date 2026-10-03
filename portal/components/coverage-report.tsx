@@ -137,6 +137,30 @@ function capabilityMatrix(item: CoverageType) {
         </div>
 
         <div className="capability-row">
+          <dt>Recovery decision</dt>
+          <dd>
+            {item.qualification ? (
+              <span className="observation-detail">
+                <span className={`claim-badge decision-${item.qualification.decision}`}>
+                  {words(item.qualification.decision)}
+                </span>
+                {item.qualification.reason ? <small>{item.qualification.reason}</small> : null}
+                {Object.entries(item.qualification.remapping).map(([operation, qualified]) => (
+                  <small key={operation}>
+                    {words(operation)} remapping: {qualified ? "proven" : "not proven, refused when an id changes"}
+                  </small>
+                ))}
+                {item.qualification.softRestoreCandidate ? (
+                  <small>Soft-delete restore is a candidate, not yet qualified</small>
+                ) : null}
+              </span>
+            ) : (
+              <span className="muted-value">Unknown</span>
+            )}
+          </dd>
+        </div>
+
+        <div className="capability-row">
           <dt>Write capability by operation</dt>
           <dd>
             {item.writeCapability ? (

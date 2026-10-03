@@ -207,3 +207,12 @@ export interface DashboardData {
   evidence: { ok: boolean; chainLength: number };
   alerts: DashboardAlert[];
 }
+
+// Portal experience contract, rule 2: a field that holds another object's id is
+// rendered as that object's name. Readers resolve it server-side into a Ref.
+export interface Ref {
+  kind: string;
+  id: string;
+  name: string;
+  href: string | null;
+}

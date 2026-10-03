@@ -12,7 +12,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { POST as incidentsRoute } from "@/app/api/actions/incidents/route";
 import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
 import {
-  IncidentQualificationSummary, RecoveryPointTable, parseExclusions, recoveryPointStatusLabel,
+  IncidentQualificationSummary, RecoveryPointTable, exclusionLabel, incidentVerdict, parseExclusions, recoveryPointStatusLabel,
 } from "@/components/incident-recovery";
 import { visibleNavLinks } from "@/components/nav-links";
 import { getIncidentRecoveryData, type IncidentDetail } from "@/lib/portal-data";
@@ -21,52 +21,85 @@ import { tenantRef } from "@/lib/runtime-config";
 
 // ------------------------------------------------------------------ rendering
 
+const NOW = "2026-10-02T09:40:00Z";
+const person = (id: string, name: string) => ({ kind: "person", id, name, href: "/principals" });
+const inv = person("3f9c2b1e-0000-4000-8000-0000000000aa", "Ines Investigator");
+const snap = (id: string, name: string) => ({ kind: "snapshot", id, name, href: `/restore?snapshot=${id}` });
+const NEW_ID = "bbbbbbbb-0000-4000-8000-000000000002";
+const OLD_ID = "aaaaaaaa-0000-4000-8000-000000000001";
 const detail: IncidentDetail = {
-  incident: { id: "11111111-1111-4111-8111-111111111111", title: "Admin consent phishing", owner: "inv", status: "open", openedAt: "2026-10-01T08:00:00Z", closedAt: null },
-  intervals: [{ id: "w", startsAt: "2026-09-30T00:00:00Z", endsAt: null, reason: "first malicious sign-in", recordedBy: "inv" }],
-  pins: [{ id: "p1", snapshotId: "aaaaaaaa-0000-4000-8000-000000000001", reason: "last known good", pinnedBy: "inv", pinnedAt: "2026-10-01T09:00:00Z" }],
+  incident: { id: "11111111-1111-4111-8111-111111111111", title: "Admin consent phishing", owner: inv, status: "open", openedAt: "2026-10-01T08:00:00Z", closedAt: null },
+  intervals: [{ id: "22222222-0000-4000-8000-000000000003", startsAt: "2026-09-30T00:00:00Z", endsAt: null, reason: "first malicious sign-in", recordedBy: inv }],
+  pins: [{ id: "44444444-0000-4000-8000-000000000004", snapshotId: OLD_ID, reason: "last known good", pinnedBy: inv, pinnedAt: "2026-10-01T09:00:00Z" }],
   points: [
     {
-      snapshotId: "bbbbbbbb-0000-4000-8000-000000000002", observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
+      snapshotId: NEW_ID, snapshot: snap(NEW_ID, "Snapshot of 1 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
       inCompromiseWindow: true, status: "unsuitable", stale: false, reasons: ["observed during a compromise interval", "assessed compromised (v1)"], pinned: false,
-      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: "inv", assessedAt: "2026-10-01T10:00:00Z", fingerprint: "f1" },
+      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: inv, assessedAt: "2026-10-01T10:00:00Z", fingerprint: "f1".repeat(32) },
     },
     {
-      snapshotId: "aaaaaaaa-0000-4000-8000-000000000001", observedFrom: "2026-09-25T05:55:00Z", observedTo: "2026-09-25T06:00:00Z",
+      snapshotId: OLD_ID, snapshot: snap(OLD_ID, "Snapshot of 25 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-25T05:55:00Z", observedTo: "2026-09-25T06:00:00Z",
       inCompromiseWindow: false, status: "qualified", stale: false, reasons: ["assessed clean with 1 malicious-field exclusion(s) (v2)"], pinned: true,
       assessment: {
-        version: 2, verdict: "clean", exclusions: [{ naturalKey: "group:backdoor", field: null, reason: "attacker-created group" }],
-        assessedBy: "inv", assessedAt: "2026-10-01T10:05:00Z", fingerprint: "f2",
+        version: 2, verdict: "clean", exclusions: [{ naturalKey: "group:backdoor", field: null, reason: "attacker-created group", displayName: "Helpdesk Tier 0" }],
+        assessedBy: inv, assessedAt: "2026-10-01T10:05:00Z", fingerprint: "f2".repeat(32),
       },
     },
   ],
-  recommended: "aaaaaaaa-0000-4000-8000-000000000001",
+  recommended: OLD_ID,
 };
 
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+/** Text outside every [data-layer="record"] block (the contract's identifier test). */
+function outsideRecord(html: string): string {
+  return html.replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, "")
+    .replace(/<[^>]+>/g, " ");
+}
+
 test("statuses have plain-language labels", () => {
-  assert.equal(recoveryPointStatusLabel("qualified"), "Qualified");
-  assert.equal(recoveryPointStatusLabel("unsuitable"), "Unsuitable");
-  assert.equal(recoveryPointStatusLabel("unassessed"), "Unassessed");
+  assert.equal(recoveryPointStatusLabel("qualified"), "Cleared");
+  assert.equal(recoveryPointStatusLabel("unsuitable"), "Unsafe");
+  assert.equal(recoveryPointStatusLabel("unassessed"), "Not checked");
 });
 
-test("the table marks the engine's recommended point, not the newest, and never presents a pin as clean", () => {
-  const html = renderToStaticMarkup(createElement(RecoveryPointTable, { detail }));
+test("the verdict names the newest CLEARED snapshot in one short sentence, with one action", () => {
+  const verdict = incidentVerdict({ incidents: [detail.incident], selected: detail });
+  assert.equal(verdict.text, "Restore from the snapshot of 25 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
+  assert.ok(verdict.text.split(/\s+/).length <= 25);
+  assert.equal(verdict.action?.label, "Restore from this snapshot");
+  assert.match(verdict.action?.href ?? "", new RegExp(`snapshot=${OLD_ID}`));
+
+  const none = incidentVerdict({ incidents: [detail.incident], selected: { ...detail, recommended: null } });
+  assert.equal(none.tone, "critical");
+  assert.equal(none.action, null);
+  assert.match(incidentVerdict({ incidents: [], selected: null }).text, /No security incidents/);
+});
+
+test("rows name snapshots, people and resources; every id is labelled inside Technical details", () => {
+  const html = renderToStaticMarkup(createElement(RecoveryPointTable, { detail, now: NOW }));
+  const visible = outsideRecord(html);
+  assert.doesNotMatch(visible, UUID, "no id outside the record layer");
+  assert.doesNotMatch(visible, /\bgroup:backdoor\b/, "no resource key outside the record layer");
+  assert.doesNotMatch(visible, /qualif|natural key|fingerprint/i, "no internal vocabulary outside the record layer");
+  assert.match(visible, /Cleared by\s+Ines Investigator\s+23 hours ago/);
+  assert.match(visible, /Helpdesk Tier 0 \(group\): attacker-created group/);
+  assert.match(visible, /Kept by\s+Ines Investigator\s+until released\. Being kept does not mean it is clean/);
+  assert.match(visible, /Taken while the attacker had access/);
   const rows = html.split("<tr").slice(2);
-  assert.match(rows[0], /Unsuitable/);
-  assert.doesNotMatch(rows[0], /Recommended/, "the newest (compromised) point is not recommended");
-  assert.match(rows[1], /Qualified[\s\S]*Recommended/);
-  assert.match(rows[1], /Excluded <code>group:backdoor<\/code>/);
-  assert.match(rows[1], /Pinned[\s\S]*not proof of a clean state/);
-  assert.match(rows[0], /Restore \(override needed\)/);
-  assert.match(rows[1], /href="\/restore\?snapshot=aaaaaaaa-0000-4000-8000-000000000001&amp;incident=11111111-1111-4111-8111-111111111111"/);
-  assert.doesNotMatch(html, />Assess<|>Authorize override<|>Release pin<|>Pin</, "read-only without investigate");
+  assert.doesNotMatch(rows[0], /Recommended/, "the newest (unsafe) snapshot is not recommended");
+  assert.match(rows[1], /Cleared[\s\S]*Recommended/);
+  // Record completeness: each id is still there, labelled.
+  assert.match(html, new RegExp(`Snapshot ID</dt><dd><code>${OLD_ID}</code>`));
+  assert.match(html, /Retention pin ID<\/dt><dd><code>44444444-/);
+  assert.match(html, /Exclusion<\/dt><dd><code>group:backdoor<\/code>/);
+  assert.doesNotMatch(html, />Record a check<|>Approve an override<|>Stop keeping<|>Keep</, "read-only without investigate");
 
-  const actionable = renderToStaticMarkup(createElement(RecoveryPointTable, { detail, canInvestigate: true }));
-  assert.match(actionable, /Authorize override/);
-  assert.match(actionable, /Release pin/);
+  const actionable = renderToStaticMarkup(createElement(RecoveryPointTable, { detail, now: NOW, canInvestigate: true }));
+  assert.match(actionable, />Approve an override</);
+  assert.match(actionable, />Stop keeping</);
 });
 
-test("exclusions parse one per line and reject a line without a reason", () => {
+test("exclusions parse one per line and reject a line without a reason; labels read as names", () => {
   assert.deepEqual(parseExclusions("group:backdoor | attacker group\n\n group:board#description | defaced | twice "), {
     exclusions: [
       { naturalKey: "group:backdoor", field: null, reason: "attacker group" },
@@ -75,24 +108,29 @@ test("exclusions parse one per line and reject a line without a reason", () => {
     error: null,
   });
   assert.match(parseExclusions("group:backdoor").error ?? "", /Line 1/);
+  assert.equal(exclusionLabel({ naturalKey: "group:board", field: "description", displayName: "Board" }), "the “description” setting of Board (group)");
+  assert.equal(exclusionLabel({ naturalKey: "conditionalAccessPolicy:Block legacy auth", field: null }), "Block legacy auth (Conditional Access policy)");
 });
 
-test("the restore review shows the incident qualification, override and post-restore checks", () => {
+test("the restore review names the incident, the approver and the checked resources", () => {
   const html = renderToStaticMarkup(createElement(IncidentQualificationSummary, {
     context: {
       incidentId: detail.incident.id, qualification: "overridden", status: "unassessed", reasons: ["not assessed for this incident"],
-      assessment: null, exclusions: [], override: { reason: "only point with the new membership", authorizedBy: "inv-2" },
+      assessment: null, exclusions: [], override: { id: "55555555-0000-4000-8000-000000000005", reason: "only point with the new membership", authorizedBy: inv.id },
       postRestoreChecks: [{ naturalKey: "group:backdoor", field: null, expectation: "absent" }],
     },
+    view: { incidentTitle: "Admin consent phishing", authorizedBy: inv, checks: [{ label: "Helpdesk Tier 0 (group)", expectation: "absent" }] },
   }));
-  assert.match(html, /Override of a unassessed point/);
-  assert.match(html, /only point with the new membership/);
-  assert.match(html, /<code>group:backdoor<\/code> must be absent/);
+  const visible = outsideRecord(html);
+  assert.doesNotMatch(visible, UUID);
+  assert.match(visible, /not checked for “Admin consent phishing”; an override allows it/);
+  assert.match(visible, /Override approved by\s+Ines Investigator\s*: only point with the new membership/);
+  assert.match(visible, /Helpdesk Tier 0 \(group\) must be gone/);
+  assert.match(html, /Authorized by \(principal ID\)<\/dt><dd><code>3f9c2b1e-/);
 });
 
-test("the incidents page is linked under Recovery", () => {
-  const link = visibleNavLinks({}).find((entry) => entry.href === "/incidents");
-  assert.equal(link?.group, "Recovery");
+test("incident recovery is reached from Restore, not a new navigation entry", () => {
+  assert.equal(visibleNavLinks({ canRead: true, canPolicies: true, canUsers: true, canApprove: true }).some((entry) => entry.href === "/incidents"), false);
 });
 
 // ------------------------------------------------------- routes and loader (DB)
@@ -168,6 +206,10 @@ test("incident changes require investigate, re-checked against current grants", 
   assert.equal(data.selected?.recommended, snapshotId);
   assert.equal(data.selected?.points[0].status, "qualified");
   assert.equal(data.selected?.points[0].pinned, true);
+  // References arrive resolved to names, never bare ids.
+  assert.equal(data.selected?.incident.owner.name, "investigator@contoso.example");
+  assert.equal(data.selected?.points[0].assessment?.assessedBy?.name, "investigator@contoso.example");
+  assert.match(data.selected?.points[0].snapshot.name ?? "", /^Snapshot of /);
 
   // A header still claiming investigate after the grant is revoked is refused by the engine.
   await revokeRole(client, { principalId: investigator.id, grantId: investigator.grantId, revokedBy: investigator.id });

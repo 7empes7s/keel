@@ -6,9 +6,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { postAction } from "@/lib/action-client";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
-import { IncidentQualificationSummary } from "@/components/incident-recovery";
+import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
 import { toast } from "@/lib/toast";
-import type { IncidentSummary, RestoreResource } from "@/lib/portal-data";
+import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 import { words } from "@/lib/presentation";
 import { formatTimestamp } from "@/lib/presentation";
@@ -87,6 +87,7 @@ interface DryRunArtifact {
   contentEffectApprovals?: { approvedBy: string; approvedAt: string | null }[];
   // Roadmap task-71: the incident recovery context the dry run was planned under.
   incidentRecovery?: Parameters<typeof IncidentQualificationSummary>[0]["context"] | null;
+  incidentRecoveryView?: IncidentRecoveryView | null;
 }
 
 const EDGE_RESULT_PREFIX = "edge:";
@@ -183,7 +184,7 @@ export function RestoreSelection({
   snapshotId: string;
   snapshots: SnapshotOption[];
   // Roadmap task-71: plan this restore as a recovery point of an incident.
-  incident?: IncidentSummary | null;
+  incident?: { id: string; title: string } | null;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -475,9 +476,8 @@ export function RestoreSelection({
 
       {incident ? (
         <p className="incident-restore-banner" role="note">
-          Restoring under incident <strong>{incident.title}</strong>. The dry run is refused unless this snapshot is a
-          qualified recovery point for the incident or carries an investigator&apos;s override, and excluded malicious items are
-          checked after the restore.
+          Restoring for the incident <strong>{incident.title}</strong>. KEEL refuses unless an investigator cleared this
+          snapshot or approved an override, and checks afterwards that the malicious items are gone.
         </p>
       ) : null}
 
@@ -757,7 +757,7 @@ export function RestoreSelection({
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
-          {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} /> : null}
+          {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} view={artifact.incidentRecoveryView ?? null} /> : null}
 
           {/* Content effects gate promotion, so they lead the review. */}
           {artifact.contentEffects?.length && dryRunArtifactId ? (

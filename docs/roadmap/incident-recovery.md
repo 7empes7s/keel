@@ -10,6 +10,20 @@ The engine code is in `engine/govern/incidents.mjs`, prune is in
 `engine/restore/dryRunArtifact.mjs` and `cli/keel-restore.mjs`, and the portal
 view is in `portal/components/incident-recovery.tsx` (`/incidents`).
 
+The portal view follows `docs/roadmap/portal-experience.md`:
+
+- It opens with one sentence naming the snapshot to restore from (the newest
+  one cleared for the incident), with one action.
+- Below that, snapshots, people and resources appear by name ("Snapshot of
+  30 Sept 2026, 06:00 UTC", "Helpdesk Tier 0 (group)"), with plain status words
+  (Cleared, Unsafe, Not checked).
+- Every ID, fingerprint and resource key sits under a labelled "Technical
+  details" disclosure, with a copy control and where the value is used.
+- On screen the feature says "cleared" and "checked" rather than "qualified"
+  and "assessed".
+- Incidents belong to Restore in the contract's seven-entry map. The page is
+  reached from the Restore page, not from a new navigation entry.
+
 ## Who can do what
 
 A new `investigator` role grants one capability, `investigate`. It is added to

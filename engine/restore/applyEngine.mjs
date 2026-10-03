@@ -5,6 +5,7 @@ import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
+import { remappingFor } from '../coverage/qualification.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
@@ -188,6 +189,22 @@ function relationshipNavigationFields(resourceType, payload) {
   ));
 }
 
+// Roadmap task-63: remapping is qualified per operation, never by the blanket
+// descriptor.remappable flag. A rewrite that leaves every reference id as it was
+// (a same-tenant update) remaps nothing and needs no proof; a rewrite to a
+// DIFFERENT id needs a recorded remapping proof for exactly this operation.
+function unqualifiedRemapping(resource, verb, before, after) {
+  const changed = (resource.references ?? []).filter((ref) => {
+    const was = valueAtPath(before, ref.field);
+    const now = valueAtPath(after, ref.field);
+    return String(was ?? '').toLowerCase() !== String(now ?? '').toLowerCase();
+  });
+  if (changed.length === 0) return null;
+  const remapping = remappingFor(resource.resourceType, verb);
+  if (remapping.qualified) return null;
+  return `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation`;
+}
+
 async function journalBeforeMutation(rollbackClient, { runId, naturalKey, priorState }) {
   if (!rollbackClient) return true;
   try {
@@ -352,10 +369,16 @@ export async function applyWave(writer, governor, wave, {
 
       let desired = resource.payload;
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      const beforeRewrite = desired;
       try {
         desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
+        continue;
+      }
+      const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, desired);
+      if (remapRefusal) {
+        failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         continue;
       }
 
@@ -443,10 +466,16 @@ export async function applyWave(writer, governor, wave, {
 
       let desired = resource.payload;
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
+      const beforeRewrite = desired;
       try {
         desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
+        continue;
+      }
+      const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, desired);
+      if (remapRefusal) {
+        failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         continue;
       }
       const normalisedDesired = withoutNulls(desired);
@@ -500,10 +529,16 @@ export async function applyWave(writer, governor, wave, {
 
     let payload = resource.payload;
     if (resource.resourceType === 'conditionalAccessPolicy') payload = enforceReportOnly(payload);
+    const beforeRewrite = payload;
     try {
       payload = rewriteReferences(payload, resource.references, referenceContext, resource.naturalKey);
     } catch (err) {
       failed.push({ naturalKey: resource.naturalKey, error: err.message });
+      continue;
+    }
+    const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, payload);
+    if (remapRefusal) {
+      failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
       continue;
     }
 

@@ -125,6 +125,7 @@ jobs:
           roadmap/ownership.test.mjs
           roadmap/scoped-authorization.test.mjs
           roadmap/change-attribution.test.mjs
+          roadmap/policy-disclosure.test.mjs
           roadmap/fidelity-expansion.test.mjs
           roadmap/policy-fidelity.test.mjs
           roadmap/administrative-fidelity.test.mjs
@@ -143,6 +144,7 @@ jobs:
           roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
           roadmap/visual-drift.test.mjs
+          roadmap/storage-live-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

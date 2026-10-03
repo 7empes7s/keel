@@ -40,9 +40,12 @@ no file/message content, and no on-prem agent runtime.
 8. For unstable external APIs, check current official documentation during implementation; record URL,
    retrieval date, credential mode and limits in the relevant qualification ledger. Unsupported routes
    must remain manual/refused. Do not infer capability from a vendor marketing sentence or URL alone.
-9. UI tasks use existing portal design patterns with purposeful readable views, accessible keyboard
-   behavior and narrow-screen handling; render actual reader data, never placeholder values. Keep
-   setup instructions and operational limitations visible only where they affect an operator decision.
+9. UI tasks conform to `docs/roadmap/portal-experience.md` (2026-10-03), which supersedes this
+   constraint's earlier wording: every page and object card is built as verdict, explanation and
+   technical record; objects are shown by name and identifiers only inside the labelled record
+   layer; internal vocabulary stays out of the first two layers; the seven-entry navigation is the
+   only map. Render actual reader data, never placeholder values. A UI task's validate command
+   includes the contract's mechanical checks (`cd portal && npm run test:ui`) once task-129 ships.
 10. Every task must add its named boundary-level test file, exercising the production implementation
     and real integration seam with injected fakes or isolated DB. Tests must not mirror a hand-authored
     roadmap manifest or merely assert a file/string exists. Research/contract tasks ship executable
@@ -109,6 +112,40 @@ Recorded from the operator. These refine the external admission gates; no task i
   task-117 is lifted for task-124; the queue holds and task-124's dependency list need a matching edit before
   either task is dispatched.
 - **Open:** none for storage or Sentinel. task-118 still waits on task-97.
+
+## Operator decisions — 2026-10-03
+
+Recorded from the operator after the 2026-10-03 project review. These change how the portal is
+built; they do not start or stop any engine task.
+
+- **The portal is written for two readers at once.** Any executive must understand each page from
+  the first screen; any engineer must find every identifier in a labelled technical record. The
+  review found the opposite: Policies showed a run-as principal as a raw UUID and a "Policy ID"
+  field with no meaning to an administrator; Approvals described a request as an action code and
+  JSON; Jobs used the job UUID as the page subtitle; Coverage was an 11-column evidence taxonomy;
+  the healthy dashboard said "No issues detected". `docs/roadmap/portal-experience.md` is the
+  contract that fixes this and is authoritative for every portal task from today.
+- **Identification rule.** Every object is shown by its human name or a generated sentence built
+  from its own fields. A field that references another object renders that object's name, linked.
+  Identifiers appear only inside "Technical details", each labelled with its kind, a copy
+  affordance and where it is accepted. Stored enum codes never reach the screen unmapped.
+- **Honesty moves, it does not shrink.** Every caveat, proof reference and provenance field the
+  portal shows today is still shown, inside the record layer of the object it qualifies. A page
+  level aside such as "Declaration is not verification." is replaced by a per-type sentence.
+- **Navigation is seven entries with one map.** Overview, Protect, Changes, Restore, Approvals,
+  Activity, Settings. The page eyebrow is its nav group. Pending UI tasks (73, 76, 83, 87, 92, 98,
+  99, 100, 110) place their pages inside this map or justify an eighth entry in their task text.
+- **Tasks 129, 130 and 131** carry the redesign. task-129 lands the contract's shell, navigation,
+  overview sentence and the mechanical checks in the UI harness; task-130 applies the
+  identification rules to policies, principals, approvals, jobs, evidence and baselines; task-131
+  collapses coverage into Protect and rewrites the Changes and Restore copy. They depend only on
+  shipped work and may be dispatched ahead of every other queued task. task-54's matrix layout is
+  superseded by task-131; its data and tests are kept.
+- **Recommended, not yet decided:** freeze the workstreams outside the nucleus (WS4 scenario work,
+  WS5 benchmarks, WS6 reporting and query, WS7 paging adapters, WS8 ServiceNow, WS9 attribution,
+  WS11 hybrid, WS12 Sentinel) and the SharePoint, Teams, Exchange, OneDrive and Purview adapters
+  until one live collect → baseline → drift → restore journey has been recorded as live-qualified
+  on the real tenant. The queue is not edited by this entry.
 
 ## Task index
 
@@ -194,6 +231,9 @@ Recorded from the operator. These refine the external admission gates; no task i
 | task-122 | WS2 | Exchange configuration workload qualification | task-105, task-121 | External evidence hold |
 | task-123 | WS2 | OneDrive and Purview configuration qualification | task-106, task-122 | External evidence hold |
 | task-124 | Release | Verify complete roadmap release without overclaiming readiness | task-112, task-113, task-114, task-115, task-116, task-117, task-118, task-119, task-120, task-121, task-122, task-123 | Dependency-gated |
+| task-129 | Portal | Portal experience contract: shell, navigation, overview sentence, mechanical checks | task-46 | Dependency-gated |
+| task-130 | Portal | Named objects and labelled technical records for policies, principals, approvals, jobs, evidence, baselines | task-129 | Dependency-gated |
+| task-131 | Portal | Protect page with per-type drawer; Changes and Restore in plain words | task-129, task-54 | Dependency-gated |
 
 ### Task 45: Versioned observation and release evidence contracts
 
@@ -2569,4 +2609,88 @@ can therefore never converge a group whose description drifted.
 
 ```bash
 set -a && . /etc/keel/db.env && set +a && node --test tools/rehearsal/roundTrip.test.mjs engine/roadmap/semantic-projection.test.mjs engine/cir/*.test.mjs engine/reconcile/*.test.mjs engine/restore/*.test.mjs
+```
+
+### Task 129: Portal experience contract: shell, navigation, overview sentence, mechanical checks
+
+**Workstream:** Portal. **Depends on:** task-46. **Contract:** `docs/roadmap/portal-experience.md`.
+
+**Files:** `portal/app/layout.tsx`, `portal/components/nav-links.tsx`, `portal/components/page-header.tsx`, `portal/components/data-unavailable.tsx`, `portal/components/dashboard/*`, `portal/lib/presentation.ts`, `portal/lib/types.ts` (`Ref`), `portal/lib/portal-data.ts`, `portal/app/globals.css`, `portal/ui-harness/app.tsx`, `portal/ui-harness/ui.spec.ts`; new boundary tests in `portal/test/experience-contract.test.ts` and `engine/roadmap/portal-experience.test.mjs`.
+
+**Steps**
+
+1. Inspect the named production paths at current HEAD; keep every reader, authorization gate and action route unchanged. Add the `data-layer` attribute convention (`verdict`, `explanation`, `record`) and a `TechnicalDetails` disclosure component; add the `Ref` type and a `displayEnum()` map in `portal/lib/presentation.ts` covering every enum value the portal renders today (job kinds and statuses, policy actions, blast radii, change types, approval statuses, delivery statuses, event kinds).
+2. Replace the 13-entry, 5-group navigation with the contract's seven entries and make `PageHeader` derive its eyebrow from the nav entry so no page can carry a second taxonomy. Keep the command palette, active indicator and phone toggle. Existing routes keep working through redirects to their new home (for example `/coverage` → `/protect#types`, `/jobs` → `/activity`).
+3. Rebuild the Overview verdict: the memorable number computed from the coverage reader and drill evidence, honest in each of the three states the contract names; healthy headline "Protected"; the hedge moved into the record layer. Keep the alert copy, posture tones, ring, sparkline and impact bar. Remove the duplicate timestamps and the "Catalog honesty" caption. Rewrite `DataUnavailable` per the copy rules.
+4. Add the contract's eight mechanical checks to `portal/ui-harness/ui.spec.ts` with fixtures in `app.tsx` for every route. Checks 1 to 3 and 6 pass on Overview and the shell at the end of this task; the remaining routes are allowed to fail only through an explicit per-route allowlist in the spec that task-130 and task-131 empty, and the allowlist's size is asserted so it can only shrink.
+5. Record the implementation and limits in `docs/roadmap/portal-experience.md` under a dated "Status" section. Run the exact validation command below and report its output and `git status --porcelain`. Do not commit.
+
+**Acceptance:** Seven nav entries, eyebrow equals nav group on every page; Overview's verdict is one sentence under 25 words with the correct number in each of the three states and reads "Protected" when healthy; no UUID, natural key or banned term outside the record layer on Overview; mechanical checks run on every harness route with a shrinking allowlist; axe and screenshot suites pass; unauthorized access still fails before reads.
+
+**Required mutation checks:**
+
+- Render the overview number from a constant instead of the coverage reader → `engine/roadmap/portal-experience.test.mjs` fails.
+- Give Drift the eyebrow "Governance" → the eyebrow test fails.
+- Add a route to the allowlist → the allowlist-size assertion fails.
+
+**Validate:**
+
+```bash
+set -a && . /etc/keel/db.env && set +a && node --test engine/roadmap/portal-experience.test.mjs engine/authz/*.test.mjs engine/coverage/*.test.mjs && (cd portal && npm run typecheck && npm test && npm run test:ui)
+```
+
+### Task 130: Named objects and labelled technical records for policies, principals, approvals, jobs, evidence, baselines
+
+**Workstream:** Portal. **Depends on:** task-129. **Contract:** `docs/roadmap/portal-experience.md`, "Identification rules" and the policy worked example.
+
+**Files:** `portal/components/policy-state.tsx`, `portal/app/policies/**`, `portal/lib/policies.ts`, `portal/components/principal-details.tsx`, `portal/lib/principals.ts`, `portal/components/approval-inbox.tsx`, `portal/lib/approval-inbox.ts`, `portal/components/job-table.tsx`, `portal/components/job-detail.tsx`, `portal/lib/portal-jobs.ts`, `portal/components/evidence-timeline.tsx`, `portal/lib/evidence.ts`, `portal/app/baselines/page.tsx`, `portal/components/notification-console.tsx`, `portal/components/integration-console.tsx`, `engine/policy/evaluate.mjs` (`listPolicies` returns the run-as principal's email and display name), `engine/govern/approvals.mjs` (request summary resolution), `engine/jobs/queue.mjs` (job summary fields); new boundary tests in `engine/roadmap/named-objects.test.mjs`.
+
+**Steps**
+
+1. Inspect the named production paths at current HEAD. For each object, define its generated name sentence and its record fields in a table in `docs/roadmap/portal-experience.md` before changing code, using the policy worked example as the pattern. Readers return `Ref` values for every cross-object identifier (run-as principal, baseline, dry run, snapshot, request, principal of a grant) resolved server-side in one query per page.
+2. Policies: the policy card becomes the worked example (verdict sentence with name, state, what it does, acting as whom, last action; explanation in sentences; record with labelled ids, enum codes and CLI equivalent). The page banner reads "Automation is on" or names the halt time and file. Pause, resume and edit actions reach the existing guarded routes. Principals: each person by name and email with roles in words and since when; grant, revoke and disable through the existing routes; ids in the record.
+3. Approvals: each request as a sentence with requester, reason, what changes, impact and a link to the dry run or baseline it concerns, expiry in words; Approve and Reject unchanged; request id, action code and params in the record. Jobs and Evidence merge into the Activity timeline: each job and evidence record as a sentence with actor and age, filters in words, every id, hash, worker and raw JSON in the record. The Error block renders only when there is an error. Baselines keep their label and lose the duplicate "Set at" and "Age" pair. Notification and integration forms get labelled fields; raw config JSON moves to the record.
+4. Empty the harness allowlist for every route this task touches; checks 1 to 7 pass on them. Keep every identifier and provenance field the pages showed before, now inside the record layer (check 7). Preserve authorization, approval TTL semantics and artifact-only promotion untouched.
+5. Record the implementation and limits in `docs/roadmap/portal-experience.md`. Run the exact validation command below and report its output and `git status --porcelain`. Do not commit.
+
+**Acceptance:** No bare identifier or enum code on Policies, Principals, Approvals, Activity, Baselines, Notifications or Integrations outside the record layer; every cross-object reference renders as a linked name; a request whose dry run cannot be read renders "no longer readable" rather than an id; every identifier shown on 2026-10-03 is still shown inside the record; the harness allowlist is empty for these routes; axe and screenshots pass.
+
+**Required mutation checks:**
+
+- Return `run_as_principal_id` without the resolved `Ref` → `engine/roadmap/named-objects.test.mjs` fails and the reference check fails.
+- Render `policy.action` raw → the enum check fails.
+- Drop the policy id from the record layer → the record-completeness check fails.
+
+**Validate:**
+
+```bash
+set -a && . /etc/keel/db.env && set +a && node --test engine/roadmap/named-objects.test.mjs engine/policy/*.test.mjs engine/govern/*.test.mjs engine/jobs/*.test.mjs engine/authz/*.test.mjs && (cd portal && npm run typecheck && npm test && npm run test:ui)
+```
+
+### Task 131: Protect page with per-type drawer; Changes and Restore in plain words
+
+**Workstream:** Portal. **Depends on:** task-129, task-54. **Contract:** `docs/roadmap/portal-experience.md`, "Page requirements" rows Protect, Changes, Restore. Supersedes task-54's matrix layout; task-54's reader fields and `engine/roadmap/coverage-ui.test.mjs` are kept.
+
+**Files:** `portal/app/protect/**` (replacing `portal/app/coverage` and `portal/app/backups`), `portal/components/coverage-report.tsx`, `portal/components/backup-controls.tsx`, `portal/components/schedule-table.tsx`, `portal/components/schedule-editor.tsx`, `portal/app/drift/**`, `portal/components/drift-table.tsx`, `portal/components/drift-diff.tsx`, `portal/components/restore-selection.tsx`, `portal/app/restore/page.tsx`, `portal/lib/portal-data.ts`; new boundary tests in `engine/roadmap/protect-page.test.mjs`.
+
+**Steps**
+
+1. Inspect the named production paths at current HEAD. Protect: verdict sentence from the coverage and schedule readers; tier cards with next run and last result in words; failed and stale types listed by name with the existing backup action; one per-type drawer that states in one sentence whether the type is protected, partially protected, cannot be restored, or has no proven restore, and places the entire task-54 matrix (adapter, endpoint, pagination evidence, diagnosis, projection, proof reference, credential mode, observation) inside its record layer. Schedules lose raw cron and job-kind codes outside the record.
+2. Changes: verdict from the drift reader with the impact count; the table shows each resource by type in words and display name; the diff describes each field in words with payload JSON in the record; "disposition" becomes decision; the remediation preview drops planned verbs, waves, deferred references and guard refusal codes from the explanation layer and states refusals as "KEEL refused to change X because …". Baselines become a tab of Changes.
+3. Restore: step titles become the verdict; the promotion paragraph, CLI narration, closure counts and credential file paths leave the screen (paths are server configuration, never editable fields); the mechanism, content-effect and undo labels are kept; artifact and dry-run ids go to the record. Success and pending states use the copy rules ("Sent to approvers. Nothing changes until one of them approves.").
+4. Empty the harness allowlist for Protect, Changes and Restore; checks 1 to 7 pass. Mirror the fixture data between the old coverage fixtures and the new drawer so no state task-54 tested disappears.
+5. Record the implementation and limits in `docs/roadmap/portal-experience.md` and add a superseded note to `docs/roadmap/coverage-ui.md`. Run the exact validation command below and report its output and `git status --porcelain`. Do not commit.
+
+**Acceptance:** Protect's first screen is a sentence, tier cards and a named list of problems; every task-54 evidence field is present inside a type's record layer; no natural key, verb, wave, closure or artifact id outside the record on Changes or Restore; credential paths are not rendered as inputs; the restore wizard's interaction test still walks select → dry run → review → confirm → track; the harness allowlist is empty; axe and screenshots pass.
+
+**Required mutation checks:**
+
+- Remove the proof reference from the type drawer's record → record-completeness and `engine/roadmap/coverage-ui.test.mjs` both fail.
+- Render a natural key in the Changes table outside the record → the identifier check fails.
+- Reintroduce the credential path inputs → `engine/roadmap/protect-page.test.mjs` fails.
+
+**Validate:**
+
+```bash
+set -a && . /etc/keel/db.env && set +a && node --test engine/roadmap/protect-page.test.mjs engine/roadmap/coverage-ui.test.mjs engine/coverage/*.test.mjs engine/govern/*.test.mjs engine/restore/*.test.mjs engine/authz/*.test.mjs && (cd portal && npm run typecheck && npm test && npm run test:ui)
 ```

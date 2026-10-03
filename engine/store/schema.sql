@@ -889,6 +889,28 @@ CREATE INDEX IF NOT EXISTS retention_pin_tenant_idx ON retention_pin (tenant_ref
 -- under an incident, which keeps their digest unchanged.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS incident_recovery jsonb;
 
+-- Roadmap task-87: baseline capture and versioning. A baseline records the collection
+-- it was captured from (source_snapshot_id), when that collection finished
+-- (captured_at, the basis of its age, never the page load) and what it covered
+-- (observation_scope: the collection window and the types it read). A re-snapshot is a
+-- NEW baseline row, version + 1, that names the version it supersedes; the old row's
+-- baseline_resource rows are never touched, and superseded_at only marks it read-only.
+-- Nullable and additive: baselines set before task-87 read their capture window from
+-- the snapshots their resource versions came from (engine/govern/baselineCompliance.mjs).
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS source_snapshot_id uuid REFERENCES snapshot(id);
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS captured_at timestamptz;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS observation_scope jsonb;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 1;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS supersedes_id uuid REFERENCES baseline(id);
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS superseded_at timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS baseline_supersedes_once_idx
+  ON baseline (supersedes_id) WHERE supersedes_id IS NOT NULL;
+
+-- Roadmap task-87: an authorized exception names an owner, a reason and an expiry.
+-- Rows written before task-87 have no owner; the compliance view treats them (and any
+-- exception without an expiry) as incomplete, so the finding stays exposed.
+ALTER TABLE benchmark_exception ADD COLUMN IF NOT EXISTS owner text;
+
 -- Task 89: CMDB-first ownership with explicit SHARED/unknown/unresolved states.
 -- Append-only evidence bound to a tenant-scoped resource_lineage row (task 50),
 -- never to a display name: a reused name is a different lineage and inherits

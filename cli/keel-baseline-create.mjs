@@ -3,6 +3,12 @@
 //
 // node keel-baseline-create.mjs --snapshot-id ID --label LABEL --set-by PRINCIPAL
 //   [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+// node keel-baseline-create.mjs --snapshot-id ID --supersedes BASELINE_ID --set-by PRINCIPAL
+//   [--label LABEL] [--description TEXT] [--tenant-ref REF] ...
+//
+// With --supersedes (roadmap task-87) the snapshot becomes a new version of that
+// baseline; the previous version and its resources are preserved, and the requester
+// must hold baseline-create at the moment of the write (replaceBaseline).
 //
 // Thin worker-dispatch wrapper around engine/govern/baseline.mjs seedFromSnapshot(): the
 // worker spawns this so baseline creation gets the same child-process timeout and
@@ -11,7 +17,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { seedFromSnapshot } from '../engine/govern/baseline.mjs';
+import { replaceBaseline, seedFromSnapshot } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
 
 function arg(name, fallback, argv = process.argv) {
@@ -44,7 +50,7 @@ export async function main({
   logger = console,
 } = {}) {
   if (argv.includes('--help')) {
-    logger.log('usage: keel-baseline-create.mjs --snapshot-id ID --label LABEL --set-by PRINCIPAL [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
+    logger.log('usage: keel-baseline-create.mjs --snapshot-id ID (--label LABEL | --supersedes BASELINE_ID) --set-by PRINCIPAL [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     return;
   }
 
@@ -53,10 +59,24 @@ export async function main({
   const {
     connect: connectFn = connect,
     seedFromSnapshot: seedFromSnapshotFn = seedFromSnapshot,
+    replaceBaseline: replaceBaselineFn = replaceBaseline,
   } = dependencies;
 
+  const supersedes = arg('supersedes', undefined, argv);
   const client = await connectFn(selectedDbUrl);
   try {
+    if (supersedes) {
+      const created = await replaceBaselineFn(client, {
+        tenantRef: resolveTenantRef({ argv, readFile }),
+        baselineId: supersedes,
+        snapshotId: requireArg('snapshot-id', argv),
+        principalId: requireArg('set-by', argv),
+        label: arg('label', undefined, argv) ?? undefined,
+        description: arg('description', undefined, argv) ?? undefined,
+      });
+      logger.log(`baseline ${created.id} created as version ${created.version}; ${supersedes} preserved`);
+      return created.id;
+    }
     const baselineId = await seedFromSnapshotFn(client, {
       tenantRef: resolveTenantRef({ argv, readFile }),
       snapshotId: requireArg('snapshot-id', argv),

@@ -24,6 +24,8 @@ import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
+import { IncidentRecovery } from "@/components/incident-recovery";
+import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
 
@@ -202,6 +204,43 @@ function dashboard(posture: number): DashboardData {
   };
 }
 
+// Task-71: an open incident whose newest snapshot captured the attack. The engine
+// recommends the newest CLEARED snapshot, not the newest one. Every reference is a
+// resolved name, as the portal readers return it.
+const INVESTIGATOR = { kind: "person", id: "3f9c2b1e-0000-4000-8000-0000000000aa", name: "investigator@contoso.example", href: "/principals" };
+const SNAP_BAD = "93c41e07-0000-4000-8000-000000000003";
+const SNAP_GOOD = "5a2be911-0000-4000-8000-000000000002";
+const SNAP_OLD = "0f7d3c52-0000-4000-8000-000000000001";
+const snapshotRef = (id: string, name: string) => ({ kind: "snapshot", id, name, href: `/restore?snapshot=${id}` });
+const INCIDENT: IncidentDetail = {
+  incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", owner: INVESTIGATOR, status: "open", openedAt: "2026-10-01T08:10:00Z", closedAt: null },
+  intervals: [{ id: "7e000000-0000-4000-8000-000000000071", startsAt: "2026-09-30T22:40:00Z", endsAt: null, reason: "First malicious sign-in (risky sign-in report)", recordedBy: INVESTIGATOR }],
+  pins: [{ id: "9b000000-0000-4000-8000-000000000071", snapshotId: SNAP_GOOD, reason: "Last known good before the attack", pinnedBy: INVESTIGATOR, pinnedAt: "2026-10-01T08:30:00Z" }],
+  points: [
+    {
+      snapshotId: SNAP_BAD, snapshot: snapshotRef(SNAP_BAD, "Snapshot of 1 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
+      inCompromiseWindow: true, status: "unsuitable", stale: false, pinned: false,
+      reasons: ["observed during a compromise interval", "assessed compromised (v1)"],
+      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:00:00Z", fingerprint: "3c".repeat(32) },
+    },
+    {
+      snapshotId: SNAP_GOOD, snapshot: snapshotRef(SNAP_GOOD, "Snapshot of 30 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-30T05:55:00Z", observedTo: "2026-09-30T06:00:00Z",
+      inCompromiseWindow: false, status: "qualified", stale: false, pinned: true,
+      reasons: ["assessed clean with 1 malicious-field exclusion(s) (v2)"],
+      assessment: {
+        version: 2, verdict: "clean",
+        exclusions: [{ naturalKey: "servicePrincipal:Mail Sync Helper", field: null, reason: "Consent granted by the attacker on 29 Sept", displayName: "Mail Sync Helper" }],
+        assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:20:00Z", fingerprint: "a2".repeat(32),
+      },
+    },
+    {
+      snapshotId: SNAP_OLD, snapshot: snapshotRef(SNAP_OLD, "Snapshot of 29 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-29T05:55:00Z", observedTo: "2026-09-29T06:00:00Z",
+      inCompromiseWindow: false, status: "unassessed", stale: false, pinned: false, reasons: ["not assessed for this incident"], assessment: null,
+    },
+  ],
+  recommended: SNAP_GOOD,
+};
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -215,6 +254,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}
         snapshotId="snap-1" snapshots={[{ id: "snap-1", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 } as never]} />
       <JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Queue" title="Restore jobs" /></>;
+    case "/incidents": return <>{header("Recovery", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
+      <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
     case "/drift": return <>{header("Governance", "Drift", "Unresolved changes measured against the active recovery baseline.", "Actionable")}
       <section aria-label="Active baseline context" className="context-strip">
         <span className="active-indicator">Active baseline</span><strong>Post-migration golden state</strong><span>4,812 resources</span><span>2d old</span>

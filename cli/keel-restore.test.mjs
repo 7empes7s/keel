@@ -112,6 +112,9 @@ function restoreFakes({
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
       if (/recovery_completion_item/.test(sql)) return { rows: [] };
+      // Task-71: the fixture snapshot belongs to the fixture tenant, which has no incidents.
+      if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
+      if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
       if (/INSERT INTO rollback_entry/.test(sql)) {
         state.priorStates.push(values);
         return { rows: [] };
@@ -339,6 +342,9 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
       if (/recovery_completion_item/.test(sql)) return { rows: [] };
+      // Task-71: the fixture snapshot belongs to the fixture tenant, which has no incidents.
+      if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
+      if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
       state.dbQueries += 1;
       throw new Error(`a selection restore must not query the plan table: ${sql}`);
     },
@@ -647,7 +653,9 @@ function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
       if (/recovery_completion_item/.test(sql)) return { rows: [] };
+      // Task-71: the fixture snapshot belongs to the fixture tenant, which has no incidents.
       if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
+      if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
       if (/INSERT INTO rollback_entry/.test(sql)) return { rows: [] };
       throw new Error(`unexpected query: ${sql}`);
     },

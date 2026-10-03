@@ -2,6 +2,8 @@ import { getDryRunArtifact } from "../../../../../../../engine/restore/dryRunArt
 import { contentEffectsDigest } from "../../../../../../../engine/safety/contentEffects.mjs";
 
 import { guarded } from "@/lib/action";
+import { principalRefs } from "@/lib/portal-data";
+import { resourceLabel } from "@/lib/presentation";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +49,39 @@ const getDryRunArtifactRoute = guarded(
       }));
     }
 
-    return Response.json({ artifact: { ...artifact, effectsDigest, contentEffectApprovals } }, { headers: NO_STORE });
+    // Task-71: names for the incident context, resolved here (one query each) so the
+    // review never shows an incident, person or resource by its id.
+    let incidentRecoveryView = null;
+    const incident = artifact.incidentRecovery as {
+      incidentId: string; override: { authorizedBy: string } | null;
+      postRestoreChecks: { naturalKey: string; field: string | null; expectation: string }[];
+    } | null;
+    if (incident) {
+      const { rows: titles } = await client.query(
+        "SELECT title FROM incident WHERE id::text = $1 AND tenant_ref = $2", [incident.incidentId, tenantRef],
+      );
+      const people = await principalRefs(client, [incident.override?.authorizedBy]);
+      const keys = incident.postRestoreChecks.map((check) => check.naturalKey);
+      const { rows: names } = keys.length ? await client.query(
+        `SELECT natural_key, payload->>'displayName' AS display_name FROM resource_version
+          WHERE snapshot_id::text = $1 AND natural_key = ANY($2::text[])`,
+        [artifact.snapshotId, keys],
+      ) : { rows: [] };
+      const nameOf = new Map(names.map((row) => [String(row.natural_key), row.display_name ? String(row.display_name) : null]));
+      incidentRecoveryView = {
+        incidentTitle: titles[0] ? String(titles[0].title) : null,
+        authorizedBy: incident.override ? people.get(incident.override.authorizedBy) ?? null : null,
+        checks: incident.postRestoreChecks.map((check) => {
+          const resource = resourceLabel(check.naturalKey, nameOf.get(check.naturalKey) ?? null);
+          return {
+            label: check.field ? `the “${check.field}” setting of ${resource}` : resource,
+            expectation: check.expectation,
+          };
+        }),
+      };
+    }
+
+    return Response.json({ artifact: { ...artifact, effectsDigest, contentEffectApprovals, incidentRecoveryView } }, { headers: NO_STORE });
   },
 );
 

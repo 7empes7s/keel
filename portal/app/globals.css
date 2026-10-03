@@ -5515,3 +5515,119 @@ section.wizard-panel {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Task-71: incident-qualified recovery points and retention pins. */
+.incident-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.incident-link {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 8px);
+  color: inherit;
+  text-decoration: none;
+}
+
+.incident-link:hover { border-color: var(--text-soft); }
+.incident-link[aria-current="page"] { border-color: var(--readonly); background: var(--readonly-bg); }
+.incident-link small { color: var(--text-soft); }
+
+.incident-open-form,
+.incident-interval-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.incident-subhead { margin: var(--space-md) 0 var(--space-xs); font-size: 1rem; }
+
+.incident-intervals,
+.incident-reasons,
+.incident-exclusions {
+  margin: var(--space-xs) 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.incident-point-recommended th { box-shadow: inset 3px 0 0 var(--protected); }
+.incident-point-name { display: block; font-weight: 600; }
+.incident-point-explanation p { margin: var(--space-xs) 0 0; font-size: 0.875rem; }
+.incident-window,
+.incident-pin-note { display: block; margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
+.incident-window { color: var(--failed); }
+.incident-recommended { margin-left: var(--space-xs); }
+
+.incident-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: flex-start; }
+
+.incident-assess-form {
+  display: grid;
+  gap: var(--space-xs);
+  flex-basis: 100%;
+  min-width: min(22rem, 100%);
+}
+
+.incident-restore-banner,
+.incident-qualification {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--partial-bg);
+  font-size: 0.875rem;
+}
+
+.incident-qualification { display: grid; gap: var(--space-xs); }
+.incident-qualification > *,
+.incident-qualification [data-layer="explanation"] > * { margin: 0; }
+.incident-qualification [data-layer="explanation"] { display: grid; gap: var(--space-xs); }
+.restore-incident-link { margin: 0 0 var(--space-md); color: var(--text-soft); }
+.incident-qualification-qualified { border-left-color: var(--protected); background: var(--protected-bg); }
+
+@media (max-width: 46rem) {
+  .incident-actions { flex-direction: column; }
+  .incident-open-form,
+  .incident-interval-form { flex-direction: column; align-items: stretch; }
+}
+
+/* Portal experience contract: the verdict layer (one sentence, one primary action)
+   and the record layer (every identifier, labelled, collapsed by default). */
+.verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-md);
+  margin: 0 0 var(--space-lg, 1.5rem);
+  padding: var(--space-md);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: var(--radius-md, 8px);
+}
+.verdict-good { border-left-color: var(--protected); }
+.verdict-attention { border-left-color: var(--partial); }
+.verdict-critical { border-left-color: var(--failed); }
+.verdict-sentence { margin: 0; max-width: 60ch; font-size: 1.125rem; font-weight: 600; line-height: 1.4; }
+
+.technical-details { margin-top: var(--space-xs); font-size: 0.8125rem; }
+.technical-details > summary { cursor: pointer; color: var(--text-soft); width: fit-content; }
+.technical-details[open] > summary { margin-bottom: var(--space-xs); }
+.technical-fields { display: grid; gap: var(--space-xs); margin: 0; }
+.technical-field { display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: var(--space-xs) var(--space-sm); }
+.technical-field dt { color: var(--text-soft); }
+.technical-field dd { margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: baseline; min-width: 0; }
+.technical-field code { overflow-wrap: anywhere; }
+.technical-usage { flex-basis: 100%; color: var(--text-soft); }
+@media (max-width: 46rem) {
+  .technical-field { grid-template-columns: 1fr; }
+}
+.incident-point-explanation time,
+.incident-intervals time,
+.incident-link time { font: inherit; color: inherit; }

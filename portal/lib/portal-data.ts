@@ -1,6 +1,7 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
+import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import {
   getActiveBaseline,
   listOpenDrift,
@@ -12,7 +13,7 @@ import {
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
-import { BLAST_RADIUS_ORDER } from "@/lib/presentation";
+import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineRecord,
@@ -31,6 +32,7 @@ import type {
   Fidelity,
   ProtectionState,
   QualificationDecision,
+  Ref,
   TypeQualification,
   WriteCapabilitySummary,
   WriteOperationCapability,
@@ -443,6 +445,173 @@ export async function getRestoreResources(
         blastRadius: String(row.blast_radius),
       })),
     };
+  });
+}
+
+// Roadmap task-71: incident-qualified recovery points. Every value comes from the
+// engine's tenant-scoped readers; the recommended point is the engine's (the newest
+// cleared snapshot), never recomputed here. Per the portal experience contract every
+// reference is resolved to a name server-side: one query for people, one for the
+// excluded resources' display names, snapshots named by when they were taken.
+export interface IncidentSummary {
+  id: string;
+  title: string;
+  owner: Ref;
+  status: "open" | "closed";
+  openedAt: string | null;
+  closedAt: string | null;
+}
+
+export interface IncidentExclusion {
+  naturalKey: string;
+  field: string | null;
+  reason: string;
+  displayName: string | null;
+}
+
+export interface IncidentRecoveryPoint {
+  snapshotId: string;
+  snapshot: Ref;
+  observedFrom: string | null;
+  observedTo: string | null;
+  inCompromiseWindow: boolean;
+  status: "qualified" | "unsuitable" | "unassessed";
+  stale: boolean;
+  reasons: string[];
+  pinned: boolean;
+  assessment: {
+    version: number;
+    verdict: "clean" | "compromised";
+    exclusions: IncidentExclusion[];
+    assessedBy: Ref | null;
+    assessedAt: string | null;
+    fingerprint: string;
+  } | null;
+}
+
+export interface IncidentDetail {
+  incident: IncidentSummary;
+  intervals: { id: string; startsAt: string | null; endsAt: string | null; reason: string | null; recordedBy: Ref | null }[];
+  pins: { id: string; snapshotId: string; reason: string; pinnedBy: Ref; pinnedAt: string | null }[];
+  points: IncidentRecoveryPoint[];
+  recommended: string | null;
+}
+
+export interface IncidentRecoveryData {
+  generatedAt: string;
+  incidents: IncidentSummary[];
+  selected: IncidentDetail | null;
+}
+
+/** One query for every person a page names. An id that no longer resolves keeps its
+ * kind and a short id with "no longer readable" — never a bare UUID. */
+export async function principalRefs(client: KeelClient, ids: (string | null | undefined)[]): Promise<Map<string, Ref>> {
+  const wanted = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  const refs = new Map<string, Ref>();
+  if (wanted.length === 0) return refs;
+  const { rows } = await client.query(
+    "SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])",
+    [wanted],
+  );
+  for (const row of rows) {
+    const id = String(row.id);
+    refs.set(id, { kind: "person", id, name: String(row.display_name ?? row.email), href: "/principals" });
+  }
+  for (const id of wanted) {
+    if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });
+  }
+  return refs;
+}
+
+export function snapshotName(snapshot: { id: string; observedTo?: string | null; observedFrom?: string | null }, all: { id: string; observedTo?: string | null; observedFrom?: string | null }[] = []): string {
+  const when = snapshot.observedTo ?? snapshot.observedFrom ?? null;
+  const base = when ? `Snapshot of ${formatTimestamp(when)}` : "Snapshot at an unknown time";
+  const sameName = all.filter((other) => (other.observedTo ?? other.observedFrom ?? null) === when && other.id !== snapshot.id);
+  // A short id only as a disambiguator suffixed to the name (rule 3).
+  return sameName.length ? `${base} · ${snapshot.id.slice(0, 8)}` : base;
+}
+
+type RawPoint = Omit<IncidentRecoveryPoint, "snapshot" | "assessment"> & {
+  assessment: (Omit<NonNullable<IncidentRecoveryPoint["assessment"]>, "assessedBy" | "exclusions"> & {
+    assessedBy: string | null;
+    exclusions: { naturalKey: string; field: string | null; reason: string }[];
+  }) | null;
+};
+
+export async function getIncidentRecoveryData(requestedId?: string): Promise<IncidentRecoveryData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const rawIncidents = (await listIncidents(client, { tenantRef: ref })) as (Omit<IncidentSummary, "owner"> & { owner: string })[];
+    const chosen = rawIncidents.find((incident) => incident.id === requestedId) ?? rawIncidents[0] ?? null;
+    const listing = chosen
+      ? (await listIncidentRecoveryPoints(client, { tenantRef: ref, incidentId: chosen.id })) as unknown as {
+        intervals: { id: string; startsAt: string | null; endsAt: string | null; reason: string | null; recordedBy: string | null }[];
+        pins: { id: string; snapshotId: string; reason: string; pinnedBy: string; pinnedAt: string | null }[];
+        points: RawPoint[];
+        recommended: string | null;
+      }
+      : null;
+
+    const people = await principalRefs(client, [
+      ...rawIncidents.map((incident) => incident.owner),
+      ...(listing?.intervals.map((interval) => interval.recordedBy) ?? []),
+      ...(listing?.pins.map((pin) => pin.pinnedBy) ?? []),
+      ...(listing?.points.map((point) => point.assessment?.assessedBy) ?? []),
+    ]);
+    const person = (id: string | null) => (id ? people.get(id) ?? null : null);
+
+    // Excluded resources are named from the snapshot that was checked: one query.
+    const wanted = listing?.points.flatMap((point) =>
+      (point.assessment?.exclusions ?? []).map((exclusion) => ({ snapshotId: point.snapshotId, naturalKey: exclusion.naturalKey }))) ?? [];
+    const displayNames = new Map<string, string>();
+    if (wanted.length > 0) {
+      const { rows } = await client.query(
+        `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key, rv.payload->>'displayName' AS display_name
+           FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
+           JOIN unnest($1::text[], $2::text[]) AS w(snapshot_id, natural_key)
+             ON w.snapshot_id = rv.snapshot_id::text AND w.natural_key = rv.natural_key
+          WHERE s.tenant_ref = $3`,
+        [wanted.map((entry) => entry.snapshotId), wanted.map((entry) => entry.naturalKey), ref],
+      );
+      for (const row of rows) {
+        if (row.display_name) displayNames.set(`${row.snapshot_id}|${row.natural_key}`, String(row.display_name));
+      }
+    }
+
+    const incidents: IncidentSummary[] = rawIncidents.map((incident) => ({
+      ...incident,
+      owner: person(incident.owner) ?? { kind: "person", id: "", name: "Unknown owner", href: null },
+    }));
+    const selectedIncident = chosen ? incidents.find((incident) => incident.id === chosen.id) ?? null : null;
+    const points = listing?.points ?? [];
+    const selected: IncidentDetail | null = selectedIncident && listing ? {
+      incident: selectedIncident,
+      intervals: listing.intervals.map((interval) => ({ ...interval, recordedBy: person(interval.recordedBy) })),
+      pins: listing.pins.map((pin) => ({ ...pin, pinnedBy: person(pin.pinnedBy) ?? { kind: "person", id: pin.pinnedBy, name: "Unknown", href: null } })),
+      points: points.map((point) => ({
+        ...point,
+        snapshot: { kind: "snapshot", id: point.snapshotId, name: snapshotName({ id: point.snapshotId, observedTo: point.observedTo, observedFrom: point.observedFrom }, points.map((other) => ({ id: other.snapshotId, observedTo: other.observedTo, observedFrom: other.observedFrom }))), href: `/restore?snapshot=${point.snapshotId}` },
+        assessment: point.assessment ? {
+          ...point.assessment,
+          assessedBy: person(point.assessment.assessedBy),
+          exclusions: point.assessment.exclusions.map((exclusion) => ({
+            ...exclusion, displayName: displayNames.get(`${point.snapshotId}|${exclusion.naturalKey}`) ?? null,
+          })),
+        } : null,
+      })),
+      recommended: listing.recommended,
+    } : null;
+    return { generatedAt: new Date().toISOString(), incidents, selected };
+  });
+}
+
+/** One incident of this tenant by id, or null (another tenant's incident reads as absent). */
+export async function getIncidentSummary(incidentId: string): Promise<{ id: string; title: string } | null> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const incidents = (await listIncidents(client, { tenantRef: ref })) as { id: string; title: string }[];
+    const found = incidents.find((incident) => incident.id === incidentId);
+    return found ? { id: found.id, title: found.title } : null;
   });
 }
 

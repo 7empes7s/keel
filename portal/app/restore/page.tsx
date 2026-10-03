@@ -85,6 +85,7 @@ export default async function RestorePage({
 
       {snapshotId && resourceData ? (
         <RestoreSelection
+          canApprove={capabilities.includes("approve")}
           canRestore={canRestore}
           key={snapshotId}
           resources={resourceData.resources}

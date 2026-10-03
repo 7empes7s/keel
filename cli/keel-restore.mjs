@@ -39,6 +39,7 @@ import {
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
 import { emitCompletionItems } from '../engine/restore/completion.mjs';
+import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -136,6 +137,7 @@ export async function runRestore({
     collectRelationships: collectRelationshipsFn = collectRelationships,
     applyRelationshipOperations: applyRelationshipOperationsFn = applyRelationshipOperations,
     emitCompletionItems: emitCompletionItemsFn = emitCompletionItems,
+    assertContentEffectApproval: assertContentEffectApprovalFn = assertContentEffectApproval,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
@@ -321,6 +323,17 @@ export async function runRestore({
         logger.log(`recovery ${recovery.mechanism}: ${recovery.naturalKey} — ${recovery.reason}`);
       }
     }
+    // Roadmap task-66: retention-reducing, hold-releasing, externally-sharing and
+    // irreversible effects of these writes, each with its "content is not backed up"
+    // disclosure. Unclassified dangerous transitions and preservation-locked objects
+    // are refusals; classified effects need a separate high-impact approval.
+    const contentEffects = classifyContentEffects(resources);
+    for (const effect of contentEffects.effects) {
+      logger.log(`content effect ${effect.effect}: ${effect.naturalKey} ${effect.field} ${JSON.stringify(effect.before)} -> ${JSON.stringify(effect.after)}`);
+    }
+    if (contentEffects.refusals.length > 0 && !previewOnly && mode !== 'dry-run') {
+      throw new Error(`${contentEffects.refusals[0].reason} — refusing before any write`);
+    }
     const writesBeforeDeletes = resources.filter((resource) => resource.verb !== 'delete');
     const deletes = resources.filter((resource) => resource.verb === 'delete');
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
@@ -488,6 +501,7 @@ export async function runRestore({
           targetTenant: collectorConfig.tenantId,
         }),
         ...relationshipPlan.refusals,
+        ...contentEffects.refusals,
       ]);
       return {
         snapshotId: sourceSnapshot,
@@ -498,6 +512,7 @@ export async function runRestore({
         patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
         relationshipOperations,
         recoveryMechanisms,
+        contentEffects: contentEffects.effects,
         guardRefusals,
       };
     }
@@ -524,6 +539,7 @@ export async function runRestore({
         // An artifact persisted before task-64 carries no mechanisms and keeps its
         // original digest inputs; every newer artifact binds them.
         recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
+        contentEffects: contentEffects.effects,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -531,6 +547,9 @@ export async function runRestore({
         currentStateFingerprint: freshFingerprint,
       });
       if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
+      // Task-66: the effects just recomputed must carry a separate, current
+      // high-impact approval bound to exactly them — never the requester's own.
+      await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
     }
 
     const seeds = {
@@ -595,7 +614,7 @@ export async function runRestore({
     // carrying any is 'refused' and can never be promoted). Edge writes run after
     // every object exists (so a member created by this run resolves through
     // appliedIds) and before any delete.
-    results.skipped.push(...relationshipPlan.refusals);
+    results.skipped.push(...relationshipPlan.refusals, ...contentEffects.refusals);
     if (results.failed.length === 0 && relationshipOperations.length > 0) {
       const edgeResult = await applyRelationshipOperationsFn(writer, governor, relationshipOperations, {
         reader: targetReader,
@@ -702,6 +721,7 @@ export async function runRestore({
         automationContext,
         relationshipOperations,
         recoveryMechanisms,
+        contentEffects: contentEffects.effects,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
@@ -726,6 +746,7 @@ export async function runRestore({
         automationContext,
         relationshipOperations,
         recoveryMechanisms,
+        contentEffects: contentEffects.effects,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
@@ -733,7 +754,7 @@ export async function runRestore({
 
     return {
       plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
-      completionItems,
+      completionItems, contentEffects: contentEffects.effects,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };

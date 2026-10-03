@@ -51,6 +51,19 @@ export const CLAIM_LEVELS = Object.freeze([
 
 export const OPERATIONS = Object.freeze(['create', 'update', 'delete', 'restore-soft-deleted']);
 
+// Roadmap task-61: relationship (edge) write operations. Kept apart from
+// OPERATIONS — an edge is never a create/update of its parent object — and
+// registered under an edge capability key ('<parentType>#<family>', e.g.
+// 'group#member'), never under the parent resourceType itself, so a parent's
+// object capabilities cannot imply an edge capability or vice versa.
+export const EDGE_OPERATIONS = Object.freeze(['edge-add', 'edge-remove']);
+
+export function edgeCapabilityKey(parentType, family) {
+  return `${parentType}#${family}`;
+}
+
+const isKnownOperation = (operation) => OPERATIONS.includes(operation) || EDGE_OPERATIONS.includes(operation);
+
 export const CREDENTIAL_MODES = Object.freeze(['collector', 'restorer']);
 
 // Evidence older than this can no longer promote a claim — matches
@@ -92,7 +105,7 @@ function limitsFor(resourceType) {
 export function registerOperationCapability({
   resourceType, operation, subtype = null, path, handler, credentialMode = 'restorer', idOutcome,
 }) {
-  if (!OPERATIONS.includes(operation)) {
+  if (!isKnownOperation(operation)) {
     throw new TypeError(`unknown operation: ${operation}`);
   }
   if (!CREDENTIAL_MODES.includes(credentialMode)) {
@@ -215,7 +228,7 @@ export function capabilityFor(resourceType, operation) {
     credentialMode: null,
     idOutcome: null,
     limits: limitsFor(resourceType),
-    claim: OPERATIONS.includes(operation) ? 'unsupported' : 'unknown',
+    claim: isKnownOperation(operation) ? 'unsupported' : 'unknown',
     proofRef: null,
   });
 }
@@ -301,3 +314,19 @@ registerAll('conditionalAccessPolicy', '/identity/conditionalAccess/policies', [
 recordFixtureProof('conditionalAccessPolicy', 'create', 'engine/restore/applyEngine.test.mjs');
 recordFixtureProof('conditionalAccessPolicy', 'update', 'engine/restore/updatePath.test.mjs');
 recordFixtureProof('conditionalAccessPolicy', 'delete', 'engine/roadmap/capability-registry.test.mjs');
+
+// Roadmap task-61: group member/owner edges, written ONLY through the qualified
+// `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
+// PATCHing a members/owners array onto the parent group. Every other relationship
+// family (transitiveMember, application/servicePrincipal owners, app role grants,
+// Intune assignments) stays read-only: no registration, so it reads 'unsupported'.
+const EDGE_HANDLER = 'engine/restore/relationshipWriter.mjs#applyRelationshipOperations';
+for (const family of ['member', 'owner']) {
+  const resourceType = edgeCapabilityKey('group', family);
+  for (const operation of EDGE_OPERATIONS) {
+    registerOperationCapability({
+      resourceType, operation, path: `/groups/{id}/${family}s/$ref`, handler: EDGE_HANDLER, idOutcome: 'edge',
+    });
+    recordFixtureProof(resourceType, operation, 'engine/roadmap/relationship-restore.test.mjs');
+  }
+}

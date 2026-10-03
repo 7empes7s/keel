@@ -57,13 +57,27 @@ interface DryRunResults {
   notRemediable: DryRunResourceResult[];
 }
 
+// Roadmap task-61: a group member/owner edge change the dry run planned, written
+// only through qualified $ref operations. Null on artifacts persisted before edge
+// restore existed, or when no restored group had observed edges.
+interface RelationshipOperation {
+  parentNaturalKey: string;
+  family: "member" | "owner";
+  action: "add" | "remove";
+  targetNaturalKey: string | null;
+  targetId: string | null;
+}
+
 interface DryRunArtifact {
   id: string;
   status: "completed" | "refused" | "failed";
   closureKeys: string[];
   guardRefusals: GuardRefusal[];
   results: DryRunResults;
+  relationshipOperations?: RelationshipOperation[] | null;
 }
+
+const EDGE_RESULT_PREFIX = "edge:";
 
 function describeSnapshot(snapshot: SnapshotOption): string {
   const captured = formatTimestamp(snapshot.completedAt ?? snapshot.startedAt);
@@ -717,14 +731,34 @@ export function RestoreSelection({
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
-          {artifact.results.applied.length ? (
+          {artifact.results.applied.some((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX)) ? (
             <div>
               <p className="severity-label">PLANNED CHANGES</p>
               <ul className="closure-list">
-                {artifact.results.applied.map((entry) => (
+                {artifact.results.applied.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX)).map((entry) => (
                   <li key={entry.naturalKey}>
                     <code className="natural-key">{entry.naturalKey}</code>
                     {entry.reason ? ` — ${entry.reason}` : " — would apply"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {artifact.relationshipOperations?.length ? (
+            <div>
+              <p className="severity-label">MEMBERSHIP CHANGES</p>
+              <ul className="closure-list edge-list">
+                {artifact.relationshipOperations.map((operation) => (
+                  <li
+                    className={`edge-op edge-${operation.action}`}
+                    key={`${operation.parentNaturalKey}|${operation.family}|${operation.action}|${operation.targetNaturalKey ?? operation.targetId}`}
+                  >
+                    <span className="edge-action">{operation.action === "add" ? "+ Add" : "− Remove"}</span>
+                    {" "}
+                    <code className="natural-key">{operation.targetNaturalKey ?? operation.targetId ?? "object created by this restore"}</code>
+                    {` as ${operation.family} of `}
+                    <code className="natural-key">{operation.parentNaturalKey}</code>
                   </li>
                 ))}
               </ul>

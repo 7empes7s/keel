@@ -111,3 +111,12 @@ jobs:
       - name: Run portal tests
         run: npm test
         working-directory: portal
+      - name: Run restore engine tests
+        # The restore path's boundary suites (roadmap task Validate set). Serial:
+        # several suites share the one test database.
+        run: >-
+          node --test --test-concurrency=1
+          roadmap/relationship-restore.test.mjs restore/*.test.mjs reconcile/*.test.mjs
+          safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
+          ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs
+        working-directory: engine

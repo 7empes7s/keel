@@ -1082,3 +1082,14 @@ CREATE TABLE IF NOT EXISTS workload_observation (
   field_coverage jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (collection_id, resource_key)
 );
+
+-- Roadmap task-103: a workload configuration restore (SharePoint tenant sharing
+-- settings first) is planned into the same immutable dry-run artifact, so its
+-- content-effect approval and promotion checks are the existing ones. Its source is
+-- a workload collection, not an Entra snapshot, so snapshot_id may be null, but
+-- only on a row that carries the frozen workload plan.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS workload_restore jsonb;
+ALTER TABLE restore_dry_run ALTER COLUMN snapshot_id DROP NOT NULL;
+ALTER TABLE restore_dry_run DROP CONSTRAINT IF EXISTS restore_dry_run_source_check;
+ALTER TABLE restore_dry_run ADD CONSTRAINT restore_dry_run_source_check
+  CHECK (snapshot_id IS NOT NULL OR workload_restore IS NOT NULL);

@@ -1,7 +1,14 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
+import { readFileSync } from "node:fs";
+
 import { listBaselines } from "../../engine/govern/baseline.mjs";
+import {
+  baselineCompliance,
+  complianceFindings,
+  storageResidency,
+} from "../../engine/govern/baselineCompliance.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import {
   getActiveBaseline,
@@ -15,10 +22,16 @@ import {
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
-import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
+  BaselineCapture,
+  BaselineChanges,
   BaselineRecord,
   BaselinesData,
+  ComplianceData,
+  ComplianceFinding,
+  ComplianceSummary,
+  StorageResidency,
   CapabilityClaim,
   CoverageData,
   CoverageDiagnosis,
@@ -323,6 +336,60 @@ async function baselinesFor(client: KeelClient, ref: string): Promise<BaselineRe
   return rows.map(normalizeBaseline);
 }
 
+// Roadmap task-87: every baseline with its capture, version chain and changes since
+// capture, computed by the engine reader at `now` from stored capture times.
+async function baselinesWithCapture(client: KeelClient, ref: string, now: Date): Promise<BaselineRecord[]> {
+  const [baselines, compliance] = await Promise.all([
+    baselinesFor(client, ref),
+    baselineCompliance(client, { tenantRef: ref, now }) as Promise<UnknownRecord[]>,
+  ]);
+  const byId = new Map(compliance.map((entry) => [String(entry.id), entry]));
+  return baselines.map((baseline) => {
+    const entry = byId.get(baseline.id);
+    if (!entry) return baseline;
+    return {
+      ...baseline,
+      version: Number(entry.version ?? 1),
+      supersedesId: (entry.supersedesId as string | null) ?? null,
+      supersededById: (entry.supersededById as string | null) ?? null,
+      supersededAt: (entry.supersededAt as string | null) ?? null,
+      capture: entry.capture as BaselineCapture,
+      changesSinceCapture: entry.changesSinceCapture as BaselineChanges,
+    };
+  });
+}
+
+function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null } {
+  const path = recoveryManifestPath();
+  if (!path) return { manifest: null, source: null };
+  try {
+    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path };
+  } catch {
+    // An unreadable manifest is reported as not configured, never guessed.
+    return { manifest: null, source: path };
+  }
+}
+
+export async function getComplianceData(): Promise<ComplianceData> {
+  const ref = tenantRef();
+  const now = new Date();
+  const { manifest, source } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return withClient(async (client) => {
+    const [{ findings, summary }, baselines] = await Promise.all([
+      complianceFindings(client, { tenantRef: ref, now }) as Promise<{ findings: ComplianceFinding[]; summary: ComplianceSummary }>,
+      baselinesWithCapture(client, ref, now),
+    ]);
+    return {
+      generatedAt: now.toISOString(),
+      findings,
+      summary,
+      storage,
+      activeBaseline: baselines.find((baseline) => baseline.active) ?? null,
+    };
+  });
+}
+
 async function activeDriftFor(
   client: KeelClient,
   ref: string,
@@ -382,11 +449,12 @@ export async function getCoverageData(): Promise<CoverageData> {
 
 export async function getBaselinesData(): Promise<BaselinesData> {
   const ref = tenantRef();
+  const now = new Date();
   return withClient(async (client) => {
-    const baselines = await baselinesFor(client, ref);
+    const baselines = await baselinesWithCapture(client, ref, now);
     const people = await principalRefs(client, baselines.map((baseline) => baseline.setBy).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)));
     return {
-      generatedAt: new Date().toISOString(),
+      generatedAt: now.toISOString(),
       baselines: baselines.map((baseline) => {
         // A principal id resolves to a name; a system actor ("scheduler") is named by itself.
         const setByRef: Ref = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(baseline.setBy)

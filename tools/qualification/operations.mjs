@@ -8,6 +8,7 @@
  *   node tools/qualification/operations.mjs --harness  # also run the fixture harness
  *   node tools/qualification/operations.mjs --check    # exit 1 if any catalogue type lacks a decision
  *   node tools/qualification/operations.mjs --batch identity-application [--json]
+ *   node tools/qualification/operations.mjs --batch policy  # task-108: also prints the policy family ledger
  *                                                       # task-107: run one expansion batch and print its evidence report
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
@@ -21,6 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { CATALOG } from '../tenant-probe/catalog.mjs';
 import { OPERATIONS, capabilityFor, graphPathFor, isSupportedClaim } from '../../engine/coverage/capabilities.mjs';
 import { EXPANSION_BATCHES, buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
+import { buildPolicyFamilyLedger } from '../../engine/restore/policyOperations.mjs';
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 
@@ -44,6 +46,12 @@ const FIXTURE_PAYLOADS = Object.freeze({
     keyCredentials: [], requiredResourceAccess: [], tags: [],
   },
   servicePrincipal: { appId: 'fixture-existing-appid', accountEnabled: true, appRoleAssignmentRequired: false, tags: [] },
+  // Roadmap task-108: a custom strength. policyType and requirementsSatisfied
+  // are computed by Entra and never sent.
+  authenticationStrengthPolicy: {
+    displayName: 'Fixture strength', description: 'Fixture custom strength', policyType: 'custom',
+    requirementsSatisfied: 'mfa', allowedCombinations: ['fido2', 'windowsHelloForBusiness'],
+  },
 });
 
 // Natural keys that already exist in the fixture target, per type (a service
@@ -75,8 +83,11 @@ export function fakeGraph() {
       if (method === 'POST') {
         next += 1;
         const id = `fixture-${next}`;
-        // Entra assigns an application's appId; the fake does the same.
-        const created = path === '/applications' ? { ...body, id, appId: `fixture-appid-${next}` } : { ...body, id };
+        // Entra assigns an application's appId, and computes a custom
+        // strength's policyType and requirementsSatisfied; the fake does the same.
+        const created = path === '/applications' ? { ...body, id, appId: `fixture-appid-${next}` }
+          : path === '/policies/authenticationStrengthPolicies' ? { ...body, id, policyType: 'custom', requirementsSatisfied: 'mfa' }
+            : { ...body, id };
         objects.set(`${path}/${id}`, created);
         return { ok: true, status: 201, body: created };
       }
@@ -195,6 +206,7 @@ export async function runExpansionBatch(batchId, { now = () => new Date() } = {}
       credentialMode: capability.credentialMode,
       idOutcome: capability.idOutcome,
       proofRef: capability.proofRef,
+      subtype: capability.subtype,
       result: run ? run.result : 'not-run',
       synthetic: true,
       writes: run?.writes ?? [],
@@ -216,14 +228,23 @@ export async function runExpansionBatch(batchId, { now = () => new Date() } = {}
       resourceType: entry.resourceType, status: entry.status, restoreScope: entry.restoreScope,
       api: entry.api, permission: entry.permission, reason: entry.reason,
     })),
+    // Roadmap task-108: the policy batch also carries its family ledger
+    // (subtype-bound records, whether each proof is current, refused subtypes).
+    ...(batch.id === 'policy' ? { policyLedger: buildPolicyFamilyLedger() } : {}),
   };
 }
 
 function batchTable(report) {
   const lines = [`batch ${report.batch.id} (${report.batch.label}) — synthetic fixture evidence, never a live claim`];
   for (const op of report.operations) {
-    lines.push(`  ${op.resourceType} ${op.operation}: ${op.result} · claim ${op.claim} · id ${op.idOutcome}`);
+    lines.push(`  ${op.resourceType} ${op.operation}: ${op.result} · claim ${op.claim} · id ${op.idOutcome}${op.subtype ? ` · subtype ${op.subtype} only` : ''}`);
     for (const step of op.completionSteps) lines.push(`      then by hand: ${step.kind} (${step.requirement}) — ${step.description}`);
+  }
+  for (const family of report.policyLedger?.families ?? []) {
+    for (const op of family.operations) {
+      lines.push(`  ${family.resourceType} ${op.operation} proof: ${op.proofCurrent ? 'current' : 'INVALIDATED'} · writes ${op.writableFields.join(', ')}`);
+    }
+    for (const subtype of family.refusedSubtypes) lines.push(`  ${family.resourceType} ${subtype}: refused (immutable)`);
   }
   for (const refusal of report.refused) lines.push(`  ${refusal.resourceType} ${refusal.operation}: refused (${refusal.claim})`);
   for (const entry of report.remaining) lines.push(`  ${entry.resourceType}: ${entry.status} — ${entry.reason} [${entry.api ?? 'no write route'}; ${entry.permission}]`);

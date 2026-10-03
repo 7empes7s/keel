@@ -118,8 +118,14 @@ registerFieldProjection('conditionalAccessPolicy', {
   knownFields: ['id', 'displayName', 'conditions', 'grantControls', 'sessionControls', 'state', 'templateId'],
 });
 
+// Roadmap task-108: policyType, requirementsSatisfied and the timestamps are on
+// every unfiltered read; naming them keeps them out of 'unknown'. Anything else
+// Graph adds later stays 'unknown': never written, and reported.
 registerFieldProjection('authenticationStrengthPolicy', {
-  knownFields: ['id', 'displayName', 'description', 'allowedCombinations'],
+  knownFields: [
+    'id', 'displayName', 'description', 'allowedCombinations', 'policyType', 'requirementsSatisfied',
+    'createdDateTime', 'modifiedDateTime',
+  ],
 });
 
 // Roadmap task-107: the first application/service-principal subset. Only the
@@ -148,6 +154,12 @@ registerFieldProjection('servicePrincipal', {
 function topLevelKey(path) {
   const dot = path.indexOf('.');
   return dot === -1 ? path : path.slice(0, dot);
+}
+
+/** The reviewed top-level field list for a type, sorted; null when unreviewed. */
+export function knownFieldsFor(resourceType) {
+  const review = FIELD_PROJECTIONS.get(resourceType);
+  return review ? Object.freeze([...review.knownFields].sort()) : null;
 }
 
 /**

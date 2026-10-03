@@ -11,6 +11,10 @@ import {
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
+import { approveBootstrapPlan, executeBootstrap } from "../../engine/bootstrap/execute.mjs";
+import { BootstrapJournal, migrateBootstrapJournal } from "../../engine/bootstrap/journal.mjs";
+import { firstCollectReadiness, selectWorkloads, SETUP_SCOPES } from "../../engine/bootstrap/onboarding.mjs";
+import { planBootstrap } from "../../engine/bootstrap/plan.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { connect } from "../../engine/store/db.mjs";
@@ -20,6 +24,7 @@ import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
+import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -50,6 +55,8 @@ export interface GuardSpec {
   // Capability the principal must hold. A route that declares none declares no check —
   // the suite's mutation (remove the check from one route) exists to catch exactly that.
   capability?: string;
+  // Further capabilities the principal must also hold, checked the same way.
+  alsoRequires?: string[];
   // Job kind an approval of this action will mint. Required when requiresApproval is
   // set: the approval request stores it so approve mints the right kind of job.
   jobKind?: string;
@@ -193,6 +200,9 @@ export function guarded(
       if (spec.capability !== undefined && !capabilities.includes(spec.capability)) {
         return await deny("capability");
       }
+      if (spec.alsoRequires?.some((capability) => !capabilities.includes(capability))) {
+        return await deny("capability");
+      }
       // §3.3, plan task 14: a requiresApproval action can never be enqueued directly —
       // requesting it creates an approval_request, and only a separate approve decision
       // by a different principal mints the job. The request is recorded in the evidence
@@ -248,6 +258,10 @@ export function guarded(
   };
 }
 
+// Roadmap task-76: a collection is how KEEL first reads the tenant, so the portal starts
+// one only once the read grants are confirmed (see engine/bootstrap/onboarding.mjs).
+const COLLECTION_JOB_KINDS = new Set(["collect", "backup"]);
+
 export interface ActionSpec {
   action: string;
   jobKind: string;
@@ -274,7 +288,16 @@ export function guardedAction(
       requiresApproval: spec.requiresApproval,
       recordAttempt: true,
     },
-    async ({ client, principalId, request }) => {
+    async ({ client, principalId, tenantRef: tenant, request }) => {
+      if (COLLECTION_JOB_KINDS.has(spec.jobKind)) {
+        const readiness = await firstCollectReadiness(client, { tenantRef: tenant });
+        if (!readiness.allowed) {
+          return Response.json(
+            { error: "setup_incomplete", missing: readiness.missing },
+            { status: 409, headers: NO_STORE },
+          );
+        }
+      }
       const job = (await enqueue(client, {
         kind: spec.jobKind,
         params: await readActionParams(request),
@@ -491,6 +514,80 @@ export function guardedApprovalDecision(
           );
         }
         throw error;
+      }
+    },
+    deps,
+  );
+}
+
+const ARTIFACT_ID_PATTERN = /^[0-9a-f]{64}$/;
+
+export interface SetupDeps extends GuardDeps {
+  host?: () => SetupHost;
+}
+
+// Roadmap task-76: start or resume a setup run. The plan is derived here from the
+// host's readers, never accepted from the request; approving binds this principal to
+// that exact plan (task-75 hashes the whole approval), and a resume runs only an
+// approval the same principal made. Starting needs configuration and approve; the
+// engine journal re-checks both grants from the database before every step, so a
+// stale session or a revoked grant stops the run with its progress kept.
+export function guardedSetup(deps: SetupDeps = {}) {
+  const resolveHost = deps.host ?? setupHost;
+  return guarded(
+    { action: "setup", capability: "configuration", alsoRequires: ["approve"], recordAttempt: true },
+    async ({ client, principalId, tenantRef: tenant, request }) => {
+      const body = await readActionParams(request);
+      const host = resolveHost();
+      if (!canProvision(host)) {
+        return Response.json({ error: "provisioning_unavailable" }, { status: 409, headers: NO_STORE });
+      }
+      await migrateBootstrapJournal(client);
+      const journal = new BootstrapJournal({ client, tenantRef: tenant, principalId });
+      let artifactId: string;
+      try {
+        if (body.resume !== undefined) {
+          if (typeof body.resume !== "string" || !ARTIFACT_ID_PATTERN.test(body.resume)) {
+            throw new InvalidActionRequest("resume must name a setup run");
+          }
+          artifactId = body.resume;
+        } else {
+          const scope = body.scope;
+          if (typeof scope !== "string" || !Object.hasOwn(SETUP_SCOPES, scope)) {
+            throw new InvalidActionRequest("scope must be read or restore");
+          }
+          let workloads: string[];
+          try {
+            workloads = selectWorkloads(scope, body.workloads) as string[];
+          } catch {
+            throw new InvalidActionRequest("unknown workload for this scope");
+          }
+          // planBootstrap is JavaScript; its JSDoc-inferred option types are too narrow.
+          const plan = await planBootstrap({
+            tenantRef: tenant,
+            workloads,
+            readAdapters: host.readers,
+            operatorPrincipalId: host.operatorPrincipalId,
+          } as unknown as Parameters<typeof planBootstrap>[0]);
+          artifactId = (await approveBootstrapPlan({
+            journal, plan, credentials: host.credentials, adapters: host.adapters,
+            build: host.build, qualificationMode: host.qualificationMode,
+          })) as string;
+        }
+        const result = (await executeBootstrap({
+          journal, artifactId, adapters: host.adapters, build: host.build, qualificationMode: host.qualificationMode,
+        })) as { status: string; stepId?: string };
+        return Response.json(
+          { run: { artifactId, status: result.status, stepId: result.stepId ?? null } },
+          { headers: NO_STORE },
+        );
+      } catch (error) {
+        if (error instanceof InvalidActionRequest) throw error;
+        const message = error instanceof Error ? error.message : "";
+        if (/not authorized/.test(message)) return forbidden();
+        if (/immutable approved artifact required|immutable artifact mismatch/.test(message)) return notFound();
+        // The journal keeps what happened; the page reads it back.
+        return Response.json({ error: "setup_stopped" }, { status: 409, headers: NO_STORE });
       }
     },
     deps,

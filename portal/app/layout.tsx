@@ -35,6 +35,7 @@ export default async function RootLayout({
   const canUsers = readAccess(requestHeaders, DATA_SURFACES.principalsPage) !== null;
   const canPolicies = readAccess(requestHeaders, DATA_SURFACES.policiesPage) !== null;
   const canRead = readAccess(requestHeaders, DATA_SURFACES.jobsPage) !== null;
+  const canConfigure = readAccess(requestHeaders, DATA_SURFACES.setupPage) !== null;
 
   if (!email) {
     throw new Error("Verified Cloudflare Access identity is missing");
@@ -76,8 +77,8 @@ export default async function RootLayout({
                 <small>Operator portal</small>
               </span>
             </Link>
-            <CommandPalette canApprove={canApprove} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
-            <NavLinks canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} pendingApprovals={pendingApprovals} />
+            <CommandPalette canApprove={canApprove} canConfigure={canConfigure} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
+            <NavLinks canConfigure={canConfigure} canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} pendingApprovals={pendingApprovals} />
             <div className="operator-context">
               <span className="auth-state">
                 <span aria-hidden="true" className="auth-dot" /> Authenticated
@@ -92,7 +93,7 @@ export default async function RootLayout({
             </div>
           </aside>
           <main className="workspace" id="main-content">
-            <SectionTabs canApprove={canApprove} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
+            <SectionTabs canApprove={canApprove} canConfigure={canConfigure} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
             {children}
           </main>
         </div>

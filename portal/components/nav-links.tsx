@@ -17,6 +17,7 @@ export interface NavCapabilities {
   canPolicies?: boolean;
   canUsers?: boolean;
   canApprove?: boolean;
+  canConfigure?: boolean;
 }
 
 type Gate = keyof NavCapabilities | null;
@@ -58,6 +59,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/principals", label: "People", gate: "canUsers", aliases: "principals users roles" },
     { href: "/notifications", label: "Notifications", gate: "canRead" },
     { href: "/integrations", label: "Integrations", gate: "canRead" },
+    { href: "/setup", label: "Setup", gate: "canConfigure", aliases: "onboarding prerequisites consent connect tenant" },
   ],
 };
 
@@ -112,10 +114,11 @@ export function NavLinks({
   canPolicies = false,
   canUsers = false,
   canApprove = false,
+  canConfigure = false,
   pendingApprovals = null,
 }: NavCapabilities & { pendingApprovals?: number | null }) {
   const pathname = usePathname();
-  const entries = visibleNavEntries({ canRead, canPolicies, canUsers, canApprove });
+  const entries = visibleNavEntries({ canRead, canPolicies, canUsers, canApprove, canConfigure });
   const currentSection = sectionForPath(pathname);
   const navRef = useRef<HTMLElement>(null);
   const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);

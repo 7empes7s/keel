@@ -382,10 +382,20 @@ export async function getCoverageData(): Promise<CoverageData> {
 
 export async function getBaselinesData(): Promise<BaselinesData> {
   const ref = tenantRef();
-  return withClient(async (client) => ({
-    generatedAt: new Date().toISOString(),
-    baselines: await baselinesFor(client, ref),
-  }));
+  return withClient(async (client) => {
+    const baselines = await baselinesFor(client, ref);
+    const people = await principalRefs(client, baselines.map((baseline) => baseline.setBy).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)));
+    return {
+      generatedAt: new Date().toISOString(),
+      baselines: baselines.map((baseline) => {
+        // A principal id resolves to a name; a system actor ("scheduler") is named by itself.
+        const setByRef: Ref = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(baseline.setBy)
+          ? people.get(baseline.setBy)!
+          : { kind: "person", id: baseline.setBy, name: baseline.setBy, href: null };
+        return { ...baseline, setByRef };
+      }),
+    };
+  });
 }
 
 export async function getDriftData(): Promise<DriftData> {
@@ -527,6 +537,11 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });
   }
   return refs;
+}
+
+/** People by principal id for a page that has no other database work (Activity). */
+export async function getPrincipalNames(ids: string[]): Promise<Record<string, Ref>> {
+  return withClient(async (client) => Object.fromEntries(await principalRefs(client, ids)));
 }
 
 export function snapshotName(snapshot: { id: string; observedTo?: string | null; observedFrom?: string | null }, all: { id: string; observedTo?: string | null; observedFrom?: string | null }[] = []): string {

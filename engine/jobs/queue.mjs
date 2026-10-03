@@ -2,6 +2,7 @@ import { envelopeForJob, createEventSink } from '../telemetry/events.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
+import { resolveRowReferences } from '../govern/references.mjs';
 
 // engine/jobs/queue.mjs
 //
@@ -87,6 +88,15 @@ export async function fail(client, { id, error }) {
     [id, error ?? null],
   );
   return rows[0] ?? null;
+}
+
+/**
+ * Roadmap task-130: job summary fields — the requester resolved to a name, and the
+ * baseline, plan (dry run), undone restore, changes and snapshot a job's params point
+ * at — in one query per kind for the whole list.
+ */
+export async function summarizeJobs(client, { tenantRef, jobs }) {
+  return resolveRowReferences(client, { tenantRef, rows: jobs, people: ['requested_by'] });
 }
 
 export async function listJobs(client, { limit = 50 } = {}) {

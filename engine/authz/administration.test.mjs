@@ -11,6 +11,8 @@ test('principal administration: live grants, self-lockout, windows, and disabled
   try {
     const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
     await client.query(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS principal'), schema.indexOf('-- §3.3 approvals')));
+    // listPrincipals reads the task-43 system identity column, added later in the schema.
+    await client.query(schema.slice(schema.indexOf('ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind'), schema.indexOf('WHERE system_kind IS NOT NULL;') + 'WHERE system_kind IS NOT NULL;'.length));
     const { rows: [admin] } = await client.query("INSERT INTO principal(email) VALUES ('admin@test') RETURNING *");
     const grant = await grantRole(client, { principalId: admin.id, role: 'admin', grantedBy: admin.id });
     await assert.rejects(revokeRole(client, { principalId: admin.id, grantId: grant.id, revokedBy: admin.id }), SelfLockoutError);

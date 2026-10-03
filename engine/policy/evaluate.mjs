@@ -145,14 +145,53 @@ export async function requireCurrentRemediationRunAs(client, runAsPrincipalId, a
 }
 
 /** Read current policy state, including disabled and paused policies by default. */
+// Roadmap task-130: a policy row carries its run-as principal resolved to a name
+// (run_as_principal: { id, email, name, readable }) and its most recent automatic
+// action, so the portal never shows the run-as identity as a bare id. One query.
+const POLICY_VIEW = `
+  SELECT p.*,
+         rp.email AS run_as_principal_email, rp.display_name AS run_as_principal_display_name,
+         last_action.queued_at AS last_action_at, last_action.status AS last_action_status,
+         last_action.natural_key AS last_action_natural_key,
+         (SELECT count(*)::int FROM auto_remediation_execution e
+           WHERE e.policy_id = p.id AND e.queued_at > now() - interval '7 days') AS actions_last_7_days
+    FROM policy p
+    LEFT JOIN principal rp ON rp.id = p.run_as_principal_id
+    LEFT JOIN LATERAL (
+      SELECT e.queued_at, e.status, d.natural_key FROM auto_remediation_execution e
+        LEFT JOIN drift d ON d.id = e.drift_id
+       WHERE e.policy_id = p.id ORDER BY e.queued_at DESC LIMIT 1
+    ) last_action ON true`;
+
+function withRunAs(row) {
+  if (!row) return row;
+  const { run_as_principal_email: email, run_as_principal_display_name: displayName, ...rest } = row;
+  return {
+    ...rest,
+    run_as_principal: row.run_as_principal_id
+      ? {
+        id: String(row.run_as_principal_id),
+        email: email ?? null,
+        name: displayName ?? email ?? null,
+        readable: email != null,
+      }
+      : null,
+  };
+}
+
 export async function listPolicies(client, { tenantRef, enabled } = {}) {
   const { rows } = await client.query(
-    `SELECT * FROM policy
-      WHERE tenant_ref = $1 AND ($2::boolean IS NULL OR enabled = $2)
-      ORDER BY created_at, id`,
+    `${POLICY_VIEW}
+      WHERE p.tenant_ref = $1 AND ($2::boolean IS NULL OR p.enabled = $2)
+      ORDER BY p.created_at, p.id`,
     [tenantRef, enabled ?? null],
   );
-  return rows;
+  return rows.map(withRunAs);
+}
+
+export async function getPolicy(client, { tenantRef, id }) {
+  const { rows } = await client.query(`${POLICY_VIEW} WHERE p.id::text = $1 AND p.tenant_ref = $2`, [id, tenantRef]);
+  return rows[0] ? withRunAs(rows[0]) : null;
 }
 
 // Clearing a pause must not restore automation under a revoked identity. This does

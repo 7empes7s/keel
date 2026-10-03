@@ -13,6 +13,7 @@
 import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
+import { resolveRowReferences } from './references.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
@@ -277,4 +278,14 @@ export async function rejectRequest(client, { tenantRef, id, decidedBy, reason }
     actor: decidedBy,
   });
   return rejected;
+}
+
+/**
+ * Roadmap task-130: what each request concerns, resolved to names in one query per
+ * kind — requester and decider, the dry run (plan) a restore promotes or an undo
+ * reverses, the baseline an activation sets, the changes a roll-back reverts. A
+ * reference that cannot be read comes back readable: false, never as a bare id.
+ */
+export async function summarizeApprovalRequests(client, { tenantRef, requests }) {
+  return resolveRowReferences(client, { tenantRef, rows: requests, people: ['requested_by', 'decided_by'] });
 }

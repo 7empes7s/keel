@@ -12,14 +12,14 @@ const PAGES = [
   { name: "backups", hash: "/backups" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
-  { name: "jobs", hash: "/jobs" },
+  { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
   { name: "policy", hash: "/policies/p1" },
   { name: "approvals", hash: "/approvals" },
-  { name: "evidence", hash: "/evidence" },
+  { name: "baselines", hash: "/baselines" },
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
@@ -82,12 +82,13 @@ test("command palette opens with the keyboard and navigates", async ({ page }) =
   await page.keyboard.press("Control+k");
   await page.keyboard.type("evid");
   await page.keyboard.press("Enter");
-  await expect(page.locator("main h1")).toHaveText("Evidence");
+  // Task-130: the audit record is part of Activity.
+  await expect(page.locator("main h1")).toHaveText("Activity");
 });
 
 test("reject shows the spinner on Reject only", async ({ page }) => {
   await open(page, "/approvals");
-  const row = page.locator("tbody tr").first();
+  const row = page.locator("li.approval-card").first();
   await row.locator("input").fill("outside the change window");
   await row.getByRole("button", { name: "Reject" }).click();
   await expect(row.getByRole("button", { name: "Reject" })).toHaveAttribute("aria-busy", "true");
@@ -96,7 +97,7 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
 
 test("destructive writes ask for confirmation with Cancel focused", async ({ page }) => {
   await open(page, "/notifications");
-  await page.getByRole("button", { name: "Delete subscription" }).first().click();
+  await page.getByRole("button", { name: "Delete rule" }).first().click();
   const dialog = page.locator("dialog[open]");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
@@ -213,16 +214,25 @@ const BANNED_TERMS = [
 const CONTRACT_PENDING = new Set([
   // task-131: Protect, Changes and Restore in plain words.
   "coverage", "drift", "backups", "restore",
-  // task-130: named objects and labelled records.
-  "jobs", "job-failed", "job-restore-completion", "job-restore-undo", "policies", "policy", "approvals",
-  "evidence", "principals", "notifications", "integrations",
 ]);
-const CONTRACT_PENDING_MAX = 15;
+const CONTRACT_PENDING_MAX = 4;
 
 test("contract allowlist only shrinks and names real routes", () => {
   expect(CONTRACT_PENDING.size).toBeLessThanOrEqual(CONTRACT_PENDING_MAX);
   for (const name of CONTRACT_PENDING) expect(PAGES.some((entry) => entry.name === name), name).toBe(true);
 });
+
+// The ids each route's fixtures carry, which its records must keep (roadmap task-130).
+const RECORD_IDS: Record<string, string[]> = {
+  policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
+  policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
+  approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
+  baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117"],
+  notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "d0e10000-0000-4000-8000-0000000000d1"],
+  integrations: ["de570000-0000-4000-8000-0000000000e1"],
+  "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
+  "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
+};
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {
   // Each text node on its own line, so adjacent blocks never run together.
@@ -240,6 +250,8 @@ function expectPlainText(visible: string) {
   expect(visible, "identifier test: UUID").not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   expect(visible, "identifier test: hex").not.toMatch(/\b[0-9a-f]{32,}\b/i);
   expect(visible, "identifier test: resource key").not.toMatch(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/);
+  // Enum codes (auto_remediate, require_approval, run_as_principal_id) are display-mapped.
+  expect(visible, "enum test: snake_case code").not.toMatch(/\b[a-z]+(?:_[a-z0-9]+)+\b/);
   for (const term of BANNED_TERMS) {
     expect(visible, `vocabulary test: "${term}"`).not.toMatch(new RegExp(`\\b${term.replace("-", "\\-")}s?\\b`, "i"));
   }
@@ -266,9 +278,12 @@ for (const { name, hash } of PAGES) {
     for (const text of await page.locator("main#main-content a[data-ref]").allTextContents()) {
       expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/i);
     }
-    // 7. Record completeness: honesty is moved, not lost; every record field is labelled.
+    // 7. Record completeness: honesty is moved, not lost; every record field is labelled,
+    // and the ids of the objects the page shows are all in the record layer.
     const records = page.locator('[data-layer="record"]');
     expect(await records.count()).toBeGreaterThan(0);
+    const recordText = (await records.allTextContents()).join("\n");
+    for (const id of RECORD_IDS[name] ?? []) expect(recordText, `record keeps ${id}`).toContain(id);
     for (const field of await records.locator(".technical-field").all()) {
       expect((await field.locator("dt").textContent())?.trim().length ?? 0).toBeGreaterThan(0);
       expect((await field.locator("dd").textContent())?.trim().length ?? 0).toBeGreaterThan(0);
@@ -288,7 +303,7 @@ test("contract · shell: seven entries, plain words, the eyebrow is the section"
   for (const { hash, section, tab } of [
     { hash: "/coverage", section: "Protect", tab: "Configuration types" },
     { hash: "/incidents", section: "Restore", tab: "Incidents" },
-    { hash: "/evidence", section: "Activity", tab: "Audit record" },
+    { hash: "/principals", section: "Settings", tab: "People" },
   ]) {
     await open(page, hash, "dark");
     await expect(page.locator(".eyebrow").first()).toHaveText(section);

@@ -1,4 +1,4 @@
-import { listJobs } from "../../engine/jobs/queue.mjs";
+import { listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { listEligibleBaselineSnapshots } from "../../engine/govern/baseline.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
@@ -58,11 +58,11 @@ export async function getRecentJobs(
   limit = 25,
 ): Promise<JobRecord[]> {
   return withClient(async (client) => {
-    const rows = (await listJobs(client, { limit: 100 })) as UnknownRecord[];
-    return rows
+    const rows = ((await listJobs(client, { limit: 100 })) as UnknownRecord[])
       .filter((row) => kinds.includes(String(row.kind)))
-      .slice(0, limit)
-      .map(normalizeJob);
+      .slice(0, limit);
+    // Task-130: requester, plan, baseline and changes resolved to names.
+    return ((await summarizeJobs(client, { tenantRef: tenantRef(), jobs: rows })) as UnknownRecord[]).map(normalizeJob);
   });
 }
 

@@ -14,6 +14,8 @@ const PAGES = [
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
   { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
+  { name: "readiness", hash: "/readiness" },
+  { name: "readiness-ready", hash: "/readiness/ready" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
@@ -191,6 +193,70 @@ test("a change says who made it from the audit log and where a roll back goes", 
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
+// Task-98: a change lists only the settings that change behaviour, grouped by what a roll
+// back can do, links the records a decision rests on and says which ones do not match.
+// The comparison opens from the keyboard, and an unknown earlier value is never a removal.
+test("a change shows its behavioural settings and linked records, and flags mismatches", async ({ page }) => {
+  await open(page, "/drift");
+  const workbook = page.locator(".decision-workbook");
+  await expect(workbook.locator("tfoot")).toContainText("All open changes76");
+  await expect(workbook).toContainText("1 change rests on records that do not match each other.");
+
+  const toggle = page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Finance$/ }) }).locator("button.comparison-button");
+  await expect(toggle).toHaveText("Show what changed");
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const diff = page.locator(".semantic-diff");
+  await expect(diff.locator(".semantic-summary")).toHaveText("2 settings differ from the baseline in a way that changes behaviour.");
+  await expect(diff.getByRole("heading", { name: "Cannot be changed back in place (1)" })).toBeVisible();
+  await expect(diff.getByRole("heading", { name: "Changes behaviour (1)" })).toBeVisible();
+  const evidence = page.locator(".decision-evidence");
+  await expect(evidence.locator(".decision-mismatch-note")).toHaveText("2 records do not match the others. Check before you decide.");
+  await expect(evidence.locator(".decision-row-mismatch dt")).toHaveText(["Baseline copy · does not match", "Roll-back plan and result · does not match"]);
+  await expect(evidence).toContainText("Owned by CREOS.");
+  await expect(evidence).toContainText("A roll-back request is approved. Its job is finished.");
+  await expect(evidence).toContainText("It restores from a different backup than the baseline's, so it is not linked to this change. Result: KEEL wrote it back and checked the result.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  const record = evidence.locator('[data-layer="record"]');
+  await record.locator("summary").click();
+  for (const kept of ["7f3c0000-0000-4000-8000-000000000011", "a9e10000-0000-4000-8000-000000000100", "0b5e0000-0000-4000-8000-0000000000c8", "mismatch"]) {
+    await expect(record).toContainText(kept);
+  }
+  // Closing from the keyboard returns the row to its collapsed state.
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".semantic-diff")).toHaveCount(0);
+
+  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^HQ egress$/ }) }).getByRole("button", { name: "Show what changed" }).click();
+  const unknown = page.locator(".semantic-diff");
+  await expect(unknown.locator(".semantic-summary")).toHaveText("KEEL did not keep the baseline's copy of this, so the earlier values are not known. Nothing is shown as removed.");
+  await expect(unknown.locator("td[data-label='In the baseline']")).toHaveText(["Not known", "Not known"]);
+  await expect(unknown.locator(".diff-kind")).toHaveText(["Now set", "Now set"]);
+  await expect(page.locator(".decision-evidence")).toContainText("The baseline holds no copy of this, so KEEL cannot check what it compared against.");
+  await expect(page.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so KEEL cannot check it.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
+test("an opened change and the decision summary fit a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/drift", "light");
+  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Block legacy auth$/ }) }).getByRole("button", { name: "Show what changed" }).click();
+  await expect(page.locator(".decision-evidence")).toContainText("Shared by CREOS and ENOVOS.");
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  // On a phone each linked record stacks its label above its sentence.
+  const row = page.locator(".decision-row").first();
+  const [label, value] = await Promise.all([row.locator("dt").boundingBox(), row.locator("dd").boundingBox()]);
+  expect(value!.y).toBeGreaterThan(label!.y);
+  await expect(page.locator(".decision-workbook tfoot")).toBeVisible();
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
 // Task-131 (was task-54/63's coverage matrix): a type's drawer answers in one sentence
 // and keeps the recovery decision, remapping proof and proof reference in its record.
 test("a type drawer states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {
@@ -256,6 +322,27 @@ test("resilience shows measured values, names what does not count, and keeps unm
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
   await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
+});
+
+// Task-94: each emergency account shows its five checks separately; "Not known" is its
+// own state, checks KEEL cannot make stay listed, and a use leads the verdict.
+test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
+  await open(page, "/readiness");
+  await expect(page.locator(".verdict-headline")).toHaveText("An emergency account was used");
+  await expect(page.locator(".readiness-account-0 .readiness-check")).toHaveCount(5);
+  const second = page.locator(".readiness-account-1");
+  await expect(second.locator(".item-card-head .pill")).toHaveText("Not ready");
+  await expect(second.locator(".readiness-check-unknown")).toContainText("Not known");
+  await expect(second.locator(".readiness-check-fail")).toContainText("Block legacy auth");
+  await expect(second.locator(".readiness-check-due")).toContainText("a new test has been due since");
+  await expect(page.locator(".readiness-alerts")).toContainText("was used 1 hour ago, and made 2 changes after it.");
+  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
+  await expect(page.locator(".readiness-surface-unsupported").first()).toContainText("KEEL cannot check this");
+
+  await open(page, "/readiness/ready");
+  await expect(page.locator(".verdict-headline")).toHaveText("Ready");
+  await expect(page.locator(".verdict-sentence")).toContainText("4 areas need a manual check");
+  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
 });
 
 // Polish pass 1: the recovery surfaces added by tasks 63–66 get their own
@@ -335,6 +422,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
   resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],
   "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
+  readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
+  "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
 };
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {

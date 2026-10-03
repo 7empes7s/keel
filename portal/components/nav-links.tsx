@@ -52,6 +52,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/restore", label: "Restore", gate: null },
     { href: "/incidents", label: "Incidents", gate: null },
     { href: "/resilience", label: "Resilience", gate: "canRead", aliases: "recovery point recovery time drills off-site copy" },
+    { href: "/readiness", label: "Emergency access", gate: "canRead", aliases: "break glass emergency accounts readiness sign-in test" },
   ],
   Approvals: [{ href: "/approvals", label: "Approvals", gate: "canApprove" }],
   Activity: [

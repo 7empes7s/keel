@@ -14,7 +14,8 @@ import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
-import { approvalEligibility, approvalInboxPredicate } from '../authz/entityScope.mjs';
+import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
+import { capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
@@ -89,7 +90,7 @@ export async function listApprovalRequests(client, {
   const scope = approvalInboxPredicate(approverScope, { nextParam: 3 });
   const { rows } = await client.query(
     `SELECT id, action, params, requested_by, justification, status,
-            decided_by, decided_at, reason, created_at, expires_at, entity_scope,
+            decided_by, decided_at, reason, created_at, expires_at, entity_scope, route,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
               ELSE status
@@ -115,11 +116,14 @@ export async function listApprovalRequests(client, {
 export async function requestApproval(client, {
   tenantRef, action, params, requestedBy, justification, ttlMs = DEFAULT_APPROVAL_TTL_MS, entityScope = null,
 }) {
+  // Task 91: where the request goes, from current ownership at request time. Advisory
+  // for the inbox and the evidence; eligibility is still decided afresh at decision time.
+  const route = await routeApproval(client, { tenantRef, entityScope, requesterId: requestedBy });
   const { rows } = await client.query(
-    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope)
-     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6)
+    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope, route)
+     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6, $7)
      RETURNING *`,
-    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope],
+    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope, route],
   );
   const request = rows[0];
 
@@ -131,10 +135,72 @@ export async function requestApproval(client, {
       action: request.action,
       params: request.params,
       requestedBy,
+      route,
     },
     actor: requestedBy,
   });
   return request;
+}
+
+const MAX_ROUTE_APPROVERS = 500;
+
+/**
+ * Task 91: who should decide a request, from CURRENT ownership and CURRENT grants.
+ *
+ *   { route: 'entity', entityCode, approvers }   every resource is owned by that one
+ *                                                entity and it has an eligible approver
+ *   { route: 'central', reason, approvers }      explicit central handoff: no captured
+ *                                                scope, shared/unknown/unresolved
+ *                                                ownership, resources of several entities
+ *                                                ('cross-entity'), expired ownership, or
+ *                                                no eligible entity approver
+ *   { route: 'refused', reason }                 a resource changed owner since the
+ *                                                request's scope was captured; the
+ *                                                request must be made again
+ *
+ * A cross-entity request is never routed to one of its entities, and a changed owner
+ * is never followed to the new owner on the old request: routing never widens who may
+ * decide. `approvers` excludes the requester (self-approval is refused anyway) and
+ * lists principal ids in a stable order; entity approvers are those whose `approve`
+ * covers that entity, central ones those who hold it tenant-wide.
+ * `approverCache` (a Map) may be shared by one reader across calls at the same `at`.
+ *
+ * @param {any} client
+ * @param {{ tenantRef: string, entityScope: any, requesterId?: string | null, at?: Date, approverCache?: Map<string, string[]> | null }} options
+ */
+export async function routeApproval(client, { tenantRef, entityScope, requesterId = null, at = new Date(), approverCache = null }) {
+  // A reader routing many changes at once may share one cache across calls.
+  const approvers = async (entityCode) => {
+    const key = `${entityCode ?? '*'}|${requesterId ?? ''}`;
+    if (approverCache?.has(key)) return approverCache.get(key);
+    const ids = await eligibleApprovers(entityCode);
+    approverCache?.set(key, ids);
+    return ids;
+  };
+  const eligibleApprovers = async (entityCode) => {
+    const { rows } = await client.query(
+      `SELECT id, system_kind, disabled_at FROM principal WHERE disabled_at IS NULL ORDER BY id LIMIT ${MAX_ROUTE_APPROVERS}`,
+    );
+    const ids = [];
+    for (const principal of rows) {
+      if (principal.id === requesterId) continue;
+      const scope = await capabilityScope(client, principal, 'approve', at);
+      if (entityCode ? !scope.central && scope.entities.includes(entityCode) : scope.central) ids.push(principal.id);
+    }
+    return ids;
+  };
+  const central = async (reason) => ({ route: 'central', reason, approvers: await approvers(null), routedAt: at.toISOString() });
+  if (!entityScope) return central('no-captured-scope');
+  if (entityScope.version !== SCOPE_VERSION || !Array.isArray(entityScope.resources)) return { route: 'refused', reason: 'scope-unreadable', routedAt: at.toISOString() };
+  const current = await rereadApprovalOwnership(client, { tenantRef, entityScope, at });
+  if (current.changed) return { route: 'refused', reason: 'ownership-changed', routedAt: at.toISOString() };
+  if (current.expired) return central('ownership-expired');
+  if (current.centralOnly) return central('shared-or-unattributed');
+  if (current.entities.length !== 1) return central('cross-entity');
+  const [entityCode] = current.entities;
+  const entityApprovers = await approvers(entityCode);
+  if (!entityApprovers.length) return central('no-entity-approver');
+  return { route: 'entity', entityCode, approvers: entityApprovers, routedAt: at.toISOString() };
 }
 
 async function lockRequest(client, id) {

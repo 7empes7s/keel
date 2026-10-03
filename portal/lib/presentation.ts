@@ -230,6 +230,18 @@ export const DISPLAY_ENUMS = {
     investigator: "Investigator",
     admin: "Admin",
   },
+  evidenceKind: {
+    "approval-request": "Approval requests",
+    "approval-decision": "Approval decisions",
+    "action-attempt": "Actions started or refused",
+    "policy-evaluation": "Policy checks",
+    "automation-execution": "Automatic roll-backs",
+    "content-effect-approval": "Content-effect approvals",
+    "recovery-completion": "Restore follow-up",
+    "incident-recovery": "Incident recovery",
+    "incident-recovery-check": "Checks after an incident restore",
+    "fidelity-drill": "Test restores",
+  },
   eventKind: {
     "drift.detected": "A change was detected",
     "approval.decided": "An approval was decided",
@@ -244,4 +256,18 @@ export function displayEnum(group: DisplayEnumGroup, value: string | null | unde
   if (!value) return "Unknown";
   const map = DISPLAY_ENUMS[group] as Record<string, string>;
   return map[value] ?? words(value.replaceAll("_", "-").replaceAll(".", " "));
+}
+
+/** A future time in words ("in 5 hours"); "already passed" when it is not ahead. */
+export function fromNow(value: string | null, now: string | Date): string {
+  if (!value) return "at an unknown time";
+  const milliseconds = new Date(value).valueOf() - new Date(now).valueOf();
+  if (!Number.isFinite(milliseconds)) return "at an unknown time";
+  if (milliseconds <= 0) return "already passed";
+  const minutes = Math.ceil(milliseconds / 60_000);
+  if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.round(hours / 24);
+  return `in ${days} day${days === 1 ? "" : "s"}`;
 }

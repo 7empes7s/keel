@@ -2,35 +2,53 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { displayEnum, fromNow } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 import type { Channel, Subscription, Delivery } from "@/lib/notifications";
+import { channelName, patternWords } from "@/lib/notifications-view";
 
-export function DeliveryTable({ deliveries }: { deliveries: Delivery[] }) {
+// Roadmap task-130: channels, routing rules and deliveries by name and in words;
+// forms with labelled fields instead of a JSON text box; raw config and ids in the record.
+
+export function DeliveryTable({ deliveries, channels = null, now = new Date().toISOString() }: { deliveries: Delivery[]; channels?: Channel[] | null; now?: string }) {
+  const channelById = new Map((channels ?? []).map((channel) => [channel.id, channel]));
   return <section aria-labelledby="deliveries-heading" className="report-section">
     <div className="section-heading-row report-heading">
-      <div><p className="section-kicker">Outbound</p><h2 id="deliveries-heading">Recent deliveries</h2></div>
+      <div><p className="section-kicker">Sent</p><h2 id="deliveries-heading">Recent alerts</h2></div>
       <span className="result-count">{deliveries.length} shown</span>
     </div>
-    {deliveries.length === 0 ? <p className="empty-state">No deliveries yet.</p> : <div className="table-scroll"><table className="data-table"><thead><tr>
-      {["Event kind", "Severity", "Channel", "Status", "Attempts", "Last error", "Next attempt"].map((title) => <th key={title} scope="col">{title}</th>)}
-    </tr></thead><tbody>{deliveries.map((delivery) => <tr key={delivery.id}>
-      <th data-label="Event kind" scope="row"><code className="natural-key">{delivery.event.kind}</code></th>
-      <td data-label="Severity"><span className={`severity-pill severity-${delivery.event.severity}`}>{delivery.event.severity}</span></td>
-      <td className="wrap-value" data-label="Channel">{delivery.channel_kind} · {delivery.channel_id}</td>
-      <td data-label="Status"><span className={`delivery-status delivery-${delivery.status}`}>{delivery.status}</span></td>
-      <td className="number-column" data-label="Attempts">{delivery.attempts}</td>
-      <td className="wrap-value" data-label="Last error">{delivery.last_error ?? "—"}</td>
-      <td data-label="Next attempt">{delivery.next_attempt_at ? <time dateTime={delivery.next_attempt_at}>{delivery.next_attempt_at}</time> : "—"}</td>
-    </tr>)}</tbody></table></div>}
+    {deliveries.length === 0 ? <p className="empty-state">No alerts have been sent yet.</p> : <ul className="activity-list">{deliveries.map((delivery) => {
+      const channel = channelById.get(delivery.channel_id);
+      const to = channel ? channelName(channel) : delivery.channel_kind === "email" ? "an email channel" : "a webhook";
+      return <li className="activity-item" key={delivery.id}>
+        <div className="activity-main">
+          <p className="activity-title">{displayEnum("eventKind", delivery.event.kind)} ({displayEnum("severity", delivery.event.severity).toLowerCase()}), sent to {to}</p>
+          <p className="activity-meta">
+            <span className={`delivery-status delivery-${delivery.status}`}>{displayEnum("deliveryStatus", delivery.status)}</span>
+            {delivery.attempts > 1 ? ` after ${delivery.attempts} attempts` : null}
+            {delivery.next_attempt_at ? <> · next try <time dateTime={delivery.next_attempt_at}>{fromNow(delivery.next_attempt_at, now)}</time></> : null}
+            {delivery.last_error ? <> · last error: {delivery.last_error}</> : null}
+          </p>
+        </div>
+        <TechnicalDetails>
+          <RecordField label="Delivery ID" value={delivery.id} />
+          <RecordField label="Channel ID" value={delivery.channel_id} />
+          <RecordField copy={false} label="Event and status codes" value={`${delivery.event.kind} · ${delivery.event.severity} · ${delivery.status} · ${delivery.attempts} attempts`} />
+          <RecordField copy={false} label="Next attempt" value={delivery.next_attempt_at} />
+        </TechnicalDetails>
+      </li>;
+    })}</ul>}
   </section>;
 }
 
 const TOAST_TITLES: Record<string, string> = {
   "create-channel": "Channel created",
-  "create-subscription": "Subscription created",
-  "disable-channel": "Channel disabled",
-  "delete-subscription": "Subscription deleted",
+  "create-subscription": "Rule created",
+  "disable-channel": "Channel turned off",
+  "delete-subscription": "Rule deleted",
 };
 
 export function NotificationConsole({ canConfiguration, channels, subscriptions }: {
@@ -41,23 +59,28 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
   const [busy, setBusy] = useState(false);
   // The write in flight, so only the control that started it shows a spinner.
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [kind, setKind] = useState("webhook");
   if (!canConfiguration) return null;
+  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
   async function write(url: string, method: string, body?: unknown, action = `${method} ${url}`) {
     if (!canConfiguration || busy) return;
     setBusy(true); setBusyAction(action); setError(null);
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
-      if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Notification update failed"); }
-      toast({ title: TOAST_TITLES[action] ?? "Notification settings updated" });
+      if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "The notification settings were not saved"); }
+      toast({ title: TOAST_TITLES[action] ?? "Notification settings saved" });
       router.refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Notification update failed"); }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "The notification settings were not saved"); }
     finally { setBusy(false); setBusyAction(null); }
   }
   function createChannel(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    try { const config: unknown = JSON.parse(String(form.get("config"))); void write("/api/channels", "POST", { kind: form.get("kind"), config }, "create-channel"); }
-    catch { setError("Channel config must be valid JSON."); }
+    const text = (key: string) => String(form.get(key) ?? "").trim();
+    const config = kind === "email"
+      ? { to: text("to"), from: text("from"), ...(text("subject") ? { subject: text("subject") } : {}) }
+      : { url: text("url") };
+    void write("/api/channels", "POST", { kind, config }, "create-channel");
   }
   function createSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -69,44 +92,63 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
     <section aria-labelledby="channels-heading" className="report-section">
       <div className="section-heading-row report-heading">
         <div><p className="section-kicker">Where alerts go</p><h2 id="channels-heading">Channels</h2></div>
-        <span className="result-count">{channels.length} configured</span>
+        <span className="result-count">{channels.length} set up</span>
       </div>
-      {channels.length === 0 ? <p className="empty-state">No channels configured.</p> : <ul className="item-list">{channels.map((channel) => <li className="item-card" key={channel.id}>
+      {channels.length === 0 ? <p className="empty-state">No channels are set up.</p> : <ul className="item-list">{channels.map((channel) => <li className="item-card" key={channel.id}>
         <div className="item-card-head">
-          <strong>{channel.kind}</strong>
-          <span className={channel.enabled ? "active-indicator" : "inactive-indicator"}>{channel.enabled ? "Enabled" : "Disabled"}</span>
-          <code className="item-id">{channel.id}</code>
+          <strong>{channelName(channel)}</strong>
+          <span className={channel.enabled ? "active-indicator" : "inactive-indicator"}>{channel.enabled ? "On" : "Off"}</span>
         </div>
-        <pre className="config-block">{JSON.stringify(channel.config, null, 2)}</pre>
-        {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Disable channel" description={<p>Alerts routed to this {channel.kind} channel stop being delivered immediately, including critical drift alerts. Subscriptions that use it stay configured.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST", undefined, "disable-channel")} size="sm" title={`Disable ${channel.kind} channel ${channel.id}?`}>Disable channel</ConfirmButton></div> : null}
+        <p>{channel.kind === "email"
+          ? `Sends email to ${String(channel.config?.to ?? "nobody")} from ${String(channel.config?.from ?? "an unknown sender")}.`
+          : `Posts each alert to ${String(channel.config?.url ?? "an unknown address")}.`}</p>
+        {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Turn off channel" description={<p>Alerts sent to {channelName(channel)} stop immediately, including critical ones. Rules that use it stay set up.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST", undefined, "disable-channel")} size="sm" title={`Turn off ${channelName(channel)}?`}>Turn off</ConfirmButton></div> : null}
+        <TechnicalDetails>
+          <RecordField label="Channel ID" value={channel.id} />
+          <RecordField copy={false} label="Config" value={JSON.stringify(channel.config, null, 2)} />
+        </TechnicalDetails>
       </li>)}</ul>}
-      <form className="form-card" onSubmit={createChannel}><fieldset disabled={busy}><legend>Create channel</legend>
+      <form className="form-card" onSubmit={createChannel}><fieldset disabled={busy}><legend>Add a channel</legend>
         <div className="form-grid">
-          <label className="filter-field"><span>Kind</span><select name="kind"><option value="webhook">Webhook</option><option value="email">Email</option></select></label>
-          <label className="filter-field form-grid-wide"><span>Config (JSON)</span><textarea name="config" required defaultValue={'{"url":"https://example.com/webhook"}'} /></label>
+          <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="email">Email</option></select></label>
+          {kind === "email" ? <>
+            <label className="filter-field"><span>Send to</span><input autoComplete="off" name="to" placeholder="secops@contoso.com" required type="email" /></label>
+            <label className="filter-field"><span>Send from</span><input autoComplete="off" name="from" placeholder="keel@contoso.com" required type="email" /></label>
+            <label className="filter-field"><span>Subject (optional)</span><input autoComplete="off" name="subject" /></label>
+          </> : (
+            <label className="filter-field form-grid-wide"><span>Webhook address</span><input autoComplete="off" name="url" placeholder="https://hooks.contoso.com/keel" required type="url" /></label>
+          )}
         </div>
-        <p className="field-help">Webhook: url. Email: to, from, and optional subject.</p>
-        <div className="form-actions"><button aria-busy={busyAction === "create-channel" || undefined} className="btn btn-primary" type="submit">Create channel</button></div>
+        <div className="form-actions"><button aria-busy={busyAction === "create-channel" || undefined} className="btn btn-primary" type="submit">Add channel</button></div>
       </fieldset></form>
     </section>
     <section aria-labelledby="subscriptions-heading" className="report-section">
       <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">Routing rules</p><h2 id="subscriptions-heading">Subscriptions</h2></div>
+        <div><p className="section-kicker">Which alerts go where</p><h2 id="subscriptions-heading">Rules</h2></div>
         <span className="result-count">{subscriptions.length} active</span>
       </div>
-      {subscriptions.length === 0 ? <p className="empty-state">No subscriptions configured.</p> : <ul className="item-list">{subscriptions.map((subscription) => <li className="item-card item-card-row" key={subscription.id}>
-        <code className="natural-key">{subscription.event_glob}</code>
-        <span className={`severity-pill severity-${subscription.min_severity}`}>≥ {subscription.min_severity}</span>
-        <code className="item-id">{subscription.channel_id}</code>
-        <ConfirmButton confirmLabel="Delete subscription" description={<p>Events matching <code>{subscription.event_glob}</code> at {subscription.min_severity} or above will no longer be sent to {subscription.channel_id}. This cannot be undone; recreate the subscription to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this subscription?">Delete subscription</ConfirmButton>
-      </li>)}</ul>}
-      <form className="form-card" onSubmit={createSubscription}><fieldset disabled={busy || channels.length === 0}><legend>Create subscription</legend>
+      {subscriptions.length === 0 ? <p className="empty-state">No rules are set up, so no alert is sent.</p> : <ul className="item-list">{subscriptions.map((subscription) => {
+        const channel = channelById.get(subscription.channel_id);
+        const to = channel ? channelName(channel) : "a channel that is no longer readable";
+        return <li className="item-card" key={subscription.id}>
+          <p>Sends {patternWords(subscription.event_glob)} rated {displayEnum("severity", subscription.min_severity).toLowerCase()} or above to {to}.</p>
+          <div className="form-actions">
+            <ConfirmButton confirmLabel="Delete rule" description={<p>{patternWords(subscription.event_glob).replace(/^./, (c) => c.toUpperCase())} will no longer be sent to {to}. Recreate the rule to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this rule?">Delete rule</ConfirmButton>
+          </div>
+          <TechnicalDetails>
+            <RecordField label="Subscription ID" value={subscription.id} />
+            <RecordField label="Channel ID" value={subscription.channel_id} />
+            <RecordField copy={false} label="Event pattern and minimum severity" value={`${subscription.event_glob} · ${subscription.min_severity}`} />
+          </TechnicalDetails>
+        </li>;
+      })}</ul>}
+      <form className="form-card" onSubmit={createSubscription}><fieldset disabled={busy || channels.length === 0}><legend>Add a rule</legend>
         <div className="form-grid">
-          <label className="filter-field"><span>Channel</span><select name="channelId" required>{channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.kind} · {channel.id}</option>)}</select></label>
-          <label className="filter-field"><span>Event glob</span><input name="eventGlob" required defaultValue="*" /></label>
-          <label className="filter-field"><span>Minimum severity</span><select name="minSeverity">{["notice", "warning", "critical"].map((severity) => <option key={severity}>{severity}</option>)}</select></label>
+          <label className="filter-field"><span>Send to</span><select name="channelId" required>{channels.map((channel) => <option key={channel.id} value={channel.id}>{channelName(channel)}</option>)}</select></label>
+          <label className="filter-field"><span>Which events (* for all)</span><input name="eventGlob" required defaultValue="*" /></label>
+          <label className="filter-field"><span>Rated at least</span><select name="minSeverity">{["notice", "warning", "critical"].map((severity) => <option key={severity} value={severity}>{displayEnum("severity", severity)}</option>)}</select></label>
         </div>
-        <div className="form-actions"><button aria-busy={busyAction === "create-subscription" || undefined} className="btn btn-primary" type="submit">Create subscription</button></div>
+        <div className="form-actions"><button aria-busy={busyAction === "create-subscription" || undefined} className="btn btn-primary" type="submit">Add rule</button></div>
       </fieldset></form>
     </section>
   </>;

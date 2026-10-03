@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { createPolicy, listPolicies, setPolicyEnabled, clearPolicyPause } from "../../engine/policy/evaluate.mjs";
+import { existsSync, statSync } from "node:fs";
+import { createPolicy, getPolicy, listPolicies, setPolicyEnabled, clearPolicyPause } from "../../engine/policy/evaluate.mjs";
 import { AUTOMATION_KILL_SWITCH_PATH } from "../../engine/policy/execute.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 
@@ -16,6 +16,12 @@ export interface Policy {
   paused_at: string | null;
   run_as_repair_required: boolean;
   run_as_principal_id: string | null;
+  // Roadmap task-130: resolved by the engine reader, never shown as the bare id.
+  run_as_principal: { id: string; email: string | null; name: string | null; readable: boolean } | null;
+  last_action_at: string | null;
+  last_action_status: string | null;
+  last_action_natural_key: string | null;
+  actions_last_7_days: number;
   resource_type: string | null;
   blast_radius: string | null;
   natural_key_glob: string | null;
@@ -32,12 +38,26 @@ export function automationDisabled(path = AUTOMATION_KILL_SWITCH_PATH): boolean 
   return existsSync(path);
 }
 
+/** When automation was halted: the halt file's modification time, or null. */
+export function automationHaltedAt(path = AUTOMATION_KILL_SWITCH_PATH): string | null {
+  try {
+    return statSync(path).mtime.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+export const AUTOMATION_HALT_FILE = AUTOMATION_KILL_SWITCH_PATH;
+
 export function guardedPolicyList(deps: GuardDeps = {}) {
   return guarded({ action: "policies:list", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const filter = new URL(request.url).searchParams.get("enabled");
     if (filter !== null && filter !== "true" && filter !== "false") throw new InvalidActionRequest();
     const policies = await listPolicies(client, { tenantRef, enabled: filter === null ? undefined : filter === "true" });
-    return Response.json({ policies, automationDisabled: automationDisabled(), generatedAt: new Date().toISOString() }, { headers: NO_STORE });
+    return Response.json({
+      policies, automationDisabled: automationDisabled(), automationHaltedAt: automationHaltedAt(),
+      haltFile: AUTOMATION_KILL_SWITCH_PATH, generatedAt: new Date().toISOString(),
+    }, { headers: NO_STORE });
   }, deps);
 }
 
@@ -45,8 +65,8 @@ export function guardedPolicyShow(deps: GuardDeps = {}) {
   return guarded({ action: "policies:show", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const id = new URL(request.url).pathname.split("/").at(-1) ?? "";
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
-    const { rows } = await client.query("SELECT * FROM policy WHERE id = $1 AND tenant_ref = $2", [id, tenantRef]);
-    return Response.json(rows[0] ? { policy: rows[0] } : { error: "not_found" }, { status: rows[0] ? 200 : 404, headers: NO_STORE });
+    const policy = await getPolicy(client, { tenantRef, id });
+    return Response.json(policy ? { policy, automationDisabled: automationDisabled(), generatedAt: new Date().toISOString() } : { error: "not_found" }, { status: policy ? 200 : 404, headers: NO_STORE });
   }, deps);
 }
 

@@ -1,11 +1,12 @@
 import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
-import { listApprovalRequests } from "../../engine/govern/approvals.mjs";
+import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/govern/approvals.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
-import { databaseUrl } from "@/lib/runtime-config";
+import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 
 export const APPROVAL_INBOX_CAPABILITY = "approve";
 export const APPROVAL_INBOX_LIMIT = 100;
@@ -38,6 +39,9 @@ export interface ApprovalRequestRecord {
   reason: string | null;
   createdAt: string | null;
   expiresAt: string | null;
+  // Roadmap task-130: requester, decider, dry run, baseline and changes resolved to
+  // names by the engine (one query per kind). Absent on rows read without it.
+  references?: RowReferences;
 }
 
 export interface ApprovalInboxData {
@@ -105,6 +109,7 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
     reason: (row.reason as string | null) ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
+    references: (row.references as RowReferences | undefined) ?? EMPTY_REFERENCES,
   };
 }
 
@@ -130,10 +135,12 @@ export async function getApprovalInboxData(): Promise<ApprovalInboxData> {
       statuses: ["approved", "rejected", "expired"],
       limit: APPROVAL_INBOX_LIMIT,
     });
+    // One query per reference kind for both lists together.
+    const summarized = await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] });
     return {
       generatedAt: new Date().toISOString(),
-      pending: pending.map(normalizeApprovalRequest),
-      history: history.map(normalizeApprovalRequest),
+      pending: summarized.slice(0, pending.length).map(normalizeApprovalRequest),
+      history: summarized.slice(pending.length).map(normalizeApprovalRequest),
     };
   });
 }

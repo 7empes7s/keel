@@ -14,14 +14,16 @@ import { BackupControls } from "@/components/backup-controls";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
 import { IntegrationConsole } from "@/components/integration-console";
-import { ChainIndicator, EvidenceTimeline } from "@/components/evidence-timeline";
+import { ActivityTimeline, IntegrityNote, activityVerdict, mergeActivity } from "@/components/activity-timeline";
+import { BaselineRegister } from "@/components/baseline-register";
+import { Verdict } from "@/components/verdict";
 import { PrincipalDetails } from "@/components/principal-details";
-import { KillSwitchBadge, PolicyState } from "@/components/policy-state";
+import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@/components/policy-state";
 import { usePathname } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import { DriftTable } from "@/components/drift-table";
 import { CoverageReport } from "@/components/coverage-report";
-import { JobDetail } from "@/components/job-detail";
+import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
 import { IncidentRecovery } from "@/components/incident-recovery";
@@ -29,6 +31,10 @@ import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
 import { accessSummary } from "@/lib/presentation";
+import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
+import { notificationsVerdict } from "@/lib/notifications-view";
+import { integrationsVerdict } from "@/lib/integrations-view";
+import type { Policy } from "@/lib/policies";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -165,18 +171,55 @@ const DRIFT = [
   { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null },
 ] as unknown as DriftRecord[];
 type Job = Parameters<typeof JobTable>[0]["jobs"][number];
+// Task-130: references arrive resolved, as the engine readers return them.
+const personRef = (id: string, name: string) => ({ kind: "person", id, name, readable: true, email: name.includes("@") ? name : null, system: !name.includes("@") });
+const refs = (requester: string, extra: Partial<RowReferences> = {}): RowReferences => ({
+  ...EMPTY_REFERENCES, people: { requested_by: personRef(requester.includes("@") ? "8c1e0000-0000-4000-8000-0000000000a1" : requester, requester) }, ...extra,
+});
 const job = (id: string, kind: string, status: string, extra: Partial<Job> = {}): Job => ({
   id, kind, status, params: { tier: "tier1" }, result: null, error: null, requestedBy: "marouanedefili@gmail.com",
+  references: refs((extra.requestedBy as string | undefined) ?? "marouanedefili@gmail.com"),
   workerId: "worker-1", startedAt: "2026-10-02T09:31:00Z", heartbeatAt: "2026-10-02T09:39:40Z",
   createdAt: "2026-10-02T09:30:00Z", finishedAt: status === "running" || status === "queued" ? null : "2026-10-02T09:34:00Z", ...extra,
 } as Job);
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
-  job("a3", "restore-dry-run", "succeeded"),
+  job("a3", "restore", "succeeded", { params: { snapshotId: "5a2be911-0000-4000-8000-000000000002", selection: ["group:Finance", "conditionalAccessPolicy:Block legacy auth"], artifactId: "7f3c0000-0000-4000-8000-000000000009" }, references: refs("marouanedefili@gmail.com", { snapshot: { kind: "snapshot", id: "5a2be911-0000-4000-8000-000000000002", name: null, readable: true, takenAt: "2026-10-02T09:12:00Z" } }) }),
   job("a4", "backup", "failed", { error: "Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations" }),
-  job("a5", "baseline-create", "succeeded", { requestedBy: "scheduler" }),
+  job("a5", "baseline-create", "succeeded", { requestedBy: "scheduler", params: { label: "Post-migration golden state" } }),
 ];
+
+const POLICY: Policy = {
+  id: "7a1d0f3e-0000-4000-8000-000000000001", name: "Auto-accept cosmetic drift", enabled: true, paused_at: null, run_as_repair_required: false,
+  run_as_principal_id: "3f9c2b1e-0000-4000-8000-000000000002",
+  run_as_principal: { id: "3f9c2b1e-0000-4000-8000-000000000002", email: "svc-policy@contoso.com", name: "svc-policy@contoso.com", readable: true },
+  resource_type: null, blast_radius: "cosmetic", natural_key_glob: null, change_type: "modified", action: "auto_remediate",
+  max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, created_by: "marouanedefili@gmail.com", created_at: "2026-09-12T08:00:00Z",
+  last_action_at: "2026-10-02T07:40:00Z", last_action_status: "executed", last_action_natural_key: "namedLocation:Branch offices", actions_last_7_days: 14,
+};
+const POLICIES: Policy[] = [POLICY, {
+  ...POLICY, id: "7a1d0f3e-0000-4000-8000-000000000003", name: "Alert on lockout risk", action: "alert", blast_radius: "tenant-lockout", change_type: null,
+  max_blast_radius: "tenant-lockout", max_actions_per_window: null, window_seconds: null, run_as_principal_id: null, run_as_principal: null,
+  last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
+}];
+const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }];
+const DELIVERIES = [
+  { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d2", event: { kind: "drift.detected", severity: "notice" }, channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null },
+];
+const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
+const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
+const EVIDENCE = [
+  { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
+  { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "action-attempt", actor: "marouanedefili@gmail.com", subject: { action: "backup", decision: "attempted" } },
+  { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
+];
+const BASELINES = [
+  { id: "b1180000-0000-4000-8000-000000000118", label: "Post-migration golden state", description: "After the tenant move", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "marouanedefili@gmail.com", href: "/principals" }, active: true, resourceCount: 4812 },
+  { id: "b1170000-0000-4000-8000-000000000117", label: "Before migration", description: null, setAt: "2026-09-01T09:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "scheduler", href: null }, active: false, resourceCount: 4590 },
+];
+const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 
 const header = (section: NavSection, title: string, description: string, marker?: string) =>
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
@@ -254,7 +297,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
-    case "/jobs": return <>{header("Activity", "Jobs", "Job history and outcomes, newest first.")}<JobTable headingId="jobs-heading" jobs={jobs} kicker="Queue" title="Recent jobs" /><JobRefresher active={active} /></>;
+    case "/activity": return <>{header("Activity", "Activity", "What KEEL has done and who decided what, newest first.")}
+      <Verdict text={activityVerdict(jobs, now)} tone={jobs.some((item) => item.status === "failed") ? "attention" : "good"} />
+      <div data-layer="explanation">
+        <IntegrityNote integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
+        <ActivityTimeline items={mergeActivity(jobs, EVIDENCE)} now={now} people={{ "marouanedefili@gmail.com": { kind: "person", id: "marouanedefili@gmail.com", name: "marouanedefili@gmail.com", href: null } }} />
+        <JobRefresher active={active} />
+      </div></>;
     case "/backups": return <>{header("Protect", "Backups", "Tiered backups on demand and their recent jobs.")}<BackupControls disabled={false} /><JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="History" title="Backup jobs" /></>;
     case "/restore": return <>{header("Restore", "Restore", "Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references, and a restore only runs after approval.", "Actionable")}
       <RestoreSelection canApprove canRestore resources={[
@@ -285,44 +334,55 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Protect", "Coverage", "Every known configuration type, including failed collections and missing adapters.", "Read-only")}
         <CoverageReport data={{ generatedAt: now, snapshot: { id: "s", status: "complete", startedAt: now, completedAt: now }, summary: { covered: 5, failed: 1, notCovered: 1, neverCollected: 0, stale: 0, total: 8 }, types } as never} /></>;
     }
-    case "/jobs/a4": return <>{header("Activity", "Job details", "a4")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={jobs.find((item) => item.id === "a4")!} /></>;
-    case "/jobs/r9": return <>{header("Activity", "Job details", "r9")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000009" }, result: { applied: 2, skipped: 0 } }} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>;
-    case "/jobs/r10": return <>{header("Activity", "Job details", "r10")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" } }} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>;
-    case "/jobs/a3": return <>{header("Activity", "Job details", "a3")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }} /></>;
-    case "/approvals": return <>{header("Approvals", "Approvals", "Review pending operator requests and retain a newest-first decision record.", "Approval required")}<ApprovalInbox
-      history={[{ id: "r0", action: "drift.remediate", params: { driftIds: 3 }, requestedBy: "ops@contoso.com", justification: null, status: "approved", decidedBy: "marouanedefili@gmail.com", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: null, expiresAt: null }]}
+    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
+    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
+    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/approvals": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
+      <Verdict text="2 requests are waiting for you." tone="attention" />
+      <div data-layer="explanation"><ApprovalInbox now={now}
+      history={[{ id: "a9e10000-0000-4000-8000-000000000100", action: "remediate", params: { driftIds: ["dr3"] }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: null, status: "approved", decidedBy: "8c1e0000-0000-4000-8000-0000000000a1", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: "2026-10-01T16:40:00Z", expiresAt: "2026-10-02T16:40:00Z",
+        references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com"), decided_by: personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com") }, changes: [{ kind: "change", id: "dr3", name: null, readable: true, naturalKey: "group:Finance", changeType: "modified", blastRadius: "access-affecting" }] } }]}
       pending={[
-        { id: "r1", action: "restore.enforce", params: { dryRunId: "dr-7f3c", resources: 12 }, requestedBy: "ops@contoso.com", justification: "Roll back CA policy edit from incident INC-2291", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z" },
-        { id: "r2", action: "baseline.activate", params: { baselineId: "b-118" }, requestedBy: "ops@contoso.com", justification: "Post-migration golden state", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T12:00:00Z" },
-      ]} /></>;
-    case "/notifications": return <>{header("Settings", "Notifications", "Notification delivery history and configuration.")}
-      <DeliveryTable deliveries={[
-        { id: "d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: "ch-ops-webhook", channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "transport timeout", next_attempt_at: "2026-10-02T09:45:00Z" },
-        { id: "d2", event: { kind: "backup.completed", severity: "notice" }, channel_id: "ch-ops-mail", channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null },
-      ]} />
-      <NotificationConsole canConfiguration
-        channels={[{ id: "ch-ops-webhook", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "ch-ops-mail", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }]}
-        subscriptions={[{ id: "s1", channel_id: "ch-ops-webhook", event_glob: "drift.*", min_severity: "warning" }, { id: "s2", channel_id: "ch-ops-mail", event_glob: "*", min_severity: "critical" }]} /></>;
-    case "/integrations": return <>{header("Settings", "Integrations", "SIEM and webhook destinations for the evidence stream.")}
-      <IntegrationConsole canConfiguration
-        destinations={[{ id: "dst1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef" }, enabled: true, revoked_at: null, created_by: "x", created_at: now }]}
-        statuses={[{ destinationId: "dst1", tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 } as never]} /></>;
-    case "/evidence": return <>{header("Activity", "Evidence", "Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive.")}
-      <ChainIndicator integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
-      <EvidenceTimeline query="" data={{ generatedAt: now, nextBefore: "18201", entries: [
-        { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval.decided", actor: "marouanedefili@gmail.com", subject: { request: "r0", decision: "approve" } },
-        { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "job.started", actor: "worker-1", subject: { job: "a1", kind: "backup" } },
-        { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
-      ] }} /></>;
-    case "/principals": return <>{header("Settings", "Principals", "Identities, role grants, and effective capabilities.")}<div className="item-list">
-      <PrincipalDetails principal={{ id: "p-01", email: "marouanedefili@gmail.com", disabled_at: null, capabilities: ["read", "users", "roles", "policies", "configuration"], role_grants: [{ id: "g-01", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "g-02", role: "viewer", active_from: "2026-09-01T00:00:00Z", active_until: null }] } as never} />
-      <PrincipalDetails principal={{ id: "p-02", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [] } as never} /></div></>;
-    case "/policies/p1": return <>{header("Settings", "Auto-accept cosmetic drift", "Current policy configuration and automation state.")}
-      <PolicyState policy={{ enabled: true, paused_at: null, run_as_repair_required: false, run_as_principal_id: "svc-policy", action: "dispose-accept", max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, resource_type: null, blast_radius: "cosmetic", natural_key_glob: "deviceConfiguration:*", change_type: "modified" } as never} />
-      <section aria-label="Policy record" className="policy-group policy-meta"><h3>Record</h3><dl className="kv-grid"><dt>Policy ID</dt><dd>p1</dd><dt>Created by</dt><dd>marouanedefili@gmail.com</dd><dt>Created at</dt><dd>2026-09-12T08:00:00Z</dd></dl></section></>;
-    case "/policies": return <>{header("Settings", "Policies", "Automation policies and their current state.")}<KillSwitchBadge disabled={false} />
-      <section className="item-card" style={{ marginTop: "1rem" }}><h2><a className="item-title-link" href="#/policies/p1">Auto-accept cosmetic drift</a></h2>
-        <PolicyState policy={{ enabled: true, paused_at: null, run_as_repair_required: false, run_as_principal_id: "svc-policy", action: "dispose-accept", max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, resource_type: null, blast_radius: "cosmetic", natural_key_glob: null, change_type: "modified" } as never} /></section></>;
+        { id: "a9e10000-0000-4000-8000-000000000101", action: "restore", params: { artifactId: PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Roll back CA policy edit from incident INC-2291", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z",
+          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: PLAN_REF } },
+        { id: "a9e10000-0000-4000-8000-000000000102", action: "baseline-activate", params: { baselineId: BASELINES[0].id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Post-migration golden state", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T12:00:00Z",
+          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, baseline: { kind: "baseline", id: BASELINES[0].id, name: "Post-migration golden state", readable: true } } },
+      ]} /></div></>;
+    case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
+      <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />
+      <div data-layer="explanation">
+        <NotificationConsole canConfiguration channels={CHANNELS}
+          subscriptions={[{ id: "5b500000-0000-4000-8000-0000000000f1", channel_id: CHANNELS[0].id, event_glob: "drift.detected", min_severity: "warning" }, { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "*", min_severity: "critical" }]} />
+        <DeliveryTable channels={CHANNELS} deliveries={DELIVERIES} now={now} />
+      </div></>;
+    case "/integrations": return <>{header("Settings", "Integrations", "Where KEEL copies its audit record: SIEM and webhook destinations.")}
+      <Verdict text={integrationsVerdict(DESTINATIONS, DESTINATION_STATUSES)} tone="attention" />
+      <div data-layer="explanation"><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>;
+    case "/baselines": return <>{header("Changes", "Baselines", "How the tenant should look: the reference every change is measured against.")}
+      <Verdict text="The active baseline is “Post-migration golden state”, set 2 days ago." />
+      <div data-layer="explanation">
+        <BaselineRegister baselines={BASELINES} canBaseline now={now} />
+        <JobTable headingId="baseline-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} kicker="Recent" now={now} title="Baseline jobs" />
+      </div></>;
+    case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
+      <Verdict text="1 person can use KEEL; 1 can approve." />
+      <div className="item-list" data-layer="explanation">
+      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
+      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
+    case "/policies/p1": return <>{header("Settings", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
+      <Verdict text={`Running. ${policySentence(POLICY)}`} />
+      <div data-layer="explanation">
+        <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
+        <AutomationBanner halted={false} now={now} />
+        <PolicyCard canEdit linkName={false} now={now} policy={POLICY} />
+      </div></>;
+    case "/policies": return <>{header("Settings", "Policies", "What KEEL does on its own when something changes, and the account it acts as.")}
+      <Verdict text={policiesVerdict(POLICIES, false)} />
+      <div data-layer="explanation">
+        <AutomationBanner halted={false} now={now} />
+        {POLICIES.map((policy) => <PolicyCard canEdit key={policy.id} now={now} policy={policy} />)}
+      </div></>;
     default: return <section className="empty-state state-page"><p className="eyebrow">Preview</p><h2>Not included in this preview</h2><p>This page needs live tenant data. Its styling and motion are the same as the pages shown here.</p></section>;
   }
 }

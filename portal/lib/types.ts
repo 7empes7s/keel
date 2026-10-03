@@ -158,6 +158,8 @@ export interface BaselineRecord {
   setBy: string;
   active: boolean;
   resourceCount: number;
+  // Roadmap task-130: who set it, resolved to a name (absent where not resolved).
+  setByRef?: Ref;
 }
 
 export interface DriftRecord {

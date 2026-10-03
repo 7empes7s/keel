@@ -1,10 +1,4 @@
-const STATUS_LABEL: Record<string, string> = {
-  queued: "Queued",
-  running: "Running",
-  succeeded: "Succeeded",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
+import { displayEnum } from "@/lib/presentation";
 
 // Keyed by status so a refresh that changes it remounts the badge and replays its
 // entrance — the change is seen, not just silently swapped.
@@ -14,7 +8,7 @@ export function JobStatusBadge({ status }: { status: string }) {
       {status === "running" || status === "queued" ? (
         <span aria-hidden="true" className="job-status-dot" />
       ) : null}
-      {STATUS_LABEL[status] ?? status}
+      {displayEnum("jobStatus", status)}
     </span>
   );
 }

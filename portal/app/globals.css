@@ -1351,10 +1351,15 @@ dd {
 
 .fidelity-detail small,
 .adapter-detail code,
-.baseline-table-label small,
 .cell-note {
   color: var(--text-muted);
   font-size: 0.625rem;
+  line-height: 1.4;
+}
+
+.baseline-table-label small {
+  color: var(--text-soft);
+  font-size: 0.75rem;
   line-height: 1.4;
 }
 

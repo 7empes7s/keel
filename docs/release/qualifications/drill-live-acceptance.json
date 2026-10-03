@@ -1,0 +1,6 @@
+{
+  "contractVersion": 1,
+  "gate": "drill-live-acceptance",
+  "status": "pending",
+  "note": "Placeholder. No live bounded drill has been captured. Replace with the signed record written by `node tools/release/qualification.mjs capture-drill` on the release runner (see docs/roadmap/drill-live-acceptance.md, Operator steps). This file fails --require-live until then."
+}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CommandPalette } from "@/components/command-palette";
-import { NavLinks } from "@/components/nav-links";
+import { NavLinks, SectionTabs, type NavSection } from "@/components/nav-links";
 import { KeelMark } from "@/components/keel-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/toaster";
@@ -28,6 +28,7 @@ import { IncidentRecovery } from "@/components/incident-recovery";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
+import { accessSummary } from "@/lib/presentation";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -177,17 +178,24 @@ const initialJobs = [
   job("a5", "baseline-create", "succeeded", { requestedBy: "scheduler" }),
 ];
 
-const header = (eyebrow: string, title: string, description: string, marker?: string) =>
-  <PageHeader description={description} eyebrow={eyebrow} generatedAt={now} marker={marker} title={title} />;
+const header = (section: NavSection, title: string, description: string, marker?: string) =>
+  <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
 
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 const ALERTS: DashboardData["alerts"][] = [
   [
-    { severity: "critical", title: "Conditional Access drift with tenant-lockout blast radius", detail: "2 open changes to Conditional Access policies could block sign-in for administrators. Review before the next collection." },
-    { severity: "warning", title: "3 catalog types are stale", detail: "Run a collection for the stale types; they were collected successfully but are no longer recent enough for their tier." },
+    { severity: "critical", title: "2 Conditional Access changes could lock out administrators", detail: "They could block sign-in for administrators. Review them before the next backup." },
+    { severity: "warning", title: "3 configuration types are out of date", detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup." },
   ],
-  [{ severity: "warning", title: "3 catalog types are stale", detail: "Run a collection for the stale types; they were collected successfully but are no longer recent enough for their tier." }],
+  [{ severity: "warning", title: "3 configuration types are out of date", detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup." }],
   [],
+];
+// Task-129: the three headline states the contract names, as the engine returns them.
+const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
+const HEADLINES: DashboardData["headline"][] = [
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/backups" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
+  { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, lastProvenRestoreAt: null, failingSince: null },
+  { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.", action: null, counts: HEADLINE_COUNTS, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
 ];
 function dashboard(posture: number): DashboardData {
   return {
@@ -201,6 +209,7 @@ function dashboard(posture: number): DashboardData {
     coverage: { covered: 142, failed: posture === 0 ? 4 : 0, notCovered: 17, neverCollected: 4, stale: 3, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
     alerts: ALERTS[posture],
+    headline: HEADLINES[posture],
   };
 }
 
@@ -245,18 +254,18 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
-    case "/jobs": return <>{header("Operations", "Jobs", "Job history and outcomes, newest first.")}<JobTable headingId="jobs-heading" jobs={jobs} kicker="Queue" title="Recent jobs" /><JobRefresher active={active} /></>;
-    case "/backups": return <>{header("Recovery", "Backups", "Tiered backups on demand and their recent jobs.")}<BackupControls disabled={false} /><JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="History" title="Backup jobs" /></>;
-    case "/restore": return <>{header("Recovery", "Restore", "Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references, and a restore only runs after approval.", "Actionable")}
+    case "/jobs": return <>{header("Activity", "Jobs", "Job history and outcomes, newest first.")}<JobTable headingId="jobs-heading" jobs={jobs} kicker="Queue" title="Recent jobs" /><JobRefresher active={active} /></>;
+    case "/backups": return <>{header("Protect", "Backups", "Tiered backups on demand and their recent jobs.")}<BackupControls disabled={false} /><JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="History" title="Backup jobs" /></>;
+    case "/restore": return <>{header("Restore", "Restore", "Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references, and a restore only runs after approval.", "Actionable")}
       <RestoreSelection canApprove canRestore resources={[
         ...Object.keys(DEPENDS),
         "group:Break-glass admins", "group:All managed devices", "namedLocation:HQ egress", "authenticationStrength:Phishing-resistant", "group:Finance", "namedLocation:Branch offices",
       ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}
         snapshotId="snap-1" snapshots={[{ id: "snap-1", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 } as never]} />
       <JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Queue" title="Restore jobs" /></>;
-    case "/incidents": return <>{header("Recovery", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
+    case "/incidents": return <>{header("Restore", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
-    case "/drift": return <>{header("Governance", "Drift", "Unresolved changes measured against the active recovery baseline.", "Actionable")}
+    case "/drift": return <>{header("Changes", "Drift", "Unresolved changes measured against the active recovery baseline.", "Actionable")}
       <section aria-label="Active baseline context" className="context-strip">
         <span className="active-indicator">Active baseline</span><strong>Post-migration golden state</strong><span>4,812 resources</span><span>2d old</span>
       </section>
@@ -273,14 +282,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         ct("authenticationMethodsPolicy", "failed", { itemCount: 0, outcome: "failed" }),
         ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null }),
       ];
-      return <>{header("Protection inventory", "Coverage", "Every known configuration type, including failed collections and missing adapters.", "Read-only")}
+      return <>{header("Protect", "Coverage", "Every known configuration type, including failed collections and missing adapters.", "Read-only")}
         <CoverageReport data={{ generatedAt: now, snapshot: { id: "s", status: "complete", startedAt: now, completedAt: now }, summary: { covered: 5, failed: 1, notCovered: 1, neverCollected: 0, stale: 0, total: 8 }, types } as never} /></>;
     }
-    case "/jobs/a4": return <>{header("Operations", "Job details", "a4")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={jobs.find((item) => item.id === "a4")!} /></>;
-    case "/jobs/r9": return <>{header("Operations", "Job details", "r9")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000009" }, result: { applied: 2, skipped: 0 } }} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>;
-    case "/jobs/r10": return <>{header("Operations", "Job details", "r10")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" } }} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>;
-    case "/jobs/a3": return <>{header("Operations", "Job details", "a3")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }} /></>;
-    case "/approvals": return <>{header("Governance", "Approvals", "Review pending operator requests and retain a newest-first decision record.", "Approval required")}<ApprovalInbox
+    case "/jobs/a4": return <>{header("Activity", "Job details", "a4")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={jobs.find((item) => item.id === "a4")!} /></>;
+    case "/jobs/r9": return <>{header("Activity", "Job details", "r9")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000009" }, result: { applied: 2, skipped: 0 } }} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>;
+    case "/jobs/r10": return <>{header("Activity", "Job details", "r10")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" } }} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>;
+    case "/jobs/a3": return <>{header("Activity", "Job details", "a3")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }} /></>;
+    case "/approvals": return <>{header("Approvals", "Approvals", "Review pending operator requests and retain a newest-first decision record.", "Approval required")}<ApprovalInbox
       history={[{ id: "r0", action: "drift.remediate", params: { driftIds: 3 }, requestedBy: "ops@contoso.com", justification: null, status: "approved", decidedBy: "marouanedefili@gmail.com", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: null, expiresAt: null }]}
       pending={[
         { id: "r1", action: "restore.enforce", params: { dryRunId: "dr-7f3c", resources: 12 }, requestedBy: "ops@contoso.com", justification: "Roll back CA policy edit from incident INC-2291", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z" },
@@ -298,20 +307,20 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <IntegrationConsole canConfiguration
         destinations={[{ id: "dst1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef" }, enabled: true, revoked_at: null, created_by: "x", created_at: now }]}
         statuses={[{ destinationId: "dst1", tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 } as never]} /></>;
-    case "/evidence": return <>{header("Governance", "Evidence", "Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive.")}
+    case "/evidence": return <>{header("Activity", "Evidence", "Decision history, newest first by sequence. Dates are UTC; range endpoints are inclusive.")}
       <ChainIndicator integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
       <EvidenceTimeline query="" data={{ generatedAt: now, nextBefore: "18201", entries: [
         { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval.decided", actor: "marouanedefili@gmail.com", subject: { request: "r0", decision: "approve" } },
         { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "job.started", actor: "worker-1", subject: { job: "a1", kind: "backup" } },
         { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
       ] }} /></>;
-    case "/principals": return <>{header("Governance", "Principals", "Identities, role grants, and effective capabilities.")}<div className="item-list">
+    case "/principals": return <>{header("Settings", "Principals", "Identities, role grants, and effective capabilities.")}<div className="item-list">
       <PrincipalDetails principal={{ id: "p-01", email: "marouanedefili@gmail.com", disabled_at: null, capabilities: ["read", "users", "roles", "policies", "configuration"], role_grants: [{ id: "g-01", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "g-02", role: "viewer", active_from: "2026-09-01T00:00:00Z", active_until: null }] } as never} />
       <PrincipalDetails principal={{ id: "p-02", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [] } as never} /></div></>;
-    case "/policies/p1": return <>{header("Governance", "Auto-accept cosmetic drift", "Current policy configuration and automation state.")}
+    case "/policies/p1": return <>{header("Settings", "Auto-accept cosmetic drift", "Current policy configuration and automation state.")}
       <PolicyState policy={{ enabled: true, paused_at: null, run_as_repair_required: false, run_as_principal_id: "svc-policy", action: "dispose-accept", max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, resource_type: null, blast_radius: "cosmetic", natural_key_glob: "deviceConfiguration:*", change_type: "modified" } as never} />
       <section aria-label="Policy record" className="policy-group policy-meta"><h3>Record</h3><dl className="kv-grid"><dt>Policy ID</dt><dd>p1</dd><dt>Created by</dt><dd>marouanedefili@gmail.com</dd><dt>Created at</dt><dd>2026-09-12T08:00:00Z</dd></dl></section></>;
-    case "/policies": return <>{header("Operations", "Policies", "Automation policies and their current state.")}<KillSwitchBadge disabled={false} />
+    case "/policies": return <>{header("Settings", "Policies", "Automation policies and their current state.")}<KillSwitchBadge disabled={false} />
       <section className="item-card" style={{ marginTop: "1rem" }}><h2><a className="item-title-link" href="#/policies/p1">Auto-accept cosmetic drift</a></h2>
         <PolicyState policy={{ enabled: true, paused_at: null, run_as_repair_required: false, run_as_principal_id: "svc-policy", action: "dispose-accept", max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, resource_type: null, blast_radius: "cosmetic", natural_key_glob: null, change_type: "modified" } as never} /></section></>;
     default: return <section className="empty-state state-page"><p className="eyebrow">Preview</p><h2>Not included in this preview</h2><p>This page needs live tenant data. Its styling and motion are the same as the pages shown here.</p></section>;
@@ -352,11 +361,12 @@ function App() {
         <div className="operator-context">
           <span className="auth-state"><span aria-hidden="true" className="auth-dot" /> Authenticated</span>
           <span className="operator-email">marouanedefili@gmail.com</span>
-          <span className="access-label">Read + 10 action capabilities</span>
+          <span className="access-label">{accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"])}</span>
           <ThemeToggle initial="system" />
         </div>
       </aside>
       <main className="workspace" id="main-content">
+        <SectionTabs canApprove canPolicies canRead canUsers />
         <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>
           {loading ? <PageSkeleton /> : <Page jobs={jobs} path={path} posture={posture} />}
         </div>

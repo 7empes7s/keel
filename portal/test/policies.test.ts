@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+
+import { visibleNavLinks } from "@/components/nav-links";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { automationDisabled } from "@/lib/policies";
@@ -27,8 +29,10 @@ test("policy writes and navigation retain the policies capability boundary", () 
   for (const name of ["Create", "Update"]) {
     assert.match(lib.slice(lib.indexOf(`export function guardedPolicy${name}`)), /return guarded\(\{[^\n]*capability: surface.capability, recordAttempt: true/);
   }
-  const nav = readFileSync(new URL("../components/nav-links.tsx", import.meta.url), "utf8");
-  assert.match(nav, /link.href !== "\/policies" \|\| canPolicies/);
+  // The Policies page is listed in navigation exactly with the policies capability.
+  for (const canPolicies of [true, false]) {
+    assert.equal(visibleNavLinks({ canRead: true, canPolicies }).some((link) => link.href === "/policies"), canPolicies);
+  }
   const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
   assert.match(layout, /readAccess\(requestHeaders, DATA_SURFACES.policiesPage\)/);
   assert.match(layout, /canPolicies=\{canPolicies\}/);

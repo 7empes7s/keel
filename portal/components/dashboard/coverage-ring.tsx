@@ -11,9 +11,9 @@ export function CoverageRing({ coverage }: { coverage: CoverageSummary }) {
   const uncovered = coverage.notCovered + coverage.neverCollected;
   const total = Math.max(coverage.total, coverage.covered + coverage.failed + uncovered, 1);
   const segments = [
-    { key: "covered", label: "Covered", value: coverage.covered },
+    { key: "covered", label: "Backed up", value: coverage.covered },
     { key: "failed", label: "Failed", value: coverage.failed },
-    { key: "uncovered", label: "Not covered", value: uncovered },
+    { key: "uncovered", label: "Not backed up", value: uncovered },
   ];
   const visible = segments.filter((segment) => segment.value > 0).length;
   let offset = 0;
@@ -45,7 +45,7 @@ export function CoverageRing({ coverage }: { coverage: CoverageSummary }) {
       </svg>
       <div className="ring-center">
         <strong>{percent}%</strong>
-        <span>covered</span>
+        <span>backed up</span>
       </div>
       <dl className="ring-legend">
         {segments.map((segment) => (

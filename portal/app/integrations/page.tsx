@@ -20,10 +20,10 @@ export default async function IntegrationsPage() {
     if (!response.ok) throw new Error("Integrations unavailable");
     ({ destinations, statuses, generatedAt } = await response.json());
   } catch {
-    return <><PageHeader eyebrow="Operations" title="Integrations" description="Generic webhook and CEF SIEM export destinations." /><DataUnavailable surface="Integrations" /></>;
+    return <><PageHeader section="Settings" title="Integrations" description="Generic webhook and CEF SIEM export destinations." /><DataUnavailable surface="Integrations" /></>;
   }
   return <>
-    <PageHeader eyebrow="Operations" title="Integrations" description="Generic webhook and CEF SIEM export destinations." generatedAt={generatedAt} />
+    <PageHeader section="Settings" title="Integrations" description="Generic webhook and CEF SIEM export destinations." generatedAt={generatedAt} />
     <IntegrationConsole canConfiguration={canConfiguration} destinations={destinations} statuses={statuses} />
   </>;
 }

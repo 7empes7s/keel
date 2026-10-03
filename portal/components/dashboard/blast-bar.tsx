@@ -1,6 +1,6 @@
-import { words } from "@/lib/presentation";
+import { displayEnum } from "@/lib/presentation";
 
-// Open drift split by blast radius: a proportional bar for shape, labelled rows for
+// Open changes split by impact: a proportional bar for shape, labelled rows for
 // the numbers. Severity order is fixed, so the worst class is always leftmost.
 export function BlastBar({ items }: { items: Array<{ blastRadius: string; count: number }> }) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
@@ -16,7 +16,7 @@ export function BlastBar({ items }: { items: Array<{ blastRadius: string; count:
       <dl className="blast-bar-legend">
         {items.map((item) => (
           <div key={item.blastRadius}>
-            <dt><span aria-hidden="true" className={`legend-swatch blast-fill-${item.blastRadius}`} />{words(item.blastRadius)}</dt>
+            <dt><span aria-hidden="true" className={`legend-swatch blast-fill-${item.blastRadius}`} />{displayEnum("blastRadius", item.blastRadius)}</dt>
             <dd>{item.count.toLocaleString("en-GB")}</dd>
           </div>
         ))}

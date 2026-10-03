@@ -4,14 +4,16 @@ import { Fragment, useMemo, useState } from "react";
 
 import { BlastBadge, ChangeBadge } from "@/components/status-badge";
 import { ChangeAttributionPanel } from "@/components/change-attribution";
+import { ChangeEvidencePanel, DecisionWorkbook } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
+import { SemanticDiff } from "@/components/semantic-diff";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { plannedActionWords, refusalSentence, resourceName } from "@/lib/changes-view";
 import { typeName } from "@/lib/protect-view";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
 import { toast } from "@/lib/toast";
 import { BLAST_RADIUS_ORDER, ago, displayEnum, formatTimestamp, resourceLabel } from "@/lib/presentation";
-import type { DriftRecord } from "@/lib/types";
+import type { DriftRecord, SemanticSummary } from "@/lib/types";
 
 type SortKey = "naturalKey" | "resourceType" | "changeType" | "blastRadius" | "detectedAt";
 type Direction = "ascending" | "descending";
@@ -50,10 +52,13 @@ export function DriftTable({
   capabilities,
   items,
   now,
+  summary,
 }: {
   capabilities: string[];
   items: DriftRecord[];
   now?: string;
+  // Task 98: the server's counts over `items`; the decision summary shows when present.
+  summary?: SemanticSummary;
 }) {
   const at = now ?? new Date().toISOString();
   const [query, setQuery] = useState("");
@@ -280,6 +285,8 @@ export function DriftTable({
   }
 
   return (
+    <>
+    {summary ? <DecisionWorkbook summary={summary} /> : null}
     <section aria-labelledby="open-drift-heading" className="report-section">
       <div className="section-heading-row report-heading">
         <div>
@@ -614,7 +621,8 @@ export function DriftTable({
                     {comparisonOpen ? (
                       <tr className="diff-row">
                         <td colSpan={canAct ? 7 : 6}>
-                          <DriftDiff item={item} />
+                          {item.semantic ? <SemanticDiff change={item.semantic} item={item} /> : <DriftDiff item={item} />}
+                          {item.evidence !== undefined ? <ChangeEvidencePanel attribution={item.attribution} evidence={item.evidence} now={at} /> : null}
                           {item.attribution !== undefined ? <ChangeAttributionPanel attribution={item.attribution} now={at} /> : null}
                         </td>
                       </tr>
@@ -648,5 +656,6 @@ export function DriftTable({
         </p>
       )}
     </section>
+    </>
   );
 }

@@ -498,10 +498,22 @@ the engine functions they call, covered by each task's boundary test.
 - **Refusal reasons are matched, not rewritten at source.** `refusalSentence` turns
   known guard reasons into words. A coded reason it does not recognise says the
   reason is in Technical details, rather than putting the code on screen.
-- **Undo plan still shows natural keys.** On a failed restore's job page, the undo
-  plan (`CompensationPanel`) keeps its "will be undone / cannot be undone" headings,
-  which the contract lists as kept, and now uses the named content-effect list.
-  Its other rows still name resources by natural key once "Plan undo" is pressed.
-  The contract check runs on that page before planning, so it does not catch them.
-  Rewording that plan is left for a follow-up.
+- **Undo plan still shows natural keys.** Fixed on 2026-10-03 (see the next entry).
+
+### 2026-10-03: the undo plan in words
+
+- **Names, not keys.** The undo plan on a restore's job page (`CompensationPanel`)
+  names each resource. A membership reads "amara.okafor@contoso.example (user) as
+  member of Finance (group)".
+- **Reasons as sentences.** The engine's coded reasons become sentences
+  (`portal/lib/undo-view.ts`), e.g. "session controls changed after this restore, so
+  KEEL will not overwrite the later change." The headings ("will be undone / cannot
+  be undone") are kept.
+- **Record.** The plan's ID, the restore plan it undoes, the engine's statement, and
+  every natural key with its raw reason are in "Technical details". Refusals read
+  "KEEL refused to change X because …". Sending it reads "Sent to approvers. Nothing
+  changes until one of them approves."
+- **Check.** The undo interaction test now runs the plain-text check after "Plan
+  undo" and confirms the record keeps the IDs, keys and raw reasons. Rendering a
+  natural key in the plan fails it.
 

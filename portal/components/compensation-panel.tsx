@@ -3,7 +3,18 @@
 import { useEffect, useState } from "react";
 
 import { type ContentEffect, ContentEffectsPanel } from "@/components/content-effects";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { refusalSentence } from "@/lib/changes-view";
 import { toast } from "@/lib/toast";
+import {
+  UNDO_STATEMENT,
+  conflictSentence,
+  fieldList,
+  irrecoverableSentence,
+  manualSentence,
+  notAppliedSentence,
+  undoSubject,
+} from "@/lib/undo-view";
 
 // Roadmap task-70: undo a restore. The plan is computed by the worker from the
 // restore's own write journal and a fresh read of the tenant, and persisted as an
@@ -35,13 +46,13 @@ interface CompensationArtifact {
 const STATUS_TONES: Record<CompensationArtifact["status"], string> = { completed: "ok", refused: "warn", failed: "bad" };
 const STATUS_LABELS: Record<CompensationArtifact["status"], string> = {
   completed: "Ready for approval",
-  refused: "Refused by a guard",
+  refused: "Refused by a safety check",
   failed: "Planning failed",
 };
 
 function operationLabel(op: CompensationPlan["operations"][number]): string {
   if (op.verb === "delete") return op.undoes === "restore-soft-deleted" ? "Delete again (return to deleted items)" : "Delete the object this restore created";
-  return `Revert ${(op.revertedFields ?? []).join(", ") || "changed fields"}`;
+  return `Revert ${fieldList(op.revertedFields ?? []) || "changed fields"}`;
 }
 
 function Section({ title, tone, items }: { title: string; tone: string; items: { naturalKey: string; text: string }[] }) {
@@ -52,7 +63,7 @@ function Section({ title, tone, items }: { title: string; tone: string; items: {
       <ul className="compensation-list">
         {items.map((item, index) => (
           <li className={`compensation-item compensation-${tone}`} key={`${item.naturalKey}-${index}`}>
-            <code className="natural-key">{item.naturalKey}</code>
+            <strong className="resource-name">{undoSubject(item.naturalKey)}</strong>
             <span className="compensation-text">{item.text}</span>
           </li>
         ))}
@@ -64,12 +75,24 @@ function Section({ title, tone, items }: { title: string; tone: string; items: {
 export function CompensationPlanView({ plan }: { plan: CompensationPlan }) {
   return (
     <div className="compensation-plan">
-      <p className="compensation-statement">{plan.statement}</p>
+      <p className="compensation-statement">{UNDO_STATEMENT}</p>
       <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, text: operationLabel(op) }))} title="WILL BE UNDONE" tone="ok" />
-      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: item.reason }))} title="CHANGED SINCE · NOT OVERWRITTEN" tone="warn" />
-      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: item.reason }))} title="CANNOT BE UNDONE" tone="bad" />
-      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: item.reason }))} title="NEEDS MANUAL REVIEW" tone="warn" />
-      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: item.reason }))} title="NOTHING TO UNDO" tone="neutral" />
+      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} title="CHANGED SINCE · NOT OVERWRITTEN" tone="warn" />
+      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item) }))} title="CANNOT BE UNDONE" tone="bad" />
+      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: manualSentence(item.reason) }))} title="NEEDS MANUAL REVIEW" tone="warn" />
+      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: notAppliedSentence(item.reason) }))} title="NOTHING TO UNDO" tone="neutral" />
+      <TechnicalDetails>
+        <RecordField label="Undoes restore plan" value={plan.compensates} usage={<code>GET /api/actions/restore/dry-run/{plan.compensates}</code>} />
+        <RecordField copy={false} label="Statement" value={plan.statement} />
+        {plan.operations.map((op, index) => (
+          <RecordField copy={false} key={`op-${index}`} label={`Will undo · ${op.naturalKey}`}
+            value={`${op.verb} (undoes ${op.undoes})${op.revertedFields?.length ? ` · fields ${op.revertedFields.join(", ")}` : ""}`} />
+        ))}
+        {plan.conflicts.map((item, index) => <RecordField copy={false} key={`conflict-${index}`} label={`Not overwritten · ${item.naturalKey}`} value={item.reason} />)}
+        {plan.irrecoverable.map((item, index) => <RecordField copy={false} key={`lost-${index}`} label={`Cannot be undone · ${item.naturalKey}`} value={`${item.effect} · ${item.field} · ${item.reason}`} />)}
+        {plan.manual.map((item, index) => <RecordField copy={false} key={`manual-${index}`} label={`Manual review · ${item.naturalKey}`} value={item.reason} />)}
+        {plan.notApplied.map((item, index) => <RecordField copy={false} key={`skip-${index}`} label={`Nothing to undo · ${item.naturalKey}`} value={item.reason} />)}
+      </TechnicalDetails>
     </div>
   );
 }
@@ -152,7 +175,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
         return;
       }
       setRequested(true);
-      toast({ title: "Undo sent for approval", detail: "Another approver must confirm exactly this plan before anything is written." });
+      toast({ title: "Sent to approvers", detail: "Nothing changes until one of them approves." });
     } finally {
       setBusy(false);
     }
@@ -188,8 +211,18 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
           <p className="compensation-status">
             <span className={`pill pill-${STATUS_TONES[artifact.status]}`}>{STATUS_LABELS[artifact.status]}</span>
           </p>
+          <TechnicalDetails summary="Technical details for this undo plan">
+            <RecordField label="Undo plan ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
+            <RecordField copy={false} label="Status" value={artifact.status} />
+            {artifact.effectsDigest ? <RecordField label="Effects digest" value={artifact.effectsDigest} /> : null}
+          </TechnicalDetails>
           {artifact.guardRefusals?.length ? (
-            <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: item.reason }))} title="REFUSED BY A GUARD" tone="bad" />
+            <>
+              <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: refusalSentence(item) }))} title="REFUSED BY A SAFETY CHECK" tone="bad" />
+              <TechnicalDetails summary="Technical details for the refusals">
+                {artifact.guardRefusals.map((item, index) => <RecordField copy={false} key={index} label={`Guard refusal · ${item.naturalKey}`} value={item.reason} />)}
+              </TechnicalDetails>
+            </>
           ) : null}
           {artifact.contentEffects?.length ? (
             <ContentEffectsPanel
@@ -204,7 +237,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
           {compensation ? <CompensationPlanView plan={compensation} /> : null}
           {executable && canRestore ? (
             requested ? (
-              <p className="compensation-requested">Sent for approval. Track it under Approvals.</p>
+              <p className="compensation-requested">Sent to approvers. Nothing changes until one of them approves.</p>
             ) : (
               <div className="compensation-confirm">
                 <label className="filter-field">

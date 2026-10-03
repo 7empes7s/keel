@@ -7,6 +7,7 @@ import { verbCapability } from '../reconcile/verb.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import { remappingFor } from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
+import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
@@ -166,7 +167,10 @@ export async function retryThrottledGraphOperation(operation, {
 }
 
 function graphFailure(naturalKey, result) {
-  const failure = { naturalKey, error: JSON.stringify(result?.body ?? result?.error) };
+  // Roadmap task-66: a platform preservation-lock refusal is final. It is never
+  // retried (only 429/503 are) and no other write path is tried around it.
+  const lock = isPreservationLockFailure(result) ? 'preservation-lock: the platform refused this change and KEEL never retries or works around it — ' : '';
+  const failure = { naturalKey, error: `${lock}${JSON.stringify(result?.body ?? result?.error)}` };
   if (result?.attempts !== undefined) {
     failure.status = result.status;
     failure.attempts = result.attempts;

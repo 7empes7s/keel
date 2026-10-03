@@ -35,6 +35,7 @@ const DEPENDS: Record<string, string[]> = {
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
+let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 // Task-65: completion items for the recreated application of restore job r9.
@@ -90,6 +91,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ artifact: { id: "dr-7f3c", status: "completed", closureKeys: lastClosure, guardRefusals: [], results: {
       applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties" })),
       skipped: [], failed: [], notRemediable: [] },
+      effectsDigest: "digest-1",
+      contentEffectApprovals: contentEffectsApproved ? [{ approvedBy: "approver@contoso.example", approvedAt: "2026-10-03T08:00:00Z" }] : [],
+      contentEffects: lastClosure.includes("group:Break-glass admins") ? [{
+        naturalKey: "group:Break-glass admins", resourceType: "group", field: "visibility", effect: "externally-sharing", before: "Private", after: "Public",
+        disclosure: "Content becomes visible to people outside its current audience. KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.",
+      }] : [],
       recoveryMechanisms: lastClosure.map((naturalKey) => naturalKey.startsWith("group:")
         ? { naturalKey, mechanism: "soft-delete-restore", idOutcome: "retained", retainedId: "g-1", deadline: "2026-10-30T09:00:00Z", credentialMode: "restorer", reason: null }
         : { naturalKey, mechanism: "update-existing", idOutcome: "retained", retainedId: "p-1", deadline: null, credentialMode: "restorer", reason: null }),
@@ -98,6 +105,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         { parentNaturalKey, family: "member", action: "remove", targetNaturalKey: "user:former.contractor@contoso.example", targetId: "u-2" },
       ]) } });
   }
+  if (url.endsWith("/api/actions/restore/content-effects")) { contentEffectsApproved = true; return json({ approval: { id: "cea-1" } }); }
   if (url.endsWith("/api/actions/restore")) return json({ approvalRequest: { id: "req-221" } }, 202);
   if (url.endsWith("/api/actions/remediate/selection")) {
     const { driftIds } = JSON.parse(String(init?.body)) as { driftIds: string[] };
@@ -174,7 +182,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs": return <>{header("Operations", "Jobs", "Job history and outcomes, newest first.")}<JobTable headingId="jobs-heading" jobs={jobs} kicker="Queue" title="Recent jobs" /><JobRefresher active={active} /></>;
     case "/backups": return <>{header("Recovery", "Backups", "Tiered backups on demand and their recent jobs.")}<BackupControls disabled={false} /><JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="History" title="Backup jobs" /></>;
     case "/restore": return <>{header("Recovery", "Restore", "Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references, and a restore only runs after approval.", "Actionable")}
-      <RestoreSelection canRestore resources={[
+      <RestoreSelection canApprove canRestore resources={[
         ...Object.keys(DEPENDS),
         "group:Break-glass admins", "group:All managed devices", "namedLocation:HQ egress", "authenticationStrength:Phishing-resistant", "group:Finance", "namedLocation:Branch offices",
       ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}

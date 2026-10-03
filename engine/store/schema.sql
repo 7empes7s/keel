@@ -408,6 +408,26 @@ ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS relationship_operations jso
 -- artifacts persisted before task-64 promote exactly as before.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS recovery_mechanisms jsonb;
 
+-- Roadmap task-66: classified content effects (retention-reducing, hold-releasing,
+-- externally-sharing, irreversible) of a dry run, each with its "content is not
+-- backed up" disclosure — folded into the plan digest. Nullable and additive.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS content_effects jsonb;
+
+-- The SEPARATE high-impact approval those effects require: bound to the digest of
+-- exactly the effects reviewed, never the requester, and re-checked for a current
+-- approve grant at promotion. A revoked row no longer counts.
+CREATE TABLE IF NOT EXISTS content_effect_approval (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref     text NOT NULL,
+  artifact_id    uuid NOT NULL REFERENCES restore_dry_run(id),
+  effects_digest text NOT NULL,
+  approved_by    text NOT NULL,
+  justification  text NOT NULL,
+  approved_at    timestamptz NOT NULL DEFAULT now(),
+  revoked_at     timestamptz,
+  UNIQUE (artifact_id, effects_digest, approved_by)
+);
+
 -- Roadmap task-65: owned completion items for what a restore cannot write back
 -- (secrets, certificates, consent, a new object id's downstream integrations) and
 -- the service validation after it. Metadata and evidence REFERENCES only — never a

@@ -133,6 +133,27 @@ Page banner  "Automation is on." / "Automation halted since 09:40 by the kill sw
 The same transformation applies to every object listed above. Task-130 carries
 the per-object specifications.
 
+### Object names and records (task-130)
+
+Each object's generated name or sentence, and what its "Technical details"
+record holds. The sentences come from `portal/lib/sentences.ts` and the page
+components named here, so every page words them the same way.
+
+| Object | Name or sentence outside the record | Record fields |
+| --- | --- | --- |
+| Policy (`policy-state.tsx`) | `policy.name`; "Rolls back cosmetic changes to any resource automatically, up to 50 an hour, acting as Policy service."; state ("Running", "Paused 2 hours ago after reaching its limit", "Turned off"); last action and actions this week | Policy ID (with CLI and API use), run-as principal ID, action code and maximum impact code, match fields, rate limit in seconds, raw state, last action, created by and when |
+| Person (`principal-details.tsx`) | display name or email; "Can approve, restore and 3 more"; each grant as "Admin since 1 Sep 2026" | Principal ID (with API use), effective capabilities, disabled at, each grant's ID with its role code and active range |
+| Approval request (`approval-inbox.tsx`) | "Restore 12 resources from the snapshot of 2 Oct 2026, 09:12 UTC" / "Activate baseline “Post-migration golden state”" / "Roll back 3 changes, including Finance (group)"; requester and decider by name; reason; worst impact; expiry in words; link to the dry run or baseline | Request ID, action code, params JSON, requester and decider principal IDs, dry run, baseline and change IDs, raw status, created, decided and expiry times |
+| Job (`job-table.tsx`, `job-detail.tsx`) | "Backup of Tier 1" / "Restore of 12 resources from the snapshot of …" / "Roll back of 1 change, including Finance (group)"; status as a sentence ("Finished 3 minutes ago after 2 minutes"); requester by name; "What went wrong" only when there is an error | Job ID (with API use), kind and status codes, requester principal ID, times, params and result JSON, full error, worker ID, heartbeat, idempotency key, dry run ID |
+| Audit-record entry (`activity-timeline.tsx`) | "ops@contoso.com asked for approval: restore"; actor by name; age | Evidence sequence, kind code, actor, occurred at, subject JSON; the integrity note's record holds the verification result, the anchored sequence and the CLI it was checked with |
+| Baseline (`baseline-register.tsx`) | label and description; set by name, one relative time; state in words | Baseline ID (with API use), set at, set-by principal ID |
+| Channel, rule, sent alert (`notification-console.tsx`) | "Webhook to hooks.contoso.com" / "Email to secops@contoso.com"; "Sends every change alert rated critical or above to …"; sent alerts as sentences | Channel ID and config JSON; subscription ID, channel ID, pattern and severity codes; delivery ID, channel ID, event and status codes, next attempt |
+| Destination (`integration-console.tsx`) | `destination.name`; kind and target in words ("CEF over HTTPS to siem.contoso.com"); status in plain words | Destination ID, kind code, config JSON (with the credential reference), created by and when, delivery checkpoint, held-back event ID |
+
+A reference whose target cannot be read renders "<Kind> <short id> (no longer
+readable)". Resolution runs in `engine/govern/references.mjs`, with one query per
+reference kind per page.
+
 ## Vocabulary
 
 Words permitted outside the record layer: backup, snapshot, baseline, change
@@ -330,7 +351,8 @@ the engine functions they call, covered by each task's boundary test.
   `portal/test/experience-contract.test.ts`, and check 8 is the existing axe,
   screenshot and interaction suites.
   - Overview, Incidents and the shell pass.
-  - Fifteen routes are allowlisted until task-130 and task-131 rebuild them.
+  - Fifteen routes were allowlisted until task-130 and task-131 rebuild them
+    (task-130 removed eleven; see below).
     The allowlist's size is asserted, so it can only shrink.
 
 **Limits and decisions:**
@@ -348,3 +370,57 @@ the engine functions they call, covered by each task's boundary test.
 - **Overview number has no live data yet.** Without fidelity-drill evidence, the
   number reads in its "no restore has been proven" form. Live drills arrive with
   tasks 72 and 73.
+
+### 2026-10-03: task-130 shipped (named objects and labelled records)
+
+- **Engine readers resolve names.** `engine/govern/references.mjs` resolves
+  people, baselines, dry runs, changes and snapshots in one query per kind for a
+  whole page of rows. Callers:
+  - `listPolicies` and the new `getPolicy` (in `engine/policy/evaluate.mjs`)
+    return the run-as principal as `{ id, email, name, readable }`, plus the last
+    automatic action and the count for the last seven days.
+  - `summarizeApprovalRequests` (approvals) and `summarizeJobs` (jobs) attach
+    those references to each row.
+  - A principal that cannot be read comes back `readable: false`, and a non-UUID
+    actor ("scheduler") is named as itself.
+  - Covered by `engine/roadmap/named-objects.test.mjs`: tenant scoping,
+    unreadable dry runs, foreign baselines and the per-kind query bound.
+- **Pages.**
+  - Policies follow the worked example, with an automation banner ("Automation is
+    on", or when and by which halt file it stopped) and Resume / Turn off / Turn
+    on through the existing guarded routes.
+  - The People page lists each person by name with their access in words.
+  - Approvals are cards with sentences.
+  - Baselines show one time per fact.
+  - Notifications and Integrations have labelled fields, with config JSON in the
+    record.
+  - Every page has one verdict sentence.
+- **Activity.** `/activity` merges jobs and audit-record entries into one
+  timeline, with Show and Kind filters in words, a date range, paging and the
+  audit record's integrity note. `/jobs` and `/evidence` redirect there after
+  the same read-access check. A job's page links back to Activity.
+- **Checks.**
+  - The harness allowlist no longer holds any task-130 route; only task-131's
+    four remain, and the maximum is 4.
+  - Two checks were added to the contract run: a snake_case enum-code check in
+    the plain-text test, and a per-route list of fixture IDs that the record
+    layer must contain (check 7).
+  - The three required mutations each fail a test:
+    - run-as returned without its resolved reference → `named-objects.test.mjs`;
+    - `policy.action` rendered raw → the enum check on `policy` and `policies`;
+    - Policy ID dropped from the record → the record check on both routes.
+
+**Limits and decisions:**
+
+- **No policy edit form.** The portal has no policy edit route. Policies are
+  created and changed with `keel-policy` and the existing API. The card offers
+  pause, resume and on/off only.
+- **Deliveries stay on Notifications.** Sent alerts stay on Notifications as
+  sentences rather than joining the Activity timeline, because they belong to
+  channel configuration.
+- **Restore follow-up panels.** The restore follow-up and undo panels on a
+  restore job's page (`RecoveryCompletion`, `CompensationPanel`) pass the checks
+  unchanged. Their deeper rewording belongs with task-131's Restore work.
+- **Old timeline component kept.** `components/evidence-timeline.tsx` is no
+  longer used by a page. It stays because its integrity indicator is still
+  unit-tested, and task-131 or later cleanup can remove it.

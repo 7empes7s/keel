@@ -112,6 +112,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "incidents/page.tsx",
   },
+  activityPage: {
+    capability: "read",
+    source: "activity/page.tsx",
+  },
 } as const;
 
 export type DataSurface = (typeof DATA_SURFACES)[keyof typeof DATA_SURFACES];

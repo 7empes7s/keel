@@ -359,7 +359,12 @@ test("an approver can list and decide another principal's request", async () => 
     reason: null,
     createdAt: request.createdAt,
     expiresAt: request.expiresAt,
+    references: request.references,
   });
+  // Task-130: the request arrives with what it concerns resolved to names.
+  assert.equal(request.references.plan.id, request.params.artifactId);
+  assert.equal(request.references.plan.readable, true);
+  assert.equal(request.references.people.requested_by.name, "principal-restorer");
 
   const decided = await approveRoute(
     post(`/api/approvals/${id}/approve`, approver),

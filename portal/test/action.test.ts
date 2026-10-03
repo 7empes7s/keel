@@ -721,7 +721,7 @@ test("notification routes enforce configuration while viewers can read recent de
   assert.equal(hidden, "");
   const controls = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
     React.createElement(NotificationConsole, { canConfiguration: true, channels: [channel], subscriptions: [subscription] })));
-  for (const label of ["Create channel", "Disable channel", "Create subscription", "Delete subscription"]) assert.ok(controls.includes(label));
+  for (const label of ["Add channel", "Turn off", "Add rule", "Delete rule"]) assert.ok(controls.includes(label), label);
   for (const canRead of [true, false]) {
     assert.equal(visibleNavLinks({ canRead }).some((link) => link.href === "/notifications"), canRead);
   }

@@ -12,13 +12,14 @@ import {
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
-import { enqueue, listJobs } from "../../engine/jobs/queue.mjs";
+import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -108,6 +109,7 @@ export function normalizeJob(row: Record<string, unknown>) {
     createdAt: iso(row.created_at),
     startedAt: iso(row.started_at),
     finishedAt: iso(row.finished_at),
+    references: (row.references as RowReferences | undefined) ?? EMPTY_REFERENCES,
   };
 }
 
@@ -338,7 +340,7 @@ export function guardedJobList(
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "jobs:list", capability: "read" },
-    async ({ client, request }) => {
+    async ({ client, tenantRef, request }) => {
       const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? 100);
       const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
         ? requestedLimit : 100;
@@ -346,8 +348,10 @@ export function guardedJobList(
         string,
         unknown
       >[];
+      // Task-130: requester, plan, baseline and changes resolved to names.
+      const summarized = (await summarizeJobs(client, { tenantRef, jobs: rows })) as Record<string, unknown>[];
       return Response.json(
-        { generatedAt: new Date().toISOString(), jobs: rows.map(normalizeJob) },
+        { generatedAt: new Date().toISOString(), jobs: summarized.map(normalizeJob) },
         { headers: NO_STORE },
       );
     },
@@ -407,7 +411,7 @@ export function guardedJobShow(
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "jobs:show", capability: "read" },
-    async ({ client, request }) => {
+    async ({ client, tenantRef, request }) => {
       const id =
         new URL(request.url).pathname.split("/").filter(Boolean).pop() ?? "";
       if (!UUID_PATTERN.test(id)) return notFound();
@@ -416,7 +420,8 @@ export function guardedJobShow(
         id,
       ]);
       if (!rows[0]) return notFound();
-      return Response.json({ job: normalizeJob(rows[0]) }, { headers: NO_STORE });
+      const [summarized] = (await summarizeJobs(client, { tenantRef, jobs: rows })) as Record<string, unknown>[];
+      return Response.json({ job: normalizeJob(summarized) }, { headers: NO_STORE });
     },
     deps,
   );

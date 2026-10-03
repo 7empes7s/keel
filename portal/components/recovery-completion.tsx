@@ -59,8 +59,15 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
   if (resources.length === 0) {
     return <p className="muted-value">This restore left no follow-up work: every recovered object was fully restored by configuration.</p>;
   }
+  const items = resources.flatMap((resource) => resource.items);
+  const open = items.filter((item) => item.state === "pending").length;
   return (
     <div className="completion-list">
+      <p className="completion-summary">
+        {open === 0
+          ? `All ${items.length} follow-ups are verified.`
+          : `${items.length - open} of ${items.length} follow-ups verified; ${open} still ${open === 1 ? "needs" : "need"} evidence.`}
+      </p>
       {resources.map((resource) => (
         <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
           <header className="completion-resource-head">
@@ -90,30 +97,39 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         onComplete?.(item, String(data.get("reference") ?? ""), String(data.get("type") ?? "ticket"));
                       }}
                     >
-                      <label className="visually-hidden" htmlFor={`type-${item.id}`}>Evidence type</label>
-                      <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
-                        <option value="ticket">Ticket</option>
-                        <option value="link">Link</option>
-                        <option value="log-reference">Log reference</option>
-                        <option value="attestation">Attestation</option>
-                      </select>
-                      <label className="visually-hidden" htmlFor={`reference-${item.id}`}>Evidence reference</label>
-                      <input
-                        autoComplete="off"
-                        className="completion-control"
-                        id={`reference-${item.id}`}
-                        name="reference"
-                        placeholder="Ticket or link — never the secret"
-                        required
-                      />
+                      <div className="completion-field">
+                        <label htmlFor={`type-${item.id}`}>Evidence type</label>
+                        <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
+                          <option value="ticket">Ticket</option>
+                          <option value="link">Link</option>
+                          <option value="log-reference">Log reference</option>
+                          <option value="attestation">Attestation</option>
+                        </select>
+                      </div>
+                      <div className="completion-field">
+                        <label htmlFor={`reference-${item.id}`}>Evidence reference</label>
+                        <input
+                          aria-describedby={`reference-hint-${item.id}`}
+                          autoComplete="off"
+                          className="completion-control"
+                          id={`reference-${item.id}`}
+                          name="reference"
+                          placeholder="CHG-5120 or a link"
+                          required
+                        />
+                      </div>
                       <button aria-busy={busyItem === item.id || undefined} className="btn btn-secondary btn-sm" disabled={busyItem !== null} type="submit">
                         Mark verified
                       </button>
+                      {/* Stays visible while typing: the moment a credential could be pasted. */}
+                      <small className="completion-hint" id={`reference-hint-${item.id}`}>
+                        Record where the proof lives: never the secret or credential itself.
+                      </small>
                     </form>
                   ) : (
                     <button
                       aria-busy={busyItem === item.id || undefined}
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-secondary btn-sm"
                       disabled={busyItem !== null}
                       onClick={() => onReopen?.(item)}
                       type="button"

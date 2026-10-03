@@ -55,6 +55,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ artifact: { id: "dr-7f3c", status: "completed", closureKeys: lastClosure, guardRefusals: [], results: {
       applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties" })),
       skipped: [], failed: [], notRemediable: [] },
+      recoveryMechanisms: lastClosure.map((naturalKey) => naturalKey.startsWith("group:")
+        ? { naturalKey, mechanism: "soft-delete-restore", idOutcome: "retained", retainedId: "g-1", deadline: "2026-10-30T09:00:00Z", credentialMode: "restorer", reason: null }
+        : { naturalKey, mechanism: "update-existing", idOutcome: "retained", retainedId: "p-1", deadline: null, credentialMode: "restorer", reason: null }),
       relationshipOperations: lastClosure.filter((naturalKey) => naturalKey.startsWith("group:")).flatMap((parentNaturalKey) => [
         { parentNaturalKey, family: "member", action: "add", targetNaturalKey: "user:amara.okafor@contoso.example", targetId: "u-1" },
         { parentNaturalKey, family: "member", action: "remove", targetNaturalKey: "user:former.contractor@contoso.example", targetId: "u-2" },

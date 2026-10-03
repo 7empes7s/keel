@@ -5200,3 +5200,47 @@ section.wizard-panel {
 .stat-bad dt {
   color: var(--text-soft);
 }
+
+/* Task-64: recovery mechanism per resource in the restore review. */
+.recovery-mechanisms {
+  display: grid;
+  gap: var(--space-xs);
+  overflow-x: auto;
+}
+
+.recovery-table td {
+  vertical-align: top;
+}
+
+.mechanism-badge {
+  display: inline-block;
+  padding: 1px var(--space-xs);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--readonly-bg);
+  color: var(--readonly);
+}
+
+.mechanism-badge-soft-delete-restore,
+.mechanism-badge-update-existing {
+  background: var(--protected-bg);
+  color: var(--protected);
+}
+
+.mechanism-badge-recreate {
+  background: var(--partial-bg);
+  color: var(--partial);
+}
+
+.mechanism-badge-manual,
+.mechanism-badge-refused {
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
+}
+
+.mechanism-reason {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-soft);
+}

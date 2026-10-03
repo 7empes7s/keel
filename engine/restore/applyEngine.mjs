@@ -6,6 +6,7 @@ import { immutableDrift, writableProjection } from '../reconcile/writableProject
 import { verbCapability } from '../reconcile/verb.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import { remappingFor } from '../coverage/qualification.mjs';
+import { recoveryGate } from './recoveryMechanism.mjs';
 import { recordPriorState } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
@@ -234,6 +235,8 @@ export async function applyWave(writer, governor, wave, {
   simulationPassed = false,
   signInPathGate,
   throttleRetryOptions,
+  // Clock for the task-64 recovery deadline check; injectable for tests.
+  now = () => new Date(),
 }) {
   const applied = [];
   const skipped = [];
@@ -272,6 +275,17 @@ export async function applyWave(writer, governor, wave, {
         naturalKey: resource.naturalKey,
         error: `unsupported operation: ${resource.resourceType} ${effectiveVerb} is not a registered write capability (claim: ${capabilityGate.capability?.claim ?? 'unsupported'})`,
       });
+      continue;
+    }
+
+    // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
+    // manual/refused mechanism never writes and an expired recovery point is
+    // refused at execution even after a clean dry run.
+    const recoveryRefusal = recoveryGate(resource, { now: now() });
+    if (recoveryRefusal) {
+      (recoveryRefusal.outcome === 'failed' ? failed : skipped).push(recoveryRefusal.outcome === 'failed'
+        ? { naturalKey: resource.naturalKey, error: recoveryRefusal.reason }
+        : { naturalKey: resource.naturalKey, reason: recoveryRefusal.reason });
       continue;
     }
 

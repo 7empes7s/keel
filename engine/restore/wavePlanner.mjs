@@ -99,8 +99,11 @@ function omitPaths(value, tree) {
 }
 
 /** Task-103: workload configuration (SharePoint tenant settings, sites) restores
- * through its own qualified path (restore/workloads/), never as an Entra wave. */
-export const WORKLOAD_RESOURCE_TYPES = Object.freeze(['sharepointTenantSettings', 'sharepointSite']);
+ * through its own qualified path (restore/workloads/), never as an Entra wave.
+ * Task-104 adds Teams settings and Teams membership. */
+export const WORKLOAD_RESOURCE_TYPES = Object.freeze([
+  'sharepointTenantSettings', 'sharepointSite', 'teamsTeam', 'teamsTeamSettings', 'teamsMembership',
+]);
 
 function assertNoWorkloadTypes(resources) {
   const found = [...new Set((resources ?? [])

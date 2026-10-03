@@ -59,8 +59,8 @@ export const TYPE_DECISIONS = Object.freeze({
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
   administrativeUnit: unknown(),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
-  application: unknown({ softRestoreCandidate: true }),
-  servicePrincipal: unknown(),
+  application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
+  servicePrincipal: automated('serviceprincipal', 'task-107 subset: create only, bound to its application by appId'),
   oauth2PermissionGrant: unknown(),
   identityProvider: manual('client secrets are never readable'),
   certificateBasedAuthConfiguration: unknown(),
@@ -155,6 +155,9 @@ recordRemappingProof('group', 'create', 'engine/restore/applyPatches.test.mjs');
 recordRemappingProof('roleAssignment', 'create', 'engine/restore/applyEngine.test.mjs');
 recordRemappingProof('conditionalAccessPolicy', 'create', 'cli/keel-restore.test.mjs');
 recordRemappingProof('conditionalAccessPolicy', 'update', 'engine/roadmap/fidelity-ledger.test.mjs');
+// Roadmap task-107: a service principal created for an application recreated in
+// the same run carries that application's NEW appId (EXPLICIT_REFERENCES below).
+recordRemappingProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -244,6 +247,8 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
     reason: decision.reason,
     softRestoreCandidate: decision.softRestoreCandidate === true,
     remapping: Object.freeze(remapping),
+    // Roadmap task-107: the type's expansion batch and its derived restore scope.
+    expansion: expansionFor(resourceType),
   });
 }
 
@@ -328,4 +333,246 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
       live: live ? { proofRef: live.proofRef ?? null, capturedAt: live.capturedAt } : null,
     }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Roadmap task-107: measured Entra operation expansion batches.
+//
+// Every catalogue type is placed in exactly one batch with an explicit status:
+//   qualified-subset — at least one operation is registered in capabilities.mjs
+//                      (derived from the registry, never declared here);
+//   manual           — recovery is a human step by design (TYPE_DECISIONS);
+//   unsupported      — no Graph write route exists for the configuration;
+//   research-needed  — a route may exist but its API, permission or safety
+//                      contract has not been checked for KEEL.
+// A non-qualified entry must name the API and permission reason. A status can
+// never be raised by editing this table: buildExpansionInventory() throws when
+// an entry claims more than the registry proves, and an entry carries no
+// "restorable" flag at all — the restore scope is derived from registered
+// operations only.
+
+export const EXPANSION_CONTRACT_VERSION = 1;
+export const EXPANSION_STATUSES = Object.freeze(['qualified-subset', 'manual', 'unsupported', 'research-needed']);
+
+export const EXPANSION_BATCHES = Object.freeze([
+  Object.freeze({ id: 'identity-application', label: 'Identity and applications', task: 'task-107' }),
+  Object.freeze({ id: 'policy', label: 'Policies', task: 'task-108' }),
+  Object.freeze({ id: 'administrative-configuration', label: 'Administrative configuration', task: 'task-109' }),
+  // Intune is not an Entra family; it is accounted for here so no catalogue type
+  // is silently left out, and no Entra batch is responsible for it.
+  Object.freeze({ id: 'device-management', label: 'Device management (Intune, outside the Entra batches)', task: null }),
+]);
+
+const APP_RW = 'Application.ReadWrite.All (restorer); not verified as granted to the KEEL Restorer';
+const research = (batch, api, permission, reason) => ({ batch, status: 'research-needed', api, permission, reason });
+const notWritable = (batch, api, permission, reason) => ({ batch, status: 'unsupported', api, permission, reason });
+const byHand = (batch, api, permission, reason) => ({ batch, status: 'manual', api, permission, reason });
+const subset = (batch, api, permission, reason) => ({ batch, status: 'qualified-subset', api, permission, reason });
+
+/**
+ * The reviewed inventory. `api` names the Graph route a write would use (null
+ * when none exists); `permission` names the least privilege a writer would need.
+ * Documentation was not re-fetched in the task-107 session (learn.microsoft.com
+ * is blocked from the build container), so every route here is a declaration
+ * to confirm before any live qualification — see docs/roadmap/fidelity-expansion.md.
+ */
+export const EXPANSION_INVENTORY = Object.freeze({
+  // ---- identity and applications (task-107)
+  application: subset('identity-application', 'POST /applications; PATCH /applications/{id}; POST /directory/deletedItems/{id}/restore', APP_RW,
+    'create, update and soft-delete restore are fixture-tested; delete is refused; secrets and certificates are never written and a recreate opens credential completion items'),
+  servicePrincipal: subset('identity-application', 'POST /servicePrincipals', APP_RW,
+    'create is fixture-tested and takes the appId of its application (remapped when the application was recreated); update, delete and soft-delete restore are not qualified'),
+  user: byHand('identity-application', 'POST /users', 'User.ReadWrite.All', 'tenant-bound identity; passwords and MFA methods are never readable'),
+  group: subset('identity-application', 'POST/PATCH/DELETE /groups', 'Group.ReadWrite.All', 'registered before task-107'),
+  contact: byHand('identity-application', null, 'none', 'organizational contacts are directory-synchronised and read-only in Graph'),
+  oauth2PermissionGrant: research('identity-application', 'POST /oauth2PermissionGrants', 'DelegatedPermissionGrant.ReadWrite.All',
+    'delegated consent is a grant decision, not configuration; re-granting needs an approval contract that does not exist yet'),
+  identityProvider: byHand('identity-application', 'POST /identity/identityProviders', 'IdentityProvider.ReadWrite.All', 'client secrets are never readable'),
+  certificateBasedAuthConfiguration: research('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
+    'tenant-lockout blast radius; no simulation gate for certificate trust changes exists'),
+  directoryRole: byHand('identity-application', 'POST /directoryRoles (activate from template)', 'RoleManagement.ReadWrite.Directory', 'built-in roles are activated from templates, never authored'),
+  roleDefinition: research('identity-application', 'POST /roleManagement/directory/roleDefinitions', 'RoleManagement.ReadWrite.Directory',
+    'custom roles need a licence check and a privilege-escalation review before any write'),
+  directoryRoleTemplate: byHand('identity-application', null, 'none', 'Microsoft-published template catalogue'),
+  roleAssignment: subset('identity-application', 'POST/DELETE /roleManagement/directory/roleAssignments', 'RoleManagement.ReadWrite.Directory', 'registered before task-107'),
+  roleEligibilitySchedule: research('identity-application', 'POST /roleManagement/directory/roleEligibilityScheduleRequests', 'RoleEligibilitySchedule.ReadWrite.Directory',
+    'PIM writes go through schedule requests with their own approval and expiry semantics'),
+  accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
+    'review history and decisions cannot be recreated; only the definition could be'),
+  accessPackage: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages', 'EntitlementManagement.ReadWrite.All',
+    'depends on catalogs, policies and resource roles that are not collected'),
+  connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
+    'identity sources reference external tenants that cannot be verified from this tenant'),
+  // ---- policies (task-108)
+  conditionalAccessPolicy: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/policies', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107; forced report-only'),
+  namedLocation: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/namedLocations', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107'),
+  authenticationStrengthPolicy: research('policy', 'POST /policies/authenticationStrengthPolicies', 'Policy.ReadWrite.ConditionalAccess', 'built-in strengths are immutable; custom ones are task-108'),
+  authenticationContextClassReference: research('policy', 'PATCH /identity/conditionalAccess/authenticationContextClassReferences/{id}', 'Policy.ReadWrite.ConditionalAccess', 'task-108'),
+  authenticationMethodsPolicy: research('policy', 'PATCH /policies/authenticationMethodsPolicy', 'Policy.ReadWrite.AuthenticationMethod', 'tenant-wide singleton that can lock users out; task-108'),
+  authorizationPolicy: research('policy', 'PATCH /policies/authorizationPolicy', 'Policy.ReadWrite.Authorization', 'tenant-wide singleton; task-108'),
+  crossTenantAccessPolicy: research('policy', 'PATCH /policies/crossTenantAccessPolicy/default', 'Policy.ReadWrite.CrossTenantAccess', 'task-108'),
+  crossTenantAccessPolicyPartner: research('policy', 'POST /policies/crossTenantAccessPolicy/partners', 'Policy.ReadWrite.CrossTenantAccess', 'partner identity is another tenant; task-108'),
+  permissionGrantPolicy: research('policy', 'POST /policies/permissionGrantPolicies', 'Policy.ReadWrite.PermissionGrant', 'built-in policies are immutable; task-108'),
+  adminConsentRequestPolicy: research('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest', 'reviewer references need remapping; task-108'),
+  activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
+  claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'assignment to service principals is a separate edge; task-108'),
+  homeRealmDiscoveryPolicy: research('policy', 'POST /policies/homeRealmDiscoveryPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
+  tokenIssuancePolicy: research('policy', 'POST /policies/tokenIssuancePolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
+  tokenLifetimePolicy: research('policy', 'POST /policies/tokenLifetimePolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
+  featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout', 'applies-to membership is a separate edge; task-108'),
+  // ---- administrative configuration (task-109)
+  organization: byHand('administrative-configuration', null, 'none', 'the tenant object itself; it is never recreated'),
+  domain: byHand('administrative-configuration', 'POST /domains', 'Domain.ReadWrite.All', 'requires DNS ownership verification outside Graph'),
+  subscribedSku: notWritable('administrative-configuration', null, 'none', 'licences are purchased, not configured'),
+  directorySettingTemplate: byHand('administrative-configuration', null, 'none', 'Microsoft-published template catalogue'),
+  groupSetting: research('administrative-configuration', 'POST/PATCH /groupSettings', 'Directory.ReadWrite.All', 'settings are bound to global templates; task-109'),
+  administrativeUnit: research('administrative-configuration', 'POST/PATCH /directory/administrativeUnits', 'AdministrativeUnit.ReadWrite.All', 'membership and scoped roles are separate edges; task-109'),
+  // ---- device management (outside the Entra batches)
+  deviceConfiguration: research('device-management', 'POST /deviceManagement/deviceConfigurations', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; no Intune restore workstream is scheduled'),
+  deviceCompliancePolicy: research('device-management', 'POST /deviceManagement/deviceCompliancePolicies', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; scheduled actions are required on create'),
+  configurationPolicy: research('device-management', 'POST /deviceManagement/configurationPolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune settings catalog is beta-only'),
+  deviceEnrollmentConfiguration: research('device-management', 'POST /deviceManagement/deviceEnrollmentConfigurations', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; default configurations cannot be recreated'),
+  deviceManagementRoleDefinition: research('device-management', 'POST /deviceManagement/roleDefinitions', 'DeviceManagementRBAC.ReadWrite.All', 'Intune RBAC; privilege review needed'),
+  deviceCategory: research('device-management', 'POST /deviceManagement/deviceCategories', 'DeviceManagementManagedDevices.ReadWrite.All', 'Intune'),
+  termsAndConditions: research('device-management', 'POST /deviceManagement/termsAndConditions', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; acceptance history cannot be recreated'),
+  windowsAutopilotDeploymentProfile: research('device-management', 'POST /deviceManagement/windowsAutopilotDeploymentProfiles (beta)', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; beta-only'),
+  deviceManagementIntent: research('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; beta-only and deprecated by the settings catalog'),
+  managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
+  mobileApp: research('device-management', 'POST /deviceAppManagement/mobileApps', 'DeviceManagementApps.ReadWrite.All', 'Intune; app binaries are content, not configuration'),
+  managedAppPolicy: research('device-management', 'POST /deviceAppManagement/managedAppPolicies', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
+  targetedManagedAppConfiguration: research('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
+  mobileAppConfiguration: research('device-management', 'POST /deviceAppManagement/mobileAppConfigurations', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
+});
+
+const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
+
+/**
+ * The restore scope a type has, derived from the registry alone:
+ * 'full' only when every object operation is registered, 'partial' when some
+ * are, 'none' otherwise. Nothing in EXPANSION_INVENTORY can set it.
+ */
+export function restoreScopeFor(resourceType) {
+  const supported = OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor(resourceType, operation).claim));
+  if (supported.length === 0) return 'none';
+  return supported.length === OPERATIONS.length ? 'full' : 'partial';
+}
+
+/**
+ * Validates and expands EXPANSION_INVENTORY into one record per catalogue type.
+ * Throws when a type is missing or in two places, an entry carries an unknown
+ * field, a status disagrees with the registry or TYPE_DECISIONS, or a
+ * non-qualified entry lacks its API/permission reason.
+ */
+export function buildExpansionInventory({ inventory = EXPANSION_INVENTORY, decisions = TYPE_DECISIONS } = {}) {
+  const types = [...new Set([...CATALOG.map((entry) => entry.type), ...DESCRIPTORS.map((descriptor) => descriptor.type)])];
+  const missing = types.filter((type) => !inventory[type]);
+  if (missing.length > 0) throw new Error(`no expansion batch entry for: ${missing.join(', ')}`);
+  const extra = Object.keys(inventory).filter((type) => !types.includes(type));
+  if (extra.length > 0) throw new Error(`expansion entries for types not in the catalogue: ${extra.join(', ')}`);
+  const batchIds = new Set(EXPANSION_BATCHES.map((batch) => batch.id));
+
+  const entries = types.map((type) => {
+    const entry = inventory[type];
+    const unknownKeys = Object.keys(entry).filter((key) => !INVENTORY_FIELDS.has(key));
+    if (unknownKeys.length > 0) throw new Error(`${type}: expansion entry carries unrecognised fields ${unknownKeys.join(', ')} — a restore scope is derived, never declared`);
+    if (!batchIds.has(entry.batch)) throw new Error(`${type}: unknown batch ${entry.batch}`);
+    if (!EXPANSION_STATUSES.includes(entry.status)) throw new Error(`${type}: invalid status ${entry.status}`);
+    if (typeof entry.reason !== 'string' || entry.reason.length === 0) throw new Error(`${type}: entry has no reason`);
+    if (typeof entry.permission !== 'string' || entry.permission.length === 0) throw new Error(`${type}: entry has no permission reason`);
+    if (entry.api !== null && (typeof entry.api !== 'string' || entry.api.length === 0)) throw new Error(`${type}: api must be a route or null`);
+
+    const scope = restoreScopeFor(type);
+    const registered = scope !== 'none';
+    if (entry.status === 'qualified-subset' && !registered) {
+      throw new Error(`${type} is marked qualified-subset but has no registered write capability`);
+    }
+    if (entry.status !== 'qualified-subset' && registered) {
+      throw new Error(`${type} has a registered write capability but is marked ${entry.status}`);
+    }
+    const decision = decisions[type]?.decision;
+    if (entry.status === 'manual' && decision !== 'manual') throw new Error(`${type} is manual in its batch but ${decision} in TYPE_DECISIONS`);
+    if ((entry.status === 'research-needed' || entry.status === 'unsupported') && decision === 'automated') {
+      throw new Error(`${type} is ${entry.status} in its batch but automated in TYPE_DECISIONS`);
+    }
+    if (entry.status === 'research-needed' && entry.api === null) {
+      throw new Error(`${type}: a research-needed entry must name the API route to investigate`);
+    }
+
+    return Object.freeze({
+      resourceType: type,
+      batch: entry.batch,
+      status: entry.status,
+      restoreScope: scope,
+      supportedOperations: Object.freeze(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor(type, operation).claim))),
+      unsupportedOperations: Object.freeze(OPERATIONS.filter((operation) => !isSupportedClaim(capabilityFor(type, operation).claim))),
+      api: entry.api,
+      permission: entry.permission,
+      reason: entry.reason,
+    });
+  });
+
+  return Object.freeze({
+    contractVersion: EXPANSION_CONTRACT_VERSION,
+    batches: Object.freeze(EXPANSION_BATCHES.map((batch) => Object.freeze({
+      ...batch,
+      types: Object.freeze(entries.filter((entry) => entry.batch === batch.id)),
+    }))),
+  });
+}
+
+/** The compact batch record the coverage report and portal show for one type. */
+export function expansionFor(resourceType) {
+  const entry = EXPANSION_INVENTORY[resourceType];
+  if (!entry) return null;
+  const batch = EXPANSION_BATCHES.find((candidate) => candidate.id === entry.batch);
+  return Object.freeze({
+    batch: entry.batch,
+    batchLabel: batch?.label ?? entry.batch,
+    status: entry.status,
+    restoreScope: restoreScopeFor(resourceType),
+    reason: entry.reason,
+  });
+}
+
+// ---- write-path contracts for the task-107 subset
+
+/**
+ * Fields a create body never carries for a type, beyond the server-owned ones:
+ * identifiers Entra assigns and credential material KEEL cannot read back.
+ */
+export const CREATE_EXCLUDED_FIELDS = Object.freeze({
+  application: Object.freeze(['appId', 'publisherDomain', 'passwordCredentials', 'keyCredentials']),
+  servicePrincipal: Object.freeze([
+    'appDisplayName', 'appOwnerOrganizationId', 'servicePrincipalNames', 'servicePrincipalType',
+    'signInAudience', 'appRoles', 'oauth2PermissionScopes', 'passwordCredentials', 'keyCredentials',
+  ]),
+});
+
+/** The identifiers a created object reports beyond its object id, by type. */
+export const ALTERNATE_IDENTIFIERS = Object.freeze({ application: Object.freeze(['appId']) });
+
+/**
+ * References the snapshot's GUID walk cannot see, declared explicitly. A
+ * service principal points at its application by appId, not by object id;
+ * the application's natural key is that appId, so the symbol is derived from
+ * the payload. `identifier` says which of the target's identifiers the field
+ * holds.
+ */
+export const EXPLICIT_REFERENCES = Object.freeze({
+  servicePrincipal: Object.freeze([Object.freeze({ field: 'appId', targetType: 'application', identifier: 'appId' })]),
+});
+
+/** The resource's references plus its explicit ones (never duplicating a field). */
+export function withExplicitReferences(resource) {
+  const declared = EXPLICIT_REFERENCES[resource?.resourceType];
+  const references = resource?.references ?? [];
+  if (!declared || !resource.payload) return references;
+  const extra = [];
+  for (const ref of declared) {
+    const value = resource.payload[ref.field];
+    if (typeof value !== 'string' || value.length === 0) continue;
+    if (references.some((existing) => existing.field === ref.field)) continue;
+    extra.push({ field: ref.field, symbol: `${ref.targetType}:${value}`, required: true, identifier: ref.identifier });
+  }
+  return extra.length === 0 ? references : [...references, ...extra];
 }

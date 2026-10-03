@@ -40,11 +40,16 @@ export function ContentEffectList({ effects }: { effects: ContentEffect[] }) {
       {effects.map((effect) => (
         <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}`}>
           <div className="content-effect-head">
-            <span className="content-effect-badge">{contentEffectLabel(effect.effect)}</span>
+            <span className="pill pill-bad content-effect-badge">{contentEffectLabel(effect.effect)}</span>
             <code className="natural-key">{effect.naturalKey}</code>
           </div>
           <p className="content-effect-change">
-            <code>{effect.field}</code>: {show(effect.before)} → {show(effect.after)}
+            <code>{effect.field}</code>
+            <span className="change-values">
+              <code className="value-before">{show(effect.before)}</code>
+              <span aria-label="becomes">→</span>
+              <code className="value-after">{show(effect.after)}</code>
+            </span>
           </p>
           <p className="content-effect-disclosure">{effect.disclosure}</p>
         </li>
@@ -101,7 +106,7 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
         </p>
       )}
       {canApprove && approvals.length === 0 ? (
-        <div className="filter-bar">
+        <div className="content-effect-approve">
           <label className="filter-field">
             <span>High-impact justification</span>
             <input onChange={(event) => setJustification(event.target.value)} placeholder="Why are these content effects acceptable?" value={justification} />

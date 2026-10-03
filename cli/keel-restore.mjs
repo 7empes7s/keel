@@ -38,6 +38,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
+import { emitCompletionItems } from '../engine/restore/completion.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -134,6 +135,7 @@ export async function runRestore({
     loadSnapshotRelationships: loadSnapshotRelationshipsFn = loadSnapshotRelationships,
     collectRelationships: collectRelationshipsFn = collectRelationships,
     applyRelationshipOperations: applyRelationshipOperationsFn = applyRelationshipOperations,
+    emitCompletionItems: emitCompletionItemsFn = emitCompletionItems,
   } = dependencies;
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
@@ -653,6 +655,31 @@ export async function runRestore({
       results.skipped = withDependentImpact(results.skipped);
     }
 
+    // Roadmap task-65: an enforced promotion that recreated or soft-restored an object
+    // leaves owned completion items for what KEEL cannot write back (secrets,
+    // certificates, consent, a new id's downstream integrations) and for service
+    // validation. Keyed by the promoted artifact, so a retried run never duplicates them.
+    let completionItems = [];
+    if (mode === 'enforce' && artifact) {
+      const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
+      const recovered = results.applied
+        .map((entry) => byKey.get(entry.naturalKey))
+        .filter((resource) => resource?.recovery
+          && (resource.recovery.mechanism === 'recreate' || resource.recovery.mechanism === 'soft-delete-restore'))
+        .map((resource) => ({
+          naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery.mechanism,
+        }));
+      if (recovered.length > 0) {
+        completionItems = await emitCompletionItemsFn(client, {
+          tenantRef: artifact.tenantRef,
+          restoreRef: artifact.id ?? artifactId,
+          owner: artifact.requestedBy ?? null,
+          applied: recovered,
+        });
+        logger.log(`completion: ${completionItems.length} item(s) open for recovered objects`);
+      }
+    }
+
     let createdArtifactId = null;
     if (persistArtifactId !== undefined) {
       const { rows: snapshotRows } = await client.query(
@@ -706,6 +733,7 @@ export async function runRestore({
 
     return {
       plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
+      completionItems,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };

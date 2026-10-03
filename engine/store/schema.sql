@@ -889,6 +889,82 @@ CREATE INDEX IF NOT EXISTS retention_pin_tenant_idx ON retention_pin (tenant_ref
 -- under an incident, which keeps their digest unchanged.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS incident_recovery jsonb;
 
+-- Task 82 (WS7): durable alert lifecycle. One alert row per condition identity
+-- (tenant, resource, control, condition); a recurrence reopens the same row as a new
+-- occurrence instead of creating another alert. Every state change is an append-only
+-- alert_transition row (UPDATE and DELETE are refused by trigger), and every applied
+-- condition event leaves an alert_event_receipt keyed by its event id, so a retried or
+-- duplicated event is recognised instead of re-applied. A suppressed alert keeps its row,
+-- its history and the live condition state; suppression only stops notification.
+CREATE TABLE IF NOT EXISTS alert (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref            text NOT NULL,
+  resource_key          text NOT NULL,
+  control               text NOT NULL,
+  condition             text NOT NULL,
+  state                 text NOT NULL CHECK (state IN ('open','acknowledged','resolved','reopened','suppressed')),
+  condition_active      boolean NOT NULL,
+  severity              text NOT NULL CHECK (severity IN ('notice','warning','critical')),
+  occurrence            int NOT NULL DEFAULT 1 CHECK (occurrence >= 1),
+  firing_count          int NOT NULL DEFAULT 1 CHECK (firing_count >= 0),
+  flap_count            int NOT NULL DEFAULT 0 CHECK (flap_count >= 0),
+  detail                jsonb NOT NULL DEFAULT '{}'::jsonb,
+  first_opened_at       timestamptz NOT NULL,
+  occurrence_started_at timestamptz NOT NULL,
+  last_firing_at        timestamptz NOT NULL,
+  last_observed_at      timestamptz NOT NULL,
+  last_event_id         text NOT NULL,
+  acknowledged_by       text,
+  acknowledged_at       timestamptz,
+  resolved_at           timestamptz,
+  resolved_event_id     text,
+  suppressed_by         text,
+  suppressed_at         timestamptz,
+  suppression_reason    text,
+  notified_occurrence   int NOT NULL DEFAULT 0,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS alert_condition_identity_idx
+  ON alert (tenant_ref, resource_key, control, condition);
+CREATE INDEX IF NOT EXISTS alert_tenant_state_idx ON alert (tenant_ref, state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS alert_transition (
+  id          bigserial PRIMARY KEY,
+  alert_id    uuid NOT NULL REFERENCES alert(id),
+  tenant_ref  text NOT NULL,
+  occurrence  int NOT NULL,
+  from_state  text,
+  to_state    text NOT NULL,
+  reason      text NOT NULL,
+  event_id    text,
+  actor       text NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  evidence    jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS alert_transition_alert_idx ON alert_transition (alert_id, id);
+
+CREATE TABLE IF NOT EXISTS alert_event_receipt (
+  tenant_ref  text NOT NULL,
+  event_id    text NOT NULL,
+  alert_id    uuid REFERENCES alert(id),
+  outcome     text NOT NULL,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, event_id)
+);
+
+CREATE OR REPLACE FUNCTION alert_transition_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $alert_transition$
+BEGIN
+  RAISE EXCEPTION 'alert_transition is append-only';
+END;
+$alert_transition$;
+DROP TRIGGER IF EXISTS alert_transition_append_only ON alert_transition;
+CREATE TRIGGER alert_transition_append_only
+  BEFORE UPDATE OR DELETE ON alert_transition
+  FOR EACH ROW EXECUTE FUNCTION alert_transition_append_only();
+
 -- Roadmap task-87: baseline capture and versioning. A baseline records the collection
 -- it was captured from (source_snapshot_id), when that collection finished
 -- (captured_at, the basis of its age, never the page load) and what it covered

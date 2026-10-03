@@ -22,7 +22,7 @@ export default async function IncidentsPage({
     .split(" ")
     .filter((capability) => capability.length > 0);
   const canInvestigate = capabilities.includes("investigate");
-  const description = "Recovery points qualified against an incident's compromise window and the investigator's assessments. The newest snapshot is not trusted by default.";
+  const description = "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.";
 
   let data: IncidentRecoveryData;
   try {
@@ -45,7 +45,7 @@ export default async function IncidentsPage({
         marker={canInvestigate ? "Actionable" : "Read-only"}
         title="Incidents"
       />
-      <IncidentRecovery canInvestigate={canInvestigate} incidents={data.incidents} selected={data.selected} />
+      <IncidentRecovery canInvestigate={canInvestigate} incidents={data.incidents} now={data.generatedAt} selected={data.selected} />
     </>
   );
 }

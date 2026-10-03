@@ -197,25 +197,86 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
 });
 
-// Task-71: the incident view recommends the newest qualified point, keeps the
-// assessment form honest, and fits a phone.
-test("the incident view recommends the qualified point, not the newest, and refuses exclusions on a compromised verdict", async ({ page }) => {
+// Portal experience contract, mechanical checks 1-3, 6 and 7. Scoped to the pages
+// already rebuilt to the contract; task-129 runs them on every route.
+const BANNED_TERMS = [
+  "natural key", "disposition", "fidelity", "qualification", "qualified", "live-qualified", "fixture-tested",
+  "capability", "closure", "dependency-closed", "projection", "field class", "blast radius", "guard refusal",
+  "wave", "verb", "artifact", "promotion", "enforce", "compensation", "observation", "descriptor", "adapter",
+  "catalog type", "evidence chain", "anchor", "checkpoint", "kill switch", "tenant_ref", "CIR", "symbol",
+  "lineage", "Postgres", "worker", "heartbeat", "fingerprint",
+];
+const CONTRACT_PAGES = ["/incidents"];
+
+async function textOutsideRecord(page: Page): Promise<string> {
+  // Each text node on its own line, so adjacent blocks never run together.
+  return page.locator("main#main-content").evaluate((main) => {
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+    const parts: string[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement?.closest('[data-layer="record"]')) parts.push(node.textContent ?? "");
+    }
+    return parts.join("\n");
+  });
+}
+
+for (const hash of CONTRACT_PAGES) {
+  test(`contract · ${hash} · glance, identifiers, vocabulary, one primary action, labelled record`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page, hash, "dark");
+    await expect(page.locator("main#main-content h1")).toHaveCount(1);
+    const verdict = page.locator('[data-layer="verdict"]');
+    await expect(verdict).toHaveCount(1);
+    await expect(verdict).toBeInViewport();
+    const sentence = (await verdict.locator(".verdict-sentence").innerText()).trim();
+    expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(25);
+    expect(sentence).not.toMatch(/\d{7,}|[{}[\]"]/);
+    expect(await verdict.locator("button.primary, a.primary").count()).toBeLessThanOrEqual(1);
+
+    const visible = await textOutsideRecord(page);
+    expect(visible).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(visible).not.toMatch(/\b[0-9a-f]{32,}\b/i);
+    expect(visible).not.toMatch(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/);
+    for (const term of BANNED_TERMS) {
+      expect(visible, `banned term "${term}" outside the record layer`).not.toMatch(new RegExp(`\\b${term.replace("-", "\\-")}\\b`, "i"));
+    }
+
+    // Honesty is moved, not lost: every record field is labelled.
+    const records = page.locator('[data-layer="record"]');
+    expect(await records.count()).toBeGreaterThan(0);
+    for (const label of await records.locator("dt").allTextContents()) expect(label.trim().length).toBeGreaterThan(0);
+  });
+}
+
+// Task-71: the incident view recommends the newest cleared snapshot, keeps the check
+// form honest, keeps ids in Technical details, and fits a phone.
+test("the incident view recommends the cleared snapshot, not the newest, and refuses exclusions on an unsafe result", async ({ page }) => {
   await open(page, "/incidents", "dark");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("Restore from the snapshot of 30 Sept 2026, 06:00 UTC");
   const rows = page.locator("tr.incident-point");
-  await expect(rows.nth(0)).toContainText("Unsuitable");
+  await expect(rows.nth(0)).toContainText("Unsafe");
   await expect(rows.nth(0)).not.toContainText("Recommended");
   await expect(rows.nth(1)).toContainText("Recommended");
-  await expect(rows.nth(1)).toContainText("not proof of a clean state");
+  await expect(rows.nth(1)).toContainText("Being kept does not mean it is clean");
+  await expect(rows.nth(1)).toContainText("Mail Sync Helper (enterprise app)");
 
-  await rows.nth(2).getByRole("button", { name: "Assess" }).click();
-  await page.getByLabel("Verdict").selectOption("compromised");
-  await page.getByLabel("Rationale").fill("captured the backdoor");
-  await page.getByLabel(/Malicious exclusions/).fill("group:backdoor | attacker group");
-  await page.getByRole("button", { name: "Record assessment" }).click();
-  await expect(page.getByRole("alert")).toContainText("Exclusions apply only to a clean verdict");
+  // The id is one click away, labelled, with a copy control.
+  await rows.nth(1).locator("summary", { hasText: "Technical details" }).click();
+  await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("Snapshot ID");
+  await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("5a2be911-0000-4000-8000-000000000002");
+  await expect(rows.nth(1).getByRole("button", { name: "Copy Snapshot ID" })).toBeVisible();
+
+  await rows.nth(2).getByRole("button", { name: "Record a check" }).click();
+  await page.getByLabel("Result").selectOption("compromised");
+  await page.getByLabel("Why").fill("captured the backdoor");
+  await page.getByLabel(/Malicious items to leave out/).fill("group:backdoor | attacker group");
+  await page.getByRole("button", { name: "Save check" }).click();
+  await expect(page.getByRole("alert")).toContainText("Leaving items out applies only to a clean one");
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator('[data-layer="verdict"]')).toBeInViewport();
 });
 
 // Task-70: undo of a failed restore — planned against the live tenant, reviewed,

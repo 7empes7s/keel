@@ -10,7 +10,6 @@ import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
   getIncidentSummary,
   getRestoreResources,
-  type IncidentSummary,
   type RestoreResourcesData,
 } from "@/lib/portal-data";
 import {
@@ -45,7 +44,7 @@ export default async function RestorePage({
   let jobs: JobRecord[];
   let resourceData: RestoreResourcesData | null = null;
   let snapshotId: string | null = null;
-  let incident: IncidentSummary | null = null;
+  let incident: { id: string; title: string } | null = null;
   try {
     [snapshots, jobs] = await Promise.all([
       getRestoreSnapshotOptions(),
@@ -87,6 +86,13 @@ export default async function RestorePage({
         marker={canRestore ? "Actionable" : "Read-only"}
         title="Restore"
       />
+
+      {/* Roadmap task-71: incident recovery belongs to Restore in the portal map. */}
+      {incident ? null : (
+        <p className="restore-incident-link" data-layer="explanation">
+          Recovering from a security incident? <a href="/incidents">Choose a snapshot an investigator has checked</a>.
+        </p>
+      )}
 
       {snapshotId && resourceData ? (
         <RestoreSelection

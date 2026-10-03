@@ -22,7 +22,6 @@ const links: NavLink[] = [
   { href: "/baselines", label: "Baselines", group: "Recovery" },
   { href: "/backups", label: "Backups", group: "Recovery" },
   { href: "/restore", label: "Restore", group: "Recovery" },
-  { href: "/incidents", label: "Incidents", group: "Recovery" },
   { href: "/jobs", label: "Jobs", group: "Operations" },
   { href: "/schedules", label: "Schedules", group: "Operations" },
   { href: "/policies", label: "Policies", group: "Operations" },

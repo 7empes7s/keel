@@ -122,7 +122,8 @@ test('coverage report: declared endpoint, irrecoverable fields and relationship 
 
   // Operation-specific write-capability status passes through the existing
   // registry's exact claim strings — group is registered and fixture-tested;
-  // user and authenticationStrengthPolicy were never registered at all.
+  // user was never registered; authenticationStrengthPolicy has only its
+  // task-108 custom create/update, so its delete is unsupported.
   // Mutation pin: a claim collapse (e.g. any registered claim rendered as a
   // generic "verified") would still pass a loose truthy check but fail this
   // exact string comparison.
@@ -130,7 +131,7 @@ test('coverage report: declared endpoint, irrecoverable fields and relationship 
   assert.notEqual(group.writeCapability.operations.update.claim, 'live-qualified');
   assert.equal(group.writeCapability.operations['restore-soft-deleted'].claim, 'fixture-tested');
   assert.equal(user.writeCapability.operations.create.claim, 'unsupported');
-  assert.equal(byType.get('authenticationStrengthPolicy').writeCapability.operations.update.claim, 'unsupported');
+  assert.equal(byType.get('authenticationStrengthPolicy').writeCapability.operations.delete.claim, 'unsupported');
 
   // A catalog entry with no collecting descriptor still gets the honest
   // not-covered fields, never left undefined.

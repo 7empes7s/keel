@@ -61,6 +61,11 @@ const widens = (order) => (before, after) => {
 };
 const becomes = (value) => (before, after) => before !== value && after === value;
 const decreases = (before, after) => typeof before === 'number' && typeof after === 'number' && after < before;
+// Task-103: SharePoint tenant sharing, narrowest to widest.
+const SHAREPOINT_SHARING = ['disabled', 'existingExternalUserSharingOnly', 'externalUserSharingOnly', 'externalUserAndGuestSharing'];
+const listOf = (value) => (Array.isArray(value) ? value.map((item) => String(item).toLowerCase()) : []);
+const removesEntry = (before, after) => listOf(before).some((item) => !listOf(after).includes(item));
+const addsEntry = (before, after) => listOf(after).some((item) => !listOf(before).includes(item));
 const truthy = (value) => value === true || value === 'true' || value === 'True';
 const enabledToDisabled = (before, after) => truthy(before) && !truthy(after);
 const disabledToEnabled = (before, after) => !truthy(before) && truthy(after);
@@ -104,6 +109,16 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   ] },
   // Reviewed with nothing content-bearing: access configuration only. CA writes
   // stay forced report-only by applyEngine.mjs, exactly as before.
+  // Task-103: SharePoint tenant sharing settings (Graph sharepointSettings).
+  // Widening external sharing, re-enabling resharing, dropping the domain
+  // restriction (allowList < blockList < none), unblocking a domain or allowing a new one all expose content.
+  sharepointTenantSettings: { reviewed: true, rules: [
+    rule('sharingCapability', 'externally-sharing', widens(SHAREPOINT_SHARING)),
+    rule('isResharingByExternalUsersEnabled', 'externally-sharing', disabledToEnabled),
+    rule('sharingDomainRestrictionMode', 'externally-sharing', widens(['allowList', 'blockList', 'none'])),
+    rule('sharingBlockedDomainList', 'externally-sharing', removesEntry),
+    rule('sharingAllowedDomainList', 'externally-sharing', addsEntry),
+  ] },
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },

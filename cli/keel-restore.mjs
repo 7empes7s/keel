@@ -7,6 +7,11 @@
 // --plan restores everything the plan covers; --snapshot-id + --select restores the
 // dependency closure of exactly the selected natural keys (portal-design §4.1 — the
 // closure is recomputed here from the snapshot, never trusted from the caller).
+//
+// node keel-restore.mjs --compensate <artifactId> [--persist-artifact <id>] [--requested-by <who>]
+// plans the conflict-aware compensation of one promoted restore (roadmap task-70) as
+// a dry run; it is executed only by promoting that compensation artifact with
+// --artifact <id> --enforce, through the same approval as any restore.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -39,6 +44,8 @@ import {
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
 import { emitCompletionItems } from '../engine/restore/completion.mjs';
+import { listJournal } from '../engine/restore/rollbackJournal.mjs';
+import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 
 function arg(name, fallback, argv = process.argv) {
@@ -96,6 +103,10 @@ export async function runRestore({
   // its result under this id, so it can be reviewed and later promoted.
   artifactId,
   persistArtifactId,
+  // Roadmap task-70: plan the compensation of this promoted (forward) artifact's
+  // run, as a dry run. Never executes: the resulting compensation artifact is
+  // promoted with artifactId, like any other dry run.
+  compensateArtifactId,
   // Roadmap task-55: the automation policies a remediation is executing under,
   // discovered server-side by cli/keel-remediate.mjs from the durable
   // auto_remediation_execution link table. Only identities travel here — the
@@ -138,7 +149,18 @@ export async function runRestore({
     applyRelationshipOperations: applyRelationshipOperationsFn = applyRelationshipOperations,
     emitCompletionItems: emitCompletionItemsFn = emitCompletionItems,
     assertContentEffectApproval: assertContentEffectApprovalFn = assertContentEffectApproval,
+    listJournal: listJournalFn = listJournal,
   } = dependencies;
+
+  if (compensateArtifactId !== undefined) {
+    if (planId !== undefined || snapshotId !== undefined || selection !== undefined
+      || reconciliationResources !== undefined || artifactId !== undefined || automationPolicyIds !== undefined) {
+      throw new Error('compensateArtifactId is its own scope — the journal of that one promoted restore');
+    }
+    if (mode !== 'dry-run') {
+      throw new Error('compensation is only ever planned as a dry run; execute it by promoting the compensation artifact through the normal approval');
+    }
+  }
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
   // dependency closure is recomputed here, server-side, from the snapshot — never
@@ -152,15 +174,15 @@ export async function runRestore({
   }
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
-    if (planId !== undefined || snapshotId === undefined) {
+    if (compensateArtifactId === undefined && (planId !== undefined || snapshotId === undefined)) {
       throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
     }
   }
   if (planId !== undefined && (snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined)) {
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
-  if (planId === undefined && snapshotId === undefined && artifactId === undefined) {
-    throw new Error('a restore scope is required: planId, snapshotId with a selection, or artifactId');
+  if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined) {
+    throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, or compensateArtifactId');
   }
   if (selection !== undefined) {
     if (snapshotId === undefined) throw new Error('selection requires snapshotId');
@@ -198,6 +220,17 @@ export async function runRestore({
   let client;
   try {
     client = await connectFn(dbUrl);
+    const compensationDeps = {
+      getDryRunArtifactByIdFn, listJournalFn, getTokenFn, GraphReaderClass, GraphWriterClass, ThrottleGovernorClass,
+      collectM1Fn, canonicalizeAllFn, applyWaveFn, assessDeletePlanFn, computePlanDigestFn,
+      computeCurrentStateFingerprintFn, createDryRunArtifactFn, validateArtifactForExecutionFn,
+      assertContentEffectApprovalFn, classifyDryRunStatusFn,
+    };
+    if (compensateArtifactId !== undefined) {
+      return await planCompensationRun({
+        client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
+      });
+    }
     let sourceSnapshot = snapshotId;
     let plan = null;
     let artifact = null;
@@ -222,6 +255,13 @@ export async function runRestore({
       collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
       targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
       assertSeparateRestorer(collectorConfig, targetConfig);
+      // Task-70: a compensation artifact is promoted here, through this same
+      // artifact gate — never by a separate undo path.
+      if (artifact.compensation) {
+        return await executeCompensationRun({
+          client, artifact, collectorConfig, targetConfig, readFile, logger, deps: compensationDeps,
+        });
+      }
     }
     if (planId !== undefined) {
       const { rows } = await client.query('SELECT * FROM plan WHERE id = $1', [planId]);
@@ -579,6 +619,7 @@ export async function runRestore({
         appliedIds,
         rollbackClient: client,
         runId,
+        restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
         deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
       });
@@ -624,6 +665,7 @@ export async function runRestore({
         targetIds: new Map([...existingTargetIds, ...appliedIds]),
         rollbackClient: client,
         runId,
+        restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
       });
       logger.log(`edges: applied ${edgeResult.applied.length}, skipped ${edgeResult.skipped.length}, failed ${edgeResult.failed.length}`);
       results.applied.push(...edgeResult.applied);
@@ -645,6 +687,7 @@ export async function runRestore({
           appliedIds,
           rollbackClient: client,
           runId,
+          restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
         });
@@ -763,6 +806,181 @@ export async function runRestore({
   }
 }
 
+// Roadmap task-70: the compensation of one promoted restore, recomputed from its
+// journal and a FRESH read of the target every time — at the dry run and again at
+// promotion — so the digest and fingerprint bind exactly what is undone.
+const WRITE_SEEDS = (tenantId) => ({
+  [`${tenantId}/entra/write`]: { capacity: 100, refillPerSecond: 100 / 20 }, // Intune-tier seed, spec §11.1
+});
+
+async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, deps }) {
+  const entries = await deps.listJournalFn(client, { restoreRef: forward.id });
+  if (entries.length === 0) {
+    throw new Error(`compensation refused: restore ${forward.id} has no journaled writes (nothing was written, or it ran before operation journaling)`);
+  }
+  const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
+  const targetReader = new deps.GraphReaderClass(async () => collectorToken);
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const current = new Map(targetResources.map((resource) => [resource.naturalKey, { targetId: resource.sourceId, payload: resource.payload }]));
+  const plan = planCompensation({ restoreRef: forward.id, entries, current });
+  const order = plan.operations.map((op) => op.naturalKey);
+  const scopeKeys = [...new Set(entries.map((entry) => entry.naturalKey))].sort((a, b) => a.localeCompare(b));
+  // The compensation's own content effects (an undo can shorten retention too)
+  // need the same separate approval as a forward restore's.
+  const contentEffects = classifyContentEffects(plan.operations);
+  const impact = deps.assessDeletePlanFn({ liveResources: targetResources, plannedResources: plan.operations });
+  const impactRefusals = impact.refusals.map((refusal) => ({
+    naturalKey: refusal.deleting,
+    reason: `dependent impact: ${refusal.dependent} still references ${refusal.deleting} at ${refusal.field}`,
+  }));
+  const digest = deps.computePlanDigestFn({
+    snapshotId: forward.snapshotId,
+    selection: scopeKeys,
+    closureKeys: scopeKeys,
+    targetTenantId: targetConfig.tenantId,
+    collectorConfigPath,
+    targetConfigPath,
+    reconciliationResources: null,
+    waves: [order],
+    patches: [],
+    contentEffects: contentEffects.effects,
+    compensation: compensationDigestInput(plan),
+  });
+  const fingerprint = deps.computeCurrentStateFingerprintFn(targetResources, scopeKeys);
+  const protectedPrincipalIds = targetResources
+    .filter((resource) => resource.resourceType === 'roleAssignment' && resource.naturalKey.includes('GlobalAdministrator'))
+    .map((resource) => resource.payload.principalId);
+  const deletionGuardOptions = {
+    breakGlassUserIds: protectedPrincipalIds,
+    breakGlassGroupIds: [],
+    keelAppIds: [],
+    caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
+  };
+  const existingTargetIds = new Map(targetResources.map((resource) => [resource.naturalKey, resource.sourceId]));
+  return {
+    plan, order, scopeKeys, contentEffects, impactRefusals, digest, fingerprint,
+    targetReader, protectedPrincipalIds, deletionGuardOptions, existingTargetIds,
+  };
+}
+
+function logCompensation(logger, plan) {
+  logger.log(`compensation of ${plan.compensates}: ${plan.operations.length} inverse write(s), ${plan.conflicts.length} conflict(s), ${plan.notApplied.length} not applied, ${plan.manual.length} manual, ${plan.irrecoverable.length} irrecoverable`);
+  for (const conflict of plan.conflicts) logger.log(`  conflict: ${conflict.naturalKey} — ${conflict.reason}`);
+  for (const item of plan.irrecoverable) logger.log(`  irrecoverable: ${item.naturalKey} — ${item.reason}`);
+  for (const item of plan.manual) logger.log(`  manual: ${item.naturalKey} — ${item.reason}`);
+  logger.log(`  ${plan.statement}`);
+}
+
+async function planCompensationRun({ client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps }) {
+  const forward = await deps.getDryRunArtifactByIdFn(client, { id: compensateArtifactId });
+  if (!forward) throw new Error(`compensation refused: restore artifact not found: ${compensateArtifactId}`);
+  const collectorConfig = JSON.parse(readFile(forward.collectorConfigPath, 'utf8'));
+  const targetConfig = JSON.parse(readFile(forward.targetConfigPath, 'utf8'));
+  assertSeparateRestorer(collectorConfig, targetConfig);
+
+  const ctx = await buildCompensation({
+    client, forward, collectorConfig, targetConfig,
+    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, deps,
+  });
+  logCompensation(logger, ctx.plan);
+
+  // The same capability, recovery, deletion and sign-in guards as any write,
+  // evaluated without writing.
+  const dry = ctx.plan.operations.length > 0
+    ? await deps.applyWaveFn(null, new deps.ThrottleGovernorClass(WRITE_SEEDS(targetConfig.tenantId)), ctx.plan.operations, {
+      targetTenant: targetConfig.tenantId,
+      mode: 'dry-run',
+      existingTargetIds: ctx.existingTargetIds,
+      deletionGuardOptions: ctx.deletionGuardOptions,
+    })
+    : { applied: [], skipped: [], failed: [], notRemediable: [] };
+  const refusals = [...ctx.impactRefusals, ...ctx.contentEffects.refusals];
+  const results = {
+    applied: dry.applied,
+    skipped: [...dry.skipped, ...refusals],
+    failed: dry.failed,
+    notRemediable: dry.notRemediable ?? [],
+  };
+  const status = deps.classifyDryRunStatusFn(results);
+
+  if (persistArtifactId !== undefined) {
+    await deps.createDryRunArtifactFn(client, {
+      id: persistArtifactId,
+      tenantRef: forward.tenantRef,
+      snapshotId: forward.snapshotId,
+      selection: ctx.scopeKeys,
+      closureKeys: ctx.scopeKeys,
+      targetTenantId: targetConfig.tenantId,
+      collectorConfigPath: forward.collectorConfigPath,
+      targetConfigPath: forward.targetConfigPath,
+      reconciliationResources: null,
+      waves: [ctx.order],
+      patches: [],
+      guardRefusals: results.skipped,
+      results,
+      currentStateFingerprint: ctx.fingerprint,
+      digest: ctx.digest,
+      status,
+      requestedBy: requestedBy ?? 'keel-restore',
+      contentEffects: ctx.contentEffects.effects,
+      compensation: ctx.plan,
+    });
+    logger.log(`persisted compensation dry-run artifact ${persistArtifactId} (status: ${status})`);
+  }
+
+  return {
+    mode: 'dry-run',
+    compensation: ctx.plan,
+    results,
+    status,
+    contentEffects: ctx.contentEffects.effects,
+    artifactId: persistArtifactId ?? null,
+  };
+}
+
+async function executeCompensationRun({ client, artifact, collectorConfig, targetConfig, logger, deps }) {
+  const forward = await deps.getDryRunArtifactByIdFn(client, { id: artifact.compensation.compensates });
+  if (!forward) throw new Error(`compensation promotion refused: the compensated restore ${artifact.compensation.compensates} no longer exists`);
+  const ctx = await buildCompensation({
+    client, forward, collectorConfig, targetConfig,
+    collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath, deps,
+  });
+  // Exactly the forward promotion gate: a changed journal, plan or target refuses
+  // before a single write; the compensation's content effects need their own
+  // separate approval.
+  const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
+  if (!validation.ok) throw new Error(`compensation promotion refused: ${validation.reason}`);
+  await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
+  logCompensation(logger, ctx.plan);
+
+  const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
+  if (ctx.plan.operations.length > 0) {
+    const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);
+    const writer = new deps.GraphWriterClass(async () => restorerToken);
+    const result = await deps.applyWaveFn(writer, new deps.ThrottleGovernorClass(WRITE_SEEDS(targetConfig.tenantId)), ctx.plan.operations, {
+      targetTenant: targetConfig.tenantId,
+      mode: 'enforce',
+      existingTargetIds: ctx.existingTargetIds,
+      // The compensation is itself journaled under its own artifact, so a partial
+      // compensation can in turn be compensated.
+      rollbackClient: client,
+      runId: `run-compensation-${artifact.id}`,
+      restoreRef: artifact.id,
+      deletionGuardOptions: ctx.deletionGuardOptions,
+      signInPathGate: { reader: ctx.targetReader, protectedPrincipalIds: ctx.protectedPrincipalIds },
+    });
+    results.applied.push(...result.applied);
+    results.skipped.push(...result.skipped);
+    results.failed.push(...result.failed);
+    results.notRemediable.push(...(result.notRemediable ?? []));
+  }
+  logger.log(`compensation applied ${results.applied.length}, skipped ${results.skipped.length}, failed ${results.failed.length}`);
+  if (results.failed.length > 0) {
+    throw new Error('compensation had failures — stopping (every inverse write is journaled; plan a fresh compensation from the current state)');
+  }
+  return { mode: 'enforce', compensation: ctx.plan, results, artifactId: artifact.id };
+}
+
 export async function main({
   argv = process.argv,
   readFile = readFileSync,
@@ -775,8 +993,23 @@ export async function main({
   const selection = argAll('select', argv);
   const artifactId = arg('artifact', undefined, argv);
   const persistArtifactId = arg('persist-artifact', undefined, argv);
+  const compensateArtifactId = arg('compensate', undefined, argv);
   const requestedBy = arg('requested-by', undefined, argv);
   const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+
+  // Task-70: a compensation is planned from the promoted restore's own journal and
+  // frozen config — never with --enforce, and never alongside another scope.
+  if (compensateArtifactId !== undefined) {
+    if (planId || snapshotId || selection.length || artifactId !== undefined) {
+      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--artifact');
+    }
+    if (mode === 'enforce') {
+      throw new Error('--compensate is a dry run only; execute it by promoting the compensation artifact with --artifact <id> --enforce');
+    }
+    return runRestore({
+      compensateArtifactId, persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+    });
+  }
 
   // Plan task 8: --artifact promotes a completed dry-run artifact and is the ONLY way
   // to reach --enforce for every restore scope — it carries its own frozen

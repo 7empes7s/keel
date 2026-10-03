@@ -98,11 +98,25 @@ function omitPaths(value, tree) {
   return value;
 }
 
+/** Task-103: workload configuration (SharePoint tenant settings, sites) restores
+ * through its own qualified path (restore/workloads/), never as an Entra wave. */
+export const WORKLOAD_RESOURCE_TYPES = Object.freeze(['sharepointTenantSettings', 'sharepointSite']);
+
+function assertNoWorkloadTypes(resources) {
+  const found = [...new Set((resources ?? [])
+    .map((resource) => resource?.resourceType)
+    .filter((type) => WORKLOAD_RESOURCE_TYPES.includes(type)))];
+  if (found.length) {
+    throw new Error(`${found.join(', ')} restore through the workload restore path, not Entra waves`);
+  }
+}
+
 /** Spec §9.1–§9.2, §8.4. Cyclic references are excluded from wave ordering
  * (dependencyGraph.mjs already breaks them deterministically) and instead
  * returned as `patches` — resources created without that one field in their
  * own wave, patched once every node they depend on exists. */
 export function planWaves(resources) {
+  assertNoWorkloadTypes(resources);
   const graph = buildGraph(resources);
   const waves = topoWaves(graph);
 
@@ -161,6 +175,7 @@ export function phaseOneResources(resources, patches) {
 /** Spec M2.5. Deletions run after every create/update wave, in REVERSE dependency order:
  * a group cannot be deleted while a role assignment still references it. */
 export function planDeletionWaves(resourcesToDelete) {
+  assertNoWorkloadTypes(resourcesToDelete);
   const graph = buildGraph(resourcesToDelete);
   const waves = topoWaves(graph).reverse();
   return { waves };

@@ -252,6 +252,89 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
   });
 }
 
+/**
+ * Roadmap task-103: workload configuration WRITES, qualified per operation.
+ *
+ * These are not catalogue types and never enter TYPE_DECISIONS or the Entra
+ * capability registry. Each declared write is disabled until:
+ *  - the read it verifies through is enabled in the task-101 workload ledger
+ *    (live-qualified, grants confirmed); and
+ *  - a non-synthetic live write capture from THIS tenant, at the version in use,
+ *    no older than 30 days, wrote the setting and read it back.
+ * A fixture run proves the code path only: it yields `fixture-tested`, which is
+ * still disabled. Nothing here sends a request.
+ */
+export const WORKLOAD_WRITE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
+  'sharepoint.tenant-settings.update': Object.freeze({
+    workload: 'sharepoint-site-settings',
+    resourceType: 'sharepointTenantSettings',
+    method: 'PATCH',
+    endpoint: '/admin/sharepoint/settings',
+    version: 'v1.0',
+    readBack: 'sharepoint.tenant-settings',
+    fields: Object.freeze([
+      'sharingCapability', 'sharingDomainRestrictionMode', 'sharingAllowedDomainList', 'sharingBlockedDomainList',
+      'isResharingByExternalUsersEnabled',
+    ]),
+    rbac: Object.freeze({ permissions: ['SharePointTenantSettings.ReadWrite.All'], roles: ['SharePoint Administrator'] }),
+    source: `${DOCS}/tenantadmin-settings-update?view=graph-rest-1.0`,
+  }),
+});
+
+function writeEvidenceProblems(item, { tenantRef, version, now }) {
+  const problems = [];
+  if (item.synthetic !== false) problems.push('synthetic evidence (a fixture run) is never live qualification');
+  if (item.kind !== 'live-write-capture') problems.push(`${item.kind ?? 'unlabelled'} evidence is not a live write capture`);
+  if (!tenantRef || item.tenantRef !== tenantRef) problems.push('captured in a different tenant, or no tenant was named');
+  const at = Date.parse(item.capturedAt ?? '');
+  if (Number.isNaN(at)) problems.push('no capture time');
+  else if (at > now.getTime()) problems.push('captured in the future');
+  else if (now.getTime() - at > WORKLOAD_WRITE_EVIDENCE_MAX_AGE_MS) problems.push('older than 30 days');
+  if (item.version !== version) problems.push(`captured at version ${item.version ?? 'unknown'}, not ${version}`);
+  if (item.ok !== true) problems.push('the write failed');
+  if (item.readBackVerified !== true) problems.push('the write was not read back and verified');
+  return problems;
+}
+
+/**
+ * Whether one workload write may run. `readLedger` is the task-101 ledger;
+ * `evidence` is every fixture result and write capture for this operation.
+ */
+export function workloadWriteQualification(operationId, { readLedger = null, evidence = [], tenantRef = null, now = new Date() } = {}) {
+  const declared = WORKLOAD_WRITE_OPERATIONS[operationId];
+  if (!declared) {
+    return Object.freeze({ operationId, state: 'undeclared', enabled: false, reasons: [`${operationId} is not a declared workload write`], proof: { fixture: null, live: null } });
+  }
+  const mine = evidence.filter((item) => item.operationId === operationId);
+  const fixture = mine.find((item) => item.kind === 'fixture' && item.ok === true) ?? null;
+  const reasons = [];
+  let live = null;
+  for (const item of mine.filter((candidate) => candidate.kind !== 'fixture')) {
+    const problems = writeEvidenceProblems(item, { tenantRef, version: declared.version, now });
+    if (problems.length === 0) { live = item; break; }
+    reasons.push(`${item.proofRef ?? 'capture'}: ${problems.join('; ')}`);
+  }
+  const readRow = (readLedger?.rows ?? []).find((row) => row.id === declared.readBack) ?? null;
+  const readEnabled = readRow?.enabled === true && (!tenantRef || readLedger?.tenantRef === tenantRef);
+  if (!readEnabled) reasons.push(`${declared.readBack} (the read-back) is ${readRow?.state ?? 'not in the ledger'}, not enabled for this tenant`);
+
+  let state;
+  if (live) state = 'live-qualified';
+  else if (fixture) { state = 'fixture-tested'; reasons.push('fixture proof only: a live write capture from this tenant is required'); }
+  else { state = 'disabled'; reasons.push('no proof yet'); }
+  return Object.freeze({
+    operationId,
+    state,
+    enabled: state === 'live-qualified' && readEnabled,
+    reasons: Object.freeze(reasons),
+    proof: Object.freeze({
+      fixture: fixture ? { proofRef: fixture.proofRef ?? null } : null,
+      live: live ? { proofRef: live.proofRef ?? null, capturedAt: live.capturedAt } : null,
+    }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Roadmap task-107: measured Entra operation expansion batches.
 //

@@ -18,6 +18,7 @@
  */
 
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
+import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -81,6 +82,7 @@ function verifyArtifactDigest(artifact, evidenceDir) {
   if (!artifact || typeof artifact.path !== 'string' || typeof artifact.sha256 !== 'string') {
     return { ok: false, reason: 'no artifact digest' };
   }
+  if (!/^[0-9a-f]{64}$/i.test(artifact.sha256)) return { ok: false, reason: 'artifact digest is not a sha256 hex string' };
   let bytes;
   try {
     bytes = readFileSync(resolve(evidenceDir, artifact.path));
@@ -92,7 +94,7 @@ function verifyArtifactDigest(artifact, evidenceDir) {
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
     return { ok: false, reason: 'artifact digest mismatch' };
   }
-  return { ok: true };
+  return { ok: true, bytes };
 }
 
 /** Gate validator for the task-45 release-readiness record. */
@@ -295,6 +297,9 @@ const GATE_VALIDATORS = {
   'release-readiness': validateReleaseReadinessSubject,
   'nist-benchmark-acceptance': validateNistSubject,
   'scubagear-benchmark-acceptance': validateScubaGearBenchmarkAcceptanceSubject,
+  // Task-115: the raw capture artifact is passed only after its digest verified.
+  [NATIVE_LIVE_GATE]: (evidence, { tenantRef, build, artifact }) =>
+    validateNativeLiveAcceptance(evidence, { tenantRef, build, artifactBytes: artifact.ok ? artifact.bytes : null }),
 };
 
 export function verifyEvidence(evidence, {
@@ -315,6 +320,10 @@ export function verifyEvidence(evidence, {
 
   if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
     return { ok: false, failures: ['NIST external runner evidence pending'] };
+  }
+  // A pending placeholder records that external evidence does not exist yet; it never verifies.
+  if (evidence.status === 'pending') {
+    return { ok: false, failures: [`${evidence.gate ?? 'qualification'} external runner evidence pending`] };
   }
 
   // Schema.
@@ -363,6 +372,16 @@ export function verifyEvidence(evidence, {
     }
   }
 
+  // Task-115: a native recovery claim needs BOTH an independently signed runner
+  // record and its raw capture artifact, and fixture evidence never claims live.
+  if (evidence.gate === NATIVE_LIVE_GATE) {
+    if (!runner.ok) failures.push(`native recovery runner proof required (${runner.reason})`);
+    if (!artifact.ok) failures.push(`native recovery raw capture required (${artifact.reason})`);
+    if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic !== false || runner.synthetic)) {
+      failures.push('native recovery fixture evidence cannot claim live qualification');
+    }
+  }
+
   // --require-live rejects synthetic fixtures and unproven live claims.
   if (requireLive) {
     if (evidence.synthetic) failures.push('--require-live rejects synthetic fixtures');
@@ -376,7 +395,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence, { tenantRef, build }));
+  else failures.push(...validator(evidence, { tenantRef, build, artifact }));
 
   return { ok: failures.length === 0, failures };
 }

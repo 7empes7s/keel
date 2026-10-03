@@ -109,11 +109,12 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.equal(failed.last_run_at, "2026-09-29T10:00:00.000Z");
   assert.deepEqual(data.deferrals.map((d) => d.error), [deferral]);
   const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
-  assert.ok(html.includes(`<pre class="job-error job-payload">${failure}</pre>`));
+  // Task-131: the failure is kept verbatim, in the schedule's record layer.
+  assert.ok(html.includes(`<dt>Last error</dt><dd><code>${failure}</code>`));
   assert.ok(html.includes(deferral));
   assert.ok(html.includes(`href="/jobs/${failedJobId}"`));
-  assert.ok(html.includes("Every 1 day at 05:00 UTC"));
-  assert.ok(!html.includes("Edit collect"));
+  assert.ok(html.includes("Every day at 05:00 UTC"));
+  assert.ok(!html.includes("Change schedule"));
   assert.ok(!html.includes("foreign secret"));
 });
 
@@ -190,7 +191,10 @@ test("the actual schedules page gives viewers data and configuration principals 
         resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
       } as never, () => SchedulesPage()),
     );
-    const table = (page.props.children as ReactElement<{ schedules: Schedule[]; canEdit: boolean }>[]).find((child) => child.type === ScheduleTable)!;
+    // Task-131: the table sits in the page's explanation layer, under the verdict.
+    const explanation = (page.props.children as ReactElement<{ children: ReactElement }>[]).find((child) => (child.props as Record<string, unknown>)["data-layer"] === "explanation")!;
+    const table = explanation.props.children as ReactElement<{ schedules: Schedule[]; canEdit: boolean }>;
+    assert.equal(table.type, ScheduleTable);
     assert.ok(table);
     assert.equal(table.props.canEdit, capabilities.includes("configuration"));
     assert.equal(table.props.schedules.length, 5);

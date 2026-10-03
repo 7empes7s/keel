@@ -3,9 +3,12 @@ import { connection } from "next/server";
 import { GET as loadSchedules } from "@/app/api/schedules/route";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { ScheduleTable } from "@/components/schedule-table";
+import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
+import { Verdict } from "@/components/verdict";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { SchedulesData } from "@/lib/schedules";
+
+const DESCRIPTION = "When KEEL backs up each tier and runs its upkeep. Times are in UTC.";
 
 export default async function SchedulesPage() {
   await connection();
@@ -16,10 +19,14 @@ export default async function SchedulesPage() {
     if (!response.ok) throw new Error("Schedules unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader section="Protect" title="Schedules" description="Collection and maintenance cadence." /><DataUnavailable surface="Schedules" /></>;
+    return <><PageHeader section="Protect" title="Schedules" description={DESCRIPTION} /><DataUnavailable surface="Schedules" /></>;
   }
+  const verdict = schedulesVerdict(data.schedules, data.generatedAt);
   return <>
-    <PageHeader section="Protect" title="Schedules" description="Collection and maintenance cadence. Run times are shown in UTC." generatedAt={data.generatedAt} />
-    <ScheduleTable schedules={data.schedules} deferrals={data.deferrals} canEdit={access.capabilities.includes("configuration")} />
+    <PageHeader section="Protect" title="Schedules" description={DESCRIPTION} generatedAt={data.generatedAt} />
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation">
+      <ScheduleTable schedules={data.schedules} deferrals={data.deferrals} canEdit={access.capabilities.includes("configuration")} now={data.generatedAt} />
+    </div>
   </>;
 }

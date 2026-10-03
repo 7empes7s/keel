@@ -5662,3 +5662,150 @@ section.wizard-panel {
 .verdict-good .verdict-headline { color: var(--protected); }
 .verdict-attention .verdict-headline { color: var(--partial); }
 .verdict-critical .verdict-headline { color: var(--failed); }
+
+/* Roadmap task-131: Protect — tier cards with run times, the named problem list and
+   one drawer per configuration type. */
+.tier-card span.tier-next,
+.tier-card span.tier-last {
+  min-height: 0;
+  color: var(--text);
+}
+
+.tier-card span.tier-last-failed {
+  color: var(--failed);
+  font-weight: 650;
+}
+
+.tier-card .schedule-editor .btn {
+  margin-top: 0;
+}
+
+.protect-problems {
+  display: grid;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  padding: 0;
+  list-style: none;
+}
+
+.protect-problem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.protect-problem.problem-failed {
+  border-left-color: var(--failed);
+}
+
+.protect-problem > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-sm);
+}
+
+.protect-problem > div > .state-badge {
+  justify-self: start;
+}
+
+.protect-problem p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.type-drawers {
+  display: grid;
+}
+
+.type-drawer {
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.type-drawer > summary {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) 11rem 1fr;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.type-drawer > summary::before {
+  content: "▸";
+  position: absolute;
+  margin-left: -0.9rem;
+  color: var(--text-muted);
+}
+
+.type-drawer[open] > summary::before {
+  content: "▾";
+}
+
+.type-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.type-drawer > summary {
+  position: relative;
+  list-style: none;
+}
+
+.type-drawer-name {
+  font-weight: 650;
+}
+
+.type-drawer .standing-badge {
+  justify-self: start;
+}
+
+.type-drawer-backup {
+  color: var(--text-soft);
+}
+
+.type-drawer-body {
+  display: grid;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md) var(--space-md);
+}
+
+.type-drawer-standing {
+  margin: 0;
+  font-weight: 650;
+}
+
+.type-drawer-facts {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+}
+
+@media (max-width: 720px) {
+  .type-drawer > summary {
+    grid-template-columns: 1fr;
+  }
+
+  .protect-problem {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.standing-badge.standing-protected { color: var(--protected); background: var(--protected-bg); }
+.standing-badge.standing-partial { color: var(--partial); background: var(--partial-bg); }
+.standing-badge.standing-unproven { color: var(--readonly); background: var(--readonly-bg); }
+.standing-badge.standing-cannot-restore { color: var(--uncovered); background: var(--uncovered-bg); }
+.problem-badge.problem-failed { color: var(--failed); background: var(--failed-bg); }
+.problem-badge.problem-stale { color: var(--partial); background: var(--partial-bg); }
+.problem-badge.problem-never { color: var(--uncovered); background: var(--uncovered-bg); }

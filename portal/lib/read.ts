@@ -112,6 +112,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "incidents/page.tsx",
   },
+  protectPage: {
+    capability: "read",
+    source: "protect/page.tsx",
+  },
   activityPage: {
     capability: "read",
     source: "activity/page.tsx",

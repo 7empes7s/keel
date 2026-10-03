@@ -7,6 +7,19 @@ Direction note (2026-10-03): the matrix layout this task rendered is superseded 
 tests stay; the portal moves every evidence column into a per-type technical record
 behind a one-sentence protection state.
 
+**Superseded (2026-10-03, task-131).** The matrix layout is gone. The report renders
+on Protect (`/protect`) as one drawer per configuration type
+(`portal/components/coverage-report.tsx`, `TypeDrawer`). The drawer says in one
+sentence whether the type is protected, partially protected, cannot be restored or has
+no proven restore. Every field below is still rendered, labelled, in that drawer's
+"Technical details" record: adapter, declared and measured endpoint, pagination
+evidence, prerequisite diagnosis, relationship completeness, irrecoverable fields,
+recovery decision and remapping, and per write operation the claim, projection review,
+credential mode and proof reference, plus the observation ID, window and evidence
+level with its linked views. `engine/roadmap/coverage-ui.test.mjs` now renders
+`/protect` and keeps its assertions. `/coverage` redirects to `/protect` after the
+same read check.
+
 ## What was built
 
 - `engine/coverage/report.mjs` — `buildCoverageReport()` now attaches four

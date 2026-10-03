@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 17, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107)');
+  assert.equal(supported.length, 19, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -77,17 +77,27 @@ test('supported rows carry credential, id outcome, idempotency, field classifica
 
 test('mutation check: no remappable descriptor becomes writable because it is remappable', () => {
   const ledger = buildOperationLedger();
-  const registered = new Set(['group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy']);
-  const remappableOnly = DESCRIPTORS.filter((descriptor) => descriptor.remappable && !registered.has(descriptor.type));
-  assert.ok(remappableOnly.length > 0, 'authenticationStrengthPolicy is remappable but unregistered');
-  for (const descriptor of remappableOnly) {
+  // The explicitly registered operations of every remappable type. Since task-108
+  // every remappable descriptor has some registration, so the check runs per
+  // operation: remappable never makes an unregistered operation writable.
+  const registered = {
+    group: ['create', 'update', 'delete', 'restore-soft-deleted'],
+    roleAssignment: ['create', 'update', 'delete'],
+    namedLocation: ['create', 'update', 'delete'],
+    conditionalAccessPolicy: ['create', 'update', 'delete'],
+    authenticationStrengthPolicy: ['create', 'update'],
+  };
+  let unregistered = 0;
+  for (const descriptor of DESCRIPTORS.filter((candidate) => candidate.remappable)) {
     const row = ledger.types.find((candidate) => candidate.resourceType === descriptor.type);
-    assert.notEqual(row.decision, 'automated');
     for (const op of row.operations) {
+      if ((registered[descriptor.type] ?? []).includes(op.operation)) continue;
+      unregistered += 1;
       assert.notEqual(op.decision, 'supported', `${descriptor.type} ${op.operation}`);
       assert.equal(capabilityFor(descriptor.type, op.operation).claim, 'unsupported');
     }
   }
+  assert.ok(unregistered > 0, 'authenticationStrengthPolicy delete is remappable but unregistered');
 });
 
 function updateResource(resourceType, payload, references) {
@@ -148,7 +158,7 @@ test('a conditional access update rewrites a reference to the target id and veri
 
 test('mutation check: proof for a different operation is never accepted', () => {
   assert.throws(() => recordRemappingProof('group', 'delete', 'x'), /writes no references/);
-  assert.throws(() => recordRemappingProof('authenticationStrengthPolicy', 'update', 'x'), /requires a registered write capability/);
+  assert.throws(() => recordRemappingProof('authorizationPolicy', 'update', 'x'), /requires a registered write capability/);
 
   // Live evidence for another operation (or a relabelled one) cannot qualify this one.
   const now = new Date('2026-10-03T00:00:00Z');
@@ -181,7 +191,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 17);
+  assert.equal(results.length, 19);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);

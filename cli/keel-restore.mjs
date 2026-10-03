@@ -319,7 +319,10 @@ export async function runRestore({
       refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
     }
     let resources = versions
-      .filter((v) => v.resource_type !== 'user' && v.resource_type !== 'authenticationStrengthPolicy') // read-only in M1, never written
+      // users are never written. Roadmap task-108: authentication strengths are
+      // no longer filtered out; applyWave writes only custom strengths under
+      // their proven projection and skips built-in ones as immutable.
+      .filter((v) => v.resource_type !== 'user')
       .map((v) => ({
         naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
         payloadHash: v.payload_hash,

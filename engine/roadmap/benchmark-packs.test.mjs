@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
@@ -241,7 +242,7 @@ test('qualification CLI validates synthetic license and rejects unlicensed input
     const f = fixture();
     const file = join(dir, 'fixture.json');
     await writeFile(file, JSON.stringify({ ...f, tenantRef }));
-    const run = () => spawnSync(process.execPath, ['tools/qualification/benchmarkLicense.mjs', file], { encoding: 'utf8' });
+    const run = () => spawnSync(process.execPath, [fileURLToPath(new URL('../../tools/qualification/benchmarkLicense.mjs', import.meta.url)), file], { encoding: 'utf8' });
     const accepted = run();
     assert.equal(accepted.status, 0, accepted.stderr);
     assert.equal(JSON.parse(accepted.stdout).status, 'fixture-tested');

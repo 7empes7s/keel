@@ -295,11 +295,16 @@ export const JOB_HANDLERS = {
   'baseline-create': {
     script: join(__dirname, 'keel-baseline-create.mjs'),
     argsFor(params = {}, job = {}) {
-      const args = [
-        '--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'),
-        '--label', requireString(params.label, 'params.label'),
-        '--set-by', requireString(job.requested_by, 'job.requested_by'),
-      ];
+      const args = ['--snapshot-id', requireString(params.snapshotId, 'params.snapshotId')];
+      // Task-87: a re-snapshot names the baseline it supersedes and may keep its
+      // derived "(vN)" label; a new baseline always needs a label.
+      if (params.supersedesBaselineId !== undefined) {
+        args.push('--supersedes', requireString(params.supersedesBaselineId, 'params.supersedesBaselineId'));
+        if (params.label !== undefined) args.push('--label', requireString(params.label, 'params.label'));
+      } else {
+        args.push('--label', requireString(params.label, 'params.label'));
+      }
+      args.push('--set-by', requireString(job.requested_by, 'job.requested_by'));
       if (params.description !== undefined) {
         args.push('--description', requireString(params.description, 'params.description'));
       }

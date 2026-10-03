@@ -16,14 +16,14 @@ const DESCRIPTION = "What changed in the tenant since the active baseline, and w
 
 export default async function DriftPage() {
   await connection();
-  await requireReadAccess(DATA_SURFACES.driftPage);
+  const access = await requireReadAccess(DATA_SURFACES.driftPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);
 
   let data: DriftData;
   try {
-    data = await getDriftData();
+    data = await getDriftData(access.scope);
   } catch {
     return (
       <>
@@ -44,6 +44,12 @@ export default async function DriftPage() {
       />
       {data.baseline ? (
         <div data-layer="explanation">
+          {data.scope ? (
+            <p className="capture-note">
+              You see changes to resources owned by {data.scope.entities.join(" and ")} only. Changes to
+              other resources in this tenant are reviewed by a central administrator.
+            </p>
+          ) : null}
           <BaselineContext baseline={data.baseline} now={data.generatedAt} />
           <DriftTable capabilities={capabilities} items={data.items} now={data.generatedAt} />
         </div>

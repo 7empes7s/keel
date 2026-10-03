@@ -3,6 +3,7 @@ import {
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
+  ApprovalScopeError,
   PromotionRefusedError,
   SelfApprovalError,
   approveRequest,
@@ -21,7 +22,8 @@ import { connect } from "../../engine/store/db.mjs";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
-import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, entityScopeFrom } from "@/lib/principal";
+import { captureApprovalScope } from "../../engine/authz/entityScope.mjs";
 import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
@@ -63,6 +65,9 @@ export interface GuardSpec {
   requiresApproval?: boolean;
   // Mutating routes record the attempt before acting; read routes do not.
   recordAttempt?: boolean;
+  // Task 90: the capability may be held through an entity-scoped grant. Only set where
+  // the handler's engine call re-checks the entity scope itself (approval decisions).
+  entityScoped?: boolean;
 }
 
 export interface GuardContext {
@@ -198,7 +203,8 @@ export function guarded(
       // finally block end the client while the denial is still being recorded.
       if (!principalId) return await deny("no-principal");
       if (spec.capability !== undefined && !capabilities.includes(spec.capability)) {
-        return await deny("capability");
+        const scope = spec.entityScoped ? entityScopeFrom(request.headers, spec.capability) : null;
+        if (!scope || scope.entities.length === 0) return await deny("capability");
       }
       if (spec.alsoRequires?.some((capability) => !capabilities.includes(capability))) {
         return await deny("capability");
@@ -217,6 +223,7 @@ export function guarded(
           justification:
             typeof justification === "string" ? justification : null,
           ttlMs: approvalTtlMs(),
+          entityScope: await approvalScopeFor(client, resolveTenantRef(), params),
         })) as Record<string, unknown>;
         return Response.json(
           { approvalRequest: normalizeApprovalRequest(approvalRequest) },
@@ -456,12 +463,34 @@ export function guardedJobShow(
 // refusal is detail-free: 404 for anything that does not exist or is not a pending
 // request the caller may see, 403 for a capability or self-approval refusal, 409 for
 // a request that is already decided or expired.
+// Task 90: the resources a requested action concerns, captured server-side with their
+// current ownership so a later change of owner or grant is caught at decision time.
+// Only drift-scoped requests (driftIds) name resources today; every other request
+// carries no captured scope and stays decidable by central approvers only.
+async function approvalScopeFor(client: KeelClient, tenant: string, params: Record<string, unknown>): Promise<unknown> {
+  const driftIds = Array.isArray(params.driftIds)
+    ? params.driftIds.filter((id): id is string => typeof id === "string" && UUID_PATTERN.test(id))
+    : [];
+  if (driftIds.length === 0) return null;
+  const { rows } = await client.query(
+    `SELECT resource_type, natural_key, detected_at FROM drift
+      WHERE tenant_ref = $1 AND id = ANY($2::uuid[]) ORDER BY id`,
+    [tenant, driftIds],
+  );
+  const scope = (await captureApprovalScope(client, {
+    tenantRef: tenant,
+    resources: rows.map((row) => ({ resourceType: row.resource_type, naturalKey: row.natural_key, asOf: row.detected_at })),
+  })) as { centralOnly: boolean };
+  // A drift id that is not this tenant's (or not a drift at all) makes the request central-only.
+  return rows.length === new Set(driftIds).size ? scope : { ...scope, centralOnly: true };
+}
+
 export function guardedApprovalDecision(
   decision: "approve" | "reject",
   deps: GuardDeps = {},
 ): (request: Request) => Promise<Response> {
   return guarded(
-    { action: `approvals:${decision}`, capability: "approve", recordAttempt: true },
+    { action: `approvals:${decision}`, capability: "approve", recordAttempt: true, entityScoped: true },
     async ({ client, principalId, tenantRef: tenant, request }) => {
       const segments = new URL(request.url).pathname.split("/").filter(Boolean);
       const id = segments.at(-2) ?? "";
@@ -473,6 +502,8 @@ export function guardedApprovalDecision(
             tenantRef: tenant,
             id,
             decidedBy: principalId,
+            enforceScope: true,
+            approverScope: entityScopeFrom(request.headers, "approve"),
           })) as { job: Record<string, unknown> };
           return Response.json(
             { job: normalizeJob(job) },
@@ -486,6 +517,8 @@ export function guardedApprovalDecision(
           id,
           decidedBy: principalId,
           reason: body.reason,
+          enforceScope: true,
+          approverScope: entityScopeFrom(request.headers, "approve"),
         })) as Record<string, unknown>;
         return Response.json(
           { approvalRequest: normalizeApprovalRequest(rejected) },
@@ -494,6 +527,14 @@ export function guardedApprovalDecision(
       } catch (error) {
         if (error instanceof ApprovalNotFoundError) return notFound();
         if (error instanceof SelfApprovalError) return forbidden();
+        // Task 90: outside the request's entity scope. The answer names who can decide
+        // it (a central approver), never the entity or resources it concerns.
+        if (error instanceof ApprovalScopeError) {
+          return Response.json(
+            { error: "forbidden", handoff: error.handoff ?? "central" },
+            { status: 403, headers: NO_STORE },
+          );
+        }
         if (error instanceof ApprovalReasonRequiredError) {
           return Response.json(
             { error: "invalid_request" },

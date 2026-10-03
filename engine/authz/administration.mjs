@@ -1,23 +1,30 @@
-import { ROLE_CAPABILITIES } from './permissions.mjs';
+import { CENTRAL_SCOPE, ROLE_CAPABILITIES, entityGrantScope } from './permissions.mjs';
 
 export class SelfLockoutError extends Error {}
 export class PrincipalNotFoundError extends Error {}
 export class InvalidRoleGrantError extends Error {}
 
 /** @param {any} client
- * @param {{ principalId: string, role: string, grantedBy: string, activeFrom?: string | null, activeUntil?: string | null }} options
+ * @param {{ principalId: string, role: string, grantedBy: string, activeFrom?: string | null, activeUntil?: string | null, entityCode?: string | null }} options
  */
-export async function grantRole(client, { principalId, role, grantedBy, activeFrom = null, activeUntil = null }) {
+export async function grantRole(client, { principalId, role, grantedBy, activeFrom = null, activeUntil = null, entityCode = null }) {
   if (!Object.hasOwn(ROLE_CAPABILITIES, role)) throw new InvalidRoleGrantError('unknown role');
+  // Task 90: an entity-scoped grant confines the role to that entity's resources.
+  // Administration is tenant-wide by nature, so it is never entity-scoped.
+  let scope = CENTRAL_SCOPE;
+  if (entityCode !== null && entityCode !== undefined) {
+    if (role === 'admin') throw new InvalidRoleGrantError('admin cannot be entity-scoped');
+    try { scope = entityGrantScope(entityCode); } catch { throw new InvalidRoleGrantError('invalid entity code'); }
+  }
   const from = activeFrom === null ? new Date() : new Date(activeFrom);
   const until = activeUntil === null ? null : new Date(activeUntil);
   if (!Number.isFinite(+from) || (until && (!Number.isFinite(+until) || until <= from))) {
     throw new InvalidRoleGrantError('invalid grant window');
   }
   const { rows } = await client.query(
-    `INSERT INTO role_grant (principal_id, role, granted_by, active_from, active_until)
-     SELECT id, $2, $3, COALESCE($4::timestamptz, now()), $5 FROM principal WHERE id = $1 RETURNING *`,
-    [principalId, role, grantedBy, activeFrom, activeUntil],
+    `INSERT INTO role_grant (principal_id, role, granted_by, active_from, active_until, scope)
+     SELECT id, $2, $3, COALESCE($4::timestamptz, now()), $5, $6 FROM principal WHERE id = $1 RETURNING *`,
+    [principalId, role, grantedBy, activeFrom, activeUntil, scope],
   );
   if (!rows[0]) throw new PrincipalNotFoundError('principal not found');
   return rows[0];

@@ -8,7 +8,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { displayEnum, fromNow } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 import type { Channel, Subscription, Delivery } from "@/lib/notifications";
-import { channelName, patternWords } from "@/lib/notifications-view";
+import { channelName, channelSentence, patternWords } from "@/lib/notifications-view";
 
 // Roadmap task-130: channels, routing rules and deliveries by name and in words;
 // forms with labelled fields instead of a JSON text box; raw config and ids in the record.
@@ -22,7 +22,8 @@ export function DeliveryTable({ deliveries, channels = null, now = new Date().to
     </div>
     {deliveries.length === 0 ? <p className="empty-state">No alerts have been sent yet.</p> : <ul className="activity-list">{deliveries.map((delivery) => {
       const channel = channelById.get(delivery.channel_id);
-      const to = channel ? channelName(channel) : delivery.channel_kind === "email" ? "an email channel" : "a webhook";
+      const to = channel ? channelName(channel) : delivery.channel_kind === "email" ? "an email channel" : delivery.channel_kind === "webhook" ? "a webhook" : channelName({ kind: delivery.channel_kind, config: {} });
+      const receipt = delivery.provider_receipt ?? null;
       return <li className="activity-item" key={delivery.id}>
         <div className="activity-main">
           <p className="activity-title">{displayEnum("eventKind", delivery.event.kind)} ({displayEnum("severity", delivery.event.severity).toLowerCase()}), sent to {to}</p>
@@ -32,12 +33,14 @@ export function DeliveryTable({ deliveries, channels = null, now = new Date().to
             {delivery.next_attempt_at ? <> · next try <time dateTime={delivery.next_attempt_at}>{fromNow(delivery.next_attempt_at, now)}</time></> : null}
             {delivery.last_error ? <> · last error: {delivery.last_error}</> : null}
           </p>
+          {receipt?.semantics && delivery.status === "delivered" ? <p className="field-help">{receipt.semantics}</p> : null}
         </div>
         <TechnicalDetails>
           <RecordField label="Delivery ID" value={delivery.id} />
           <RecordField label="Channel ID" value={delivery.channel_id} />
           <RecordField copy={false} label="Event and status codes" value={`${delivery.event.kind} · ${delivery.event.severity} · ${delivery.status} · ${delivery.attempts} attempts`} />
           <RecordField copy={false} label="Next attempt" value={delivery.next_attempt_at} />
+          {receipt ? <RecordField copy={false} label="Provider reply" value={JSON.stringify(receipt, null, 2)} /> : null}
         </TechnicalDetails>
       </li>;
     })}</ul>}
@@ -77,8 +80,11 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const text = (key: string) => String(form.get(key) ?? "").trim();
-    const config = kind === "email"
+    const config: Record<string, string> = kind === "email"
       ? { to: text("to"), from: text("from"), ...(text("subject") ? { subject: text("subject") } : {}) }
+      : kind === "teams" || kind === "slack" ? { endpointRef: text("endpointRef") }
+      : kind === "pagerduty" ? { routingKeyRef: text("routingKeyRef"), region: text("region") || "us" }
+      : kind === "sms" ? { provider: text("provider"), accountSid: text("accountSid"), authTokenRef: text("authTokenRef"), from: text("from"), to: text("to") }
       : { url: text("url") };
     void write("/api/channels", "POST", { kind, config }, "create-channel");
   }
@@ -99,9 +105,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
           <strong>{channelName(channel)}</strong>
           <span className={channel.enabled ? "active-indicator" : "inactive-indicator"}>{channel.enabled ? "On" : "Off"}</span>
         </div>
-        <p>{channel.kind === "email"
-          ? `Sends email to ${String(channel.config?.to ?? "nobody")} from ${String(channel.config?.from ?? "an unknown sender")}.`
-          : `Posts each alert to ${String(channel.config?.url ?? "an unknown address")}.`}</p>
+        <p>{channelSentence(channel)}</p>
         {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Turn off channel" description={<p>Alerts sent to {channelName(channel)} stop immediately, including critical ones. Rules that use it stay set up.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST", undefined, "disable-channel")} size="sm" title={`Turn off ${channelName(channel)}?`}>Turn off</ConfirmButton></div> : null}
         <TechnicalDetails>
           <RecordField label="Channel ID" value={channel.id} />
@@ -110,8 +114,20 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
       </li>)}</ul>}
       <form className="form-card" onSubmit={createChannel}><fieldset disabled={busy}><legend>Add a channel</legend>
         <div className="form-grid">
-          <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="email">Email</option></select></label>
-          {kind === "email" ? <>
+          <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="email">Email</option><option value="teams">Microsoft Teams</option><option value="slack">Slack</option><option value="pagerduty">PagerDuty</option><option value="sms">Text message (SMS)</option></select></label>
+          {kind === "teams" || kind === "slack" ? <>
+            <label className="filter-field form-grid-wide"><span>Server setting that holds the webhook address</span><input autoComplete="off" name="endpointRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder={kind === "teams" ? "env:KEEL_TEAMS_WEBHOOK" : "env:KEEL_SLACK_WEBHOOK"} required /></label>
+            <p className="field-help form-grid-wide">The address works as a password, so KEEL keeps only the name of the setting and reads the address when it sends.{kind === "teams" ? " Use a Teams Workflows webhook; old Office 365 connector addresses are not supported." : ""}</p>
+          </> : kind === "pagerduty" ? <>
+            <label className="filter-field"><span>Server setting that holds the integration key</span><input autoComplete="off" name="routingKeyRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder="env:KEEL_PAGERDUTY_KEY" required /></label>
+            <label className="filter-field"><span>PagerDuty region</span><select name="region" defaultValue="us"><option value="us">United States</option><option value="eu">Europe</option></select></label>
+          </> : kind === "sms" ? <>
+            <label className="filter-field"><span>Provider</span><select name="provider" defaultValue="twilio"><option value="twilio">Twilio</option></select></label>
+            <label className="filter-field"><span>Twilio account SID</span><input autoComplete="off" name="accountSid" pattern="AC[0-9a-fA-F]{32}" required /></label>
+            <label className="filter-field"><span>Server setting that holds the auth token</span><input autoComplete="off" name="authTokenRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder="env:KEEL_TWILIO_TOKEN" required /></label>
+            <label className="filter-field"><span>Send from</span><input autoComplete="off" name="from" placeholder="+15551230000" required type="tel" /></label>
+            <label className="filter-field"><span>Send to</span><input autoComplete="off" name="to" placeholder="+15551239999" required type="tel" /></label>
+          </> : kind === "email" ? <>
             <label className="filter-field"><span>Send to</span><input autoComplete="off" name="to" placeholder="secops@contoso.com" required type="email" /></label>
             <label className="filter-field"><span>Send from</span><input autoComplete="off" name="from" placeholder="keel@contoso.com" required type="email" /></label>
             <label className="filter-field"><span>Subject (optional)</span><input autoComplete="off" name="subject" /></label>

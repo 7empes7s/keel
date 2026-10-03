@@ -377,6 +377,11 @@ END IF;
 END
 $schedule$;
 
+-- Roadmap task-110: an operator may acknowledge a measured load warning on a schedule.
+-- Additive and nullable: legacy rows read as "not acknowledged". The acknowledgement
+-- records who, when and for which cadence; it never changes cadence or next_due_at.
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS forecast_acknowledgement jsonb;
+
 -- Task 43: a system identity has an exact, code-defined capability set, not a new role.
 ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind text
   CHECK (system_kind = 'scheduler');
@@ -1044,3 +1049,12 @@ ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalated_occurrence int NOT NULL DEF
 ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_error text;
 CREATE INDEX IF NOT EXISTS alert_ack_deadline_idx ON alert (ack_deadline_at)
   WHERE state IN ('open','reopened') AND condition_active;
+
+-- Roadmap task-84: Teams, Slack, PagerDuty and SMS channels. The kind list widens in
+-- place (existing webhook/email rows are untouched), and each delivery keeps the
+-- provider's redacted receipt: outcome, HTTP status, provider id or dedup key and what
+-- "delivered" means for that provider. Legacy deliveries read as a null receipt.
+ALTER TABLE channel DROP CONSTRAINT IF EXISTS channel_kind_check;
+ALTER TABLE channel ADD CONSTRAINT channel_kind_check
+  CHECK (kind IN ('webhook','email','teams','slack','pagerduty','sms'));
+ALTER TABLE delivery ADD COLUMN IF NOT EXISTS provider_receipt jsonb;

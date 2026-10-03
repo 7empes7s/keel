@@ -13,7 +13,7 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { BackupControls, ProblemList } from "@/components/backup-controls";
 import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
 import { protectProblems, protectVerdict, tierSummaries } from "@/lib/protect-view";
-import type { Schedule } from "@/lib/schedules";
+import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
 import { IntegrationConsole } from "@/components/integration-console";
@@ -218,10 +218,12 @@ const POLICIES: Policy[] = [POLICY, {
   max_blast_radius: "tenant-lockout", max_actions_per_window: null, window_seconds: null, run_as_principal_id: null, run_as_principal: null,
   last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
 }];
-const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }];
+const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true }];
 const DELIVERIES = [
   { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z" },
   { id: "d0e10000-0000-4000-8000-0000000000d2", event: { kind: "drift.detected", severity: "notice" }, channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null },
+  { id: "d0e10000-0000-4000-8000-0000000000d3", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[2].id, channel_kind: "pagerduty", status: "delivered", attempts: 2, last_error: null, next_attempt_at: null, provider_receipt: { channel: "pagerduty", provider: "pagerduty", outcome: "delivered", httpStatus: 202, semantics: "Accepted by PagerDuty. Events with the same dedup key join one incident.", endpointHost: "events.eu.pagerduty.com", dedupKey: "keel:alert:6f1c2a54-1d3b-4c8e-9a51-3e0d7c1b2a90:1" } },
+  { id: "d0e10000-0000-4000-8000-0000000000d4", event: { kind: "drift.detected", severity: "warning" }, channel_id: CHANNELS[3].id, channel_kind: "slack", status: "failed", attempts: 1, last_error: "Slack refused the message (HTTP 404): the webhook was removed or turned off", next_attempt_at: null, provider_receipt: { channel: "slack", provider: "slack", outcome: "rejected", httpStatus: 404, endpointHost: "hooks.slack.com", providerStatus: "no_service" } },
 ];
 const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
 const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
@@ -337,6 +339,39 @@ const SCHEDULES: Schedule[] = [
   schedule("5c4e0000-0000-4000-8000-000000000004", "prune", null, { every: "day", n: 1, atTime: "00:00" }, { next_due_at: "2026-10-03T00:00:00Z" }),
   schedule("5c4e0000-0000-4000-8000-000000000005", "offsite", null, { every: "day", n: 1, atTime: "05:00" }, { enabled: false, next_due_at: "2026-10-03T05:00:00Z" }),
 ];
+
+// Roadmap task-110: measured load estimates as engine/schedules/forecast.mjs returns them.
+const presentation = (runs: [string, string, boolean][]): ScheduleForecast["presentation"] => ({
+  timeZone: "Europe/Paris", timeZoneFallback: false, scheduling: "UTC",
+  runs: runs.map(([at, local, businessHours]) => ({ at, local, businessHours })), inBusinessHours: runs.filter((run) => run[2]).length,
+});
+const WINDOW = { from: "2026-09-18T12:00:00.000Z", to: "2026-10-02T12:00:00.000Z", firstSample: "2026-09-18T13:01:00.000Z", lastSample: "2026-10-02T09:01:00.000Z" };
+const FORECASTS: ScheduleForecast[] = [
+  { scheduleId: "5c4e0000-0000-4000-8000-000000000001", jobKind: "collect", tier: "tier1", advisory: true, guarantee: false, status: "warning", reason: null,
+    floorMs: 900000, runsPerDay: 24, intervalMs: 3600000, samples: 312, minSamples: 3, unmeasuredRuns: 24, window: WINDOW, confidence: "high",
+    estimate: { requestsPerRun: { median: 48, p90: 61, max: 90 }, projectedRequestsPerDay: 1464, throttleRatio: 0.064, throttledRuns: 140, durationMs: { median: 41000, p90: 73000 },
+      workloads: { directory: { requests: 14976, throttles: 958, runs: 312 } } },
+    warnings: [{ code: "throttle-heavy", acknowledged: false, throttleRatio: 0.064, throttledRuns: 140, neededIntervalMs: 7200000 }],
+    proposal: { cadence: { every: "hour", n: 2, atTime: null }, intervalMs: 7200000, floorMs: 900000, unchanged: false, cappedAtMaximum: false },
+    acknowledgement: null,
+    presentation: presentation([["2026-10-02T10:00:00.000Z", "Fri 12:00", true], ["2026-10-02T11:00:00.000Z", "Fri 13:00", true], ["2026-10-02T12:00:00.000Z", "Fri 14:00", true], ["2026-10-02T13:00:00.000Z", "Fri 15:00", true], ["2026-10-02T14:00:00.000Z", "Fri 16:00", true]]) },
+  { scheduleId: "5c4e0000-0000-4000-8000-000000000002", jobKind: "collect", tier: "tier2", advisory: true, guarantee: false, status: "ok", reason: null,
+    floorMs: 900000, runsPerDay: 1, intervalMs: 86400000, samples: 14, minSamples: 3, unmeasuredRuns: 0, window: WINDOW, confidence: "medium",
+    estimate: { requestsPerRun: { median: 380, p90: 412, max: 455 }, projectedRequestsPerDay: 412, throttleRatio: 0, throttledRuns: 0, durationMs: { median: 260000, p90: 300000 },
+      workloads: { directory: { requests: 4100, throttles: 0, runs: 14 }, intune: { requests: 1220, throttles: 0, runs: 14 } } },
+    warnings: [], proposal: null, acknowledgement: null,
+    presentation: presentation([["2026-10-03T00:00:00.000Z", "Sat 02:00", false], ["2026-10-04T00:00:00.000Z", "Sun 02:00", false], ["2026-10-05T00:00:00.000Z", "Mon 02:00", false]]) },
+  { scheduleId: "5c4e0000-0000-4000-8000-000000000003", jobKind: "collect", tier: "tier3", advisory: true, guarantee: false, status: "unknown", reason: "insufficient-samples",
+    floorMs: 900000, runsPerDay: 1 / 7, intervalMs: 604800000, samples: 2, minSamples: 3, unmeasuredRuns: 1, window: WINDOW, confidence: null,
+    estimate: null, warnings: [], proposal: null, acknowledgement: null,
+    presentation: presentation([["2026-10-05T00:00:00.000Z", "Mon 02:00", false]]) },
+];
+// Tier 2's slow runs were accepted by an operator: still listed, no longer driving the verdict.
+const ACKNOWLEDGED: ScheduleForecast = { ...FORECASTS[1], status: "warning",
+  warnings: [{ code: "overlap", acknowledged: true, durationP90Ms: 72000000, neededIntervalMs: 144000000 }],
+  proposal: { cadence: { every: "day", n: 2, atTime: "00:00" }, intervalMs: 172800000, floorMs: 900000, unchanged: false, cappedAtMaximum: false },
+  acknowledgement: { codes: ["overlap"], acknowledgedBy: "a11c0000-0000-4000-8000-0000000000a1", acknowledgedByName: "ops@contoso.com", acknowledgedAt: "2026-10-01T08:30:00Z", samples: 14 } };
+const SCHEDULE_FORECASTS = [FORECASTS[0], ACKNOWLEDGED, FORECASTS[2]];
 
 const header = (section: NavSection, title: string, description: string, marker?: string) =>
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
@@ -511,10 +546,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         </div></>;
     }
     case "/schedules": {
-      const verdict = schedulesVerdict(SCHEDULES, now);
+      const verdict = schedulesVerdict(SCHEDULES, now, SCHEDULE_FORECASTS);
       return <>{header("Protect", "Schedules", "When KEEL backs up each tier and runs its upkeep. Times are in UTC.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
-        <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} now={now} schedules={SCHEDULES} /></div></>;
+        <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} /></div></>;
     }
     case "/restore": return <>{header("Restore", "Restore", "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.")}
       <RestoreSelection canApprove canRestore resources={[

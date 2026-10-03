@@ -360,7 +360,8 @@ export async function loadCollectionObservations(client, { tenantRef, now = new 
  * and resolves the acknowledging person's email in one query.
  */
 export async function loadScheduleForecasts(client, principal, { tenantRef, now = new Date(), windowMs = FORECAST_WINDOW_MS, timeZone = 'UTC' }) {
-  if (!(await can(client, principal, 'read', now))) throw new Error('not authorized to read schedules');
+  // Authorization is always checked at the wall clock, never at the forecast instant.
+  if (!(await can(client, principal, 'read'))) throw new Error('not authorized to read schedules');
   const { rows: schedules } = await client.query(
     'SELECT * FROM schedule WHERE tenant_ref = $1 ORDER BY job_kind, tier NULLS LAST, id', [tenantRef],
   );
@@ -395,7 +396,8 @@ export async function loadScheduleForecasts(client, principal, { tenantRef, now 
  * here touches cadence, enabled or next_due_at, so the floor still governs.
  */
 export async function acknowledgeForecastWarning(client, principal, { tenantRef, scheduleId, codes, now = new Date(), windowMs = FORECAST_WINDOW_MS }) {
-  if (!(await can(client, principal, 'configuration', now))) throw new Error('not authorized to edit schedules');
+  // The grant is checked at the wall clock: a caller-chosen instant cannot revive it.
+  if (!(await can(client, principal, 'configuration'))) throw new Error('not authorized to edit schedules');
   if (!Array.isArray(codes) || codes.length === 0 || new Set(codes).size !== codes.length
     || codes.some((code) => !FORECAST_WARNING_CODES.includes(code))) {
     throw new Error('invalid forecast warning codes');

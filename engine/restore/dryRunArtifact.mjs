@@ -11,6 +11,7 @@
 // a target that drifted since the dry run ran, forces a new dry run instead of silently
 // promoting stale parameters.
 import { createHash } from 'node:crypto';
+import { withExplicitReferences } from '../coverage/qualification.mjs';
 
 const TERMINAL_STATUSES = Object.freeze(['completed', 'refused', 'failed']);
 
@@ -35,6 +36,39 @@ function canonicalStringify(value) {
 
 function sha256(text) {
   return createHash('sha256').update(text).digest('hex');
+}
+
+/** A content digest with the plan digest's canonical form. Roadmap task-92 freezes a
+ * policy activation preview with it, so a preview and a dry run hash their planning
+ * data the same way. */
+export function canonicalDigest(value) {
+  return sha256(canonicalStringify(value));
+}
+
+/** The restore candidate set of one snapshot, in the wave-planner resource shape: every
+ * resource version except users (never written), each with its snapshot references plus
+ * the explicit ones (roadmap task-107). cli/keel-restore.mjs plans dry runs from this set
+ * and roadmap task-92's activation preview computes the same dependency closure from it,
+ * so the preview and the dry run can never disagree about what a resource depends on. */
+export function restoreCandidates(versions, references) {
+  const refsByVersion = new Map();
+  for (const r of references ?? []) {
+    if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
+    refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
+  }
+  return (versions ?? [])
+    // users are never written. Roadmap task-108: authentication strengths are
+    // no longer filtered out; applyWave writes only custom strengths under
+    // their proven projection and skips built-in ones as immutable.
+    .filter((v) => v.resource_type !== 'user')
+    .map((v) => ({
+      naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
+      payloadHash: v.payload_hash,
+      // Roadmap task-107: explicit references (a service principal's appId)
+      // join the snapshot's, so wave ordering puts the application first.
+      references: withExplicitReferences({ resourceType: v.resource_type, payload: v.payload, references: refsByVersion.get(v.id) ?? [] }),
+      blastRadius: v.blast_radius, restorePriority: 100,
+    }));
 }
 
 /** The plan's identity: everything that must never change without a fresh dry run.

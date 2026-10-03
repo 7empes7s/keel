@@ -2,14 +2,21 @@
 
 import { useState } from "react";
 
+import { PolicyActivation } from "@/components/policy-preview";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import type { ActivationPreview } from "@/lib/policies";
 import { toast } from "@/lib/toast";
 
 // Roadmap task-130: pause, resume and turn a policy on or off through the existing
 // guarded routes (POST /api/policies/<id>/enabled and /clear-pause). The routes
 // re-check the policies capability and, for automatic roll-back, the run-as account.
-export function PolicyControls({ policyId, name, enabled, paused }: { policyId: string; name: string; enabled: boolean; paused: boolean }) {
+// Roadmap task-92: an automatic roll-back policy that is off is turned on only from an
+// activation preview (PolicyActivation); the enabled route refuses it otherwise.
+export function PolicyControls({ policyId, name, enabled, paused, automatic = false, now, initialPreview = null }: {
+  policyId: string; name: string; enabled: boolean; paused: boolean; automatic?: boolean; now?: string; initialPreview?: ActivationPreview | null;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
+  if (automatic && !enabled) return <PolicyActivation initialPreview={initialPreview} name={name} now={now ?? new Date().toISOString()} policyId={policyId} />;
 
   async function post(path: string, body: Record<string, unknown> | undefined, success: string, key: string) {
     setBusy(key);

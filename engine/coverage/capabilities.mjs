@@ -349,6 +349,17 @@ for (const operation of ['create', 'update']) {
   recordFixtureProof('authenticationStrengthPolicy', operation, 'engine/roadmap/policy-fidelity.test.mjs');
 }
 
+// Roadmap task-109: the administrative-configuration subset. Three operation
+// records only (engine/restore/administrativeOperations.mjs): update of an
+// administrative unit's name and description, and update and delete of a
+// tenant-wide directory setting. Every other verb stays unsupported; global
+// setting templates are never registered and are refused even if they were.
+registerAll('administrativeUnit', '/directory/administrativeUnits', ['update']);
+recordFixtureProof('administrativeUnit', 'update', 'engine/roadmap/administrative-fidelity.test.mjs');
+registerAll('groupSetting', '/groupSettings', ['update', 'delete']);
+recordFixtureProof('groupSetting', 'update', 'engine/roadmap/administrative-fidelity.test.mjs');
+recordFixtureProof('groupSetting', 'delete', 'engine/roadmap/administrative-fidelity.test.mjs');
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship

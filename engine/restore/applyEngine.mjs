@@ -12,6 +12,9 @@ import { recoveryGate } from './recoveryMechanism.mjs';
 import {
   isPolicyGoverned, policyCreateBody, policyPatchRefusal, policyPostCreateRefusal, policyWriteRefusal,
 } from './policyOperations.mjs';
+import {
+  administrativePatchRefusal, administrativePostStateRefusal, administrativeWriteRefusal, isAdministrativeGoverned,
+} from './administrativeOperations.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
@@ -292,6 +295,9 @@ export async function applyWave(writer, governor, wave, {
   throttleRetryOptions,
   // Clock for the task-64 recovery deadline check; injectable for tests.
   now = () => new Date(),
+  // Roadmap task-109: the source snapshot's per-type coverage entries
+  // ({ [resourceType]: { outcome } }). A governed delete needs a complete one.
+  observedCoverage = null,
 }) {
   const applied = [];
   const skipped = [];
@@ -324,6 +330,18 @@ export async function applyWave(writer, governor, wave, {
     const effectiveVerb = resource.verb === 'delete' || resource.verb === 'restore-soft-deleted' || resource.verb === 'update'
       ? resource.verb
       : 'create';
+    // Roadmap task-109: global reference templates are never written, a
+    // non-cloud source of authority is refused for every verb (delete included),
+    // and a governed write needs its operation record's parent and dependency
+    // checks to hold — a delete also needs a complete snapshot observation.
+    const administrativeRefusal = administrativeWriteRefusal(resource, effectiveVerb, { observedCoverage });
+    if (administrativeRefusal) {
+      (administrativeRefusal.outcome === 'skipped' ? skipped : failed).push(administrativeRefusal.outcome === 'skipped'
+        ? { naturalKey: resource.naturalKey, reason: administrativeRefusal.reason }
+        : { naturalKey: resource.naturalKey, error: administrativeRefusal.reason });
+      continue;
+    }
+
     const capabilityGate = verbCapability(resource.resourceType, effectiveVerb);
     if (!capabilityGate.supported) {
       failed.push({
@@ -573,7 +591,8 @@ export async function applyWave(writer, governor, wave, {
       }
       const normalisedDesired = withoutNulls(desired);
       const payload = writableProjection(desired, resource.resourceType);
-      const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload) : null;
+      const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload)
+        : isAdministrativeGoverned(resource.resourceType) ? administrativePatchRefusal(resource.resourceType, payload) : null;
       if (patchRefusal) {
         failed.push({ naturalKey: resource.naturalKey, error: patchRefusal });
         continue;
@@ -610,6 +629,18 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
       const live = forVerification(withoutNulls(reRead?.body ?? reRead), resource);
+      // Roadmap task-109: a governed update also verifies its own post-state
+      // (every written value, and a setting still bound to its template) before
+      // the hash comparison, so a template that changed under the write fails
+      // instead of reading as an immutable, not-remediable residual.
+      const postStateRefusal = isAdministrativeGoverned(resource.resourceType)
+        ? administrativePostStateRefusal(resource, reRead?.body ?? reRead) : null;
+      if (postStateRefusal) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'administrative post-state did not verify' });
+        failed.push({ naturalKey: resource.naturalKey, error: postStateRefusal });
+        continue;
+      }
+
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)) {
         const residual = residualDiff(normalisedDesired, live, resource.resourceType);
         const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
@@ -899,7 +930,7 @@ export async function applyPatches(writer, governor, patches, {
 
     // Roadmap task-108: a policy-governed type has no proven deferred-reference
     // patch (its records name whole-object writes only), so none is sent.
-    if (isPolicyGoverned(resourceType)) {
+    if (isPolicyGoverned(resourceType) || isAdministrativeGoverned(resourceType)) {
       failed.push({ naturalKey: patch.naturalKey, reason: `unsupported operation: no proven deferred reference patch for ${resourceType}` });
       return { applied, failed };
     }

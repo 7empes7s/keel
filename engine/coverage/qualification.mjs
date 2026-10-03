@@ -54,10 +54,10 @@ export const TYPE_DECISIONS = Object.freeze({
   domain: manual('requires DNS ownership verification outside Graph'),
   subscribedSku: manual('licences are purchased, not configured'),
   directorySettingTemplate: manual('Microsoft-published template catalogue'),
-  groupSetting: unknown(),
+  groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: manual('tenant-bound identity; credentials are never readable', { softRestoreCandidate: true }),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
-  administrativeUnit: unknown(),
+  administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create only, bound to its application by appId'),
@@ -505,9 +505,13 @@ export const EXPANSION_INVENTORY = Object.freeze({
   organization: byHand('administrative-configuration', null, 'none', 'the tenant object itself; it is never recreated'),
   domain: byHand('administrative-configuration', 'POST /domains', 'Domain.ReadWrite.All', 'requires DNS ownership verification outside Graph'),
   subscribedSku: notWritable('administrative-configuration', null, 'none', 'licences are purchased, not configured'),
-  directorySettingTemplate: byHand('administrative-configuration', null, 'none', 'Microsoft-published template catalogue'),
-  groupSetting: research('administrative-configuration', 'POST/PATCH /groupSettings', 'Directory.ReadWrite.All', 'settings are bound to global templates; task-109'),
-  administrativeUnit: research('administrative-configuration', 'POST/PATCH /directory/administrativeUnits', 'AdministrativeUnit.ReadWrite.All', 'membership and scoped roles are separate edges; task-109'),
+  directorySettingTemplate: byHand('administrative-configuration', null, 'none', 'Microsoft-published template catalogue; a global reference template is never written'),
+  // Roadmap task-109: the operation records and their parent, dependency and
+  // source-authority checks live in engine/restore/administrativeOperations.mjs.
+  groupSetting: subset('administrative-configuration', 'PATCH /groupSettings/{id}; DELETE /groupSettings/{id}', 'Directory.ReadWrite.All',
+    'update and delete of tenant-wide settings are fixture-tested; the template is never written; create and group-scoped settings are not qualified'),
+  administrativeUnit: subset('administrative-configuration', 'PATCH /directory/administrativeUnits/{id}', 'AdministrativeUnit.ReadWrite.All',
+    'update of displayName and description is fixture-tested; create, delete, soft-delete restore, membership and scoped role members are not qualified'),
   // ---- device management (outside the Entra batches)
   deviceConfiguration: research('device-management', 'POST /deviceManagement/deviceConfigurations', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; no Intune restore workstream is scheduled'),
   deviceCompliancePolicy: research('device-management', 'POST /deviceManagement/deviceCompliancePolicies', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; scheduled actions are required on create'),
@@ -601,6 +605,42 @@ export function buildExpansionInventory({ inventory = EXPANSION_INVENTORY, decis
   });
 }
 
+/**
+ * Roadmap task-109: what KEEL cannot recover for a type of the administrative
+ * batch, configuration and relationships alike. Kept apart from
+ * EXPANSION_INVENTORY (whose entries refuse unrecognised fields), reviewed by
+ * hand, and never summarised into a percentage. A type without an entry has
+ * not been assessed, which is not the same as "nothing is lost".
+ */
+const lost = (kind, name, reason) => Object.freeze({ kind, name, reason });
+export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
+  administrativeUnit: Object.freeze([
+    lost('relationship', 'members', 'unit membership is a separate edge with no qualified writer; it is listed for manual repair'),
+    lost('relationship', 'scopedRoleMembers', 'role assignments scoped to the unit are separate edges with no qualified writer'),
+    lost('configuration', 'visibility, isMemberManagementRestricted', 'set only when a unit is created; drift is reported not remediable'),
+    lost('configuration', 'membershipType, membershipRule, membershipRuleProcessingState', 'dynamic membership is not qualified for writing; drift is reported not remediable'),
+    lost('configuration', 'deleted unit', 'create and soft-delete restore are not qualified; a missing unit is recreated by hand'),
+  ]),
+  groupSetting: Object.freeze([
+    lost('relationship', 'templateId', 'bound to a Microsoft-published template for life; a setting on a different template is refused'),
+    lost('configuration', 'values the snapshot never observed', 'a value the template gained after the snapshot would be reset by a write, so the update is refused'),
+    lost('configuration', 'deleted setting', 'create is not qualified; a missing tenant-wide setting is recreated by hand from its template'),
+    lost('relationship', 'group-scoped settings', 'settings under /groups/{id}/settings are not collected or written'),
+  ]),
+  directorySettingTemplate: Object.freeze([
+    lost('configuration', 'template catalogue', 'Microsoft-published and identical in every tenant; never written'),
+  ]),
+  organization: Object.freeze([
+    lost('configuration', 'tenant object', 'the tenant itself is never recreated or written'),
+  ]),
+  domain: Object.freeze([
+    lost('configuration', 'domains', 'adding a domain needs DNS ownership verification outside Graph'),
+  ]),
+  subscribedSku: Object.freeze([
+    lost('configuration', 'licences', 'licences are purchased, not configured'),
+  ]),
+});
+
 /** The compact batch record the coverage report and portal show for one type. */
 export function expansionFor(resourceType) {
   const entry = EXPANSION_INVENTORY[resourceType];
@@ -614,6 +654,8 @@ export function expansionFor(resourceType) {
     // Roadmap task-108: the subtypes registered operations are limited to
     // (e.g. custom authentication strengths), read from the registry.
     qualifiedSubtypes: qualifiedSubtypesFor(resourceType),
+    // Roadmap task-109: null when the type has not been assessed.
+    unrecoverable: UNRECOVERABLE_CONFIGURATION[resourceType] ?? null,
     reason: entry.reason,
   });
 }

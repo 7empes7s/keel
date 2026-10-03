@@ -22,7 +22,8 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 import { DESCRIPTORS } from '../engine/collect/descriptors.mjs';
-import { loadRecoveryMetrics, recordOffsiteCopy } from '../engine/coverage/recoveryMetrics.mjs';
+import { recordOffsiteCopy } from '../engine/coverage/offsiteCopy.mjs';
+import { loadRecoveryMetrics } from '../engine/coverage/recoveryMetrics.mjs';
 import { connect } from '../engine/store/db.mjs';
 
 function arg(argv, name) {

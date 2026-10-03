@@ -20,9 +20,9 @@ import { gzipSync } from 'node:zlib';
 import { after, before, test } from 'node:test';
 
 import { main as recoveryMetricsCli } from '../../cli/keel-recovery-metrics.mjs';
+import { recordOffsiteCopy } from '../coverage/offsiteCopy.mjs';
 import {
-  OFFSITE_COPY_EVIDENCE_KIND, classifyRestoreJob, computeFreshness, loadRecoveryMetrics, recordOffsiteCopy,
-  typeDependency,
+  OFFSITE_COPY_EVIDENCE_KIND, classifyRestoreJob, computeFreshness, loadRecoveryMetrics, typeDependency,
 } from '../coverage/recoveryMetrics.mjs';
 import { RECOVERY_DRILL_EVIDENCE_KIND } from '../coverage/recoveryReadiness.mjs';
 import { exportSnapshot } from '../export/configExport.mjs';

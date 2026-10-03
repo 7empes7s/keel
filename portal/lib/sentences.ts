@@ -204,6 +204,9 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string): string
     case "recovery-drill": return subject.mode === "live"
       ? `A recovery drill on a test group ${subject.outcome === "passed" ? "passed" : "did not pass"}${subject.cleanup && (subject.cleanup as { status?: unknown }).status !== "complete" ? ", and its clean-up failed" : ""}`
       : "A recovery drill plan was checked; this is not a drill";
+    case "offsite-copy": return (subject.verification as { ok?: unknown } | undefined)?.ok === true && subject.remoteSha256 === subject.dumpSha256
+      ? "An off-site copy of the backups was checked byte for byte"
+      : "An off-site copy of the backups failed its check and does not count";
     case "job.started": return `${actorName} started ${actionWords(subject.kind)}`;
     case "collection.completed": return typeof subject.items === "number"
       ? `A backup of ${plural(Number(subject.types ?? 0), "type")} finished with ${plural(subject.items, "item")}`

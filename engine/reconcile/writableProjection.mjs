@@ -48,6 +48,30 @@ export function unknownFields(payload, resourceType) {
     .filter((key) => classifyForOperation('update', key, resourceType) === 'unknown');
 }
 
+/**
+ * Roadmap task-108: the top-level fields a create body may carry for a reviewed
+ * type, and the ones it may not. serverOwned fields are dropped silently (Graph
+ * assigns them); a field outside the reviewed knownFields list is 'unknown' and
+ * is dropped AND returned in `unknown`, so the caller reports it instead of the
+ * field vanishing from the restored object. An unreviewed type has no
+ * known-field list to project against and throws: its create body would be a
+ * pass-through.
+ */
+export function createProjection(payload, resourceType) {
+  fieldClass('', resourceType);
+  if (reviewStateFor(resourceType) === 'unreviewed') {
+    throw new Error(`${resourceType}: no reviewed field projection, so no create body can be projected`);
+  }
+  const body = {};
+  const unknown = [];
+  for (const key of Object.keys(payload ?? {})) {
+    const cls = classifyForOperation('create', key, resourceType);
+    if (cls === 'writable') body[key] = payload[key];
+    else if (cls === 'unknown') unknown.push(key);
+  }
+  return { body, unknown };
+}
+
 export function immutableDrift(desired, live, resourceType) {
   // Validate the type even when both objects are empty.
   fieldClass('', resourceType);

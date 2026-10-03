@@ -21,10 +21,13 @@ export async function grantRole(client, { principalId, role, grantedBy, activeFr
   if (!Number.isFinite(+from) || (until && (!Number.isFinite(+until) || until <= from))) {
     throw new InvalidRoleGrantError('invalid grant window');
   }
+  // An immediate grant starts at `from`, the same millisecond-precision instant validated
+  // above. Postgres now() carries microseconds, so a grant checked by resolvePrincipal
+  // (which passes a JS Date) in the same millisecond could read as not yet active.
   const { rows } = await client.query(
     `INSERT INTO role_grant (principal_id, role, granted_by, active_from, active_until, scope)
-     SELECT id, $2, $3, COALESCE($4::timestamptz, now()), $5, $6 FROM principal WHERE id = $1 RETURNING *`,
-    [principalId, role, grantedBy, activeFrom, activeUntil, scope],
+     SELECT id, $2, $3, $4::timestamptz, $5, $6 FROM principal WHERE id = $1 RETURNING *`,
+    [principalId, role, grantedBy, from.toISOString(), activeUntil, scope],
   );
   if (!rows[0]) throw new PrincipalNotFoundError('principal not found');
   return rows[0];

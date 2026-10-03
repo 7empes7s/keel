@@ -168,6 +168,27 @@ test("the roll-back preview speaks in words and states a refusal as a sentence",
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });
 
+// Task-91: who made a change, in words, with its evidence kept in the record; a missing
+// audit log is said plainly, and a cross-entity roll back is handed to a central approver.
+test("a change says who made it from the audit log and where a roll back goes", async ({ page }) => {
+  await open(page, "/drift");
+  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Block legacy auth$/ }) }).getByRole("button", { name: "Show what changed" }).click();
+  const panel = page.locator(".change-attribution");
+  await expect(panel.locator(".change-attribution-headline")).toContainText("Confirmed by the Microsoft audit log. Amara Okafor made this change, according to the audit log.");
+  await expect(panel.locator(".change-attribution-route")).toHaveText("A roll back goes to a central approver (2 people), because it touches more than one entity.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  const record = panel.locator('[data-layer="record"]');
+  await record.locator("summary").click();
+  for (const kept of ["Directory_8f2c1d7a-4b3e-4f61-9a20-1c5d7e9b3a44", "a71ce000-0000-4000-8000-0000000000a7", "c0a10000-0000-4000-8000-0000000000ca", "exact · audit-record-names-resource", "central · cross-entity"]) {
+    await expect(record).toContainText(kept);
+  }
+  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Finance$/ }) }).getByRole("button", { name: "Show what changed" }).click();
+  await expect(page.locator(".change-attribution-headline")).toContainText("Not known. The audit log for that time is no longer available");
+  await expect(page.locator(".change-attribution-route")).toHaveText("A roll back goes to CREOS approvers (1 person).");
+  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
 // Task-131 (was task-54/63's coverage matrix): a type's drawer answers in one sentence
 // and keeps the recovery decision, remapping proof and proof reference in its record.
 test("a type drawer states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {

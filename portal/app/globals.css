@@ -5822,3 +5822,61 @@ section.wizard-panel {
 .setup-workloads legend { float: left; margin-right: 0.25rem; font-weight: 600; }
 .setup-workloads label { display: inline-flex; align-items: center; gap: 0.375rem; }
 .setup-actions { flex-wrap: wrap; align-items: center; }
+
+/* Phone layout of every data table (stacked below 46rem). Each cell is a two-column
+   grid, label then value; a cell with more than one child (a name and its "Technical
+   details" record, a button and its record) keeps them all in the value column instead
+   of wrapping the extra child under the label. An empty cell (no action to offer) is
+   not shown, and the active-row bar sits on the card's edge, clear of the text. */
+@media (max-width: 46rem) {
+  .data-table th > *,
+  .data-table td > * {
+    grid-column: 2;
+  }
+
+  .data-table th:empty,
+  .data-table td:empty {
+    display: none;
+  }
+
+  /* The last visible cell closes the card, so it draws no divider either. */
+  .data-table tbody tr > :has(+ :empty:last-child) {
+    border-bottom: 0;
+  }
+
+  .active-row {
+    box-shadow: inset 3px 0 0 var(--protected);
+  }
+
+  .active-row > :first-child {
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 25rem) {
+  .data-table th > *,
+  .data-table td > * {
+    grid-column: auto;
+  }
+}
+
+/* The record's disclosure triangle is drawn as text: iOS otherwise renders the default
+   marker as an emoji. U+FE0E asks for the text presentation. */
+.technical-details > summary {
+  list-style: none;
+}
+
+.technical-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.technical-details > summary::before {
+  content: "\25B8\FE0E";
+  display: inline-block;
+  width: 1.1em;
+  color: var(--text-muted);
+}
+
+.technical-details[open] > summary::before {
+  content: "\25BE\FE0E";
+}

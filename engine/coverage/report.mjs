@@ -33,6 +33,7 @@
 import { TYPE_COVERAGE_CTES, readCoverageOutcome, readOutcome, readOutcomeDetail, readTypeObservation } from './snapshots.mjs';
 import { OBSERVATION_CONTRACT_VERSION } from '../contracts/observation.mjs';
 import { capabilitySummaryFor } from './capabilities.mjs';
+import { qualificationFor } from './qualification.mjs';
 import { diagnoseFailure } from './diagnosis.mjs';
 import { loadRelationshipState, summarizeRelationshipState } from '../collect/relationships.mjs';
 import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
@@ -105,6 +106,9 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       // not-covered catalogue entry still has its own capability claims,
       // independent of read-coverage status.
       writeCapability: capabilitySummaryFor(entry.type),
+      // Roadmap task-63: the explicit recovery decision (automated / manual /
+      // unknown) and per-operation remapping proof, from the qualification ledger.
+      qualification: qualificationFor(entry.type),
       // The catalog always declares a path/version even with no collecting
       // descriptor; there is simply nothing measured yet to compare it to.
       declaredEndpoint: { path: entry.path, apiVersion: entry.version },
@@ -220,6 +224,7 @@ function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, di
     // Neither is derived from the other — see capabilities.mjs's header.
     remappable: descriptor.remappable,
     writeCapability: capabilitySummaryFor(descriptor.type),
+    qualification: qualificationFor(descriptor.type),
     // Declared endpoint/version (roadmap task-54): from the catalog
     // registration itself, present even before any collection ever ran —
     // distinct from detail.endpoint/detail.apiVersion above, which is

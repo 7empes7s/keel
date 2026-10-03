@@ -1129,6 +1129,22 @@ dd {
   color: var(--uncovered);
 }
 
+/* Task-63: recovery decision from the qualification ledger. */
+.decision-automated {
+  background: var(--protected-bg);
+  color: var(--protected);
+}
+
+.decision-manual {
+  background: var(--readonly-bg);
+  color: var(--readonly);
+}
+
+.decision-unknown {
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
+}
+
 .capability-matrix {
   font-size: 0.75rem;
 }

@@ -122,3 +122,12 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await page.getByRole("button", { name: "Confirm restore" }).click();
   await expect(page.getByRole("heading", { name: "Restore requested, pending approval" })).toBeVisible();
 });
+
+test("coverage details show the explicit recovery decision and remapping proof", async ({ page }) => {
+  await open(page, "/coverage");
+  const details = page.locator(".capability-matrix").filter({ has: page.locator(".decision-automated") }).first();
+  await details.locator("summary").click();
+  await expect(details.getByText("Recovery decision")).toBeVisible();
+  await expect(details.locator(".decision-automated")).toHaveText("Automated");
+  await expect(details.getByText("Create remapping: proven")).toBeVisible();
+});

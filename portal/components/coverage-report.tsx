@@ -48,6 +48,16 @@ function subtypeValue(expansion: TypeExpansion | null | undefined): string {
   return `${subtypes.join(", ")} only · every other subtype, including built-in policies, is refused`;
 }
 
+// Roadmap task-109: what cannot be recovered for the type, configuration and
+// relationships alike, one entry per line. An older report or an unassessed type
+// reads "not assessed", never "nothing".
+function unrecoverableValue(expansion: TypeExpansion | null | undefined): string {
+  const items = expansion?.unrecoverable;
+  if (!expansion || items === undefined || items === null) return "not assessed";
+  if (items.length === 0) return "none recorded";
+  return items.map((item) => `${item.kind} ${item.name}: ${item.reason}`).join(" · ");
+}
+
 function TypeRecord({ item }: { item: CoverageType }) {
   const irrecoverable = item.irrecoverableFields ?? null;
   const detail = item.detail;
@@ -99,6 +109,11 @@ function TypeRecord({ item }: { item: CoverageType }) {
       <RecordField
         label="Write subtypes"
         value={subtypeValue(decision?.expansion)}
+        copy={false}
+      />
+      <RecordField
+        label="Cannot be recovered"
+        value={unrecoverableValue(decision?.expansion)}
         copy={false}
       />
       {decision ? Object.entries(decision.remapping).map(([operation, proven]) => (

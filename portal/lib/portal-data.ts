@@ -56,6 +56,7 @@ import type {
   Ref,
   RestoreScope,
   TypeExpansion,
+  UnrecoverableItem,
   TypeQualification,
   WriteCapabilitySummary,
   WriteOperationCapability,
@@ -210,7 +211,23 @@ function normalizeExpansion(raw: unknown): TypeExpansion | null {
     qualifiedSubtypes: Array.isArray(record.qualifiedSubtypes)
       ? record.qualifiedSubtypes.filter((value): value is string => typeof value === "string")
       : [],
+    unrecoverable: normalizeUnrecoverable(record.unrecoverable),
   };
+}
+
+// Roadmap task-109. A malformed or missing list reads as "not assessed" (null),
+// never as "nothing is lost".
+function normalizeUnrecoverable(raw: unknown): UnrecoverableItem[] | null {
+  if (!Array.isArray(raw)) return null;
+  const items: UnrecoverableItem[] = [];
+  for (const entry of raw) {
+    const item = entry as UnknownRecord | null;
+    if (!item || typeof item !== "object") return null;
+    if (item.kind !== "configuration" && item.kind !== "relationship") return null;
+    if (typeof item.name !== "string" || typeof item.reason !== "string") return null;
+    items.push({ kind: item.kind, name: item.name, reason: item.reason });
+  }
+  return items;
 }
 
 function normalizeDiagnosis(raw: unknown): CoverageDiagnosis | null {

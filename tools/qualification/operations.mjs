@@ -9,6 +9,7 @@
  *   node tools/qualification/operations.mjs --check    # exit 1 if any catalogue type lacks a decision
  *   node tools/qualification/operations.mjs --batch identity-application [--json]
  *   node tools/qualification/operations.mjs --batch policy  # task-108: also prints the policy family ledger
+ *   node tools/qualification/operations.mjs --batch administrative-configuration  # task-109: also prints what cannot be recovered
  *                                                       # task-107: run one expansion batch and print its evidence report
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
@@ -23,6 +24,7 @@ import { CATALOG } from '../tenant-probe/catalog.mjs';
 import { OPERATIONS, capabilityFor, graphPathFor, isSupportedClaim } from '../../engine/coverage/capabilities.mjs';
 import { EXPANSION_BATCHES, buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { buildPolicyFamilyLedger } from '../../engine/restore/policyOperations.mjs';
+import { buildAdministrativeFamilyLedger } from '../../engine/restore/administrativeOperations.mjs';
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 
@@ -52,7 +54,26 @@ const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture strength', description: 'Fixture custom strength', policyType: 'custom',
     requirementsSatisfied: 'mfa', allowedCombinations: ['fido2', 'windowsHelloForBusiness'],
   },
+  // Roadmap task-109: an administrative unit and a tenant-wide setting bound to
+  // the Microsoft-published Group.Unified template.
+  administrativeUnit: { displayName: 'Fixture unit', description: 'Fixture administrative unit', visibility: null },
+  groupSetting: {
+    displayName: 'Group.Unified', templateId: '62375ab9-6b52-47ed-826b-58e47e0e304b',
+    values: [{ name: 'AllowGuestsToAccessGroups', value: 'false' }, { name: 'EnableGroupCreation', value: 'true' }],
+  },
 });
+
+// Roadmap task-109: the drift an update fixture reverts, for a type whose
+// display name is not writable.
+const FIXTURE_DRIFT = Object.freeze({
+  groupSetting: (payload) => ({ values: payload.values.map((entry) => ({ ...entry, value: entry.value === 'true' ? 'false' : 'true' })) }),
+});
+
+// Roadmap task-109: the harness's snapshot read every collection completely,
+// which is what a governed delete needs as evidence of absence.
+const FIXTURE_COVERAGE = Object.freeze(Object.fromEntries(
+  Object.keys(FIXTURE_PAYLOADS).map((type) => [type, Object.freeze({ outcome: 'complete' })]),
+));
 
 // Natural keys that already exist in the fixture target, per type (a service
 // principal's explicit appId reference resolves against its application).
@@ -119,9 +140,10 @@ function fixtureFor(resourceType, operation, graph) {
   if (operation === 'create') return { ...base, verb: 'create', payload };
   if (operation === 'update') {
     // Drift a field the type actually has; a role assignment has no mutable name.
-    const drifted = 'displayName' in payload ? { displayName: 'Drifted' } : {};
-    graph.objects.set(`${collection}/${existingId}`, { ...payload, id: existingId, ...drifted });
-    return { ...base, verb: 'update', payload, targetId: existingId };
+    const drifted = FIXTURE_DRIFT[resourceType]?.(payload) ?? ('displayName' in payload ? { displayName: 'Drifted' } : {});
+    const live = { ...payload, id: existingId, ...drifted };
+    graph.objects.set(`${collection}/${existingId}`, live);
+    return { ...base, verb: 'update', payload, targetId: existingId, live: { state: 'present', targetId: existingId, payload: live } };
   }
   if (operation === 'delete') {
     graph.objects.set(`${collection}/${existingId}`, { ...payload, id: existingId });
@@ -150,6 +172,7 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
         const outcome = await applyWave(graph, governor, [resource], {
           targetTenant: 'fixture-tenant', mode: 'enforce', simulationPassed: true,
           existingTargetIds: new Map(FIXTURE_TARGET_IDS[resourceType] ?? []),
+          observedCoverage: FIXTURE_COVERAGE,
           // The deletion guard verifies a policy against the CURRENT target state;
           // the fixture's live object is that state (it excludes no break-glass id).
           deletionGuardOptions: {
@@ -231,6 +254,9 @@ export async function runExpansionBatch(batchId, { now = () => new Date() } = {}
     // Roadmap task-108: the policy batch also carries its family ledger
     // (subtype-bound records, whether each proof is current, refused subtypes).
     ...(batch.id === 'policy' ? { policyLedger: buildPolicyFamilyLedger() } : {}),
+    // Roadmap task-109: the administrative batch carries its family ledger,
+    // including what configuration and relationships cannot be recovered.
+    ...(batch.id === 'administrative-configuration' ? { administrativeLedger: buildAdministrativeFamilyLedger() } : {}),
   };
 }
 
@@ -245,6 +271,11 @@ function batchTable(report) {
       lines.push(`  ${family.resourceType} ${op.operation} proof: ${op.proofCurrent ? 'current' : 'INVALIDATED'} · writes ${op.writableFields.join(', ')}`);
     }
     for (const subtype of family.refusedSubtypes) lines.push(`  ${family.resourceType} ${subtype}: refused (immutable)`);
+  }
+  for (const family of report.administrativeLedger?.families ?? []) {
+    for (const op of family.operations) lines.push(`  ${family.resourceType} ${op.operation} checks: ${op.checks.join('; ')}`);
+    for (const reason of family.refusals) lines.push(`  ${family.resourceType}: refused — ${reason}`);
+    for (const item of family.unrecoverable) lines.push(`  ${family.resourceType} cannot recover ${item.kind} ${item.name}: ${item.reason}`);
   }
   for (const refusal of report.refused) lines.push(`  ${refusal.resourceType} ${refusal.operation}: refused (${refusal.claim})`);
   for (const entry of report.remaining) lines.push(`  ${entry.resourceType}: ${entry.status} — ${entry.reason} [${entry.api ?? 'no write route'}; ${entry.permission}]`);

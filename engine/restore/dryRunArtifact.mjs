@@ -51,7 +51,7 @@ function sha256(text) {
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null,
+  recoveryMechanisms = null, contentEffects = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -70,6 +70,9 @@ export function computePlanDigest({
     // supplies it — and left out only for an artifact persisted before task-64,
     // so a mechanism change after review always invalidates a new artifact.
     ...(recoveryMechanisms ? { recoveryMechanisms } : {}),
+    // Task-66: content effects (with their disclosures) of the plan. Folded only
+    // when there is at least one, so effect-free plans keep their digest.
+    ...(contentEffects?.length ? { contentEffects } : {}),
   }));
 }
 
@@ -121,7 +124,7 @@ export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null,
+  recoveryMechanisms = null, contentEffects = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -131,8 +134,8 @@ export async function createDryRunArtifact(client, {
        (id, tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id,
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
-        relationship_operations, recovery_mechanisms)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+        relationship_operations, recovery_mechanisms, content_effects)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -146,6 +149,7 @@ export async function createDryRunArtifact(client, {
       status, requestedBy, automationContext ?? null,
       relationshipOperations?.length ? JSON.stringify(relationshipOperations) : null,
       recoveryMechanisms ? JSON.stringify(recoveryMechanisms) : null,
+      contentEffects?.length ? JSON.stringify(contentEffects) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -193,6 +197,8 @@ function normalizeArtifact(row) {
     relationshipOperations: row.relationship_operations ?? null,
     // Task-64: null only for artifacts persisted before mechanisms were recorded.
     recoveryMechanisms: row.recovery_mechanisms ?? null,
+    // Task-66: null when the dry run had no content effects (or predates them).
+    contentEffects: row.content_effects ?? null,
     createdAt: row.created_at,
   };
 }

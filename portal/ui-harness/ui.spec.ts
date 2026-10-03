@@ -119,6 +119,14 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   // Task-64: each resource names its recovery mechanism and what happens to its id.
   await expect(page.getByText("RECOVERY MECHANISM")).toBeVisible();
   await expect(page.locator(".mechanism-row.mechanism-update-existing").first()).toContainText("Same ID kept");
+  // Task-66: a content effect states that content is not backed up and needs its own approval.
+  const effects = page.locator(".content-effects");
+  await expect(effects).toContainText("Widens sharing");
+  await expect(effects).toContainText("is not recoverable by KEEL");
+  await expect(effects).toContainText("Not yet approved");
+  await effects.getByPlaceholder("Why are these content effects acceptable?").fill("Visibility was public before INC-2291");
+  await effects.getByRole("button", { name: "Approve content effects" }).click();
+  await expect(effects).toContainText("Approved for exactly these effects");
   await expect(page.getByText("MEMBERSHIP CHANGES")).toBeVisible();
   await expect(page.locator(".edge-op.edge-add").first()).toContainText("user:amara.okafor@contoso.example");
   await expect(page.locator(".edge-op.edge-remove").first()).toContainText("as member of");

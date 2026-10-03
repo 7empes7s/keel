@@ -465,3 +465,28 @@ test("setup shows the step waiting on the operator and continues through the gua
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("setup-call"))).not.toBeNull();
   expect(JSON.parse((await page.evaluate(() => sessionStorage.getItem("setup-call")))!)).toEqual({ resume: "5e7a" + "0b".repeat(30) });
 });
+
+// A record inside a stacked table cell stays in the value column on a phone, an empty
+// cell is not shown, the active-row bar clears the text, and the disclosure triangle is
+// text (iOS otherwise draws the default marker as an emoji).
+test("stacked tables on a phone keep records beside their label and hide empty cells", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/baselines", "light");
+  const row = page.locator(".baselines-table tbody tr.active-row");
+  const nameCell = row.locator("th[data-label='Name']");
+  const name = await nameCell.locator(".baseline-table-label").boundingBox();
+  const summary = await nameCell.locator(".technical-details > summary").boundingBox();
+  expect(name && summary, "name and record are laid out").toBeTruthy();
+  // Below 25rem the cell is one column, so the record sits under the name, aligned with it.
+  expect(Math.abs(summary!.x - name!.x)).toBeLessThan(2);
+  await expect(row.locator("td[data-label='Actions']")).toBeHidden();
+  expect(await nameCell.evaluate((cell) => getComputedStyle(cell).boxShadow)).toBe("none");
+  expect(await nameCell.locator(".technical-details > summary").evaluate((element) => getComputedStyle(element).listStyleType)).toBe("none");
+
+  // Between 25rem and 46rem the cell is two columns: the record joins the value column.
+  await page.setViewportSize({ width: 600, height: 900 });
+  const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
+  const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
+  expect(Math.abs(wideSummary!.x - wideName!.x)).toBeLessThan(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});

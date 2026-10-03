@@ -12,6 +12,8 @@ const PAGES = [
   { name: "drift", hash: "/drift" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
+  { name: "resilience", hash: "/resilience" },
+  { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
@@ -228,6 +230,32 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
 });
 
+// Task-73: the recovery point comes from the last complete off-site copy, a newer copy
+// that lacks a good backup is named and does not count, a failed restore is listed
+// apart from recovery time, and a tenant with nothing measured says so in every card.
+test("resilience shows measured values, names what does not count, and keeps unmeasured visible", async ({ page }) => {
+  await open(page, "/resilience");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("If this server were lost, KEEL could recover settings as of 29 hours ago. The last proven recovery took 20 minutes.");
+  const point = page.locator(".resilience-point");
+  await expect(point).toContainText("does not count: it holds no good backup of Group and Members of each group.");
+  const time = page.locator(".resilience-time");
+  await expect(time).toContainText("The last checked recovery took 20 minutes; the slowest of 2 checked recoveries took 20 minutes.");
+  await expect(time).toContainText("does not count: it failed.");
+  await expect(time.getByRole("link", { name: "View the restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  const freshness = page.locator(".resilience-freshness");
+  await expect(freshness).toContainText("The oldest good backup KEEL relies on is 3 hours 40 minutes old: Conditional Access policy.");
+  await expect(freshness).toContainText("This is the plan, not a result.");
+  await expect(page.locator(".resilience-incidents").getByRole("link", { name: "Admin consent phishing" })).toBeVisible();
+
+  await open(page, "/resilience/unmeasured");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Recovery is not measured yet: no checked off-site copy holds every backed-up type, and no recovery has been timed.");
+  for (const card of ["freshness", "point", "time", "drills"]) {
+    await expect(page.locator(`.resilience-${card} .pill`)).toHaveText("Not measured");
+    await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
+  }
+  await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
+});
+
 // Polish pass 1: the recovery surfaces added by tasks 63–66 get their own
 // baselines and a phone-width check that nothing scrolls sideways.
 for (const theme of ["dark", "light"] as const) {
@@ -301,6 +329,8 @@ const RECORD_IDS: Record<string, string[]> = {
   alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
+  resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],
+  "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
 };
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {

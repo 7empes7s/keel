@@ -46,6 +46,8 @@ import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
 import { alertsVerdict, type AlertItem } from "@/lib/alerts-view";
+import { ResilienceView } from "@/components/resilience-view";
+import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -530,6 +532,77 @@ const INBOX_ALERTS: AlertItem[] = [
   },
 ];
 
+
+// Task-73: measured recovery point and recovery time. A newer off-site copy lacks a
+// good group backup, so the older copy still sets the point; a failed restore is
+// listed but is not a recovery time sample. RESILIENCE_EMPTY is a tenant with nothing
+// measured yet.
+const RESILIENCE: ResilienceData = {
+  generatedAt: now,
+  metrics: {
+    version: 1, tenantRef: "sha256:5e7a0b0b0b0b0b0b", generatedAt: now,
+    freshness: {
+      state: "measured", achievedRpoMs: 13_200_000, required: 54, gaps: [],
+      oldestDependency: { key: "type:conditionalAccessPolicy", kind: "type", type: "conditionalAccessPolicy", parentType: null, family: null, ageMs: 13_200_000, since: "2026-10-02T06:00:00.000Z" },
+      latestFailures: [{ key: "type:authenticationMethodsPolicy", kind: "type", type: "authenticationMethodsPolicy", parentType: null, family: null, failedAt: "2026-10-02T09:00:00.000Z", outcome: "failed", lastSuccessAt: "2026-10-02T06:00:00.000Z" }],
+    },
+    recoverablePoint: {
+      state: "measured", point: "2026-10-01T04:00:00.000Z", ageMs: 106_800_000,
+      fromCopy: { seq: "18190", recordedAt: "2026-10-01T05:12:00.000Z", shippedAt: "2026-10-01T05:10:00.000Z", dumpSha256: "c1".repeat(32), manifestGeneratedAt: "2026-10-01T05:00:00.000Z", counts: true, reason: "verified-offsite-copy", point: "2026-10-01T04:00:00.000Z", missing: [] },
+      latestCopy: null,
+      copies: [
+        { seq: "18190", recordedAt: "2026-10-01T05:12:00.000Z", shippedAt: "2026-10-01T05:10:00.000Z", dumpSha256: "c1".repeat(32), manifestGeneratedAt: "2026-10-01T05:00:00.000Z", counts: true, reason: "verified-offsite-copy", point: "2026-10-01T04:00:00.000Z", missing: [] },
+        { seq: "18201", recordedAt: "2026-10-02T05:12:00.000Z", shippedAt: "2026-10-02T05:10:00.000Z", dumpSha256: "e3".repeat(32), manifestGeneratedAt: "2026-10-02T05:00:00.000Z", counts: false, reason: "missing-required-observation", point: null, missing: ["type:group", "relationship:group/members"] },
+      ],
+    },
+    recoveryTime: {
+      state: "measured", samples: 2, latestMs: 1_200_000, latestAt: "2026-09-30T14:20:00.000Z", worstMs: 1_200_000, medianMs: 840_000,
+      lastAttempt: { source: "restore", ref: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z", counts: false, reason: "restore-failed", elapsedMs: null, outcome: "failed" },
+      attempts: [
+        { source: "drill", ref: "18150", at: "2026-09-28T10:08:00.000Z", counts: true, reason: "live-bounded-drill", elapsedMs: 480_000, outcome: "passed" },
+        { source: "restore", ref: "b7c10000-0000-4000-8000-000000000073", at: "2026-09-30T14:20:00.000Z", counts: true, reason: "verified-restore", elapsedMs: 1_200_000, outcome: "succeeded" },
+        { source: "restore", ref: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z", counts: false, reason: "restore-failed", elapsedMs: null, outcome: "failed" },
+      ],
+    },
+    readiness: {
+      state: "drilled", countedDrills: 1, notCounted: [], cleanupFailures: [],
+      lastCountedDrill: { at: "2026-09-28T10:08:00.000Z", elapsedMs: 480_000, objects: ["group:keel-rehearsal-20260928T100000Z"] },
+      scope: "bounded same-tenant drills of disposable objects; not a tenant-wide recovery proof",
+    },
+    configured: {
+      cadence: [
+        { id: "5c4e0000-0000-4000-8000-000000000001", jobKind: "collect", tier: "tier1", cadence: { every: "hour", n: 1, atTime: null }, cron: null, enabled: true },
+        { id: "5c4e0000-0000-4000-8000-000000000005", jobKind: "offsite", tier: null, cadence: { every: "day", n: 1, atTime: "05:00" }, cron: null, enabled: true },
+      ],
+      objectives: null,
+    },
+  },
+  incidents: [{ incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", status: "open", openedAt: "2026-10-01T08:10:00Z" }, recommended: { snapshotId: "5a2be911-0000-4000-8000-000000000002", collectedAt: "2026-09-30T05:55:00Z" }, pins: 1 }],
+  storage: { configured: true, provider: "local-disk", region: "on-prem datacenter A", boundary: null, immutability: "unsupported", generatedAt: "2026-10-01T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
+};
+const RESILIENCE_EMPTY: ResilienceData = {
+  ...RESILIENCE,
+  metrics: {
+    ...RESILIENCE.metrics,
+    freshness: { state: "unmeasured", achievedRpoMs: null, required: 2, oldestDependency: null, latestFailures: [], gaps: [
+      { key: "type:conditionalAccessPolicy", kind: "type", type: "conditionalAccessPolicy", parentType: null, family: null, lastAttempt: null },
+      { key: "type:group", kind: "type", type: "group", parentType: null, family: null, lastAttempt: { at: "2026-10-02T09:00:00.000Z", outcome: "failed" } },
+    ] },
+    recoverablePoint: { state: "unmeasured", point: null, ageMs: null, fromCopy: null, latestCopy: null, copies: [] },
+    recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
+    readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
+  },
+  incidents: [],
+  storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null },
+};
+
+function resiliencePage(data: ResilienceData) {
+  const verdict = resilienceVerdict(data.metrics, data.generatedAt);
+  return <>{header("Restore", "Resilience", "How recent a recovery KEEL could make if this server were lost, and how long a recovery has taken.")}
+    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><ResilienceView data={data} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -567,6 +640,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restore jobs" /></div></>;
     case "/incidents": return <>{header("Restore", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
+    case "/resilience": return resiliencePage(RESILIENCE);
+    case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/drift": {
       const verdict = changesVerdict(DRIFT, BASELINES[0].setAt, now);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}

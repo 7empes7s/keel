@@ -9,6 +9,9 @@ import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
 } from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
+import {
+  isPolicyGoverned, policyCreateBody, policyPatchRefusal, policyPostCreateRefusal, policyWriteRefusal,
+} from './policyOperations.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
@@ -330,6 +333,17 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
+    // Roadmap task-108: a policy-governed type writes only the subtype its proof
+    // covers, under the projection it was proven with. A built-in (immutable)
+    // policy is skipped; an unproven subtype or a changed projection fails.
+    const policyRefusal = policyWriteRefusal(resource, effectiveVerb);
+    if (policyRefusal) {
+      (policyRefusal.outcome === 'skipped' ? skipped : failed).push(policyRefusal.outcome === 'skipped'
+        ? { naturalKey: resource.naturalKey, reason: policyRefusal.reason }
+        : { naturalKey: resource.naturalKey, error: policyRefusal.reason });
+      continue;
+    }
+
     // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
     // manual/refused mechanism never writes and an expired recovery point is
     // refused at execution even after a clean dry run.
@@ -559,6 +573,11 @@ export async function applyWave(writer, governor, wave, {
       }
       const normalisedDesired = withoutNulls(desired);
       const payload = writableProjection(desired, resource.resourceType);
+      const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload) : null;
+      if (patchRefusal) {
+        failed.push({ naturalKey: resource.naturalKey, error: patchRefusal });
+        continue;
+      }
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
@@ -664,7 +683,10 @@ export async function applyWave(writer, governor, wave, {
     // what Entra assigns and the credential material KEEL can never read back,
     // and verification compares exactly the fields that were written.
     const createExcluded = CREATE_EXCLUDED_FIELDS[resource.resourceType] ?? null;
-    const createBody = createExcluded ? withoutFields(payload, createExcluded) : payload;
+    // Roadmap task-108: a policy-governed create sends only its record's
+    // writable fields; unknown fields are never sent and are reported.
+    const policyCreate = isPolicyGoverned(resource.resourceType) ? policyCreateBody(resource.resourceType, payload) : null;
+    const createBody = policyCreate ? policyCreate.body : createExcluded ? withoutFields(payload, createExcluded) : payload;
     const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: createBody }));
     if (!writeResult.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
@@ -692,6 +714,13 @@ export async function applyWave(writer, governor, wave, {
     // application's new appId) are reported only when the read-back agrees with
     // the create response, so a dependent reference is never remapped to a value
     // Entra did not confirm.
+    const subtypeRefusal = policyPostCreateRefusal(resource, reRead?.body ?? reRead);
+    if (subtypeRefusal) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created subtype did not verify' });
+      failed.push({ naturalKey: resource.naturalKey, error: subtypeRefusal });
+      continue;
+    }
+
     const identifiers = createdIdentifiers(resource.resourceType, writeResult.body, reRead?.body ?? reRead);
     if (identifiers === false) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created identifiers did not verify' });
@@ -699,7 +728,9 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
     await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
-    applied.push(identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId });
+    const entry = identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId };
+    if (policyCreate?.unknown.length > 0) entry.unwrittenFields = policyCreate.unknown;
+    applied.push(entry);
   }
 
   if (signInPathGate) {
@@ -863,6 +894,13 @@ export async function applyPatches(writer, governor, patches, {
         naturalKey: patch.naturalKey,
         reason: `unsupported operation: ${resourceType} update is not a registered write capability (claim: ${patchCapability.capability?.claim ?? 'unsupported'})`,
       });
+      return { applied, failed };
+    }
+
+    // Roadmap task-108: a policy-governed type has no proven deferred-reference
+    // patch (its records name whole-object writes only), so none is sent.
+    if (isPolicyGoverned(resourceType)) {
+      failed.push({ naturalKey: patch.naturalKey, reason: `unsupported operation: no proven deferred reference patch for ${resourceType}` });
       return { applied, failed };
     }
 

@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 19, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108)');
+  assert.equal(supported.length, 22, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -100,14 +100,21 @@ test('mutation check: no remappable descriptor becomes writable because it is re
   assert.ok(unregistered > 0, 'authenticationStrengthPolicy delete is remappable but unregistered');
 });
 
-function updateResource(resourceType, payload, references) {
-  return { naturalKey: `${resourceType}:fixture`, resourceType, verb: 'update', targetId: 'fixture-existing', payload, references, blastRadius: 'cosmetic' };
+function updateResource(resourceType, payload, references, live = null) {
+  return {
+    naturalKey: `${resourceType}:fixture`, resourceType, verb: 'update', targetId: 'fixture-existing', payload, references, blastRadius: 'cosmetic',
+    ...(live ? { live: { state: 'present', targetId: 'fixture-existing', payload: live } } : {}),
+  };
 }
 
-async function runUpdate({ resourceType, collection, payload, references, existingTargetIds }) {
+// `drift` is what the target differs by; a display name unless the type says otherwise.
+// Roadmap task-109: a governed administrative update is checked against the
+// live object, so the observed live state is part of the planned resource.
+async function runUpdate({ resourceType, collection, payload, references, existingTargetIds, drift = { displayName: 'Drifted' }, withLive = false }) {
   const graph = fakeGraph();
-  graph.objects.set(`${collection}/fixture-existing`, { ...payload, id: 'fixture-existing', displayName: 'Drifted' });
-  const result = await applyWave(graph, governor, [updateResource(resourceType, payload, references)], {
+  const live = { ...payload, id: 'fixture-existing', ...drift };
+  graph.objects.set(`${collection}/fixture-existing`, live);
+  const result = await applyWave(graph, governor, [updateResource(resourceType, payload, references, withLive ? live : null)], {
     targetTenant: 'fixture', mode: 'enforce', existingTargetIds,
   });
   return { graph, result };
@@ -191,7 +198,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 19);
+  assert.equal(results.length, 22);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);
@@ -214,14 +221,16 @@ test('the CLI checks completeness and prints the ledger', async () => {
 // registered type whose decision is not 'automated'.
 
 test('a same-tenant update stays valid with remappable=false: references that resolve to the same id remap nothing', async () => {
-  // groupSetting is remappable=false and has no write registration; register an
-  // update for this test process only, with no remapping proof at all.
+  // groupSetting is remappable=false. Since task-109 its tenant-wide update is
+  // registered (engine/restore/administrativeOperations.mjs), with no remapping
+  // proof at all.
   assert.equal(DESCRIPTORS.find((descriptor) => descriptor.type === 'groupSetting').remappable, false);
-  registerOperationCapability({ resourceType: 'groupSetting', operation: 'update', path: '/groupSettings', handler: 'engine/restore/applyEngine.mjs#applyWave', idOutcome: 'preserved' });
+  assert.equal(capabilityFor('groupSetting', 'update').claim, 'fixture-tested');
   assert.equal(remappingFor('groupSetting', 'update').qualified, false);
-  const payload = { displayName: 'Setting', templateId: 'template-1' };
+  const payload = { displayName: 'Setting', templateId: 'template-1', values: [{ name: 'EnableGroupCreation', value: 'false' }] };
+  const drift = { values: [{ name: 'EnableGroupCreation', value: 'true' }] };
   const same = await runUpdate({
-    resourceType: 'groupSetting', collection: '/groupSettings', payload,
+    resourceType: 'groupSetting', collection: '/groupSettings', payload, drift, withLive: true,
     references: [{ field: 'templateId', symbol: 'directorySettingTemplate:t', required: true }],
     existingTargetIds: new Map([['directorySettingTemplate:t', 'template-1']]),
   });
@@ -229,7 +238,7 @@ test('a same-tenant update stays valid with remappable=false: references that re
   assert.equal(same.result.applied.length, 1);
 
   const different = await runUpdate({
-    resourceType: 'groupSetting', collection: '/groupSettings', payload,
+    resourceType: 'groupSetting', collection: '/groupSettings', payload, drift, withLive: true,
     references: [{ field: 'templateId', symbol: 'directorySettingTemplate:t', required: true }],
     existingTargetIds: new Map([['directorySettingTemplate:t', 'template-2']]),
   });
@@ -238,8 +247,10 @@ test('a same-tenant update stays valid with remappable=false: references that re
 });
 
 test('a declared-only registration stays declared, and the ledger then refuses its unchanged decision', () => {
-  registerOperationCapability({ resourceType: 'administrativeUnit', operation: 'create', path: '/directory/administrativeUnits', handler: 'engine/restore/applyEngine.mjs#applyWave', idOutcome: 'server-assigned' });
-  assert.equal(capabilityFor('administrativeUnit', 'create').claim, 'declared');
-  assert.throws(() => recordFixtureProof('administrativeUnit', 'update', 'x'));
+  // roleEligibilitySchedule has no registration and an 'unknown' decision (since
+  // task-109 the administrative unit is a registered subset).
+  registerOperationCapability({ resourceType: 'roleEligibilitySchedule', operation: 'create', path: '/roleManagement/directory/roleEligibilityScheduleRequests', handler: 'engine/restore/applyEngine.mjs#applyWave', idOutcome: 'server-assigned' });
+  assert.equal(capabilityFor('roleEligibilitySchedule', 'create').claim, 'declared');
+  assert.throws(() => recordFixtureProof('roleEligibilitySchedule', 'update', 'x'));
   assert.throws(() => buildOperationLedger(), /has a registered write capability but is marked unknown/);
 });

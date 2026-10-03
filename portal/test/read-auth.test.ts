@@ -112,7 +112,7 @@ test("the route and page inventory is closed around each declared capability", (
   );
 
   for (const [name, surface] of declared) {
-    assert.equal(surface.capability, surface.source.includes("principals") ? (["principalGrantApi", "principalRevokeApi"].includes(name) ? "roles" : "users") : surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
+    assert.equal(surface.capability, surface.source.includes("principals") ? (["principalGrantApi", "principalRevokeApi"].includes(name) ? "roles" : "users") : surface.source.includes("policies") ? "policies" : ["channelsApi", "subscriptionsApi", "setupApi", "setupPage"].includes(name) ? "configuration" : "read", `${name} must require its designated capability`);
   }
 
   const pages = sources

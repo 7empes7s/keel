@@ -73,7 +73,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
     return [...pages, ...themes];
     // links is recomputed each render; key the memo on what it is derived from.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capabilities.canRead, capabilities.canPolicies, capabilities.canUsers, capabilities.canApprove, pathname, router]);
+  }, [capabilities.canRead, capabilities.canPolicies, capabilities.canUsers, capabilities.canApprove, capabilities.canConfigure, pathname, router]);
 
   const results = commands
     .map((command, order) => ({ command, order, score: scoreCommand(command.label, command.keywords, query) }))

@@ -40,6 +40,8 @@ import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
 import { integrationsVerdict } from "@/lib/integrations-view";
 import type { Policy } from "@/lib/policies";
+import { SetupProgress } from "@/components/setup-progress";
+import { setupVerdict, type SetupState } from "@/lib/setup-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -136,6 +138,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
   if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
+  if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });
   return json({ job: { id: "preview-job" }, approvalRequest: { id: "preview" } });
 }) as typeof fetch;
 
@@ -343,6 +346,42 @@ const INCIDENT: IncidentDetail = {
   recommended: SNAP_GOOD,
 };
 
+// Task-76: read setup paused on the one step only the operator can do; restore
+// setup not started and not checked.
+const SETUP_RUN = "5e7a" + "0b".repeat(30);
+const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][number]["kind"], identity: "collector" | "restorer", name: string, action: string, progress: SetupState["scopes"][number]["steps"][number]["progress"], workload: string | null = null, scopes: string[] = []) =>
+  ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress });
+const READ_SCOPES = ["DeviceManagementConfiguration.Read.All", "Group.Read.All", "Policy.Read.All", "RoleManagement.Read.Directory", "User.Read.All"];
+const SETUP: SetupState = {
+  generatedAt: now,
+  canCheck: false,
+  canProvision: true,
+  collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["keel-collector", "keel-collector admin consent", "Read Only Operator", "keel.collect"] },
+  firstCollection: null,
+  scopes: [
+    {
+      scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
+      run: { artifactId: SETUP_RUN, state: "waiting-for-you", workloads: ["entra-collect", "intune-collect"], approvedBy: "8c1e0000-0000-4000-8000-0000000000a1", approvedByName: "Marouane", approvedAt: "2026-10-02T07:40:00Z", lastEventAt: "2026-10-02T07:40:02Z", resumableByViewer: true, build: "keel-2026.10.03", qualificationMode: "live-qualified" },
+      steps: [
+        setupStep("step-1a2b3c4d5e6f7a80", "registration", "collector", "keel-collector", "create-registration", "not-started", null, READ_SCOPES),
+        setupStep("step-1a2b3c4d5e6f7a81", "graph-permission", "collector", "keel-collector admin consent", "grant-consent", "not-started", null, READ_SCOPES),
+        setupStep("step-1a2b3c4d5e6f7a82", "workload-rbac", "collector", "Read Only Operator", "assign-workload-role", "waiting-for-you", "intune-collect"),
+        setupStep("step-1a2b3c4d5e6f7a83", "keel-app-permission", "collector", "keel.collect", "configure-keel-permission", "not-started"),
+      ],
+    },
+    {
+      scope: "restore", workloads: ["entra-restore"], observed: false, run: null, planId: "plan-9f8e7d6c5b4a3921",
+      steps: [
+        setupStep("step-2a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "create-registration", "not-checked", null, ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"]),
+        setupStep("step-2a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "not-checked", null, ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"]),
+        setupStep("step-2a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "not-checked", "entra-restore"),
+        setupStep("step-2a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "not-checked"),
+      ],
+    },
+  ],
+};
+const setupVerdictFixture = setupVerdict(SETUP);
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -425,6 +464,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div className="item-list" data-layer="explanation">
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
+    case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
+      <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
+      <div className="item-list" data-layer="explanation">
+        {SETUP.scopes.map((setup) => <SetupProgress canCheck={SETUP.canCheck} canProvision={SETUP.canProvision} canStart key={setup.scope} now={now} setup={setup} />)}
+      </div></>;
     case "/policies/p1": return <>{header("Settings", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
       <Verdict text={`Running. ${policySentence(POLICY)}`} />
       <div data-layer="explanation">
@@ -471,8 +515,8 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <a aria-label="KEEL dashboard" className="brand" href="#/"><span aria-hidden="true" className="brand-mark"><KeelMark /></span><span><strong>KEEL</strong><small>Operator portal</small></span></a>
-        <CommandPalette canApprove canPolicies canRead canUsers />
-        <NavLinks canApprove canPolicies canRead canUsers pendingApprovals={2} />
+        <CommandPalette canApprove canConfigure canPolicies canRead canUsers />
+        <NavLinks canApprove canConfigure canPolicies canRead canUsers pendingApprovals={2} />
         <div className="operator-context">
           <span className="auth-state"><span aria-hidden="true" className="auth-dot" /> Authenticated</span>
           <span className="operator-email">marouanedefili@gmail.com</span>
@@ -481,7 +525,7 @@ function App() {
         </div>
       </aside>
       <main className="workspace" id="main-content">
-        <SectionTabs canApprove canPolicies canRead canUsers />
+        <SectionTabs canApprove canConfigure canPolicies canRead canUsers />
         <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>
           {loading ? <PageSkeleton /> : <Page jobs={jobs} path={path} posture={posture} />}
         </div>

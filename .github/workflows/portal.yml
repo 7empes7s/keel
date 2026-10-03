@@ -124,6 +124,7 @@ jobs:
           roadmap/baseline-compliance-ui.test.mjs
           roadmap/ownership.test.mjs
           roadmap/scoped-authorization.test.mjs
+          roadmap/change-attribution.test.mjs
           roadmap/fidelity-expansion.test.mjs
           roadmap/policy-fidelity.test.mjs
           roadmap/administrative-fidelity.test.mjs
@@ -137,6 +138,10 @@ jobs:
           roadmap/sharepoint-read.test.mjs
           roadmap/hybrid-contract.test.mjs
           roadmap/sharepoint-write.test.mjs
+          roadmap/sharepoint-live-acceptance.test.mjs
+          roadmap/drill-live-acceptance.test.mjs
+          roadmap/native-live-acceptance.test.mjs
+          roadmap/deployed-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

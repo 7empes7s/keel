@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { postAction } from "@/lib/action-client";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
+import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { toast } from "@/lib/toast";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
@@ -78,6 +79,11 @@ interface DryRunArtifact {
   relationshipOperations?: RelationshipOperation[] | null;
   // Roadmap task-64: null on artifacts persisted before mechanisms were recorded.
   recoveryMechanisms?: RecoveryMechanism[] | null;
+  // Roadmap task-66: content effects, the digest an approver binds to, and the
+  // separate high-impact approvals already recorded for exactly these effects.
+  contentEffects?: ContentEffect[] | null;
+  effectsDigest?: string | null;
+  contentEffectApprovals?: { approvedBy: string; approvedAt: string | null }[];
 }
 
 const EDGE_RESULT_PREFIX = "edge:";
@@ -162,11 +168,13 @@ export function RestoreStepper({ current, failed = false }: { current: RestoreSt
 // re-validates it again — against a fresh read of the target — before it ever writes.
 export function RestoreSelection({
   canRestore,
+  canApprove = false,
   resources,
   snapshotId,
   snapshots,
 }: {
   canRestore: boolean;
+  canApprove?: boolean;
   resources: RestoreResource[];
   snapshotId: string;
   snapshots: SnapshotOption[];
@@ -750,6 +758,19 @@ export function RestoreSelection({
 
           {artifact.recoveryMechanisms?.length ? (
             <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />
+          ) : null}
+
+          {artifact.contentEffects?.length && dryRunArtifactId ? (
+            <ContentEffectsPanel
+              approvals={artifact.contentEffectApprovals ?? []}
+              artifactId={dryRunArtifactId}
+              canApprove={canApprove}
+              effects={artifact.contentEffects}
+              effectsDigest={artifact.effectsDigest ?? null}
+              onApproved={() => {
+                void fetchDryRunArtifact(dryRunArtifactId).then((found) => { if (found) setArtifact(found); });
+              }}
+            />
           ) : null}
 
           {artifact.relationshipOperations?.length ? (

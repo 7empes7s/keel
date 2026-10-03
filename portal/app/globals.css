@@ -5319,3 +5319,59 @@ section.wizard-panel {
 .completion-form input {
   min-width: 14rem;
 }
+
+/* Task-66: content effects and their separate high-impact approval. */
+.content-effects {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border: 1px solid color-mix(in oklab, var(--failed) 45%, var(--line));
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in oklab, var(--failed) 6%, var(--surface));
+}
+
+.content-effect-list {
+  display: grid;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.content-effect {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--failed);
+  background: var(--surface);
+}
+
+.content-effect-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.content-effect-badge {
+  display: inline-block;
+  padding: 1px var(--space-xs);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
+}
+
+.content-effect-change,
+.content-effect-disclosure,
+.content-effect-approved,
+.content-effect-pending {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.content-effect-disclosure { color: var(--text-soft); }
+.content-effect-approved { color: var(--protected); }
+.content-effect-pending { font-weight: 600; }

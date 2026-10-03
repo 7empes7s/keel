@@ -1069,3 +1069,27 @@ ALTER TABLE channel DROP CONSTRAINT IF EXISTS channel_kind_check;
 ALTER TABLE channel ADD CONSTRAINT channel_kind_check
   CHECK (kind IN ('webhook','email','teams','slack','pagerduty','sms'));
 ALTER TABLE delivery ADD COLUMN IF NOT EXISTS provider_receipt jsonb;
+
+-- Roadmap task-102: workload configuration reads (SharePoint first). One row per run,
+-- including runs refused for lack of qualification (outcome 'disabled'), and one
+-- observation per resource of that run with per-field coverage. Additive: nothing
+-- reads these tables except the coverage report's `workloads` section.
+CREATE TABLE IF NOT EXISTS workload_collection (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  workload      text NOT NULL,
+  outcome       text NOT NULL CHECK (outcome IN ('complete','complete-empty','partial','failed','disabled')),
+  observed_from timestamptz NOT NULL,
+  observed_to   timestamptz NOT NULL,
+  digest        jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS workload_collection_latest_idx ON workload_collection (tenant_ref, workload, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS workload_observation (
+  collection_id  uuid NOT NULL REFERENCES workload_collection(id) ON DELETE CASCADE,
+  resource_key   text NOT NULL,
+  fields         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  field_coverage jsonb NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (collection_id, resource_key)
+);

@@ -79,6 +79,13 @@ function TypeRecord({ item }: { item: CoverageType }) {
         value={decision ? `${decision.decision}${decision.reason ? ` · ${decision.reason}` : ""}${decision.softRestoreCandidate ? " · soft-delete restore is a candidate, not yet qualified" : ""}` : "unknown"}
         copy={false}
       />
+      <RecordField
+        label="Expansion batch"
+        value={decision?.expansion
+          ? `${decision.expansion.batchLabel} · ${decision.expansion.status} · restore scope ${decision.expansion.restoreScope} · ${decision.expansion.reason}`
+          : "not recorded"}
+        copy={false}
+      />
       {decision ? Object.entries(decision.remapping).map(([operation, proven]) => (
         <RecordField copy={false} key={operation} label={`Remapping · ${operation}`} value={proven ? "proven" : "not proven, refused when an id changes"} />
       )) : null}

@@ -122,6 +122,29 @@ registerFieldProjection('authenticationStrengthPolicy', {
   knownFields: ['id', 'displayName', 'description', 'allowedCombinations'],
 });
 
+// Roadmap task-107: the first application/service-principal subset. Only the
+// fields named here can reach a create or update body; anything else Graph adds
+// later is 'unknown', excluded and flagged rather than silently written.
+registerFieldProjection('application', {
+  knownFields: [
+    'id', 'appId', 'displayName', 'description', 'signInAudience', 'publisherDomain', 'createdDateTime',
+    'deletedDateTime', 'identifierUris', 'tags', 'notes', 'isFallbackPublicClient', 'groupMembershipClaims',
+    'requiredResourceAccess', 'appRoles', 'api', 'web', 'spa', 'publicClient', 'info', 'optionalClaims',
+    'parentalControlSettings', 'passwordCredentials', 'keyCredentials',
+  ],
+  // Credential metadata (hints, thumbprints, key ids) is not export material.
+  sensitiveExport: ['passwordCredentials', 'keyCredentials'],
+});
+
+registerFieldProjection('servicePrincipal', {
+  knownFields: [
+    'id', 'appId', 'displayName', 'accountEnabled', 'appRoleAssignmentRequired', 'tags', 'notes',
+    'description', 'servicePrincipalType', 'signInAudience', 'appRoles', 'oauth2PermissionScopes',
+    'appDisplayName', 'appOwnerOrganizationId', 'servicePrincipalNames', 'passwordCredentials', 'keyCredentials',
+  ],
+  sensitiveExport: ['passwordCredentials', 'keyCredentials'],
+});
+
 function topLevelKey(path) {
   const dot = path.indexOf('.');
   return dot === -1 ? path : path.slice(0, dot);

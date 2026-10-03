@@ -8,6 +8,8 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { JobDetail } from "@/components/job-detail";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
+import { RecoveryCompletion } from "@/components/recovery-completion";
+import { CAPABILITIES_HEADER } from "@/lib/principal";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
@@ -28,11 +30,17 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
     return <><PageHeader eyebrow="Operations" title="Job details" description="Job execution and outcome." /><DataUnavailable surface="Job details" /></>;
   }
   if (!job) notFound();
+  // Roadmap task-65: an enforced restore (it always promotes a dry-run artifact)
+  // shows the follow-up work the restore could not do itself.
+  const jobParams = (job.params ?? {}) as Record<string, unknown>;
+  const restoreRef = job.kind === "restore" && typeof jobParams.artifactId === "string" ? jobParams.artifactId : null;
+  const canComplete = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ").includes("restore");
   return (
     <>
       <PageHeader eyebrow="Operations" title="Job details" description={job.id} />
       <Link className="text-link back-link" href="/jobs"><span aria-hidden="true">←</span> All jobs</Link>
       <JobDetail job={job} />
+      {restoreRef && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}
       <JobRefresher active={job.status === "queued" || job.status === "running"} />
     </>
   );

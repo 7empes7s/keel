@@ -22,6 +22,7 @@ import { RestoreSelection } from "@/components/restore-selection";
 import { DriftTable } from "@/components/drift-table";
 import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail } from "@/components/job-detail";
+import { RecoveryCompletion } from "@/components/recovery-completion";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
 
@@ -36,9 +37,43 @@ const DEPENDS: Record<string, string[]> = {
 let jobPolls = 0;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// Task-65: completion items for the recreated application of restore job r9.
+const completionVerified = new Set<string>(["ci-4"]);
+const completionItem = (id: string, kind: string, requirement: string, description: string) => ({
+  id, kind, requirement, description, owner: "operator@contoso.example", reopenCount: 0,
+  state: completionVerified.has(id) ? "verified" : "pending",
+  evidence: completionVerified.has(id) ? [{ type: "ticket", reference: "CHG-4471" }] : [],
+  closedAt: completionVerified.has(id) ? "2026-10-02T09:40:00Z" : null,
+});
+function completionResources() {
+  const appItems = [
+    completionItem("ci-1", "credential", "passwordCredentials", "Issue new client secrets and update every consumer that authenticates as this app"),
+    completionItem("ci-2", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id"),
+    completionItem("ci-3", "service-validation", "signIn", "Confirm a real sign-in or token request succeeds for the application"),
+  ];
+  const groupItems = [completionItem("ci-4", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id")];
+  const stateOf = (items: { kind: string; state: string }[]) => {
+    const open = items.filter((entry) => entry.state !== "verified");
+    if (!open.length) return "verified-complete";
+    return open.some((entry) => entry.kind !== "service-validation") ? "configuration-restored" : "service-validation-pending";
+  };
+  return [
+    { naturalKey: "application:Payroll connector", resourceType: "application", mechanism: "recreate", state: stateOf(appItems), items: appItems },
+    { naturalKey: "group:Finance approvers", resourceType: "group", mechanism: "recreate", state: stateOf(groupItems), items: groupItems },
+  ];
+}
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
-  await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") ? 350 : 800));
+  await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
+  if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
+  if (url.endsWith("/api/actions/restore/completion")) {
+    const body = JSON.parse(String(init?.body)) as { itemId: string; action: string; evidence?: { reference: string } };
+    if (body.action === "complete" && /secret|BEGIN/i.test(body.evidence?.reference ?? "")) {
+      return json({ error: "invalid_evidence", message: "evidence looks like it contains a secret or key — store a reference to the proof, never the credential" }, 400);
+    }
+    if (body.action === "complete") completionVerified.add(body.itemId); else completionVerified.delete(body.itemId);
+    return json({ changed: true });
+  }
   if (url.endsWith("/api/actions/restore/selection")) {
     const { selected } = JSON.parse(String(init?.body)) as { selected: string[] };
     const added = new Map<string, { requiredBy: string; field: string }[]>();
@@ -166,6 +201,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <CoverageReport data={{ generatedAt: now, snapshot: { id: "s", status: "complete", startedAt: now, completedAt: now }, summary: { covered: 5, failed: 1, notCovered: 1, neverCollected: 0, stale: 0, total: 8 }, types } as never} /></>;
     }
     case "/jobs/a4": return <>{header("Operations", "Job details", "a4")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={jobs.find((item) => item.id === "a4")!} /></>;
+    case "/jobs/r9": return <>{header("Operations", "Job details", "r9")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000009" }, result: { applied: 2, skipped: 0 } }} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>;
     case "/jobs/a3": return <>{header("Operations", "Job details", "a3")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }} /></>;
     case "/approvals": return <>{header("Governance", "Approvals", "Review pending operator requests and retain a newest-first decision record.", "Approval required")}<ApprovalInbox
       history={[{ id: "r0", action: "drift.remediate", params: { driftIds: 3 }, requestedBy: "ops@contoso.com", justification: null, status: "approved", decidedBy: "marouanedefili@gmail.com", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: null, expiresAt: null }]}

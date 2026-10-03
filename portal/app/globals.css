@@ -5835,7 +5835,9 @@ section.wizard-panel {
   }
 
   .data-table th:empty,
-  .data-table td:empty {
+  .data-table td:empty,
+  .data-table tbody tr:last-child th:empty,
+  .data-table tbody tr:last-child td:empty {
     display: none;
   }
 

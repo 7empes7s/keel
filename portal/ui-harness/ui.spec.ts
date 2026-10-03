@@ -481,7 +481,10 @@ test("stacked tables on a phone keep records beside their label and hide empty c
   expect(name && summary, "name and record are laid out").toBeTruthy();
   // Below 25rem the cell is one column, so the record sits under the name, aligned with it.
   expect(Math.abs(summary!.x - name!.x)).toBeLessThan(2);
-  await expect(row.locator("td[data-label='Actions']")).toBeHidden();
+  // Task-87: the active row offers "Capture new version"; a superseded version has no
+  // actions, so its empty cell is the one that must not be shown.
+  await expect(row.locator("td[data-label='Actions']")).toBeVisible();
+  await expect(page.locator(".baselines-table tbody tr").last().locator("td[data-label='Actions']")).toBeHidden();
   expect(await nameCell.evaluate((cell) => getComputedStyle(cell).boxShadow)).toBe("none");
   expect(await nameCell.locator(".technical-details > summary").evaluate((element) => getComputedStyle(element).listStyleType)).toBe("none");
 

@@ -160,3 +160,37 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await integration.getByRole("button", { name: "Mark verified" }).click();
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
 });
+
+// Polish pass 1: the recovery surfaces added by tasks 63–66 get their own
+// baselines and a phone-width check that nothing scrolls sideways.
+for (const theme of ["dark", "light"] as const) {
+  test(`visual · job-restore-completion · ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, "/jobs/r9", theme);
+    await page.locator(".completion-resource").first().waitFor();
+    await expect(page).toHaveScreenshot(`job-restore-completion-${theme}.png`, { fullPage: true });
+  });
+}
+
+test("recovery surfaces fit a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/jobs/r9", "light");
+  await page.locator(".completion-resource").first().waitFor();
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+
+  await open(page, "/restore", "dark");
+  await page.getByLabel("Select conditionalAccessPolicy:Block legacy auth").click();
+  await page.getByRole("button", { name: "Next: start dry run" }).click();
+  await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  // Stacked mechanism rows keep their column labels, and pills keep their own width.
+  const cell = page.locator(".recovery-table td[data-label='Mechanism']").first();
+  await expect(cell).toBeVisible();
+  const pill = cell.locator(".pill");
+  const [pillWidth, cellWidth] = await Promise.all([
+    pill.evaluate((element) => element.getBoundingClientRect().width),
+    cell.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(pillWidth).toBeLessThan(cellWidth * 0.9);
+});

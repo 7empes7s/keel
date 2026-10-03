@@ -31,6 +31,17 @@ const LABELS: Record<RecoveryMechanismName, string> = {
   refused: "Refused",
 };
 
+// Tone of each mechanism's pill: kept ids read as safe, a new id as caution, and
+// a handoff or refusal as blocked.
+const TONES: Record<RecoveryMechanismName, string> = {
+  "update-existing": "ok",
+  "soft-delete-restore": "ok",
+  recreate: "warn",
+  delete: "neutral",
+  manual: "bad",
+  refused: "bad",
+};
+
 const ID_LABELS: Record<RecoveryMechanism["idOutcome"], string> = {
   retained: "Same ID kept",
   new: "New ID assigned",
@@ -59,13 +70,13 @@ export function RecoveryMechanismTable({ mechanisms }: { mechanisms: RecoveryMec
         <tbody>
           {mechanisms.map((entry) => (
             <tr className={`mechanism-row mechanism-${entry.mechanism}`} key={entry.naturalKey}>
-              <td><code className="natural-key">{entry.naturalKey}</code></td>
-              <td>
-                <span className={`mechanism-badge mechanism-badge-${entry.mechanism}`}>{mechanismLabel(entry.mechanism)}</span>
+              <td data-label="Resource"><code className="natural-key">{entry.naturalKey}</code></td>
+              <td data-label="Mechanism">
+                <span className={`pill pill-${TONES[entry.mechanism] ?? "neutral"} mechanism-badge-${entry.mechanism}`}>{mechanismLabel(entry.mechanism)}</span>
                 {entry.reason ? <small className="mechanism-reason">{entry.reason}</small> : null}
               </td>
-              <td>{ID_LABELS[entry.idOutcome] ?? entry.idOutcome}</td>
-              <td>{entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
+              <td data-label="Object ID">{ID_LABELS[entry.idOutcome] ?? entry.idOutcome}</td>
+              <td data-label="Deadline">{entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
             </tr>
           ))}
         </tbody>

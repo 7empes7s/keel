@@ -141,7 +141,7 @@ function capabilityMatrix(item: CoverageType) {
           <dd>
             {item.qualification ? (
               <span className="observation-detail">
-                <span className={`claim-badge decision-${item.qualification.decision}`}>
+                <span className={`pill pill-${item.qualification.decision === "automated" ? "ok" : item.qualification.decision === "manual" ? "info" : "neutral"} decision-${item.qualification.decision}`}>
                   {words(item.qualification.decision)}
                 </span>
                 {item.qualification.reason ? <small>{item.qualification.reason}</small> : null}

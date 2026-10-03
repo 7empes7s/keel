@@ -6,8 +6,8 @@ import type { DataSurface } from "@/lib/read";
 const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface PrincipalView {
-  id: string; email: string; disabled_at: string | null; capabilities: string[];
-  role_grants: { id: string; role: string; active_from: string; active_until: string | null }[];
+  id: string; email: string; display_name?: string | null; system_kind?: string | null; disabled_at: string | null; capabilities: string[];
+  role_grants: { id: string; role: string; active_from: string; active_until: string | null; granted_by?: string | null }[];
 }
 
 export function guardedPrincipalList(deps: GuardDeps = {}) {

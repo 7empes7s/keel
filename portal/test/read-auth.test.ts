@@ -176,9 +176,10 @@ test("the route and page inventory is closed around each declared capability", (
         new RegExp(`await\\s+requireReadAccess\\(\\s*${reference}\\s*\\)`),
         `${source} must invoke its declared read guard before its loader`,
       );
-      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage", "evidencePage", "schedulesPage"].includes(declaration.name)) {
+      if (["jobsPage", "jobPage", "policiesPage", "policyPage", "notificationsPage", "principalsPage", "evidencePage", "schedulesPage", "activityPage"].includes(declaration.name)) {
         const guard = content.indexOf(`await requireReadAccess(${reference})`);
-        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals|Evidence|Schedules)\(/);
+        // Task-130: /jobs and /evidence now redirect into Activity — after the guard.
+        const loader = content.search(/await load(?:Jobs?|Polic(?:y|ies)|Deliveries|Principals|Evidence|Schedules)\(|redirect\(/);
         assert.ok(loader > guard, `${source} must guard before its API loader`);
       }
     } else if (/api\/principals\/\[id\]\//.test(source)) {

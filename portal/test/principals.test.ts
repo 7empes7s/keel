@@ -86,13 +86,14 @@ test("live portal requests see role writes immediately and display the engine ca
       resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
     }, () => page()));
     const pageMarkup = renderToStaticMarkup(rendered);
-    assert.ok(pageMarkup.includes(`Effective capabilities: ${(await capabilitiesForPrincipal(client, disabled)).join(", ") || "None"}`));
+    // Task-130: the engine's capability answer and the raw times live in the record layer.
+    assert.ok(pageMarkup.includes(`Effective capabilities</dt><dd><code>${(await capabilitiesForPrincipal(client, disabled)).join(", ") || "none"}</code>`));
     assert.ok(pageMarkup.includes(disabled.disabled_at));
     for (const view of [active, disabled]) {
-      const markup = renderToStaticMarkup(createElement(PrincipalDetails, { principal: view }));
+      const markup = renderToStaticMarkup(createElement(PrincipalDetails, { principal: view, now: new Date().toISOString() }));
       const expected = await capabilitiesForPrincipal(client, view);
       // Active snapshot predates disable; use its captured engine answer for rendering.
-      assert.ok(markup.includes(`Effective capabilities: ${view === active ? active.capabilities.join(", ") : expected.join(", ") || "None"}`));
+      assert.ok(markup.includes(`Effective capabilities</dt><dd><code>${view === active ? active.capabilities.join(", ") : expected.join(", ") || "none"}</code>`));
       assert.ok(markup.includes(view.role_grants[0].active_from));
     }
     assert.equal((await list(await liveRequest())).status, 403);

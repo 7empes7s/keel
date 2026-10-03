@@ -27,6 +27,9 @@ interface SectionRoute {
   gate: Gate;
   // Former page names, still searchable in the command palette.
   aliases?: string;
+  // A route that belongs to the section but is not a tab of its own (a redirect or a
+  // detail page reached from the section's main page).
+  hidden?: boolean;
 }
 
 export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
@@ -46,8 +49,9 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
   ],
   Approvals: [{ href: "/approvals", label: "Approvals", gate: "canApprove" }],
   Activity: [
-    { href: "/jobs", label: "Jobs", gate: "canRead" },
-    { href: "/evidence", label: "Audit record", gate: "canRead", aliases: "evidence history" },
+    { href: "/activity", label: "Activity", gate: "canRead", aliases: "jobs evidence audit record history" },
+    { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
+    { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
   ],
   Settings: [
     { href: "/policies", label: "Policies", gate: "canPolicies" },
@@ -71,14 +75,14 @@ function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
 /** Every page the viewer may open, each tagged with its section (palette, tests). */
 export function visibleNavLinks(capabilities: NavCapabilities): NavLink[] {
   return NAV_SECTIONS.flatMap((group) => NAV_MAP[group]
-    .filter((route) => allowed(route.gate, capabilities))
+    .filter((route) => !route.hidden && allowed(route.gate, capabilities))
     .map((route) => ({ href: route.href, label: route.label, group, aliases: route.aliases })));
 }
 
 /** The seven entries the viewer can see; each links to its first page the viewer may open. */
 export function visibleNavEntries(capabilities: NavCapabilities): NavLink[] {
   return NAV_SECTIONS.flatMap((group) => {
-    const first = NAV_MAP[group].find((route) => allowed(route.gate, capabilities));
+    const first = NAV_MAP[group].find((route) => !route.hidden && allowed(route.gate, capabilities));
     return first ? [{ href: first.href, label: group, group }] : [];
   });
 }
@@ -179,7 +183,7 @@ export function SectionTabs(capabilities: NavCapabilities) {
   const pathname = usePathname();
   const section = sectionForPath(pathname);
   if (!section) return null;
-  const routes = NAV_MAP[section].filter((route) => allowed(route.gate, capabilities));
+  const routes = NAV_MAP[section].filter((route) => !route.hidden && allowed(route.gate, capabilities));
   if (routes.length < 2) return null;
   return (
     <nav aria-label={`${section} pages`} className="section-tabs">

@@ -1,21 +1,37 @@
 import Link from "next/link";
 
 import { JobStatusBadge } from "@/components/job-status-badge";
-import { formatTimestamp } from "@/lib/presentation";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { JobRecord } from "@/lib/portal-jobs";
+import { formatTimestamp } from "@/lib/presentation";
+import { jobName, jobStatusSentence, refLabel } from "@/lib/sentences";
 
-// Recent-job listing shared by the baselines and backups surfaces (plan task 16):
-// kind, status, created/finished times, and the error when a job failed.
+// Recent jobs on the backups, baselines and restore surfaces (plan task 16), named by
+// what they do (roadmap task-130): the job as a sentence, its status as a sentence,
+// who asked for it; the job id, kind code and raw times in the record.
+export function JobRecordFields({ job }: { job: JobRecord }) {
+  return (
+    <>
+      <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
+      <RecordField copy={false} label="Kind and status" value={`${job.kind} · ${job.status}`} />
+      <RecordField label="Requested by (principal ID)" value={job.requestedBy} />
+      <RecordField copy={false} label="Times" value={`created ${job.createdAt ?? "never"} · started ${job.startedAt ?? "never"} · finished ${job.finishedAt ?? "never"}`} />
+    </>
+  );
+}
+
 export function JobTable({
   headingId,
   jobs,
   kicker,
   title,
+  now = new Date().toISOString(),
 }: {
   headingId: string;
   jobs: JobRecord[];
   kicker: string;
   title: string;
+  now?: string;
 }) {
   return (
     <section aria-labelledby={headingId} className="report-section">
@@ -30,54 +46,26 @@ export function JobTable({
       </div>
 
       {jobs.length ? (
-        <div className="table-scroll">
-          <table className="data-table jobs-table">
-            <thead>
-              <tr>
-                <th scope="col">Kind</th>
-                <th scope="col">Status</th>
-                <th scope="col">Created</th>
-                <th scope="col">Finished</th>
-                <th scope="col">Requested by</th>
-                <th scope="col">Error</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr className={`job-row job-row-${job.status}`} key={job.id}>
-                  <th data-label="Kind" scope="row">
-                    <Link href={`/jobs/${encodeURIComponent(job.id)}`}><code className="natural-key">{job.kind}</code></Link>
-                  </th>
-                  <td data-label="Status">
-                    <JobStatusBadge status={job.status} />
-                  </td>
-                  <td data-label="Created">
-                    <time dateTime={job.createdAt ?? undefined}>
-                      {formatTimestamp(job.createdAt)}
-                    </time>
-                  </td>
-                  <td data-label="Finished">
-                    <time dateTime={job.finishedAt ?? undefined}>
-                      {formatTimestamp(job.finishedAt)}
-                    </time>
-                  </td>
-                  <td className="wrap-value" data-label="Requested by">
-                    {job.requestedBy}
-                  </td>
-                  <td className="wrap-value" data-label="Error">
-                    {job.status === "failed" && job.error ? (
-                      <pre className="job-error job-payload">{String(job.error)}</pre>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="activity-list">
+          {jobs.map((job) => (
+            <li className={`activity-item job-row job-row-${job.status}`} key={job.id}>
+              <div className="activity-main">
+                <Link className="activity-title" href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
+                <p className="activity-meta">
+                  <JobStatusBadge status={job.status} />{" "}
+                  <time dateTime={job.finishedAt ?? job.startedAt ?? job.createdAt ?? undefined} title={formatTimestamp(job.finishedAt ?? job.createdAt)}>{jobStatusSentence(job, now)}</time>
+                  {" · asked by "}{refLabel(job.references?.people.requested_by, "an unknown account")}
+                </p>
+                {job.status === "failed" && job.error ? <p className="job-error-line">{String(job.error).split("\n")[0]}</p> : null}
+              </div>
+              <TechnicalDetails>
+                <JobRecordFields job={job} />
+              </TechnicalDetails>
+            </li>
+          ))}
+        </ul>
       ) : (
-        <p className="empty-state">No jobs of this kind have been queued yet.</p>
+        <p className="empty-state">No jobs of this kind have run yet.</p>
       )}
     </section>
   );

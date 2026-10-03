@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { Verdict } from "@/components/verdict";
 import {
   getApprovalInboxData,
   requireApprovalInboxAccess,
@@ -20,25 +21,31 @@ export default async function ApprovalsPage() {
     return (
       <>
         <PageHeader
-          description="Review pending operator requests and retain a newest-first decision record."
+          description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
           section="Approvals"
           generatedAt={data.generatedAt}
-          marker="Approval required"
           title="Approvals"
         />
-        <ApprovalInbox history={data.history} pending={data.pending} />
+        <Verdict
+          text={data.pending.length === 0
+            ? "Nothing is waiting for your decision."
+            : `${data.pending.length} ${data.pending.length === 1 ? "request is" : "requests are"} waiting for you.`}
+          tone={data.pending.length ? "attention" : "good"}
+        />
+        <div data-layer="explanation">
+          <ApprovalInbox history={data.history} now={data.generatedAt} pending={data.pending} />
+        </div>
       </>
     );
   } catch {
     return (
       <>
         <PageHeader
-          description="Review pending operator requests and retain a newest-first decision record."
+          description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
           section="Approvals"
-          marker="Approval required"
           title="Approvals"
         />
-        <DataUnavailable surface="Approval inbox" />
+        <DataUnavailable surface="The approval inbox" />
       </>
     );
   }

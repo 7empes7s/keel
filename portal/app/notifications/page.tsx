@@ -6,8 +6,12 @@ import { GET as loadSubscriptions } from "@/app/api/subscriptions/route";
 import { PageHeader } from "@/components/page-header";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
+import { Verdict } from "@/components/verdict";
+import { notificationsVerdict } from "@/lib/notifications-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Channel, Subscription } from "@/lib/notifications";
+
+const DESCRIPTION = "Where KEEL sends alerts, which alerts go where, and what was sent.";
 
 export default async function NotificationsPage() {
   await connection();
@@ -20,7 +24,7 @@ export default async function NotificationsPage() {
     if (!response.ok) throw new Error("Delivery history unavailable");
     history = await response.json();
   } catch {
-    return <><PageHeader section="Settings" title="Notifications" description="Notification delivery history and configuration." /><DataUnavailable surface="Delivery history" /></>;
+    return <><PageHeader section="Settings" title="Notifications" description={DESCRIPTION} /><DataUnavailable surface="Alert history" /></>;
   }
   let channels: Channel[] = [];
   let subscriptions: Subscription[] = [];
@@ -36,9 +40,14 @@ export default async function NotificationsPage() {
       subscriptions = (await responses[1].json()).subscriptions;
     } catch { configurationUnavailable = true; }
   }
+  const known = canConfiguration && !configurationUnavailable ? channels : null;
+  const failed = (history.deliveries as { status: string }[]).some((delivery) => delivery.status === "failed");
   return <>
-    <PageHeader section="Settings" title="Notifications" description="Notification delivery history and configuration." generatedAt={history.generatedAt} />
-    <DeliveryTable deliveries={history.deliveries} />
-    {configurationUnavailable ? <DataUnavailable surface="Notification configuration" /> : <NotificationConsole canConfiguration={canConfiguration} channels={channels} subscriptions={subscriptions} />}
+    <PageHeader section="Settings" title="Notifications" description={DESCRIPTION} generatedAt={history.generatedAt} />
+    <Verdict text={notificationsVerdict(known, history.deliveries)} tone={failed || (known !== null && !known.some((channel) => channel.enabled)) ? "attention" : "good"} />
+    <div data-layer="explanation">
+      {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : <NotificationConsole canConfiguration={canConfiguration} channels={channels} subscriptions={subscriptions} />}
+      <DeliveryTable channels={known} deliveries={history.deliveries} now={history.generatedAt} />
+    </div>
   </>;
 }

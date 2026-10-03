@@ -201,6 +201,9 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string): string
     case "fidelity-drill": return typeof subject.resourceType === "string"
       ? `A test restore of a ${resourceTypeLabel(subject.resourceType)} was measured`
       : "A test restore was measured";
+    case "recovery-drill": return subject.mode === "live"
+      ? `A recovery drill on a test group ${subject.outcome === "passed" ? "passed" : "did not pass"}${subject.cleanup && (subject.cleanup as { status?: unknown }).status !== "complete" ? ", and its clean-up failed" : ""}`
+      : "A recovery drill plan was checked; this is not a drill";
     case "job.started": return `${actorName} started ${actionWords(subject.kind)}`;
     case "collection.completed": return typeof subject.items === "number"
       ? `A backup of ${plural(Number(subject.types ?? 0), "type")} finished with ${plural(subject.items, "item")}`

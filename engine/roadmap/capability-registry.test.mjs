@@ -33,6 +33,9 @@ const REGISTERED = Object.freeze({
   roleAssignment: ['create', 'update', 'delete'],
   namedLocation: ['create', 'update', 'delete'],
   conditionalAccessPolicy: ['create', 'update', 'delete'],
+  // Roadmap task-107: the first application/service-principal subset.
+  application: ['create', 'update', 'restore-soft-deleted'],
+  servicePrincipal: ['create'],
 });
 
 function governor() {

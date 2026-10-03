@@ -27,9 +27,9 @@ import {
 } from '../../engine/store/db.mjs';
 import { getActiveBaseline, recordDrift } from '../../engine/store/governance.mjs';
 
-const DISPOSABLE_PREFIX = 'group:keel-rehearsal-';
+export const DISPOSABLE_PREFIX = 'group:keel-rehearsal-';
 
-const INTENDED_SEQUENCE = [
+export const INTENDED_SEQUENCE = [
   '1. create group keel-rehearsal-<ISO timestamp> (Restorer credential)',
   '2. collect a snapshot; seed it as the active baseline',
   '3. modify the group live (description and displayName)',
@@ -94,11 +94,11 @@ function readConfig(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-function tenantRefFor(config) {
+export function tenantRefFor(config) {
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
-function assertSeparateRestorer(collector, restorer) {
+export function assertSeparateRestorer(collector, restorer) {
   if (collector.tenantId !== restorer.tenantId) {
     throw new Error('Restorer tenantId must match the Collector tenantId');
   }
@@ -111,7 +111,7 @@ function assertSeparateRestorer(collector, restorer) {
   }
 }
 
-function rehearsalGroup(timestamp) {
+export function rehearsalGroup(timestamp) {
   const displayName = `keel-rehearsal-${timestamp}`;
   // Graph mail nicknames are the group natural key. Keep the ISO timestamp in
   // the display name and make its nickname-safe spelling unique as well.
@@ -381,15 +381,22 @@ export async function hardDelete({ writer, reader, client, naturalKey, groupId, 
 /** The rehearsal's step 7 only runs on the happy path. Any earlier failure would otherwise leave a
  * live disposable group in the tenant — observed 2026-09-08. This is best-effort cleanup, not
  * evidence: it deliberately skips the rollback journal that hardDelete writes, and it never throws,
- * so it cannot mask the failure that triggered it. */
+ * so it cannot mask the failure that triggered it. A refused or failed DELETE is reported as a
+ * failure, never logged as a removal (roadmap task-72: failed cleanup stays visible). */
 async function cleanupOrphan({ writer, groupId, naturalKey, log }) {
   try {
     assertDisposable(naturalKey);
-    await writeWithRetry(writer, 'v1.0', `/groups/${groupId}`, { method: 'DELETE', body: {} });
-    await writeWithRetry(writer, 'v1.0', `/directory/deletedItems/${groupId}`, { method: 'DELETE', body: {} });
+    for (const path of [`/groups/${groupId}`, `/directory/deletedItems/${groupId}`]) {
+      const result = await writeWithRetry(writer, 'v1.0', path, { method: 'DELETE', body: {} });
+      if (!result?.ok && result?.status !== 404) {
+        throw new Error(`DELETE ${path} returned ${result?.status ?? 'no response'}`);
+      }
+    }
     log(`cleanup: removed orphaned rehearsal group ${groupId}`);
+    return { status: 'complete', groupId };
   } catch (error) {
     log(`cleanup FAILED for ${groupId}: ${error.message}`);
+    return { status: 'failed', groupId, error: error.message };
   }
 }
 

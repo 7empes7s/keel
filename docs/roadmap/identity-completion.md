@@ -92,8 +92,8 @@ change have no items, and the job page says no follow-up work is recorded.
   log.
 - Secret detection is pattern-based. The closed evidence schema is the primary
   guard, and pattern refusal is a second line.
-- Applications, service principals and identity providers have no registered
-  write capability yet (see the task-63 ledger), so today only types with a
-  recreate path (group, named location, role assignment, conditional access)
-  emit items in practice. The application rules are exercised by the boundary
-  tests directly.
+- Applications, service principals and identity providers had no registered
+  write capability when this shipped. Since task-107 (2026-10-03) application
+  create and soft restore and service principal create are fixture-tested
+  (see `fidelity-expansion.md`), so their items can be emitted; identity
+  providers still have none.

@@ -242,6 +242,28 @@ export const DISPLAY_ENUMS = {
     "incident-recovery-check": "Checks after an incident restore",
     "fidelity-drill": "Test restores",
     "recovery-drill": "Recovery drills",
+    "baseline-resnapshot": "Baseline re-captures",
+    "benchmark-evaluation": "Control checks",
+    "benchmark-exception": "Control exceptions",
+  },
+  // Roadmap task-87: a control check's stored verdict and its exception state.
+  controlVerdict: {
+    pass: "Passes",
+    fail: "Fails",
+    unknown: "Could not be checked",
+    "not-applicable": "Nothing to check",
+  },
+  exceptionState: {
+    none: "No exception",
+    authorized: "Current exception",
+    expired: "Exception expired",
+    incomplete: "Exception missing an owner or expiry",
+  },
+  storageImmutability: {
+    unknown: "Not yet proven",
+    unsupported: "Cannot lock against deletion",
+    "fixture-tested": "Not yet proven on this tenant",
+    "live-qualified": "Proven on this tenant",
   },
   eventKind: {
     "drift.detected": "A change was detected",

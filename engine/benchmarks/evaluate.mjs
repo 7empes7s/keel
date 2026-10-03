@@ -209,7 +209,9 @@ export async function recordEvaluation(client, { tenantRef, result, actor }) {
  * reviewed status. The evaluation row itself is never updated (rule 3
  * above): this only inserts an overlay row plus its own evidence entry.
  */
-export async function recordException(client, { tenantRef, evaluationId, actor, reason, expiresAt = null }) {
+export async function recordException(client, {
+  tenantRef, evaluationId, actor, reason, expiresAt = null, owner = null,
+}) {
   assertTenantRef(tenantRef);
   if (typeof reason !== 'string' || reason.length === 0) {
     throw new TypeError('recordException requires a non-empty reason');
@@ -225,10 +227,10 @@ export async function recordException(client, { tenantRef, evaluationId, actor, 
   }
 
   const { rows } = await client.query(
-    `INSERT INTO benchmark_exception (tenant_ref, evaluation_id, actor, reason, expires_at)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO benchmark_exception (tenant_ref, evaluation_id, actor, reason, expires_at, owner)
+     VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING *`,
-    [tenantRef, evaluationId, actor, reason, expiresAt],
+    [tenantRef, evaluationId, actor, reason, expiresAt, owner],
   );
   await appendEvidence(client, {
     tenantRef,
@@ -240,6 +242,8 @@ export async function recordException(client, { tenantRef, evaluationId, actor, 
       underlyingVerdict: evaluation.verdict,
       reason,
       expiresAt: expiresAt ?? null,
+      // Task-87: the accountable owner; null for exceptions recorded without one.
+      ...(owner === null ? {} : { owner }),
     },
   });
   return rows[0];

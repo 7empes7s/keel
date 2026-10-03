@@ -1,0 +1,6 @@
+{
+  "contractVersion": 1,
+  "gate": "storage-live-acceptance",
+  "status": "pending",
+  "reason": "No independently captured local-copy recovery evidence exists yet. The operator runs tools/qualification/storageLiveAcceptance.mjs capture --live as the separate recovery account against the backup copy on its own volume; see docs/roadmap/storage-live-acceptance.md (Operator steps). Retention lock, immutability and the lock canary stay UNQUALIFIED for a local copy. This placeholder never verifies."
+}

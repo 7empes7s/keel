@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "gate": "teams-live-acceptance",
+  "status": "pending",
+  "operation": "teams.configuration-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true,
+  "note": "Placeholder. No live Teams capture exists, and the task-120 SharePoint prerequisite is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/teams-live-acceptance.md, Operator steps."
+}

@@ -119,7 +119,8 @@ jobs:
           roadmap/content-effects.test.mjs roadmap/compensation.test.mjs
           roadmap/incident-recovery.test.mjs roadmap/portal-experience.test.mjs
           roadmap/named-objects.test.mjs roadmap/protect-page.test.mjs
-          roadmap/coverage-ui.test.mjs roadmap/ownership.test.mjs
+          roadmap/coverage-ui.test.mjs roadmap/baseline-compliance-ui.test.mjs
+          roadmap/ownership.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

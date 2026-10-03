@@ -80,6 +80,9 @@ export interface TypeExpansion {
   // Derived from registered operations only, never declared.
   restoreScope: RestoreScope;
   reason: string;
+  // Roadmap task-108: subtypes the registered writes are limited to (e.g.
+  // "custom"). Empty when writes are not subtype-bound; absent on older reports.
+  qualifiedSubtypes?: string[];
 }
 
 // Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,

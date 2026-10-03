@@ -70,7 +70,7 @@ export const TYPE_DECISIONS = Object.freeze({
   roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered'),
   roleEligibilitySchedule: unknown(),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete are registered; writes are forced report-only'),
-  authenticationStrengthPolicy: unknown(),
+  authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
   authenticationContextClassReference: unknown(),
   authenticationMethodsPolicy: unknown(),
@@ -323,20 +323,38 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // ---- policies (task-108)
   conditionalAccessPolicy: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/policies', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107; forced report-only'),
   namedLocation: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/namedLocations', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107'),
-  authenticationStrengthPolicy: research('policy', 'POST /policies/authenticationStrengthPolicies', 'Policy.ReadWrite.ConditionalAccess', 'built-in strengths are immutable; custom ones are task-108'),
-  authenticationContextClassReference: research('policy', 'PATCH /identity/conditionalAccess/authenticationContextClassReferences/{id}', 'Policy.ReadWrite.ConditionalAccess', 'task-108'),
-  authenticationMethodsPolicy: research('policy', 'PATCH /policies/authenticationMethodsPolicy', 'Policy.ReadWrite.AuthenticationMethod', 'tenant-wide singleton that can lock users out; task-108'),
-  authorizationPolicy: research('policy', 'PATCH /policies/authorizationPolicy', 'Policy.ReadWrite.Authorization', 'tenant-wide singleton; task-108'),
-  crossTenantAccessPolicy: research('policy', 'PATCH /policies/crossTenantAccessPolicy/default', 'Policy.ReadWrite.CrossTenantAccess', 'task-108'),
-  crossTenantAccessPolicyPartner: research('policy', 'POST /policies/crossTenantAccessPolicy/partners', 'Policy.ReadWrite.CrossTenantAccess', 'partner identity is another tenant; task-108'),
-  permissionGrantPolicy: research('policy', 'POST /policies/permissionGrantPolicies', 'Policy.ReadWrite.PermissionGrant', 'built-in policies are immutable; task-108'),
-  adminConsentRequestPolicy: research('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest', 'reviewer references need remapping; task-108'),
-  activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
-  claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'assignment to service principals is a separate edge; task-108'),
-  homeRealmDiscoveryPolicy: research('policy', 'POST /policies/homeRealmDiscoveryPolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
-  tokenIssuancePolicy: research('policy', 'POST /policies/tokenIssuancePolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
-  tokenLifetimePolicy: research('policy', 'POST /policies/tokenLifetimePolicies', 'Policy.ReadWrite.ApplicationConfiguration', 'task-108'),
-  featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout', 'applies-to membership is a separate edge; task-108'),
+  // Roadmap task-108: the custom-strength subset; the operation records, their
+  // subtype and field-projection binding live in engine/restore/policyOperations.mjs.
+  authenticationStrengthPolicy: subset('policy', 'POST /policies/authenticationStrengthPolicies; PATCH /policies/authenticationStrengthPolicies/{id}', 'Policy.ReadWrite.ConditionalAccess',
+    'create and update of custom strengths are fixture-tested; built-in strengths are immutable and refused; allowedCombinations changes only through updateAllowedCombinations, which is not qualified, so its drift is reported not remediable; delete is refused'),
+  // The remaining policy family ledger after task-108: each stays research-needed
+  // for the reason named, and every write to it is refused.
+  authenticationContextClassReference: research('policy', 'PATCH /identity/conditionalAccess/authenticationContextClassReferences/{id}', 'Policy.ReadWrite.ConditionalAccess',
+    'ids c1..c99 are fixed per tenant and referenced by CA policies and SharePoint labels; an upsert contract and a check of what consumes each id do not exist'),
+  authenticationMethodsPolicy: research('policy', 'PATCH /policies/authenticationMethodsPolicy', 'Policy.ReadWrite.AuthenticationMethod',
+    'tenant-wide singleton that can disable sign-in methods for every user; no lockout simulation gate exists'),
+  authorizationPolicy: research('policy', 'PATCH /policies/authorizationPolicy', 'Policy.ReadWrite.Authorization',
+    'tenant-wide singleton that changes default user permissions and guest access for everyone; no simulation gate exists'),
+  crossTenantAccessPolicy: research('policy', 'PATCH /policies/crossTenantAccessPolicy/default', 'Policy.ReadWrite.CrossTenantAccess',
+    'the default applies to every external tenant; no simulation gate for B2B and inbound trust changes exists'),
+  crossTenantAccessPolicyPartner: research('policy', 'POST /policies/crossTenantAccessPolicy/partners', 'Policy.ReadWrite.CrossTenantAccess',
+    'the partner is another tenant, whose existence and identity cannot be verified from this tenant'),
+  permissionGrantPolicy: research('policy', 'POST /policies/permissionGrantPolicies', 'Policy.ReadWrite.PermissionGrant',
+    'built-in microsoft-* policies are immutable; includes and excludes are separate collections with no qualified writer'),
+  adminConsentRequestPolicy: research('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
+    'tenant singleton whose reviewers are user, group and role queries that need remapping, which is not proven'),
+  activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
+    'definition is a JSON string KEEL does not parse; a tenant-wide default and per-application assignment are not distinguished'),
+  claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
+    'assignment to service principals is a separate edge with no qualified writer; the definition string is unparsed'),
+  homeRealmDiscoveryPolicy: research('policy', 'POST /policies/homeRealmDiscoveryPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
+    'changes federated sign-in routing; assignment is a separate edge; definition string is unparsed'),
+  tokenIssuancePolicy: research('policy', 'POST /policies/tokenIssuancePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
+    'assignment to applications is a separate edge; the definition string is unparsed'),
+  tokenLifetimePolicy: research('policy', 'POST /policies/tokenLifetimePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
+    'a tenant-wide default and per-application assignment are not distinguished; the definition string is unparsed'),
+  featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout',
+    'staged rollout of sign-in features; applies-to group membership is a separate edge with no qualified writer'),
   // ---- administrative configuration (task-109)
   organization: byHand('administrative-configuration', null, 'none', 'the tenant object itself; it is never recreated'),
   domain: byHand('administrative-configuration', 'POST /domains', 'Domain.ReadWrite.All', 'requires DNS ownership verification outside Graph'),
@@ -447,8 +465,20 @@ export function expansionFor(resourceType) {
     batchLabel: batch?.label ?? entry.batch,
     status: entry.status,
     restoreScope: restoreScopeFor(resourceType),
+    // Roadmap task-108: the subtypes registered operations are limited to
+    // (e.g. custom authentication strengths), read from the registry.
+    qualifiedSubtypes: qualifiedSubtypesFor(resourceType),
     reason: entry.reason,
   });
+}
+
+/** Distinct subtypes the type's registered operations are bound to; [] when none is. */
+export function qualifiedSubtypesFor(resourceType) {
+  const subtypes = OPERATIONS
+    .map((operation) => capabilityFor(resourceType, operation))
+    .filter((capability) => isSupportedClaim(capability.claim) && typeof capability.subtype === 'string')
+    .map((capability) => capability.subtype);
+  return Object.freeze([...new Set(subtypes)].sort());
 }
 
 // ---- write-path contracts for the task-107 subset
@@ -459,6 +489,8 @@ export function expansionFor(resourceType) {
  */
 export const CREATE_EXCLUDED_FIELDS = Object.freeze({
   application: Object.freeze(['appId', 'publisherDomain', 'passwordCredentials', 'keyCredentials']),
+  // Roadmap task-108: computed by Entra from allowedCombinations; never sent.
+  authenticationStrengthPolicy: Object.freeze(['policyType', 'requirementsSatisfied']),
   servicePrincipal: Object.freeze([
     'appDisplayName', 'appOwnerOrganizationId', 'servicePrincipalNames', 'servicePrincipalType',
     'signInAudience', 'appRoles', 'oauth2PermissionScopes', 'passwordCredentials', 'keyCredentials',

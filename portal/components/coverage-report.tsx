@@ -16,7 +16,7 @@ import {
   typeName,
   type RestoreStanding,
 } from "@/lib/protect-view";
-import type { CoverageData, CoverageType } from "@/lib/types";
+import type { CoverageData, CoverageType, TypeExpansion } from "@/lib/types";
 
 // Roadmap task-131 (superseding task-54's matrix layout): one drawer per configuration
 // type. Its summary and explanation answer "can KEEL put this back?" in one sentence;
@@ -36,6 +36,16 @@ function observationQuery(item: CoverageType) {
 
 function endpointValue(path: string | null | undefined, version: string | null | undefined, source: string): string | null {
   return path ? `${path} (${version ?? "unknown version"}, ${source})` : null;
+}
+
+// Roadmap task-108: which subtypes the registered writes are limited to. An older
+// report without the field reads "not recorded", never "not limited".
+function subtypeValue(expansion: TypeExpansion | null | undefined): string {
+  const subtypes = expansion?.qualifiedSubtypes;
+  if (!expansion || subtypes === undefined) return "not recorded";
+  if (expansion.restoreScope === "none") return "no writes registered";
+  if (subtypes.length === 0) return "not limited by subtype";
+  return `${subtypes.join(", ")} only · every other subtype, including built-in policies, is refused`;
 }
 
 function TypeRecord({ item }: { item: CoverageType }) {
@@ -84,6 +94,11 @@ function TypeRecord({ item }: { item: CoverageType }) {
         value={decision?.expansion
           ? `${decision.expansion.batchLabel} · ${decision.expansion.status} · restore scope ${decision.expansion.restoreScope} · ${decision.expansion.reason}`
           : "not recorded"}
+        copy={false}
+      />
+      <RecordField
+        label="Write subtypes"
+        value={subtypeValue(decision?.expansion)}
         copy={false}
       />
       {decision ? Object.entries(decision.remapping).map(([operation, proven]) => (

@@ -92,6 +92,17 @@ IMMUTABLE.set('roleAssignment', new Set([
 // (no legacy re-hash) and a change to them still reads as real drift.
 IMMUTABLE.set('authenticationStrengthPolicy', new Set(['allowedCombinations', 'policyType', 'requirementsSatisfied']));
 
+// Roadmap task-109. Immutable, not serverOwned, so the configuration hash of
+// every stored snapshot is unchanged (no legacy re-hash) and a change to these
+// still reads as real drift, reported not-auto-remediable. A setting is bound to
+// its global template for life (templateId; displayName is the template's name).
+// A unit's visibility and restricted management are set only at creation, and
+// its dynamic membership rule is not qualified for writing.
+IMMUTABLE.set('groupSetting', new Set(['templateId', 'displayName']));
+IMMUTABLE.set('administrativeUnit', new Set([
+  'visibility', 'isMemberManagementRestricted', 'membershipType', 'membershipRule', 'membershipRuleProcessingState',
+]));
+
 // Roadmap task-107. Immutable, not serverOwned, so the configuration hash is
 // unchanged for every stored snapshot (no legacy re-hash) and a change to these
 // fields still reads as real drift, reported not-auto-remediable. appId and

@@ -1129,22 +1129,6 @@ dd {
   color: var(--uncovered);
 }
 
-/* Task-63: recovery decision from the qualification ledger. */
-.decision-automated {
-  background: var(--protected-bg);
-  color: var(--protected);
-}
-
-.decision-manual {
-  background: var(--readonly-bg);
-  color: var(--readonly);
-}
-
-.decision-unknown {
-  background: var(--uncovered-bg);
-  color: var(--uncovered);
-}
-
 .capability-matrix {
   font-size: 0.75rem;
 }
@@ -5212,32 +5196,6 @@ section.wizard-panel {
   vertical-align: top;
 }
 
-.mechanism-badge {
-  display: inline-block;
-  padding: 1px var(--space-xs);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--readonly-bg);
-  color: var(--readonly);
-}
-
-.mechanism-badge-soft-delete-restore,
-.mechanism-badge-update-existing {
-  background: var(--protected-bg);
-  color: var(--protected);
-}
-
-.mechanism-badge-recreate {
-  background: var(--partial-bg);
-  color: var(--partial);
-}
-
-.mechanism-badge-manual,
-.mechanism-badge-refused {
-  background: var(--uncovered-bg);
-  color: var(--uncovered);
-}
 
 .mechanism-reason {
   display: block;
@@ -5249,7 +5207,7 @@ section.wizard-panel {
 .completion-panel {
   display: grid;
   gap: var(--space-sm);
-  margin-top: var(--space-md);
+  margin-top: var(--space-xl);
 }
 
 .completion-list {
@@ -5278,9 +5236,6 @@ section.wizard-panel {
   gap: var(--space-xs);
 }
 
-.completion-badge-configuration-restored { background: var(--partial-bg); color: var(--partial); }
-.completion-badge-service-validation-pending { background: var(--readonly-bg); color: var(--readonly); }
-.completion-badge-verified-complete { background: var(--protected-bg); color: var(--protected); }
 
 .completion-items {
   display: grid;
@@ -5290,16 +5245,6 @@ section.wizard-panel {
   list-style: none;
 }
 
-.completion-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--surface-muted);
-  font-size: 0.875rem;
-}
 
 .completion-item-verified { opacity: 0.85; }
 
@@ -5309,16 +5254,6 @@ section.wizard-panel {
   overflow-wrap: anywhere;
 }
 
-.completion-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2xs, 4px);
-  align-items: center;
-}
-
-.completion-form input {
-  min-width: 14rem;
-}
 
 /* Task-66: content effects and their separate high-impact approval. */
 .content-effects {
@@ -5353,17 +5288,8 @@ section.wizard-panel {
   gap: var(--space-xs);
 }
 
-.content-effect-badge {
-  display: inline-block;
-  padding: 1px var(--space-xs);
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--uncovered-bg);
-  color: var(--uncovered);
-}
 
-.content-effect-change,
+
 .content-effect-disclosure,
 .content-effect-approved,
 .content-effect-pending {
@@ -5375,3 +5301,131 @@ section.wizard-panel {
 .content-effect-disclosure { color: var(--text-soft); }
 .content-effect-approved { color: var(--protected); }
 .content-effect-pending { font-weight: 600; }
+
+/* Polish pass 1: one status pill for every recovery surface (mechanism,
+   decision, completion state, content effect). Tones map to the existing
+   protection tokens so both themes stay in step. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 1.375rem;
+  padding: 0 var(--space-xs);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pill-ok { background: var(--protected-bg); color: var(--protected); border-color: color-mix(in oklab, var(--protected) 30%, transparent); }
+.pill-warn { background: var(--partial-bg); color: var(--partial); border-color: color-mix(in oklab, var(--partial) 30%, transparent); }
+.pill-bad { background: var(--failed-bg); color: var(--failed); border-color: color-mix(in oklab, var(--failed) 35%, transparent); }
+.pill-info { background: var(--readonly-bg); color: var(--readonly); border-color: color-mix(in oklab, var(--readonly) 30%, transparent); }
+.pill-neutral { background: var(--surface-muted); color: var(--text-soft); border-color: var(--line); }
+
+.recovery-table .mechanism-reason { max-width: 36rem; }
+
+/* Content effect: field, then before → after as matching value chips. */
+.content-effect-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.change-values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs);
+  color: var(--text-muted);
+}
+
+.change-values code {
+  padding: 1px var(--space-2xs);
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.change-values .value-after {
+  border-color: color-mix(in oklab, var(--failed) 45%, var(--line));
+}
+
+.content-effect-approve {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-sm);
+  padding-top: var(--space-xs);
+  border-top: 1px solid var(--line);
+}
+
+.content-effect-approve .btn {
+  min-height: 2.75rem;
+}
+
+/* Completion item: text on top, a compact one-line evidence form below. */
+.completion-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.completion-item-pending {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.completion-mechanism {
+  color: var(--text-muted);
+}
+
+.completion-form {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 22rem) auto;
+  justify-content: start;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+.completion-form select,
+.completion-form input {
+  width: 100%;
+  height: 2.25rem;
+  min-height: 0;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  font-size: 0.875rem;
+}
+
+.completion-form input::placeholder {
+  color: var(--text-muted);
+}
+
+.completion-form .btn {
+  height: 2.25rem;
+  min-height: 0;
+}
+
+@media (max-width: 46rem) {
+  .content-effect-approve,
+  .completion-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .completion-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

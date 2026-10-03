@@ -742,6 +742,20 @@ export function RestoreSelection({
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
+          {/* Content effects gate promotion, so they lead the review. */}
+          {artifact.contentEffects?.length && dryRunArtifactId ? (
+            <ContentEffectsPanel
+              approvals={artifact.contentEffectApprovals ?? []}
+              artifactId={dryRunArtifactId}
+              canApprove={canApprove}
+              effects={artifact.contentEffects}
+              effectsDigest={artifact.effectsDigest ?? null}
+              onApproved={() => {
+                void fetchDryRunArtifact(dryRunArtifactId).then((found) => { if (found) setArtifact(found); });
+              }}
+            />
+          ) : null}
+
           {artifact.results.applied.some((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX)) ? (
             <div>
               <p className="severity-label">PLANNED CHANGES</p>
@@ -760,18 +774,7 @@ export function RestoreSelection({
             <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />
           ) : null}
 
-          {artifact.contentEffects?.length && dryRunArtifactId ? (
-            <ContentEffectsPanel
-              approvals={artifact.contentEffectApprovals ?? []}
-              artifactId={dryRunArtifactId}
-              canApprove={canApprove}
-              effects={artifact.contentEffects}
-              effectsDigest={artifact.effectsDigest ?? null}
-              onApproved={() => {
-                void fetchDryRunArtifact(dryRunArtifactId).then((found) => { if (found) setArtifact(found); });
-              }}
-            />
-          ) : null}
+
 
           {artifact.relationshipOperations?.length ? (
             <div>

@@ -31,6 +31,12 @@ export interface CompletionResource {
   items: CompletionItem[];
 }
 
+const STATE_TONES: Record<CompletionState, string> = {
+  "configuration-restored": "warn",
+  "service-validation-pending": "info",
+  "verified-complete": "ok",
+};
+
 const STATE_LABELS: Record<CompletionState, string> = {
   "configuration-restored": "Configuration restored",
   "service-validation-pending": "Service validation pending",
@@ -59,13 +65,13 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
         <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
           <header className="completion-resource-head">
             <code className="natural-key">{resource.naturalKey}</code>
-            <span className={`claim-badge completion-badge-${resource.state}`}>{completionStateLabel(resource.state)}</span>
-            <small>{words(resource.mechanism)}</small>
+            <span className={`pill pill-${STATE_TONES[resource.state] ?? "neutral"} completion-badge-${resource.state}`}>{completionStateLabel(resource.state)}</span>
+            <small className="completion-mechanism">{words(resource.mechanism)}</small>
           </header>
           <ul className="completion-items">
             {resource.items.map((item) => (
               <li className={`completion-item completion-item-${item.state}`} key={item.id}>
-                <div>
+                <div className="completion-item-text">
                   <strong>{words(item.kind)}</strong> · {item.description}
                   {item.state === "verified" && item.evidence.length ? (
                     <small className="completion-evidence">
@@ -85,7 +91,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       }}
                     >
                       <label className="visually-hidden" htmlFor={`type-${item.id}`}>Evidence type</label>
-                      <select defaultValue="ticket" id={`type-${item.id}`} name="type">
+                      <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
                         <option value="ticket">Ticket</option>
                         <option value="link">Link</option>
                         <option value="log-reference">Log reference</option>
@@ -94,6 +100,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       <label className="visually-hidden" htmlFor={`reference-${item.id}`}>Evidence reference</label>
                       <input
                         autoComplete="off"
+                        className="completion-control"
                         id={`reference-${item.id}`}
                         name="reference"
                         placeholder="Ticket or link — never the secret"

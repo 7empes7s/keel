@@ -299,6 +299,9 @@ export interface DriftData {
   generatedAt: string;
   baseline: BaselineRecord | null;
   items: DriftRecord[];
+  // Task 90: present when the reader is entity-scoped; the list and the baseline's
+  // resource count then cover only these entities' resources.
+  scope?: { central: false; entities: string[] };
 }
 
 export interface BaselinesData {

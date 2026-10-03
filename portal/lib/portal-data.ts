@@ -15,12 +15,15 @@ import {
   listOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "../../engine/store/db.mjs";
+import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
+import { scopePredicate } from "../../engine/authz/entityScope.mjs";
 import {
   getEvidenceIntegrity,
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
+import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
@@ -466,20 +469,59 @@ export async function getBaselinesData(): Promise<BaselinesData> {
   });
 }
 
-export async function getDriftData(): Promise<DriftData> {
+const CENTRAL_SCOPE: EntityScope = { central: true, entities: [] };
+
+// Task 90: the drift reader for an entity-scoped principal. The entity filter is part
+// of the SQL that selects the rows and counts the baseline, so neither the list nor
+// the baseline's resource count includes a resource outside the reader's entities.
+// Attribution goes through the row's lineage at its own time and that lineage's
+// current, unexpired ownership evidence (engine/authz/entityScope.mjs).
+async function scopedOpenDrift(client: KeelClient, ref: string, baselineId: string, scope: EntityScope): Promise<DriftRecord[]> {
+  const visible = scopePredicate(scope, {
+    tenantRef: ref, typeExpr: "d.resource_type", keyExpr: "d.natural_key", asOfExpr: "d.detected_at", nextParam: 3,
+  }) as { sql: string; values: unknown[] };
+  const { rows } = await client.query(
+    `SELECT d.* FROM drift d
+      WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+      ORDER BY d.detected_at, d.id`,
+    [ref, baselineId, ...visible.values],
+  );
+  return rows.map(normalizeDrift);
+}
+
+async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: string, scope: EntityScope): Promise<number> {
+  const visible = scopePredicate(scope, {
+    tenantRef: ref, typeExpr: "rv.resource_type", keyExpr: "br.natural_key",
+    asOfExpr: "COALESCE(s.completed_at, s.started_at)", nextParam: 2,
+  }) as { sql: string; values: unknown[] };
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS count FROM baseline_resource br
+       JOIN resource_version rv ON rv.id = br.resource_version_id
+       JOIN snapshot s ON s.id = rv.snapshot_id
+      WHERE br.baseline_id = $1 AND ${visible.sql}`,
+    [baselineId, ...visible.values],
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<DriftData> {
   const ref = tenantRef();
   return withClient(async (client) => {
     const active = (await getActiveBaseline(client, { tenantRef: ref })) as
       | UnknownRecord
       | null;
     const baselines = await baselinesFor(client, ref);
-    const baseline = active
+    const found = active
       ? baselines.find((candidate) => candidate.id === String(active.id)) ??
         normalizeBaseline({ ...active, resource_count: 0 })
       : null;
-    const items = await activeDriftFor(client, ref, baseline?.id ?? null);
-
-    return { generatedAt: new Date().toISOString(), baseline, items };
+    if (scope.central || !found) {
+      const items = await activeDriftFor(client, ref, found?.id ?? null);
+      return { generatedAt: new Date().toISOString(), baseline: found, items };
+    }
+    const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
+    const items = await scopedOpenDrift(client, ref, found.id, scope);
+    return { generatedAt: new Date().toISOString(), baseline, items, scope: { central: false, entities: scope.entities } };
   });
 }
 

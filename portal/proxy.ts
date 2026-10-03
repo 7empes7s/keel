@@ -9,7 +9,9 @@ import {
 } from "@/lib/cloudflare-access";
 import {
   CAPABILITIES_HEADER,
+  ENTITY_CAPABILITIES_HEADER,
   PRINCIPAL_ID_HEADER,
+  encodeEntityCapabilities,
   resolveIdentity,
   type ResolvedIdentity,
 } from "@/lib/principal";
@@ -64,6 +66,7 @@ export function createAccessMiddleware(
       requestHeaders.set(AUTHENTICATED_EMAIL_HEADER, claims.email);
       requestHeaders.delete(PRINCIPAL_ID_HEADER);
       requestHeaders.delete(CAPABILITIES_HEADER);
+      requestHeaders.delete(ENTITY_CAPABILITIES_HEADER);
 
       // Authentication is not authorisation: an email with no principal row — or a
       // principal that cannot be resolved at all — is downstreamed with no principal
@@ -78,6 +81,7 @@ export function createAccessMiddleware(
 
       requestHeaders.set(PRINCIPAL_ID_HEADER, identity.principalId);
       requestHeaders.set(CAPABILITIES_HEADER, identity.capabilities.join(" "));
+      requestHeaders.set(ENTITY_CAPABILITIES_HEADER, encodeEntityCapabilities(identity.entityCapabilities));
 
       return NextResponse.next({ request: { headers: requestHeaders } });
     } catch {

@@ -20,6 +20,7 @@ import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
+import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import {
   getEvidenceIntegrity,
   getLastCollection,
@@ -49,6 +50,7 @@ import type {
   DeclaredEndpoint,
   DiagnosisState,
   ChangeAttribution,
+  ChangeEvidence,
   DriftData,
   DriftRecord,
   ExpansionStatus,
@@ -58,6 +60,8 @@ import type {
   QualificationDecision,
   Ref,
   RestoreScope,
+  SemanticChange,
+  SemanticSummary,
   TypeExpansion,
   TypeQualification,
   WriteCapabilitySummary,
@@ -591,6 +595,43 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
   }
 }
 
+// Task 98: the settings that change behaviour for each change the reader may see, and
+// the records a decision rests on (engine/govern/semanticDrift.mjs). The scope filter has
+// already run; driftEvidence withholds anything outside the reader's entities. A read
+// that fails yields evidence null ("KEEL could not check"), never a guess.
+async function withDecisionEvidence(client: KeelClient, ref: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+  const semantic = items.map((item) => {
+    const { projected: _projected, ...change } = semanticChange({
+      resourceType: item.resourceType, changeType: item.changeType, before: item.before, after: item.after,
+    }) as SemanticChange & { projected: unknown };
+    return change as SemanticChange;
+  });
+  let evidence: Map<string, ChangeEvidence> | null = null;
+  try {
+    evidence = (await driftEvidence(client, {
+      tenantRef: ref, scope,
+      items: items.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
+    })) as Map<string, ChangeEvidence>;
+  } catch (error) {
+    console.error("[keel-portal] change evidence unavailable", error);
+  }
+  return items.map((item, index) => ({ ...item, semantic: semantic[index], evidence: evidence?.get(item.id) ?? null }));
+}
+
+/**
+ * What the Changes page hands its client table: each payload without the fields
+ * Microsoft sets itself, so neither the page nor its props carry them.
+ */
+export function displayItems(items: DriftRecord[]): DriftRecord[] {
+  return items.map((item) => item.semantic
+    ? { ...item, before: comparedSettings(item.resourceType, item.before), after: comparedSettings(item.resourceType, item.after) }
+    : item);
+}
+
+function driftResult(items: DriftRecord[]): { items: DriftRecord[]; summary: SemanticSummary } {
+  return { items, summary: summarizeSemanticDrift(items) as SemanticSummary };
+}
+
 export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<DriftData> {
   const ref = tenantRef();
   return withClient(async (client) => {
@@ -604,11 +645,12 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       : null;
     if (scope.central || !found) {
       const items = await activeDriftFor(client, ref, found?.id ?? null);
-      return { generatedAt: new Date().toISOString(), baseline: found, items: found ? await withAttribution(client, ref, found.id, items, scope) : items };
+      const attributed = found ? await withAttribution(client, ref, found.id, items, scope) : items;
+      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, attributed, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
     const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);
-    return { generatedAt: new Date().toISOString(), baseline, items, scope: { central: false, entities: scope.entities } };
+    return { generatedAt: new Date().toISOString(), baseline, ...driftResult(await withDecisionEvidence(client, ref, items, scope)), scope: { central: false, entities: scope.entities } };
   });
 }
 

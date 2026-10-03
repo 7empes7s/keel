@@ -140,6 +140,7 @@ jobs:
           roadmap/drill-live-acceptance.test.mjs
           roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
+          roadmap/visual-drift.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

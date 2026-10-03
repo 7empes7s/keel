@@ -401,6 +401,13 @@ ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS automation_context jsonb;
 -- operations" and promote exactly as before.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS relationship_operations jsonb;
 
+-- Roadmap task-64: the recovery mechanism selected per resource (soft-delete
+-- restore / update / recreate / manual / refused), with retained-or-new id,
+-- retention deadline, credential mode and proof — bound into the plan digest so a
+-- mechanism change after review invalidates approval. Nullable and additive:
+-- artifacts persisted before task-64 promote exactly as before.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS recovery_mechanisms jsonb;
+
 -- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
 -- configured sink; one outbox row per (destination, source event) so a replayed or
 -- retried delivery always carries the SAME task-77 event id; one replay checkpoint per

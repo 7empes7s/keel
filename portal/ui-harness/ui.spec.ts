@@ -115,6 +115,9 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await page.getByRole("button", { name: "Next: start dry run" }).click();
   await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
   // Task-61: a restored group's membership changes are listed apart from object changes.
+  // Task-64: each resource names its recovery mechanism and what happens to its id.
+  await expect(page.getByText("RECOVERY MECHANISM")).toBeVisible();
+  await expect(page.locator(".mechanism-row.mechanism-update-existing").first()).toContainText("Same ID kept");
   await expect(page.getByText("MEMBERSHIP CHANGES")).toBeVisible();
   await expect(page.locator(".edge-op.edge-add").first()).toContainText("user:amara.okafor@contoso.example");
   await expect(page.locator(".edge-op.edge-remove").first()).toContainText("as member of");

@@ -15,6 +15,7 @@ import { GET as healthCheck } from "@/app/api/health/route";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import {
   CAPABILITIES_HEADER,
+  ENTITY_CAPABILITIES_HEADER,
   PRINCIPAL_ID_HEADER,
   type ResolvedIdentity,
 } from "@/lib/principal";
@@ -186,6 +187,15 @@ test("a valid token is accepted and supplies only its verified identity", async 
     response.headers.get(`x-middleware-request-${CAPABILITIES_HEADER}`),
     "read collect",
   );
+});
+
+// Task 90: entity-scoped capabilities are downstreamed only from identity resolution.
+test("a caller-supplied entity scope header is replaced by the resolved one", async () => {
+  const response = await middleware(
+    request("/", await accessToken(), "GET", { [ENTITY_CAPABILITIES_HEADER]: "read:CREOS approve:ENOVOS" }),
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get(`x-middleware-request-${ENTITY_CAPABILITIES_HEADER}`), "");
 });
 
 test("a valid Access JWT for an unregistered email is refused", async () => {

@@ -120,7 +120,7 @@ jobs:
           roadmap/incident-recovery.test.mjs roadmap/portal-experience.test.mjs
           roadmap/named-objects.test.mjs roadmap/protect-page.test.mjs
           roadmap/coverage-ui.test.mjs roadmap/baseline-compliance-ui.test.mjs
-          roadmap/ownership.test.mjs
+          roadmap/ownership.test.mjs roadmap/scoped-authorization.test.mjs
           roadmap/alert-state.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs

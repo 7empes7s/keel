@@ -27,6 +27,8 @@ test("a restorer sees a reference form for open items and Reopen for verified on
   assert.match(html, /Mark verified/);
   assert.match(html, /Reopen/);
   assert.match(html, /never the secret/);
+  assert.match(html, /aria-describedby="reference-hint-i1"/, "the secret warning stays visible and is announced with the field");
+  assert.match(html, /1 of 2 follow-ups verified; 1 still needs evidence\./);
   assert.match(html, /Evidence: ticket CHG-1/);
   assert.doesNotMatch(html, /type="password"/, "the form never collects a credential");
 });

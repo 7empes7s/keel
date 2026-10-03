@@ -139,3 +139,14 @@ Required mutation checks, each confirmed to fail a test and reverted
 | Allow non-disposable target | `assertDisposable` made a no-op; separately, validation's disposable check removed | 1 test fails each |
 | Count offline pass as live recovery | `classifyDrillRecord` mode check removed; separately, offline `countsAsRecoveryDrill` set from validity | 1 and 2 tests fail |
 | Suppress failed cleanup | `verifyCleanup` always `complete`; separately, readiness drops `cleanupFailures` | 1 test fails each |
+
+## Validation notes (2026-10-03)
+
+- Validate command: 14/14 pass on repeated runs. Roughly one run in six,
+  `engine/authz/administration.test.mjs` fails at its "grant is live at once"
+  assertion. That flake predates this task: `grantRole` stamps `active_from`
+  with Postgres `now()` (microseconds), but `resolvePrincipal` checks against
+  JS `new Date()` (milliseconds), so a grant and a check in the same
+  millisecond can read as not yet active. It is authz scope (not this task)
+  and is not in the CI suite list. It is reported here and was left
+  unchanged.

@@ -21,6 +21,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
+import { resolveOwnership, readOwnership } from '../engine/identity/ownership.mjs';
+import { createFixtureCmdbAdapter } from '../engine/identity/adapters/cmdb.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
@@ -601,9 +603,18 @@ export async function runAuditCommand(client, config, { report = false } = {}) {
   return runAuditIngestion(client, { ...config, adapter });
 }
 
+// Task 89: one-shot ownership resolution or report. Only the synthetic fixture
+// CMDB adapter is wired here; a real CMDB provider must be qualified first.
+export async function runOwnershipCommand(client, config, { report = false } = {}) {
+  if (report) return readOwnership(client, config);
+  if (!Array.isArray(config.fixtureRecords)) throw new Error('ownership command needs fixtureRecords (no live CMDB adapter is configured)');
+  const adapter = createFixtureCmdbAdapter({ tenantRef: config.managedTenantRef, records: config.fixtureRecords });
+  return resolveOwnership(client, { ...config, adapter, config: config.ownership });
+}
+
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate]');
+    console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate | --ownership-config FILE [--ownership-report]]');
     return;
   }
 
@@ -626,6 +637,14 @@ async function main() {
         const result = await runAuditCommand(client, config, { report: process.argv.includes('--audit-report') });
         console.log(JSON.stringify(result));
       }
+    } finally { await client.end(); }
+    return;
+  }
+
+  if (process.argv.includes('--ownership-config')) {
+    try {
+      const config = JSON.parse(await readFile(arg('ownership-config'), 'utf8'));
+      console.log(JSON.stringify(await runOwnershipCommand(client, config, { report: process.argv.includes('--ownership-report') })));
     } finally { await client.end(); }
     return;
   }

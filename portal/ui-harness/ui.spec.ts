@@ -484,9 +484,12 @@ test("stacked tables on a phone keep records beside their label and hide empty c
   expect(await nameCell.locator(".technical-details > summary").evaluate((element) => getComputedStyle(element).listStyleType)).toBe("none");
 
   // Between 25rem and 46rem the cell is two columns: the record joins the value column.
+  // The first read after a resize can precede the relayout, so wait for it to settle.
   await page.setViewportSize({ width: 600, height: 900 });
-  const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
-  const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
-  expect(Math.abs(wideSummary!.x - wideName!.x)).toBeLessThan(2);
+  await expect.poll(async () => {
+    const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
+    const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
+    return Math.abs(wideSummary!.x - wideName!.x);
+  }).toBeLessThan(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

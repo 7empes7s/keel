@@ -15,6 +15,8 @@
   --text-muted: oklch(0.62 0.02 255);
   --line: oklch(0.31 0.022 255);
   --line-strong: oklch(0.42 0.03 255);
+  /* Field outlines: at least 3:1 against every surface (WCAG 1.4.11). */
+  --control-border: oklch(0.54 0.03 255);
   --accent: oklch(0.81 0.13 78);
   --accent-soft: oklch(0.25 0.055 78);
 
@@ -49,7 +51,8 @@
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
   --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 12px 32px -16px oklch(0 0 0 / 0.6);
-  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--accent) 28%, transparent);
+  /* Solid, so a focused field is as obvious as a focused button (WCAG 2.4.7). */
+  --focus-ring: 0 0 0 2px var(--accent);
 }
 
 /* Light palette. Applies when the OS prefers light and the operator has not pinned
@@ -67,6 +70,7 @@
     --text-muted: oklch(0.51 0.025 255);
     --line: oklch(0.84 0.018 255);
     --line-strong: oklch(0.69 0.025 255);
+    --control-border: oklch(0.58 0.025 255);
     --accent: oklch(0.51 0.12 64);
     --accent-soft: oklch(0.91 0.055 78);
 
@@ -99,6 +103,7 @@
   --text-muted: oklch(0.51 0.025 255);
   --line: oklch(0.84 0.018 255);
   --line-strong: oklch(0.69 0.025 255);
+  --control-border: oklch(0.58 0.025 255);
   --accent: oklch(0.51 0.12 64);
   --accent-soft: oklch(0.91 0.055 78);
 
@@ -570,6 +575,7 @@ h3 {
 .inactive-indicator,
 .collection-status {
   display: inline-flex;
+  gap: 0.4em;
   width: fit-content;
   min-height: 1.55rem;
   padding: 0.15rem var(--space-xs);
@@ -928,7 +934,7 @@ dd {
   width: 100%;
   min-height: 2.75rem;
   padding: 0 var(--space-sm);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: 0;
   background: var(--surface);
 }
@@ -1071,19 +1077,13 @@ dd {
   color: var(--readonly);
 }
 
-.change-added {
-  background: var(--readonly-bg);
-  color: var(--readonly);
-}
-
-.change-modified {
-  background: var(--partial-bg);
-  color: var(--partial);
-}
-
+/* The kind of change is neutral: colour on a change row belongs to its impact
+   (lockout, access, cosmetic), which reuses these same hues. */
+.change-added,
+.change-modified,
 .change-removed {
-  background: var(--failed-bg);
-  color: var(--failed);
+  background: var(--uncovered-bg);
+  color: var(--uncovered);
 }
 
 .tier1 {
@@ -2253,7 +2253,7 @@ dd {
   width: 100%;
   min-height: 2.75rem;
   padding: 0 var(--space-sm);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: 0;
   background: var(--surface);
   transition:
@@ -2278,7 +2278,8 @@ dd {
 :where(.workspace) textarea:focus-visible {
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
-  outline: none;
+  /* Transparent rather than none, so forced-colors mode still draws a ring. */
+  outline: 2px solid transparent;
 }
 
 .filter-field input,
@@ -2480,9 +2481,9 @@ section.item-card + section.item-card {
   gap: var(--space-sm);
 }
 
+/* No text-transform: titles carry addresses, hosts and operator-chosen names. */
 .item-card-head strong {
   font-size: 1rem;
-  text-transform: capitalize;
 }
 
 .item-card-row {
@@ -5399,8 +5400,32 @@ section.wizard-panel {
   display: grid;
   grid-template-columns: 9rem minmax(0, 22rem) auto;
   justify-content: start;
-  align-items: center;
+  align-items: end;
   gap: var(--space-2xs);
+}
+
+.completion-field {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.completion-field label {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.completion-hint {
+  grid-column: 1 / -1;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.completion-summary {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
 }
 
 .completion-form select,
@@ -5409,7 +5434,7 @@ section.wizard-panel {
   height: 2.25rem;
   min-height: 0;
   padding: 0 var(--space-xs);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: 0;
   background: var(--surface);
   font-size: 0.875rem;
@@ -5656,7 +5681,7 @@ section.wizard-panel {
 }
 .section-tab:hover { color: var(--text); }
 .section-tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent, currentColor); }
-.section-tab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.section-tab:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
 
 .verdict-headline { margin: 0 0 var(--space-2xs, 0.25rem); font-size: 0.75rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-soft); }
 .verdict-good .verdict-headline { color: var(--protected); }
@@ -5879,4 +5904,41 @@ section.wizard-panel {
 
 .technical-details[open] > summary::before {
   content: "\25BE\FE0E";
+}
+
+/* People: each role on its own line with Remove beside it, and Add a role laid out
+   as one row (select, then its button) with Disable set apart at the far end. */
+.grant-list {
+  display: grid;
+  gap: var(--space-2xs, 0.25rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grant-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.principal-controls {
+  align-items: end;
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--line);
+}
+
+.principal-controls .inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-xs);
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.principal-controls > .btn-danger {
+  margin-left: auto;
 }

@@ -6058,3 +6058,17 @@ section.wizard-panel {
 .resilience-card .technical-details {
   margin-top: var(--space-md);
 }
+
+/* Roadmap task-92: the activation preview of an automatic roll-back policy. */
+.policy-preview {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+.policy-preview-sentence { margin: 0; padding-left: var(--space-sm); border-left: 3px solid var(--protected); font-weight: 650; }
+.policy-preview-sentence.is-blocked { border-left-color: var(--failed); }
+.policy-preview .policy-facts { margin: 0; padding-left: var(--space-lg); }
+.policy-preview .is-over-limit { color: var(--text); font-weight: 600; }
+.policy-preview-note { color: var(--text-muted); font-size: 0.875rem; }
+.policy-activation > .form-actions { margin-top: var(--space-sm); }

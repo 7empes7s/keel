@@ -23,6 +23,7 @@ import { DriftTable } from "@/components/drift-table";
 import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
+import { CompensationPanel } from "@/components/compensation-panel";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
 
@@ -85,6 +86,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     lastClosure = [...selected, ...added.keys()];
     return json({ selected, closureKeys: lastClosure, added: [...added].map(([naturalKey, reasons]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], reasons })), unresolvedReferences: [], guardRefusals: [], missingRequirements: missing });
   }
+  // Task-70: the undo plan of failed restore r10.
+  if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
+  if (url.includes("/api/actions/restore/dry-run/c0de0000")) return json({ artifact: COMPENSATION_ARTIFACT });
   if (url.endsWith("/api/actions/restore/dry-run")) { jobPolls = 0; return json({ job: { id: "job-dry-7f3c" }, artifactId: "dr-7f3c" }, 202); }
   if (url.includes("/api/jobs/")) { jobPolls += 1; return json({ job: { status: jobPolls >= 2 ? "succeeded" : "running" } }); }
   if (url.includes("/api/actions/restore/dry-run/")) {
@@ -118,6 +122,29 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
   return json({ job: { id: "preview-job" }, approvalRequest: { id: "preview" } });
 }) as typeof fetch;
+
+const COMPENSATION_ARTIFACT = {
+  id: "c0de0000-0000-4000-8000-000000000010",
+  status: "completed",
+  guardRefusals: [],
+  contentEffects: [],
+  compensation: {
+    compensates: "7f3c0000-0000-4000-8000-000000000010",
+    atomic: false,
+    statement: "Compensation is not atomic: each inverse write is a separate, verified Graph call, and only writes this restore actually made are undone. It never restores erased or disclosed content.",
+    operations: [
+      { naturalKey: "group:Finance", resourceType: "group", verb: "update", undoes: "update", revertedFields: ["description", "visibility"] },
+      { naturalKey: "group:Project Falcon", resourceType: "group", verb: "delete", undoes: "create" },
+    ],
+    conflicts: [{ naturalKey: "conditionalAccessPolicy:Require MFA for admins", reason: "concurrent-change: sessionControls changed after this restore wrote it — compensation will not overwrite a later change" }],
+    irrecoverable: [
+      { naturalKey: "group:Finance", effect: "externally-sharing", field: "visibility", reason: "Content becomes visible to people outside its current audience. KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back." },
+      { naturalKey: "group:Contractors", effect: "object-deleted", field: "(object deleted)", reason: "This restore deleted group:Contractors. Compensation does not recreate it: a recreated object gets a new id. Recover it with a forward restore — a native soft-delete restore keeps the id while the object is still in deleted items." },
+    ],
+    manual: [{ naturalKey: "group:Finance|member|user:amara.okafor@contoso.example", reason: "relationship edge: membership compensation is not a qualified operation — review this edge by hand" }],
+    notApplied: [{ naturalKey: "namedLocation:HQ egress", reason: "Graph rejected this write (status 400); nothing to undo" }],
+  },
+};
 
 const now = "2026-10-02T09:40:00Z";
 const DRIFT = [
@@ -210,6 +237,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/jobs/a4": return <>{header("Operations", "Job details", "a4")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={jobs.find((item) => item.id === "a4")!} /></>;
     case "/jobs/r9": return <>{header("Operations", "Job details", "r9")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000009" }, result: { applied: 2, skipped: 0 } }} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>;
+    case "/jobs/r10": return <>{header("Operations", "Job details", "r10")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" } }} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>;
     case "/jobs/a3": return <>{header("Operations", "Job details", "a3")}<a className="text-link back-link" href="#/jobs"><span aria-hidden="true">←</span> All jobs</a><JobDetail job={{ ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }} /></>;
     case "/approvals": return <>{header("Governance", "Approvals", "Review pending operator requests and retain a newest-first decision record.", "Approval required")}<ApprovalInbox
       history={[{ id: "r0", action: "drift.remediate", params: { driftIds: 3 }, requestedBy: "ops@contoso.com", justification: null, status: "approved", decidedBy: "marouanedefili@gmail.com", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: null, expiresAt: null }]}

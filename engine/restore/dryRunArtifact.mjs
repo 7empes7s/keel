@@ -51,7 +51,7 @@ function sha256(text) {
 export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null, contentEffects = null,
+  recoveryMechanisms = null, contentEffects = null, compensation = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -73,6 +73,9 @@ export function computePlanDigest({
     // Task-66: content effects (with their disclosures) of the plan. Folded only
     // when there is at least one, so effect-free plans keep their digest.
     ...(contentEffects?.length ? { contentEffects } : {}),
+    // Task-70: a compensation dry run binds its whole inverse plan (operations,
+    // conflicts, irrecoverable effects, manual items). Null for forward restores.
+    ...(compensation ? { compensation } : {}),
   }));
 }
 
@@ -124,7 +127,7 @@ export async function createDryRunArtifact(client, {
   id, tenantRef, snapshotId, selection, closureKeys, targetTenantId,
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
-  recoveryMechanisms = null, contentEffects = null,
+  recoveryMechanisms = null, contentEffects = null, compensation = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -134,8 +137,8 @@ export async function createDryRunArtifact(client, {
        (id, tenant_ref, snapshot_id, selection, closure_keys, target_tenant_id,
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
-        relationship_operations, recovery_mechanisms, content_effects)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        relationship_operations, recovery_mechanisms, content_effects, compensation)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -150,6 +153,7 @@ export async function createDryRunArtifact(client, {
       relationshipOperations?.length ? JSON.stringify(relationshipOperations) : null,
       recoveryMechanisms ? JSON.stringify(recoveryMechanisms) : null,
       contentEffects?.length ? JSON.stringify(contentEffects) : null,
+      compensation ? JSON.stringify(compensation) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -199,6 +203,8 @@ function normalizeArtifact(row) {
     recoveryMechanisms: row.recovery_mechanisms ?? null,
     // Task-66: null when the dry run had no content effects (or predates them).
     contentEffects: row.content_effects ?? null,
+    // Task-70: set only on a compensation dry run.
+    compensation: row.compensation ?? null,
     createdAt: row.created_at,
   };
 }

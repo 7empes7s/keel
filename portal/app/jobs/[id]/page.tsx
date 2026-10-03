@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
 import { GET as loadJob } from "@/app/api/jobs/[id]/route";
+import { CompensationPanel } from "@/components/compensation-panel";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobDetail } from "@/components/job-detail";
 import { JobRefresher } from "@/components/job-refresher";
@@ -34,13 +35,24 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   // shows the follow-up work the restore could not do itself.
   const jobParams = (job.params ?? {}) as Record<string, unknown>;
   const restoreRef = job.kind === "restore" && typeof jobParams.artifactId === "string" ? jobParams.artifactId : null;
-  const canComplete = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ").includes("restore");
+  const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ");
+  const canComplete = capabilities.includes("restore");
+  // Roadmap task-70: an enforced restore (succeeded or failed) can be undone; a
+  // compensation dry-run job shows the undo plan it computed.
+  const compensates = restoreRef && typeof jobParams.compensates === "string" ? jobParams.compensates : null;
+  const enforced = restoreRef && jobParams.mode === "enforce" && (job.status === "succeeded" || job.status === "failed");
   return (
     <>
       <PageHeader eyebrow="Operations" title="Job details" description={job.id} />
       <Link className="text-link back-link" href="/jobs"><span aria-hidden="true">←</span> All jobs</Link>
       <JobDetail job={job} />
-      {restoreRef && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}
+      {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}
+      {enforced && restoreRef ? (
+        <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canComplete} failed={job.status === "failed"} restoreArtifactId={restoreRef} />
+      ) : null}
+      {compensates && job.status === "succeeded" ? (
+        <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canComplete} compensationArtifactId={restoreRef} failed={false} restoreArtifactId={compensates} />
+      ) : null}
       <JobRefresher active={job.status === "queued" || job.status === "running"} />
     </>
   );

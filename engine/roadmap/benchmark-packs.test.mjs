@@ -37,7 +37,7 @@ function fixture(changes = {}) {
 function context() {
   const state = { roles: ['admin', 'viewer', 'operator'] };
   return { state, tenantRef, principal: { id: 'test-principal' },
-    client: { async query(sql) { assert.match(sql, /JOIN principal/); return { rows: state.roles.map(role => ({ role })) }; } } };
+    client: { async query(sql) { assert.match(sql, /JOIN principal/); return { rows: state.roles.map(role => ({ role, scope: '*' })) }; } } };
 }
 
 test('licensed imports reject missing, forged, insufficient and mismatched rights before evaluation', async () => {

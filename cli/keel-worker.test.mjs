@@ -131,7 +131,8 @@ function makeAuthzFakeClient({ principal = null, grants = [] } = {}) {
         const at = params[1];
         const live = grants.filter((grant) =>
           grant.active_from <= at && (grant.active_until === null || grant.active_until > at));
-        return { rows: live.map((grant) => ({ role: grant.role })) };
+        // role_grant.scope is NOT NULL with default '*' (central); task 90.
+        return { rows: live.map((grant) => ({ role: grant.role, scope: grant.scope ?? '*' })) };
       }
       if (sql.includes('FROM auto_remediation_execution')) {
         return { rows: [] };

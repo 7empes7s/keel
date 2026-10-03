@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { getDashboardData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DashboardData } from "@/lib/types";
@@ -31,9 +31,10 @@ export default async function Home() {
 
   const requestHeaders = await headers();
   let pendingApprovals: number | null = null;
-  if (approvalInboxAccess(requestHeaders)) {
+  const approverScope = approvalInboxScope(requestHeaders);
+  if (approverScope) {
     try {
-      pendingApprovals = await getPendingApprovalCount();
+      pendingApprovals = await getPendingApprovalCount(approverScope);
     } catch {
       pendingApprovals = null;
     }

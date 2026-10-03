@@ -83,6 +83,16 @@ export interface TypeExpansion {
   // Roadmap task-108: subtypes the registered writes are limited to (e.g.
   // "custom"). Empty when writes are not subtype-bound; absent on older reports.
   qualifiedSubtypes?: string[];
+  // Roadmap task-109: what cannot be recovered for the type, configuration and
+  // relationships alike. null when the type has not been assessed; absent on
+  // older reports. Never a coverage percentage.
+  unrecoverable?: UnrecoverableItem[] | null;
+}
+
+export interface UnrecoverableItem {
+  kind: "configuration" | "relationship";
+  name: string;
+  reason: string;
 }
 
 // Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,

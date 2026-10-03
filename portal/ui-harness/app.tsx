@@ -41,7 +41,7 @@ import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
 import { integrationsVerdict } from "@/lib/integrations-view";
-import type { Policy } from "@/lib/policies";
+import type { ActivationPreview, Policy } from "@/lib/policies";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
@@ -90,6 +90,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
   if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
+  // Task-92: the activation preview of policy p2, and a turn-on refused because the
+  // run-as account's access changed after the preview.
+  if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
+  if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
   if (url.endsWith("/api/actions/restore/completion")) {
     const body = JSON.parse(String(init?.body)) as { itemId: string; action: string; evidence?: { reference: string } };
     if (body.action === "complete" && /secret|BEGIN/i.test(body.evidence?.reference ?? "")) {
@@ -227,6 +231,41 @@ const POLICIES: Policy[] = [POLICY, {
   max_blast_radius: "tenant-lockout", max_actions_per_window: null, window_seconds: null, run_as_principal_id: null, run_as_principal: null,
   last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
 }];
+// Task-92: an automatic policy that is off, with its activation preview open.
+const OFF_POLICY: Policy = {
+  ...POLICY, id: "7a1d0f3e-0000-4000-8000-000000000004", name: "Roll back group changes", enabled: false, resource_type: "group", blast_radius: null,
+  last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
+};
+const ACTIVATION_PREVIEW: ActivationPreview = {
+  id: "9a0c0000-0000-4000-8000-000000000092", requestedBy: "8c1e0000-0000-4000-8000-0000000000a1",
+  createdAt: "2026-10-02T09:38:00Z", expiresAt: "2026-10-02T10:08:00Z",
+  policy: { id: OFF_POLICY.id, name: OFF_POLICY.name, enabled: false, action: "auto_remediate" },
+  matched: [
+    { driftId: "d9200000-0000-4000-8000-000000000001", naturalKey: "group:Finance", resourceType: "group", changeType: "modified", blastRadius: "cosmetic", detectedAt: "2026-10-02T08:10:00Z" },
+    { driftId: "d9200000-0000-4000-8000-000000000003", naturalKey: "group:Marketing", resourceType: "group", changeType: "modified", blastRadius: "cosmetic", detectedAt: "2026-10-02T08:12:00Z" },
+  ],
+  matchedOverCeiling: [{ driftId: "d9200000-0000-4000-8000-000000000002", naturalKey: "group:Break-glass admins", resourceType: "group", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T08:20:00Z" }],
+  operations: [
+    { naturalKey: "group:Finance", resourceType: "group", verb: "update", blastRadius: "cosmetic", role: "matched", driftId: "d9200000-0000-4000-8000-000000000001" },
+    { naturalKey: "group:Marketing", resourceType: "group", verb: "update", blastRadius: "cosmetic", role: "matched", driftId: "d9200000-0000-4000-8000-000000000003" },
+    { naturalKey: "group:Privileged approvers", resourceType: "group", verb: "create-or-update", blastRadius: "tenant-lockout", role: "dependency" },
+  ],
+  dependencies: [{ naturalKey: "group:Privileged approvers", resourceType: "group", blastRadius: "tenant-lockout", requiredBy: ["group:Finance"], overCeiling: true }],
+  impact: { maxBlastRadius: "tenant-lockout", ceiling: "cosmetic" },
+  unsupported: [],
+  unknowns: [],
+  runAs: {
+    principalId: OFF_POLICY.run_as_principal_id, email: "svc-policy@contoso.com", name: "svc-policy@contoso.com", readable: true, disabled: false, authorized: true,
+    grants: [{ id: "6a000000-0000-4000-8000-000000000092", role: "restorer", scope: "*", activeFrom: "2026-09-01T00:00:00Z", activeUntil: null }],
+  },
+  ownership: { state: "read", resources: [{ evidenceId: "0e900000-0000-4000-8000-000000000092", naturalKey: "group:Finance", state: "owned", entityCode: "CREOS", expiresAt: "2026-10-03T09:00:00Z" }] },
+  benchmarkFindings: { state: "read", findings: [{ id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel.groups.owner", title: "Every group has an owner", verdict: "fail", exposed: true, link: "linked", driftIds: ["d9200000-0000-4000-8000-000000000001"] }] },
+  limits: { maxBlastRadius: "cosmetic", maxActionsPerWindow: 50, windowSeconds: 3600, automationHalted: false },
+  blockers: [], verdict: "ready",
+  versions: { policy: "1f".repeat(32), grant: "2e".repeat(32), ownership: "3d".repeat(32), projection: "4c".repeat(32) },
+  digest: "5b".repeat(32),
+  outcomes: { queued: 1, rolledBack: 0, failed: 0 },
+};
 const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true }];
 const DELIVERIES = [
   { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z" },
@@ -704,6 +743,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
         <AutomationBanner halted={false} now={now} />
         <PolicyCard canEdit linkName={false} now={now} policy={POLICY} />
+      </div></>;
+    case "/policies/p2": return <>{header("Settings", OFF_POLICY.name, "What this policy does, acting as whom, and what it last did.")}
+      <Verdict text={`Turned off. ${policySentence(OFF_POLICY)}`} tone="attention" />
+      <div data-layer="explanation">
+        <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
+        <AutomationBanner halted={false} now={now} />
+        <PolicyCard canEdit linkName={false} now={now} policy={OFF_POLICY} preview={ACTIVATION_PREVIEW} />
       </div></>;
     case "/policies": return <>{header("Settings", "Policies", "What KEEL does on its own when something changes, and the account it acts as.")}
       <Verdict text={policiesVerdict(POLICIES, false)} />

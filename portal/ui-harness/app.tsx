@@ -189,7 +189,7 @@ const DRIFT = [
     before: { state: "enabled", grantControls: { builtInControls: ["mfa"] }, sessionControls: { signInFrequency: { value: 4, type: "hours" } } },
     after: { state: "enabled", grantControls: { builtInControls: ["mfa"] }, sessionControls: { signInFrequency: { value: 24, type: "hours" } } } },
   { id: "dr3", naturalKey: "group:Finance", resourceType: "group", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-10-01T15:02:00Z",
-    before: { displayName: "Finance", membershipRule: null, owners: ["cfo@contoso.com"] }, after: { displayName: "Finance", membershipRule: null, owners: ["cfo@contoso.com", "temp.contractor@contoso.com"] },
+    before: { displayName: "Finance", membershipRule: null, mailEnabled: false, owners: ["cfo@contoso.com"] }, after: { displayName: "Finance", membershipRule: null, mailEnabled: true, owners: ["cfo@contoso.com", "temp.contractor@contoso.com"] },
     attribution: { verdict: "unknown", reason: "audit-retention-gap", actors: [], evidence: [], resourceObjectId: "f1a40000-0000-4000-8000-0000000000f1",
       window: { from: "2026-08-01T06:00:00Z", until: "2026-10-01T15:02:00Z" }, coverage: { audit: "retention-gap", signIn: "not-read" },
       route: { route: "entity", entityCode: "CREOS", approverCount: 1, routedAt: "2026-10-02T10:00:00Z" } } },
@@ -197,7 +197,74 @@ const DRIFT = [
   { id: "dr5", naturalKey: "deviceConfiguration:Windows baseline", resourceType: "deviceConfiguration", changeType: "modified", blastRadius: "cosmetic", detectedAt: "2026-09-29T08:30:00Z",
     before: { description: "Corporate Windows baseline", passwordMinimumLength: 12 }, after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 12 } },
   { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null },
+  // Task 98: a change whose baseline copy was not kept; its earlier values are unknown.
+  { id: "dr7", naturalKey: "namedLocation:HQ egress", resourceType: "namedLocation", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-09-27T07:15:00Z", before: null, after: { displayName: "HQ egress", ipRanges: ["198.51.100.0/24"] } },
 ] as unknown as DriftRecord[];
+
+// Task 98: the server's semantic comparison and linked records for each change, as
+// engine/govern/semanticDrift.mjs returns them (the harness cannot run the engine).
+const SEMANTIC: Record<string, NonNullable<DriftRecord["semantic"]>> = {
+  dr1: { state: "compared", rules: "reviewed", total: 2, shown: 2, cosmetic: 1, groups: { behaviour: 2, fixed: 0, "unknown-before": 0 }, fields: [
+    { path: "conditions.users.excludeGroups", kind: "changed", before: ["Break-glass admins"], after: ["Break-glass admins", "Finance"], impact: "behaviour" },
+    { path: "state", kind: "changed", before: "enabled", after: "enabledForReportingButNotEnforced", impact: "behaviour" },
+  ] },
+  dr2: { state: "compared", rules: "reviewed", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
+    { path: "sessionControls.signInFrequency.value", kind: "changed", before: 4, after: 24, impact: "behaviour" },
+  ] },
+  dr3: { state: "compared", rules: "reviewed", total: 2, shown: 2, cosmetic: 0, groups: { behaviour: 1, fixed: 1, "unknown-before": 0 }, fields: [
+    { path: "mailEnabled", kind: "changed", before: false, after: true, impact: "fixed" },
+    { path: "owners", kind: "changed", before: ["cfo@contoso.com"], after: ["cfo@contoso.com", "temp.contractor@contoso.com"], impact: "behaviour" },
+  ] },
+  dr4: { state: "added", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
+  dr5: { state: "compared", rules: "reviewed", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
+    { path: "description", kind: "changed", before: "Corporate Windows baseline", after: "Corporate Windows baseline v2", impact: "behaviour" },
+  ] },
+  dr6: { state: "removed", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
+  dr7: { state: "unknown-before", rules: "reviewed", total: 2, shown: 2, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 2 }, fields: [
+    { path: "displayName", kind: "unknown-before", after: "HQ egress", impact: "unknown-before" },
+    { path: "ipRanges", kind: "unknown-before", after: ["198.51.100.0/24"], impact: "unknown-before" },
+  ] },
+};
+const NO_LINKS = { findings: [], approvals: [], plans: [], mismatches: 0 };
+const CHANGE_EVIDENCE: Record<string, NonNullable<DriftRecord["evidence"]>> = {
+  dr1: {
+    ownership: { state: "shared", entityCode: null, sharedWith: ["CREOS", "ENOVOS"], othersWithheld: false },
+    observation: { state: "matches", snapshotId: "5a9f0000-0000-4000-8000-000000000031", at: "2026-10-02T09:12:00Z", versionId: "7e570000-0000-4000-8000-000000000001" },
+    backup: { state: "matches", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", at: "2026-09-20T06:00:00Z", versionId: "7e570000-0000-4000-8000-000000000002" },
+    findings: [{ evaluationId: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.ca.legacy-auth-blocked", title: "Legacy sign-in is blocked", verdict: "fail", exposed: true, link: "linked" }],
+    approvals: [{ id: "a9e10000-0000-4000-8000-000000000101", action: "remediate", status: "pending", createdAt: "2026-10-02T09:30:00Z", decidedAt: null, expiresAt: "2026-10-03T09:30:00Z", job: null, others: 1, othersWithheld: false }],
+    plans: [{ id: "7f3c0000-0000-4000-8000-000000000012", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", status: "completed", createdAt: "2026-10-02T09:35:00Z", link: "linked", outcome: null, others: 0, othersWithheld: false,
+      approvals: [{ id: "a9e10000-0000-4000-8000-000000000102", action: "restore", status: "pending", createdAt: "2026-10-02T09:36:00Z", decidedAt: null, expiresAt: "2026-10-03T09:36:00Z", job: null, others: 0, othersWithheld: false }] }],
+    mismatches: 0,
+  },
+  dr3: {
+    ownership: { state: "owned", entityCode: "CREOS", sharedWith: [], othersWithheld: false },
+    observation: { state: "matches", snapshotId: "5a9f0000-0000-4000-8000-000000000032", at: "2026-10-01T15:02:00Z", versionId: "7e570000-0000-4000-8000-000000000003" },
+    backup: { state: "mismatch", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", at: "2026-09-20T06:00:00Z", versionId: "7e570000-0000-4000-8000-000000000004" },
+    findings: [],
+    approvals: [{ id: "a9e10000-0000-4000-8000-000000000100", action: "remediate", status: "approved", createdAt: "2026-10-01T16:40:00Z", decidedAt: "2026-10-01T17:02:00Z", expiresAt: "2026-10-02T16:40:00Z", job: { id: "a3", status: "succeeded" }, others: 0, othersWithheld: false }],
+    plans: [{ id: "7f3c0000-0000-4000-8000-000000000011", snapshotId: "5a9f0000-0000-4000-8000-000000000030", status: "completed", createdAt: "2026-10-01T17:03:00Z", link: "mismatch", outcome: { state: "succeeded", at: "2026-10-01T17:10:00Z" }, others: 0, othersWithheld: false, approvals: [] }],
+    mismatches: 2,
+  },
+  dr7: {
+    ownership: { state: "unknown", entityCode: null, sharedWith: [], othersWithheld: false },
+    observation: { state: "unchecked", snapshotId: "5a9f0000-0000-4000-8000-000000000027", at: "2026-09-27T07:15:00Z", versionId: null },
+    backup: { state: "missing", snapshotId: null, at: null, versionId: null },
+    ...NO_LINKS,
+  },
+};
+const DRIFT_DECIDED = DRIFT.map((item) => ({ ...item, semantic: SEMANTIC[item.id], evidence: CHANGE_EVIDENCE[item.id] ?? {
+  ownership: { state: "owned", entityCode: "CREOS", sharedWith: [], othersWithheld: false },
+  observation: { state: "matches", snapshotId: "5a9f0000-0000-4000-8000-000000000033", at: item.detectedAt, versionId: null },
+  backup: { state: item.changeType === "added" ? "not-in-baseline" : "matches", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", at: "2026-09-20T06:00:00Z", versionId: null },
+  ...NO_LINKS,
+} })) as DriftRecord[];
+// Counts over DRIFT_DECIDED that reconcile: 2 + 3 + 2 changes, 3 + 2 + 1 settings.
+const DRIFT_SUMMARY = {
+  total: 7,
+  byImpact: [{ blastRadius: "tenant-lockout", changes: 2, settings: 3 }, { blastRadius: "access-affecting", changes: 3, settings: 2 }, { blastRadius: "cosmetic", changes: 2, settings: 1 }],
+  behaviouralSettings: 5, fixedSettings: 1, cosmeticOnly: 0, unknownBefore: 1, mismatched: 1,
+};
 type Job = Parameters<typeof JobTable>[0]["jobs"][number];
 // Task-130: references arrive resolved, as the engine readers return them.
 const personRef = (id: string, name: string) => ({ kind: "person", id, name, readable: true, email: name.includes("@") ? name : null, system: !name.includes("@") });
@@ -682,12 +749,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/drift": {
-      const verdict = changesVerdict(DRIFT, BASELINES[0].setAt, now);
+      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <BaselineContext baseline={BASELINES[0]} now={now} />
-          <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT} now={now} />
+          <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
         </div></>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }

@@ -144,6 +144,7 @@ jobs:
           roadmap/drill-live-acceptance.test.mjs
           roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
+          roadmap/breakglass-readiness.test.mjs
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs

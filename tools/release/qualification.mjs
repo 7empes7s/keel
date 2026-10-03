@@ -20,6 +20,7 @@
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
+import { STORAGE_LIVE_GATE, validateStorageLiveAcceptance } from '../../engine/storage/storageLiveEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { DRILL_LIMITS, DRILL_MANIFEST_KIND, DRILL_MANIFEST_VERSION } from '../rehearsal/qualification.mjs';
 import { DISPOSABLE_PREFIX } from '../rehearsal/roundTrip.mjs';
@@ -700,6 +701,10 @@ const GATE_VALIDATORS = {
   [NATIVE_LIVE_GATE]: (evidence, { tenantRef, build, artifact }) =>
     validateNativeLiveAcceptance(evidence, { tenantRef, build, artifactBytes: artifact.ok ? artifact.bytes : null }),
   [DEPLOYED_ACCEPTANCE_GATE]: validateDeployedAcceptanceSubject,
+  // Task-114: needs the runner signature AND the digest-verified raw capture.
+  [STORAGE_LIVE_GATE]: (evidence, { tenantRef, build, artifact, hmacKey, trustedRunners }) =>
+    validateStorageLiveAcceptance(evidence, { tenantRef, build, artifactBytes: artifact.ok ? artifact.bytes : null, artifactReason: artifact.reason,
+      runner: verifyRunnerProof(evidence, evidence.proof?.runner, { hmacKey, trustedRunners }) }),
   [DRILL_LIVE_GATE]: validateDrillLiveAcceptanceSubject,
   // Task-120: SharePoint configuration workload live acceptance.
   [SHAREPOINT_LIVE_GATE]: validateSharePointLiveSubject,
@@ -936,7 +941,7 @@ function main() {
   const result = verifyEvidenceFile(evidencePath, {
     gate,
     tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF
-      ?? (gate === DEPLOYED_ACCEPTANCE_GATE ? configuredTenantRef() : undefined)),
+      ?? ([DEPLOYED_ACCEPTANCE_GATE, STORAGE_LIVE_GATE].includes(gate) ? configuredTenantRef() : undefined)),
     build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),

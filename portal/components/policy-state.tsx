@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { PolicyControls } from "@/components/policy-controls";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import type { Policy } from "@/lib/policies";
+import type { ActivationPreview, Policy } from "@/lib/policies";
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel } from "@/lib/presentation";
 
 // Roadmap task-130, the contract's worked example: a policy reads as what it does,
@@ -116,7 +116,7 @@ export function PolicyRecord({ policy }: { policy: Policy }) {
 }
 
 /** One policy, as the worked example: name and state, the sentence, then sentences. */
-export function PolicyCard({ policy, now, canEdit = false, linkName = true }: { policy: Policy; now: string; canEdit?: boolean; linkName?: boolean }) {
+export function PolicyCard({ policy, now, canEdit = false, linkName = true, preview = null }: { policy: Policy; now: string; canEdit?: boolean; linkName?: boolean; preview?: ActivationPreview | null }) {
   const limits = rateSentence(policy);
   return (
     <section className="item-card policy-card">
@@ -130,7 +130,7 @@ export function PolicyCard({ policy, now, canEdit = false, linkName = true }: { 
         {neverTouches(policy) ? <li>{neverTouches(policy)}</li> : null}
         {limits ? <li>Limit: {limits}, then it pauses itself until someone resumes it.</li> : null}
       </ul>
-      {canEdit ? <PolicyControls enabled={policy.enabled} name={policy.name} paused={Boolean(policy.paused_at) || policy.run_as_repair_required} policyId={policy.id} /> : null}
+      {canEdit ? <PolicyControls automatic={policy.action === "auto_remediate"} enabled={policy.enabled} initialPreview={preview} name={policy.name} now={now} paused={Boolean(policy.paused_at) || policy.run_as_repair_required} policyId={policy.id} /> : null}
       <PolicyRecord policy={policy} />
     </section>
   );

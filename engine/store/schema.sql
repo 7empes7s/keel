@@ -377,6 +377,11 @@ END IF;
 END
 $schedule$;
 
+-- Roadmap task-110: an operator may acknowledge a measured load warning on a schedule.
+-- Additive and nullable: legacy rows read as "not acknowledged". The acknowledgement
+-- records who, when and for which cadence; it never changes cadence or next_due_at.
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS forecast_acknowledgement jsonb;
+
 -- Task 43: a system identity has an exact, code-defined capability set, not a new role.
 ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind text
   CHECK (system_kind = 'scheduler');

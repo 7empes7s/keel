@@ -9,6 +9,9 @@ import { spawn } from 'node:child_process';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { enqueue } from '../jobs/queue.mjs';
+import {
+  ADAPTER_KINDS, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports, validateChannelConfig,
+} from './adapters.mjs';
 
 export const DELIVERY_RETRY_BASE_MS = 30 * 1000;
 export const DELIVERY_RETRY_MAX_MS = 60 * 60 * 1000;
@@ -65,10 +68,16 @@ export function retryDelayMs(attempt) {
   );
 }
 
+export const CHANNEL_KINDS = Object.freeze(['webhook', 'email', ...ADAPTER_KINDS]);
+export const CHANNEL_KIND_ERROR = `channel.kind must be one of ${CHANNEL_KINDS.join(', ')}`;
+
 export async function createChannel(client, { kind, config, enabled = true }) {
-  if (!['webhook', 'email'].includes(kind)) {
-    throw new Error('channel.kind must be webhook or email');
+  if (!CHANNEL_KINDS.includes(kind)) {
+    throw new Error(CHANNEL_KIND_ERROR);
   }
+  // Task 84: provider channels hold credential references only, and an unsupported
+  // endpoint or provider is refused here rather than stored as if it could send.
+  if (ADAPTER_KINDS.includes(kind)) validateChannelConfig(kind, config ?? {});
   const { rows } = await client.query(
     `INSERT INTO channel (kind, config, enabled)
      VALUES ($1,$2,$3)
@@ -244,15 +253,16 @@ async function sendEmail({ channel, event }) {
 export const DEFAULT_TRANSPORTS = Object.freeze({
   webhook: sendWebhook,
   email: sendEmail,
+  ...createAdapterTransports(),
 });
 
-async function markUnavailableChannel(client, delivery, error) {
+async function markUnavailableChannel(client, delivery, error, receipt = null) {
   const { rows } = await client.query(
     `UPDATE delivery
-        SET status = 'cancelled', last_error = $2
+        SET status = 'cancelled', last_error = $2, provider_receipt = COALESCE($3, provider_receipt)
       WHERE id = $1
       RETURNING *`,
-    [delivery.id, error],
+    [delivery.id, error, receipt],
   );
   return rows[0];
 }
@@ -301,32 +311,43 @@ export async function attemptDelivery(client, {
     if (typeof transport !== 'function') {
       throw new Error(`no transport registered for channel kind: ${channel.kind}`);
     }
-    await transport({ channel, event: delivery.event });
+    const sent = await transport({ channel, event: delivery.event, delivery });
     const { rows } = await client.query(
       `UPDATE delivery
-          SET status = 'delivered', delivered_at = now(), last_error = NULL
+          SET status = 'delivered', delivered_at = now(), last_error = NULL,
+              provider_receipt = COALESCE($2, provider_receipt)
         WHERE id = $1
         RETURNING *`,
-      [delivery.id],
+      [delivery.id, sent?.receipt ?? null],
     );
     return { delivery: rows[0], attempted: true };
   } catch (cause) {
     const error = cause instanceof Error ? cause.message : String(cause);
-    const retry = delivery.attempts < delivery.max_attempts;
+    // Task 84: a provider adapter says what kind of failure this was. Missing setup is
+    // not retried (nothing was sent); a provider refusal is final; throttling waits for
+    // the provider's Retry-After instead of KEEL's own backoff.
+    const outcome = cause instanceof NotificationSendError ? cause.outcome : 'retry';
+    const receipt = cause instanceof NotificationSendError ? cause.receipt : null;
+    if (outcome === 'unconfigured') {
+      return { delivery: await markUnavailableChannel(client, delivery, error, receipt), attempted: false };
+    }
+    const retry = outcome === 'retry' && delivery.attempts < delivery.max_attempts;
     const status = retry ? 'retrying' : 'failed';
-    const nextAttemptAt = retry
-      ? new Date(now.getTime() + retryDelayMs(delivery.attempts))
-      : null;
+    const waitMs = cause instanceof NotificationSendError && cause.retryAfterMs !== null
+      ? Math.min(cause.retryAfterMs, MAX_RETRY_AFTER_MS)
+      : retryDelayMs(delivery.attempts);
+    const nextAttemptAt = retry ? new Date(now.getTime() + waitMs) : null;
 
     await client.query('BEGIN');
     let committed = false;
     try {
       const { rows } = await client.query(
         `UPDATE delivery
-            SET status = $2, last_error = $3, next_attempt_at = COALESCE($4, next_attempt_at)
+            SET status = $2, last_error = $3, next_attempt_at = COALESCE($4, next_attempt_at),
+                provider_receipt = COALESCE($5, provider_receipt)
           WHERE id = $1
           RETURNING *`,
-        [delivery.id, status, error, nextAttemptAt],
+        [delivery.id, status, error, nextAttemptAt, receipt],
       );
       const failedDelivery = rows[0];
       if (retry) {

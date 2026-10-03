@@ -97,8 +97,9 @@ appear as unassigned until they reopen.
 
 ## Limitations
 
-- Fixture-tested only. Delivery uses the existing webhook and email transports.
-  Teams, Slack, PagerDuty and SMS arrive in task-84.
+- Fixture-tested only. An escalation goes to whatever channel the rule names; since
+  task-84 that can also be Teams, Slack, PagerDuty or SMS
+  (`docs/roadmap/notification-adapters.md`).
 - There is no portal form for escalation rules yet. Rules are created with
   `createEscalationRule` (or SQL) by an operator who holds `configuration`.
 - One escalation per occurrence. There is no repeated re-notification ladder.

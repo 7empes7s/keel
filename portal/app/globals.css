@@ -5244,3 +5244,78 @@ section.wizard-panel {
   margin-top: 2px;
   color: var(--text-soft);
 }
+
+/* Task-65: recovery completion checklist on an enforced restore job. */
+.completion-panel {
+  display: grid;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.completion-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.completion-resource {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface);
+}
+
+.completion-configuration-restored { border-left-color: var(--partial); }
+.completion-service-validation-pending { border-left-color: var(--readonly); }
+.completion-verified-complete { border-left-color: var(--protected); }
+
+.completion-resource-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.completion-badge-configuration-restored { background: var(--partial-bg); color: var(--partial); }
+.completion-badge-service-validation-pending { background: var(--readonly-bg); color: var(--readonly); }
+.completion-badge-verified-complete { background: var(--protected-bg); color: var(--protected); }
+
+.completion-items {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.completion-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.completion-item-verified { opacity: 0.85; }
+
+.completion-evidence {
+  display: block;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
+.completion-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs, 4px);
+  align-items: center;
+}
+
+.completion-form input {
+  min-width: 14rem;
+}

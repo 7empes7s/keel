@@ -408,6 +408,45 @@ ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS relationship_operations jso
 -- artifacts persisted before task-64 promote exactly as before.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS recovery_mechanisms jsonb;
 
+-- Roadmap task-65: owned completion items for what a restore cannot write back
+-- (secrets, certificates, consent, a new object id's downstream integrations) and
+-- the service validation after it. Metadata and evidence REFERENCES only — never a
+-- secret value. restore_ref is the promoted dry-run artifact id. Emission is
+-- idempotent on the unique key; every transition is also an event row.
+CREATE TABLE IF NOT EXISTS recovery_completion_item (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref    text NOT NULL,
+  restore_ref   text NOT NULL,
+  natural_key   text NOT NULL,
+  resource_type text NOT NULL,
+  mechanism     text NOT NULL,
+  kind          text NOT NULL CHECK (kind IN ('credential','certificate','consent','integration','service-validation')),
+  requirement   text NOT NULL,
+  description   text NOT NULL,
+  owner         text,
+  state         text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','verified')),
+  evidence      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  closed_by     text,
+  closed_at     timestamptz,
+  reopen_count  int NOT NULL DEFAULT 0,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_ref, restore_ref, natural_key, kind, requirement)
+);
+CREATE INDEX IF NOT EXISTS recovery_completion_item_open_idx
+  ON recovery_completion_item (tenant_ref, state, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS recovery_completion_event (
+  id         bigserial PRIMARY KEY,
+  item_id    uuid NOT NULL REFERENCES recovery_completion_item(id),
+  tenant_ref text NOT NULL,
+  from_state text NOT NULL,
+  to_state   text NOT NULL,
+  actor      text NOT NULL,
+  evidence   jsonb,
+  at         timestamptz NOT NULL DEFAULT now()
+);
+
 -- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
 -- configured sink; one outbox row per (destination, source event) so a replayed or
 -- retried delivery always carries the SAME task-77 event id; one replay checkpoint per

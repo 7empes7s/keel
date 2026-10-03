@@ -14,6 +14,7 @@ const PAGES = [
   { name: "jobs", hash: "/jobs" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
+  { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
   { name: "policy", hash: "/policies/p1" },
   { name: "approvals", hash: "/approvals" },
@@ -193,4 +194,46 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
     cell.evaluate((element) => element.getBoundingClientRect().width),
   ]);
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
+});
+
+// Task-70: undo of a failed restore — planned against the live tenant, reviewed,
+// then sent for the normal approval. Never written from this page.
+async function planUndo(page: Page) {
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.getByText("Ready for approval")).toBeVisible({ timeout: 15_000 });
+}
+
+test("a failed restore's undo lists what will be undone, kept, and lost, then asks for approval", async ({ page }) => {
+  await open(page, "/jobs/r10");
+  await expect(page.getByRole("heading", { name: "Undo what this failed restore changed" })).toBeVisible();
+  await planUndo(page);
+  const undone = page.locator(".compensation-section").filter({ hasText: "WILL BE UNDONE" });
+  await expect(undone.getByText("Revert description, visibility")).toBeVisible();
+  await expect(undone.getByText("Delete the object this restore created")).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" }).getByText("conditionalAccessPolicy:Require MFA for admins", { exact: true })).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "CANNOT BE UNDONE" }).getByText("group:Contractors", { exact: true })).toBeVisible();
+  await expect(page.getByText("not atomic")).toBeVisible();
+
+  const request = page.getByRole("button", { name: "Request approval to undo" });
+  await expect(request).toBeDisabled();
+  await page.getByLabel("Why undo this restore?").fill("Wrong snapshot restored over Finance");
+  await request.click();
+  await expect(page.locator(".compensation-requested")).toHaveText(/Sent for approval/);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a11y · job-restore-undo planned · ${theme}`, async ({ page }) => {
+    await open(page, "/jobs/r10", theme);
+    await planUndo(page);
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+    expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+  });
+}
+
+test("the undo plan fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/jobs/r10", "light");
+  await planUndo(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

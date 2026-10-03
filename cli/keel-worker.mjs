@@ -370,6 +370,21 @@ export const JOB_HANDLERS = {
         return ['--artifact', params.artifactId, '--enforce'];
       }
 
+      // Roadmap task-70: a compensation dry run carries only the promoted restore it
+      // undoes and the id to persist the result under. Its configs, scope and
+      // journal all come from that restore's own artifact inside the CLI.
+      if (params.compensates !== undefined) {
+        const extra = paramKeys.filter((key) => key !== 'compensates' && key !== 'artifactId');
+        if (extra.length > 0) {
+          throw new Error(`a compensation dry run carries only params.compensates and params.artifactId (unexpected: ${extra.join(', ')})`);
+        }
+        return [
+          '--compensate', requireString(params.compensates, 'params.compensates'),
+          '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
+          '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+        ];
+      }
+
       const args = [
         '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
         '--target-config', requireString(params.targetConfig, 'params.targetConfig'),

@@ -199,7 +199,7 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export async function applyRelationshipOperations(writer, governor, operations, {
   reader, mode, targetTenant, parentTargetIds = new Map(), targetIds = new Map(),
-  rollbackClient, runId, verifyAttempts = 6, verifyDelayMs = 3000, sleep = defaultSleep,
+  rollbackClient, runId, restoreRef = null, verifyAttempts = 6, verifyDelayMs = 3000, sleep = defaultSleep,
 } = {}) {
   const applied = [];
   const skipped = [];
@@ -275,6 +275,9 @@ export async function applyRelationshipOperations(writer, governor, operations, 
             runId,
             naturalKey,
             priorState: { kind: 'relationship-edge', parentNaturalKey, parentTargetId, family, targetId, present: !wantPresent },
+            // Task-70: journaled under the promoted artifact so compensation lists
+            // the edge (as a manual item) instead of losing it.
+            ...(restoreRef ? { restoreRef, resourceType: 'group', operation: `edge-${op.action}`, targetId: parentTargetId } : {}),
           });
         } catch {
           journaled = false;

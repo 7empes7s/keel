@@ -43,6 +43,28 @@ CREATE TABLE IF NOT EXISTS rollback_entry (
 );
 CREATE INDEX IF NOT EXISTS rollback_entry_run_idx ON rollback_entry (run_id);
 
+-- Roadmap task-70: the inverse-instruction journal behind conflict-aware
+-- compensation. Each write records, before it is sent, what it is (operation,
+-- resource type, target id, blast radius) and what it intends (intended_state);
+-- after it returns, what was observed (post_state) and its outcome:
+-- 'succeeded' (written and verified), 'failed' (Graph definitively rejected it),
+-- or 'uncertain' (a lost response, a 5xx, or a write that did not verify — the
+-- write may or may not have landed). A row still 'pending' was interrupted, and
+-- is treated as uncertain. restore_ref names the promoted dry-run artifact, so a
+-- compensation undoes exactly one run. Nullable and additive: entries written
+-- before task-70 carry none of this and are never planned for compensation.
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS restore_ref text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS resource_type text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS operation text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS target_id text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS blast_radius text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS intended_state jsonb;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS post_state jsonb;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS outcome text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS outcome_detail text;
+ALTER TABLE rollback_entry ADD COLUMN IF NOT EXISTS outcome_at timestamptz;
+CREATE INDEX IF NOT EXISTS rollback_entry_restore_ref_idx ON rollback_entry (restore_ref);
+
 CREATE TABLE IF NOT EXISTS plan (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   source_snapshot  uuid NOT NULL REFERENCES snapshot(id),
@@ -412,6 +434,13 @@ ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS recovery_mechanisms jsonb;
 -- externally-sharing, irreversible) of a dry run, each with its "content is not
 -- backed up" disclosure — folded into the plan digest. Nullable and additive.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS content_effects jsonb;
+
+-- Roadmap task-70: a compensation dry run — the inverse plan for one failed
+-- promotion (compensates = that artifact's id), its operations, conflict
+-- refusals, manual items and irrecoverable effects. Folded into the plan digest,
+-- so it is promoted only through the same immutable-artifact approval as a
+-- forward restore. Null for every forward restore.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS compensation jsonb;
 
 -- The SEPARATE high-impact approval those effects require: bound to the digest of
 -- exactly the effects reviewed, never the requester, and re-checked for a current

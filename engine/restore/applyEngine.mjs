@@ -8,7 +8,7 @@ import { graphPathFor } from '../coverage/capabilities.mjs';
 import { remappingFor } from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
-import { recordPriorState } from './rollbackJournal.mjs';
+import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
@@ -210,14 +210,42 @@ function unqualifiedRemapping(resource, verb, before, after) {
   return `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation`;
 }
 
-async function journalBeforeMutation(rollbackClient, { runId, naturalKey, priorState }) {
-  if (!rollbackClient) return true;
+// Task-70: a journal entry carries the operation identity and intent when the
+// run has a restore reference (a promoted artifact), so a failed run can be
+// compensated against exactly what it tried. Returns { ok, entryId }.
+async function journalBeforeMutation(rollbackClient, {
+  runId, restoreRef = null, resource, operation, targetId = null, priorState, intendedState,
+}) {
+  if (!rollbackClient) return { ok: true, entryId: null };
   try {
-    await recordPriorState(rollbackClient, { runId, naturalKey, priorState });
-    return true;
+    const entryId = await recordPriorState(rollbackClient, restoreRef
+      ? {
+        runId, naturalKey: resource.naturalKey, priorState, restoreRef,
+        resourceType: resource.resourceType, operation, targetId, blastRadius: resource.blastRadius ?? null,
+        intendedState,
+      }
+      : { runId, naturalKey: resource.naturalKey, priorState });
+    return { ok: true, entryId: restoreRef ? entryId : null };
   } catch {
-    return false;
+    return { ok: false, entryId: null };
   }
+}
+
+// Task-70: what a journaled write actually did. Never fails the run: a write
+// whose outcome could not be recorded stays 'pending', which compensation
+// treats as uncertain and reconciles by reading.
+async function noteOutcome(rollbackClient, journal, outcome, extras = {}) {
+  if (!rollbackClient || !journal?.entryId) return;
+  try {
+    await recordWriteOutcome(rollbackClient, { entryId: journal.entryId, outcome, ...extras });
+  } catch {
+    // left pending
+  }
+}
+
+function outcomeDetail(result) {
+  if (result?.status !== undefined && result?.status !== null) return `status ${result.status}`;
+  return result?.error ? String(result.error).slice(0, 200) : 'no response';
 }
 
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
@@ -236,6 +264,9 @@ export async function applyWave(writer, governor, wave, {
   deletionGuardOptions = { breakGlassUserIds: [], keelAppIds: [], caPolicies: [] },
   rollbackClient,
   runId,
+  // Task-70: the promoted dry-run artifact this run executes; when present every
+  // journal entry records its operation, intent and outcome for compensation.
+  restoreRef = null,
   simulationPassed = false,
   signInPathGate,
   throttleRetryOptions,
@@ -337,12 +368,12 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const journaled = await journalBeforeMutation(rollbackClient, {
-        runId,
-        naturalKey: resource.naturalKey,
+      const journal = await journalBeforeMutation(rollbackClient, {
+        runId, restoreRef, resource, operation: 'delete', targetId,
         priorState: resource.live?.payload ?? resource.payload,
+        intendedState: null,
       });
-      if (!journaled) {
+      if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to delete: rollback journal write failed' });
         continue;
       }
@@ -350,6 +381,7 @@ export async function applyWave(writer, governor, wave, {
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const deleteResult = await retryOperation(() => writer.write('v1.0', path, { method: 'DELETE', body: {} }));
       if (!deleteResult.ok) {
+        await noteOutcome(rollbackClient, journal, classifyWriteOutcome(deleteResult), { detail: outcomeDetail(deleteResult) });
         failed.push(graphFailure(resource.naturalKey, deleteResult));
         continue;
       }
@@ -359,10 +391,12 @@ export async function applyWave(writer, governor, wave, {
       const live = reRead?.body ?? reRead;
       const isSoftDeleted = live?.deletedDateTime != null;
       if (!isAbsent && !isSoftDeleted) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live ?? null, detail: 'delete did not verify' });
         failed.push({ naturalKey: resource.naturalKey, error: 'delete did not verify as absent or soft-deleted' });
         continue;
       }
 
+      await noteOutcome(rollbackClient, journal, 'succeeded', { detail: isAbsent ? 'absent' : 'soft-deleted' });
       applied.push({ naturalKey: resource.naturalKey, targetId });
       continue;
     }
@@ -405,12 +439,12 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const journaled = await journalBeforeMutation(rollbackClient, {
-        runId,
-        naturalKey: resource.naturalKey,
+      const journal = await journalBeforeMutation(rollbackClient, {
+        runId, restoreRef, resource, operation: 'restore-soft-deleted', targetId,
         priorState: resource.live?.payload ?? resource.payload,
+        intendedState: desired,
       });
-      if (!journaled) {
+      if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to restore: rollback journal write failed' });
         continue;
       }
@@ -421,10 +455,12 @@ export async function applyWave(writer, governor, wave, {
         { method: 'POST', body: {} },
       ));
       if (!restoreResult.ok) {
+        await noteOutcome(rollbackClient, journal, classifyWriteOutcome(restoreResult), { detail: outcomeDetail(restoreResult) });
         failed.push(graphFailure(resource.naturalKey, restoreResult));
         continue;
       }
       if (restoreResult.body?.id !== targetId) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: restoreResult.body ?? null, detail: 'restore returned a different objectId' });
         failed.push({
           naturalKey: resource.naturalKey,
           error: 'restore returned a different objectId — references would be broken',
@@ -435,11 +471,13 @@ export async function applyWave(writer, governor, wave, {
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation });
       if (reRead?.ok === false) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'restored object could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
       let live = reRead?.body ?? reRead;
       if (canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+        await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
       }
@@ -447,6 +485,8 @@ export async function applyWave(writer, governor, wave, {
       const payload = writableProjection(desired, resource.resourceType);
       const updateResult = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
       if (!updateResult.ok) {
+        // The restore landed (the object is back); only the follow-up PATCH did not.
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: `restored; follow-up update ${outcomeDetail(updateResult)}` });
         failed.push(graphFailure(resource.naturalKey, updateResult));
         continue;
       }
@@ -454,6 +494,7 @@ export async function applyWave(writer, governor, wave, {
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
         isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation });
       if (updateReRead?.ok === false) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'restored; follow-up update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, updateReRead));
         continue;
       }
@@ -464,13 +505,16 @@ export async function applyWave(writer, governor, wave, {
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
         ))) {
+          await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'not-remediable residual' });
           notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
           continue;
         }
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'residual drift after update' });
         failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
         continue;
       }
 
+      await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
       applied.push({ naturalKey: resource.naturalKey, targetId });
       continue;
     }
@@ -504,12 +548,12 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
-      const journaled = await journalBeforeMutation(rollbackClient, {
-        runId,
-        naturalKey: resource.naturalKey,
+      const journal = await journalBeforeMutation(rollbackClient, {
+        runId, restoreRef, resource, operation: 'update', targetId,
         priorState: resource.live?.payload ?? resource.payload,
+        intendedState: desired,
       });
-      if (!journaled) {
+      if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to update: rollback journal write failed' });
         continue;
       }
@@ -517,6 +561,7 @@ export async function applyWave(writer, governor, wave, {
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation });
       if (!writeResult.ok) {
+        await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
         failed.push(graphFailure(resource.naturalKey, writeResult));
         continue;
       }
@@ -524,6 +569,7 @@ export async function applyWave(writer, governor, wave, {
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
         isNotFound(r) || (r?.ok === true && canonicalHash(withoutNulls(r.body), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
       if (reRead?.ok === false) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
@@ -534,13 +580,16 @@ export async function applyWave(writer, governor, wave, {
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
         ))) {
+          await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'not-remediable residual' });
           notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
           continue;
         }
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'residual drift after update' });
         failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
         continue;
       }
 
+      await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
       applied.push({ naturalKey: resource.naturalKey, targetId });
       continue;
     }
@@ -583,33 +632,40 @@ export async function applyWave(writer, governor, wave, {
 
     if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null }); continue; }
 
-    const journaled = await journalBeforeMutation(rollbackClient, {
-      runId,
-      naturalKey: resource.naturalKey,
+    const journal = await journalBeforeMutation(rollbackClient, {
+      runId, restoreRef, resource, operation: 'create',
       priorState: null,
+      intendedState: payload,
     });
-    if (!journaled) {
+    if (!journal.ok) {
       failed.push({ naturalKey: resource.naturalKey, error: 'refusing to create: rollback journal write failed' });
       continue;
     }
 
     const path = pathFor(resource.resourceType);
     const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: payload }));
-    if (!writeResult.ok) { failed.push(graphFailure(resource.naturalKey, writeResult)); continue; }
+    if (!writeResult.ok) {
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
+      failed.push(graphFailure(resource.naturalKey, writeResult));
+      continue;
+    }
 
     const targetId = writeResult.body.id;
     const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound, { retryOperation });
     if (reRead?.ok === false) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: 'created object could not be re-read' });
       failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
     const actualHash = canonicalHash(reRead?.body ?? reRead, resource.resourceType);
     const desiredHash = canonicalHash(payload, resource.resourceType);
     if (actualHash !== desiredHash) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}` });
       continue;
     }
 
+    await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
     applied.push({ naturalKey: resource.naturalKey, targetId });
   }
 

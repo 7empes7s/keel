@@ -74,7 +74,8 @@ what was built and what it does not prove.
   of sourcing `/etc/keel/db.env`):
   `node --test engine/roadmap/hybrid-contract.test.mjs engine/restore/*.test.mjs engine/reconcile/*.test.mjs engine/safety/*.test.mjs engine/policy/*.test.mjs cli/keel-restore.test.mjs cli/keel-remediate.test.mjs cli/keel-worker.test.mjs`:
   40 pass, 0 fail.
-- The new suite is added to the CI engine step in `.github/workflows/portal.yml`.
+- The new suite is added to the CI engine step in `.github/workflows/portal.yml`. That full step
+  (serial): 218 pass, 0 fail. `cd portal && npm test`: 135 pass, 0 fail. `npm run build` is clean.
 - Required mutation checks, each run against the new suite and reverted:
   - Accept a foreign tenant (envelope tenant check disabled): fails the foreign-tenant test.
   - Allow a cloud write to a synced object (both refusals in `refuseIfSynced` disabled): fails

@@ -269,7 +269,7 @@ async function loadItem(client, { tenantRef, itemId }) {
 }
 
 /** Closes an item with linked evidence. Re-closing a verified item is a no-op. */
-export async function completeItem(client, { tenantRef, itemId, actorId, evidence, at: requestedAt }) {
+export async function completeItem(client, { tenantRef, itemId, actorId, evidence, at: requestedAt = undefined }) {
   const linked = validateCompletionEvidence(evidence);
   await client.query('BEGIN');
   try {
@@ -311,7 +311,7 @@ export async function completeItem(client, { tenantRef, itemId, actorId, evidenc
 }
 
 /** Reopens a verified item (the evidence trail is kept). */
-export async function reopenItem(client, { tenantRef, itemId, actorId, reason, at: requestedAt }) {
+export async function reopenItem(client, { tenantRef, itemId, actorId, reason, at: requestedAt = undefined }) {
   if (typeof reason !== 'string' || reason.trim().length === 0 || secretShaped(reason)) {
     throw new CompletionEvidenceError('reopening requires a reason (and never a secret)');
   }

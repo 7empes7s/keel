@@ -94,7 +94,9 @@ test('every catalogue type sits in exactly one expansion batch with an explicit 
     }
   }
   assert.equal(seen.get('application').batch, 'identity-application');
-  assert.equal(seen.get('administrativeUnit').status, 'research-needed');
+  // Roadmap task-109: the administrative unit is now a registered subset.
+  assert.equal(seen.get('administrativeUnit').status, 'qualified-subset');
+  assert.equal(seen.get('roleEligibilitySchedule').status, 'research-needed');
   assert.equal(seen.get('oauth2PermissionGrant').status, 'research-needed');
 });
 
@@ -103,29 +105,31 @@ test('scopes are derived from registered operations only; no new family is fully
   assert.deepEqual(CATALOG.map(({ type }) => type).filter((type) => restoreScopeFor(type) === 'full'), ['group']);
   assert.equal(restoreScopeFor('application'), 'partial');
   assert.equal(restoreScopeFor('servicePrincipal'), 'partial');
-  assert.equal(restoreScopeFor('administrativeUnit'), 'none');
+  assert.equal(restoreScopeFor('administrativeUnit'), 'partial', 'task-109: update only');
   assert.equal(restoreScopeFor('roleEligibilitySchedule'), 'none');
-  const unit = qualificationFor('administrativeUnit');
+  const unit = qualificationFor('roleEligibilitySchedule');
   assert.equal(unit.decision, 'unknown');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
   assert.equal(qualificationFor('application').expansion.restoreScope, 'partial');
 });
 
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
-  const asQualified = { ...EXPANSION_INVENTORY, administrativeUnit: { ...EXPANSION_INVENTORY.administrativeUnit, status: 'qualified-subset' } };
-  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /administrativeUnit is marked qualified-subset but has no registered write capability/);
-  const flagged = { ...EXPANSION_INVENTORY, groupSetting: { ...EXPANSION_INVENTORY.groupSetting, fullyRestorable: true } };
+  // Roadmap task-109 registered administrativeUnit and groupSetting; the
+  // research-needed examples are now roleEligibilitySchedule and oauth2PermissionGrant.
+  const asQualified = { ...EXPANSION_INVENTORY, roleEligibilitySchedule: { ...EXPANSION_INVENTORY.roleEligibilitySchedule, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /roleEligibilitySchedule is marked qualified-subset but has no registered write capability/);
+  const flagged = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
   const { accessPackage: _omitted, ...missing } = EXPANSION_INVENTORY;
   assert.throws(() => buildExpansionInventory({ inventory: missing }), /no expansion batch entry for: accessPackage/);
   const demoted = { ...EXPANSION_INVENTORY, application: { ...EXPANSION_INVENTORY.application, status: 'research-needed' } };
   assert.throws(() => buildExpansionInventory({ inventory: demoted }), /application has a registered write capability but is marked research-needed/);
-  const noRoute = { ...EXPANSION_INVENTORY, groupSetting: { ...EXPANSION_INVENTORY.groupSetting, api: null } };
+  const noRoute = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, api: null } };
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
-  const manualMismatch = { ...EXPANSION_INVENTORY, groupSetting: { ...EXPANSION_INVENTORY.groupSetting, status: 'manual' } };
-  assert.throws(() => buildExpansionInventory({ inventory: manualMismatch }), /groupSetting is manual in its batch but unknown/);
-  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, administrativeUnit: { decision: 'automated', reason: 'x' } } }),
-    /administrativeUnit is marked automated but has no registered write capability/);
+  const manualMismatch = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, status: 'manual' } };
+  assert.throws(() => buildExpansionInventory({ inventory: manualMismatch }), /oauth2PermissionGrant is manual in its batch but unknown/);
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleEligibilitySchedule: { decision: 'automated', reason: 'x' } } }),
+    /roleEligibilitySchedule is marked automated but has no registered write capability/);
 });
 
 // ------------------------------------------------- the qualified subset, through applyWave

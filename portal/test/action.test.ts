@@ -31,6 +31,7 @@ import {
 } from "@/lib/action";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { tenantRef } from "@/lib/runtime-config";
 
 // Global constraint 6: the test database only ever comes from KEEL_DB_TEST_URL, isolated
 // into its own schema. The routes under test read KEEL_DB_URL via runtime-config, so the
@@ -90,6 +91,12 @@ before(async () => {
   process.env.KEEL_TENANT_CONFIG_PATH = join(tenantConfigDir, "tenant.json");
 
   client = await database.connect();
+  // Task-76: the portal starts a collection only once the read grants are confirmed.
+  // These routes test the action API itself, so the tenant has already collected once.
+  await client.query(
+    "INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now())",
+    [tenantRef()],
+  );
 });
 
 after(async () => {

@@ -34,7 +34,7 @@ import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
-  createDryRunArtifact, getDryRunArtifactById, validateArtifactForExecution,
+  createDryRunArtifact, getDryRunArtifactById, restoreCandidates, validateArtifactForExecution,
 } from '../engine/restore/dryRunArtifact.mjs';
 import {
   exceedsBlastRadiusCeiling, maxOperationImpact, policyConstraintVersion,
@@ -53,7 +53,6 @@ import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
-import { withExplicitReferences } from '../engine/coverage/qualification.mjs';
 import {
   IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
@@ -313,24 +312,7 @@ export async function runRestore({
 
     const versions = await getResourceVersionsFn(client, { snapshotId: sourceSnapshot });
     const references = await getReferencesFn(client, { snapshotId: sourceSnapshot });
-    const refsByVersion = new Map();
-    for (const r of references) {
-      if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-      refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
-    }
-    let resources = versions
-      // users are never written. Roadmap task-108: authentication strengths are
-      // no longer filtered out; applyWave writes only custom strengths under
-      // their proven projection and skips built-in ones as immutable.
-      .filter((v) => v.resource_type !== 'user')
-      .map((v) => ({
-        naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
-        payloadHash: v.payload_hash,
-        // Roadmap task-107: explicit references (a service principal's appId)
-        // join the snapshot's, so wave ordering puts the application first.
-        references: withExplicitReferences({ resourceType: v.resource_type, payload: v.payload, references: refsByVersion.get(v.id) ?? [] }),
-        blastRadius: v.blast_radius, restorePriority: 100,
-      }));
+    let resources = restoreCandidates(versions, references);
 
     let closureKeys = null;
     const artifactScopeReconciliationResources = reconciliationResources;

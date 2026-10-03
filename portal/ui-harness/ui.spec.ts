@@ -22,6 +22,7 @@ const PAGES = [
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
   { name: "policy", hash: "/policies/p1" },
+  { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "baselines", hash: "/baselines" },
   { name: "benchmarks", hash: "/benchmarks" },
@@ -339,6 +340,7 @@ test("contract allowlist only shrinks and names real routes", () => {
 const RECORD_IDS: Record<string, string[]> = {
   policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
   policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
+  "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
   restore: ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
@@ -575,4 +577,23 @@ test("stacked tables on a phone keep records beside their label and hide empty c
     return Math.abs(wideSummary!.x - wideName!.x);
   }).toBeLessThan(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+// Task-92: an automatic policy that is off shows what turning it on would do, names the
+// dependency above its limit, and a refused turn-on says what changed since the preview.
+test("policy activation preview names dependencies above the limit and refuses a stale preview", async ({ page }) => {
+  await open(page, "/policies/p2");
+  const preview = page.locator("section.policy-preview");
+  await expect(preview.locator(".policy-preview-sentence")).toHaveText("Ready to turn on. It would roll back 2 changes now; KEEL will refuse 1 that depends on something above its limit.");
+  await expect(preview.locator(".policy-dependencies li")).toHaveText("Privileged approvers (group), needed by Finance (group). Impact: could lock out admins. Above its limit, so KEEL will refuse these roll backs.");
+  await expect(preview).toContainText("1 waiting to run, not yet rolled back");
+  await expect(preview).not.toContainText("1 rolled back");
+  await page.getByRole("button", { name: "Turn on" }).click();
+  const toast = page.locator(".toast").first();
+  await expect(toast).toContainText("Not turned on");
+  await expect(toast).toContainText("The account's access changed since the preview. Preview again.");
+  await expect(preview).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview turning on" }).click();
+  await expect(page.locator("section.policy-preview .policy-preview-sentence")).toBeVisible();
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });

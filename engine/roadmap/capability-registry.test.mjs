@@ -38,6 +38,9 @@ const REGISTERED = Object.freeze({
   servicePrincipal: ['create'],
   // Roadmap task-108: custom authentication strengths only.
   authenticationStrengthPolicy: ['create', 'update'],
+  // Roadmap task-109: the administrative-configuration subset.
+  administrativeUnit: ['update'],
+  groupSetting: ['update', 'delete'],
 });
 
 function governor() {

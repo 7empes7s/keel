@@ -31,10 +31,11 @@ import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
+import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
-  createDryRunArtifact, getDryRunArtifactById, validateArtifactForExecution,
+  createDryRunArtifact, getDryRunArtifactById, restoreCandidates, validateArtifactForExecution,
 } from '../engine/restore/dryRunArtifact.mjs';
 import {
   exceedsBlastRadiusCeiling, maxOperationImpact, policyConstraintVersion,
@@ -53,7 +54,6 @@ import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
-import { withExplicitReferences } from '../engine/coverage/qualification.mjs';
 import {
   IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
@@ -108,6 +108,22 @@ const THROTTLE_SEEDS = {
   // tenant exists (Task 23 is exactly that re-verification).
   __placeholder__: null,
 };
+
+/**
+ * Roadmap task-109: the source snapshot's per-type coverage entries, read only
+ * when the plan holds a governed administrative delete (applyWave authorises
+ * one only from a complete observation of its collection). Scoped to the
+ * snapshot's own tenant: another tenant's snapshot reads as no evidence (null).
+ */
+export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
+  if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
+  const { rows } = await client.query(
+    'SELECT coverage_digest FROM snapshot WHERE id = $1 AND tenant_ref = $2',
+    [snapshotId, tenantRef],
+  );
+  const digest = rows[0]?.coverage_digest;
+  return digest && typeof digest === 'object' && !Array.isArray(digest) ? digest : null;
+}
 
 export async function runRestore({
   planId,
@@ -313,24 +329,7 @@ export async function runRestore({
 
     const versions = await getResourceVersionsFn(client, { snapshotId: sourceSnapshot });
     const references = await getReferencesFn(client, { snapshotId: sourceSnapshot });
-    const refsByVersion = new Map();
-    for (const r of references) {
-      if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-      refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
-    }
-    let resources = versions
-      // users are never written. Roadmap task-108: authentication strengths are
-      // no longer filtered out; applyWave writes only custom strengths under
-      // their proven projection and skips built-in ones as immutable.
-      .filter((v) => v.resource_type !== 'user')
-      .map((v) => ({
-        naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
-        payloadHash: v.payload_hash,
-        // Roadmap task-107: explicit references (a service principal's appId)
-        // join the snapshot's, so wave ordering puts the application first.
-        references: withExplicitReferences({ resourceType: v.resource_type, payload: v.payload, references: refsByVersion.get(v.id) ?? [] }),
-        blastRadius: v.blast_radius, restorePriority: 100,
-      }));
+    let resources = restoreCandidates(versions, references);
 
     let closureKeys = null;
     const artifactScopeReconciliationResources = reconciliationResources;
@@ -430,6 +429,13 @@ export async function runRestore({
     };
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
     resources = reconciliation.resources;
+    // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
+    // snapshot did not contain) is authorised only by a complete observation of
+    // that collection in the source snapshot. Read only when such a delete is
+    // planned; applyWave refuses it when the entry is missing or partial.
+    const observedCoverage = await observedCoverageFor(client, {
+      resources, snapshotId: sourceSnapshot, tenantRef: sourceTenantRef,
+    });
     // Roadmap task-64: how each resource is recovered (soft-delete restore, in-place
     // update, recreate, manual handoff, refusal), with its retained/new id, deadline,
     // credential and proof. Bound into the plan digest and persisted with the dry run;
@@ -703,6 +709,7 @@ export async function runRestore({
         restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
         deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
+        observedCoverage,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       results.applied.push(...result.applied);
@@ -769,6 +776,7 @@ export async function runRestore({
           restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
+          observedCoverage,
         });
         logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
         results.applied.push(...result.applied);

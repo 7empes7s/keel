@@ -1153,3 +1153,44 @@ DROP TRIGGER IF EXISTS breakglass_lifecycle_event_append_only ON breakglass_life
 CREATE TRIGGER breakglass_lifecycle_event_append_only
   BEFORE UPDATE OR DELETE ON breakglass_lifecycle_event
   FOR EACH ROW EXECUTE FUNCTION breakglass_lifecycle_event_append_only();
+
+-- Roadmap task-92: immutable policy activation previews. Before an automatic roll-back
+-- policy is turned on, KEEL freezes what it would act on (matched changes, everything
+-- they depend on, run-as grants, limits, unsupported operations, benchmark findings)
+-- with the policy, grant, ownership and projection versions it was computed under.
+-- A preview row is never updated. Activation is a separate row that consumes one
+-- preview exactly once (UNIQUE preview_id) and only while every version still
+-- matches a fresh recomputation. Neither row authorizes execution: every queued roll
+-- back is still re-checked by engine/policy/execute.mjs and the restore path.
+-- Additive: policies turned on before this table existed have no activation row and
+-- read as "turned on before previews existed"; they keep running under the same
+-- execution-time checks.
+CREATE TABLE IF NOT EXISTS policy_activation_preview (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref         text NOT NULL,
+  policy_id          uuid NOT NULL REFERENCES policy(id),
+  requested_by       text NOT NULL,
+  policy_version     text NOT NULL,
+  grant_version      text NOT NULL,
+  ownership_version  text NOT NULL,
+  projection_version text NOT NULL,
+  digest             text NOT NULL,
+  verdict            text NOT NULL CHECK (verdict IN ('ready','blocked')),
+  preview            jsonb NOT NULL,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  expires_at         timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS policy_activation_preview_policy_idx
+  ON policy_activation_preview (tenant_ref, policy_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS policy_activation (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref   text NOT NULL,
+  policy_id    uuid NOT NULL REFERENCES policy(id),
+  preview_id   uuid NOT NULL UNIQUE REFERENCES policy_activation_preview(id),
+  activated_by text NOT NULL,
+  activated_at timestamptz NOT NULL DEFAULT now(),
+  versions     jsonb NOT NULL
+);
+CREATE INDEX IF NOT EXISTS policy_activation_policy_idx
+  ON policy_activation (tenant_ref, policy_id, activated_at DESC);

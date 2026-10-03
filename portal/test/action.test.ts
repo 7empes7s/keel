@@ -4,6 +4,8 @@ import { GET as listPoliciesRoute, POST as createPolicyRoute } from "@/app/api/p
 import { GET as showPolicyRoute } from "@/app/api/policies/[id]/route";
 import { POST as enablePolicyRoute } from "@/app/api/policies/[id]/enabled/route";
 import { POST as clearPauseRoute } from "@/app/api/policies/[id]/clear-pause/route";
+import { POST as activationPreviewRoute } from "@/app/api/policies/[id]/activation-preview/route";
+import { POST as activatePolicyRoute } from "@/app/api/policies/[id]/activate/route";
 import { listPolicies } from "../../engine/policy/evaluate.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -629,6 +631,8 @@ test("Task 36: non-admin roles cannot see or change policies, including read-onl
       [createPolicyRoute, "/api/policies", "POST"],
       [enablePolicyRoute, `/api/policies/${randomUUID()}/enabled`, "POST"],
       [clearPauseRoute, `/api/policies/${randomUUID()}/clear-pause`, "POST"],
+      [activationPreviewRoute, `/api/policies/${randomUUID()}/activation-preview`, "POST"],
+      [activatePolicyRoute, `/api/policies/${randomUUID()}/activate`, "POST"],
     ] as const) {
       const response = await handler(routeRequest(path, method, { principalId: "non-admin", capabilities, ...(method === "POST" ? { body: { enabled: true } } : {}) }));
       assert.equal(response.status, 403, `${capabilities}: ${path}`);
@@ -672,7 +676,29 @@ test("Task 36: actual policy routes reject revoked run-as on enable and clear, a
   assert.equal(repaired.enabled, false, "clear must not enable");
   assert.equal(repaired.paused_at, null);
   assert.equal(repaired.run_as_repair_required, false);
-  assert.equal((await update(true)).status, 200);
+  // Roadmap task-92: automatic roll back is turned on only from a current activation preview.
+  const direct = await update(true);
+  assert.equal(direct.status, 409);
+  assert.deepEqual(await direct.json(), { error: "activation_preview_required" });
+  const createdOn = await createPolicyRoute(postAction("/api/policies", { ...options, body: {
+    name: "Task 92 automation", action: "auto_remediate", maxBlastRadius: "cosmetic", runAsPrincipalId: runAs, enabled: true,
+  } }));
+  assert.equal(createdOn.status, 409, "an automatic policy cannot be created already on");
+  const previewed = await activationPreviewRoute(postAction(`/api/policies/${policy.id}/activation-preview`, options));
+  assert.equal(previewed.status, 201);
+  const { preview } = await previewed.json();
+  assert.equal(preview.verdict, "ready");
+  assert.equal(preview.requestedBy, "admin");
+  assert.deepEqual(preview.outcomes, { queued: 0, rolledBack: 0, failed: 0 });
+  const foreign = await activatePolicyRoute(postAction(`/api/policies/${policy.id}/activate`, { ...options, body: { previewId: randomUUID() } }));
+  assert.equal(foreign.status, 409);
+  assert.equal((await foreign.json()).error, "preview-not-found");
+  const activated = await activatePolicyRoute(postAction(`/api/policies/${policy.id}/activate`, { ...options, body: { previewId: preview.id } }));
+  assert.equal(activated.status, 200);
+  assert.equal((await activated.json()).policy.enabled, true);
+  const reused = await activatePolicyRoute(postAction(`/api/policies/${policy.id}/activate`, { ...options, body: { previewId: preview.id } }));
+  assert.equal(reused.status, 409);
+  assert.equal((await reused.json()).error, "preview-used");
   const enabled = await listPoliciesRoute(getJobs("/api/policies?enabled=true", options));
   assert.ok((await enabled.json()).policies.some((p: { id: string }) => p.id === policy.id));
 });

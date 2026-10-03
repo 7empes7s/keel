@@ -323,6 +323,76 @@ export interface DriftRecord {
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;
+  // Task 98: the settings that change behaviour (fields Microsoft sets itself are
+  // counted, never listed) and the records a decision rests on. Absent when the reader
+  // did not compute them; evidence is null when it could not be read.
+  semantic?: SemanticChange;
+  evidence?: ChangeEvidence | null;
+}
+
+// engine/govern/semanticDrift.mjs#semanticChange.
+export interface SemanticField {
+  path: string;
+  kind: "changed" | "added" | "removed" | "unknown-before";
+  before?: unknown;
+  after?: unknown;
+  impact: "behaviour" | "fixed" | "unknown-before";
+}
+
+export interface SemanticChange {
+  state: "compared" | "added" | "removed" | "unknown-before" | "unknown-after";
+  rules: "reviewed" | "generic";
+  fields: SemanticField[];
+  total: number;
+  shown: number;
+  cosmetic: number;
+  groups: { behaviour: number; fixed: number; "unknown-before": number };
+}
+
+export type EvidenceLinkState = "matches" | "mismatch" | "missing" | "unchecked" | "not-in-baseline";
+
+export interface EvidenceApproval {
+  id: string;
+  action: string;
+  status: string;
+  createdAt: string | null;
+  decidedAt: string | null;
+  expiresAt: string | null;
+  job: { id: string; status: string } | null;
+  others: number | null;
+  othersWithheld: boolean;
+}
+
+// engine/govern/semanticDrift.mjs#driftEvidence.
+export interface ChangeEvidence {
+  ownership: { state: "owned" | "shared" | "stale" | "unknown"; entityCode: string | null; sharedWith: string[]; othersWithheld: boolean };
+  observation: { state: EvidenceLinkState; snapshotId: string | null; at: string | null; versionId: string | null };
+  backup: { state: EvidenceLinkState; snapshotId: string | null; at: string | null; versionId: string | null };
+  findings: Array<{ evaluationId: string; controlId: string; title: string | null; verdict: string; exposed: boolean; link: "linked" | "mismatch" }>;
+  approvals: EvidenceApproval[];
+  plans: Array<{
+    id: string;
+    snapshotId: string;
+    status: string;
+    createdAt: string | null;
+    link: "linked" | "mismatch" | "unchecked";
+    outcome: { state: string; at: string | null } | null;
+    approvals: EvidenceApproval[];
+    others: number | null;
+    othersWithheld: boolean;
+  }>;
+  mismatches: number;
+}
+
+// engine/govern/semanticDrift.mjs#summarizeSemanticDrift: every change is in one group.
+export interface SemanticSummary {
+  total: number;
+  byImpact: Array<{ blastRadius: string; changes: number; settings: number }>;
+  behaviouralSettings: number;
+  fixedSettings: number;
+  cosmeticOnly: number;
+  unknownBefore: number;
+  mismatched: number;
 }
 
 // engine/identity/attribution.mjs#attributeChanges plus engine/govern/approvals.mjs#routeApproval.
@@ -352,6 +422,8 @@ export interface DriftData {
   // Task 90: present when the reader is entity-scoped; the list and the baseline's
   // resource count then cover only these entities' resources.
   scope?: { central: false; entities: string[] };
+  // Task 98: counts over `items` that reconcile with it.
+  summary?: SemanticSummary;
 }
 
 export interface BaselinesData {

@@ -234,6 +234,7 @@ test('window boundaries are half-open and a revocation takes effect at its insta
   });
   assert.equal(revoked.revokedAt, revokeAt.toISOString());
   assert.equal(revoked.revokeReason, 'emergency over');
+  assert.equal(revoked.revokedBy.name, 'Second approver');
   assert.equal((await assessDrift(client, { tenantRef, drift: second, now: revokeAt })).state, 'none', 'revoked at its instant');
   assert.equal(intentActiveAt(revoked, revokeAt), false);
   assert.equal((await listChangeIntents(client, { tenantRef, now: revokeAt })).find((entry) => entry.id === revocable.id).state, 'revoked');

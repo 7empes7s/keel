@@ -7,5 +7,5 @@ export const runtime = "nodejs";
 
 export const GET = guardedRead(
   DATA_SURFACES.driftApi,
-  async () => dataResponse(getDriftData),
+  async (_request, access) => dataResponse(() => getDriftData(access.scope)),
 );

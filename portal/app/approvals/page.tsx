@@ -13,11 +13,11 @@ export default async function ApprovalsPage() {
   // The approval guard is intentionally before connection() and the loader: a pure
   // approver may enter this surface, while every other principal is refused without a
   // database connection or approval-detail signal.
-  await requireApprovalInboxAccess();
+  const scope = await requireApprovalInboxAccess();
   await connection();
 
   try {
-    const data = await getApprovalInboxData();
+    const data = await getApprovalInboxData(scope);
     return (
       <>
         <PageHeader

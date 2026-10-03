@@ -17,7 +17,9 @@ export function isGrantActive(grant: PrincipalView["role_grants"][number], now: 
 
 /** "Admin since 1 Sept 2026" / "Viewer from 3 Oct 2026 until 10 Oct 2026" / "Restorer, ended 2 Oct 2026". */
 export function grantSentence(grant: PrincipalView["role_grants"][number], now: string): string {
-  const role = displayEnum("role", grant.role);
+  // Task 90: an entity-scoped grant covers only that entity's resources.
+  const entity = /^entity:(.+)$/.exec(grant.scope ?? "")?.[1];
+  const role = entity ? `${displayEnum("role", grant.role)} for ${entity} resources only` : displayEnum("role", grant.role);
   const from = DATE.format(new Date(grant.active_from));
   if (grant.active_until && new Date(grant.active_until).valueOf() <= new Date(now).valueOf()) return `${role}, ended ${DATE.format(new Date(grant.active_until))}`;
   if (new Date(grant.active_from).valueOf() > new Date(now).valueOf()) return `${role} from ${from}${grant.active_until ? ` until ${DATE.format(new Date(grant.active_until))}` : ""}`;
@@ -59,6 +61,9 @@ export function PrincipalDetails({ principal, now, canRoles = false, canUsers = 
       <TechnicalDetails>
         <RecordField label="Principal ID" usage={<>use with <code>POST /api/principals/&lt;id&gt;/grant</code></>} value={principal.id} />
         <RecordField copy={false} label="Effective capabilities" value={principal.capabilities.join(", ") || "none"} />
+        {Object.entries(principal.entity_capabilities ?? {}).map(([entity, capabilities]) => (
+          <RecordField copy={false} key={entity} label={`Capabilities for ${entity} only`} value={capabilities.join(", ")} />
+        ))}
         <RecordField copy={false} label="Disabled at" value={principal.disabled_at ?? "not disabled"} />
         {principal.role_grants.map((grant) => (
           <RecordField key={grant.id} label={`Grant ID (${grant.role})`} usage={`active ${grant.active_from} → ${grant.active_until ?? "open-ended"}`} value={grant.id} />

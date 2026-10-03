@@ -4,7 +4,7 @@ import { forbidden } from "next/navigation";
 import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/govern/approvals.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
-import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 
@@ -50,12 +50,6 @@ export interface ApprovalInboxData {
   history: ApprovalRequestRecord[];
 }
 
-function capabilitiesFrom(requestHeaders: HeaderSource): string[] {
-  return (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
-    .split(" ")
-    .filter((capability) => capability.length > 0);
-}
-
 function iso(value: unknown): string | null {
   if (value === null || value === undefined) return null;
   const date = value instanceof Date ? value : new Date(String(value));
@@ -65,11 +59,18 @@ function iso(value: unknown): string | null {
 // This is a dedicated approval capability boundary: approvers do not implicitly hold
 // the portal's general read capability. It reads only downstreamed identity headers and
 // must run before any approval loader opens a database connection.
+//
+// Task 90: an approver may hold `approve` centrally or only for some entities. The
+// scope returned here is what the loaders pass to the engine's SQL inbox filter, so an
+// entity approver never receives (or counts) another entity's request.
+export function approvalInboxScope(requestHeaders: HeaderSource): EntityScope | null {
+  if (requestHeaders.get(PRINCIPAL_ID_HEADER) === null) return null;
+  const scope = entityScopeFrom(requestHeaders, APPROVAL_INBOX_CAPABILITY);
+  return scope.central || scope.entities.length > 0 ? scope : null;
+}
+
 export function approvalInboxAccess(requestHeaders: HeaderSource): boolean {
-  return (
-    requestHeaders.get(PRINCIPAL_ID_HEADER) !== null
-    && capabilitiesFrom(requestHeaders).includes(APPROVAL_INBOX_CAPABILITY)
-  );
+  return approvalInboxScope(requestHeaders) !== null;
 }
 
 function approvalInboxForbidden(): Response {
@@ -79,22 +80,27 @@ function approvalInboxForbidden(): Response {
   );
 }
 
-export type ApprovalInboxHandler = (request: Request) => Promise<Response>;
+export type ApprovalInboxHandler = (request: Request, scope: EntityScope) => Promise<Response>;
 
 export function guardedApprovalInbox(
   handler: ApprovalInboxHandler,
 ): (request: Request) => Promise<Response> {
   return async function guardedApprovalInboxRoute(request: Request): Promise<Response> {
-    if (!approvalInboxAccess(request.headers)) return approvalInboxForbidden();
-    return handler(request);
+    const scope = approvalInboxScope(request.headers);
+    if (!scope) return approvalInboxForbidden();
+    return handler(request, scope);
   };
 }
 
 // The server page shares the route's approval-only boundary. forbidden() produces the
 // detail-free HTTP 403 response before the page's loader can expose tenant data.
-export async function requireApprovalInboxAccess(): Promise<void> {
-  if (!approvalInboxAccess(await headers())) forbidden();
+export async function requireApprovalInboxAccess(): Promise<EntityScope> {
+  const scope = approvalInboxScope(await headers());
+  if (!scope) forbidden();
+  return scope;
 }
+
+const CENTRAL_SCOPE: EntityScope = { central: true, entities: [] };
 
 export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRecord {
   return {
@@ -125,15 +131,17 @@ async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Pro
 // This loader is intentionally separate from the guard. API and page callers invoke it
 // only after the approval capability is admitted, and it exposes the engine's narrow
 // review projection rather than credentials or any other database columns.
-export async function getApprovalInboxData(): Promise<ApprovalInboxData> {
+export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): Promise<ApprovalInboxData> {
   return withClient(async (client) => {
     const pending = await listApprovalRequests(client, {
       statuses: ["pending"],
       limit: APPROVAL_INBOX_LIMIT,
+      approverScope: scope,
     });
     const history = await listApprovalRequests(client, {
       statuses: ["approved", "rejected", "expired"],
       limit: APPROVAL_INBOX_LIMIT,
+      approverScope: scope,
     });
     // One query per reference kind for both lists together.
     const summarized = await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] });
@@ -147,11 +155,12 @@ export async function getApprovalInboxData(): Promise<ApprovalInboxData> {
 
 // The sidebar badge: how many requests wait on an approver. Callers check
 // approvalInboxAccess first; this reads only the count, never request detail.
-export async function getPendingApprovalCount(): Promise<number> {
+export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE): Promise<number> {
   return withClient(async (client) => {
     const pending = await listApprovalRequests(client, {
       statuses: ["pending"],
       limit: APPROVAL_INBOX_LIMIT,
+      approverScope: scope,
     });
     return pending.length;
   });

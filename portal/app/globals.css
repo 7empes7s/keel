@@ -6014,3 +6014,34 @@ section.wizard-panel {
 .principal-controls > .btn-danger {
   margin-left: auto;
 }
+
+/* Roadmap task-73: Resilience. One card per measurement; a sentence first, the
+   plan and what does not count below it, the record last. */
+.resilience-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.resilience-grid .item-card + .item-card {
+  margin-top: 0;
+}
+
+.resilience-sentence {
+  margin: var(--space-sm) 0 0;
+  max-width: 70ch;
+}
+
+.resilience-list {
+  display: grid;
+  margin: var(--space-sm) 0 0;
+  padding-left: 1.1rem;
+  gap: var(--space-xs);
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.resilience-card .technical-details {
+  margin-top: var(--space-md);
+}

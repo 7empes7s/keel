@@ -79,6 +79,22 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     source: doc('/en-us/graph/api/tenantadmin-settings-get'),
   },
   {
+    id: 'sharepoint.site-discovery', workload: 'sharepoint-site-settings', resource: 'SharePoint site list',
+    operation: graph('/sites/getAllSites'),
+    auth: { application: true, delegated: false },
+    rbac: { permissions: ['Sites.Read.All'], roles: [] },
+    paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
+    source: doc('/en-us/graph/api/site-getallsites'),
+  },
+  {
+    id: 'sharepoint.site-permissions', workload: 'sharepoint-site-settings', resource: 'SharePoint site-level app permission grants',
+    operation: graph('/sites/{site-id}/permissions'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: [] },
+    paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
+    source: doc('/en-us/graph/api/site-list-permissions'),
+  },
+  {
     id: 'sharepoint.site-properties', workload: 'sharepoint-site-settings', resource: 'SharePoint site properties',
     operation: graph('/sites/{site-id}'),
     auth: { application: true, delegated: true },
@@ -183,7 +199,12 @@ export function scopeProblems(operation) {
       return problems;
     }
     const { segments, expanded } = graphSegments(operation.endpoint);
-    const content = [...segments, ...expanded].filter((segment) => CONTENT_SEGMENTS.has(segment));
+    // Task 102: `/sites/{site-id}/permissions` is the site's own grant list (which
+    // apps hold Sites.Selected access), not a file's sharing. That exact shape is
+    // configuration; `permissions` anywhere else (under a drive item) stays refused.
+    const sitePermissions = segments.length === 3 && segments[0] === 'sites' && segments[2] === 'permissions';
+    const content = [...segments, ...expanded]
+      .filter((segment, index) => CONTENT_SEGMENTS.has(segment) && !(sitePermissions && index === 2));
     if (content.length) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
   } else if (operation?.kind === 'cmdlet') {
     const [verb, noun = ''] = String(operation.cmdlet ?? '').split('-');
@@ -407,7 +428,7 @@ export async function readGraphConfiguration(descriptor, { transport, sleep = as
     const link = body['@odata.nextLink'];
     if (!link) break;
     const url = new URL(link);
-    if (url.origin !== first.origin || url.pathname !== first.pathname) {
+    if (url.origin !== first.origin || decodeURIComponent(url.pathname) !== decodeURIComponent(first.pathname)) {
       throw new Error(`${descriptor.id}: refused a next page outside ${first.pathname}`);
     }
     const scope = scopeProblems({ kind: 'graph', method: 'GET', endpoint: `${url.pathname.replace(`/${descriptor.operation.version}`, '')}${url.search}` });

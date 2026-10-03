@@ -37,6 +37,9 @@ import { qualificationFor } from './qualification.mjs';
 import { diagnoseFailure } from './diagnosis.mjs';
 import { loadRelationshipState, summarizeRelationshipState } from '../collect/relationships.mjs';
 import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
+import { listWorkloads } from '../collect/registry.mjs';
+// Registers the SharePoint workload adapter (task-102) so its coverage is reported.
+import '../collect/workloads/sharepoint.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {
@@ -140,6 +143,9 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
         }
       : null,
     types,
+    // Roadmap task-102: workload configuration reads (SharePoint first) are reported
+    // beside the catalogue types, never merged into them or into the summary.
+    workloads: await loadWorkloadCoverage(client, tenantRef),
     summary: {
       covered: types.filter((t) => t.status === 'covered').length,
       failed: types.filter((t) => t.status === 'failed').length,
@@ -237,6 +243,41 @@ function coveredEntry(descriptor, observation, drill, generatedAt, tenantRef, di
     // rather than a fabricated claim, for every type including this one.
     relationshipCompleteness: 'unknown',
   };
+}
+
+/**
+ * The latest run per registered workload. A workload never run reads
+ * 'never-collected'; a run refused for lack of qualification reads 'disabled' with
+ * its reasons. A database from before task-102 has no table and reads the same as
+ * never collected.
+ */
+async function loadWorkloadCoverage(client, tenantRef) {
+  const { rows: [table] } = await client.query("SELECT to_regclass('workload_collection') IS NOT NULL AS present");
+  const latest = new Map();
+  if (table?.present) {
+    const { rows } = await client.query(
+      `SELECT DISTINCT ON (workload) workload, outcome, observed_from, observed_to, digest
+         FROM workload_collection WHERE tenant_ref = $1
+        ORDER BY workload, created_at DESC, id DESC`,
+      [tenantRef],
+    );
+    for (const row of rows) latest.set(row.workload, row);
+  }
+  return listWorkloads().map((descriptor) => {
+    const row = latest.get(descriptor.workload);
+    const digest = row?.digest ?? {};
+    return {
+      workload: descriptor.workload,
+      type: descriptor.type,
+      status: row ? row.outcome : 'never-collected',
+      covered: row ? ['complete', 'complete-empty'].includes(row.outcome) : false,
+      observation: row ? { startedAt: asIsoInstant(row.observed_from), endedAt: asIsoInstant(row.observed_to) } : null,
+      resources: digest.discovery?.sites ?? null,
+      fieldCounts: digest.fieldCounts ?? null,
+      outOfScope: Array.isArray(digest.outOfScope) ? digest.outOfScope.length : null,
+      reasons: digest.reasons ?? [],
+    };
+  });
 }
 
 async function latestCompletedSnapshots(client, tenantRef) {

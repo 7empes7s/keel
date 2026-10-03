@@ -1016,3 +1016,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS resource_ownership_evidence_current_idx
   ON resource_ownership_evidence (lineage_id) WHERE superseded_at IS NULL;
 CREATE INDEX IF NOT EXISTS resource_ownership_evidence_tenant_idx
   ON resource_ownership_evidence (tenant_ref, lineage_id, observed_at DESC);
+
+-- Task 83 (WS7): acknowledgement deadlines and escalation. A rule assigns an owner and
+-- an acknowledgement window to the alerts it matches; the deadline is computed when an
+-- occurrence opens and persisted on the alert, so a restart cannot lose an overdue one.
+-- escalated_occurrence is the atomic claim: an occurrence escalates at most once.
+CREATE TABLE IF NOT EXISTS alert_escalation_rule (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  control             text,
+  min_severity        text NOT NULL DEFAULT 'notice' CHECK (min_severity IN ('notice','warning','critical')),
+  ack_within_ms       int NOT NULL CHECK (ack_within_ms > 0),
+  owner_principal_id  uuid REFERENCES principal(id),
+  escalate_channel_id uuid REFERENCES channel(id),
+  enabled             boolean NOT NULL DEFAULT true,
+  created_by          text NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alert_escalation_rule_tenant_idx ON alert_escalation_rule (tenant_ref, enabled);
+
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS ack_deadline_at timestamptz;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_principal_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_source text NOT NULL DEFAULT 'unassigned'
+  CHECK (owner_source IN ('rule','unassigned'));
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_rule_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalated_occurrence int NOT NULL DEFAULT 0;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_error text;
+CREATE INDEX IF NOT EXISTS alert_ack_deadline_idx ON alert (ack_deadline_at)
+  WHERE state IN ('open','reopened') AND condition_active;

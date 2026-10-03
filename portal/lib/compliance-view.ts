@@ -37,17 +37,17 @@ export function captureAge(capture: BaselineCapture | undefined, now: string): s
   return capture?.capturedAt ? ago(capture.capturedAt, now) : "Not recorded";
 }
 
-export function changesSentence(changes: BaselineChanges | undefined): string {
+export function changesSentence(changes: BaselineChanges | undefined, { short = false } = {}): string {
   if (!changes) return "Not compared yet.";
   if (changes.state === "no-collection") return "No complete backup to compare with yet.";
   if (changes.state === "not-comparable") return "Cannot be compared with the latest backup; the reason is in Technical details.";
-  if (changes.total === 0) return "No changes since capture.";
+  if (changes.total === 0) return short ? "No changes." : "No changes since capture.";
   const parts = [
     changes.added ? `${changes.added} added` : null,
     changes.modified ? `${changes.modified} changed` : null,
     changes.removed ? `${changes.removed} removed` : null,
   ].filter(Boolean);
-  return `${plural(changes.total, "change")} since capture (${parts.join(", ")}).`;
+  return `${plural(changes.total, "change")}${short ? "" : " since capture"} (${parts.join(", ")}).`;
 }
 
 export function baselineState(baseline: BaselineRecord): string {

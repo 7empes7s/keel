@@ -94,7 +94,7 @@ export function BaselineRegister({
                       <time dateTime={capture?.capturedAt ?? undefined} title={formatTimestamp(capture?.capturedAt ?? null)}>{captureAge(capture, now)}</time>
                       <small className="cell-note">{captureScope(capture)}</small>
                     </td>
-                    <td className="wrap-value" data-label="Since capture">{changesSentence(changes)}</td>
+                    <td className="wrap-value" data-label="Since capture">{changesSentence(changes, { short: true })}</td>
                     <td className="wrap-value" data-label="Set by">{baseline.setByRef?.name ?? "an unknown account"}</td>
                     <td data-label="State">
                       {baseline.active ? (

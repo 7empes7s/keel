@@ -6,8 +6,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { postAction } from "@/lib/action-client";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
+import { IncidentQualificationSummary } from "@/components/incident-recovery";
 import { toast } from "@/lib/toast";
-import type { RestoreResource } from "@/lib/portal-data";
+import type { IncidentSummary, RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
 import { words } from "@/lib/presentation";
 import { formatTimestamp } from "@/lib/presentation";
@@ -84,6 +85,8 @@ interface DryRunArtifact {
   contentEffects?: ContentEffect[] | null;
   effectsDigest?: string | null;
   contentEffectApprovals?: { approvedBy: string; approvedAt: string | null }[];
+  // Roadmap task-71: the incident recovery context the dry run was planned under.
+  incidentRecovery?: Parameters<typeof IncidentQualificationSummary>[0]["context"] | null;
 }
 
 const EDGE_RESULT_PREFIX = "edge:";
@@ -172,12 +175,15 @@ export function RestoreSelection({
   resources,
   snapshotId,
   snapshots,
+  incident = null,
 }: {
   canRestore: boolean;
   canApprove?: boolean;
   resources: RestoreResource[];
   snapshotId: string;
   snapshots: SnapshotOption[];
+  // Roadmap task-71: plan this restore as a recovery point of an incident.
+  incident?: IncidentSummary | null;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -339,6 +345,7 @@ export function RestoreSelection({
           selection: selected,
           collectorConfig: collectorConfig.trim(),
           targetConfig: targetConfig.trim(),
+          ...(incident ? { incidentId: incident.id } : {}),
         },
         idempotencyKey,
       );
@@ -466,6 +473,14 @@ export function RestoreSelection({
         </div>
       ) : null}
 
+      {incident ? (
+        <p className="incident-restore-banner" role="note">
+          Restoring under incident <strong>{incident.title}</strong>. The dry run is refused unless this snapshot is a
+          qualified recovery point for the incident or carries an investigator&apos;s override, and excluded malicious items are
+          checked after the restore.
+        </p>
+      ) : null}
+
       {step === "select" ? (
         <div className="wizard-panel">
           <div className="filter-bar">
@@ -473,7 +488,7 @@ export function RestoreSelection({
               <span>Snapshot</span>
               <select
                 disabled={submitting}
-                onChange={(event) => router.push(`/restore?snapshot=${event.target.value}`)}
+                onChange={(event) => router.push(`/restore?snapshot=${event.target.value}${incident ? `&incident=${incident.id}` : ""}`)}
                 value={snapshotId}
               >
                 {snapshots.map((snapshot) => (
@@ -741,6 +756,8 @@ export function RestoreSelection({
             <div className={artifact.results.failed.length ? "stat-bad" : undefined}><dt>Would fail</dt><dd>{artifact.results.failed.length}</dd></div>
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
+
+          {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} /> : null}
 
           {/* Content effects gate promotion, so they lead the review. */}
           {artifact.contentEffects?.length && dryRunArtifactId ? (

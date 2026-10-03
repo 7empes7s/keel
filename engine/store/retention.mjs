@@ -1,7 +1,9 @@
 import { OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
 
 /** Spec M2.7. A snapshot is prunable ONLY if nothing depends on it. Retention that deletes
- * the baseline out from under the governance loop is data loss, not cleanup. */
+ * the baseline out from under the governance loop is data loss, not cleanup.
+ * Roadmap task-71: an active incident retention pin is such a dependency — it
+ * supersedes routine retention until an authorized release. */
 const DEFAULT_RETENTION_DAYS = {
   tier1: 7,
   tier2: 90,
@@ -40,6 +42,10 @@ export async function pruneSnapshots(client, { tenantRef, policy, now }) {
          UNION
          SELECT p.source_snapshot AS snapshot_id
          FROM plan p
+         UNION
+         SELECT rp.snapshot_id
+         FROM retention_pin rp
+         WHERE rp.released_at IS NULL
        ) AS referenced_snapshots`,
     );
     const referencedSnapshotIds = new Set(referencedSnapshots.map(({ snapshot_id }) => snapshot_id));

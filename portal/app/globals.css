@@ -5515,3 +5515,80 @@ section.wizard-panel {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Task-71: incident-qualified recovery points and retention pins. */
+.incident-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: var(--space-sm);
+}
+
+.incident-link {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 8px);
+  color: inherit;
+  text-decoration: none;
+}
+
+.incident-link:hover { border-color: var(--text-soft); }
+.incident-link[aria-current="page"] { border-color: var(--readonly); background: var(--readonly-bg); }
+.incident-link small { color: var(--text-soft); }
+
+.incident-open-form,
+.incident-interval-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.incident-subhead { margin: var(--space-md) 0 var(--space-xs); font-size: 1rem; }
+
+.incident-intervals,
+.incident-reasons,
+.incident-exclusions {
+  margin: var(--space-xs) 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.incident-point-recommended th { box-shadow: inset 3px 0 0 var(--protected); }
+.incident-point-time,
+.incident-window,
+.incident-pin-note { display: block; color: var(--text-soft); font-size: 0.8125rem; }
+.incident-window { color: var(--failed); }
+.incident-recommended { margin-left: var(--space-xs); }
+
+.incident-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: flex-start; }
+
+.incident-assess-form {
+  display: grid;
+  gap: var(--space-xs);
+  flex-basis: 100%;
+  min-width: min(22rem, 100%);
+}
+
+.incident-restore-banner,
+.incident-qualification {
+  margin: 0 0 var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--partial-bg);
+  font-size: 0.875rem;
+}
+
+.incident-qualification { display: grid; gap: var(--space-xs); }
+.incident-qualification > * { margin: 0; }
+.incident-qualification-qualified { border-left-color: var(--protected); background: var(--protected-bg); }
+
+@media (max-width: 46rem) {
+  .incident-actions { flex-direction: column; }
+  .incident-open-form,
+  .incident-interval-form { flex-direction: column; align-items: stretch; }
+}

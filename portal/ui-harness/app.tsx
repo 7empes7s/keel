@@ -24,6 +24,8 @@ import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
+import { IncidentRecovery } from "@/components/incident-recovery";
+import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { DashboardData, DriftRecord } from "@/lib/types";
 
@@ -202,6 +204,36 @@ function dashboard(posture: number): DashboardData {
   };
 }
 
+// Task-71: an open incident whose newest snapshot captured the attack. The engine
+// recommends the newest QUALIFIED point, not the newest one.
+const INCIDENT: IncidentDetail = {
+  incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", owner: "investigator@contoso.example", status: "open", openedAt: "2026-10-01T08:10:00Z", closedAt: null },
+  intervals: [{ id: "w1", startsAt: "2026-09-30T22:40:00Z", endsAt: null, reason: "First malicious sign-in (risky sign-in report)", recordedBy: "investigator@contoso.example" }],
+  pins: [{ id: "pin-1", snapshotId: "5a2be911-0000-4000-8000-000000000002", reason: "Last known good before the attack", pinnedBy: "investigator@contoso.example", pinnedAt: "2026-10-01T08:30:00Z" }],
+  points: [
+    {
+      snapshotId: "93c41e07-0000-4000-8000-000000000003", observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
+      inCompromiseWindow: true, status: "unsuitable", stale: false, pinned: false,
+      reasons: ["observed during a compromise interval", "assessed compromised (v1)"],
+      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: "investigator@contoso.example", assessedAt: "2026-10-01T09:00:00Z", fingerprint: "f-3" },
+    },
+    {
+      snapshotId: "5a2be911-0000-4000-8000-000000000002", observedFrom: "2026-09-30T05:55:00Z", observedTo: "2026-09-30T06:00:00Z",
+      inCompromiseWindow: false, status: "qualified", stale: false, pinned: true,
+      reasons: ["assessed clean with 1 malicious-field exclusion(s) (v2)"],
+      assessment: {
+        version: 2, verdict: "clean", exclusions: [{ naturalKey: "servicePrincipal:Mail Sync Helper", field: null, reason: "Consent granted by the attacker on 29 Sept" }],
+        assessedBy: "investigator@contoso.example", assessedAt: "2026-10-01T09:20:00Z", fingerprint: "f-2",
+      },
+    },
+    {
+      snapshotId: "0f7d3c52-0000-4000-8000-000000000001", observedFrom: "2026-09-29T05:55:00Z", observedTo: "2026-09-29T06:00:00Z",
+      inCompromiseWindow: false, status: "unassessed", stale: false, pinned: false, reasons: ["not assessed for this incident"], assessment: null,
+    },
+  ],
+  recommended: "5a2be911-0000-4000-8000-000000000002",
+};
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -215,6 +247,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}
         snapshotId="snap-1" snapshots={[{ id: "snap-1", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 } as never]} />
       <JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Queue" title="Restore jobs" /></>;
+    case "/incidents": return <>{header("Recovery", "Incidents", "Recovery points qualified against an incident's compromise window and the investigator's assessments. The newest snapshot is not trusted by default.", "Actionable")}
+      <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: "investigator@contoso.example", status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} selected={INCIDENT} /></>;
     case "/drift": return <>{header("Governance", "Drift", "Unresolved changes measured against the active recovery baseline.", "Actionable")}
       <section aria-label="Active baseline context" className="context-strip">
         <span className="active-indicator">Active baseline</span><strong>Post-migration golden state</strong><span>4,812 resources</span><span>2d old</span>

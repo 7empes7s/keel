@@ -8,6 +8,11 @@
 // dependency closure of exactly the selected natural keys (portal-design §4.1 — the
 // closure is recomputed here from the snapshot, never trusted from the caller).
 //
+// node keel-restore.mjs --snapshot-id <id> --select <key> --incident <incidentId> ... restores under an
+// incident (roadmap task-71): the snapshot must be a qualified recovery point for that
+// incident (or carry an investigator's override), its malicious-field exclusions are
+// applied and become post-restore checks, and all of it is bound into the plan digest.
+//
 // node keel-restore.mjs --compensate <artifactId> [--persist-artifact <id>] [--requested-by <who>]
 // plans the conflict-aware compensation of one promoted restore (roadmap task-70) as
 // a dry run; it is executed only by promoting that compensation artifact with
@@ -47,6 +52,11 @@ import { emitCompletionItems } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
+import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
+import {
+  IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
+  incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
+} from '../engine/govern/incidents.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -114,6 +124,9 @@ export async function runRestore({
   // below, never trusted from the caller. Absent for operator-driven restores,
   // which keeps their behavior exactly as before.
   automationPolicyIds,
+  // Roadmap task-71: restore this snapshot as a recovery point of this incident. A
+  // selection-scope dry run only; a promotion re-resolves it from its artifact.
+  incidentId,
   requestedBy,
   readFile = readFileSync,
   dbUrl = process.env.KEEL_DB_URL,
@@ -150,8 +163,17 @@ export async function runRestore({
     emitCompletionItems: emitCompletionItemsFn = emitCompletionItems,
     assertContentEffectApproval: assertContentEffectApprovalFn = assertContentEffectApproval,
     listJournal: listJournalFn = listJournal,
+    resolveIncidentRecovery: resolveIncidentRecoveryFn = resolveIncidentRecovery,
+    incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
   } = dependencies;
 
+  if (incidentId !== undefined) {
+    if (typeof incidentId !== 'string' || incidentId.length === 0) throw new Error('incidentId must be a non-empty string');
+    if (artifactId !== undefined) throw new Error('incidentId is supplied by the dry-run artifact on promotion, never by the caller');
+    if (selection === undefined || planId !== undefined || reconciliationResources !== undefined || compensateArtifactId !== undefined) {
+      throw new Error('incidentId requires the snapshotId/selection restore scope');
+    }
+  }
   if (compensateArtifactId !== undefined) {
     if (planId !== undefined || snapshotId !== undefined || selection !== undefined
       || reconciliationResources !== undefined || artifactId !== undefined || automationPolicyIds !== undefined) {
@@ -323,6 +345,42 @@ export async function runRestore({
       }
       logger.log(`selection of ${selection.length} closed to ${resources.length} resources`);
     }
+
+    // Roadmap task-71: incident-qualified recovery points. A snapshot inside an open
+    // incident's compromise interval is restored only under that incident, so the
+    // gate cannot be sidestepped by not naming it. Under an incident the point must
+    // be qualified (or carry a valid investigator override) — re-derived here at the
+    // dry run AND at promotion — and the assessment's exclusions are applied to what
+    // is written and become post-restore checks, all bound into the plan digest.
+    const sourceTenantRef = artifact?.tenantRef
+      ?? (await client.query('SELECT tenant_ref FROM snapshot WHERE id = $1', [sourceSnapshot])).rows[0]?.tenant_ref;
+    if (!sourceTenantRef) throw new Error(`snapshot not found: ${sourceSnapshot}`);
+    const restoreIncidentId = artifact ? (artifact.incidentRecovery?.incidentId ?? undefined) : incidentId;
+    let incidentRecovery = null;
+    const covering = await incidentsCoveringSnapshotFn(client, { tenantRef: sourceTenantRef, snapshotId: sourceSnapshot });
+    if (covering.length > 0 && !covering.includes(restoreIncidentId)) {
+      throw new Error(
+        `${artifact ? 'restore promotion refused: ' : ''}incident-recovery-refused: snapshot ${sourceSnapshot} lies in a compromise interval of open incident ${covering.join(', ')} — restore it under that incident (--incident)`,
+      );
+    }
+    if (restoreIncidentId !== undefined) {
+      try {
+        incidentRecovery = await resolveIncidentRecoveryFn(client, {
+          tenantRef: sourceTenantRef,
+          incidentId: restoreIncidentId,
+          snapshotId: sourceSnapshot,
+          requestedBy: artifact ? artifact.requestedBy : requestedBy,
+        });
+        const excluded = applyIncidentExclusions(resources, incidentRecovery.exclusions, { hash: canonicalHash });
+        resources = excluded.resources;
+        incidentRecovery = { ...incidentRecovery, postRestoreChecks: excluded.checks };
+      } catch (error) {
+        if (artifact && error instanceof IncidentRecoveryRefusal) throw new Error(`restore promotion refused: ${error.message}`);
+        throw error;
+      }
+      logger.log(`incident ${restoreIncidentId}: recovery point ${incidentRecovery.qualification} (${incidentRecovery.reasons.join('; ')}), ${incidentRecovery.exclusions.length} exclusion(s), ${incidentRecovery.postRestoreChecks.length} post-restore check(s)`);
+    }
+    const incidentDigest = incidentRecovery ? incidentRecoveryDigestInput(incidentRecovery) : null;
 
     const { accessToken: collectorToken } = await getTokenFn(collectorConfig);
     const targetReader = new GraphReaderClass(async () => collectorToken);
@@ -580,6 +638,7 @@ export async function runRestore({
         // original digest inputs; every newer artifact binds them.
         recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
         contentEffects: contentEffects.effects,
+        incidentRecovery: incidentDigest,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -742,6 +801,26 @@ export async function runRestore({
       }
     }
 
+    // Roadmap task-71: the exclusions bound into the plan are checked against a FRESH
+    // read of the target after an enforced incident recovery. Results go to the
+    // evidence chain; a failed check fails the run visibly — a malicious grant still
+    // live after recovery is never reported as a clean restore.
+    let incidentChecks = [];
+    if (mode === 'enforce' && artifact && incidentRecovery) {
+      const reread = await collectM1Fn(targetReader);
+      const collectedTypes = Array.isArray(reread) ? reread.map((entry) => entry?.[0]).filter((type) => typeof type === 'string') : [];
+      incidentChecks = evaluatePostRestoreChecks(incidentRecovery.postRestoreChecks, canonicalizeAllFn(reread), { collectedTypes });
+      await recordPostRestoreChecks(client, {
+        tenantRef: artifact.tenantRef, artifactId: artifact.id, incidentId: incidentRecovery.incidentId,
+        results: incidentChecks, actor: 'keel-restore',
+      });
+      for (const check of incidentChecks) logger.log(`incident check ${check.outcome}: ${check.naturalKey}${check.field ? ` ${check.field}` : ''} — ${check.detail}`);
+      const failedChecks = incidentChecks.filter((check) => check.outcome === 'failed');
+      if (failedChecks.length > 0) {
+        throw new Error(`incident-check-failed: ${failedChecks.map((check) => check.detail).join('; ')}`);
+      }
+    }
+
     let createdArtifactId = null;
     if (persistArtifactId !== undefined) {
       const { rows: snapshotRows } = await client.query(
@@ -765,6 +844,7 @@ export async function runRestore({
         relationshipOperations,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
+        incidentRecovery: incidentDigest,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
@@ -790,6 +870,7 @@ export async function runRestore({
         relationshipOperations,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
+        incidentRecovery,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
@@ -797,7 +878,7 @@ export async function runRestore({
 
     return {
       plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
-      completionItems, contentEffects: contentEffects.effects,
+      completionItems, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };
@@ -995,13 +1076,14 @@ export async function main({
   const persistArtifactId = arg('persist-artifact', undefined, argv);
   const compensateArtifactId = arg('compensate', undefined, argv);
   const requestedBy = arg('requested-by', undefined, argv);
+  const incidentId = arg('incident', undefined, argv);
   const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
 
   // Task-70: a compensation is planned from the promoted restore's own journal and
   // frozen config — never with --enforce, and never alongside another scope.
   if (compensateArtifactId !== undefined) {
-    if (planId || snapshotId || selection.length || artifactId !== undefined) {
-      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--artifact');
+    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
     }
     if (mode === 'enforce') {
       throw new Error('--compensate is a dry run only; execute it by promoting the compensation artifact with --artifact <id> --enforce');
@@ -1030,6 +1112,10 @@ export async function main({
     throw new Error('--plan is mutually exclusive with --snapshot-id/--select');
   }
   if (!snapshotId && selection.length) throw new Error('--select requires --snapshot-id');
+  // Task-71: a promotion's incident comes from its artifact, never from argv.
+  if (incidentId !== undefined && (artifactId !== undefined || !snapshotId)) {
+    throw new Error('--incident requires --snapshot-id/--select (a promotion carries its incident in the dry-run artifact)');
+  }
   if (snapshotId && !selection.length) throw new Error('--snapshot-id requires at least one --select <naturalKey>');
   if (!planId && !snapshotId && !artifactId) {
     throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, or --artifact <id> required');
@@ -1065,6 +1151,7 @@ export async function main({
     mode,
     artifactId,
     persistArtifactId,
+    incidentId,
     requestedBy,
     readFile,
     acceptDegradation: flag('accept-degradation', argv),

@@ -315,6 +315,24 @@ recordFixtureProof('conditionalAccessPolicy', 'create', 'engine/restore/applyEng
 recordFixtureProof('conditionalAccessPolicy', 'update', 'engine/restore/updatePath.test.mjs');
 recordFixtureProof('conditionalAccessPolicy', 'delete', 'engine/roadmap/capability-registry.test.mjs');
 
+// Roadmap task-107: the first bounded application/service-principal subset of
+// the Entra expansion batches (engine/coverage/qualification.mjs's
+// EXPANSION_BATCHES). Only these operations are registered; every sibling verb
+// stays unsupported and refused by verbCapability(). application delete is
+// deliberately absent: deleting an app registration strands every consumer of
+// its credentials, and KEEL has no qualified guard for that yet. Credential
+// material (passwordCredentials, keyCredentials) is immutable for the
+// application type and excluded from create bodies, so no operation here ever
+// writes it; a recreate leaves
+// owned credential completion items instead (engine/restore/completion.mjs).
+registerAll('application', '/applications', ['create', 'update', 'restore-soft-deleted']);
+recordFixtureProof('application', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
+recordFixtureProof('application', 'update', 'engine/roadmap/fidelity-expansion.test.mjs');
+recordFixtureProof('application', 'restore-soft-deleted', 'engine/roadmap/fidelity-expansion.test.mjs');
+
+registerAll('servicePrincipal', '/servicePrincipals', ['create']);
+recordFixtureProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship

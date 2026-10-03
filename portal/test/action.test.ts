@@ -694,9 +694,12 @@ test("notification routes enforce configuration while viewers can read recent de
     assert.equal((await disable(routeRequest(`/api/channels/${randomUUID()}/disable`, "POST", actor))).status, 403);
     assert.equal((await remove(routeRequest(`/api/subscriptions/${randomUUID()}`, "DELETE", actor))).status, 403);
   }
-  const invalid = await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: { kind: "sms" } }));
+  const invalid = await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: { kind: "fax" } }));
   assert.equal(invalid.status, 400);
-  assert.deepEqual(await invalid.json(), { error: "channel.kind must be webhook or email" });
+  assert.deepEqual(await invalid.json(), { error: "channel.kind must be one of webhook, email, teams, slack, pagerduty, sms" });
+  const noProvider = await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: { kind: "sms", config: {} } }));
+  assert.equal(noProvider.status, 400);
+  assert.deepEqual(await noProvider.json(), { error: "provider is required (supported: twilio)" });
   const created = await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: channelBody }));
   assert.equal(created.status, 201);
   const { channel } = await created.json();

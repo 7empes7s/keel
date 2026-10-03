@@ -118,8 +118,9 @@ disclosed.
   134 pass, 0 fail, including the new `portal/test/scoped-authorization.test.ts`
   and a proxy header test in `auth.test.ts`.
 - CI engine suite (`.github/workflows/portal.yml`, now including
-  `roadmap/scoped-authorization.test.mjs`): 152 pass, 0 fail.
-  `npm run build` succeeds, and `npm run test:ui` passes 91/91 with the
+  `roadmap/scoped-authorization.test.mjs`): 152 pass, 0 fail; 179 pass, 0 fail
+  after merging master (tasks 83, 84, 101, 110). Portal `npm test` 135 pass after the merge.
+  `npm run build` succeeds, and `npm run test:ui` passes 91/91 (94/94 after the merge) with the
   allowlist still empty.
 - Two test doubles that fake `role_grant` rows (`cli/keel-worker.test.mjs` and
   `engine/roadmap/benchmark-packs.test.mjs`) now return the `scope` column,

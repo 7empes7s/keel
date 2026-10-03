@@ -138,6 +138,22 @@ function outcomeEntry(raw) {
   };
 }
 
+// Roadmap task-110: the Graph reader counts every HTTP request it sends and every
+// 429/503 it is told to back off on. The per-type delta is recorded beside the outcome
+// so schedule forecasts aggregate measured requests, never the item count. A reader
+// without counters (fakes, older readers) leaves the fields out: unmeasured, not zero.
+function readerCounts(reader) {
+  const requests = reader?.stats?.requests;
+  const throttles = reader?.stats?.throttled;
+  return Number.isSafeInteger(requests) && Number.isSafeInteger(throttles) ? { requests, throttles } : null;
+}
+
+function requestCounts(before, reader) {
+  const after = readerCounts(reader);
+  if (!before || !after || after.requests < before.requests || after.throttles < before.throttles) return {};
+  return { requests: after.requests - before.requests, throttles: after.throttles - before.throttles };
+}
+
 /**
  * Snapshot collection keeps an explicit outcome for every attempted type.
  * Only completed enumerations enter `collected`; a failed/partial read has
@@ -164,9 +180,10 @@ export async function collectWithOutcomes(reader, scope = {}) {
       continue;
     }
     const attemptStartedAt = new Date();
+    const before = readerCounts(reader);
     try {
       const raw = await adapter.collectRaw(reader, context);
-      coverageDigest[type] = outcomeEntry(raw);
+      coverageDigest[type] = { ...outcomeEntry(raw), ...requestCounts(before, reader) };
       if (raw.error === null && !raw.capped && Array.isArray(raw.items)) {
         collected.push([type, raw.items]);
         if (type === 'organization') context.tenantId ??= raw.items[0]?.id;
@@ -183,6 +200,7 @@ export async function collectWithOutcomes(reader, scope = {}) {
         startedAt: attemptStartedAt.toISOString(),
         completedAt: new Date().toISOString(),
         pagesCompleted: null,
+        ...requestCounts(before, reader),
       };
     }
   }

@@ -1,4 +1,5 @@
-import { createChannel, createSubscription, listDeliveries } from "../../engine/notify/notifications.mjs";
+import { ChannelConfigError } from "../../engine/notify/adapters.mjs";
+import { CHANNEL_KIND_ERROR, createChannel, createSubscription, listDeliveries } from "../../engine/notify/notifications.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import type { DataSurface } from "@/lib/read";
 
@@ -6,7 +7,10 @@ const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface Channel { id: string; kind: string; config: Record<string, unknown>; enabled: boolean }
 export interface Subscription { id: string; channel_id: string; event_glob: string; min_severity: string }
-export interface Delivery { id: string; event: { kind: string; severity: string }; channel_id: string; channel_kind: string; status: string; attempts: number; last_error: string | null; next_attempt_at: string | null }
+export interface Delivery { id: string; event: { kind: string; severity: string }; channel_id: string; channel_kind: string; status: string; attempts: number; last_error: string | null; next_attempt_at: string | null; provider_receipt?: ProviderReceipt | null }
+
+/** Task 84: what the provider said, with every secret already redacted by the engine. */
+export interface ProviderReceipt { channel?: string; provider?: string; outcome?: string; httpStatus?: number | null; semantics?: string; endpointHost?: string; dedupKey?: string; providerMessageId?: string | null; providerStatus?: string | null; retryAfterMs?: number }
 
 export function guardedNotificationList(kind: "channels" | "subscriptions" | "deliveries", surface: DataSurface, deps: GuardDeps = {}) {
   return guarded({ action: `${kind}:list`, capability: surface.capability }, async ({ client, request }) => {
@@ -40,7 +44,7 @@ export function guardedNotificationCreate(kind: "channels" | "subscriptions", su
         : await createSubscription(client, { channelId: body.channelId, eventGlob: body.eventGlob, minSeverity: body.minSeverity });
       return Response.json({ [kind === "channels" ? "channel" : "subscription"]: row }, { status: 201, headers: NO_STORE });
     } catch (error) {
-      if (error instanceof Error && error.message === "channel.kind must be webhook or email") {
+      if (error instanceof ChannelConfigError || (error instanceof Error && error.message === CHANNEL_KIND_ERROR)) {
         return Response.json({ error: error.message }, { status: 400, headers: NO_STORE });
       }
       if ((error as { code?: string }).code === "23503") return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });

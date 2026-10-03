@@ -429,3 +429,45 @@ function captureCosts(metrics) {
     .filter(key => Number.isFinite(metrics[key]) && metrics[key] >= 0)
     .map(key => [key, metrics[key]]));
 }
+
+/**
+ * Roadmap task-110: the measured Graph cost of one collected type, read from its
+ * coverage-digest entry. `requests` and `throttles` are the reader's own counters
+ * (engine/collect/entraAdapter.mjs); `itemCount` is a resource count and is never
+ * used as a request count. A legacy entry written before the counters existed, or
+ * one with malformed counts, returns null: unmeasured, never an invented zero.
+ */
+export function graphRequestObservation(entry) {
+  if (!entry || typeof entry !== 'object' || entry.outcome === 'not-requested') return null;
+  const { requests, throttles } = entry;
+  if (!Number.isSafeInteger(requests) || requests < 0) return null;
+  if (!Number.isSafeInteger(throttles) || throttles < 0 || throttles > requests) return null;
+  return { requests, throttles };
+}
+
+/**
+ * The capture-cost metrics for one collection run, summed over the types it
+ * requested. When any requested type is unmeasured the run's totals are null,
+ * because a partial sum would understate the run's cost.
+ */
+export function collectionCostMetrics(coverageDigest) {
+  let graphRequests = 0;
+  let graphThrottles = 0;
+  let measuredTypes = 0;
+  let unmeasuredTypes = 0;
+  for (const entry of Object.values(coverageDigest && typeof coverageDigest === 'object' ? coverageDigest : {})) {
+    if (entry?.outcome === 'not-requested') continue;
+    const observed = graphRequestObservation(entry);
+    if (!observed) { unmeasuredTypes += 1; continue; }
+    measuredTypes += 1;
+    graphRequests += observed.requests;
+    graphThrottles += observed.throttles;
+  }
+  const measured = measuredTypes > 0 && unmeasuredTypes === 0;
+  return {
+    graphRequests: measured ? graphRequests : null,
+    graphThrottles: measured ? graphThrottles : null,
+    measuredTypes,
+    unmeasuredTypes,
+  };
+}

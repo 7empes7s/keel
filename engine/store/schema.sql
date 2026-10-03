@@ -377,6 +377,11 @@ END IF;
 END
 $schedule$;
 
+-- Roadmap task-110: an operator may acknowledge a measured load warning on a schedule.
+-- Additive and nullable: legacy rows read as "not acknowledged". The acknowledgement
+-- records who, when and for which cadence; it never changes cadence or next_due_at.
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS forecast_acknowledgement jsonb;
+
 -- Task 43: a system identity has an exact, code-defined capability set, not a new role.
 ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind text
   CHECK (system_kind = 'scheduler');
@@ -1027,3 +1032,40 @@ ALTER TABLE role_grant DROP CONSTRAINT IF EXISTS role_grant_scope_check;
 ALTER TABLE role_grant ADD CONSTRAINT role_grant_scope_check
   CHECK (scope = '*' OR scope ~ '^entity:[A-Z][A-Z0-9_]{1,31}$');
 ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS entity_scope jsonb;
+
+-- Task 83 (WS7): acknowledgement deadlines and escalation. A rule assigns an owner and
+-- an acknowledgement window to the alerts it matches; the deadline is computed when an
+-- occurrence opens and persisted on the alert, so a restart cannot lose an overdue one.
+-- escalated_occurrence is the atomic claim: an occurrence escalates at most once.
+CREATE TABLE IF NOT EXISTS alert_escalation_rule (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  control             text,
+  min_severity        text NOT NULL DEFAULT 'notice' CHECK (min_severity IN ('notice','warning','critical')),
+  ack_within_ms       int NOT NULL CHECK (ack_within_ms > 0),
+  owner_principal_id  uuid REFERENCES principal(id),
+  escalate_channel_id uuid REFERENCES channel(id),
+  enabled             boolean NOT NULL DEFAULT true,
+  created_by          text NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alert_escalation_rule_tenant_idx ON alert_escalation_rule (tenant_ref, enabled);
+
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS ack_deadline_at timestamptz;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_principal_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_source text NOT NULL DEFAULT 'unassigned'
+  CHECK (owner_source IN ('rule','unassigned'));
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_rule_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalated_occurrence int NOT NULL DEFAULT 0;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_error text;
+CREATE INDEX IF NOT EXISTS alert_ack_deadline_idx ON alert (ack_deadline_at)
+  WHERE state IN ('open','reopened') AND condition_active;
+
+-- Roadmap task-84: Teams, Slack, PagerDuty and SMS channels. The kind list widens in
+-- place (existing webhook/email rows are untouched), and each delivery keeps the
+-- provider's redacted receipt: outcome, HTTP status, provider id or dedup key and what
+-- "delivered" means for that provider. Legacy deliveries read as a null receipt.
+ALTER TABLE channel DROP CONSTRAINT IF EXISTS channel_kind_check;
+ALTER TABLE channel ADD CONSTRAINT channel_kind_check
+  CHECK (kind IN ('webhook','email','teams','slack','pagerduty','sms'));
+ALTER TABLE delivery ADD COLUMN IF NOT EXISTS provider_receipt jsonb;

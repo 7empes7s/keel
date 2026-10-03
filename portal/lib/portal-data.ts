@@ -43,11 +43,14 @@ import type {
   DiagnosisState,
   DriftData,
   DriftRecord,
+  ExpansionStatus,
   Fidelity,
   ProtectionState,
   ProtectionHeadline,
   QualificationDecision,
   Ref,
+  RestoreScope,
+  TypeExpansion,
   TypeQualification,
   WriteCapabilitySummary,
   WriteOperationCapability,
@@ -178,6 +181,27 @@ function normalizeQualification(raw: unknown): TypeQualification | null {
     reason: typeof record.reason === "string" ? record.reason : null,
     softRestoreCandidate: record.softRestoreCandidate === true,
     remapping,
+    expansion: normalizeExpansion(record.expansion),
+  };
+}
+
+const EXPANSION_STATUSES: ExpansionStatus[] = ["qualified-subset", "manual", "unsupported", "research-needed"];
+const RESTORE_SCOPES: RestoreScope[] = ["none", "partial", "full"];
+
+// Roadmap task-107. An unrecognised status or scope reads as no batch record,
+// never as a stronger claim.
+function normalizeExpansion(raw: unknown): TypeExpansion | null {
+  const record = raw as UnknownRecord | null;
+  if (!record || typeof record !== "object") return null;
+  if (!EXPANSION_STATUSES.includes(record.status as ExpansionStatus)) return null;
+  if (!RESTORE_SCOPES.includes(record.restoreScope as RestoreScope)) return null;
+  if (typeof record.batch !== "string" || typeof record.reason !== "string") return null;
+  return {
+    batch: record.batch,
+    batchLabel: typeof record.batchLabel === "string" ? record.batchLabel : record.batch,
+    status: record.status as ExpansionStatus,
+    restoreScope: record.restoreScope as RestoreScope,
+    reason: record.reason,
   };
 }
 

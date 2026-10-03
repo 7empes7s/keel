@@ -123,6 +123,7 @@ jobs:
           roadmap/coverage-ui.test.mjs
           roadmap/baseline-compliance-ui.test.mjs
           roadmap/ownership.test.mjs
+          roadmap/fidelity-expansion.test.mjs
           roadmap/drill-harness.test.mjs
           roadmap/schedule-forecast.test.mjs
           roadmap/alert-state.test.mjs

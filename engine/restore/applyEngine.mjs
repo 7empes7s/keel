@@ -5,7 +5,9 @@ import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
-import { remappingFor } from '../coverage/qualification.mjs';
+import {
+  ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
+} from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
@@ -81,6 +83,21 @@ export function rewriteReferences(payload, references, ctx, naturalKey) {
   if (!references || references.length === 0) return payload;
   let rewritten = payload;
   for (const ref of references) {
+    // Roadmap task-107: an explicit reference that holds one of the target's
+    // alternate identifiers (a service principal's appId). The identifier is
+    // rewritten only to a value a create in THIS run reported; a target that
+    // already exists under the same natural key keeps the identifier the key
+    // encodes. Anything else refuses — an object id is never written into an
+    // appId field.
+    if (ref.identifier) {
+      const recreated = ctx.runProvenance.get(`${ref.symbol}#${ref.identifier}`);
+      if (typeof recreated === 'string' && recreated.length > 0) {
+        rewritten = setAtPath(rewritten, ref.field, recreated);
+        continue;
+      }
+      if (ctx.targetIndex.has(ref.symbol)) continue;
+      throw new UnresolvedReferenceError(naturalKey, ref, `no ${ref.identifier} known for ${ref.symbol} in the target or this run`);
+    }
     const result = resolveSymbol(ref.symbol, ctx);
     if (!result.resolved) {
       throw new UnresolvedReferenceError(naturalKey, ref, result.reason);
@@ -199,7 +216,7 @@ function relationshipNavigationFields(resourceType, payload) {
 // (a same-tenant update) remaps nothing and needs no proof; a rewrite to a
 // DIFFERENT id needs a recorded remapping proof for exactly this operation.
 function unqualifiedRemapping(resource, verb, before, after) {
-  const changed = (resource.references ?? []).filter((ref) => {
+  const changed = withExplicitReferences(resource).filter((ref) => {
     const was = valueAtPath(before, ref.field);
     const now = valueAtPath(after, ref.field);
     return String(was ?? '').toLowerCase() !== String(now ?? '').toLowerCase();
@@ -423,7 +440,7 @@ export async function applyWave(writer, governor, wave, {
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
       const beforeRewrite = desired;
       try {
-        desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
+        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
         continue;
@@ -530,7 +547,7 @@ export async function applyWave(writer, governor, wave, {
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
       const beforeRewrite = desired;
       try {
-        desired = rewriteReferences(desired, resource.references, referenceContext, resource.naturalKey);
+        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
         continue;
@@ -598,7 +615,7 @@ export async function applyWave(writer, governor, wave, {
     if (resource.resourceType === 'conditionalAccessPolicy') payload = enforceReportOnly(payload);
     const beforeRewrite = payload;
     try {
-      payload = rewriteReferences(payload, resource.references, referenceContext, resource.naturalKey);
+      payload = rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey);
     } catch (err) {
       failed.push({ naturalKey: resource.naturalKey, error: err.message });
       continue;
@@ -643,7 +660,12 @@ export async function applyWave(writer, governor, wave, {
     }
 
     const path = pathFor(resource.resourceType);
-    const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: payload }));
+    // Roadmap task-107: for a type with CREATE_EXCLUDED_FIELDS the body leaves out
+    // what Entra assigns and the credential material KEEL can never read back,
+    // and verification compares exactly the fields that were written.
+    const createExcluded = CREATE_EXCLUDED_FIELDS[resource.resourceType] ?? null;
+    const createBody = createExcluded ? withoutFields(payload, createExcluded) : payload;
+    const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: createBody }));
     if (!writeResult.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
       failed.push(graphFailure(resource.naturalKey, writeResult));
@@ -657,16 +679,27 @@ export async function applyWave(writer, governor, wave, {
       failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
-    const actualHash = canonicalHash(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
-    const desiredHash = canonicalHash(payload, resource.resourceType);
+    const createdLive = forVerification(reRead?.body ?? reRead, resource);
+    const actualHash = canonicalHash(createExcluded ? onlyFields(createdLive, createBody) : createdLive, resource.resourceType);
+    const desiredHash = canonicalHash(createBody, resource.resourceType);
     if (actualHash !== desiredHash) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}` });
       continue;
     }
 
+    // Roadmap task-107: a created object's alternate identifiers (an
+    // application's new appId) are reported only when the read-back agrees with
+    // the create response, so a dependent reference is never remapped to a value
+    // Entra did not confirm.
+    const identifiers = createdIdentifiers(resource.resourceType, writeResult.body, reRead?.body ?? reRead);
+    if (identifiers === false) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created identifiers did not verify' });
+      failed.push({ naturalKey: resource.naturalKey, error: `created ${resource.resourceType} ${targetId} did not read back the identifiers its create returned` });
+      continue;
+    }
     await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
-    applied.push({ naturalKey: resource.naturalKey, targetId });
+    applied.push(identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId });
   }
 
   if (signInPathGate) {
@@ -699,6 +732,33 @@ function forVerification(value, resource) {
   let out = value;
   for (const path of paths) out = withoutPath(out, String(path).split('.'));
   return out;
+}
+
+function withoutFields(value, fields) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = { ...value };
+  for (const field of fields) delete out[field];
+  return out;
+}
+
+function onlyFields(value, shape) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out = {};
+  for (const key of Object.keys(shape ?? {})) if (Object.hasOwn(value, key)) out[key] = value[key];
+  return out;
+}
+
+// null: the type declares no alternate identifiers. false: they did not verify.
+function createdIdentifiers(resourceType, created, live) {
+  const names = ALTERNATE_IDENTIFIERS[resourceType];
+  if (!names) return null;
+  const identifiers = {};
+  for (const name of names) {
+    const value = created?.[name];
+    if (typeof value !== 'string' || value.length === 0 || live?.[name] !== value) return false;
+    identifiers[name] = value;
+  }
+  return identifiers;
 }
 
 function withoutPath(value, [head, ...rest]) {

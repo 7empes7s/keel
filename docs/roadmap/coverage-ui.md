@@ -2,6 +2,11 @@
 
 Date: 2026-09-29 UTC. Status: implemented, fixture-tested only.
 
+Direction note (2026-10-03): the matrix layout this task rendered is superseded by
+`docs/roadmap/portal-experience.md` and task-131. The reader fields and the boundary
+tests stay; the portal moves every evidence column into a per-type technical record
+behind a one-sentence protection state.
+
 ## What was built
 
 - `engine/coverage/report.mjs` — `buildCoverageReport()` now attaches four

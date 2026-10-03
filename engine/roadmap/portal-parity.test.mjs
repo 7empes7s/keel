@@ -214,7 +214,11 @@ test('mutation check (2): a raw selection can never be submitted as an enforce r
 
 function previewDependencies({ tokens, state }) {
   return {
-    connect: async () => ({ query: async () => ({ rows: [] }), end: async () => {} }),
+    // Task-71: the snapshot's tenant is resolved for the incident gate; that tenant has no incidents.
+    connect: async () => ({
+      query: async (sql) => ({ rows: /SELECT tenant_ref FROM snapshot/.test(sql) ? [{ tenant_ref: 'sha256:parity' }] : [] }),
+      end: async () => {},
+    }),
     getResourceVersions: async () => [{
       id: 'v1',
       natural_key: 'group:lockout',

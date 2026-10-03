@@ -66,3 +66,58 @@ export function adapterSurface(adapter: string | null): string {
   if (adapter.startsWith("dsc")) return "DSC";
   return "Adapter";
 }
+
+/** A relative age ("3 days ago") measured from when the page's data was read.
+ * Show the absolute UTC time beside it only in a title and in the record layer. */
+export function ago(value: string | null, now: string | Date): string {
+  if (!value) return "at an unknown time";
+  const milliseconds = new Date(now).valueOf() - new Date(value).valueOf();
+  if (!Number.isFinite(milliseconds)) return "at an unknown time";
+  if (milliseconds < 0) return "in the future";
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+// Portal experience contract, rule 4: stored codes reach the screen only through a
+// display map. Types not listed fall back to their words.
+export const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  group: "group",
+  conditionalAccessPolicy: "Conditional Access policy",
+  namedLocation: "named location",
+  roleAssignment: "role assignment",
+  servicePrincipal: "enterprise app",
+  application: "app registration",
+  user: "user",
+  authorizationPolicy: "authorization policy",
+  crossTenantAccessPolicyPartner: "cross-tenant access partner",
+  retentionLabel: "retention label",
+  deviceConfiguration: "device configuration",
+};
+
+export function resourceTypeLabel(type: string): string {
+  return RESOURCE_TYPE_LABELS[type] ?? words(type).toLowerCase();
+}
+
+/** A resource as a person reads it: "Helpdesk Tier 0 (group)". The display name
+ * comes from collected data when the reader resolved it; otherwise from the key. */
+export function resourceLabel(naturalKey: string, displayName?: string | null): string {
+  const [type, ...rest] = naturalKey.split(":");
+  const name = displayName?.trim() || rest.join(" · ") || naturalKey;
+  return `${name} (${resourceTypeLabel(type)})`;
+}
+
+export const RECOVERY_POINT_LABELS = {
+  qualified: "Cleared",
+  unsuitable: "Unsafe",
+  unassessed: "Not checked",
+} as const;
+
+export const ASSESSMENT_VERDICT_LABELS = {
+  clean: "Clean",
+  compromised: "Unsafe",
+} as const;

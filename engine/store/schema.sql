@@ -197,6 +197,13 @@ CREATE TABLE IF NOT EXISTS role_grant (
   reason       text
 );
 CREATE INDEX IF NOT EXISTS role_grant_principal_idx ON role_grant (principal_id);
+-- Roadmap task-71: the investigator role (capability `investigate`) owns incident
+-- compromise intervals, snapshot assessments, recovery-point overrides and
+-- retention pins. Widening the closed role set is additive: every existing grant
+-- satisfies the new check, which is recreated idempotently.
+ALTER TABLE role_grant DROP CONSTRAINT IF EXISTS role_grant_role_check;
+ALTER TABLE role_grant ADD CONSTRAINT role_grant_role_check
+  CHECK (role IN ('viewer','operator','approver','restorer','admin','investigator'));
 
 -- §3.3 approvals (plan task 14): requesting a requiresApproval action creates an
 -- approval_request, never a job. Only an approve decision by a principal other than
@@ -785,3 +792,99 @@ ALTER TABLE relationship_edge ADD COLUMN IF NOT EXISTS attributes jsonb;
 UPDATE relationship_edge SET edge_key = target_source_id WHERE edge_key IS NULL;
 ALTER TABLE relationship_edge DROP CONSTRAINT IF EXISTS relationship_edge_pkey;
 CREATE UNIQUE INDEX IF NOT EXISTS relationship_edge_identity_idx ON relationship_edge (set_id, edge_key);
+
+-- Roadmap task-71: incident-qualified recovery points and retention pins.
+-- An incident is investigator-owned. Its compromise intervals bound when the tenant
+-- may have been under attacker control (ends_at NULL = still ongoing). Each snapshot
+-- assessment is an append-only version (verdict + malicious-field exclusions) for
+-- one snapshot under one incident; the newest version is the current one. A
+-- recovery override is an investigator's explicit, reasoned authorization to use a
+-- point that is unsuitable or unassessed, bound to the exact assessment state it
+-- was made against. A retention pin keeps a snapshot from routine prune until an
+-- authorized release; a pin says nothing about whether the snapshot is clean.
+-- Every table is tenant-scoped; all additive and retry-safe. snapshot_id carries no
+-- foreign key on purpose: assessment, override and pin history must outlive a
+-- snapshot that routine prune later removes (an ACTIVE pin keeps it from prune),
+-- and never block that prune. Tenant scope is checked in code on every read.
+CREATE TABLE IF NOT EXISTS incident (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref  text NOT NULL,
+  title       text NOT NULL,
+  owner       text NOT NULL,
+  status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+  opened_at   timestamptz NOT NULL DEFAULT now(),
+  closed_at   timestamptz,
+  closed_by   text
+);
+CREATE INDEX IF NOT EXISTS incident_tenant_idx ON incident (tenant_ref, opened_at DESC);
+
+CREATE TABLE IF NOT EXISTS incident_compromise_interval (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref  text NOT NULL,
+  incident_id uuid NOT NULL REFERENCES incident(id),
+  starts_at   timestamptz NOT NULL,
+  ends_at     timestamptz,
+  reason      text NOT NULL,
+  recorded_by text NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (ends_at IS NULL OR ends_at > starts_at)
+);
+CREATE INDEX IF NOT EXISTS incident_compromise_interval_incident_idx
+  ON incident_compromise_interval (tenant_ref, incident_id);
+
+CREATE TABLE IF NOT EXISTS incident_snapshot_assessment (
+  id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref           text NOT NULL,
+  incident_id          uuid NOT NULL REFERENCES incident(id),
+  snapshot_id          uuid NOT NULL,
+  version              int NOT NULL,
+  verdict              text NOT NULL CHECK (verdict IN ('clean','compromised')),
+  exclusions           jsonb NOT NULL DEFAULT '[]'::jsonb,
+  in_compromise_window boolean NOT NULL,
+  rationale            text NOT NULL,
+  assessed_by          text NOT NULL,
+  assessed_at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (incident_id, snapshot_id, version)
+);
+CREATE INDEX IF NOT EXISTS incident_snapshot_assessment_lookup_idx
+  ON incident_snapshot_assessment (tenant_ref, incident_id, snapshot_id, version DESC);
+
+CREATE TABLE IF NOT EXISTS incident_recovery_override (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref             text NOT NULL,
+  incident_id            uuid NOT NULL REFERENCES incident(id),
+  snapshot_id            uuid NOT NULL,
+  -- NULL binds the override to "no current assessment"; otherwise the fingerprint
+  -- of the assessment version it was made against.
+  assessment_fingerprint text,
+  in_compromise_window   boolean NOT NULL,
+  reason                 text NOT NULL,
+  authorized_by          text NOT NULL,
+  authorized_at          timestamptz NOT NULL DEFAULT now(),
+  revoked_at             timestamptz,
+  revoked_by             text
+);
+CREATE INDEX IF NOT EXISTS incident_recovery_override_lookup_idx
+  ON incident_recovery_override (tenant_ref, incident_id, snapshot_id);
+
+CREATE TABLE IF NOT EXISTS retention_pin (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref     text NOT NULL,
+  incident_id    uuid NOT NULL REFERENCES incident(id),
+  snapshot_id    uuid NOT NULL,
+  reason         text NOT NULL,
+  pinned_by      text NOT NULL,
+  pinned_at      timestamptz NOT NULL DEFAULT now(),
+  released_at    timestamptz,
+  released_by    text,
+  release_reason text
+);
+CREATE UNIQUE INDEX IF NOT EXISTS retention_pin_active_idx
+  ON retention_pin (incident_id, snapshot_id) WHERE released_at IS NULL;
+CREATE INDEX IF NOT EXISTS retention_pin_tenant_idx ON retention_pin (tenant_ref, snapshot_id);
+
+-- The incident recovery context a dry run was planned under (incident, recovery
+-- point qualification, assessment version/fingerprint, exclusions, override and the
+-- post-restore checks), folded into the plan digest. Null for every restore not run
+-- under an incident, which keeps their digest unchanged.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS incident_recovery jsonb;

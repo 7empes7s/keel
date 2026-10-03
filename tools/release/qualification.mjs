@@ -20,9 +20,12 @@
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
+import { DRILL_LIMITS, DRILL_MANIFEST_KIND, DRILL_MANIFEST_VERSION } from '../rehearsal/qualification.mjs';
+import { DISPOSABLE_PREFIX } from '../rehearsal/roundTrip.mjs';
+import { RECOVERY_DRILL_EVIDENCE_KIND, classifyDrillRecord } from '../../engine/coverage/recoveryReadiness.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -448,6 +451,245 @@ function validateDeployedAcceptanceSubject(evidence, {
   return failures;
 }
 
+/**
+ * Task-116: bounded same-tenant drill and Keel recovery acceptance.
+ *
+ * The record binds three independently produced results to one tenant, build
+ * and operation, signed by a trusted runner:
+ *  - the task-72 live drill record (one disposable keel-rehearsal-* group,
+ *    observed elapsed time inside its bound, every created object read back
+ *    absent — the post-state), exactly as the rehearsal evidence row holds it;
+ *  - the task-68 read-only Keel reconstruction from independent artifacts;
+ *  - the task-76 onboarding confirmation that read and restore setup are done.
+ * proof.artifact must be the raw captured drill evidence row and reconstruction
+ * summary; the signed subject must equal it. An offline plan check, a failed or
+ * unbounded drill, a residual, a foreign tenant or object, or a missing
+ * prerequisite never verifies. Nothing here runs a drill or signs by itself.
+ */
+export const DRILL_LIVE_GATE = 'drill-live-acceptance';
+export const DRILL_LIVE_OPERATION = 'recovery-drill.bounded-same-tenant';
+export const DRILL_LIVE_CREDENTIAL_MODE = 'collector-restorer-separate';
+const DRILL_CLEANUP_RESERVE = 4;
+
+function sameInstantOrder(earlier, later) {
+  const a = Date.parse(earlier);
+  const b = Date.parse(later);
+  return !Number.isNaN(a) && !Number.isNaN(b) && a <= b;
+}
+
+function readDrillCaptureArtifact(artifact, evidenceDir) {
+  if (!artifact || typeof artifact.path !== 'string') return null;
+  try {
+    return JSON.parse(readFileSync(resolve(evidenceDir, artifact.path), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Gate validator for the task-116 drill-live-acceptance record. */
+function validateDrillLiveAcceptanceSubject(evidence, {
+  tenantRef, build, evidenceDir = process.cwd(), now = new Date(), maxAgeHours = DEFAULT_MAX_AGE_HOURS,
+} = {}) {
+  const failures = [];
+  if (!tenantRef || !build) failures.push('drill acceptance needs the expected tenant and build');
+  if (build && evidence.build !== build) failures.push('drill acceptance build mismatch');
+  if (evidence.operation !== DRILL_LIVE_OPERATION) {
+    failures.push(`operation mismatch: expected '${DRILL_LIVE_OPERATION}', got '${evidence.operation ?? 'missing'}'`);
+  }
+  if (evidence.credentialMode !== DRILL_LIVE_CREDENTIAL_MODE) {
+    failures.push(`drill acceptance needs credential mode '${DRILL_LIVE_CREDENTIAL_MODE}'`);
+  }
+  const subject = evidence.subject;
+  if (!subject || typeof subject !== 'object') return [...failures, 'subject is missing'];
+  if (subject.scope !== 'bounded-same-tenant') failures.push('drill acceptance scope must be bounded-same-tenant');
+
+  // Prerequisites: the task-72 harness contract and the task-76 onboarding result.
+  const harness = subject.prerequisites?.drillHarness;
+  if (harness?.task !== 'task-72' || harness.manifestVersion !== DRILL_MANIFEST_VERSION
+    || harness.manifestKind !== DRILL_MANIFEST_KIND) {
+    failures.push('missing prerequisite: task-72 bounded drill harness identity');
+  }
+  const onboarding = subject.prerequisites?.onboarding;
+  if (onboarding?.task !== 'task-76' || onboarding.readSetup !== 'complete' || onboarding.restoreSetup !== 'complete'
+    || typeof onboarding.readSetupRunId !== 'string' || !onboarding.readSetupRunId
+    || typeof onboarding.restoreSetupRunId !== 'string' || !onboarding.restoreSetupRunId) {
+    failures.push('missing prerequisite: task-76 read and restore setup confirmed complete');
+  }
+
+  // The named disposable test object, and nothing else.
+  const testObject = subject.testObject;
+  if (testObject?.resourceType !== 'group' || typeof testObject.naturalKey !== 'string'
+    || !testObject.naturalKey.startsWith(DISPOSABLE_PREFIX)) {
+    failures.push(`the test object must be a named disposable ${DISPOSABLE_PREFIX}* group`);
+  }
+
+  // The live drill record itself.
+  const drill = subject.drillRecord;
+  if (!drill || typeof drill !== 'object') {
+    failures.push('missing prerequisite: task-72 live drill record');
+  } else {
+    if (drill.tenantRef !== evidence.tenantRef || (tenantRef && drill.tenantRef !== tenantRef)) {
+      failures.push('drill record tenant mismatch');
+    }
+    const verdict = classifyDrillRecord(drill, { tenantRef: evidence.tenantRef });
+    if (!verdict.counts) failures.push(`drill record does not count as a recovery drill: ${verdict.reason}`);
+    const objects = Array.isArray(drill.objects) ? drill.objects : [];
+    if (objects.length !== 1 || objects[0] !== testObject?.naturalKey) {
+      failures.push('drill record must name exactly the declared disposable test object');
+    }
+    if (objects.some((key) => typeof key !== 'string' || !key.startsWith(DISPOSABLE_PREFIX))) {
+      failures.push('drill record names a non-disposable object (active users and tenant-wide policies are out of scope)');
+    }
+    const created = Array.isArray(drill.createdObjects) ? drill.createdObjects : [];
+    if (created.length === 0) failures.push('drill record shows no created object: nothing was round-tripped');
+    if (created.some((item) => !objects.includes(item?.naturalKey))) {
+      failures.push('drill record created an object outside its allowlist');
+    }
+    const absent = new Set((drill.cleanup?.verifiedAbsent ?? []).map((item) => item?.objectId));
+    if (created.some((item) => !absent.has(item?.objectId)) || (drill.cleanup?.residuals ?? []).length !== 0) {
+      failures.push('post-state not verified: a created object was not read back absent');
+    }
+    const bounds = drill.bounds ?? {};
+    if (!(bounds.maxElapsedMs <= DRILL_LIMITS.maxElapsedMs) || !(bounds.maxWrites <= DRILL_LIMITS.maxWrites)) {
+      failures.push('drill bounds exceed the task-72 ceilings');
+    }
+    if (!Number.isInteger(drill.writes) || drill.writes > bounds.maxWrites + DRILL_CLEANUP_RESERVE) {
+      failures.push('drill write count is missing or beyond its bound');
+    }
+    const started = Date.parse(drill.startedAt);
+    if (Number.isNaN(started) || now.getTime() - started > maxAgeHours * 60 * 60 * 1000) {
+      failures.push(`drill is stale (started more than ${maxAgeHours}h ago) or has no start`);
+    }
+    if (!sameInstantOrder(drill.finishedAt, evidence.observedAt)) {
+      failures.push('evidence was observed before the drill finished');
+    }
+  }
+
+  // Read-only Keel reconstruction from independent artifacts (task-68).
+  const recon = subject.reconstruction;
+  if (!recon || typeof recon !== 'object') {
+    failures.push('missing prerequisite: task-68 read-only reconstruction result');
+  } else {
+    if (recon.task !== 'task-68' || recon.ok !== true || recon.stage !== 'recovered') {
+      failures.push('reconstruction did not recover');
+    }
+    if (recon.readOnly !== true || recon.writersDisabled !== true) failures.push('reconstruction was not read-only');
+    if (recon.tenantRef !== evidence.tenantRef) failures.push('reconstruction tenant mismatch');
+    if (recon.buildRevision !== evidence.build) failures.push('reconstruction build mismatch');
+    const checkpoint = recon.checkpoint;
+    if (!Number.isInteger(checkpoint?.headSeq) || typeof checkpoint?.headHash !== 'string'
+      || !Number.isInteger(checkpoint?.recordCount)) {
+      failures.push('reconstruction carries no verified evidence checkpoint');
+    }
+    const completed = Date.parse(recon.completedAt);
+    if (Number.isNaN(completed) || now.getTime() - completed > maxAgeHours * 60 * 60 * 1000) {
+      failures.push(`reconstruction is stale (older than ${maxAgeHours}h) or has no completion time`);
+    } else if (!sameInstantOrder(recon.completedAt, evidence.observedAt)) {
+      failures.push('evidence was observed before the reconstruction completed');
+    }
+  }
+
+  // Independently captured raw evidence: the signed subject must equal it.
+  const capture = readDrillCaptureArtifact(evidence.proof?.artifact, evidenceDir);
+  const artifactProof = verifyArtifactDigest(evidence.proof?.artifact, evidenceDir);
+  if (!artifactProof.ok) {
+    failures.push(`missing external evidence: captured drill artifact (${artifactProof.reason})`);
+  } else if (!capture) {
+    failures.push('missing external evidence: captured drill artifact is not JSON');
+  } else {
+    const row = capture.drillEvidence;
+    if (row?.kind !== RECOVERY_DRILL_EVIDENCE_KIND || row.tenant_ref !== evidence.tenantRef
+      || !Number.isInteger(row.seq) || typeof row.record_hash !== 'string') {
+      failures.push('captured artifact is not this tenant\'s recovery-drill evidence row');
+    }
+    if (canonical(row?.subject) !== canonical(drill)) failures.push('signed drill record differs from the captured evidence row');
+    if (canonical(capture.reconstruction) !== canonical(recon)) {
+      failures.push('signed reconstruction differs from the captured reconstruction');
+    }
+  }
+  return failures;
+}
+
+/**
+ * Builds the task-116 record from a captured recovery-drill evidence row, the
+ * task-68 reconstructRecovery() result (plus the tenantRef, buildRevision and
+ * completedAt it ran with) and the task-76 onboarding result, writes the
+ * raw capture artifact, and signs with the runner identity it is given. The
+ * evidence level follows the runner: a synthetic runner yields a fixture-tested
+ * record and can never yield a live one. Refuses anything that does not count.
+ */
+export function captureDrillLiveAcceptance({
+  drillEvidence, reconstruction, onboarding, build, observedAt = new Date().toISOString(),
+  artifactPath, artifactRef, runner = {}, trustedRunners = TRUSTED_RUNNERS,
+}) {
+  const trusted = trustedRunners[runner.identity];
+  if (!trusted) throw new Error(`untrusted runner identity: ${runner.identity ?? 'missing'}`);
+  if (!runner.key) throw new Error('no runner signing key supplied');
+  if (!build) throw new Error('capture needs the build identity');
+  const drill = drillEvidence?.subject;
+  const tenantRef = drillEvidence?.tenant_ref;
+  if (drillEvidence?.kind !== RECOVERY_DRILL_EVIDENCE_KIND || !tenantRef) {
+    throw new Error('capture needs a recovery-drill evidence row');
+  }
+  const verdict = classifyDrillRecord(drill, { tenantRef });
+  if (!verdict.counts) throw new Error(`the drill does not count as a recovery drill: ${verdict.reason}`);
+  if (reconstruction?.ok !== true || reconstruction.stage !== 'recovered' || reconstruction.readOnly !== true
+    || reconstruction.recovered?.evidence?.chainOk !== true) {
+    throw new Error('the reconstruction did not recover read-only with a verified evidence chain');
+  }
+  const head = reconstruction.recovered.evidence;
+  const recon = {
+    task: 'task-68',
+    ok: true,
+    stage: reconstruction.stage,
+    readOnly: reconstruction.readOnly,
+    writersDisabled: reconstruction.writersDisabled,
+    tenantRef: reconstruction.tenantRef,
+    buildRevision: reconstruction.buildRevision,
+    checkpoint: { headSeq: head.headSeq, headHash: head.headHash, recordCount: head.recordCount },
+    recoveryComplete: reconstruction.recoveryComplete ?? false,
+    incomplete: reconstruction.incomplete ?? [],
+    completedAt: reconstruction.completedAt,
+  };
+  const row = {
+    seq: Number(drillEvidence.seq), record_hash: drillEvidence.record_hash, kind: drillEvidence.kind,
+    tenant_ref: tenantRef, occurred_at: new Date(drillEvidence.occurred_at).toISOString(), subject: drill,
+  };
+  const bytes = Buffer.from(`${JSON.stringify({ drillEvidence: row, reconstruction: recon }, null, 2)}\n`);
+  if (artifactPath) writeFileSync(artifactPath, bytes);
+  const unsigned = {
+    contractVersion: QUALIFICATION_CONTRACT_VERSION,
+    gate: DRILL_LIVE_GATE,
+    tenantRef,
+    build,
+    operation: DRILL_LIVE_OPERATION,
+    credentialMode: DRILL_LIVE_CREDENTIAL_MODE,
+    observedAt,
+    evidenceLevel: trusted.synthetic ? 'fixture-tested' : 'live-qualified',
+    synthetic: trusted.synthetic,
+    subject: {
+      scope: 'bounded-same-tenant',
+      prerequisites: {
+        drillHarness: { task: 'task-72', manifestVersion: DRILL_MANIFEST_VERSION, manifestKind: DRILL_MANIFEST_KIND },
+        onboarding: {
+          task: 'task-76',
+          readSetup: onboarding?.readSetup ?? 'missing',
+          restoreSetup: onboarding?.restoreSetup ?? 'missing',
+          readSetupRunId: onboarding?.readSetupRunId ?? null,
+          restoreSetupRunId: onboarding?.restoreSetupRunId ?? null,
+        },
+      },
+      testObject: { resourceType: 'group', naturalKey: drill.objects?.[0] ?? null },
+      drillRecord: drill,
+      reconstruction: recon,
+    },
+    proof: {
+      artifact: { path: artifactRef ?? artifactPath, sha256: createHash('sha256').update(bytes).digest('hex') },
+    },
+  };
+  return { evidence: signEvidence(unsigned, runner.key, runner.identity), artifact: bytes };
+}
+
 // Later tasks register additional gates here; an absent gate fails closed.
 const GATE_VALIDATORS = {
   'release-readiness': validateReleaseReadinessSubject,
@@ -457,6 +699,7 @@ const GATE_VALIDATORS = {
   [NATIVE_LIVE_GATE]: (evidence, { tenantRef, build, artifact }) =>
     validateNativeLiveAcceptance(evidence, { tenantRef, build, artifactBytes: artifact.ok ? artifact.bytes : null }),
   [DEPLOYED_ACCEPTANCE_GATE]: validateDeployedAcceptanceSubject,
+  [DRILL_LIVE_GATE]: validateDrillLiveAcceptanceSubject,
 };
 
 export function verifyEvidence(evidence, {
@@ -477,6 +720,9 @@ export function verifyEvidence(evidence, {
 
   if (evidence.gate === 'nist-benchmark-acceptance' && evidence.status === 'pending') {
     return { ok: false, failures: ['NIST external runner evidence pending'] };
+  }
+  if (evidence.gate === DRILL_LIVE_GATE && evidence.status === 'pending') {
+    return { ok: false, failures: ['drill-live-acceptance external execution/cleanup evidence pending'] };
   }
   if (evidence.gate === DEPLOYED_ACCEPTANCE_GATE && evidence.status !== undefined) {
     const reasons = Array.isArray(evidence.pendingReasons) ? evidence.pendingReasons : [];
@@ -525,6 +771,13 @@ export function verifyEvidence(evidence, {
     failures.push(`missing proof: runner (${runner.reason}); artifact (${artifact.reason})`);
   }
 
+  if (evidence.gate === DRILL_LIVE_GATE) {
+    if (!runner.ok) failures.push(`drill acceptance runner proof required (${runner.reason})`);
+    if (evidence.evidenceLevel === 'live-qualified' && (evidence.synthetic || runner.synthetic)) {
+      failures.push('fixture drill evidence cannot claim live qualification');
+    }
+  }
+
   if (evidence.gate === 'nist-benchmark-acceptance') {
     if (evidence.proof?.artifact && !artifact.ok) failures.push(artifact.reason);
     if (!runner.ok) failures.push(`NIST runner proof required (${runner.reason})`);
@@ -556,7 +809,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, hmacKey, evidenceDir, trustedRunners }));
+  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, maxAgeHours, hmacKey, evidenceDir, trustedRunners }));
 
   return { ok: failures.length === 0, failures };
 }
@@ -586,10 +839,76 @@ export function configuredTenantRef(path = process.env.KEEL_TENANT_CONFIG_PATH) 
   }
 }
 
+function readJsonFile(path, label) {
+  if (!path) throw new Error(`missing --${label} <file>`);
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+/** Latest recovery-drill evidence row for a tenant, read from the rehearsal database. */
+export async function loadLatestDrillEvidence(client, { tenantRef }) {
+  if (!tenantRef) throw new Error('loading drill evidence needs a tenantRef');
+  const { rows } = await client.query(
+    `SELECT seq, record_hash, kind, tenant_ref, occurred_at, subject
+       FROM evidence
+      WHERE tenant_ref = $1 AND kind = $2
+      ORDER BY seq DESC
+      LIMIT 1`,
+    [tenantRef, RECOVERY_DRILL_EVIDENCE_KIND],
+  );
+  if (!rows[0]) throw new Error(`no recovery-drill evidence for ${tenantRef}`);
+  return rows[0];
+}
+
+/**
+ * capture-drill: the runner-side capture of task-116 evidence. Reads the drill
+ * row (--drill-row file, or the latest row in --db-url for --tenant), the
+ * reconstruction result (--reconstruction) and the onboarding result
+ * (--onboarding), writes the raw capture artifact next to --out and the signed
+ * record to --out. The key comes from KEEL_QUALIFICATION_HMAC_KEY only.
+ */
+async function captureCommand() {
+  const out = arg('out');
+  if (!out) throw new Error('missing --out <evidence file>');
+  let drillEvidence;
+  if (arg('drill-row')) {
+    drillEvidence = readJsonFile(arg('drill-row'), 'drill-row');
+  } else {
+    const { connect } = await import('../../engine/store/db.mjs');
+    const client = await connect(arg('db-url', process.env.KEEL_DB_TEST_URL));
+    try {
+      drillEvidence = await loadLatestDrillEvidence(client, {
+        tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF),
+      });
+    } finally {
+      await client.end();
+    }
+  }
+  const artifactRef = out.replace(/\.json$/, '') + '.capture.json';
+  const { evidence } = captureDrillLiveAcceptance({
+    drillEvidence,
+    reconstruction: readJsonFile(arg('reconstruction'), 'reconstruction'),
+    onboarding: readJsonFile(arg('onboarding'), 'onboarding'),
+    build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
+    artifactPath: artifactRef,
+    artifactRef: artifactRef.split('/').pop(),
+    runner: { identity: arg('runner', 'keel-release-runner'), key: process.env.KEEL_QUALIFICATION_HMAC_KEY },
+  });
+  writeFileSync(out, `${JSON.stringify(evidence, null, 2)}\n`);
+  console.log(JSON.stringify({ captured: out, artifact: artifactRef, evidenceLevel: evidence.evidenceLevel }));
+}
+
 function main() {
   const command = process.argv[2];
+  if (command === 'capture-drill') {
+    captureCommand().catch((error) => {
+      console.error(error.message);
+      process.exit(1);
+    });
+    return;
+  }
   if (command !== 'verify' || process.argv.includes('--help')) {
-    console.error('usage: qualification.mjs verify --gate <gate> --evidence <file> [--tenant <ref>] [--require-live] [--max-age-hours N]');
+    console.error('usage: qualification.mjs verify --gate <gate> --evidence <file> [--tenant <ref>] [--require-live] [--max-age-hours N]\n'
+      + '       qualification.mjs capture-drill --out <file> --reconstruction <file> --onboarding <file> (--drill-row <file> | --db-url <url> --tenant <ref>) [--build <rev>]');
     process.exit(command === 'verify' ? 0 : 2);
   }
   const evidencePath = arg('evidence');

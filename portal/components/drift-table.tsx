@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 
 import { BlastBadge, ChangeBadge } from "@/components/status-badge";
+import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { DriftDiff } from "@/components/drift-diff";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { plannedActionWords, refusalSentence, resourceName } from "@/lib/changes-view";
@@ -614,6 +615,7 @@ export function DriftTable({
                       <tr className="diff-row">
                         <td colSpan={canAct ? 7 : 6}>
                           <DriftDiff item={item} />
+                          {item.attribution !== undefined ? <ChangeAttributionPanel attribution={item.attribution} now={at} /> : null}
                         </td>
                       </tr>
                     ) : null}

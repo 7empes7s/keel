@@ -124,16 +124,23 @@ jobs:
           roadmap/baseline-compliance-ui.test.mjs
           roadmap/ownership.test.mjs
           roadmap/scoped-authorization.test.mjs
+          roadmap/change-attribution.test.mjs
           roadmap/fidelity-expansion.test.mjs
+          roadmap/policy-fidelity.test.mjs
           roadmap/drill-harness.test.mjs
+          roadmap/recovery-metrics.test.mjs
           roadmap/schedule-forecast.test.mjs
           roadmap/alert-state.test.mjs
           roadmap/alert-escalation.test.mjs
           roadmap/notification-adapters.test.mjs
           roadmap/workload-contract.test.mjs
           roadmap/sharepoint-read.test.mjs
+          roadmap/hybrid-contract.test.mjs
           roadmap/sharepoint-write.test.mjs
           roadmap/sharepoint-live-acceptance.test.mjs
+          roadmap/drill-live-acceptance.test.mjs
+          roadmap/native-live-acceptance.test.mjs
+          roadmap/deployed-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

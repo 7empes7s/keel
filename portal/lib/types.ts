@@ -80,6 +80,9 @@ export interface TypeExpansion {
   // Derived from registered operations only, never declared.
   restoreScope: RestoreScope;
   reason: string;
+  // Roadmap task-108: subtypes the registered writes are limited to (e.g.
+  // "custom"). Empty when writes are not subtype-bound; absent on older reports.
+  qualifiedSubtypes?: string[];
 }
 
 // Prerequisite diagnosis (roadmap task-53): a confirmed-missing license,
@@ -307,6 +310,29 @@ export interface DriftRecord {
   // stored on the drift row (baseline state vs observed state, null on add/remove).
   before: unknown;
   after: unknown;
+  // Task 91: who made the change, from audit evidence, and where a roll back of it
+  // would be routed. Absent when the reader did not compute it.
+  attribution?: ChangeAttribution | null;
+}
+
+// engine/identity/attribution.mjs#attributeChanges plus engine/govern/approvals.mjs#routeApproval.
+export interface ChangeAttribution {
+  verdict: "exact" | "plausible" | "unknown";
+  reason: string;
+  // id is null when the account is outside the reader's entities; name is null when
+  // KEEL holds no collected user or app with that id.
+  actors: Array<{ kind: "user" | "servicePrincipal"; id: string | null; name: string | null }>;
+  evidence: Array<{ sourceEventId: string; occurredAt: string; operation: string; activity: string | null; fields: string[] }>;
+  resourceObjectId: string | null;
+  window: { from: string; until: string };
+  coverage: { audit: string; signIn: string };
+  route: {
+    route: "entity" | "central" | "refused";
+    reason?: string;
+    entityCode?: string;
+    approverCount: number;
+    routedAt: string;
+  } | null;
 }
 
 export interface DriftData {

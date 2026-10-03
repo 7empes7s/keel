@@ -1,4 +1,5 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
+import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
@@ -16,7 +17,9 @@ import {
 } from "../../engine/store/governance.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
-import { scopePredicate } from "../../engine/authz/entityScope.mjs";
+import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
+import { routeApproval } from "../../engine/govern/approvals.mjs";
+import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import {
   getEvidenceIntegrity,
   getLastCollection,
@@ -25,6 +28,7 @@ import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
@@ -44,6 +48,7 @@ import type {
   DashboardData,
   DeclaredEndpoint,
   DiagnosisState,
+  ChangeAttribution,
   DriftData,
   DriftRecord,
   ExpansionStatus,
@@ -205,6 +210,9 @@ function normalizeExpansion(raw: unknown): TypeExpansion | null {
     status: record.status as ExpansionStatus,
     restoreScope: record.restoreScope as RestoreScope,
     reason: record.reason,
+    qualifiedSubtypes: Array.isArray(record.qualifiedSubtypes)
+      ? record.qualifiedSubtypes.filter((value): value is string => typeof value === "string")
+      : [],
   };
 }
 
@@ -528,6 +536,61 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
   return Number(rows[0]?.count ?? 0);
 }
 
+// Task 91: who made each open change, from audit evidence (engine/identity/attribution.mjs),
+// and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
+// server-side for the changes this reader may already see. The change window runs from
+// when KEEL captured the baseline's version of the resource (the baseline's own time
+// for an added resource) to the collection that saw the change. A reader that cannot
+// be attributed (no audit tables, a failed query) gets null, never a guess.
+async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+  const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
+  if (!bounded.length) return items;
+  try {
+    const { rows } = await client.query(
+      `SELECT d.id,
+              COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
+              COALESCE(os.completed_at, d.detected_at) AS window_until
+         FROM drift d
+         JOIN baseline b ON b.id = d.baseline_id
+         JOIN snapshot os ON os.id = d.observed_snapshot
+         LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
+         LEFT JOIN resource_version rv ON rv.id = br.resource_version_id
+         LEFT JOIN snapshot bs ON bs.id = rv.snapshot_id
+        WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`,
+      [ref, baselineId, bounded.map((item) => item.id)],
+    );
+    const windows = new Map(rows.map((row) => [String(row.id), { from: iso(row.window_from), until: iso(row.window_until) }]));
+    const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
+      id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
+      fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
+    }));
+    const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as Array<Omit<ChangeAttribution, "route"> & { changeId: string }>;
+    const byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
+    const approverCache = new Map();
+    const result: DriftRecord[] = [];
+    for (const item of items) {
+      const found = byId.get(item.id);
+      if (!found) { result.push({ ...item, attribution: null }); continue; }
+      const { changeId: _changeId, ...attribution } = found;
+      const entityScope = await captureApprovalScope(client, { tenantRef: ref, resources: [{ resourceType: item.resourceType, naturalKey: item.naturalKey }] });
+      const route = (await routeApproval(client, { tenantRef: ref, entityScope, approverCache })) as {
+        route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string;
+      };
+      result.push({
+        ...item,
+        attribution: {
+          ...attribution,
+          route: { route: route.route, reason: route.reason, entityCode: route.entityCode, approverCount: route.approvers?.length ?? 0, routedAt: route.routedAt },
+        },
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("[keel-portal] change attribution unavailable", error);
+    return items.map((item) => ({ ...item, attribution: null }));
+  }
+}
+
 export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<DriftData> {
   const ref = tenantRef();
   return withClient(async (client) => {
@@ -541,17 +604,18 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       : null;
     if (scope.central || !found) {
       const items = await activeDriftFor(client, ref, found?.id ?? null);
-      return { generatedAt: new Date().toISOString(), baseline: found, items };
+      return { generatedAt: new Date().toISOString(), baseline: found, items: found ? await withAttribution(client, ref, found.id, items, scope) : items };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
-    const items = await scopedOpenDrift(client, ref, found.id, scope);
+    const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);
     return { generatedAt: new Date().toISOString(), baseline, items, scope: { central: false, entities: scope.entities } };
   });
 }
 
 // Plan task 17 (portal-design §4.1): the restore surface lists the resources an
 // operator can select from one snapshot. The filter mirrors cli/keel-restore.mjs —
-// users and authentication strength policies are read-only in M1 and never written —
+// users are never written; authentication strengths are listed since roadmap
+// task-108 (the engine writes custom ones and skips built-in ones as immutable) —
 // and the query is scoped to this tenant's snapshot so another tenant's snapshot id is
 // indistinguishable from one that does not exist.
 export interface RestoreResource {
@@ -582,7 +646,7 @@ export async function getRestoreResources(
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
-         AND rv.resource_type NOT IN ('user', 'authenticationStrengthPolicy')
+         AND rv.resource_type <> 'user'
        ORDER BY rv.natural_key`,
       [snapshotId, ref],
     );
@@ -906,5 +970,39 @@ export async function getDashboardData(): Promise<DashboardData> {
 
     data.alerts = buildAlerts(data);
     return data;
+  });
+}
+
+// Roadmap task-73: measured freshness, recoverable point, recovery time and the
+// recovery context around them. Every read is pinned to this portal's tenant; the
+// numbers are the engine's (engine/coverage/recoveryMetrics.mjs), never recomputed here.
+export async function getResilienceData(): Promise<ResilienceData> {
+  const ref = tenantRef();
+  const now = new Date();
+  const { manifest, source } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return withClient(async (client) => {
+    const metrics = (await loadRecoveryMetrics(client, {
+      tenantRef: ref,
+      requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type),
+      now,
+    })) as RecoveryMetrics;
+    const open = ((await listIncidents(client, { tenantRef: ref })) as { id: string; title: string; status: string; openedAt: string | null }[])
+      .filter((incident) => incident.status === "open");
+    const incidents: IncidentPointSummary[] = [];
+    for (const incident of open) {
+      const listing = (await listIncidentRecoveryPoints(client, { tenantRef: ref, incidentId: incident.id })) as unknown as {
+        pins: unknown[];
+        points: RawPoint[];
+        recommended: string | null;
+      };
+      const point = listing.points.find((candidate) => candidate.snapshotId === listing.recommended) ?? null;
+      incidents.push({
+        incident: { id: incident.id, title: incident.title, status: incident.status, openedAt: incident.openedAt },
+        recommended: point ? { snapshotId: point.snapshotId, collectedAt: point.observedFrom ?? point.observedTo } : null,
+        pins: listing.pins.length,
+      });
+    }
+    return { generatedAt: now.toISOString(), metrics, incidents, storage };
   });
 }

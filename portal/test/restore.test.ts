@@ -267,15 +267,25 @@ test("a direct restore enforce POST is refused before it creates an approval req
 
 test("a raw selection starts a dry run, then only its completed artifact can request approval", async () => {
   const selection = ["conditionalAccessPolicy:Protect-Admins"];
+  // Roadmap task-131: credential config paths are server configuration. A request
+  // that supplies one is refused before anything is enqueued; the job gets the server's.
+  const { rows: jobsBefore } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+  for (const supplied of [
+    { collectorConfig: "/tmp/attacker-collector.json" },
+    { targetConfig: "/tmp/attacker-restorer.json" },
+  ]) {
+    const refused = await dryRunRoute(
+      post("/api/actions/restore/dry-run", { ...restorer, body: { snapshotId, selection, ...supplied } }),
+    );
+    assert.equal(refused.status, 400);
+  }
+  const { rows: jobsAfterRefusal } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+  assert.equal(jobsAfterRefusal.length, jobsBefore.length);
+
   const dryRun = await dryRunRoute(
     post("/api/actions/restore/dry-run", {
       ...restorer,
-      body: {
-        snapshotId,
-        selection,
-        collectorConfig: "/etc/keel/tenant-target.json",
-        targetConfig: "/etc/keel/restorer-target.json",
-      },
+      body: { snapshotId, selection },
     }),
   );
   assert.equal(dryRun.status, 202);

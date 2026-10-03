@@ -4,11 +4,15 @@ import { headers } from "next/headers";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { DriftTable } from "@/components/drift-table";
 import { PageHeader } from "@/components/page-header";
-import { formatAge, formatTimestamp } from "@/lib/presentation";
+import { BaselineContext } from "@/components/baseline-context";
+import { Verdict } from "@/components/verdict";
+import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getDriftData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { DriftData } from "@/lib/types";
+
+const DESCRIPTION = "What changed in the tenant since the active baseline, and what to do about each change.";
 
 export default async function DriftPage() {
   await connection();
@@ -16,7 +20,6 @@ export default async function DriftPage() {
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);
-  const actionable = capabilities.includes("dispose-accept") || capabilities.includes("remediate");
 
   let data: DriftData;
   try {
@@ -24,44 +27,27 @@ export default async function DriftPage() {
   } catch {
     return (
       <>
-        <PageHeader
-          description="Unresolved changes measured against the active recovery baseline."
-          section="Changes"
-          marker={actionable ? "Actionable" : "Read-only"}
-          title="Drift"
-        />
-        <DataUnavailable surface="Drift data" />
+        <PageHeader description={DESCRIPTION} section="Changes" title="Changes" />
+        <DataUnavailable surface="Changes" />
       </>
     );
   }
 
+  const verdict = changesVerdict(data.items, data.baseline?.setAt ?? null, data.generatedAt);
   return (
     <>
-      <PageHeader
-        description="Unresolved changes measured against the active recovery baseline."
-        section="Changes"
-        generatedAt={data.generatedAt}
-        marker={actionable ? "Actionable" : "Read-only"}
-        title="Drift"
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Changes" />
+      <Verdict
+        action={data.baseline ? null : { label: "Set a baseline", href: "/baselines" }}
+        text={verdict.text}
+        tone={verdict.tone}
       />
-
       {data.baseline ? (
-        <section aria-label="Active baseline context" className="context-strip">
-          <span className="active-indicator">Active baseline</span>
-          <strong>{data.baseline.label ?? "Unnamed baseline"}</strong>
-          <span>{data.baseline.resourceCount.toLocaleString("en-GB")} resources</span>
-          <span>{formatAge(data.baseline.setAt, new Date(data.generatedAt))}</span>
-          <time dateTime={data.baseline.setAt}>{formatTimestamp(data.baseline.setAt)}</time>
-        </section>
-      ) : (
-        <section className="data-error" role="alert">
-          <p className="severity-label">BASELINE MISSING</p>
-          <h2>Drift cannot be evaluated</h2>
-          <p>No active baseline exists for this tenant.</p>
-        </section>
-      )}
-
-      {data.baseline ? <DriftTable capabilities={capabilities} items={data.items} /> : null}
+        <div data-layer="explanation">
+          <BaselineContext baseline={data.baseline} now={data.generatedAt} />
+          <DriftTable capabilities={capabilities} items={data.items} now={data.generatedAt} />
+        </div>
+      ) : null}
     </>
   );
 }

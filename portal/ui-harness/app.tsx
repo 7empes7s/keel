@@ -10,7 +10,10 @@ import { PageHeader } from "@/components/page-header";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { BackupControls } from "@/components/backup-controls";
+import { BackupControls, ProblemList } from "@/components/backup-controls";
+import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
+import { protectProblems, protectVerdict, tierSummaries } from "@/lib/protect-view";
+import type { Schedule } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
 import { IntegrationConsole } from "@/components/integration-console";
@@ -22,6 +25,8 @@ import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@
 import { usePathname } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import { DriftTable } from "@/components/drift-table";
+import { BaselineContext } from "@/components/baseline-context";
+import { changesVerdict } from "@/lib/changes-view";
 import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
@@ -29,7 +34,7 @@ import { CompensationPanel } from "@/components/compensation-panel";
 import { IncidentRecovery } from "@/components/incident-recovery";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { DashboardData, DriftRecord } from "@/lib/types";
+import type { CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
@@ -125,7 +130,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const picked = DRIFT.filter((item) => driftIds.includes(item.id));
     return json({ driftIds, resources: picked.map((item) => ({ naturalKey: item.naturalKey, resourceType: item.resourceType, verb: item.changeType === "added" ? "delete" : item.changeType === "removed" ? "create" : "update", verbReason: item.changeType === "modified" ? "live state differs from baseline" : "restores baseline presence" })),
       waves: [picked.filter((item) => item.resourceType !== "conditionalAccessPolicy").map((item) => item.naturalKey), picked.filter((item) => item.resourceType === "conditionalAccessPolicy").map((item) => item.naturalKey)].filter((wave) => wave.length),
-      deletionWaves: [], patches: [], guardRefusals: [] });
+      deletionWaves: [], patches: [],
+      // Task-131: a synced group is refused, with the guard's own coded reason.
+      guardRefusals: picked.filter((item) => item.naturalKey === "group:Finance").map((item) => ({ naturalKey: item.naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" })) });
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
   if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
@@ -221,6 +228,49 @@ const BASELINES = [
 ];
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 
+// Task-131: every configuration-type state task-54 tested, mirrored into the Protect
+// drawers. Each type carries the full evidence its record must keep.
+const PROOF = { update: "engine/restore/updatePath.test.mjs", create: "engine/restore/createPath.test.mjs" };
+const write = (claim: string, proof: string | null, credentialMode: string | null = "restorer") => ({ claim, credentialMode, idOutcome: null, handler: null, proofRef: proof, projection: "reviewed-empty" });
+const ct = (type: string, protectionState: string, extra: Partial<CoverageType> = {}): CoverageType => ({
+  type, reportStatus: protectionState === "failed" ? "failed" : protectionState === "not-covered" ? "not-covered" : "covered", protectionState, stale: false, itemCount: 42,
+  lastCollectedAt: "2026-10-02T09:12:00Z", adapter: "graph-v1-" + type, outcome: "complete",
+  detail: { httpStatus: 200, graphCode: null, message: null, endpoint: `/v1.0/${type}`, apiVersion: "v1.0", pagesCompleted: 3, startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z" },
+  fidelity: { declared: "full", measured: null, verifiedAt: null }, criticality: "tier1", blastRadius: "access-affecting", remappable: true,
+  declaredEndpoint: { path: `/${type}`, apiVersion: "v1.0" }, irrecoverableFields: [], relationshipCompleteness: "unknown", diagnosis: null,
+  writeCapability: { resourceType: type, operations: { create: write("fixture-tested", PROOF.create), update: write("fixture-tested", PROOF.update), delete: write("declared", null), "restore-soft-deleted": write("unsupported", null, null) } },
+  qualification: null,
+  observation: { observationId: `0b5e0000-0000-4000-8000-${type.length.toString().padStart(12, "0")}`, window: { startedAt: "2026-10-02T09:01:00Z", endedAt: "2026-10-02T09:12:00Z" }, completeness: "complete", evidenceLevel: "fixture-tested" },
+  ...extra,
+} as CoverageType);
+const COVERAGE_TYPES: CoverageType[] = [
+  ct("conditionalAccessPolicy", "protected", { qualification: { decision: "automated", reason: "create/update/delete are registered; writes are forced report-only", softRestoreCandidate: false, remapping: { create: true, update: true } }, blastRadius: "tenant-lockout", itemCount: 14, fidelity: { declared: "full", measured: "full", verifiedAt: "2026-09-20T10:00:00Z" },
+    writeCapability: { resourceType: "conditionalAccessPolicy", operations: { create: write("live-qualified", "docs/release/qualification/ca-create.json"), update: write("live-qualified", "docs/release/qualification/ca-update.json"), delete: write("fixture-tested", "engine/restore/deletePath.test.mjs"), "restore-soft-deleted": write("unsupported", null, null) } } as never }),
+  ct("namedLocation", "protected", { itemCount: 0, outcome: "complete-empty" }),
+  ct("group", "partially-protected", { itemCount: 312, fidelity: { declared: "partial", measured: "partial", verifiedAt: "2026-09-21T10:00:00Z" }, irrecoverableFields: ["createdDateTime", "securityIdentifier"], qualification: { decision: "automated", reason: null, softRestoreCandidate: true, remapping: { create: false } } }),
+  ct("deviceConfiguration", "protected", { criticality: "tier2", blastRadius: "cosmetic", itemCount: 58, stale: true, lastCollectedAt: "2026-09-28T09:12:00Z",
+    observation: { observationId: "0b5e0000-0000-4000-8000-0000000000d5", window: { startedAt: "2026-09-28T09:00:00Z", endedAt: "2026-09-28T09:12:00Z" }, completeness: "complete", evidenceLevel: "fixture-tested" } }),
+  ct("servicePrincipal", "read-only", { criticality: "tier2", itemCount: 140, fidelity: { declared: "read-only", measured: null, verifiedAt: null } }),
+  ct("directoryRoleTemplate", "unprotectable", { qualification: { decision: "manual", reason: "Microsoft-published template catalogue", softRestoreCandidate: false, remapping: {} }, criticality: "tier3", remappable: false, itemCount: 98, fidelity: { declared: "unprotectable", measured: null, verifiedAt: null } }),
+  ct("authenticationMethodsPolicy", "failed", { itemCount: 0, outcome: "failed", detail: { httpStatus: 403, graphCode: "Authorization_RequestDenied", message: "Insufficient privileges", endpoint: "/v1.0/policies/authenticationMethodsPolicy", apiVersion: "v1.0", pagesCompleted: null, startedAt: null, completedAt: null },
+    diagnosis: { diagnosis: "missing-scope", reason: "Policy.Read.All is not consented", original: { httpStatus: 403, graphCode: "Authorization_RequestDenied" } } }),
+  ct("retentionLabel", "failed", { criticality: "tier2", outcome: "partial", itemCount: 17, detail: { httpStatus: 504, graphCode: "GatewayTimeout", message: "page 4 timed out", endpoint: "/beta/security/labels/retentionLabels", apiVersion: "beta", pagesCompleted: 3, startedAt: null, completedAt: null } }),
+  ct("crossTenantAccessPolicyPartner", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+  ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, outcome: null, detail: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null, declaredEndpoint: null, writeCapability: null, observation: null }),
+];
+const COVERAGE: CoverageData = { generatedAt: now, snapshot: { id: "5a2be911-0000-4000-8000-000000000002", status: "complete", startedAt: now, completedAt: now },
+  summary: { covered: 6, failed: 2, notCovered: 1, neverCollected: 1, stale: 1, total: COVERAGE_TYPES.length }, types: COVERAGE_TYPES };
+const schedule = (id: string, job_kind: string, tier: string | null, cadence: Schedule["cadence"], extra: Partial<Schedule> = {}): Schedule => ({
+  id, job_kind, tier, cadence, cron_override: null, enabled: true, next_due_at: "2026-10-02T10:00:00Z", last_job_id: null, last_run_at: null, last_status: null, last_error: null, ...extra,
+});
+const SCHEDULES: Schedule[] = [
+  schedule("5c4e0000-0000-4000-8000-000000000001", "collect", "tier1", { every: "hour", n: 1, atTime: null }, { last_job_id: "a1", last_run_at: "2026-10-02T09:00:00Z", last_status: "succeeded" }),
+  schedule("5c4e0000-0000-4000-8000-000000000002", "collect", "tier2", { every: "day", n: 1, atTime: "00:00" }, { next_due_at: "2026-10-03T00:00:00Z", last_job_id: "a4", last_run_at: "2026-10-02T00:00:00Z", last_status: "failed", last_error: "Graph 429: throttled after 5 retries" }),
+  schedule("5c4e0000-0000-4000-8000-000000000003", "collect", "tier3", { every: "week", n: 1, atTime: "00:00" }, { cron_override: "0 0 * * 1", next_due_at: "2026-10-05T00:00:00Z" }),
+  schedule("5c4e0000-0000-4000-8000-000000000004", "prune", null, { every: "day", n: 1, atTime: "00:00" }, { next_due_at: "2026-10-03T00:00:00Z" }),
+  schedule("5c4e0000-0000-4000-8000-000000000005", "offsite", null, { every: "day", n: 1, atTime: "05:00" }, { enabled: false, next_due_at: "2026-10-03T05:00:00Z" }),
+];
+
 const header = (section: NavSection, title: string, description: string, marker?: string) =>
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
 
@@ -236,7 +286,7 @@ const ALERTS: DashboardData["alerts"][] = [
 // Task-129: the three headline states the contract names, as the engine returns them.
 const HEADLINE_COUNTS = { backedUp: 52, restorable: 48, failing: 0, failed: 0, stale: 0, neverCollected: 0 };
 const HEADLINES: DashboardData["headline"][] = [
-  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/backups" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
+  { state: "collection", tone: "attention", headline: "Backups need attention", sentence: "4 configuration types failed their last backup.", action: { label: "Review backups", href: "/protect" }, counts: { ...HEADLINE_COUNTS, backedUp: 48, failing: 4, failed: 4 }, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
   { state: "unproven", tone: "attention", headline: "Backed up", sentence: "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet.", action: { label: "Plan a test restore", href: "/restore" }, counts: HEADLINE_COUNTS, lastProvenRestoreAt: null, failingSince: null },
   { state: "proven", tone: "good", headline: "Protected", sentence: "KEEL can restore 48 of 52 configuration types today. Last proven restore: 20 Sept 2026.", action: null, counts: HEADLINE_COUNTS, lastProvenRestoreAt: "2026-09-20T14:00:00Z", failingSince: null },
 ];
@@ -304,35 +354,40 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <ActivityTimeline items={mergeActivity(jobs, EVIDENCE)} now={now} people={{ "marouanedefili@gmail.com": { kind: "person", id: "marouanedefili@gmail.com", name: "marouanedefili@gmail.com", href: null } }} />
         <JobRefresher active={active} />
       </div></>;
-    case "/backups": return <>{header("Protect", "Backups", "Tiered backups on demand and their recent jobs.")}<BackupControls disabled={false} /><JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="History" title="Backup jobs" /></>;
-    case "/restore": return <>{header("Restore", "Restore", "Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references, and a restore only runs after approval.", "Actionable")}
+    case "/protect": {
+      const verdict = protectVerdict(COVERAGE, now);
+      return <>{header("Protect", "Protect", "Whether every configuration type is being backed up, how often, and whether KEEL can put it back.")}
+        <Verdict text={verdict.text} tone={verdict.tone} />
+        <div data-layer="explanation">
+          <BackupControls canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />
+          <ProblemList disabled={false} problems={protectProblems(COVERAGE, now)} />
+          <CoverageReport data={COVERAGE} now={now} />
+          <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="Recent" now={now} title="On-demand backups" />
+        </div></>;
+    }
+    case "/schedules": {
+      const verdict = schedulesVerdict(SCHEDULES, now);
+      return <>{header("Protect", "Schedules", "When KEEL backs up each tier and runs its upkeep. Times are in UTC.")}
+        <Verdict text={verdict.text} tone={verdict.tone} />
+        <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} now={now} schedules={SCHEDULES} /></div></>;
+    }
+    case "/restore": return <>{header("Restore", "Restore", "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.")}
       <RestoreSelection canApprove canRestore resources={[
         ...Object.keys(DEPENDS),
         "group:Break-glass admins", "group:All managed devices", "namedLocation:HQ egress", "authenticationStrength:Phishing-resistant", "group:Finance", "namedLocation:Branch offices",
       ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}
         snapshotId="snap-1" snapshots={[{ id: "snap-1", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 } as never]} />
-      <JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Queue" title="Restore jobs" /></>;
+      <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restore jobs" /></div></>;
     case "/incidents": return <>{header("Restore", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
-    case "/drift": return <>{header("Changes", "Drift", "Unresolved changes measured against the active recovery baseline.", "Actionable")}
-      <section aria-label="Active baseline context" className="context-strip">
-        <span className="active-indicator">Active baseline</span><strong>Post-migration golden state</strong><span>4,812 resources</span><span>2d old</span>
-      </section>
-      <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT} /></>;
-    case "/coverage": {
-      const ct = (type: string, protectionState: string, extra: Record<string, unknown> = {}) => ({ type, reportStatus: protectionState === "failed" ? "failed" : protectionState === "not-covered" ? "not-covered" : "covered", protectionState, stale: false, itemCount: 42, lastCollectedAt: "2026-10-02T09:12:00Z", adapter: "graph.v1." + type, outcome: "complete", detail: null, fidelity: { declared: "full", measured: null, verifiedAt: null }, criticality: "tier1", blastRadius: "access-affecting", remappable: true, relationshipCompleteness: "unknown", ...extra });
-      const types = [
-        ct("conditionalAccessPolicy", "protected", { qualification: { decision: "automated", reason: "create/update/delete are registered; writes are forced report-only", softRestoreCandidate: false, remapping: { create: true, update: true } }, blastRadius: "tenant-lockout", itemCount: 14, fidelity: { declared: "full", measured: "full", verifiedAt: "2026-09-20T10:00:00Z" } }),
-        ct("namedLocation", "protected", { itemCount: 6 }),
-        ct("group", "partially-protected", { itemCount: 312, fidelity: { declared: "partial", measured: null, verifiedAt: null } }),
-        ct("deviceConfiguration", "protected", { criticality: "tier2", blastRadius: "cosmetic", itemCount: 58 }),
-        ct("servicePrincipal", "read-only", { criticality: "tier2", itemCount: 140 }),
-        ct("directoryRoleTemplate", "unprotectable", { qualification: { decision: "manual", reason: "Microsoft-published template catalogue", softRestoreCandidate: false, remapping: {} }, criticality: "tier3", remappable: false, itemCount: 98 }),
-        ct("authenticationMethodsPolicy", "failed", { itemCount: 0, outcome: "failed" }),
-        ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null }),
-      ];
-      return <>{header("Protect", "Coverage", "Every known configuration type, including failed collections and missing adapters.", "Read-only")}
-        <CoverageReport data={{ generatedAt: now, snapshot: { id: "s", status: "complete", startedAt: now, completedAt: now }, summary: { covered: 5, failed: 1, notCovered: 1, neverCollected: 0, stale: 0, total: 8 }, types } as never} /></>;
+    case "/drift": {
+      const verdict = changesVerdict(DRIFT, BASELINES[0].setAt, now);
+      return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
+        <Verdict text={verdict.text} tone={verdict.tone} />
+        <div data-layer="explanation">
+          <BaselineContext baseline={BASELINES[0]} now={now} />
+          <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT} now={now} />
+        </div></>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }

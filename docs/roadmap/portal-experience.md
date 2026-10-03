@@ -424,3 +424,84 @@ the engine functions they call, covered by each task's boundary test.
 - **Old timeline component kept.** `components/evidence-timeline.tsx` is no
   longer used by a page. It stays because its integrity indicator is still
   unit-tested, and task-131 or later cleanup can remove it.
+
+### 2026-10-03: task-131 shipped (Protect, Changes and Restore in plain words)
+
+- **Protect.** `/protect` merges Backups and the per-type report; `/coverage` and
+  `/backups` redirect there after the same read check. Schedules stays a Protect tab.
+  - The verdict comes from the coverage reader (`protectVerdict` in
+    `portal/lib/protect-view.ts`): "N types failed their last backup.", "… have not
+    been backed up recently enough.", "… have never been backed up." or "All N
+    configuration types were backed up in the last 6 hours."
+  - Tier cards show the schedule reader's next run and last result in words, with
+    "Back up Tier N" and, for configuration principals, "Change schedule".
+  - Failed, out-of-date and never-backed-up types are listed by name, each with a
+    retry that queues its tier's backup.
+  - Every type has one drawer: a sentence on whether it is protected, partially
+    protected, cannot be restored or has no proven restore; its backup in words;
+    what KEEL can do to put it back. The whole task-54 matrix is in the drawer's
+    record (see `coverage-ui.md`).
+  - Schedules show what runs and how often in words. Job-kind codes, cron
+    expressions, schedule and job IDs and the last error are in each schedule's record.
+- **Changes.** The verdict is "N changes since the baseline set 2 days ago; 2 could
+  lock out administrators." (`changesVerdict` in `portal/lib/changes-view.ts`).
+  - The table names each resource and its type in words. Natural keys, drift IDs and
+    detection times are in a record per row.
+  - The comparison names each setting in words ("Conditions › users › exclude
+    groups") with values in words. Field paths and both payloads are in the record.
+  - "Disposition" is "decision" everywhere: Accept, Ignore, "Why is this decision right?".
+  - The roll-back preview says what KEEL would do to each resource ("Put the baseline
+    settings back"). Planned verbs, waves, deferred references, drift IDs and raw
+    refusal reasons are in its record. A refusal reads "KEEL refused to change
+    Finance (group) because it is synced from on-premises Active Directory, which
+    owns it." (`refusalSentence`). Sending it reads "Sent to approvers. Nothing
+    changes until one of them approves."
+  - Baselines stay the second Changes tab.
+- **Restore.**
+  - The step title is the verdict ("Step 1 of 5: choose what to put back." through
+    "Step 5 of 5: sent to approvers. Nothing changes until one of them approves.").
+  - The promotion paragraph, the CLI narration and the closure counts are gone.
+    What will be restored is named: "Block legacy auth and everything it depends on",
+    and each added resource says what depends on it.
+  - Closure keys, the snapshot ID, dry run and job IDs, the effects digest, raw
+    results and refusal reasons are in records.
+  - The mechanism, content-effect and undo labels are kept. Resources in the
+    mechanism table and content effects are named, not keyed.
+- **Credential paths are server configuration.** The wizard has no credential-path
+  inputs. `POST /api/actions/restore/dry-run` refuses a request that supplies
+  `collectorConfig` or `targetConfig`, and gives the worker the server's paths
+  (`KEEL_COLLECTOR_CONFIG_PATH` / `KEEL_RESTORER_CONFIG_PATH`, defaulting to the
+  `/etc/keel` files the worker already falls back to). Covered by
+  `portal/test/restore.test.ts` and `engine/roadmap/protect-page.test.mjs`.
+- **Checks.**
+  - The harness allowlist is empty and its maximum is 0. Protect, Schedules,
+    Changes and Restore pass checks 1 to 7, with per-route record IDs (proof
+    references, observation, schedule and drift IDs).
+  - The restore wizard's interaction test also runs the plain-text check at the
+    review step and confirms there is no credential-path input.
+  - A new interaction test covers the roll-back preview's refusal sentence.
+  - A failing plain-text check now names the text that matched.
+  - The three required mutations each fail a test:
+    - proof reference removed from the drawer's record → `coverage-ui.test.mjs`
+      and the record check on `protect`;
+    - a natural key rendered in the Changes table → the identifier check on `drift`;
+    - credential-path inputs put back → `protect-page.test.mjs`.
+
+**Limits and decisions:**
+
+- **Schedules stay a tab.** Protect shows each tier's schedule on its card. The full
+  schedule table (prune, off-site copy, Microsoft API check) stays on the Schedules
+  tab rather than lengthening Protect.
+- **Recent backups list only on-demand jobs.** Protect keeps the old Backups rule
+  (`BACKUP_JOB_KINDS = ["backup"]`). Scheduled tier runs show on the tier cards
+  and in Activity.
+- **Refusal reasons are matched, not rewritten at source.** `refusalSentence` turns
+  known guard reasons into words. A coded reason it does not recognise says the
+  reason is in Technical details, rather than putting the code on screen.
+- **Undo plan still shows natural keys.** On a failed restore's job page, the undo
+  plan (`CompensationPanel`) keeps its "will be undone / cannot be undone" headings,
+  which the contract lists as kept, and now uses the named content-effect list.
+  Its other rows still name resources by natural key once "Plan undo" is pressed.
+  The contract check runs on that page before planning, so it does not catch them.
+  Rewording that plan is left for a follow-up.
+

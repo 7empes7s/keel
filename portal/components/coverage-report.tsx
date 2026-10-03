@@ -2,46 +2,28 @@
 
 import { useMemo, useState } from "react";
 
-import { BlastBadge, ProtectionBadge, StateBadge } from "@/components/status-badge";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import {
-  PROTECTION_STATE_LABEL,
-  PROTECTION_STATE_ORDER,
-  adapterSurface,
-  formatTimestamp,
-  words,
-} from "@/lib/presentation";
-import type { CoverageData, CoverageType, ProtectionState } from "@/lib/types";
+  STANDING_LABEL,
+  backupHealth,
+  backupSentence,
+  recoveryDecisionSentence,
+  restoreOperations,
+  restoreStanding,
+  standingSentence,
+  tierLabel,
+  typeName,
+  type RestoreStanding,
+} from "@/lib/protect-view";
+import type { CoverageData, CoverageType } from "@/lib/types";
 
-function fidelityDetail(item: CoverageType) {
-  if (!item.fidelity.declared) {
-    return (
-      <span className="muted-value">No collecting descriptor</span>
-    );
-  }
-
-  return (
-    <span className="fidelity-detail">
-      <strong>Declared {words(item.fidelity.declared).toLowerCase()}</strong>
-      {item.fidelity.measured ? (
-        <small>
-          Drill measured {words(item.fidelity.measured).toLowerCase()} ·{" "}
-          {formatTimestamp(item.fidelity.verifiedAt)}
-        </small>
-      ) : (
-        <small className="unverified-copy">Not drill-verified</small>
-      )}
-    </span>
-  );
-}
-
-// Roadmap task-54: a per-type expandable capability matrix. A native
-// <details> disclosure keeps the main table scannable while still rendering
-// every required evidence dimension — endpoint/version, pagination, the
-// prerequisite diagnosis, operation-specific write status, the honestly-
-// unknown relationship completeness, irrecoverable fields and the linked
-// observation — so a "full" fidelity badge in the row above is never the
-// only thing a reader sees. <details>/<summary> is native keyboard- and
-// narrow-screen-accessible without any additional script.
+// Roadmap task-131 (superseding task-54's matrix layout): one drawer per configuration
+// type. Its summary and explanation answer "can KEEL put this back?" in one sentence;
+// every task-54 evidence field — collector, endpoint, pagination evidence, diagnosis,
+// projection review, proof reference, credential mode, observation — is kept, labelled,
+// in the drawer's record layer. A native <details> keeps it keyboard- and
+// narrow-screen-accessible without script.
 function observationQuery(item: CoverageType) {
   const observation = item.observation;
   return new URLSearchParams({
@@ -52,413 +34,204 @@ function observationQuery(item: CoverageType) {
   }).toString();
 }
 
-function capabilityMatrix(item: CoverageType) {
+function endpointValue(path: string | null | undefined, version: string | null | undefined, source: string): string | null {
+  return path ? `${path} (${version ?? "unknown version"}, ${source})` : null;
+}
+
+function TypeRecord({ item }: { item: CoverageType }) {
   const irrecoverable = item.irrecoverableFields ?? null;
-  const summaryLabel = irrecoverable && irrecoverable.length > 0
-    ? `${irrecoverable.length} field${irrecoverable.length === 1 ? "" : "s"} not write-recoverable`
-    : "Capability & evidence";
-
+  const detail = item.detail;
+  const decision = item.qualification;
   return (
-    <details className="capability-matrix">
-      <summary>{summaryLabel} · Relationships {item.relationshipCompleteness ?? "unknown"}</summary>
-      <dl className="capability-detail-list">
-        <div className="capability-row">
-          <dt>Endpoint</dt>
-          <dd>
-            {item.declaredEndpoint ? (
-              <span className="endpoint-detail">
-                <code>{item.declaredEndpoint.path}</code>
-                <small>{item.declaredEndpoint.apiVersion} · declared</small>
-              </span>
-            ) : (
-              <span className="muted-value">Unknown</span>
-            )}
-            {item.detail?.endpoint ? (
-              <span className="endpoint-detail">
-                <code>{item.detail.endpoint}</code>
-                <small>
-                  {item.detail.apiVersion ?? "unknown version"} · measured
-                </small>
-              </span>
-            ) : null}
-          </dd>
-        </div>
+    <TechnicalDetails>
+      <RecordField label="Configuration type" value={item.type} />
+      <RecordField label="Protection state" value={`${item.protectionState} · report ${item.reportStatus} · outcome ${item.outcome ?? "none"}`} copy={false} />
+      <RecordField label="Serving adapter" value={item.adapter} />
+      <RecordField label="Declared endpoint" value={endpointValue(item.declaredEndpoint?.path, item.declaredEndpoint?.apiVersion, "declared") ?? "unknown"} copy={false} />
+      <RecordField label="Measured endpoint" value={endpointValue(detail?.endpoint, detail?.apiVersion, "measured") ?? "not recorded"} copy={false} />
+      <RecordField
+        label="Pagination evidence"
+        value={detail?.pagesCompleted === null || detail?.pagesCompleted === undefined ? "unknown"
+          : `${detail.pagesCompleted.toLocaleString("en-GB")} page${detail.pagesCompleted === 1 ? "" : "s"} completed`}
+        copy={false}
+      />
+      {detail && (detail.httpStatus !== null || detail.graphCode || detail.message) ? (
+        <RecordField label="Last read error" value={[detail.httpStatus, detail.graphCode, detail.message].filter((part) => part !== null && part !== "").join(" · ")} copy={false} />
+      ) : null}
+      <RecordField
+        label="Prerequisite diagnosis"
+        value={item.diagnosis ? `${item.diagnosis.diagnosis}${item.diagnosis.reason ? ` · ${item.diagnosis.reason}` : ""}` : "not diagnosed"}
+        copy={false}
+      />
+      <RecordField label="Relationship completeness" value={`${item.relationshipCompleteness ?? "unknown"} · no relationship collection exists yet`} copy={false} />
+      <RecordField
+        label="Irrecoverable fields"
+        value={irrecoverable === null ? "unknown" : irrecoverable.length === 0 ? "none declared" : irrecoverable.join(", ")}
+        copy={false}
+      />
+      <RecordField
+        label="Fidelity"
+        value={`declared ${item.fidelity.declared ?? "none"} · measured ${item.fidelity.measured ?? "not drill-verified"}${item.fidelity.verifiedAt ? ` at ${item.fidelity.verifiedAt}` : ""}`}
+        copy={false}
+      />
+      <RecordField
+        label="Recovery decision"
+        value={decision ? `${decision.decision}${decision.reason ? ` · ${decision.reason}` : ""}${decision.softRestoreCandidate ? " · soft-delete restore is a candidate, not yet qualified" : ""}` : "unknown"}
+        copy={false}
+      />
+      {decision ? Object.entries(decision.remapping).map(([operation, proven]) => (
+        <RecordField copy={false} key={operation} label={`Remapping · ${operation}`} value={proven ? "proven" : "not proven, refused when an id changes"} />
+      )) : null}
+      {item.writeCapability ? Object.entries(item.writeCapability.operations).flatMap(([operation, capability]) => [
+        <RecordField copy={false} key={`${operation}-claim`} label={`Write · ${operation}`}
+          value={`${capability.claim} · projection review ${capability.projection} · credential mode ${capability.credentialMode ?? "unknown"}${capability.idOutcome ? ` · id ${capability.idOutcome}` : ""}`} />,
+        <RecordField key={`${operation}-proof`} label={`Proof reference · ${operation}`} value={capability.proofRef ?? "unknown"} />,
+      ]) : <RecordField label="Write capability" value="unknown" copy={false} />}
+      <RecordField label="Criticality" value={item.criticality ?? "unknown"} copy={false} />
+      <RecordField label="Blast radius" value={item.blastRadius ?? "unknown"} copy={false} />
+      <RecordField label="Remappable" value={item.remappable === null ? "unknown" : String(item.remappable)} copy={false} />
+      <RecordField label="Last collected" value={item.lastCollectedAt ?? "never"} copy={false} />
+      {item.observation ? (
+        <>
+          <RecordField
+            label="Observation ID"
+            usage={<>Benchmark comparison unavailable until a benchmark view records a matching observation. Linked views:{" "}
+              <a href={`/protect?${observationQuery(item)}`}>Backups</a> · <a href={`/drift?${observationQuery(item)}`}>Drift</a></>}
+            value={item.observation.observationId}
+          />
+          <RecordField
+            copy={false}
+            label="Observation window"
+            value={item.observation.window ? `${item.observation.window.startedAt} – ${item.observation.window.endedAt}` : "window unknown"}
+          />
+          <RecordField copy={false} label="Observation evidence" value={`completeness ${item.observation.completeness} · evidence ${item.observation.evidenceLevel}`} />
+        </>
+      ) : <RecordField label="Observation ID" value="no observation recorded" copy={false} />}
+    </TechnicalDetails>
+  );
+}
 
-        <div className="capability-row">
-          <dt>Pagination evidence</dt>
-          <dd>
-            {item.detail?.pagesCompleted === null || item.detail?.pagesCompleted === undefined ? (
-              <span className="muted-value">Unknown</span>
-            ) : (
-              <span>
-                {item.detail.pagesCompleted.toLocaleString("en-GB")} page
-                {item.detail.pagesCompleted === 1 ? "" : "s"} completed
-              </span>
-            )}
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Prerequisite diagnosis</dt>
-          <dd>
-            {item.diagnosis ? (
-              <span className={`diagnosis-badge diagnosis-${item.diagnosis.diagnosis}`}>
-                {words(item.diagnosis.diagnosis)}
-              </span>
-            ) : (
-              <span className="muted-value">Not diagnosed</span>
-            )}
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Relationship completeness</dt>
-          <dd>
-            <span className="muted-value">{words(item.relationshipCompleteness ?? "unknown")}</span>
-            <small className="cell-note">No relationship/edge collection exists yet</small>
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Irrecoverable fields</dt>
-          <dd>
-            {irrecoverable === null ? (
-              <span className="muted-value">Unknown</span>
-            ) : irrecoverable.length === 0 ? (
-              <span className="muted-value">None declared</span>
-            ) : (
-              <span className="field-list">
-                {irrecoverable.map((field) => (
-                  <code key={field}>{field}</code>
-                ))}
-              </span>
-            )}
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Recovery decision</dt>
-          <dd>
-            {item.qualification ? (
-              <span className="observation-detail">
-                <span className={`pill pill-${item.qualification.decision === "automated" ? "ok" : item.qualification.decision === "manual" ? "info" : "neutral"} decision-${item.qualification.decision}`}>
-                  {words(item.qualification.decision)}
-                </span>
-                {item.qualification.reason ? <small>{item.qualification.reason}</small> : null}
-                {Object.entries(item.qualification.remapping).map(([operation, qualified]) => (
-                  <small key={operation}>
-                    {words(operation)} remapping: {qualified ? "proven" : "not proven, refused when an id changes"}
-                  </small>
-                ))}
-                {item.qualification.softRestoreCandidate ? (
-                  <small>Soft-delete restore is a candidate, not yet qualified</small>
-                ) : null}
-              </span>
-            ) : (
-              <span className="muted-value">Unknown</span>
-            )}
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Write capability by operation</dt>
-          <dd>
-            {item.writeCapability ? (
-              <ul className="operation-claims">
-                {Object.entries(item.writeCapability.operations).map(([operation, capability]) => (
-                  <li key={operation}>
-                    <strong>{words(operation)}</strong>
-                    <span className={`claim-badge claim-${capability.claim}`}>
-                      {words(capability.claim)}
-                    </span>
-                    <small>Projection review: {capability.projection}</small>
-                    <small>Proof: <code>{capability.proofRef ?? "Unknown"}</code></small>
-                    <small>Credential mode: {capability.credentialMode ?? "Unknown"}</small>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="muted-value">Unknown</span>
-            )}
-          </dd>
-        </div>
-
-        <div className="capability-row">
-          <dt>Observation</dt>
-          <dd>
-            {item.observation ? (
-              <span className="observation-detail">
-                <code>{item.observation.observationId}</code>
-                {item.observation.window ? (
-                  <small>
-                    {formatTimestamp(item.observation.window.startedAt)} –{" "}
-                    {formatTimestamp(item.observation.window.endedAt)}
-                  </small>
-                ) : (
-                  <small className="unverified-copy">Window unknown</small>
-                )}
-                <small>Completeness: {item.observation.completeness} · Evidence: {item.observation.evidenceLevel}</small>
-                <small>Benchmark comparison unavailable until a benchmark view records a matching observation.</small>
-                <nav aria-label={`Linked views for ${item.type}`} className="observation-links">
-                  <a href={`/backups?${observationQuery(item)}`}>Backups</a>
-                  <a href={`/drift?${observationQuery(item)}`}>Drift</a>
-                </nav>
-              </span>
-            ) : (
-              <span className="muted-value">No observation recorded</span>
-            )}
-          </dd>
-        </div>
-      </dl>
+/** One configuration type: its name and standing, opening onto the explanation and record. */
+export function TypeDrawer({ item, now }: { item: CoverageType; now: string }) {
+  const standing = restoreStanding(item);
+  const health = backupHealth(item);
+  const operations = restoreOperations(item);
+  const decision = recoveryDecisionSentence(item);
+  const irrecoverable = item.irrecoverableFields?.length ?? 0;
+  return (
+    <details className={`capability-matrix type-drawer standing-${standing} health-${health}`}>
+      <summary>
+        <span className="type-drawer-name">{typeName(item.type)}</span>
+        <span className={`state-badge standing-badge standing-${standing}`}>{STANDING_LABEL[standing]}</span>
+        <span className="type-drawer-backup">{backupSentence(item, now)}</span>
+      </summary>
+      <div className="type-drawer-body">
+        <p className="type-drawer-standing">{standingSentence(item)}</p>
+        <ul className="type-drawer-facts">
+          <li>{item.criticality ? `${tierLabel(item.criticality)}.` : "Not in a backup tier."}</li>
+          {item.blastRadius ? <li>Impact if it changes: {displayEnum("blastRadius", item.blastRadius).toLowerCase()}.</li> : null}
+          {irrecoverable > 0 ? <li>{irrecoverable} {irrecoverable === 1 ? "field" : "fields"} Microsoft sets itself and KEEL cannot restore.</li> : null}
+          {decision ? <li className={`decision-${item.qualification?.decision ?? "unknown"}`}>{decision}</li> : null}
+          {operations.map((line) => <li key={line}>{line}</li>)}
+          {item.lastCollectedAt ? <li>Collected <time dateTime={item.lastCollectedAt} title={formatTimestamp(item.lastCollectedAt)}>{ago(item.lastCollectedAt, now)}</time>.</li> : null}
+        </ul>
+        <TypeRecord item={item} />
+      </div>
     </details>
   );
 }
 
-function CoverageTable({ items }: { items: CoverageType[] }) {
-  return (
-    <div className="table-scroll">
-      <table className="data-table coverage-table">
-        <thead>
-          <tr>
-            <th scope="col">Resource type</th>
-            <th scope="col">Protection state</th>
-            <th scope="col">Fidelity evidence</th>
-            <th scope="col">Serving adapter</th>
-            <th scope="col">Criticality</th>
-            <th scope="col">Blast radius</th>
-            <th scope="col">Remappable</th>
-            <th className="number-column" scope="col">Items</th>
-            <th scope="col">Collection freshness</th>
-            <th scope="col">Last collection</th>
-            <th scope="col">Capability & evidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.type}>
-              <th data-label="Resource type" scope="row">
-                <span className="resource-type">{item.type}</span>
-              </th>
-              <td data-label="Protection state">
-                <ProtectionBadge item={item} />
-                {item.reportStatus === "never-collected" ? (
-                  <small className="cell-note">
-                    {item.outcome === "not-requested"
-                      ? "Not requested in the latest run"
-                      : "Descriptor exists; never collected"}
-                  </small>
-                ) : null}
-                {item.outcome === "partial" ? (
-                  <small className="cell-note">
-                    Partial read{item.detail?.graphCode ? ` · ${item.detail.graphCode}` : ""}
-                    {item.itemCount !== null ? ` · ${item.itemCount.toLocaleString("en-GB")} items seen` : ""}
-                    {" — completeness failed"}
-                  </small>
-                ) : null}
-              </td>
-              <td data-label="Fidelity evidence">{fidelityDetail(item)}</td>
-              <td data-label="Serving adapter">
-                {item.adapter ? (
-                  <span className="adapter-detail">
-                    <strong>{adapterSurface(item.adapter)}</strong>
-                    <code>{item.adapter}</code>
-                  </span>
-                ) : (
-                  <span className="muted-value">None registered</span>
-                )}
-              </td>
-              <td data-label="Criticality">
-                {item.criticality ? (
-                  <span className={`tier-label ${item.criticality}`}>
-                    {words(item.criticality)}
-                  </span>
-                ) : (
-                  <span className="muted-value">Unknown</span>
-                )}
-              </td>
-              <td data-label="Blast radius">
-                {item.blastRadius ? (
-                  <BlastBadge value={item.blastRadius} />
-                ) : (
-                  <span className="muted-value">Unknown</span>
-                )}
-              </td>
-              <td data-label="Remappable">
-                <span className={`boolean-value value-${String(item.remappable)}`}>
-                  {item.remappable === null ? "Unknown" : item.remappable ? "Yes" : "No"}
-                </span>
-              </td>
-              <td className="number-column" data-label="Items">
-                {item.itemCount === null ? "—" : item.itemCount.toLocaleString("en-GB")}
-              </td>
-              <td data-label="Collection freshness">
-                {item.stale ? (
-                  <span className="staleness-detail">
-                    <span className="stale-badge">Stale</span>
-                    <small>Last collected {formatTimestamp(item.lastCollectedAt)}</small>
-                  </span>
-                ) : (
-                  <span className="freshness-detail">Fresh</span>
-                )}
-              </td>
-              <td data-label="Last collection">
-                <time dateTime={item.lastCollectedAt ?? undefined}>
-                  {formatTimestamp(item.lastCollectedAt)}
-                </time>
-              </td>
-              <td data-label="Capability & evidence">{capabilityMatrix(item)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "partial", "protected"];
+const GROUP_TITLE: Record<RestoreStanding, string> = {
+  "cannot-restore": "Cannot be restored",
+  unproven: "Backed up, restore not yet proven",
+  partial: "Partially protected",
+  protected: "Protected",
+};
 
-export function CoverageReport({ data }: { data: CoverageData }) {
+export function CoverageReport({ data, now }: { data: CoverageData; now?: string }) {
+  const at = now ?? data.generatedAt;
   const [query, setQuery] = useState("");
-  const [state, setState] = useState<ProtectionState | "all">("all");
+  const [standing, setStanding] = useState<RestoreStanding | "all">("all");
   const [tier, setTier] = useState("all");
-
-  const stateCounts = useMemo(
-    () =>
-      Object.fromEntries(
-        PROTECTION_STATE_ORDER.map((candidate) => [
-          candidate,
-          data.types.filter((item) => item.protectionState === candidate).length,
-        ]),
-      ) as Record<ProtectionState, number>,
-    [data.types],
-  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return data.types.filter(
-      (item) =>
-        (state === "all" || item.protectionState === state) &&
-        (tier === "all" || item.criticality === tier) &&
-        (!needle ||
-          item.type.toLowerCase().includes(needle) ||
-          item.adapter?.toLowerCase().includes(needle)),
-    );
-  }, [data.types, query, state, tier]);
+    return data.types.filter((item) =>
+      (standing === "all" || restoreStanding(item) === standing)
+      && (tier === "all" || item.criticality === tier)
+      && (!needle || item.type.toLowerCase().includes(needle) || typeName(item.type).toLowerCase().includes(needle)));
+  }, [data.types, query, standing, tier]);
 
-  const grouped = PROTECTION_STATE_ORDER.map((candidate) => ({
-    state: candidate,
-    items: filtered
-      .filter((item) => item.protectionState === candidate)
-      .sort((a, b) => {
-        const tierComparison = (a.criticality ?? "tier9").localeCompare(
-          b.criticality ?? "tier9",
-        );
-        return tierComparison || a.type.localeCompare(b.type);
-      }),
+  const groups = STANDING_ORDER.map((candidate) => ({
+    standing: candidate,
+    items: filtered.filter((item) => restoreStanding(item) === candidate)
+      .sort((a, b) => (a.criticality ?? "tier9").localeCompare(b.criticality ?? "tier9") || a.type.localeCompare(b.type)),
   })).filter((group) => group.items.length > 0);
 
+  const windows = [...new Set(data.types.flatMap((item) => item.observation?.window
+    ? [`${item.observation.window.startedAt} – ${item.observation.window.endedAt}`] : []))];
+
   return (
-    <>
-      {new Set(data.types.flatMap((item) => item.observation?.window
-        ? [`${item.observation.window.startedAt}/${item.observation.window.endedAt}`] : [])).size > 1 ? (
-        <aside className="honesty-note" aria-label="Observation mismatch">
-          <strong>Observation windows differ.</strong>
-          <p>These observations are not simultaneous. Compare the observation IDs and windows before linking evidence across views.</p>
+    <section aria-labelledby="coverage-report-heading" className="report-section">
+      <div className="section-heading-row report-heading">
+        <div>
+          <p className="section-kicker">Every configuration type</p>
+          <h2 id="coverage-report-heading">What KEEL can put back</h2>
+        </div>
+        <span className="result-count">{filtered.length} of {data.types.length}</span>
+      </div>
+
+      {windows.length > 1 ? (
+        <aside className="honesty-note" aria-label="Collection times differ">
+          <strong>These types were collected at different times.</strong>
+          <p>Treat them as separate copies, not one picture of the tenant at a single moment.</p>
+          <TechnicalDetails>
+            <RecordField copy={false} label="Observation windows differ" value={windows.join("; ")} />
+          </TechnicalDetails>
         </aside>
       ) : null}
-      <section aria-labelledby="posture-heading" className="posture-section">
-        <div className="section-heading-row">
-          <div>
-            <p className="section-kicker">Protection shape</p>
-            <h2 id="posture-heading">All catalog states</h2>
-          </div>
-          <span className="result-count">{data.summary.total} types</span>
-        </div>
-        <div className="state-selector" aria-label="Filter by protection state">
-          {PROTECTION_STATE_ORDER.map((candidate) => (
-            <button
-              aria-pressed={state === candidate}
-              className="state-count"
-              key={candidate}
-              onClick={() => setState(state === candidate ? "all" : candidate)}
-              type="button"
-            >
-              <StateBadge state={candidate} />
-              <strong>{stateCounts[candidate]}</strong>
-              <span aria-hidden="true" className={`state-share share-${candidate}`}>
-                <span style={{ width: `${data.summary.total ? (stateCounts[candidate] / data.summary.total) * 100 : 0}%` }} />
-              </span>
-            </button>
+
+      <div className="filter-bar">
+        <label className="filter-field search-field">
+          <span>Find a type</span>
+          <input onChange={(event) => setQuery(event.target.value)} placeholder="e.g. Conditional Access" type="search" value={query} />
+        </label>
+        <label className="filter-field">
+          <span>Can it be restored</span>
+          <select onChange={(event) => setStanding(event.target.value as RestoreStanding | "all")} value={standing}>
+            <option value="all">Any</option>
+            {STANDING_ORDER.map((candidate) => <option key={candidate} value={candidate}>{STANDING_LABEL[candidate]}</option>)}
+          </select>
+        </label>
+        <label className="filter-field">
+          <span>Tier</span>
+          <select onChange={(event) => setTier(event.target.value)} value={tier}>
+            <option value="all">All tiers</option>
+            <option value="tier1">Tier 1</option>
+            <option value="tier2">Tier 2</option>
+            <option value="tier3">Tier 3</option>
+          </select>
+        </label>
+      </div>
+
+      {groups.length ? (
+        <div className="coverage-groups">
+          {groups.map((group) => (
+            <section aria-labelledby={`coverage-${group.standing}`} className={`coverage-group group-${group.standing}`} key={group.standing}>
+              <header className="group-header">
+                <h3 id={`coverage-${group.standing}`}>{GROUP_TITLE[group.standing]}</h3>
+                <span>{group.items.length} {group.items.length === 1 ? "type" : "types"}</span>
+              </header>
+              <div className="type-drawers">
+                {group.items.map((item) => <TypeDrawer item={item} key={item.type} now={at} />)}
+              </div>
+            </section>
           ))}
         </div>
-      </section>
-
-      <section aria-labelledby="coverage-report-heading" className="report-section">
-        <div className="section-heading-row report-heading">
-          <div>
-            <p className="section-kicker">Per resource type</p>
-            <h2 id="coverage-report-heading">Coverage report</h2>
-          </div>
-          <span className="result-count">
-            {filtered.length} of {data.types.length}
-          </span>
-        </div>
-
-        <div className="filter-bar">
-          <label className="filter-field search-field">
-            <span>Find type or adapter</span>
-            <input
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="e.g. conditionalAccessPolicy"
-              type="search"
-              value={query}
-            />
-          </label>
-          <label className="filter-field">
-            <span>Protection state</span>
-            <select
-              onChange={(event) => setState(event.target.value as ProtectionState | "all")}
-              value={state}
-            >
-              <option value="all">All states</option>
-              {PROTECTION_STATE_ORDER.map((candidate) => (
-                <option key={candidate} value={candidate}>
-                  {PROTECTION_STATE_LABEL[candidate]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-field">
-            <span>Criticality</span>
-            <select onChange={(event) => setTier(event.target.value)} value={tier}>
-              <option value="all">All tiers</option>
-              <option value="tier1">Tier 1</option>
-              <option value="tier2">Tier 2</option>
-              <option value="tier3">Tier 3</option>
-            </select>
-          </label>
-        </div>
-
-        {grouped.length ? (
-          <div className="coverage-groups">
-            {grouped.map((group) => (
-              <section
-                aria-labelledby={`coverage-${group.state}`}
-                className={`coverage-group group-${group.state}`}
-                key={group.state}
-              >
-                <header className="group-header">
-                  <h3 id={`coverage-${group.state}`}>
-                    <StateBadge state={group.state} />
-                  </h3>
-                  <span>{group.items.length} types</span>
-                </header>
-                <CoverageTable items={group.items} />
-              </section>
-            ))}
-          </div>
-        ) : (
-          <p className="empty-state">No catalog types match these filters.</p>
-        )}
-      </section>
-    </>
+      ) : (
+        <p className="empty-state">No configuration types match these filters.</p>
+      )}
+    </section>
   );
 }

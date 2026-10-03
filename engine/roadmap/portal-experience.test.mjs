@@ -119,7 +119,7 @@ test('failing or stale collection: the count of types not backed up and since wh
   assert.equal(headline.state, 'collection');
   assert.equal(headline.counts.failing, 1);
   assert.equal(headline.sentence, '1 configuration type failed its last backup.');
-  assert.deepEqual(headline.action, { label: 'Review backups', href: '/backups' });
+  assert.deepEqual(headline.action, { label: 'Review backups', href: '/protect' });
 
   // A week later every tier-1 type is stale too: they count, with the oldest time.
   const late = await report(client, tenantRef, new Date('2026-10-09T10:00:00Z'));

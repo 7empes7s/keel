@@ -142,6 +142,8 @@ export const DATA_SURFACES = {
   // Task-83: the alerts inbox. Acknowledging and resolving are separate guarded actions.
   alertsApi: { capability: "read", source: "api/alerts/route.ts" },
   alertsPage: { capability: "read", source: "alerts/page.tsx" },
+  // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
+  readinessPage: { capability: "read", source: "readiness/page.tsx" },
 } as const;
 
 export interface DataSurface {

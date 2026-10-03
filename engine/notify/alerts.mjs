@@ -28,6 +28,7 @@
 //    in now.
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { planDeadline } from './escalation.mjs';
 import { dispatchAlert } from './notifications.mjs';
 
 export const ALERT_STATES = Object.freeze(['open', 'acknowledged', 'resolved', 'reopened', 'suppressed']);
@@ -208,6 +209,8 @@ export async function applyConditionEvent(client, {
       created = rows[0] ?? null;
     }
     if (created) {
+      // Task 83: the occurrence's acknowledgement deadline and owner are persisted now.
+      created = await planDeadline(client, created);
       await recordTransition(client, created, {
         fromState: null, toState: 'open', reason: 'condition-firing', eventId, actor, occurredAt: at, evidence: { detail },
       });
@@ -270,7 +273,7 @@ export async function applyConditionEvent(client, {
     // resolution belong to that occurrence's history, not to this one.
     flapping.value = decision.flapping;
     const toState = alert.state === 'suppressed' ? 'suppressed' : 'reopened';
-    const { rows: [updated] } = await client.query(
+    const { rows: [reopened] } = await client.query(
       `UPDATE alert SET state = $2, condition_active = true, occurrence = occurrence + 1,
               occurrence_started_at = $3, last_firing_at = $3, last_observed_at = $3, last_event_id = $4,
               firing_count = firing_count + 1, flap_count = flap_count + $5::int, severity = $6, detail = $7,
@@ -280,6 +283,7 @@ export async function applyConditionEvent(client, {
         WHERE id = $1 RETURNING *`,
       [alert.id, toState, at, eventId, decision.flapping ? 1 : 0, severity, detail, decision.flapping],
     );
+    const updated = await planDeadline(client, reopened);
     await recordTransition(client, updated, {
       fromState: alert.state, toState, reason: decision.flapping ? 'condition-recurred-flapping' : 'condition-recurred',
       eventId, actor, occurredAt: at,
@@ -329,6 +333,32 @@ export async function acknowledgeAlert(client, { tenantRef, alertId, actor, at =
     await recordTransition(client, updated, {
       fromState: alert.state, toState: 'acknowledged', reason: 'acknowledged', actor, occurredAt: when,
       evidence: note ? { note: String(note) } : {},
+    });
+    return updated;
+  });
+}
+
+/**
+ * Task 83: an operator closes an alert by hand. Same right as acknowledging, never the
+ * viewing right. The condition is marked cleared as of now, so the next firing
+ * observation reopens it as a new occurrence rather than being absorbed.
+ */
+export async function resolveAlert(client, { tenantRef, alertId, actor, reason, at = new Date() }) {
+  const when = requireInstant(at, 'at');
+  requireString(reason, 'reason');
+  await authorize(client, { tenantRef, actor, capability: ALERT_ACKNOWLEDGE_CAPABILITY, at: new Date() });
+  return transaction(client, async () => {
+    const alert = await loadForUpdate(client, { tenantRef, alertId });
+    if (!ACTIVE_STATES.includes(alert.state)) throw new AlertStateError(`an ${alert.state} alert cannot be resolved`);
+    const { rows: [updated] } = await client.query(
+      `UPDATE alert SET state = 'resolved', condition_active = false, resolved_at = $2, resolved_event_id = NULL,
+              updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [alert.id, when],
+    );
+    await recordTransition(client, updated, {
+      fromState: alert.state, toState: 'resolved', reason: 'resolved-by-operator', actor, occurredAt: when,
+      evidence: { reason },
     });
     return updated;
   });

@@ -20,6 +20,7 @@ const PAGES = [
   { name: "policy", hash: "/policies/p1" },
   { name: "approvals", hash: "/approvals" },
   { name: "baselines", hash: "/baselines" },
+  { name: "benchmarks", hash: "/benchmarks" },
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
   { name: "integrations", hash: "/integrations" },
@@ -268,7 +269,8 @@ const RECORD_IDS: Record<string, string[]> = {
   restore: ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
-  baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117"],
+  baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
+  benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "d0e10000-0000-4000-8000-0000000000d1"],
   integrations: ["de570000-0000-4000-8000-0000000000e1"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
@@ -479,14 +481,20 @@ test("stacked tables on a phone keep records beside their label and hide empty c
   expect(name && summary, "name and record are laid out").toBeTruthy();
   // Below 25rem the cell is one column, so the record sits under the name, aligned with it.
   expect(Math.abs(summary!.x - name!.x)).toBeLessThan(2);
-  await expect(row.locator("td[data-label='Actions']")).toBeHidden();
+  // Task-87: the active row offers "Capture new version"; a superseded version has no
+  // actions, so its empty cell is the one that must not be shown.
+  await expect(row.locator("td[data-label='Actions']")).toBeVisible();
+  await expect(page.locator(".baselines-table tbody tr").last().locator("td[data-label='Actions']")).toBeHidden();
   expect(await nameCell.evaluate((cell) => getComputedStyle(cell).boxShadow)).toBe("none");
   expect(await nameCell.locator(".technical-details > summary").evaluate((element) => getComputedStyle(element).listStyleType)).toBe("none");
 
   // Between 25rem and 46rem the cell is two columns: the record joins the value column.
+  // The first read after a resize can precede the relayout, so wait for it to settle.
   await page.setViewportSize({ width: 600, height: 900 });
-  const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
-  const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
-  expect(Math.abs(wideSummary!.x - wideName!.x)).toBeLessThan(2);
+  await expect.poll(async () => {
+    const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
+    const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
+    return Math.abs(wideSummary!.x - wideName!.x);
+  }).toBeLessThan(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

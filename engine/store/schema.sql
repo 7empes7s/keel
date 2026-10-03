@@ -377,6 +377,11 @@ END IF;
 END
 $schedule$;
 
+-- Roadmap task-110: an operator may acknowledge a measured load warning on a schedule.
+-- Additive and nullable: legacy rows read as "not acknowledged". The acknowledgement
+-- records who, when and for which cadence; it never changes cadence or next_due_at.
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS forecast_acknowledgement jsonb;
+
 -- Task 43: a system identity has an exact, code-defined capability set, not a new role.
 ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind text
   CHECK (system_kind = 'scheduler');
@@ -889,6 +894,104 @@ CREATE INDEX IF NOT EXISTS retention_pin_tenant_idx ON retention_pin (tenant_ref
 -- under an incident, which keeps their digest unchanged.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS incident_recovery jsonb;
 
+-- Task 82 (WS7): durable alert lifecycle. One alert row per condition identity
+-- (tenant, resource, control, condition); a recurrence reopens the same row as a new
+-- occurrence instead of creating another alert. Every state change is an append-only
+-- alert_transition row (UPDATE and DELETE are refused by trigger), and every applied
+-- condition event leaves an alert_event_receipt keyed by its event id, so a retried or
+-- duplicated event is recognised instead of re-applied. A suppressed alert keeps its row,
+-- its history and the live condition state; suppression only stops notification.
+CREATE TABLE IF NOT EXISTS alert (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref            text NOT NULL,
+  resource_key          text NOT NULL,
+  control               text NOT NULL,
+  condition             text NOT NULL,
+  state                 text NOT NULL CHECK (state IN ('open','acknowledged','resolved','reopened','suppressed')),
+  condition_active      boolean NOT NULL,
+  severity              text NOT NULL CHECK (severity IN ('notice','warning','critical')),
+  occurrence            int NOT NULL DEFAULT 1 CHECK (occurrence >= 1),
+  firing_count          int NOT NULL DEFAULT 1 CHECK (firing_count >= 0),
+  flap_count            int NOT NULL DEFAULT 0 CHECK (flap_count >= 0),
+  detail                jsonb NOT NULL DEFAULT '{}'::jsonb,
+  first_opened_at       timestamptz NOT NULL,
+  occurrence_started_at timestamptz NOT NULL,
+  last_firing_at        timestamptz NOT NULL,
+  last_observed_at      timestamptz NOT NULL,
+  last_event_id         text NOT NULL,
+  acknowledged_by       text,
+  acknowledged_at       timestamptz,
+  resolved_at           timestamptz,
+  resolved_event_id     text,
+  suppressed_by         text,
+  suppressed_at         timestamptz,
+  suppression_reason    text,
+  notified_occurrence   int NOT NULL DEFAULT 0,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS alert_condition_identity_idx
+  ON alert (tenant_ref, resource_key, control, condition);
+CREATE INDEX IF NOT EXISTS alert_tenant_state_idx ON alert (tenant_ref, state, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS alert_transition (
+  id          bigserial PRIMARY KEY,
+  alert_id    uuid NOT NULL REFERENCES alert(id),
+  tenant_ref  text NOT NULL,
+  occurrence  int NOT NULL,
+  from_state  text,
+  to_state    text NOT NULL,
+  reason      text NOT NULL,
+  event_id    text,
+  actor       text NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  evidence    jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS alert_transition_alert_idx ON alert_transition (alert_id, id);
+
+CREATE TABLE IF NOT EXISTS alert_event_receipt (
+  tenant_ref  text NOT NULL,
+  event_id    text NOT NULL,
+  alert_id    uuid REFERENCES alert(id),
+  outcome     text NOT NULL,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, event_id)
+);
+
+CREATE OR REPLACE FUNCTION alert_transition_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $alert_transition$
+BEGIN
+  RAISE EXCEPTION 'alert_transition is append-only';
+END;
+$alert_transition$;
+DROP TRIGGER IF EXISTS alert_transition_append_only ON alert_transition;
+CREATE TRIGGER alert_transition_append_only
+  BEFORE UPDATE OR DELETE ON alert_transition
+  FOR EACH ROW EXECUTE FUNCTION alert_transition_append_only();
+
+-- Roadmap task-87: baseline capture and versioning. A baseline records the collection
+-- it was captured from (source_snapshot_id), when that collection finished
+-- (captured_at, the basis of its age, never the page load) and what it covered
+-- (observation_scope: the collection window and the types it read). A re-snapshot is a
+-- NEW baseline row, version + 1, that names the version it supersedes; the old row's
+-- baseline_resource rows are never touched, and superseded_at only marks it read-only.
+-- Nullable and additive: baselines set before task-87 read their capture window from
+-- the snapshots their resource versions came from (engine/govern/baselineCompliance.mjs).
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS source_snapshot_id uuid REFERENCES snapshot(id);
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS captured_at timestamptz;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS observation_scope jsonb;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 1;
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS supersedes_id uuid REFERENCES baseline(id);
+ALTER TABLE baseline ADD COLUMN IF NOT EXISTS superseded_at timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS baseline_supersedes_once_idx
+  ON baseline (supersedes_id) WHERE supersedes_id IS NOT NULL;
+
+-- Roadmap task-87: an authorized exception names an owner, a reason and an expiry.
+-- Rows written before task-87 have no owner; the compliance view treats them (and any
+-- exception without an expiry) as incomplete, so the finding stays exposed.
+ALTER TABLE benchmark_exception ADD COLUMN IF NOT EXISTS owner text;
+
 -- Task 89: CMDB-first ownership with explicit SHARED/unknown/unresolved states.
 -- Append-only evidence bound to a tenant-scoped resource_lineage row (task 50),
 -- never to a display name: a reused name is a different lineage and inherits
@@ -918,3 +1021,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS resource_ownership_evidence_current_idx
   ON resource_ownership_evidence (lineage_id) WHERE superseded_at IS NULL;
 CREATE INDEX IF NOT EXISTS resource_ownership_evidence_tenant_idx
   ON resource_ownership_evidence (tenant_ref, lineage_id, observed_at DESC);
+
+-- Task 83 (WS7): acknowledgement deadlines and escalation. A rule assigns an owner and
+-- an acknowledgement window to the alerts it matches; the deadline is computed when an
+-- occurrence opens and persisted on the alert, so a restart cannot lose an overdue one.
+-- escalated_occurrence is the atomic claim: an occurrence escalates at most once.
+CREATE TABLE IF NOT EXISTS alert_escalation_rule (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  control             text,
+  min_severity        text NOT NULL DEFAULT 'notice' CHECK (min_severity IN ('notice','warning','critical')),
+  ack_within_ms       int NOT NULL CHECK (ack_within_ms > 0),
+  owner_principal_id  uuid REFERENCES principal(id),
+  escalate_channel_id uuid REFERENCES channel(id),
+  enabled             boolean NOT NULL DEFAULT true,
+  created_by          text NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS alert_escalation_rule_tenant_idx ON alert_escalation_rule (tenant_ref, enabled);
+
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS ack_deadline_at timestamptz;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_principal_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS owner_source text NOT NULL DEFAULT 'unassigned'
+  CHECK (owner_source IN ('rule','unassigned'));
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_rule_id uuid;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalated_occurrence int NOT NULL DEFAULT 0;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS escalation_error text;
+CREATE INDEX IF NOT EXISTS alert_ack_deadline_idx ON alert (ack_deadline_at)
+  WHERE state IN ('open','reopened') AND condition_active;

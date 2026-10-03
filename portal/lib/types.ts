@@ -174,6 +174,126 @@ export interface BaselineRecord {
   resourceCount: number;
   // Roadmap task-130: who set it, resolved to a name (absent where not resolved).
   setByRef?: Ref;
+  // Roadmap task-87: version chain, what it captured and what changed since.
+  version?: number;
+  supersedesId?: string | null;
+  supersededById?: string | null;
+  supersededAt?: string | null;
+  capture?: BaselineCapture;
+  changesSinceCapture?: BaselineChanges;
+}
+
+// Roadmap task-87. The age of a baseline is measured from capturedAt, when its source
+// collection finished; never from the time the page was read.
+export interface BaselineCapture {
+  basis: "source-snapshot" | "legacy-resource-versions" | "unknown";
+  capturedAt: string | null;
+  ageMs: number | null;
+  sourceSnapshotId: string | null;
+  window: { startedAt: string | null; completedAt: string | null } | null;
+  types: string[];
+}
+
+export interface BaselineChanges {
+  state: "compared" | "not-comparable" | "no-collection";
+  comparedSnapshotId: string | null;
+  comparedAt: string | null;
+  added: number;
+  modified: number;
+  removed: number;
+  total: number;
+  reason?: string;
+}
+
+export interface ComplianceEvidence {
+  resourceType: string;
+  window: { startedAt: string | null; endedAt: string | null };
+  snapshotId: string | null;
+  completedAt: string | null;
+}
+
+export interface ComplianceChangeLink {
+  id: string;
+  naturalKey: string;
+  resourceType: string;
+  changeType: string;
+  snapshotId: string;
+  detectedAt: string | null;
+}
+
+export interface CompliancePlanLink {
+  requestId: string;
+  dryRunId: string;
+  snapshotId: string;
+  createdAt: string | null;
+  expiresAt: string | null;
+}
+
+export interface ComplianceLinks<T> {
+  state: "linked" | "mismatch" | "none";
+  linked: T[];
+  mismatched: T[];
+}
+
+export interface ComplianceFinding {
+  id: string;
+  controlId: string;
+  title: string | null;
+  framework: string;
+  edition: string;
+  profile: string;
+  evaluatorVersion: number;
+  verdict: "pass" | "fail" | "unknown" | "not-applicable";
+  reason: string | null;
+  evaluatedAt: string | null;
+  evidenceSeq: string | null;
+  exceptionState: "none" | "authorized" | "expired" | "incomplete";
+  exception: {
+    id: string;
+    owner: string | null;
+    reason: string | null;
+    grantedBy: string | null;
+    grantedAt: string | null;
+    expiresAt: string | null;
+  } | null;
+  exposed: boolean;
+  evidence: ComplianceEvidence[];
+  links: {
+    backup: ComplianceLinks<ComplianceEvidence>;
+    change: ComplianceLinks<ComplianceChangeLink>;
+    restorePlan: ComplianceLinks<CompliancePlanLink>;
+  };
+}
+
+export interface ComplianceSummary {
+  controls: number;
+  exposed: number;
+  excepted: number;
+  expiredExceptions: number;
+  incompleteExceptions: number;
+  passing: number;
+  unknown: number;
+  notApplicable: number;
+}
+
+export interface StorageResidency {
+  configured: boolean;
+  provider: string | null;
+  region: string | null;
+  boundary: string | null;
+  immutability: "unknown" | "unsupported" | "fixture-tested" | "live-qualified";
+  generatedAt: string | null;
+  certifies: null;
+  // Where the residency was read from (the recovery manifest path), or null.
+  source: string | null;
+}
+
+export interface ComplianceData {
+  generatedAt: string;
+  findings: ComplianceFinding[];
+  summary: ComplianceSummary;
+  storage: StorageResidency;
+  activeBaseline: BaselineRecord | null;
 }
 
 export interface DriftRecord {

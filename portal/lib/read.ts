@@ -92,6 +92,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "baselines/page.tsx",
   },
+  benchmarksPage: {
+    capability: "read",
+    source: "benchmarks/page.tsx",
+  },
   jobsPage: {
     capability: "read",
     source: "jobs/page.tsx",
@@ -123,6 +127,9 @@ export const DATA_SURFACES = {
   // Task-76: setup shows which grants exist and who started a provisioning run.
   setupApi: { capability: "configuration", source: "api/setup/route.ts" },
   setupPage: { capability: "configuration", source: "setup/page.tsx" },
+  // Task-83: the alerts inbox. Acknowledging and resolving are separate guarded actions.
+  alertsApi: { capability: "read", source: "api/alerts/route.ts" },
+  alertsPage: { capability: "read", source: "alerts/page.tsx" },
 } as const;
 
 export type DataSurface = (typeof DATA_SURFACES)[keyof typeof DATA_SURFACES];

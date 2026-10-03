@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { GET, POST } from "@/app/api/schedules/route";
 import SchedulesPage from "@/app/schedules/page";
-import { ScheduleTable } from "@/components/schedule-table";
+import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
 import { visibleNavLinks } from "@/components/nav-links";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import type { Schedule, SchedulesData } from "@/lib/schedules";
@@ -46,7 +46,8 @@ before(async () => {
   process.env.KEEL_DB_URL = database.url;
   process.env.KEEL_TENANT_CONFIG_PATH = join(configDir, "tenant.json");
   await client.query("INSERT INTO principal (id, email) VALUES ($1, 'admin@fixture.test'), ($2, 'viewer@fixture.test')", [admin, viewer]);
-  await client.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'admin'), ($2, 'viewer')", [admin, viewer]);
+  // The admin also reads: the forecast reader re-checks the read grant in the engine.
+  await client.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'admin'), ($1, 'viewer'), ($2, 'viewer')", [admin, viewer]);
   for (const [kind, tier] of [["collect", "tier1"], ["collect", "tier2"], ["collect", "tier3"], ["prune", null], ["offsite", null]]) {
     const { rows } = await client.query(
       "INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at) VALUES ($1, $2, $3, $4, now() + interval '1 day') RETURNING id",
@@ -208,4 +209,57 @@ test("Schedules primary navigation is visible exactly with read", () => {
     assert.equal(Boolean(link), canRead);
     if (link) assert.equal(link.label, "Schedules");
   }
+});
+
+test("roadmap task-110: GET carries measured load forecasts; acknowledging a warning needs configuration and changes no cadence", async () => {
+  // Three measured tier 1 runs: 10 requests a run (900 resources each), 2 of them throttled.
+  for (const hoursAgo of [1, 2, 3]) {
+    const finished = new Date(Date.now() - hoursAgo * 3_600_000);
+    const digest = { organization: { outcome: "complete", itemCount: 900, endpoint: "/organization", requests: 10, throttles: 2 } };
+    const snapshot = String((await client.query(
+      "INSERT INTO snapshot (tenant_ref, status, completed_at, coverage_digest) VALUES ($1, 'complete', $2, $3) RETURNING id", [tenant, finished, digest],
+    )).rows[0].id);
+    await client.query(
+      `INSERT INTO job (kind, status, params, requested_by, started_at, finished_at, result)
+       VALUES ('collect', 'succeeded', $1, 'scheduler', $2, $3, $4)`,
+      [{ tenantRef: tenant, tier: "tier1" }, new Date(finished.valueOf() - 60_000), finished, { stdout: `snapshot ${snapshot} complete\n`, stderr: "", durationMs: 60_000 }],
+    );
+  }
+  const data = await (await GET(request())).json() as SchedulesData;
+  const tier1 = data.forecasts!.find((forecast) => forecast.scheduleId === ids[0])!;
+  assert.equal(tier1.status, "warning");
+  assert.equal(tier1.samples, 3);
+  assert.equal(tier1.unmeasuredRuns, 1, "the failed run without a snapshot is unmeasured, not free");
+  assert.equal(tier1.estimate!.requestsPerRun.p90, 10, "requests, never the 900 resources");
+  assert.deepEqual(tier1.warnings.map((warning) => [warning.code, warning.acknowledged]), [["throttle-heavy", false]]);
+  assert.equal(data.forecasts!.find((forecast) => forecast.scheduleId === ids[1])!.status, "unknown");
+  assert.equal(data.forecasts!.some((forecast) => forecast.scheduleId === ids[3]), false, "prune does not call Microsoft");
+
+  const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
+  assert.ok(html.includes("Microsoft slowed down 20% of its requests in the last 14 days."));
+  assert.ok(html.includes("No measured runs yet, so KEEL cannot estimate its load."));
+  assert.ok(!html.includes("Accept warning"), "only configuration principals see the accept control");
+  assert.ok(html.includes("<dt>Warning codes</dt><dd><code>throttle-heavy</code>"));
+  const healthy = data.schedules.map((schedule) => ({ ...schedule, last_status: null }));
+  assert.equal(schedulesVerdict(healthy, data.generatedAt, data.forecasts).text, "Backup of Tier 1 puts heavy load on Microsoft; a slower schedule is suggested.");
+
+  const before = await row();
+  assert.equal((await POST(request("POST", "read", viewer, { id: ids[0], acknowledgeForecast: ["throttle-heavy"] }))).status, 403);
+  const stale = await edit({ acknowledgeForecast: ["overlap"] });
+  assert.equal(stale.status, 400);
+  assert.deepEqual(await stale.json(), { error: "forecast_warning_not_current" });
+  assert.equal((await edit({ acknowledgeForecast: ["throttle-heavy"], enabled: false })).status, 400);
+  assert.equal((await edit({ acknowledgeForecast: ["throttle-heavy"] }, foreignId)).status, 404);
+  const accepted = await edit({ acknowledgeForecast: ["throttle-heavy"] });
+  assert.equal(accepted.status, 200);
+  const after = await row();
+  assert.deepEqual([after.cadence, after.cron_override, after.enabled, String(after.next_due_at)], [before.cadence, before.cron_override, before.enabled, String(before.next_due_at)]);
+  assert.equal((after.forecast_acknowledgement as { acknowledgedBy: string }).acknowledgedBy, admin);
+
+  const shown = (await (await GET(request())).json() as SchedulesData).forecasts!.find((forecast) => forecast.scheduleId === ids[0])!;
+  assert.equal(shown.warnings[0].acknowledged, true);
+  assert.equal(shown.acknowledgement!.acknowledgedByName, "admin@fixture.test");
+  assert.notEqual(schedulesVerdict(healthy, data.generatedAt, [shown]).tone, "attention");
+  // The floor still applies to a save after the warning was accepted.
+  assert.equal((await edit({ cron_override: "*/5 * * * *" })).status, 400);
 });

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { localTimeToUTC, utcTimeToLocal } from "../../engine/schedules/timeOfDay.mjs";
+import { scheduleName } from "@/lib/protect-view";
 import type { Schedule } from "@/lib/schedules";
 import { toast } from "@/lib/toast";
 
@@ -60,7 +61,7 @@ export function ScheduleEditor({ schedule }: { schedule: Schedule }) {
       if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "Schedule could not be saved.");
       setEditing(false);
       setMessage("Schedule saved.");
-      toast({ title: `${schedule.job_kind}${schedule.tier ? ` ${schedule.tier}` : ""} schedule saved` });
+      toast({ title: `${scheduleName(schedule)} schedule saved` });
       router.refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Schedule could not be saved.");
@@ -70,12 +71,12 @@ export function ScheduleEditor({ schedule }: { schedule: Schedule }) {
   }
 
   return <div className="schedule-editor">
-    <button className="btn btn-secondary btn-sm" type="button" aria-expanded={editing} aria-controls={formId} onClick={open} disabled={saving}>Edit {schedule.job_kind}{schedule.tier ? ` ${schedule.tier}` : ""}</button>
-    {editing ? <form className="form-card" id={formId} onSubmit={save} aria-label={`Edit ${schedule.job_kind} ${schedule.tier ?? "schedule"}`}>
+    <button className="btn btn-secondary btn-sm" type="button" aria-expanded={editing} aria-controls={formId} onClick={open} disabled={saving} aria-label={`Change when ${scheduleName(schedule)} runs`}>Change schedule</button>
+    {editing ? <form className="form-card" id={formId} onSubmit={save} aria-label={`When ${scheduleName(schedule)} runs`}>
       <fieldset disabled={saving}>
-        <legend>Cadence</legend>
-        <label className="check-field"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> Enabled</label>
-        <label className="check-field"><input type="checkbox" checked={raw} onChange={(event) => setRaw(event.target.checked)} /> Use raw cron expression</label>
+        <legend>How often it runs</legend>
+        <label className="check-field"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /> On</label>
+        <label className="check-field"><input type="checkbox" checked={raw} onChange={(event) => setRaw(event.target.checked)} /> Use a custom timetable (cron expression)</label>
         {raw ? <label className="filter-field"><span>Cron expression (UTC)</span>
           <input required value={cron} onChange={(event) => setCron(event.target.value)} aria-describedby={`${formId}-cron-help`} />
           <small className="field-help" id={`${formId}-cron-help`}>Five fields: minute, hour, day of month, month, day of week.</small>

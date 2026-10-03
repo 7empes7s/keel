@@ -81,7 +81,7 @@ export function protectionHeadline(types) {
       tone: backedUp.length === 0 ? 'critical' : 'attention',
       headline: backedUp.length === 0 ? 'Not protected' : 'Backups need attention',
       sentence,
-      action: { label: 'Review backups', href: '/backups' },
+      action: { label: 'Review backups', href: '/protect' },
     };
   }
   if (backedUp.length === 0) {
@@ -91,7 +91,7 @@ export function protectionHeadline(types) {
       tone: 'critical',
       headline: 'Not protected',
       sentence: 'Nothing has been backed up yet, so there is nothing to restore from.',
-      action: { label: 'Review backups', href: '/backups' },
+      action: { label: 'Review backups', href: '/protect' },
     };
   }
   if (lastProven) {

@@ -7,9 +7,9 @@ const HARNESS = pathToFileURL(join(__dirname, "dist/index.html")).href;
 
 const PAGES = [
   { name: "dashboard", hash: "/" },
-  { name: "coverage", hash: "/coverage" },
+  { name: "protect", hash: "/protect" },
+  { name: "schedules", hash: "/schedules" },
   { name: "drift", hash: "/drift" },
-  { name: "backups", hash: "/backups" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "activity", hash: "/activity" },
@@ -60,7 +60,7 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
-const VISUAL = ["dashboard", "drift", "restore", "approvals", "coverage", "job-failed"];
+const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed"];
 for (const theme of ["dark", "light"] as const) {
   for (const name of VISUAL) {
     test(`visual · ${name} · ${theme}`, async ({ page }) => {
@@ -107,7 +107,7 @@ test("destructive writes ask for confirmation with Cancel focused", async ({ pag
 });
 
 test("a queued backup confirms with a toast linking to the job", async ({ page }) => {
-  await open(page, "/backups");
+  await open(page, "/protect");
   await page.getByRole("button", { name: "Back up Tier 1" }).click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Tier 1 backup queued");
@@ -116,9 +116,15 @@ test("a queued backup confirms with a toast linking to the job", async ({ page }
 
 test("the restore wizard walks select → dry run → review → confirm → track", async ({ page }) => {
   await open(page, "/restore");
-  await page.getByLabel("Select conditionalAccessPolicy:Block legacy auth").click();
+  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").click();
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 1 of 5: choose what to put back.");
   await page.getByRole("button", { name: "Next: start dry run" }).click();
   await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
+  // Task-131: the step title is the verdict, and the review speaks in words: no natural
+  // key, verb, closure or artifact id outside the record, and no credential path input.
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 4 of 5: review what will change, then confirm.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  await expect(page.locator("input[value*='/etc/keel']")).toHaveCount(0);
   // Task-61: a restored group's membership changes are listed apart from object changes.
   // Task-64: each resource names its recovery mechanism and what happens to its id.
   await expect(page.getByText("RECOVERY MECHANISM")).toBeVisible();
@@ -132,20 +138,54 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await effects.getByRole("button", { name: "Approve content effects" }).click();
   await expect(effects).toContainText("Approved for exactly these effects");
   await expect(page.getByText("MEMBERSHIP CHANGES")).toBeVisible();
-  await expect(page.locator(".edge-op.edge-add").first()).toContainText("user:amara.okafor@contoso.example");
+  await expect(page.locator(".edge-op.edge-add").first()).toContainText("amara.okafor@contoso.example (user)");
   await expect(page.locator(".edge-op.edge-remove").first()).toContainText("as member of");
   await page.getByPlaceholder("Why is this restore appropriate?").fill("Roll back INC-2291");
   await page.getByRole("button", { name: "Confirm restore" }).click();
-  await expect(page.getByRole("heading", { name: "Restore requested, pending approval" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sent to approvers" })).toBeVisible();
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 5 of 5: sent to approvers. Nothing changes until one of them approves.");
 });
 
-test("coverage details show the explicit recovery decision and remapping proof", async ({ page }) => {
-  await open(page, "/coverage");
-  const details = page.locator(".capability-matrix").filter({ has: page.locator(".decision-automated") }).first();
-  await details.locator("summary").click();
-  await expect(details.getByText("Recovery decision")).toBeVisible();
-  await expect(details.locator(".decision-automated")).toHaveText("Automated");
-  await expect(details.getByText("Create remapping: proven")).toBeVisible();
+// Task-131: the roll-back preview says what KEEL would do in words, keeps verbs and
+// waves in the record, and states a refusal as a sentence.
+test("the roll-back preview speaks in words and states a refusal as a sentence", async ({ page }) => {
+  await open(page, "/drift");
+  await page.getByLabel("Select Finance (group)").check();
+  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").check();
+  await page.getByRole("button", { name: "Preview roll back" }).click();
+  const preview = page.locator(".remediation-preview");
+  await expect(preview).toContainText("Put the baseline settings back");
+  await expect(preview.locator('[role="alert"]')).toHaveText(/KEEL refused to change Finance \(group\) because it is synced from on-premises Active Directory, which owns it\./);
+  await expect(preview.getByRole("button", { name: "Confirm and request approval" })).toBeDisabled();
+  const record = preview.locator('[data-layer="record"]');
+  await record.locator("summary").click();
+  await expect(record).toContainText("Write wave 1");
+  await expect(record).toContainText("onPremisesSyncEnabled=true");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+});
+
+// Task-131 (was task-54/63's coverage matrix): a type's drawer answers in one sentence
+// and keeps the recovery decision, remapping proof and proof reference in its record.
+test("a type drawer states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {
+  await open(page, "/protect");
+  const drawer = page.locator("details.type-drawer").filter({ hasText: "Conditional Access policy" }).first();
+  await drawer.locator("summary").first().click();
+  await expect(drawer.locator(".type-drawer-standing")).toHaveText("Protected: restore proven on this tenant on 20 Sept 2026.");
+  await expect(drawer.locator(".decision-automated")).toContainText("KEEL restores this type on its own.");
+  const record = drawer.locator('[data-layer="record"]');
+  await record.locator("summary").click();
+  await expect(record.locator(".technical-field").filter({ hasText: "Recovery decision" })).toContainText("automated");
+  await expect(record.locator(".technical-field").filter({ hasText: "Remapping · create" })).toContainText("proven");
+  await expect(record.locator(".technical-field").filter({ hasText: "Proof reference · update" })).toContainText("docs/release/qualification/ca-update.json");
+});
+
+test("Protect lists failed and out-of-date types by name with a retry", async ({ page }) => {
+  await open(page, "/protect");
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("2 types failed their last backup.");
+  const problems = page.locator(".protect-problem");
+  await expect(problems).toHaveText([/Authentication methods policy/, /Retention label/, /Device configuration/, /Cross-tenant access partner/]);
+  await problems.first().getByRole("button", { name: "Retry the backup of Authentication methods policy (Tier 1)" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
 });
 
 test("restore completion closes an item with a reference and refuses a pasted secret", async ({ page }) => {
@@ -184,7 +224,7 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(await overflow()).toBeLessThanOrEqual(0);
 
   await open(page, "/restore", "dark");
-  await page.getByLabel("Select conditionalAccessPolicy:Block legacy auth").click();
+  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").click();
   await page.getByRole("button", { name: "Next: start dry run" }).click();
   await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
   expect(await overflow()).toBeLessThanOrEqual(0);
@@ -212,11 +252,9 @@ const BANNED_TERMS = [
   "adapter", "catalog type", "evidence chain", "anchor", "checkpoint", "kill switch", "tenant_ref", "CIR", "symbol",
   "lineage", "Postgres", "worker", "heartbeat", "fingerprint",
 ];
-const CONTRACT_PENDING = new Set([
-  // task-131: Protect, Changes and Restore in plain words.
-  "coverage", "drift", "backups", "restore",
-]);
-const CONTRACT_PENDING_MAX = 4;
+// Task-131 emptied it: every harness route now passes checks 1 to 7.
+const CONTRACT_PENDING = new Set<string>([]);
+const CONTRACT_PENDING_MAX = 0;
 
 test("contract allowlist only shrinks and names real routes", () => {
   expect(CONTRACT_PENDING.size).toBeLessThanOrEqual(CONTRACT_PENDING_MAX);
@@ -227,10 +265,14 @@ test("contract allowlist only shrinks and names real routes", () => {
 const RECORD_IDS: Record<string, string[]> = {
   policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
   policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
+  restore: ["a3"],
+  drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "d0e10000-0000-4000-8000-0000000000d1"],
   integrations: ["de570000-0000-4000-8000-0000000000e1"],
+  protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
+  schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "0 0 * * 1"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -249,13 +291,18 @@ async function textOutside(page: Page, root: string, excluded: string): Promise<
 }
 
 function expectPlainText(visible: string) {
-  expect(visible, "identifier test: UUID").not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-  expect(visible, "identifier test: hex").not.toMatch(/\b[0-9a-f]{32,}\b/i);
-  expect(visible, "identifier test: resource key").not.toMatch(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/);
+  // Each failure names the text that matched, so a leak is found without a debugger.
+  const absent = (pattern: RegExp, label: string) => {
+    const found = visible.match(pattern);
+    expect(found?.[0] ?? null, `${label}: ${found ? JSON.stringify(visible.slice(Math.max(0, (found.index ?? 0) - 40), (found.index ?? 0) + 60)) : ""}`).toBeNull();
+  };
+  absent(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i, "identifier test: UUID");
+  absent(/\b[0-9a-f]{32,}\b/i, "identifier test: hex");
+  absent(/\b[a-z][A-Za-z]+:[A-Za-z0-9]/, "identifier test: resource key");
   // Enum codes (auto_remediate, require_approval, run_as_principal_id) are display-mapped.
-  expect(visible, "enum test: snake_case code").not.toMatch(/\b[a-z]+(?:_[a-z0-9]+)+\b/);
+  absent(/\b[a-z]+(?:_[a-z0-9]+)+\b/, "enum test: snake_case code");
   for (const term of BANNED_TERMS) {
-    expect(visible, `vocabulary test: "${term}"`).not.toMatch(new RegExp(`\\b${term.replace("-", "\\-")}s?\\b`, "i"));
+    absent(new RegExp(`\\b${term.replace("-", "\\-")}s?\\b`, "i"), `vocabulary test: "${term}"`);
   }
 }
 
@@ -303,7 +350,7 @@ test("contract · shell: seven entries, plain words, the eyebrow is the section"
   expectPlainText(await textOutside(page, "aside.sidebar", ".nope"));
   // A page absorbed into a section is reached through that section's tabs.
   for (const { hash, section, tab } of [
-    { hash: "/coverage", section: "Protect", tab: "Configuration types" },
+    { hash: "/schedules", section: "Protect", tab: "Schedules" },
     { hash: "/incidents", section: "Restore", tab: "Incidents" },
     { hash: "/principals", section: "Settings", tab: "People" },
   ]) {

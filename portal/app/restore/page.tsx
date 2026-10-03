@@ -6,6 +6,7 @@ import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { RestoreSelection } from "@/components/restore-selection";
+import { Verdict } from "@/components/verdict";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
   getIncidentSummary,
@@ -21,6 +22,7 @@ import {
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
 const RESTORE_JOB_KINDS = ["restore"];
+const DESCRIPTION = "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.";
 
 // Plan task 17 (portal-design §4.1): the restore surface. Selection here is
 // dependency-closed — the page lists a snapshot's resources, the client component
@@ -63,7 +65,7 @@ export default async function RestorePage({
     return (
       <>
         <PageHeader
-          description="Dependency-closed restore from a snapshot, requiring approval before anything runs."
+          description={DESCRIPTION}
           section="Restore"
           marker={canRestore ? "Actionable" : "Read-only"}
           title="Restore"
@@ -80,7 +82,7 @@ export default async function RestorePage({
   return (
     <>
       <PageHeader
-        description="Dependency-closed restore from a snapshot. Selecting a resource also selects everything it references — the closure is shown, never hidden — and a restore only runs after approval."
+        description={DESCRIPTION}
         section="Restore"
         generatedAt={resourceData?.generatedAt ?? new Date().toISOString()}
         marker={canRestore ? "Actionable" : "Read-only"}
@@ -105,19 +107,29 @@ export default async function RestorePage({
           snapshots={snapshots}
         />
       ) : (
-        <section className="report-section">
-          <p className="empty-state">
-            No completed snapshots are available. Run a collection before planning a restore.
-          </p>
-        </section>
+        <>
+          <Verdict
+            action={{ label: "Back up now", href: "/protect" }}
+            text="Nothing to restore from yet: KEEL holds no snapshot of this tenant."
+            tone="attention"
+          />
+          <section className="report-section" data-layer="explanation">
+            <p className="empty-state">
+              No completed snapshots are available. Run a backup before planning a restore.
+            </p>
+          </section>
+        </>
       )}
 
-      <JobTable
-        headingId="restore-jobs-heading"
-        jobs={jobs}
-        kicker="Queue"
-        title="Restore jobs"
-      />
+      <div data-layer="explanation">
+        <JobTable
+          headingId="restore-jobs-heading"
+          jobs={jobs}
+          kicker="Recent"
+          now={resourceData?.generatedAt}
+          title="Restore jobs"
+        />
+      </div>
       <JobRefresher active={jobsActive} />
     </>
   );

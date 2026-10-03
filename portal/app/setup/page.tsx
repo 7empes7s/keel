@@ -32,7 +32,7 @@ export default async function SetupPage() {
   return <>
     <PageHeader section="Settings" title="Setup" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict
-      action={data.collect.allowed && !data.firstCollection ? { label: "Run the first backup", href: "/backups" } : null}
+      action={data.collect.allowed && !data.firstCollection ? { label: "Run the first backup", href: "/protect" } : null}
       text={verdict.text}
       tone={verdict.tone}
     />
@@ -42,10 +42,10 @@ export default async function SetupPage() {
         <p>
           Finished {formatTimestamp(data.firstCollection.completedAt)}: {data.firstCollection.read} configuration types read
           {data.firstCollection.notRead ? `, ${data.firstCollection.notRead} could not be read` : ""}.{" "}
-          <Link className="text-link" href="/coverage">See every configuration type, including the ones KEEL cannot back up yet</Link>.
+          <Link className="text-link" href="/protect">See every configuration type, including the ones KEEL cannot back up yet</Link>.
         </p>
         <TechnicalDetails>
-          <RecordField label="Snapshot ID" usage="the snapshot the Configuration types page reports" value={data.firstCollection.snapshotId} />
+          <RecordField label="Snapshot ID" usage="the snapshot the Protect page reports" value={data.firstCollection.snapshotId} />
         </TechnicalDetails>
       </section>
     ) : null}

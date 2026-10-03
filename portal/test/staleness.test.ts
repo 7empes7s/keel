@@ -77,25 +77,25 @@ function dashboardData(stale: number): Pick<
   };
 }
 
-test("a stale type renders as stale and not as failed", () => {
+// Task-131: freshness is a sentence in the type's drawer; the raw time is in its record.
+test("a stale type renders as out of date and not as failed", () => {
   const html = renderToStaticMarkup(
     createElement(CoverageReport, { data: coverageData(coverageType({ stale: true })) }),
   );
 
-  assert.match(html, /<span class="stale-badge">Stale<\/span>/);
-  assert.match(html, /Last collected 8 Sept 2026, 12:00 UTC/);
-  const typeRow = html.match(/<tr>.*?conditionalAccessPolicy.*?<\/tr>/)?.[0];
-  assert.ok(typeRow);
-  assert.doesNotMatch(typeRow, /state-failed/);
+  assert.match(html, /Out of date: last backed up 1 hour ago, longer ago than its tier allows\./);
+  assert.match(html, /health-stale/);
+  assert.match(html, /<dt>Last collected<\/dt><dd><code>2026-09-08T12:00:00/);
+  assert.doesNotMatch(html, /health-failed/);
 });
 
-test("a fresh type does not render as stale", () => {
+test("a fresh type does not render as out of date", () => {
   const html = renderToStaticMarkup(
     createElement(CoverageReport, { data: coverageData(coverageType()) }),
   );
 
-  assert.match(html, />Fresh<\/span>/);
-  assert.doesNotMatch(html, /stale-badge/);
+  assert.match(html, /health-ok|health-empty/);
+  assert.doesNotMatch(html, /Out of date/);
 });
 
 test("the dashboard alert appears only when at least one type is stale", () => {

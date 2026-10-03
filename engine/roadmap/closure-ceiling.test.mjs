@@ -62,7 +62,7 @@ try {
     [adminPrincipalId, runAsPrincipalId, secondRunAsPrincipalId],
   );
 
-  const financePayload = { displayName: 'Finance', mailNickname: 'Finance', members: ['source-privileged-id'] };
+  const financePayload = { displayName: 'Finance', mailNickname: 'Finance', linkedGroupIds: ['source-privileged-id'] };
   const privilegedPayload = { displayName: 'Privileged', mailNickname: 'Privileged' };
   // The dependency exists in the target but drifted, so remediating it is an UPDATE
   // — an actual tenant-lockout operation the closure-ceiling check must count.
@@ -90,7 +90,7 @@ try {
     });
     await insertReferences(client, {
       fromVersion: financeVersionId,
-      references: [{ field: 'members[0]', symbol: 'group:Privileged', required: true }],
+      references: [{ field: 'linkedGroupIds[0]', symbol: 'group:Privileged', required: true }],
     });
     await completeSnapshot(client, {
       id: snapshotId, status: 'complete', coverageDigest: fullSuccessfulCoverageDigest(),

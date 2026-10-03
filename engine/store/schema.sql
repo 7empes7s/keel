@@ -394,6 +394,13 @@ CREATE INDEX IF NOT EXISTS restore_dry_run_tenant_created_idx
 -- as before. Retry-safe and forward-compatible.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS automation_context jsonb;
 
+-- Roadmap task-61: the ordered group member/owner edge operations (qualified $ref
+-- adds/removes) a dry run planned, frozen beside the plan digest that binds them, so
+-- approvers review the exact edge changes a promotion may perform. Nullable and
+-- additive: artifacts persisted before edge restore existed read as "no edge
+-- operations" and promote exactly as before.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS relationship_operations jsonb;
+
 -- Task 79 (WS12): durable per-destination SIEM export outbox. One destination row per
 -- configured sink; one outbox row per (destination, source event) so a replayed or
 -- retried delivery always carries the SAME task-77 event id; one replay checkpoint per

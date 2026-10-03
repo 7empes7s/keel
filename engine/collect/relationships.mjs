@@ -388,3 +388,50 @@ export function summarizeRelationshipState(state, { parentType } = {}) {
   }
   return families;
 }
+
+/**
+ * Roadmap task-61: the edge sets ONE snapshot observed, keyed
+ * `${parentNaturalKey}|${family}` — the desired state a restore reconciles
+ * edges toward. Unlike loadRelationshipState (newest-per-parent across
+ * snapshots), this never substitutes another snapshot's read: a family this
+ * snapshot did not observe is simply absent (a legacy snapshot, collected
+ * before task-57 or without `relationships`, yields an empty map), and a
+ * failed/partial observation is returned with its own outcome so the caller
+ * can refuse to treat it as a complete desired set.
+ */
+export async function loadSnapshotRelationships(client, { snapshotId, families = DEFAULT_RELATIONSHIP_FAMILIES, parentNaturalKeys = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT s.id, s.parent_type, s.parent_source_id, s.parent_natural_key, s.family, s.outcome,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object('edgeKey', e.edge_key, 'targetId', e.target_source_id,
+                                                          'targetType', e.target_type, 'targetNaturalKey', e.target_natural_key)
+                                       ORDER BY e.edge_key)
+                        FROM relationship_edge e WHERE e.set_id = s.id AND e.tenant_ref = s.tenant_ref), '[]'::jsonb) AS targets
+       FROM relationship_edge_set s
+       JOIN snapshot sn ON sn.id = s.snapshot_id AND sn.tenant_ref = s.tenant_ref
+      WHERE s.snapshot_id = $1 AND s.family = ANY($2::text[])
+      ORDER BY s.id`,
+    [snapshotId, [...families]],
+  );
+  const wanted = parentNaturalKeys ? new Set(parentNaturalKeys) : null;
+  const sets = new Map();
+  for (const row of rows) {
+    if (!row.parent_natural_key) continue; // an unkeyed parent cannot be matched to a restore resource
+    if (wanted && !wanted.has(row.parent_natural_key)) continue;
+    const key = `${row.parent_natural_key}|${row.family}`;
+    if (sets.has(key)) {
+      // Two observations of the same parent/family in one snapshot disagree on
+      // nothing we can prove; treat the desired set as not authoritative.
+      sets.set(key, { ...sets.get(key), outcome: 'partial', duplicate: true });
+      continue;
+    }
+    sets.set(key, {
+      parentType: row.parent_type,
+      parentSourceId: row.parent_source_id,
+      parentNaturalKey: row.parent_natural_key,
+      family: row.family,
+      outcome: row.outcome,
+      targets: row.targets,
+    });
+  }
+  return sets;
+}

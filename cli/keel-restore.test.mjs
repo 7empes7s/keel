@@ -111,6 +111,7 @@ function restoreFakes({
     query: async (sql, values) => {
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
+      if (/recovery_completion_item/.test(sql)) return { rows: [] };
       if (/INSERT INTO rollback_entry/.test(sql)) {
         state.priorStates.push(values);
         return { rows: [] };
@@ -337,6 +338,7 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
     query: async (sql) => {
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
+      if (/recovery_completion_item/.test(sql)) return { rows: [] };
       state.dbQueries += 1;
       throw new Error(`a selection restore must not query the plan table: ${sql}`);
     },
@@ -644,6 +646,7 @@ function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}
     query: async (sql) => {
       // Task-61: no relationship edges were observed in these fixture snapshots (legacy).
       if (/FROM relationship_edge_set/.test(sql)) return { rows: [] };
+      if (/recovery_completion_item/.test(sql)) return { rows: [] };
       if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
       if (/INSERT INTO rollback_entry/.test(sql)) return { rows: [] };
       throw new Error(`unexpected query: ${sql}`);

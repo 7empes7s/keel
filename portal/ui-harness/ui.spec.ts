@@ -13,6 +13,7 @@ const PAGES = [
   { name: "restore", hash: "/restore" },
   { name: "jobs", hash: "/jobs" },
   { name: "job-failed", hash: "/jobs/a4" },
+  { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "policies", hash: "/policies" },
   { name: "policy", hash: "/policies/p1" },
   { name: "approvals", hash: "/approvals" },
@@ -133,4 +134,21 @@ test("coverage details show the explicit recovery decision and remapping proof",
   await expect(details.getByText("Recovery decision")).toBeVisible();
   await expect(details.locator(".decision-automated")).toHaveText("Automated");
   await expect(details.getByText("Create remapping: proven")).toBeVisible();
+});
+
+test("restore completion closes an item with a reference and refuses a pasted secret", async ({ page }) => {
+  await open(page, "/jobs/r9");
+  const app = page.locator(".completion-resource").filter({ hasText: "application:Payroll connector" });
+  await expect(app.locator(".completion-badge-configuration-restored")).toHaveText("Configuration restored");
+  const credential = app.locator(".completion-item").filter({ hasText: "client secrets" });
+  await credential.getByLabel("Evidence reference").fill("-----BEGIN PRIVATE KEY----- secret");
+  await credential.getByRole("button", { name: "Mark verified" }).click();
+  await expect(page.getByText("never the credential")).toBeVisible();
+  await credential.getByLabel("Evidence reference").fill("CHG-5120");
+  await credential.getByRole("button", { name: "Mark verified" }).click();
+  await expect(credential.getByRole("button", { name: "Reopen" })).toBeVisible();
+  const integration = app.locator(".completion-item").filter({ hasText: "new object id" });
+  await integration.getByLabel("Evidence reference").fill("CHG-5121");
+  await integration.getByRole("button", { name: "Mark verified" }).click();
+  await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
 });

@@ -131,6 +131,20 @@ The only change to `cli/keel-restore.mjs` is that it calls the extracted
   enqueue with `run-as-not-authorized` and disables the policy. The halt file refuses with
   `automation-disabled`.
 
+## Required mutation checks
+
+Each mutation was applied, run against the boundary test and the portal policy tests, and
+then reverted.
+
+- **Trust the preview as permanent execution authorization.** The version and digest
+  re-check in `activatePolicy` was removed. The stale-preview test fails, because a stale
+  preview turned the policy on.
+- **Omit expanded dependencies.** The `closure.added` entries were dropped. The disclosure,
+  unknown-impact and version tests fail.
+- **Report a queued remediation as executed.** `remediationOutcome('queued')` was made to
+  read as executed, and the portal sentence was made to say "rolled back". The engine
+  execution test and two portal tests fail.
+
 ## Limits and decisions
 
 - **Engine callers are trusted.** The portal enforces "preview before turning on".

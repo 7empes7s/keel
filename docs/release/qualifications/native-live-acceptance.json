@@ -1,0 +1,6 @@
+{
+  "contractVersion": 1,
+  "gate": "native-live-acceptance",
+  "status": "pending",
+  "reason": "No independently captured native recovery evidence exists yet. The operator runs tools/qualification/nativeRecovery.mjs capture --live against a named disposable KEEL-RT-* or keel-rehearsal-* fixture with the Restorer credential; see docs/roadmap/native-live-acceptance.md (Operator steps). This placeholder never verifies."
+}

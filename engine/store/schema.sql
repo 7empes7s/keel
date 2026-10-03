@@ -1022,6 +1022,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS resource_ownership_evidence_current_idx
 CREATE INDEX IF NOT EXISTS resource_ownership_evidence_tenant_idx
   ON resource_ownership_evidence (tenant_ref, lineage_id, observed_at DESC);
 
+-- Task 90: entity-scoped grants and approval eligibility. role_grant.scope already
+-- exists with default '*' (central); an entity-scoped grant stores 'entity:CODE'.
+-- The check is additive: every existing row holds '*'. approval_request.entity_scope
+-- records the resources a request concerns and their ownership when it was made, so a
+-- later change of owner or grant is detected at decision time. NULL is a request made
+-- before task 90 and is decided by central approvers only.
+ALTER TABLE role_grant DROP CONSTRAINT IF EXISTS role_grant_scope_check;
+ALTER TABLE role_grant ADD CONSTRAINT role_grant_scope_check
+  CHECK (scope = '*' OR scope ~ '^entity:[A-Z][A-Z0-9_]{1,31}$');
+ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS entity_scope jsonb;
+
 -- Task 83 (WS7): acknowledgement deadlines and escalation. A rule assigns an owner and
 -- an acknowledgement window to the alerts it matches; the deadline is computed when an
 -- occurrence opens and persisted on the alert, so a restart cannot lose an overdue one.

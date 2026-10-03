@@ -14,7 +14,7 @@ import { KeelMark } from "@/components/keel-mark";
 import { NavLinks, SectionTabs } from "@/components/nav-links";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/toaster";
-import { approvalInboxAccess, getPendingApprovalCount } from "@/lib/approval-inbox";
+import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { accessSummary } from "@/lib/presentation";
@@ -52,9 +52,10 @@ export default async function RootLayout({
   // Only approvers see the count, and a failed read hides the badge rather than
   // breaking every page's chrome.
   let pendingApprovals: number | null = null;
-  if (approvalInboxAccess(requestHeaders)) {
+  const approverScope = approvalInboxScope(requestHeaders);
+  if (approverScope) {
     try {
-      pendingApprovals = await getPendingApprovalCount();
+      pendingApprovals = await getPendingApprovalCount(approverScope);
     } catch {
       pendingApprovals = null;
     }

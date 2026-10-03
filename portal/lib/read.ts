@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
-import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -44,9 +44,13 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/coverage/route.ts",
   },
+  // Task 90: entityScoped surfaces filter their rows (and counts) by the reader's
+  // entities in the server loader, so an entity-scoped reader is admitted. Every other
+  // surface admits central (tenant-wide) holders only.
   driftApi: {
     capability: "read",
     source: "api/drift/route.ts",
+    entityScoped: true,
   },
   baselinesApi: {
     capability: "read",
@@ -87,6 +91,7 @@ export const DATA_SURFACES = {
   driftPage: {
     capability: "read",
     source: "drift/page.tsx",
+    entityScoped: true,
   },
   baselinesPage: {
     capability: "read",
@@ -132,17 +137,19 @@ export const DATA_SURFACES = {
   alertsPage: { capability: "read", source: "alerts/page.tsx" },
 } as const;
 
-export type DataSurface = (typeof DATA_SURFACES)[keyof typeof DATA_SURFACES];
+export interface DataSurface {
+  readonly capability: string;
+  readonly source: string;
+  readonly entityScoped?: boolean;
+}
 
 export interface ReadAccess {
   principalId: string;
+  // Central (tenant-wide) capabilities only; entity-scoped ones never enable a control.
   capabilities: string[];
-}
-
-function capabilitiesFrom(headers: HeaderSource): string[] {
-  return (headers.get(CAPABILITIES_HEADER) ?? "")
-    .split(" ")
-    .filter((capability) => capability.length > 0);
+  // Where the reader holds the surface's capability. Loaders of entityScoped surfaces
+  // pass it to the SQL that selects and counts rows; it is never applied client-side.
+  scope: EntityScope;
 }
 
 // Identity is downstreamed only by proxy.ts after Cloudflare Access verification and
@@ -153,9 +160,14 @@ export function readAccess(
   surface: DataSurface,
 ): ReadAccess | null {
   const principalId = requestHeaders.get(PRINCIPAL_ID_HEADER);
-  const capabilities = capabilitiesFrom(requestHeaders);
-  if (!principalId || !capabilities.includes(surface.capability)) return null;
-  return { principalId, capabilities };
+  if (!principalId) return null;
+  const capabilities = (requestHeaders.get(CAPABILITIES_HEADER) ?? "")
+    .split(" ")
+    .filter((capability) => capability.length > 0);
+  const scope = entityScopeFrom(requestHeaders, surface.capability);
+  if (scope.central) return { principalId, capabilities, scope };
+  if (surface.entityScoped === true && scope.entities.length > 0) return { principalId, capabilities, scope };
+  return null;
 }
 
 function readForbidden(): Response {
@@ -165,7 +177,7 @@ function readForbidden(): Response {
   );
 }
 
-export type ReadHandler = (request: Request) => Promise<Response>;
+export type ReadHandler = (request: Request, access: ReadAccess) => Promise<Response>;
 
 // The route wrapper owns the authorization boundary. Its handler is not called until
 // a resolved principal has a current read grant, so handlers may safely open their
@@ -175,8 +187,9 @@ export function guardedRead(
   handler: ReadHandler,
 ): (request: Request) => Promise<Response> {
   return async function guardedReadRoute(request: Request): Promise<Response> {
-    if (!readAccess(request.headers, surface)) return readForbidden();
-    return handler(request);
+    const access = readAccess(request.headers, surface);
+    if (!access) return readForbidden();
+    return handler(request, access);
   };
 }
 

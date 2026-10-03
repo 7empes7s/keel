@@ -308,7 +308,7 @@ test('the identity batch runner drives every qualified operation through applyWa
   }
 
   const policy = await runExpansionBatch('policy');
-  assert.ok(policy.remaining.some((entry) => entry.resourceType === 'authenticationStrengthPolicy' && entry.status === 'research-needed'));
+  assert.ok(policy.remaining.some((entry) => entry.resourceType === 'authorizationPolicy' && entry.status === 'research-needed'));
   await assert.rejects(() => runExpansionBatch('everything'), /unknown expansion batch/);
   assert.equal(EXPANSION_BATCHES.length, 4);
 });

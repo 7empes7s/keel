@@ -30,11 +30,13 @@
  *    There is no second, parallel "is this a Graph write path" map to drift
  *    out of sync — extending an existing registry, never creating one.
  *
- * `subtype` is named in every record for forward compatibility (a future
- * per-subtype capability, e.g. distinct Intune configurationPolicy
- * templates) but is always null today: no currently-registered type has
- * subtype-specific write behavior, so no subtype-keyed lookup machinery is
- * built until a task actually needs it.
+ * `subtype` is named in every record. It is null for every type whose write
+ * behaviour does not depend on a subtype. Roadmap task-108 registers the first
+ * subtype-bound operations (custom authentication strengths): the record names
+ * the one subtype its proof covers, and engine/restore/policyOperations.mjs
+ * refuses a write whose resource is any other subtype — a proof is never
+ * reused across subtypes. The registry stays keyed by (resourceType,
+ * operation); a second subtype of the same operation would need its own key.
  */
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -332,6 +334,20 @@ recordFixtureProof('application', 'restore-soft-deleted', 'engine/roadmap/fideli
 
 registerAll('servicePrincipal', '/servicePrincipals', ['create']);
 recordFixtureProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
+
+// Roadmap task-108: the custom authentication-strength subset of the policy
+// batch. Only create and update, and only for the 'custom' subtype: built-in
+// strengths are Microsoft-owned and immutable, and are refused before any write
+// (engine/restore/policyOperations.mjs). delete is not registered — a strength
+// referenced by a Conditional Access policy cannot be removed safely, and KEEL
+// has no qualified guard for that.
+for (const operation of ['create', 'update']) {
+  registerOperationCapability({
+    resourceType: 'authenticationStrengthPolicy', operation, subtype: 'custom',
+    path: '/policies/authenticationStrengthPolicies', handler: HANDLER, idOutcome: idOutcomeFor(operation),
+  });
+  recordFixtureProof('authenticationStrengthPolicy', operation, 'engine/roadmap/policy-fidelity.test.mjs');
+}
 
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by

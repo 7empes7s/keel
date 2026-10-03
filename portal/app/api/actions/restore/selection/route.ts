@@ -19,9 +19,10 @@ export const runtime = "nodejs";
 // still sits behind the wrapper at the restore capability, because authorisation is
 // never enforced only in the UI. The closure is computed here, server-side, from the
 // snapshot's stored references; anything a client computed is never trusted. The
-// resource mapping mirrors cli/keel-restore.mjs exactly (users and authentication
-// strength policies are read-only in M1), so what the preview shows is what the
-// restore CLI will plan.
+// resource mapping mirrors cli/keel-restore.mjs exactly (users are never written;
+// since roadmap task-108 authentication strengths are listed, and the engine
+// writes only custom ones), so what the preview shows is what the restore CLI
+// will plan.
 const restoreSelection = guarded(
   {
     action: "restore:selection-preview",
@@ -76,11 +77,7 @@ const restoreSelection = guarded(
       });
     }
     const resources = versions
-      .filter(
-        (version) =>
-          version.resource_type !== "user"
-          && version.resource_type !== "authenticationStrengthPolicy",
-      )
+      .filter((version) => version.resource_type !== "user")
       .map((version) => ({
         naturalKey: String(version.natural_key),
         resourceType: String(version.resource_type),

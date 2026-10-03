@@ -47,7 +47,9 @@ const freshTenant = () => { tenantSeq += 1; return `sha256:task-82-${tenantSeq}-
 
 async function principal(client, role) {
   const { rows } = await client.query('INSERT INTO principal (email) VALUES ($1) RETURNING id', [`${crypto.randomUUID()}@contoso.example`]);
-  if (role) await grantRole(client, { principalId: rows[0].id, role, grantedBy: rows[0].id });
+  // Backdate the grant: the database stores microseconds while grants are checked at a
+  // millisecond JavaScript instant, so a grant made "now" can look not yet active.
+  if (role) await grantRole(client, { principalId: rows[0].id, role, grantedBy: rows[0].id, activeFrom: new Date(Date.now() - 60_000) });
   return rows[0].id;
 }
 

@@ -138,7 +138,7 @@ export function ComplianceReport({ data, now }: { data: ComplianceData; now: str
           </div>
         </div>
         <p>{storageSentence(storage)} {storage.configured ? immutabilitySentence(storage) : null}</p>
-        <p className="cell-note">{NOT_A_CERTIFICATION}</p>
+        <p className="capture-note">{NOT_A_CERTIFICATION}</p>
         <TechnicalDetails>
           <RecordField copy={false} label="Provider code" value={storage.provider} />
           <RecordField copy={false} label="Region" value={storage.region} />

@@ -888,3 +888,33 @@ CREATE INDEX IF NOT EXISTS retention_pin_tenant_idx ON retention_pin (tenant_ref
 -- post-restore checks), folded into the plan digest. Null for every restore not run
 -- under an incident, which keeps their digest unchanged.
 ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS incident_recovery jsonb;
+
+-- Task 89: CMDB-first ownership with explicit SHARED/unknown/unresolved states.
+-- Append-only evidence bound to a tenant-scoped resource_lineage row (task 50),
+-- never to a display name: a reused name is a different lineage and inherits
+-- nothing. A newer resolution supersedes the current row (superseded_at) but
+-- never rewrites it, so approval evidence that cited an earlier row still reads
+-- the owner it was decided under after the resource moves. expires_at bounds
+-- freshness; an expired row authorizes no write. A failed CMDB lookup is
+-- recorded as 'unresolved' with no entity — it never falls back or widens.
+CREATE TABLE IF NOT EXISTS resource_ownership_evidence (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref        text NOT NULL,
+  lineage_id        uuid NOT NULL REFERENCES resource_lineage(id),
+  state             text NOT NULL CHECK (state IN ('owned','shared','unknown','unresolved')),
+  entity_code       text,
+  entity_codes      text[] NOT NULL DEFAULT '{}',
+  source            text NOT NULL CHECK (source IN ('cmdb','entity-code-fallback','none')),
+  reason            text NOT NULL,
+  cmdb_record_ref   text,
+  natural_key       text,
+  observed_at       timestamptz NOT NULL,
+  expires_at        timestamptz NOT NULL,
+  superseded_at     timestamptz,
+  recorded_by       text NOT NULL,
+  CHECK ((state = 'owned') = (entity_code IS NOT NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS resource_ownership_evidence_current_idx
+  ON resource_ownership_evidence (lineage_id) WHERE superseded_at IS NULL;
+CREATE INDEX IF NOT EXISTS resource_ownership_evidence_tenant_idx
+  ON resource_ownership_evidence (tenant_ref, lineage_id, observed_at DESC);

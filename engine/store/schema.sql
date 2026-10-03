@@ -1032,6 +1032,10 @@ ALTER TABLE role_grant DROP CONSTRAINT IF EXISTS role_grant_scope_check;
 ALTER TABLE role_grant ADD CONSTRAINT role_grant_scope_check
   CHECK (scope = '*' OR scope ~ '^entity:[A-Z][A-Z0-9_]{1,31}$');
 ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS entity_scope jsonb;
+-- Task 91: where a request was routed when it was made (approvals.mjs#routeApproval):
+-- an entity's approvers, an explicit central handoff, or refused. Advisory; eligibility
+-- is re-decided on current ownership and grants. NULL is a request made before task 91.
+ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS route jsonb;
 
 -- Task 83 (WS7): acknowledgement deadlines and escalation. A rule assigns an owner and
 -- an acknowledgement window to the alerts it matches; the deadline is computed when an

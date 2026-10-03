@@ -133,6 +133,7 @@ jobs:
           roadmap/workload-contract.test.mjs
           roadmap/sharepoint-read.test.mjs
           roadmap/sharepoint-write.test.mjs
+          roadmap/native-live-acceptance.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

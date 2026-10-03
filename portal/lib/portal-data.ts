@@ -1,4 +1,5 @@
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
+import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
@@ -22,6 +23,7 @@ import {
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
@@ -840,5 +842,39 @@ export async function getDashboardData(): Promise<DashboardData> {
 
     data.alerts = buildAlerts(data);
     return data;
+  });
+}
+
+// Roadmap task-73: measured freshness, recoverable point, recovery time and the
+// recovery context around them. Every read is pinned to this portal's tenant; the
+// numbers are the engine's (engine/coverage/recoveryMetrics.mjs), never recomputed here.
+export async function getResilienceData(): Promise<ResilienceData> {
+  const ref = tenantRef();
+  const now = new Date();
+  const { manifest, source } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return withClient(async (client) => {
+    const metrics = (await loadRecoveryMetrics(client, {
+      tenantRef: ref,
+      requiredTypes: DESCRIPTORS.map((descriptor) => descriptor.type),
+      now,
+    })) as RecoveryMetrics;
+    const open = ((await listIncidents(client, { tenantRef: ref })) as { id: string; title: string; status: string; openedAt: string | null }[])
+      .filter((incident) => incident.status === "open");
+    const incidents: IncidentPointSummary[] = [];
+    for (const incident of open) {
+      const listing = (await listIncidentRecoveryPoints(client, { tenantRef: ref, incidentId: incident.id })) as unknown as {
+        pins: unknown[];
+        points: RawPoint[];
+        recommended: string | null;
+      };
+      const point = listing.points.find((candidate) => candidate.snapshotId === listing.recommended) ?? null;
+      incidents.push({
+        incident: { id: incident.id, title: incident.title, status: incident.status, openedAt: incident.openedAt },
+        recommended: point ? { snapshotId: point.snapshotId, collectedAt: point.observedFrom ?? point.observedTo } : null,
+        pins: listing.pins.length,
+      });
+    }
+    return { generatedAt: now.toISOString(), metrics, incidents, storage };
   });
 }

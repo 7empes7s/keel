@@ -53,6 +53,7 @@ import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
+import { withExplicitReferences } from '../engine/coverage/qualification.mjs';
 import {
   IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
@@ -76,6 +77,21 @@ function flag(name, argv = process.argv) {
 
 // Exported so cli/keel-remediate.mjs (plan task 19) can reuse the exact same check
 // rather than a second copy that can drift.
+
+/**
+ * Records what a wave applied for later waves' reference resolution. An
+ * application created in this run also reports its new appId, recorded as
+ * `<naturalKey>#appId` — the only key a service principal's explicit appId
+ * reference reads (applyEngine.mjs's rewriteReferences, roadmap task-107).
+ */
+export function recordAppliedIds(appliedIds, applied) {
+  for (const { naturalKey, targetId, identifiers } of applied) {
+    if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
+    for (const [name, value] of Object.entries(identifiers ?? {})) {
+      if (typeof value === 'string' && value.length > 0) appliedIds.set(`${naturalKey}#${name}`, value);
+    }
+  }
+}
 export function assertSeparateRestorer(collector, restorer) {
   if (collector.tenantId !== restorer.tenantId) {
     throw new Error('Collector tenantId must match the Restorer tenantId');
@@ -307,7 +323,10 @@ export async function runRestore({
       .map((v) => ({
         naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
         payloadHash: v.payload_hash,
-        references: refsByVersion.get(v.id) ?? [], blastRadius: v.blast_radius, restorePriority: 100,
+        // Roadmap task-107: explicit references (a service principal's appId)
+        // join the snapshot's, so wave ordering puts the application first.
+        references: withExplicitReferences({ resourceType: v.resource_type, payload: v.payload, references: refsByVersion.get(v.id) ?? [] }),
+        blastRadius: v.blast_radius, restorePriority: 100,
       }));
 
     let closureKeys = null;
@@ -687,9 +706,7 @@ export async function runRestore({
       results.skipped.push(...result.skipped);
       results.failed.push(...result.failed);
       results.notRemediable.push(...(result.notRemediable ?? []));
-      for (const { naturalKey, targetId } of result.applied) {
-        if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
-      }
+      recordAppliedIds(appliedIds, result.applied);
       if (result.failed.length) {
         if (persistArtifactId === undefined) {
           throw new Error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
@@ -755,9 +772,7 @@ export async function runRestore({
         results.skipped.push(...result.skipped);
         results.failed.push(...result.failed);
         results.notRemediable.push(...(result.notRemediable ?? []));
-        for (const { naturalKey, targetId } of result.applied) {
-          if (typeof targetId === 'string' && targetId.length > 0) appliedIds.set(naturalKey, targetId);
-        }
+        recordAppliedIds(appliedIds, result.applied);
         if (result.failed.length) {
           if (persistArtifactId === undefined) {
             throw new Error('delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');

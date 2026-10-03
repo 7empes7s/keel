@@ -7,6 +7,8 @@
  *   node tools/qualification/operations.mjs --json     # the full per-operation ledger
  *   node tools/qualification/operations.mjs --harness  # also run the fixture harness
  *   node tools/qualification/operations.mjs --check    # exit 1 if any catalogue type lacks a decision
+ *   node tools/qualification/operations.mjs --batch identity-application [--json]
+ *                                                       # task-107: run one expansion batch and print its evidence report
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
  * group, named location, role assignment and conditional access operation,
@@ -18,8 +20,9 @@ import { pathToFileURL } from 'node:url';
 
 import { CATALOG } from '../tenant-probe/catalog.mjs';
 import { OPERATIONS, capabilityFor, graphPathFor, isSupportedClaim } from '../../engine/coverage/capabilities.mjs';
-import { buildOperationLedger } from '../../engine/coverage/qualification.mjs';
+import { EXPANSION_BATCHES, buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
+import { completionItemsFor } from '../../engine/restore/completion.mjs';
 
 const FIXTURE_PAYLOADS = Object.freeze({
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
@@ -33,6 +36,20 @@ const FIXTURE_PAYLOADS = Object.freeze({
     conditions: { users: { includeUsers: ['None'] }, applications: { includeApplications: ['None'] } },
     grantControls: { operator: 'OR', builtInControls: ['block'] },
   },
+  // Roadmap task-107. The snapshot carries credential metadata and the old
+  // appId; neither may reach a create body.
+  application: {
+    displayName: 'Fixture app', signInAudience: 'AzureADMyOrg', appId: 'fixture-source-appid',
+    passwordCredentials: [{ keyId: 'fixture-key', displayName: 'fixture secret', hint: 'abc', secretText: null }],
+    keyCredentials: [], requiredResourceAccess: [], tags: [],
+  },
+  servicePrincipal: { appId: 'fixture-existing-appid', accountEnabled: true, appRoleAssignmentRequired: false, tags: [] },
+});
+
+// Natural keys that already exist in the fixture target, per type (a service
+// principal's explicit appId reference resolves against its application).
+const FIXTURE_TARGET_IDS = Object.freeze({
+  servicePrincipal: [['application:fixture-existing-appid', 'fixture-app-object']],
 });
 
 /** An in-memory Graph that honours create/PATCH/DELETE/soft-restore and read-back. */
@@ -58,7 +75,8 @@ export function fakeGraph() {
       if (method === 'POST') {
         next += 1;
         const id = `fixture-${next}`;
-        const created = { ...body, id };
+        // Entra assigns an application's appId; the fake does the same.
+        const created = path === '/applications' ? { ...body, id, appId: `fixture-appid-${next}` } : { ...body, id };
         objects.set(`${path}/${id}`, created);
         return { ok: true, status: 201, body: created };
       }
@@ -120,6 +138,7 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
       try {
         const outcome = await applyWave(graph, governor, [resource], {
           targetTenant: 'fixture-tenant', mode: 'enforce', simulationPassed: true,
+          existingTargetIds: new Map(FIXTURE_TARGET_IDS[resourceType] ?? []),
           // The deletion guard verifies a policy against the CURRENT target state;
           // the fixture's live object is that state (it excludes no break-glass id).
           deletionGuardOptions: {
@@ -130,6 +149,8 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
         const passed = outcome.applied.length === 1 && outcome.failed.length === 0 && outcome.skipped.length === 0;
         results.push({
           resourceType, operation, result: passed ? 'passed' : 'failed', synthetic: true,
+          writes: graph.writes.map((write) => `${write.method} ${write.path}`),
+          applied: outcome.applied,
           detail: passed ? null : JSON.stringify({ failed: outcome.failed, skipped: outcome.skipped }),
         });
       } catch (error) {
@@ -138,6 +159,75 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
     }
   }
   return results;
+}
+
+const MECHANISM_FOR_OPERATION = Object.freeze({
+  create: 'recreate', update: 'update-existing', 'restore-soft-deleted': 'soft-delete-restore', delete: 'delete',
+});
+
+/**
+ * Roadmap task-107: runs one expansion batch. Every registered operation of a
+ * qualified-subset type in the batch goes through the production applyWave()
+ * path against fakeGraph; the report adds what still has to be done by hand
+ * after each operation (completion.mjs's items, so a recreated application
+ * always lists its secrets and certificates) and every remaining type in the
+ * batch with its API and permission reason. The report is synthetic evidence:
+ * it never registers, promotes or qualifies anything.
+ */
+export async function runExpansionBatch(batchId, { now = () => new Date() } = {}) {
+  const inventory = buildExpansionInventory();
+  const batch = inventory.batches.find((candidate) => candidate.id === batchId);
+  if (!batch) throw new Error(`unknown expansion batch: ${batchId} (known: ${EXPANSION_BATCHES.map((entry) => entry.id).join(', ')})`);
+  const qualified = batch.types.filter((entry) => entry.status === 'qualified-subset');
+  const harnessable = qualified.map((entry) => entry.resourceType).filter((type) => FIXTURE_PAYLOADS[type]);
+  const before = qualified.map((entry) => entry.supportedOperations.map((operation) => capabilityFor(entry.resourceType, operation).claim).join());
+  const harness = await runFixtureHarness({ types: harnessable });
+  const after = qualified.map((entry) => entry.supportedOperations.map((operation) => capabilityFor(entry.resourceType, operation).claim).join());
+  if (before.join('|') !== after.join('|')) throw new Error('a fixture run changed a capability claim');
+
+  const operations = qualified.flatMap((entry) => entry.supportedOperations.map((operation) => {
+    const capability = capabilityFor(entry.resourceType, operation);
+    const run = harness.find((result) => result.resourceType === entry.resourceType && result.operation === operation) ?? null;
+    return {
+      resourceType: entry.resourceType,
+      operation,
+      claim: capability.claim,
+      credentialMode: capability.credentialMode,
+      idOutcome: capability.idOutcome,
+      proofRef: capability.proofRef,
+      result: run ? run.result : 'not-run',
+      synthetic: true,
+      writes: run?.writes ?? [],
+      completionSteps: completionItemsFor({ resourceType: entry.resourceType, mechanism: MECHANISM_FOR_OPERATION[operation] })
+        .map((step) => ({ kind: step.kind, requirement: step.requirement, description: step.description })),
+      detail: run?.detail ?? null,
+    };
+  }));
+
+  return {
+    contractVersion: inventory.contractVersion,
+    batch: { id: batch.id, label: batch.label, task: batch.task },
+    generatedAt: now().toISOString(),
+    synthetic: true,
+    claimsChanged: false,
+    operations,
+    refused: qualified.flatMap((entry) => entry.unsupportedOperations.map((operation) => ({ resourceType: entry.resourceType, operation, claim: capabilityFor(entry.resourceType, operation).claim }))),
+    remaining: batch.types.filter((entry) => entry.status !== 'qualified-subset').map((entry) => ({
+      resourceType: entry.resourceType, status: entry.status, restoreScope: entry.restoreScope,
+      api: entry.api, permission: entry.permission, reason: entry.reason,
+    })),
+  };
+}
+
+function batchTable(report) {
+  const lines = [`batch ${report.batch.id} (${report.batch.label}) — synthetic fixture evidence, never a live claim`];
+  for (const op of report.operations) {
+    lines.push(`  ${op.resourceType} ${op.operation}: ${op.result} · claim ${op.claim} · id ${op.idOutcome}`);
+    for (const step of op.completionSteps) lines.push(`      then by hand: ${step.kind} (${step.requirement}) — ${step.description}`);
+  }
+  for (const refusal of report.refused) lines.push(`  ${refusal.resourceType} ${refusal.operation}: refused (${refusal.claim})`);
+  for (const entry of report.remaining) lines.push(`  ${entry.resourceType}: ${entry.status} — ${entry.reason} [${entry.api ?? 'no write route'}; ${entry.permission}]`);
+  return lines.join('\n');
 }
 
 function table(ledger) {
@@ -158,8 +248,26 @@ export async function main({ argv = process.argv.slice(2), out = console } = {})
     out.error(error.message);
     return 1;
   }
+  const batchIndex = argv.indexOf('--batch');
+  if (batchIndex !== -1) {
+    let report;
+    try {
+      report = await runExpansionBatch(argv[batchIndex + 1]);
+    } catch (error) {
+      out.error(error.message);
+      return 1;
+    }
+    out.log(argv.includes('--json') ? JSON.stringify(report, null, 2) : batchTable(report));
+    return report.operations.some((op) => op.result !== 'passed') ? 1 : 0;
+  }
   if (argv.includes('--check')) {
-    out.log(`${ledger.types.length} catalogue types, each with an explicit decision`);
+    try {
+      buildExpansionInventory();
+    } catch (error) {
+      out.error(error.message);
+      return 1;
+    }
+    out.log(`${ledger.types.length} catalogue types, each with an explicit decision and an expansion batch`);
     return 0;
   }
   const harness = argv.includes('--harness') ? await runFixtureHarness() : null;

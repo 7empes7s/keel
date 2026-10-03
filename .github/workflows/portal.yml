@@ -7,13 +7,11 @@ on:
       - "engine/**"
       - "cli/**"
       - ".github/workflows/portal.yml"
+  # Every push to master runs, with no path filter: the live auto-deploy deploys a commit
+  # only when this workflow succeeded on that exact commit, so a docs-only commit on top of
+  # a code change must still get a run.
   push:
     branches: [master]
-    paths:
-      - "portal/**"
-      - "engine/**"
-      - "cli/**"
-      - ".github/workflows/portal.yml"
 
 concurrency:
   group: portal-${{ github.ref }}

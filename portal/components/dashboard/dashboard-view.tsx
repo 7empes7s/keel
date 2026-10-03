@@ -71,7 +71,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
             <span className="dash-card-link">View baselines <span aria-hidden="true">→</span></span>
           </Link>
 
-          <Link className="dash-card" href="/backups">
+          <Link className="dash-card" href="/protect">
             <header>
               <p className="section-kicker">Freshness</p>
               <h2>Last backup</h2>
@@ -103,7 +103,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
             <span className="dash-card-link">Review changes <span aria-hidden="true">→</span></span>
           </Link>
 
-          <Link className="dash-card" href="/coverage">
+          <Link className="dash-card" href="/protect">
             <header>
               <p className="section-kicker">What KEEL backs up</p>
               <h2>Configuration types</h2>

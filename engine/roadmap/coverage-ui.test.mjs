@@ -205,6 +205,8 @@ test('coverage report: cross-tier observation windows are surfaced as an explici
 
 // Exercise the real TS loader and page in a separate portal runtime. Only its
 // database URL and tenant config are replaced; no normalization/render seam is mocked.
+// Roadmap task-131: the report now renders on Protect, one drawer per type, with every
+// task-54 evidence field in the drawer's record layer; these assertions follow it there.
 test('coverage portal: report survives normalization, authorization and page rendering', async (t) => {
   const client = await database.connect();
   t.after(() => client.end());
@@ -227,13 +229,13 @@ test('coverage portal: report survives normalization, authorization and page ren
     globalThis.AsyncLocalStorage = require('node:async_hooks').AsyncLocalStorage;
     const { renderToStaticMarkup } = require('react-dom/server');
     const { getCoverageData } = require('./lib/portal-data.ts');
-    const page = require('./app/coverage/page.tsx').default;
+    const page = require('./app/protect/page.tsx').default;
     const { workAsyncStorage } = require('next/dist/server/app-render/work-async-storage.external.js');
     const { workUnitAsyncStorage } = require('next/dist/server/app-render/work-unit-async-storage.external.js');
     const { PRINCIPAL_ID_HEADER, CAPABILITIES_HEADER } = require('./lib/principal.ts');
-    const render = (headers) => workAsyncStorage.run({ route: '/coverage', forceStatic: false }, () =>
+    const render = (headers) => workAsyncStorage.run({ route: '/protect', forceStatic: false }, () =>
       workUnitAsyncStorage.run({ type: 'request', phase: 'render', headers,
-        implicitTags: [], url: { pathname: '/coverage', search: '' }, rootParams: {},
+        implicitTags: [], url: { pathname: '/protect', search: '' }, rootParams: {},
         resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
       }, () => page()));
     (async () => {
@@ -255,23 +257,27 @@ test('coverage portal: report survives normalization, authorization and page ren
       assert.equal(group.writeCapability.operations.update.proofRef, 'engine/restore/updatePath.test.mjs');
       assert.equal(data.types.find(item => item.type === 'user').detail, null);
       assert.equal(data.types.find(item => item.type === 'namedLocation').reportStatus, 'covered');
-      const html = renderToStaticMarkup(await render(new Headers([
-        [PRINCIPAL_ID_HEADER, 'viewer'], [CAPABILITIES_HEADER, 'read']])));
+      // Protect's backup controls use the router, so the static render mounts one.
+      const { createElement } = require('react');
+      const { AppRouterContext } = require('next/dist/shared/lib/app-router-context.shared-runtime');
+      const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
+      const html = renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: router },
+        await render(new Headers([[PRINCIPAL_ID_HEADER, 'viewer'], [CAPABILITIES_HEADER, 'read']]))));
       assert.ok(reads > 0, 'authorized positive control reaches the loader');
-      assert.equal((html.match(/<details class="capability-matrix"/g) || []).length, data.types.length);
+      assert.equal((html.match(/<details class="capability-matrix type-drawer/g) || []).length, data.types.length);
       for (const item of data.types) {
         assert.ok(html.includes(item.type));
         if (item.observation) assert.ok(html.includes(item.observation.observationId));
       }
-      assert.match(html, /claim-fixture-tested/);
-      assert.doesNotMatch(html, /claim-live-qualified/);
-      assert.match(html, /Pagination evidence<\/dt><dd><span class="muted-value">Unknown/);
+      assert.match(html, /Write · update<\/dt><dd><code>fixture-tested/);
+      assert.doesNotMatch(html, /<code>live-qualified/);
+      assert.match(html, /Pagination evidence<\/dt><dd><code>unknown/);
       assert.match(html, /Relationship completeness/);
       assert.match(html, /engine\/restore\/updatePath.test.mjs/);
-      assert.match(html, /Projection review/);
+      assert.match(html, /projection review/);
       assert.match(html, /Observation windows differ/);
       assert.match(html, /observationId=/);
-      assert.match(html, /completed zero-item collection is successful/);
+      assert.match(html, /an empty result counts as a successful backup/);
       assert.doesNotMatch(html, /Zero-item collections are FAILED/);
     })().catch(error => { console.error(error); process.exitCode = 1; });
   `], {

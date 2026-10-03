@@ -7,11 +7,14 @@ import { postAction } from "@/lib/action-client";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
+import { refusalSentence, resourceName } from "@/lib/changes-view";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
-import { words } from "@/lib/presentation";
-import { formatTimestamp } from "@/lib/presentation";
+import { displayEnum, formatTimestamp, resourceLabel } from "@/lib/presentation";
+import { typeName } from "@/lib/protect-view";
 
 const PAGE_SIZE = 25;
 const DRY_RUN_POLL_MS = 3000;
@@ -97,10 +100,22 @@ function describeSnapshot(snapshot: SnapshotOption): string {
   return `${captured} — ${snapshot.resourceCount.toLocaleString("en-GB")} resources`;
 }
 
+// The raw reasons (requiring key and field path), for the record layer.
 function formatReasons(reasons: AdditionReason[]): string {
   return reasons
     .map((reason) => `${reason.requiredBy} at ${reason.field}`)
     .join("; ");
+}
+
+/** "Block legacy auth (Conditional Access policy)", the resources that need this one. */
+function requiredByWords(reasons: AdditionReason[]): string {
+  return [...new Set(reasons.map((reason) => resourceLabel(reason.requiredBy)))].join(", ");
+}
+
+/** "Block legacy auth and Require MFA for admins". */
+function namesList(keys: string[]): string {
+  const names = keys.map((key) => resourceLabel(key));
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 async function previewSelection(
@@ -132,6 +147,19 @@ async function fetchDryRunArtifact(artifactId: string): Promise<DryRunArtifact |
 }
 
 type RestoreStep = "select" | "dry-run" | "review" | "confirm" | "track";
+
+// Roadmap task-131: the current step's title is the page's verdict sentence.
+export function restoreStepVerdict(step: RestoreStep, failed: boolean): { text: string; tone: VerdictTone } {
+  switch (step) {
+    case "select": return { text: "Step 1 of 5: choose what to put back.", tone: "good" };
+    case "dry-run": return { text: "Step 2 of 5: KEEL is working out what would change. Nothing is written.", tone: "good" };
+    case "review": return failed
+      ? { text: "Step 3 of 5: the dry run found problems, so nothing can be restored from it.", tone: "critical" }
+      : { text: "Step 3 of 5: review what will change.", tone: "good" };
+    case "confirm": return { text: "Step 4 of 5: review what will change, then confirm.", tone: "attention" };
+    case "track": return { text: "Step 5 of 5: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
+  }
+}
 
 const STEPS: { id: RestoreStep; label: string }[] = [
   { id: "select", label: "Select" },
@@ -194,8 +222,6 @@ export function RestoreSelection({
   const [preview, setPreview] = useState<SelectionPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [collectorConfig, setCollectorConfig] = useState("/etc/keel/tenant-target.json");
-  const [targetConfig, setTargetConfig] = useState("/etc/keel/restorer-target.json");
   const [justification, setJustification] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
@@ -254,7 +280,7 @@ export function RestoreSelection({
       resetDryRun();
       return true;
     } catch {
-      setError("The selection preview could not be computed. The selection was not changed.");
+      setError("KEEL could not work out what this selection depends on. The selection was not changed.");
       return false;
     } finally {
       setPreviewing(false);
@@ -280,7 +306,7 @@ export function RestoreSelection({
       const missing = candidatePreview.missingRequirements.find((m) => m.naturalKey === key);
       if (missing) {
         setRefusal(
-          `Cannot deselect ${key} — required by ${formatReasons(missing.reasons)}. Deselect the requiring resource first.`,
+          `${resourceLabel(key)} stays selected because ${requiredByWords(missing.reasons)} ${missing.reasons.length === 1 ? "depends" : "depend"} on it. Deselect ${missing.reasons.length === 1 ? "that" : "those"} first.`,
         );
         return;
       }
@@ -288,7 +314,7 @@ export function RestoreSelection({
       setPreview(candidatePreview);
       resetDryRun();
     } catch {
-      setError("The selection preview could not be computed. The selection was not changed.");
+      setError("KEEL could not work out what this selection depends on. The selection was not changed.");
     } finally {
       setPreviewing(false);
     }
@@ -306,7 +332,7 @@ export function RestoreSelection({
         const status = await fetchJobStatus(jobId);
         if (status === "failed" || status === "cancelled") {
           setDryRunStatus("failed");
-          setError("The dry run failed to complete. Adjust the selection or credential configs and try again.");
+          setError("The dry run did not finish. Adjust the selection and try again.");
           return;
         }
         if (status === "succeeded") {
@@ -329,10 +355,6 @@ export function RestoreSelection({
       setError("Select at least one resource to restore.");
       return;
     }
-    if (collectorConfig.trim().length === 0 || targetConfig.trim().length === 0) {
-      setError("Both the collector and restorer credential config paths are required.");
-      return;
-    }
 
     setSubmitting(true);
     setMessage(null);
@@ -344,8 +366,6 @@ export function RestoreSelection({
         {
           snapshotId,
           selection: selected,
-          collectorConfig: collectorConfig.trim(),
-          targetConfig: targetConfig.trim(),
           ...(incident ? { incidentId: incident.id } : {}),
         },
         idempotencyKey,
@@ -353,7 +373,7 @@ export function RestoreSelection({
       const job = payload.job as { id: string };
       const artifactId = payload.artifactId as string;
       if (!job || typeof job.id !== "string" || typeof artifactId !== "string") {
-        setError("Unexpected response: the dry run did not produce a job.");
+        setError("KEEL could not start the dry run. Try again in a minute.");
         return;
       }
       setIdempotencyKey(crypto.randomUUID());
@@ -362,7 +382,7 @@ export function RestoreSelection({
       setDryRunStatus("running");
       pollDryRun(job.id, artifactId);
     } catch {
-      setError("The dry run could not be started.");
+      setError("KEEL could not start the dry run. Try again in a minute.");
     } finally {
       setSubmitting(false);
     }
@@ -384,18 +404,16 @@ export function RestoreSelection({
         idempotencyKey,
       );
       if (payload.approvalRequest) {
-        setMessage(
-          "Restore requested — pending approval. Nothing has been restored; a job is created only when a different principal approves the exact dry run reviewed above.",
-        );
+        setMessage("Sent to approvers. Nothing changes until one of them approves.");
         setIdempotencyKey(crypto.randomUUID());
         resetDryRun();
-        toast({ tone: "info", title: "Restore sent for approval", detail: "Nothing is restored until a different approver signs off.", href: "/approvals", hrefLabel: "Open approvals" });
+        toast({ tone: "info", title: "Sent to approvers", detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
         router.refresh();
       } else {
-        setError("Unexpected response: the confirmation did not produce an approval request.");
+        setError("KEEL could not send the restore for approval. Try again in a minute.");
       }
     } catch {
-      setError("The restore confirmation could not be created.");
+      setError("KEEL could not send the restore for approval. Try again in a minute.");
     } finally {
       setSubmitting(false);
     }
@@ -413,31 +431,35 @@ export function RestoreSelection({
   const selectionLocked = step !== "select";
   const closureSize = preview?.closureKeys.length ?? 0;
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === snapshotId) ?? null;
+  const reviewFailed = artifact !== null && artifact.status !== "completed";
+  const verdict = restoreStepVerdict(step, reviewFailed);
+  const objectResults = (entries: DryRunResourceResult[]) => entries.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX));
 
   return (
     <section aria-labelledby="restore-selection-heading" className="report-section restore-wizard">
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation">
       <div className="section-heading-row report-heading">
         <div>
-          <p className="section-kicker">Dependency-closed restore</p>
+          <p className="section-kicker">From a snapshot</p>
           <h2 id="restore-selection-heading">Plan a restore</h2>
         </div>
         <span aria-live="polite" className="result-count">
-          {closureSize ? `${closureSize} in closure` : `${resources.length} restorable`}
+          {closureSize ? `${closureSize} to restore` : `${resources.length} available`}
         </span>
       </div>
 
-      <RestoreStepper current={step} failed={artifact !== null && artifact.status !== "completed"} />
+      <RestoreStepper current={step} failed={reviewFailed} />
 
       {step === "track" ? (
         <section aria-labelledby="restore-track-heading" className="wizard-panel wizard-track">
-          <p className="section-kicker">Step 5 · Track</p>
-          <h3 id="restore-track-heading">Restore requested, pending approval</h3>
+          <h3 id="restore-track-heading">Sent to approvers</h3>
           <p aria-live="polite">{message}</p>
           <ol className="track-timeline">
-            <li className="track-done">Dry run computed and persisted</li>
-            <li className="track-done">Approval request created</li>
-            <li className="track-current">A different approver reviews the same dry run</li>
-            <li>The CLI re-checks the target, then writes; the job appears below</li>
+            <li className="track-done">Dry run finished</li>
+            <li className="track-done">Approval requested</li>
+            <li className="track-current">Another person reviews this same plan</li>
+            <li>KEEL checks the tenant again, then restores; the job appears below</li>
           </ol>
           <div className="form-actions">
             <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
@@ -456,11 +478,11 @@ export function RestoreSelection({
       {selectionLocked && step !== "track" ? (
         <div className="wizard-summary">
           <div>
-            <p className="section-kicker">Step 1 · Selection</p>
+            <p className="section-kicker">What you chose</p>
             <p>
-              <strong>{closureSize}</strong> {closureSize === 1 ? "resource" : "resources"}
-              {currentSnapshot ? ` from ${describeSnapshot(currentSnapshot)}` : null}
-              {preview ? ` (${preview.selected.length} selected, ${preview.added.length} added)` : null}
+              {preview ? namesList(preview.selected) : `${closureSize} resources`}
+              {preview && preview.added.length ? " and everything it depends on" : null}
+              {currentSnapshot ? `, from the snapshot of ${formatTimestamp(currentSnapshot.completedAt ?? currentSnapshot.startedAt)}` : null}
             </p>
           </div>
           <button
@@ -499,19 +521,19 @@ export function RestoreSelection({
               </select>
             </label>
             <label className="filter-field search-field">
-              <span>Find natural key</span>
+              <span>Find a resource</span>
               <input
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Search key"
+                placeholder="Name"
                 type="search"
                 value={query}
               />
             </label>
             <label className="filter-field">
-              <span>Resource type</span>
+              <span>Type</span>
               <select
                 onChange={(event) => {
                   setResourceType(event.target.value);
@@ -519,9 +541,9 @@ export function RestoreSelection({
                 }}
                 value={resourceType}
               >
-                <option value="all">All resource types</option>
+                <option value="all">All types</option>
                 {resourceTypes.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                  <option key={type} value={type}>{typeName(type)}</option>
                 ))}
               </select>
             </label>
@@ -534,10 +556,10 @@ export function RestoreSelection({
                   <thead>
                     <tr>
                       <th scope="col">Select</th>
-                      <th scope="col">Natural key</th>
-                      <th scope="col">Resource type</th>
-                      <th scope="col">Blast radius</th>
-                      <th scope="col">Selection</th>
+                      <th scope="col">Resource</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Impact</th>
+                      <th scope="col">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -553,29 +575,29 @@ export function RestoreSelection({
                         >
                           <td data-label="Select">
                             <input
-                              aria-label={`Select ${resource.naturalKey}`}
+                              aria-label={`Select ${resourceLabel(resource.naturalKey)}`}
                               checked={isSelected}
                               disabled={!canRestore || previewing || submitting}
                               onChange={() => void toggle(resource.naturalKey)}
                               type="checkbox"
                             />
                           </td>
-                          <th data-label="Natural key" scope="row">
-                            <code className="natural-key">{resource.naturalKey}</code>
+                          <th data-label="Resource" scope="row">
+                            <span className="resource-name">{resourceName(resource.naturalKey)}</span>
                           </th>
-                          <td data-label="Resource type">
-                            <span className="resource-type">{resource.resourceType}</span>
+                          <td data-label="Type">
+                            <span className="resource-type">{typeName(resource.resourceType)}</span>
                           </td>
-                          <td data-label="Blast radius">{words(resource.blastRadius)}</td>
-                          <td data-label="Selection">
+                          <td data-label="Impact">{displayEnum("blastRadius", resource.blastRadius)}</td>
+                          <td data-label="Status">
                             {isSelected ? <span className="selection-chip chip-selected">Selected</span> : null}
                             {isAdded && addition ? (
-                              <span className="selection-chip chip-added" title={`Required by ${formatReasons(addition.reasons)}`}>
-                                Added — required by {formatReasons(addition.reasons)}
+                              <span className="selection-chip chip-added">
+                                Added: {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
                               </span>
                             ) : null}
                             {isRefused ? (
-                              <span className="selection-chip chip-refused"> Refused — AD-synced</span>
+                              <span className="selection-chip chip-refused">Refused: synced from on-premises</span>
                             ) : null}
                           </td>
                         </tr>
@@ -603,7 +625,7 @@ export function RestoreSelection({
             <p className="empty-state">
               {resources.length
                 ? "No resources match these filters."
-                : "This snapshot has no restorable resources."}
+                : "This snapshot has nothing KEEL can restore."}
             </p>
           )}
 
@@ -614,8 +636,7 @@ export function RestoreSelection({
               <div>
                 <p className="section-kicker">What will be restored</p>
                 <h3 id="restore-closure-heading">
-                  {preview.closureKeys.length} {preview.closureKeys.length === 1 ? "resource" : "resources"} in the closure
-                  {" "}({preview.selected.length} selected, {preview.added.length} added)
+                  {namesList(preview.selected)}{preview.added.length ? " and everything it depends on" : ""}
                 </h3>
               </div>
 
@@ -623,25 +644,24 @@ export function RestoreSelection({
                 <ul className="closure-list">
                   {preview.added.map((addition) => (
                     <li key={addition.naturalKey}>
-                      <code className="natural-key">{addition.naturalKey}</code>
-                      {" — required by "}
-                      {formatReasons(addition.reasons)}
+                      <strong>{resourceLabel(addition.naturalKey)}</strong>
+                      {", because "}
+                      {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p>The selection is already dependency-closed; nothing was added.</p>
+                <p>Nothing else is needed: what you chose depends on nothing outside it.</p>
               )}
 
               {preview.unresolvedReferences.length ? (
                 <div className="data-error" role="alert">
-                  <p className="severity-label">UNRESOLVED REFERENCES</p>
+                  <p className="severity-label">Missing from this snapshot</p>
                   <ul>
                     {preview.unresolvedReferences.map((reference) => (
                       <li key={`${reference.from}:${reference.field}`}>
-                        {reference.from} at {reference.field} → {reference.symbol} — no resource
-                        in this snapshot provides it; the restore will fail unless it exists in
-                        the target.
+                        {resourceLabel(reference.from)} refers to something this snapshot does not hold; the restore
+                        fails unless it already exists in the tenant.
                       </li>
                     ))}
                   </ul>
@@ -650,38 +670,30 @@ export function RestoreSelection({
 
               {preview.guardRefusals.length ? (
                 <div className="data-error" role="alert">
-                  <p className="severity-label">REFUSED AT SELECTION TIME</p>
+                  <p className="severity-label">Cannot restore</p>
                   <ul>
                     {preview.guardRefusals.map((guardRefusal) => (
-                      <li key={guardRefusal.naturalKey}>
-                        <code className="natural-key">{guardRefusal.naturalKey}</code>
-                        {" — "}
-                        {guardRefusal.reason}
-                      </li>
+                      <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
                     ))}
                   </ul>
-                  <p>Remove the refused resources from the selection before submitting.</p>
+                  <p>Remove these from the selection before you continue.</p>
                 </div>
               ) : null}
 
-              <div className="filter-bar">
-                <label className="filter-field">
-                  <span>Collector credential config (read-only)</span>
-                  <input
-                    disabled={submitting || dryRunStatus === "running"}
-                    onChange={(event) => setCollectorConfig(event.target.value)}
-                    value={collectorConfig}
-                  />
-                </label>
-                <label className="filter-field">
-                  <span>Restorer credential config (write)</span>
-                  <input
-                    disabled={submitting || dryRunStatus === "running"}
-                    onChange={(event) => setTargetConfig(event.target.value)}
-                    value={targetConfig}
-                  />
-                </label>
-              </div>
+              <TechnicalDetails>
+                <RecordField copy={false} label="Selected keys" value={preview.selected.join(", ")} />
+                <RecordField copy={false} label="Closure keys" value={preview.closureKeys.join(", ")} />
+                {preview.added.map((addition) => (
+                  <RecordField copy={false} key={addition.naturalKey} label={`Added · ${addition.naturalKey}`} value={`required by ${formatReasons(addition.reasons)}`} />
+                ))}
+                {preview.unresolvedReferences.map((reference) => (
+                  <RecordField copy={false} key={`${reference.from}:${reference.field}`} label={`Unresolved · ${reference.from}`} value={`${reference.field} → ${reference.symbol}`} />
+                ))}
+                {preview.guardRefusals.map((guardRefusal) => (
+                  <RecordField copy={false} key={guardRefusal.naturalKey} label={`Guard refusal · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
+                ))}
+                <RecordField label="Snapshot ID" value={snapshotId} />
+              </TechnicalDetails>
 
               <div className="drift-action-buttons">
                 <button
@@ -708,15 +720,12 @@ export function RestoreSelection({
                 </button>
               </div>
               <p className="selection-scope">
-                Restore is a two-step promotion: a dry run computes and persists the exact
-                plan — every resource result and guard outcome — then a DIFFERENT approver
-                confirms that same immutable plan. There is no way to request enforcement
-                directly from a selection.
+                The dry run works out exactly what would change. Nothing is written until someone else approves.
               </p>
             </section>
           ) : (
             <p className="wizard-hint">
-              Select the resources to restore. Anything they reference is added automatically and
+              Select the resources to restore. Anything they depend on is added for you and
               shown here before you continue.
             </p>
           )}
@@ -725,12 +734,15 @@ export function RestoreSelection({
 
       {step === "dry-run" ? (
         <section aria-live="polite" className="wizard-panel wizard-running">
-          <p className="section-kicker">Step 2 · Dry run</p>
-          <h3>Running the dry run against the target tenant</h3>
+          <h3>Working out what would change</h3>
           <div aria-hidden="true" className="progress-indeterminate"><span /></div>
-          <p>This only reads; nothing is written. The plan is persisted when it completes, usually within a minute.</p>
+          <p>This only reads your tenant; nothing is written. It usually takes under a minute.</p>
           {dryRunJobId ? (
-            <p className="selection-scope">Job <code>{dryRunJobId}</code> · checking every {DRY_RUN_POLL_MS / 1000}s</p>
+            <TechnicalDetails>
+              <RecordField label="Job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} />
+              {dryRunArtifactId ? <RecordField label="Dry run ID" value={dryRunArtifactId} usage={<code>GET /api/actions/restore/dry-run/{dryRunArtifactId}</code>} /> : null}
+              <RecordField copy={false} label="Polling" value={`every ${DRY_RUN_POLL_MS / 1000}s`} />
+            </TechnicalDetails>
           ) : null}
         </section>
       ) : null}
@@ -738,28 +750,25 @@ export function RestoreSelection({
       {artifact ? (
         <section aria-labelledby="restore-dry-run-heading" className={`wizard-panel wizard-review review-${artifact.status}`}>
           <div>
-            <p className="section-kicker">
-              {artifact.status === "completed" ? "Step 3 · Review the plan" : "Step 3 · Review"}
-            </p>
             <h3 id="restore-dry-run-heading">
               {artifact.status === "completed"
                 ? "Ready to confirm"
                 : artifact.status === "refused"
-                  ? "Refused — cannot be promoted"
-                  : "Failed — cannot be promoted"}
+                  ? "KEEL refused this plan; it cannot be restored"
+                  : "The dry run failed; it cannot be restored"}
             </h3>
           </div>
 
           <dl className="stat-strip review-stats">
-            <div><dt>Would apply</dt><dd>{artifact.results.applied.length}</dd></div>
-            <div className={artifact.results.skipped.length ? "stat-warn" : undefined}><dt>Refused by guard</dt><dd>{artifact.results.skipped.length}</dd></div>
+            <div><dt>Would restore</dt><dd>{objectResults(artifact.results.applied).length}</dd></div>
+            <div className={artifact.results.skipped.length ? "stat-warn" : undefined}><dt>Refused</dt><dd>{artifact.results.skipped.length}</dd></div>
             <div className={artifact.results.failed.length ? "stat-bad" : undefined}><dt>Would fail</dt><dd>{artifact.results.failed.length}</dd></div>
-            <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Not remediable</dt><dd>{artifact.results.notRemediable.length}</dd></div>
+            <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Needs doing by hand</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
           {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} view={artifact.incidentRecoveryView ?? null} /> : null}
 
-          {/* Content effects gate promotion, so they lead the review. */}
+          {/* Content effects gate the restore, so they lead the review. */}
           {artifact.contentEffects?.length && dryRunArtifactId ? (
             <ContentEffectsPanel
               approvals={artifact.contentEffectApprovals ?? []}
@@ -773,14 +782,14 @@ export function RestoreSelection({
             />
           ) : null}
 
-          {artifact.results.applied.some((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX)) ? (
+          {objectResults(artifact.results.applied).length ? (
             <div>
-              <p className="severity-label">PLANNED CHANGES</p>
+              <p className="severity-label">What will change</p>
               <ul className="closure-list">
-                {artifact.results.applied.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX)).map((entry) => (
+                {objectResults(artifact.results.applied).map((entry) => (
                   <li key={entry.naturalKey}>
-                    <code className="natural-key">{entry.naturalKey}</code>
-                    {entry.reason ? ` — ${entry.reason}` : " — would apply"}
+                    <strong>{resourceLabel(entry.naturalKey)}</strong>
+                    {entry.reason ? `: ${entry.reason}` : ": will be restored"}
                   </li>
                 ))}
               </ul>
@@ -790,8 +799,6 @@ export function RestoreSelection({
           {artifact.recoveryMechanisms?.length ? (
             <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />
           ) : null}
-
-
 
           {artifact.relationshipOperations?.length ? (
             <div>
@@ -804,9 +811,9 @@ export function RestoreSelection({
                   >
                     <span className="edge-action">{operation.action === "add" ? "+ Add" : "− Remove"}</span>
                     {" "}
-                    <code className="natural-key">{operation.targetNaturalKey ?? operation.targetId ?? "object created by this restore"}</code>
+                    <strong>{operation.targetNaturalKey ? resourceLabel(operation.targetNaturalKey) : "an object this restore creates"}</strong>
                     {` as ${operation.family} of `}
-                    <code className="natural-key">{operation.parentNaturalKey}</code>
+                    <strong>{resourceLabel(operation.parentNaturalKey)}</strong>
                   </li>
                 ))}
               </ul>
@@ -815,14 +822,10 @@ export function RestoreSelection({
 
           {artifact.guardRefusals.length ? (
             <div className="data-error" role="alert">
-              <p className="severity-label">GUARD REFUSALS</p>
+              <p className="severity-label">Cannot restore</p>
               <ul>
                 {artifact.guardRefusals.map((guardRefusal) => (
-                  <li key={guardRefusal.naturalKey}>
-                    <code className="natural-key">{guardRefusal.naturalKey}</code>
-                    {" — "}
-                    {guardRefusal.reason}
-                  </li>
+                  <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
                 ))}
               </ul>
             </div>
@@ -830,24 +833,49 @@ export function RestoreSelection({
 
           {artifact.results.failed.length ? (
             <div className="data-error" role="alert">
-              <p className="severity-label">WOULD FAIL</p>
+              <p className="severity-label">Would fail</p>
               <ul>
                 {artifact.results.failed.map((entry) => (
                   <li key={entry.naturalKey}>
-                    <code className="natural-key">{entry.naturalKey}</code>
-                    {entry.error ? ` — ${entry.error}` : null}
+                    <strong>{resourceLabel(entry.naturalKey)}</strong> would fail; the error is in Technical details.
                   </li>
                 ))}
               </ul>
             </div>
           ) : null}
 
+          <TechnicalDetails>
+            <RecordField label="Dry run ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
+            {dryRunJobId ? <RecordField label="Dry run job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} /> : null}
+            <RecordField copy={false} label="Status" value={artifact.status} />
+            <RecordField copy={false} label="Closure keys" value={artifact.closureKeys.join(", ")} />
+            {artifact.effectsDigest ? <RecordField label="Effects digest" value={artifact.effectsDigest} /> : null}
+            {artifact.results.applied.map((entry) => (
+              <RecordField copy={false} key={`applied-${entry.naturalKey}`} label={`Would apply · ${entry.naturalKey}`} value={entry.reason ?? "would apply"} />
+            ))}
+            {artifact.results.skipped.map((entry) => (
+              <RecordField copy={false} key={`skipped-${entry.naturalKey}`} label={`Refused · ${entry.naturalKey}`} value={entry.reason ?? entry.error ?? "refused"} />
+            ))}
+            {artifact.results.failed.map((entry) => (
+              <RecordField copy={false} key={`failed-${entry.naturalKey}`} label={`Would fail · ${entry.naturalKey}`} value={entry.error ?? entry.reason ?? "failed"} />
+            ))}
+            {artifact.results.notRemediable.map((entry) => (
+              <RecordField copy={false} key={`manual-${entry.naturalKey}`} label={`Not remediable · ${entry.naturalKey}`} value={entry.reason ?? entry.error ?? "not remediable"} />
+            ))}
+            {artifact.guardRefusals.map((guardRefusal) => (
+              <RecordField copy={false} key={`guard-${guardRefusal.naturalKey}`} label={`Guard refusal · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
+            ))}
+            {(artifact.relationshipOperations ?? []).map((operation) => (
+              <RecordField copy={false} key={`edge-${operation.parentNaturalKey}|${operation.action}|${operation.targetNaturalKey ?? operation.targetId}`}
+                label={`Edge · ${operation.parentNaturalKey}`} value={`${operation.action} ${operation.family} ${operation.targetNaturalKey ?? operation.targetId ?? "created object"}`} />
+            ))}
+          </TechnicalDetails>
+
           {artifact.status === "completed" ? (
             <div className="wizard-confirm">
-              <p className="section-kicker">Step 4 · Confirm</p>
               <div className="filter-bar">
                 <label className="filter-field">
-                  <span>Approval justification</span>
+                  <span>Why</span>
                   <input
                     disabled={submitting}
                     onChange={(event) => setJustification(event.target.value)}
@@ -876,9 +904,8 @@ export function RestoreSelection({
                 </button>
               </div>
               <p className="selection-scope">
-                Confirming creates an approval request referencing exactly this dry run,
-                never a job. A different approver must approve it, and the CLI recomputes
-                this plan and the target&apos;s current state once more before it writes.
+                This goes to approvers next. Someone other than you approves exactly this plan, and KEEL
+                checks the tenant again before it writes.
               </p>
             </div>
           ) : (
@@ -897,6 +924,7 @@ export function RestoreSelection({
       ) : null}
 
       {error ? <p className="action-error" role="alert">{error}</p> : null}
+      </div>
     </section>
   );
 }

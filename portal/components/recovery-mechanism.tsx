@@ -1,4 +1,4 @@
-import { formatTimestamp } from "@/lib/presentation";
+import { formatTimestamp, resourceLabel } from "@/lib/presentation";
 
 // Roadmap task-64: how each resource of a reviewed dry run will be recovered.
 // The mechanism is part of the immutable artifact and its plan digest, so what
@@ -70,7 +70,7 @@ export function RecoveryMechanismTable({ mechanisms }: { mechanisms: RecoveryMec
         <tbody>
           {mechanisms.map((entry) => (
             <tr className={`mechanism-row mechanism-${entry.mechanism}`} key={entry.naturalKey}>
-              <td data-label="Resource"><code className="natural-key">{entry.naturalKey}</code></td>
+              <td data-label="Resource"><span className="resource-name">{resourceLabel(entry.naturalKey)}</span></td>
               <td data-label="Mechanism">
                 <span className={`pill pill-${TONES[entry.mechanism] ?? "neutral"} mechanism-badge-${entry.mechanism}`}>{mechanismLabel(entry.mechanism)}</span>
                 {entry.reason ? <small className="mechanism-reason">{entry.reason}</small> : null}

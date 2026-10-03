@@ -219,7 +219,7 @@ test("incident changes require investigate, re-checked against current grants", 
 });
 
 test("a dry run may carry an incident id, which reaches the job and nothing else", async () => {
-  const base = { snapshotId, selection: ["group:board"], collectorConfig: "/etc/keel/c.json", targetConfig: "/etc/keel/r.json" };
+  const base = { snapshotId, selection: ["group:board"] };
   const refused = await dryRunRoute(post("/api/actions/restore/dry-run", { ...base, incidentId: "not-an-id" }, "restorer", ["restore"]));
   assert.equal(refused.status, 400);
 

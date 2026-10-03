@@ -92,7 +92,7 @@ test("cadence editor converts browser time, saves builder and raw cron, and pres
     open();
     assert.equal(element((e) => e.props["aria-describedby"] !== undefined).props.value, schedule.cron_override);
     // Toggle back to the structured builder and clear the optional time.
-    const label = element((e) => e.type === "label" && Array.isArray(e.props.children) && e.props.children.includes(" Use raw cron expression"));
+    const label = element((e) => e.type === "label" && Array.isArray(e.props.children) && e.props.children.includes(" Use a custom timetable (cron expression)"));
     const toggle = find(label, (e) => e.props.type === "checkbox")!;
     (toggle.props.onChange as (e: unknown) => void)({ target: { checked: false } });
     change((e) => e.props.type === "time", { value: "" });

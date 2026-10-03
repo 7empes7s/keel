@@ -9,6 +9,7 @@ import {
   normalizeJob,
   readActionParams,
 } from "@/lib/action";
+import { restoreCredentialPaths } from "@/lib/restore-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,9 +32,12 @@ export const POST = guarded(
   { action: "restore:dry-run", capability: "restore", recordAttempt: true },
   async ({ client, principalId, request }) => {
     const body = await readActionParams(request);
-    const { snapshotId, selection, collectorConfig, targetConfig, incidentId } = body;
+    const { snapshotId, selection, incidentId } = body;
+    if ("collectorConfig" in body || "targetConfig" in body) {
+      throw new InvalidActionRequest("credential config paths are server configuration and cannot be supplied");
+    }
     const unexpected = Object.keys(body).filter(
-      (key) => !["snapshotId", "selection", "collectorConfig", "targetConfig", "incidentId"].includes(key),
+      (key) => !["snapshotId", "selection", "incidentId"].includes(key),
     );
 
     if (unexpected.length > 0) {
@@ -52,12 +56,6 @@ export const POST = guarded(
     ) {
       throw new InvalidActionRequest("selection must be a non-empty array of natural keys");
     }
-    if (typeof collectorConfig !== "string" || collectorConfig.length === 0) {
-      throw new InvalidActionRequest("collectorConfig is required");
-    }
-    if (typeof targetConfig !== "string" || targetConfig.length === 0) {
-      throw new InvalidActionRequest("targetConfig is required");
-    }
 
     // Roadmap task-71: optionally plan the dry run under an incident. Only the id
     // travels; the CLI re-derives the recovery point qualification, exclusions and
@@ -66,6 +64,7 @@ export const POST = guarded(
       throw new InvalidActionRequest("incidentId must be an incident id");
     }
 
+    const { collectorConfig, targetConfig } = restoreCredentialPaths();
     const artifactId = randomUUID();
     const job = (await enqueue(client, {
       kind: "restore",

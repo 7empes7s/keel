@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { fieldWords } from "@/lib/changes-view";
+import { resourceLabel } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 
 // Roadmap task-66: the content consequences of a reviewed dry run. Each effect
@@ -41,10 +43,10 @@ export function ContentEffectList({ effects }: { effects: ContentEffect[] }) {
         <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}`}>
           <div className="content-effect-head">
             <span className="pill pill-bad content-effect-badge">{contentEffectLabel(effect.effect)}</span>
-            <code className="natural-key">{effect.naturalKey}</code>
+            <strong className="resource-name">{resourceLabel(effect.naturalKey)}</strong>
           </div>
           <p className="content-effect-change">
-            <code>{effect.field}</code>
+            <span className="content-effect-field">{fieldWords(effect.field)}</span>
             <span className="change-values">
               <code className="value-before">{show(effect.before)}</code>
               <span aria-label="becomes">→</span>

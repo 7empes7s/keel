@@ -4,93 +4,140 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { ScheduleEditor } from "@/components/schedule-editor";
 import { postAction } from "@/lib/action-client";
+import { TIERS, tierLabel, type ProtectProblem, type TierSummary } from "@/lib/protect-view";
 import { toast } from "@/lib/toast";
 
-const TIERS = [
-  {
-    id: "tier1",
-    label: "Tier 1",
-    description: "Critical, frequently changing configuration",
-  },
-  {
-    id: "tier2",
-    label: "Tier 2",
-    description: "Important configuration on a slower cadence",
-  },
-  {
-    id: "tier3",
-    label: "Tier 3",
-    description: "Rarely changing reference data",
-  },
-] as const;
-
-// "Back up now" controls (plan task 16). Each button enqueues one backup job for its
-// tier; the worker dispatches to the existing tiered collection script, so what runs
-// here is exactly what the tiered schedule runs.
-export function BackupControls({ disabled }: { disabled: boolean }) {
+// "Back up now" (plan task 16). Each request enqueues one backup job for a tier; the
+// worker dispatches to the existing tiered collection script, so what runs here is
+// exactly what the tier's schedule runs. The tier cards and the problem list's retry
+// share this one action.
+function useBackup() {
   const router = useRouter();
   const [idempotencyKeys, setIdempotencyKeys] = useState<Record<string, string>>(() =>
     Object.fromEntries(TIERS.map((tier) => [tier.id, crypto.randomUUID()])),
   );
-  const [submittingTier, setSubmittingTier] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [queued, setQueued] = useState<{ tier: string; jobId: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function backUpNow(tier: string) {
-    setSubmittingTier(tier);
-    setMessage(null);
-    setJobId(null);
+  async function backUp(tier: string, source: string) {
+    setSubmitting(source);
+    setQueued(null);
     setError(null);
     try {
-      const { payload } = await postAction(
-        "/api/actions/backup",
-        { tier },
-        idempotencyKeys[tier],
-      );
+      const { payload } = await postAction("/api/actions/backup", { tier }, idempotencyKeys[tier]);
       const job = payload.job as { id: string };
-      setJobId(job.id);
-      setMessage(`${tier} backup queued (job ${job.id}). View the job for progress.`);
-      toast({ title: `${TIERS.find((item) => item.id === tier)?.label ?? tier} backup queued`, detail: `Job ${job.id}`, href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
+      setQueued({ tier, jobId: job.id });
+      toast({ title: `${tierLabel(tier)} backup queued`, detail: "It only reads your tenant; nothing changes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
       setIdempotencyKeys((current) => ({ ...current, [tier]: crypto.randomUUID() }));
       router.refresh();
     } catch {
-      setError(`The ${tier} backup could not be queued.`);
+      setError(`KEEL could not queue the ${tierLabel(tier)} backup. Try again in a minute.`);
     } finally {
-      setSubmittingTier(null);
+      setSubmitting(null);
     }
   }
+
+  const feedback = <>
+    {queued ? (
+      <p aria-live="polite" className="action-message">
+        {tierLabel(queued.tier)} backup queued. <Link href={`/jobs/${encodeURIComponent(queued.jobId)}`}>View job</Link>
+      </p>
+    ) : null}
+    {error ? <p className="action-error" role="alert">{error}</p> : null}
+  </>;
+  return { backUp, submitting, feedback };
+}
+
+export function BackupControls({ disabled, tiers, canEditSchedules = false }: {
+  disabled: boolean;
+  tiers?: TierSummary[];
+  canEditSchedules?: boolean;
+}) {
+  const { backUp, submitting, feedback } = useBackup();
+  const cards = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
 
   return (
     <section aria-labelledby="backup-now-heading" className="report-section">
       <div className="section-heading-row report-heading">
         <div>
-          <p className="section-kicker">On demand</p>
-          <h2 id="backup-now-heading">Back up now</h2>
+          <p className="section-kicker">Tiers</p>
+          <h2 id="backup-now-heading">When each tier is backed up</h2>
         </div>
       </div>
 
       <div className="tier-cards">
-        {TIERS.map((tier) => (
-          <div className={`tier-card ${tier.id}-card`} key={tier.id}>
+        {cards.map((tier) => (
+          <div className={`tier-card ${tier.id}-card${tier.failed ? " tier-card-failed" : ""}`} key={tier.id}>
             <strong>{tier.label}</strong>
-            <span>{tier.description}</span>
+            <span>{tier.description.charAt(0).toUpperCase() + tier.description.slice(1)}.</span>
+            {tier.next ? <span className="tier-next">{tier.next}</span> : null}
+            {tier.last ? <span className={tier.failed ? "tier-last tier-last-failed" : "tier-last"}>{tier.last}</span> : null}
             <button
-              aria-busy={submittingTier === tier.id || undefined}
+              aria-busy={submitting === tier.id || undefined}
               className="btn btn-primary"
-              disabled={disabled || submittingTier !== null}
-              onClick={() => void backUpNow(tier.id)}
+              disabled={disabled || submitting !== null}
+              onClick={() => void backUp(tier.id, tier.id)}
               type="button"
             >
               Back up {tier.label}
             </button>
+            {canEditSchedules && tier.schedule ? (
+              <ScheduleEditor key={`${tier.schedule.id}:${tier.schedule.next_due_at}:${tier.schedule.enabled}`} schedule={tier.schedule} />
+            ) : null}
           </div>
         ))}
       </div>
+      {feedback}
+    </section>
+  );
+}
 
-      {message ? <p aria-live="polite" className="action-message">{message} {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>View job</Link> : null}</p> : null}
-      {error ? <p className="action-error" role="alert">{error}</p> : null}
+const PROBLEM_TITLE: Record<string, string> = {
+  failed: "Failed",
+  stale: "Out of date",
+  never: "Never backed up",
+};
+
+/** Failed, out-of-date and never-backed-up types by name, each with a retry. */
+export function ProblemList({ problems, disabled }: { problems: ProtectProblem[]; disabled: boolean }) {
+  const { backUp, submitting, feedback } = useBackup();
+  if (problems.length === 0) return null;
+  return (
+    <section aria-labelledby="protect-problems-heading" className="report-section">
+      <div className="section-heading-row report-heading">
+        <div>
+          <p className="section-kicker">Needs attention</p>
+          <h2 id="protect-problems-heading">Types that are not backed up properly</h2>
+        </div>
+        <span className="result-count">{problems.length} {problems.length === 1 ? "type" : "types"}</span>
+      </div>
+      <ul className="item-list protect-problems">
+        {problems.map((problem) => (
+          <li className={`protect-problem problem-${problem.health}`} key={problem.type}>
+            <div>
+              <strong>{problem.name}</strong>
+              <span className={`state-badge problem-badge problem-${problem.health}`}>{PROBLEM_TITLE[problem.health]}</span>
+              <p>{problem.sentence}</p>
+            </div>
+            {problem.tier ? (
+              <button
+                aria-busy={submitting === problem.type || undefined}
+                aria-label={`Retry the backup of ${problem.name} (${tierLabel(problem.tier)})`}
+                className="btn btn-secondary btn-sm"
+                disabled={disabled || submitting !== null}
+                onClick={() => void backUp(problem.tier!, problem.type)}
+                type="button"
+              >
+                Retry backup
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {feedback}
     </section>
   );
 }

@@ -52,7 +52,7 @@ the same injected readers and adapters their own tests use.
 - **Read API** (`GET /api/setup`, `guardedSetupState`) returns both setups, the
   gate result, the latest completed collection summary, and whether this server
   can check or change the tenant. The setup page links the first collection's
-  result to the Configuration types page, which lists every type including the
+  result to the Protect page, which lists every type including the
   ones KEEL cannot back up yet.
 - `registeredWorkloads()` was added to `engine/bootstrap/prerequisites.mjs` so the
   page lists exactly the registered workloads.
@@ -104,7 +104,7 @@ qualification before use"). With no host:
 - `Start again` after a stopped run approves a fresh plan rather than reusing the
   stopped approval; the old run's journal is kept.
 - Unsupported workloads (SharePoint, Teams, Exchange, OneDrive, Purview) have no
-  registered prerequisites, so setup lists none; the Configuration types page
+  registered prerequisites, so setup lists none; the Protect page
   reports them.
 - Scheduled backups (`cli/keel-scheduler.mjs`) do not pass through the portal and
   are not gated.

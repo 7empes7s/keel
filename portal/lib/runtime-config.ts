@@ -73,6 +73,13 @@ export function approvalTtlMs(): number | undefined {
   return parsed;
 }
 
+// Roadmap task-110: the time zone the Schedules page uses to say which upcoming runs
+// fall in business hours. Display only; schedules are stored and run in UTC.
+export function businessTimeZone(): string {
+  const configured = process.env.KEEL_BUSINESS_TIME_ZONE?.trim();
+  return configured ? configured : "UTC";
+}
+
 // Roadmap task-87: the recovery manifest written by ops/keel-dump-manifest.mjs
 // --recovery, whose residency names where backups are stored. Unset means the
 // storage location is reported as not configured.

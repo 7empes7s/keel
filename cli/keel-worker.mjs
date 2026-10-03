@@ -28,6 +28,7 @@ import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
+import { sweepEscalations } from '../engine/notify/escalation.mjs';
 import {
   emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -595,6 +596,18 @@ export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTE
   }
 }
 
+// Task 83: between job polls, escalate alerts whose acknowledgement deadline passed.
+// Deadlines live on the alert rows, so a restarted worker finds every overdue alert;
+// the claim is atomic per occurrence, so several workers never escalate it twice.
+export async function sweepAlertEscalations(client, { workerId, now, log = console.error } = {}) {
+  try {
+    return await sweepEscalations(client, { now, log });
+  } catch (err) {
+    log(`worker ${workerId}: alert escalation sweep failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    return null;
+  }
+}
+
 // Optional one-shot collection seam. The normal queue loop stays disabled for
 // audit ingestion unless a trusted caller explicitly invokes this bounded worker.
 export async function runAuditIngestion(client, options) {
@@ -685,6 +698,7 @@ async function main() {
       // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
       // durable, so a drain failure must not kill the worker: the next poll retries.
       await drainSiemOutbox(client, { workerId });
+      await sweepAlertEscalations(client, { workerId });
       await sleep(pollIntervalMs);
       continue;
     }

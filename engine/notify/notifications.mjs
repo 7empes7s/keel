@@ -130,20 +130,9 @@ export async function dispatchAlert(client, {
 
     const deliveries = [];
     for (const subscription of selectedChannels.values()) {
-      const { rows } = await client.query(
-        `INSERT INTO delivery (event, channel_id, requested_by, max_attempts)
-         VALUES ($1,$2,$3,$4)
-         RETURNING *`,
-        [event, subscription.channel_id, requestedBy, maxAttempts],
-      );
-      const delivery = rows[0];
-      const job = await enqueue(client, {
-        kind: 'notify',
-        params: { deliveryId: delivery.id },
-        requestedBy,
-        idempotencyKey: `delivery:${delivery.id}:attempt:1`,
-      });
-      deliveries.push({ delivery, job });
+      deliveries.push(await queueDelivery(client, {
+        event, channelId: subscription.channel_id, requestedBy, maxAttempts,
+      }));
     }
     await client.query('COMMIT');
     committed = true;
@@ -151,6 +140,45 @@ export async function dispatchAlert(client, {
   } finally {
     if (!committed) await client.query('ROLLBACK');
   }
+}
+
+// One durable delivery and its first notify job, inside the caller's transaction. The
+// caller has already authorized `requestedBy` (dispatchAlert, or task-83 escalation,
+// which addresses its configured channel directly instead of through subscriptions).
+export async function queueDelivery(client, {
+  event, channelId, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS,
+}) {
+  requireEvent(event);
+  const { rows } = await client.query(
+    `INSERT INTO delivery (event, channel_id, requested_by, max_attempts)
+     VALUES ($1,$2,$3,$4)
+     RETURNING *`,
+    [event, channelId, requestedBy, maxAttempts],
+  );
+  const delivery = rows[0];
+  const job = await enqueue(client, {
+    kind: 'notify',
+    params: { deliveryId: delivery.id },
+    requestedBy,
+    idempotencyKey: `delivery:${delivery.id}:attempt:1`,
+  });
+  return { delivery, job };
+}
+
+// Task 83: an escalation is only worth sending while its alert occurrence is still
+// unacknowledged and active. It is re-checked here, immediately before the transport,
+// because the acknowledgement can land at any point after the escalation was queued.
+async function alertPreconditionFailure(client, event) {
+  if (!event?.requiresUnacknowledged) return null;
+  const { rows: [alert] } = await client.query(
+    'SELECT state, occurrence, condition_active FROM alert WHERE id::text = $1',
+    [String(event.alertId ?? '')],
+  );
+  if (!alert) return 'alert no longer exists';
+  if (alert.occurrence !== event.occurrence) return 'alert occurrence changed before the escalation was sent';
+  if (!alert.condition_active) return 'alert resolved before the escalation was sent';
+  if (!['open', 'reopened'].includes(alert.state)) return `alert ${alert.state} before the escalation was sent`;
+  return null;
 }
 
 // `dispatchEvent` is the notification-model name used by callers that do not think
@@ -264,6 +292,9 @@ export async function attemptDelivery(client, {
       attempted: true,
     };
   }
+
+  const stale = await alertPreconditionFailure(client, delivery.event);
+  if (stale) return { delivery: await markUnavailableChannel(client, delivery, stale), attempted: false };
 
   try {
     const transport = transports[channel.kind];

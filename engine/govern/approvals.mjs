@@ -163,9 +163,21 @@ const MAX_ROUTE_APPROVERS = 500;
  * decide. `approvers` excludes the requester (self-approval is refused anyway) and
  * lists principal ids in a stable order; entity approvers are those whose `approve`
  * covers that entity, central ones those who hold it tenant-wide.
+ * `approverCache` (a Map) may be shared by one reader across calls at the same `at`.
+ *
+ * @param {any} client
+ * @param {{ tenantRef: string, entityScope: any, requesterId?: string | null, at?: Date, approverCache?: Map<string, string[]> | null }} options
  */
-export async function routeApproval(client, { tenantRef, entityScope, requesterId = null, at = new Date() }) {
+export async function routeApproval(client, { tenantRef, entityScope, requesterId = null, at = new Date(), approverCache = null }) {
+  // A reader routing many changes at once may share one cache across calls.
   const approvers = async (entityCode) => {
+    const key = `${entityCode ?? '*'}|${requesterId ?? ''}`;
+    if (approverCache?.has(key)) return approverCache.get(key);
+    const ids = await eligibleApprovers(entityCode);
+    approverCache?.set(key, ids);
+    return ids;
+  };
+  const eligibleApprovers = async (entityCode) => {
     const { rows } = await client.query(
       `SELECT id, system_kind, disabled_at FROM principal WHERE disabled_at IS NULL ORDER BY id LIMIT ${MAX_ROUTE_APPROVERS}`,
     );

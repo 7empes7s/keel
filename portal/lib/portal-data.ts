@@ -16,7 +16,9 @@ import {
 } from "../../engine/store/governance.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
-import { scopePredicate } from "../../engine/authz/entityScope.mjs";
+import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
+import { routeApproval } from "../../engine/govern/approvals.mjs";
+import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import {
   getEvidenceIntegrity,
   getLastCollection,
@@ -44,6 +46,7 @@ import type {
   DashboardData,
   DeclaredEndpoint,
   DiagnosisState,
+  ChangeAttribution,
   DriftData,
   DriftRecord,
   ExpansionStatus,
@@ -528,6 +531,61 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
   return Number(rows[0]?.count ?? 0);
 }
 
+// Task 91: who made each open change, from audit evidence (engine/identity/attribution.mjs),
+// and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
+// server-side for the changes this reader may already see. The change window runs from
+// when KEEL captured the baseline's version of the resource (the baseline's own time
+// for an added resource) to the collection that saw the change. A reader that cannot
+// be attributed (no audit tables, a failed query) gets null, never a guess.
+async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
+  const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
+  if (!bounded.length) return items;
+  try {
+    const { rows } = await client.query(
+      `SELECT d.id,
+              COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
+              COALESCE(os.completed_at, d.detected_at) AS window_until
+         FROM drift d
+         JOIN baseline b ON b.id = d.baseline_id
+         JOIN snapshot os ON os.id = d.observed_snapshot
+         LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
+         LEFT JOIN resource_version rv ON rv.id = br.resource_version_id
+         LEFT JOIN snapshot bs ON bs.id = rv.snapshot_id
+        WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`,
+      [ref, baselineId, bounded.map((item) => item.id)],
+    );
+    const windows = new Map(rows.map((row) => [String(row.id), { from: iso(row.window_from), until: iso(row.window_until) }]));
+    const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
+      id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
+      fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
+    }));
+    const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as Array<Omit<ChangeAttribution, "route"> & { changeId: string }>;
+    const byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
+    const approverCache = new Map();
+    const result: DriftRecord[] = [];
+    for (const item of items) {
+      const found = byId.get(item.id);
+      if (!found) { result.push({ ...item, attribution: null }); continue; }
+      const { changeId: _changeId, ...attribution } = found;
+      const entityScope = await captureApprovalScope(client, { tenantRef: ref, resources: [{ resourceType: item.resourceType, naturalKey: item.naturalKey }] });
+      const route = (await routeApproval(client, { tenantRef: ref, entityScope, approverCache })) as {
+        route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string;
+      };
+      result.push({
+        ...item,
+        attribution: {
+          ...attribution,
+          route: { route: route.route, reason: route.reason, entityCode: route.entityCode, approverCount: route.approvers?.length ?? 0, routedAt: route.routedAt },
+        },
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error("[keel-portal] change attribution unavailable", error);
+    return items.map((item) => ({ ...item, attribution: null }));
+  }
+}
+
 export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<DriftData> {
   const ref = tenantRef();
   return withClient(async (client) => {
@@ -541,10 +599,10 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       : null;
     if (scope.central || !found) {
       const items = await activeDriftFor(client, ref, found?.id ?? null);
-      return { generatedAt: new Date().toISOString(), baseline: found, items };
+      return { generatedAt: new Date().toISOString(), baseline: found, items: found ? await withAttribution(client, ref, found.id, items, scope) : items };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
-    const items = await scopedOpenDrift(client, ref, found.id, scope);
+    const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);
     return { generatedAt: new Date().toISOString(), baseline, items, scope: { central: false, entities: scope.entities } };
   });
 }

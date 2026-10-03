@@ -22,11 +22,14 @@ export default async function PoliciesPage() {
     return <><PageHeader section="Settings" title="Policies" description={DESCRIPTION} /><DataUnavailable surface="Policies" /></>;
   }
   const paused = data.policies.some((policy) => policy.enabled && (policy.paused_at || policy.run_as_repair_required));
+  // Roadmap task-92: an automatic roll-back policy that is off is turned on from a preview.
+  const waiting = data.policies.filter((policy) => policy.action === "auto_remediate" && !policy.enabled).length;
   return <>
     <PageHeader section="Settings" title="Policies" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict text={policiesVerdict(data.policies, data.automationDisabled)} tone={data.automationDisabled ? "critical" : paused ? "attention" : "good"} />
     <div data-layer="explanation">
       <AutomationBanner halted={data.automationDisabled} haltedAt={data.automationHaltedAt} haltFile={data.haltFile} now={data.generatedAt} />
+      {waiting > 0 ? <p className="policy-preview-hint">{waiting === 1 ? "One policy that rolls back automatically is off." : `${waiting} policies that roll back automatically are off.`} Before it is turned on, KEEL shows what it would change and everything those changes depend on.</p> : null}
       {data.policies.length === 0
         ? <p className="empty-state">No policies are set up. KEEL only reports changes; nothing acts on its own.</p>
         : data.policies.map((policy) => <PolicyCard canEdit={access.capabilities.includes("policies")} key={policy.id} now={data.generatedAt} policy={policy} />)}

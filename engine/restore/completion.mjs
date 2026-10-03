@@ -240,6 +240,17 @@ export function summarizeCompletion(items) {
   }));
 }
 
+// Capability windows are written with the database clock (now(), microseconds);
+// checking them against the same clock avoids a just-granted principal reading as
+// not yet active because a JS Date truncates to milliseconds.
+// Read as text: pg would hand back a millisecond JS Date and reintroduce the gap.
+async function databaseNow(client) {
+  const { rows } = await client.query('SELECT now()::text AS now');
+  return rows[0].now;
+}
+
+const asDate = (value) => (value instanceof Date ? value : new Date(value));
+
 async function authorize(client, actorId, at) {
   const principal = await findPrincipalById(client, actorId);
   if (!principal || !(await can(client, principal, 'restore', at))) {
@@ -258,17 +269,18 @@ async function loadItem(client, { tenantRef, itemId }) {
 }
 
 /** Closes an item with linked evidence. Re-closing a verified item is a no-op. */
-export async function completeItem(client, { tenantRef, itemId, actorId, evidence, at = new Date() }) {
+export async function completeItem(client, { tenantRef, itemId, actorId, evidence, at: requestedAt }) {
   const linked = validateCompletionEvidence(evidence);
   await client.query('BEGIN');
   try {
+    const at = requestedAt ?? await databaseNow(client);
     await authorize(client, actorId, at);
     const row = await loadItem(client, { tenantRef, itemId });
     if (row.state === 'verified') {
       await client.query('COMMIT');
       return { item: normalize(row), changed: false };
     }
-    const entry = { ...linked, recordedBy: actorId, recordedAt: at.toISOString() };
+    const entry = { ...linked, recordedBy: actorId, recordedAt: asDate(at).toISOString() };
     const { rows } = await client.query(
       `UPDATE recovery_completion_item
           SET state = 'verified', evidence = evidence || $2::jsonb, closed_by = $3, closed_at = $4, updated_at = $4
@@ -299,12 +311,13 @@ export async function completeItem(client, { tenantRef, itemId, actorId, evidenc
 }
 
 /** Reopens a verified item (the evidence trail is kept). */
-export async function reopenItem(client, { tenantRef, itemId, actorId, reason, at = new Date() }) {
+export async function reopenItem(client, { tenantRef, itemId, actorId, reason, at: requestedAt }) {
   if (typeof reason !== 'string' || reason.trim().length === 0 || secretShaped(reason)) {
     throw new CompletionEvidenceError('reopening requires a reason (and never a secret)');
   }
   await client.query('BEGIN');
   try {
+    const at = requestedAt ?? await databaseNow(client);
     await authorize(client, actorId, at);
     const row = await loadItem(client, { tenantRef, itemId });
     if (row.state !== 'verified') {

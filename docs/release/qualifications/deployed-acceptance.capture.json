@@ -1,0 +1,92 @@
+{
+  "contractVersion": 1,
+  "tool": "tools/release/deployed-acceptance.mjs",
+  "portalOrigin": "https://keel.techinsiderbytes.com",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "33ad2a9d4cd79e1f0c0b1c2f7e22bc57e18f7a7f",
+  "deployment": {
+    "revision": "33ad2a9d4cd79e1f0c0b1c2f7e22bc57e18f7a7f",
+    "dirty": false
+  },
+  "probes": [
+    {
+      "surface": "coverage-matrix",
+      "path": "/api/coverage",
+      "authenticated": {
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "keys": [
+          "generatedAt",
+          "snapshot",
+          "summary",
+          "types"
+        ],
+        "errorCode": null,
+        "bodySha256": "8d82948e74b5749f846ddcde8c63f1c90599ca1f4c3907b13126459428d594cc",
+        "observedAt": "2026-10-04T08:06:33.019Z"
+      },
+      "unauthenticated": {
+        "httpStatus": 302,
+        "observedAt": "2026-10-04T08:06:33.039Z"
+      }
+    },
+    {
+      "surface": "collection-history",
+      "path": "/api/jobs?limit=20",
+      "authenticated": {
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "keys": [
+          "generatedAt",
+          "jobs"
+        ],
+        "errorCode": null,
+        "bodySha256": "e9a18e451cfa61c89dfbe96127d6f33c983a34de8ce3abd5adbe0f7adf92781b",
+        "observedAt": "2026-10-04T08:06:33.173Z"
+      },
+      "unauthenticated": {
+        "httpStatus": 302,
+        "observedAt": "2026-10-04T08:06:33.193Z"
+      }
+    },
+    {
+      "surface": "schedules",
+      "path": "/api/schedules",
+      "authenticated": {
+        "httpStatus": 200,
+        "contentType": "application/json",
+        "keys": [
+          "deferrals",
+          "forecasts",
+          "generatedAt",
+          "schedules"
+        ],
+        "errorCode": null,
+        "bodySha256": "5691db8e6ffe663026b6cdada762e1523f471610320eb4c761ea962bbe2b831c",
+        "observedAt": "2026-10-04T08:06:33.273Z"
+      },
+      "unauthenticated": {
+        "httpStatus": 302,
+        "observedAt": "2026-10-04T08:06:33.296Z"
+      }
+    },
+    {
+      "surface": "restore-review",
+      "path": "/api/actions/restore/dry-run/00000000-0000-4000-8000-000000000000",
+      "authenticated": {
+        "httpStatus": 404,
+        "contentType": "application/json",
+        "keys": [
+          "error"
+        ],
+        "errorCode": "not_found",
+        "bodySha256": "d2dfdc9511fbeaa0701d1f8730f4989313b062ca1b61a2bd8bed8f4f5d654b5d",
+        "observedAt": "2026-10-04T08:06:33.376Z"
+      },
+      "unauthenticated": {
+        "httpStatus": 302,
+        "observedAt": "2026-10-04T08:06:33.397Z"
+      }
+    }
+  ]
+}

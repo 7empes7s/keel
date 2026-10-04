@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 12:40 UTC
+- **Last updated:** 2026-10-04 12:45 UTC
 
 ## How the work is organized
 
@@ -36,7 +36,7 @@ then prove the path works.
 | 114 | storage-live-acceptance | **Captured, verify ok** at `df0de36` | `claude/live-evidence-114` @ 4b1d3da. Copy on the second volume `/mnt/keel-copy` |
 | 115 | native-live-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-115` @ b965a66 |
 | 116 | drill-live-acceptance | **Blocked** | Needs PR #73 merged + Q19, a recovery key generated and enrolled, a Setup run (task-76 run id), then the reconstruction drill (Q6) |
-| 117 | sentinel-live-acceptance | **Waiting on decision D-117** | Azure Sentinel test workspace; deferred by operator |
+| 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
 | 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Blocked on D-120b** | Queue Q10. Fixtures exist (Q8), PowerShell image rebuilt (Q9) |
@@ -63,10 +63,9 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 3. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
 4. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
    (details in `docs/roadmap/keel-recovery.md`). Blocked for Claude ("Secret-Store Writes").
-5. **D-117** (Sentinel workspace and subscription).
-6. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
+5. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
    vps-deployer's output.
-7. **Run the AWS setup script** (below).
+6. **Run the AWS setup script** (below).
 
 ## Infrastructure facts
 
@@ -117,3 +116,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 
 - 2026-10-04 12:40: file created by the coordinator. Q16–Q18 done (gate 118 captured); Q17 needed
   two operator-made ACLs; Q15 mounted the second volume and finished gate 114.
+- 2026-10-04 12:45: D-117 answered: Sentinel scratched, gate 117 descoped. D-118 confirmed (ServiceNow OAuth + ACLs done).

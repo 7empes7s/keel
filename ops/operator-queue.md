@@ -686,4 +686,4 @@ item that needs it stays untouched.
   until now.)
   - Decision: 
 - D-118: is the non-production ServiceNow instance ready? If so, give its host.
-  - Decision: yes, a ServiceNow dev instance already exists and is reachable from the VPS (Marouane, project chat, 2026-10-04 10:45 UTC; recorded verbatim by the coordinator). Host: the one Q16 finds.
+  - Decision: no: scratch Sentinel; gate 117 descoped (Marouane, keel-operator thread, 2026-10-04 12:36 UTC; recorded verbatim by the coordinator)

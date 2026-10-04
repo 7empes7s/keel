@@ -668,6 +668,39 @@ const SETUP: SetupState = {
   ],
 };
 const setupVerdictFixture = setupVerdict(SETUP);
+// Task-76 production host: both apps already exist and were observed; read setup ran
+// to completion; the restorer's consent is satisfied and its extra grant is reported.
+const SETUP_CHECKED_RUN = "5e7a" + "0c".repeat(30);
+const RESTORE_SCOPES = ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"];
+const SETUP_CHECKED: SetupState = {
+  generatedAt: now,
+  canCheck: true,
+  canProvision: true,
+  checkFailed: false,
+  collect: { allowed: true, basis: "read-access-confirmed", missing: [] },
+  firstCollection: null,
+  scopes: [
+    {
+      scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
+      run: { artifactId: SETUP_CHECKED_RUN, state: "complete", workloads: ["entra-collect"], approvedBy: "8c1e0000-0000-4000-8000-0000000000a1", approvedByName: "Marouane", approvedAt: "2026-10-04T07:40:00Z", lastEventAt: "2026-10-04T07:40:09Z", resumableByViewer: true, build: "keel-2026.10.04", qualificationMode: "live-qualified" },
+      steps: [
+        { ...setupStep("step-3a2b3c4d5e6f7a80", "registration", "collector", "keel-collector", "reuse-existing", "done", null, READ_SCOPES.slice(1)), missingScopes: [] },
+        { ...setupStep("step-3a2b3c4d5e6f7a81", "graph-permission", "collector", "keel-collector admin consent", "grant-consent", "done", null, READ_SCOPES.slice(1)), missingScopes: [] },
+        setupStep("step-3a2b3c4d5e6f7a83", "keel-app-permission", "collector", "keel.collect", "configure-keel-permission", "done"),
+      ],
+    },
+    {
+      scope: "restore", workloads: ["entra-restore"], observed: true, run: null, planId: "plan-8e7d6c5b4a392110",
+      steps: [
+        { ...setupStep("step-4a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES), missingScopes: [] },
+        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES), missingScopes: [], excessScopes: ["MailboxSettings.ReadWrite"] },
+        setupStep("step-4a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "waiting-for-you", "entra-restore"),
+        setupStep("step-4a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "done"),
+      ],
+    },
+  ],
+};
+const setupCheckedVerdict = setupVerdict(SETUP_CHECKED);
 
 // Task-83: an overdue, escalated alert; an acknowledged one; a resolved one.
 const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"] | null, toState: AlertItem["state"], reason: string, at: string, actorName: string | null = null) =>
@@ -1079,6 +1112,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
       <div className="item-list" data-layer="explanation">
         {SETUP.scopes.map((setup) => <SetupProgress canCheck={SETUP.canCheck} canProvision={SETUP.canProvision} canStart key={setup.scope} now={now} setup={setup} />)}
+      </div></>;
+    case "/setup/checked": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
+      <Verdict text={setupCheckedVerdict.text} tone={setupCheckedVerdict.tone} />
+      <div className="item-list" data-layer="explanation">
+        {SETUP_CHECKED.scopes.map((setup) => <SetupProgress canCheck={SETUP_CHECKED.canCheck} canProvision={SETUP_CHECKED.canProvision} canStart checkFailed={SETUP_CHECKED.checkFailed} key={setup.scope} now={now} setup={setup} />)}
       </div></>;
     case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Changes", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
       <Verdict text={verdict.text} tone={verdict.tone} />

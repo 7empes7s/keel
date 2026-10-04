@@ -88,6 +88,10 @@ The fixture and evidence needed:
    deployed build) and `completedAt` (ISO time), to `reconstruction.json`.
    Only these fields are read: `ok`, `stage`, `readOnly`, `writersDisabled`,
    `recoveryComplete`, `incomplete`, `recovered.evidence`.
+   Since 2026-10-04 the deployment authenticator is the `signed-assertion`
+   one and `reconstruct.mjs --result-out reconstruction.json` writes this file
+   directly; see
+   [keel-recovery.md › Operator steps](keel-recovery.md#operator-steps).
 
 Capture (on the release runner, which holds `KEEL_QUALIFICATION_HMAC_KEY`):
 

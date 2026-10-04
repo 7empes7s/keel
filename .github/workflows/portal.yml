@@ -156,6 +156,8 @@ jobs:
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
           roadmap/recovery-set.test.mjs
+          roadmap/keel-recovery.test.mjs
+          roadmap/recovery-authenticator.test.mjs
           roadmap/itsm-contract.test.mjs
           roadmap/servicenow.test.mjs
           roadmap/servicenow-live-acceptance.test.mjs

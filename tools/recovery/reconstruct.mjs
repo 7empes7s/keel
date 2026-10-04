@@ -9,7 +9,9 @@
  *
  * 1. identity      — an explicit recovery identity, authenticated through an
  *                    injected INDEPENDENT authenticator. Anonymous identities
- *                    are refused; there is no emergency bypass.
+ *                    are refused; there is no emergency bypass. The CLI's
+ *                    only selectable authenticator is the signed-assertion one
+ *                    (engine/authz/recoveryAuthenticator.mjs).
  * 2. prerequisites — every named credential prerequisite
  *                    (engine/authz/recoveryMode.mjs) must be satisfied by a
  *                    reference; missing ones are reported BY NAME and nothing
@@ -37,10 +39,10 @@
  * plus the access handle itself. Recovery completeness gaps from task-67
  * (missing key instructions, unverified checkpoint) propagate unchanged.
  */
-import { readFile as fsReadFile } from 'node:fs/promises';
+import { readFile as fsReadFile, writeFile as fsWriteFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -49,6 +51,10 @@ import {
   openRecoveryReadOnlySession,
   RecoveryIdentityError,
 } from '../../engine/authz/recoveryMode.mjs';
+import {
+  productionAuthenticatorKind,
+  selectRecoveryAuthenticator,
+} from '../../engine/authz/recoveryAuthenticator.mjs';
 import { sha256Hex } from '../../engine/export/manifest.mjs';
 import { verifyChain } from '../../engine/govern/evidence.mjs';
 import { connect } from '../../engine/store/db.mjs';
@@ -334,13 +340,92 @@ const USAGE = `usage:
     --build-revision REV --schema-pin HEX --config-export-dir DIR
     --target-url URL --identity-principal ID --credential-ref REF
     --recovery-key-ref REF --storage-read-ref REF --tenant-authz-ref REF
-    [--dump DUMP.sql.gz] [--evidence-head SEQ:HASH:COUNT]
+    --authenticator signed-assertion --recovery-trust-store FILE
+    --recovery-replay-ledger DIR
+    [--dump DUMP.sql.gz] [--evidence-head SEQ:HASH:COUNT] [--result-out FILE]
 
 Reconstructs keel read-only into a disposable schema on --target-url. The
 target must not be the production database. Recovery identity authentication
-requires an independent authenticator: this CLI refuses to run without one
-(dependencies.authenticator); there is no anonymous emergency bypass.
-Credentials are REFERENCES to separately-held material, never the material.`;
+requires an independent authenticator. The only selectable one is
+"signed-assertion": --credential-ref is the path to a single-use Ed25519
+recovery assertion (tools/recovery/recovery-assertion.mjs sign), verified
+against the enrolled public keys in --recovery-trust-store, with its nonce
+claimed in --recovery-replay-ledger. Both must lie outside the backup set.
+Without --authenticator the CLI refuses; there is no anonymous emergency
+bypass and no fixture authenticator. Credentials are REFERENCES to
+separately-held material, never the material.
+
+--result-out writes the reconstruction result (verdicts, counts and the
+verified evidence checkpoint; no row contents) with tenantRef, buildRevision
+and completedAt — the reconstruction.json gate drill-live-acceptance reads.`;
+
+/**
+ * Resolves the CLI's authenticator. With --authenticator, the named
+ * production authenticator is built (only "signed-assertion" exists), bound to
+ * --tenant-ref and refusing trust paths inside the backup set; an injected
+ * dependencies.authenticator cannot be combined with it. Without the flag,
+ * only a programmatically injected authenticator is used — the command line
+ * itself never injects one, so a bare CLI run refuses at the identity stage.
+ */
+async function resolveCliAuthenticator(args, dependencies, now) {
+  const kind = argValue(args, 'authenticator');
+  if (kind === undefined) return dependencies.authenticator;
+  if (dependencies.authenticator !== undefined) {
+    throw new RecoveryIdentityError('--authenticator cannot be combined with an injected authenticator');
+  }
+  const manifestPath = argValue(args, 'manifest');
+  const dumpPath = argValue(args, 'dump');
+  return selectRecoveryAuthenticator({
+    kind,
+    trustStorePath: argValue(args, 'recovery-trust-store'),
+    replayLedgerDir: argValue(args, 'recovery-replay-ledger'),
+    tenantRef: argValue(args, 'tenant-ref'),
+    backupSetPaths: [
+      manifestPath && dirname(manifestPath),
+      dumpPath && dirname(dumpPath),
+      argValue(args, 'config-export-dir'),
+    ].filter(Boolean),
+    now,
+  });
+}
+
+/**
+ * The persisted reconstruction result: the fields gate drill-live-acceptance
+ * reads (ok, stage, readOnly, writersDisabled, recoveryComplete, incomplete,
+ * recovered.evidence) plus counts, the authenticated identity reference and
+ * the binding fields. Never row contents, never the access handle.
+ */
+export function reconstructionRecord(result, { tenantRef, buildRevision, authenticator, completedAt }) {
+  return {
+    task: 'task-68',
+    ok: result.ok,
+    stage: result.stage,
+    readOnly: result.readOnly,
+    writersDisabled: result.writersDisabled,
+    recoveryComplete: result.recoveryComplete,
+    incomplete: result.incomplete,
+    identity: {
+      principalId: result.identity.principalId,
+      credentialRef: result.identity.credentialRef,
+      authenticatedAt: result.identity.authenticatedAt,
+      independent: result.identity.independent,
+      authenticator,
+    },
+    recovered: {
+      counts: {
+        schedules: result.recovered.schedules.length,
+        approvals: result.recovered.approvals.length,
+        principals: result.recovered.principals.length,
+        grants: result.recovered.grants.length,
+        jobs: result.recovered.jobCount,
+      },
+      evidence: result.recovered.evidence,
+    },
+    tenantRef,
+    buildRevision,
+    completedAt,
+  };
+}
 
 /**
  * CLI entry, injectable for tests. Exit 0 on a recovered read-only instance,
@@ -353,7 +438,16 @@ export async function runCli({ argv, logger = console, dependencies = {} } = {})
     return 0;
   }
   const targetUrl = argValue(args, 'target-url');
+  const now = dependencies.now ?? (() => new Date());
   try {
+    let authenticator;
+    try {
+      authenticator = await resolveCliAuthenticator(args, dependencies, now);
+    } catch (error) {
+      if (!(error instanceof RecoveryIdentityError)) throw error;
+      logger.error(`identity: ${error.message}`);
+      return 1;
+    }
     const result = await reconstructRecovery({
       tenantRef: argValue(args, 'tenant-ref'),
       manifestPath: argValue(args, 'manifest'),
@@ -368,7 +462,7 @@ export async function runCli({ argv, logger = console, dependencies = {} } = {})
         principalId: argValue(args, 'identity-principal'),
         credentialRef: argValue(args, 'credential-ref'),
       },
-      authenticator: dependencies.authenticator,
+      authenticator,
       credentials: {
         recoveryKeyMaterial: argValue(args, 'recovery-key-ref'),
         artifactStorageRead: argValue(args, 'storage-read-ref'),
@@ -390,6 +484,17 @@ export async function runCli({ argv, logger = console, dependencies = {} } = {})
     logger.log(`principals: ${result.recovered.principals.length}`);
     logger.log(`grants: ${result.recovered.grants.length}`);
     logger.log(`evidence records: ${result.recovered.evidence.recordCount} (chain ok, head seq ${result.recovered.evidence.headSeq})`);
+    const resultOut = argValue(args, 'result-out');
+    if (resultOut) {
+      const record = reconstructionRecord(result, {
+        tenantRef: argValue(args, 'tenant-ref'),
+        buildRevision: argValue(args, 'build-revision'),
+        authenticator: productionAuthenticatorKind(authenticator),
+        completedAt: now().toISOString(),
+      });
+      await (dependencies.writeFile ?? fsWriteFile)(resultOut, `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx', mode: 0o640 });
+      logger.log(`reconstruction result written to ${resultOut}`);
+    }
     // The verifier session proves the reconstruction and lets go; the
     // disposable target database remains under the caller's control.
     await result.access.client.end();

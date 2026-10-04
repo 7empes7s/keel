@@ -10,7 +10,7 @@
  *   through verifyEvidence. A record is live-qualified only when it verifies.
  *
  * Readiness is 'ready' only when every fixture journey passed, every live gate
- * verified and no objective is left open. Any unknown (missing record, pending
+ * verified (or is an accepted gap by operator decision) and no objective is left open. Any unknown (missing record, pending
  * placeholder, unverifiable without key/tenant/build) makes it 'pending'. Any
  * failed gate or journey makes it 'blocked'. The ledger still reports every
  * other result in full, so one failed gate never hides independent work.
@@ -26,9 +26,10 @@ export const LEDGER_CONTRACT_VERSION = 1;
 const QUALIFICATIONS_DIR = new URL('../../docs/release/qualifications/', import.meta.url).pathname;
 
 /**
- * The externally qualified gates the release consumes. All are critical: a gate
- * that is not live-qualified keeps readiness pending. A deferral recorded by an
- * operator decision is reported next to the gate; it never counts as qualified.
+ * The externally qualified gates the release consumes. A gate that is not
+ * live-qualified keeps readiness pending, unless an operator decision descoped
+ * it: then it is reported as an accepted gap (never as qualified) and does not
+ * hold readiness. A descoped gate whose record fails verification still blocks.
  */
 export const LIVE_ACCEPTANCE_GATES = Object.freeze([
   { task: 'task-113', gate: 'deployed-acceptance', title: 'Authenticated deployed release acceptance' },
@@ -37,7 +38,8 @@ export const LIVE_ACCEPTANCE_GATES = Object.freeze([
   { task: 'task-115', gate: 'native-live-acceptance', title: 'Native recovery credential qualification' },
   { task: 'task-116', gate: 'drill-live-acceptance', title: 'Bounded same-tenant drill and KEEL recovery' },
   { task: 'task-117', gate: 'sentinel-live-acceptance', title: 'Sentinel workspace ingestion',
-    note: 'Deferred by operator decision 2026-09-30: fixture-tested, live-unqualified. Task-124 owns any relaxation; this ledger keeps it open.' },
+    note: 'Fixture-tested, live-unqualified. Deferred 2026-09-30, then descoped by operator decision 2026-10-04.',
+    acceptedGap: 'descoped by operator decision 2026-10-04 12:36 UTC (D-117: no Sentinel test workspace); Sentinel export ships live-unqualified' },
   { task: 'task-118', gate: 'servicenow-live-acceptance', title: 'ServiceNow non-default workflow' },
   { task: 'task-119', gate: 'nist-benchmark-acceptance', title: 'NIST SP 800-53 benchmark pack' },
   { task: 'task-120', gate: 'sharepoint-live-acceptance', title: 'SharePoint configuration workload' },
@@ -161,10 +163,15 @@ export function buildReleaseLedger({
       : entry.status
         ? { status: entry.status, failures: entry.failures ?? [] }
         : classifyLiveRecord(spec, entry.record, { hmacKey, tenantRef, build, evidenceDir: entry.evidenceDir, now });
-    return { task: spec.task, gate: spec.gate, title: spec.title, note: spec.note ?? null, ...classified };
+    return { task: spec.task, gate: spec.gate, title: spec.title, note: spec.note ?? null, acceptedGap: spec.acceptedGap ?? null, ...classified };
   });
+  const acceptedGaps = [];
   for (const row of liveRows) {
     if (row.status === 'live-qualified') continue;
+    if (row.acceptedGap && row.status !== 'failed') {
+      acceptedGaps.push(`${row.gate} (${row.task}) is ${row.status}, an accepted gap: ${row.acceptedGap}`);
+      continue;
+    }
     if (row.status === 'failed') {
       blocked = true;
       reasons.push(`${row.gate} (${row.task}) failed live verification`);
@@ -192,7 +199,7 @@ export function buildReleaseLedger({
     contractVersion: LEDGER_CONTRACT_VERSION,
     generatedAt: now.toISOString(),
     build,
-    readiness: { label, reasons },
+    readiness: { label, reasons, acceptedGaps },
     fixture: fixtureValid
       ? { evidenceLevel: 'fixture-tested', synthetic: true, build: fixture.build ?? null, ranAt: fixture.ranAt ?? null,
         journeys: fixture.journeys }

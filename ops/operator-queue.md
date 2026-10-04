@@ -296,6 +296,11 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (21:45 UTC): **#83 is merged as `df4082a`** (on top of the operator's b81a41d). Once
+  master CI is green and `/opt/keel-live` is deployed at `df4082a`, set this to in-progress and rerun
+  120 → 121 → 122 → 123 at that build. Before 121, confirm carla is absent from the Teams roster, group owners
+  and group members. Don't run anything that restarts the portal (Q24, Q27-style items) while this runs. When
+  you set Status, message the coordinator thread.
 - Coordinator note (13:50 UTC): the three URLs are fixed in PR #74 (`claude/fix-dead-doc-urls`).
   When #74 is merged and `/opt/keel-live` is deployed at or after its merge commit, set this back to
   in-progress and run 120 → 121 → 122 → 123 at that build. D-120b was given by the operator in your

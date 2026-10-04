@@ -1,0 +1,220 @@
+# KEEL operator queue
+
+Work queue between the **coordinator** (the KEEL Developer cloud session) and
+**keel-operator** (the VPS session with tenant and host access). It lives only on
+branch `claude/operator-queue` and is never merged to master. This keeps deploys from
+being triggered by queue updates.
+
+## Protocol
+
+**Who writes what**
+- The coordinator adds and edits items.
+- keel-operator writes only each item's `Status` and `Result` fields.
+- The **Operator decisions** section is written only by the human operator. No Claude
+  session fills in or changes a decision.
+
+**keel-operator, on each pass**
+1. `git fetch origin claude/operator-queue` and check out its tip.
+2. Take the first item with `Status: todo` whose `Needs` are all `done`, and whose
+   decisions (if any) are filled in below by the human operator.
+3. Set `Status: in-progress` and push. Do the work. Then set `Status` to `done`,
+   `blocked` or `failed` and write `Result`. A Result names:
+   - the evidence branch (if any) and the commit it captured;
+   - the verify output and its exit code;
+   - what was created or changed in the tenant or on the host;
+   - anything blocking.
+   Then push. If a push is rejected, `git pull --rebase` and retry. Only ever touch your
+   own fields.
+4. One item at a time. If an item is blocked, move on to the next one it doesn't
+   block.
+
+**Hard rules for every item**
+- Tenant objects:
+  - Create or change only `KEEL-RT-*` or `keel-rehearsal-*` fixtures.
+  - Never touch the operator's admin, break-glass or Global Reader accounts.
+  - No Conditional Access, MFA or security-defaults changes.
+  - Never grant an app a new permission or role unless a filled decision below says so.
+- Secrets: never print, log or commit a secret (HMAC key, JWT, token, certificate,
+  password).
+- Evidence:
+  - Never hand-edit evidence.
+  - A failed or refused capture is a result. Report it.
+  - Check every evidence file for secrets before committing it.
+- Git:
+  - Never push to master, merge a PR, or force-push.
+  - Never edit tests or code; if a step seems to need that, report it as `blocked`.
+  - Evidence goes on `claude/live-evidence-<task>`, branched from `origin/master`, and
+    contains only that gate's files under `docs/release/qualifications/`.
+- Host: don't run git in `/opt/keel`. Use your own clone or a worktree, checked out at
+  the commit `/opt/keel-live` is deployed at.
+- Builds: each record binds to one build. Run 120 → 121 → 122 → 123 in one sitting at
+  the same deployed build (each requires the previous record to verify at that build).
+  If `/opt/keel-live` moves during a chain, stop and report.
+
+## Items
+
+### Q1: Gate 113 (deployed-acceptance)
+- Status: done (captured by keel-operator before this queue existed)
+- Result: `claude/live-evidence-113` @ 48d37ca, build 33ad2a9, verify ok, exit 0.
+- Coordinator note: merging waits on the operator. The test
+  `engine/roadmap/deployed-acceptance.test.mjs` pins the committed file as pending.
+  This is not a keel-operator item.
+
+### Q2: Gate 114 (storage-live-acceptance, local copy)
+- Status: todo
+- Needs: none. Doesn't touch the tenant.
+- Do: follow `docs/roadmap/storage-live-acceptance.md` › Operator steps.
+  - **Part A (read-only).** Report:
+    1. the newest backup set from the deployed build, and whether it has a task-67
+       recovery manifest with key instructions and the evidence head (if not, the exact
+       `ops/keel-dump-manifest.mjs` command and whether its inputs are known);
+    2. `findmnt -D`: is there a filesystem separate from the primary backup mount, and
+       how much free space does it have;
+    3. whether a `keel-recovery` OS account exists.
+  - **Part B (only if 1 and 2 hold).** Do the following:
+    - create the `keel-recovery` system account (no login shell, owns no backups) if it
+      is missing;
+    - copy the set to the separate mount, read-only for that account;
+    - capture as `keel-recovery`, then `verify --require-live`;
+    - if verify exits 0, commit `storage-live-acceptance.json` and
+      `storage-live-acceptance.artifact.json` to `claude/live-evidence-114`.
+
+    Never delete, move or prune a backup, and never change permissions on the primary
+    backup directory. Prerequisite refs are descriptions of where material lives, never
+    the material itself. Don't fake a separate volume (a loop device or a directory on
+    the same disk). If there's no separate mount, mark the item `blocked`.
+
+### Q3: Prerequisites for gate 115 (read-only check plus one fixture)
+- Status: todo
+- Needs: none
+- Do:
+  - Check, read-only, which application permissions the Restorer app
+    (`/etc/keel/restorer-target.json`) has been **granted**. Report whether
+    `Group.ReadWrite.All` is among them. Don't grant it.
+  - If no group named `KEEL-RT-native-recovery-group` exists, create it: a security
+    group, not mail-enabled, with no members, owners, roles or app assignments.
+  - Report the group's object id. Don't use `keel-rt-20260908-alice`.
+
+### Q4: Gate 115 (native-live-acceptance)
+- Status: todo
+- Needs: Q3 done, with `Group.ReadWrite.All` granted
+- Do: follow `docs/roadmap/native-live-acceptance.md` › Operator steps.
+  - Fetch the Microsoft doc page it names and pass today's date as
+    `--docs-retrieved-at`.
+  - Capture. This deletes the fixture group once and restores it.
+  - Run `verify --require-live` with `--tenant` and `--build`.
+  - If verify exits 0, commit the two files to `claude/live-evidence-115`.
+
+### Q5: Prerequisites for gate 116 (read-only)
+- Status: todo
+- Needs: none
+- Do: report each of the following, read-only. Create nothing.
+  - Whether Settings › Setup shows the read and restore setups complete, and their
+    task-76 run ids.
+  - Whether a task-68 read-only reconstruction (`reconstructRecovery()`) can run with
+    the deployment's real recovery authenticator, and what it needs.
+  - Whether `/etc/keel/tenant.json` and `/etc/keel/restorer.json` exist.
+  - Which `KEEL_DB_TEST_URL` the drill would use. Never the production database.
+
+### Q6: Gate 116 (drill-live-acceptance)
+- Status: todo
+- Needs: Q5 done with everything present
+- Do: follow `docs/roadmap/drill-live-acceptance.md` › Operator steps.
+  - Run, in order: build-manifest, the offline plan check, then the live bounded drill.
+    The drill creates and removes one `keel-rehearsal-<startAt>` group.
+  - Then run `capture-drill` and `verify --require-live`.
+  - If verify exits 0, commit both files to `claude/live-evidence-116`.
+  - If the drill leaves a residual, report it right away. Don't clean up anything except
+    that one `keel-rehearsal-*` group.
+
+### Q7: Read-only inventory for the 120–123 decisions
+- Status: todo
+- Needs: none
+- Do: report each of the following, read-only. Create and grant nothing.
+  - The application permissions and directory roles each KEEL app (Collector, Restorer)
+    has been granted.
+  - The current value of SharePoint's tenant-wide `isResharingByExternalUsersEnabled`.
+  - Whether these exist:
+    - a `KEEL-RT-*` communication site;
+    - a private `KEEL-RT-*` team;
+    - a `keel-rt-*` user that isn't already a member of that team.
+  - The deleted-item retention of `keel-rt-20260908-alice`, and whether that user has a
+    provisioned OneDrive.
+  - Whether any `KEEL-RT-*` sensitivity label or label policy exists.
+  - Whether the KEEL PowerShell image includes `run-cmdlet.ps1`.
+
+### Q8: Fixtures for 120 and 121 (decision-free parts)
+- Status: todo
+- Needs: Q7 done
+- Do: create only what Q7 found missing:
+  - a `KEEL-RT-<yyyymmdd>` communication site;
+  - a private `KEEL-RT-<yyyymmdd>` team.
+
+  Report their URL and ids. The 121 member account waits on decision D-121a.
+
+### Q9: Rebuild the KEEL PowerShell image
+- Status: todo
+- Needs: Q7 shows `run-cmdlet.ps1` missing from the image
+- Do: rebuild the image from `ops/powershell/Dockerfile` at the deployed build, the same
+  way the deploy builds it. Don't restart or redeploy services beyond what the normal
+  image rebuild does. Report the image id.
+
+### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
+- Status: todo
+- Needs:
+  - Q8 done;
+  - Q9 done (or not needed);
+  - decisions D-120, D-121a, D-121b, D-122a to D-122d and D-123a to D-123d filled in
+    below.
+- Do: for each gate in order, follow the doc's Operator steps:
+  - run `plan` (offline) first;
+  - then `capture`;
+  - then `verify --require-live`;
+  - commit each gate's files to `claude/live-evidence-<task>`.
+
+  Stop at the first failure. Do only what the filled decisions allow.
+
+## Operator decisions (human operator only)
+
+Write `yes`, `no` or your instructions after each one. If a decision is blank, every
+item that needs it stays untouched.
+
+- D-120: may the 120 capture flip the tenant-wide SharePoint
+  `isResharingByExternalUsersEnabled` for a few seconds and put it back, including with
+  `--allow-widening-toggle` if it's currently false?
+  - Decision:
+- D-121a: is the 121 fixture member a permanent `keel-rt-*` account, or created per
+  capture and deleted afterwards?
+  - Decision:
+- D-121b: grant the Teams application permissions (`TeamSettings.ReadWrite.All`,
+  `TeamMember.ReadWrite.All` and the read set) to the KEEL apps? They apply tenant-wide.
+  - Decision:
+- D-122a: give the Restorer `Exchange.ManageAsApp` plus Exchange Administrator, or a
+  narrower custom role (which changes task-105's declarations)?
+  - Decision:
+- D-122b: accept that the Collector's Exchange role isn't provably read-only (the log
+  proves it never ran a `Set-` cmdlet)?
+  - Decision:
+- D-122c: which organization-wide Exchange setting, if any, may be flipped and put back?
+  Leave blank to keep the org-config leg unqualified.
+  - Decision:
+- D-122d: accept that each capture adds a day to the fixture mailbox's deleted-item
+  retention (about 16 captures before 30 days)?
+  - Decision:
+- D-123a: give the Restorer `Exchange.ManageAsApp` plus Compliance Administrator, or a
+  narrower custom role group?
+  - Decision:
+- D-123b: accept the Collector grants (`Sites.FullControl.All` with SharePoint
+  Administrator, plus Compliance Administrator), which can write?
+  - Decision:
+- D-123c: accept tenant-wide label and policy *definition* reads (the record keeps only
+  counts and a fingerprint for non-fixture objects)?
+  - Decision:
+- D-123d: may keel-operator create the `KEEL-RT-*` label and the `KEEL-RT-*` policy
+  scoped only to `keel-rt-*` users (a fresh label for each capture)?
+  - Decision:
+- D-117: stand up the Sentinel test workspace? If yes, which subscription? (Deferred
+  until now.)
+  - Decision:
+- D-118: is the non-production ServiceNow instance ready? If so, give its host.
+  - Decision:

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:15 UTC
+- **Last updated:** 2026-10-04 21:20 UTC
 
 ## How the work is organized
 
@@ -35,7 +35,7 @@ not merged until it finishes.
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 | Blocked | #83 green, waiting for the operator's merge; then Q10 reruns 120 → 123 at its build |
-| Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fix to `bootstrap-ui.md`; 116 evidence joins it later) | Read setup complete (Entra only, 20:41) | Restore setup paused on PIM: waits on Q27 (operator id), then PIM activation and a restart of the restore run; then Q6 |
+| Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step) | Read setup complete (Entra only); #96 CI running | Freeze, then #96 deploy, then Q27 and a rerun of restore setup; then Q6. Operator is a permanent Global Administrator without PIM |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Blocked | Recording 117 as an accepted gap needs the operator's explicit go in its thread (classifier refused); recapture waits on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
@@ -65,7 +65,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 ## Waiting on the human operator
 
 1. Merge PR #83 (#84 chain).
-2. Gate 116 (#85): after Q27, activate PIM and rerun restore setup.
+2. Gate 116 (#85): after #96 deploys and Q27 runs, rerun restore setup.
 3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
 4. Offsite (#89): revive the Hostinger VPS 187.124.7.67 or choose a new offsite target.
 5. Restorer least privilege (#93): D-93a and D-93b in the queue.
@@ -161,3 +161,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:05: #93 row (PR #101); Q26 (Restorer grants inventory) on hold; D-93a/D-93b added to Operator decisions.
 - 2026-10-04 21:10: Q27 queued (#85: set onboarding operator id; Entra-only read setup chosen by the operator). Not to run during Q10.
 - 2026-10-04 21:15: #85 read setup complete (Entra only); restore setup waits on Q27.
+- 2026-10-04 21:20: #85: operator has no PIM (permanent Global Administrator); PR #96 accepts that. Restore setup waits on #96 deploy and Q27.

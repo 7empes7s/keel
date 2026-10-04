@@ -1,0 +1,49 @@
+name: Merge gate
+
+# Merges PRs labelled `automerge` once they are safe. This repo is private on the free
+# GitHub plan, so branch protection can't enforce it; this workflow is the gate instead.
+# A PR merges when all of these hold:
+#   - it is not a draft and has no merge conflict
+#   - every check run on its head commit has finished, and none failed
+#   - if it touches code (the Portal workflow's paths), the Portal workflow passed on its head commit
+#   - no reviewer's latest review requests changes, and no review thread is unresolved
+#   - when the repo variable REQUIRE_REVIEW is "true", someone other than the author has reviewed
+#     it (for example Codex)
+# Pushes made with GITHUB_TOKEN don't start push workflows, so after a merge this dispatches
+# the Portal workflow on master. The live auto-deploy needs a successful run on that commit.
+
+on:
+  workflow_run:
+    workflows: [Portal]
+    types: [completed]
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [labeled, ready_for_review, synchronize]
+  workflow_dispatch:
+
+concurrency:
+  group: merge-gate
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  checks: read
+
+jobs:
+  gate:
+    name: Merge gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Always run master's copy of the script, so a PR can't change the gate that judges it.
+      - uses: actions/checkout@v7
+        with:
+          ref: master
+      - name: Merge ready PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRE_REVIEW: ${{ vars.REQUIRE_REVIEW }}
+        run: tools/merge-gate.sh

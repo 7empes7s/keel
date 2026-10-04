@@ -487,22 +487,25 @@ being triggered by queue updates.
      Set Q2's Status and Result as you go. Use the evidence head recorded in Q11.
 
 ### Q16: Locate the ServiceNow dev instance and inventory gate 118 prerequisites (read-only)
-- Status: blocked
-- Result: **Stopped: `glide.installation.production` = `true`.** Q16 says to stop and report if it's true.
-  After the operator added `SERVICENOW_ADMIN_USER` and `SERVICENOW_ADMIN_PASSWORD` to
-  `/etc/keel/servicenow.env` (11:21 UTC), authentication works:
-  - OAuth `client_credentials` still returns 401;
-  - basic auth returns 401 ("User is not authenticated"), so basic auth looks disabled on the instance;
-  - **OAuth `password` grant** (the inbound client plus the admin user) returns 200.
-  One authenticated GET of `sys_properties?name=glide.installation.production` on
-  `https://dev426571.service-now.com` returned `value: "true"`. The other inventory reads were not
-  done. Nothing created or changed on the instance or the host.
-  **Needs the operator or coordinator:** the host name is a developer-instance pattern (`devNNNNNN`),
-  but the instance declares itself production. The gate's `--confirm-non-production-instance` and the
-  Q16/Q17 rule both depend on this flag. Options: the operator sets
-  `glide.installation.production=false` on this developer instance themselves (or states in a
-  decision that it may be set), or the coordinator changes the rule. I won't change the property.
-  Note: D-118 is still the coordinator's entry, not the operator's (see the earlier note).
+- Status: done
+- Result: Done. Instance **`https://dev426571.service-now.com`**. Credentials: `/etc/keel/servicenow.env`
+  (root 0600): `SERVICENOW_INSTANCE_URL`, `SERVICENOW_OAUTH_CLIENT_ID`/`_SECRET`, and
+  `SERVICENOW_ADMIN_USER`/`_PASSWORD` (added by the operator 11:21 UTC). Working auth: **OAuth
+  `password` grant** (inbound client plus admin). `client_credentials` and basic auth both return 401.
+  - **`glide.installation.production` read `true`.** The operator stated in session (11:22 UTC):
+    "it is not a production system; it's a dev instance", and explicitly authorized me to set it to
+    `false` (the gate's verifier refuses `true`, `servicenowAcceptance.mjs:115`). **Changed:**
+    `sys_properties` d245a2a7c61122c200eb1327535071bf `glide.installation.production` from
+    `true` to `false` (re-read: false). Nothing else changed. The operator also confirmed D-118 in
+    session (dev instance, host above).
+  - Inventory (all **missing**):
+    - no `u_keel_*` table (so no non-default workflow table and no `u_keel_callback_relay`);
+    - no `x_keel.*` property;
+    - no business rule named like keel;
+    - no `keel*` users;
+    - host: no adapter config, no `servicenow-test-users.json`, no `docs.json`, no
+      `…_qualification` DB.
+    - `servicenow.mjs check` not run (no config yet).
 - Needs: none
 - Do: read-only. The operator says a ServiceNow developer instance already exists and is reachable
   from this VPS. Find it and report, naming paths and variable names only, never values:

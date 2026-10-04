@@ -50,7 +50,7 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## Open PRs
 
-- None open. **#73** `claude/setup-host` was **merged 13:34 UTC as `2e8a5b9`** (operator approved in chat). Description:: production Setup host for gate 116 (task-76). CI green; reviewed by the
+- None open. **#73** `claude/setup-host` was **merged 13:34 UTC as `2e8a5b9`** (operator approved in chat). Description: production Setup host for gate 116 (task-76). CI green; reviewed by the
   coordinator (writes disabled unless named with qualification + expiry; never creates app
   registrations). **Merge blocked for Claude** ("Merge Without Review"): the operator merges it.
   After deploy, queue Q19 points the portal at `/etc/keel/restorer.json`.

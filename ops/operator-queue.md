@@ -956,7 +956,7 @@ item that needs it stays untouched.
 - Asked by the "Gate 116 drill live acceptance" thread (20:39 UTC). Marouane named the onboarding account
   and chose Entra-only read setup in that thread (20:39 UTC). It restarts the portal, so **don't run it while
   Q10 is in progress**; run it before Q10 starts or after it finishes.
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: Q21 done; Q10 not running.
 - Do:

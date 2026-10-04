@@ -35,6 +35,7 @@ including fixtures, credentials and what each command touches, are in the linked
 | 120 | `sharepoint-live-acceptance` | A disposable `KEEL-RT-<yyyymmdd>` communication site; separate Collector and Restorer apps | Yes: **decision needed** (below) | ~45 min | 121 (Teams) and enabling the SharePoint read and write adapters |
 | 121 | `teams-live-acceptance` | A verified task-120 record at the same build; a disposable private `KEEL-RT-<yyyymmdd>` team; a disposable member account not yet in it; separate Collector and Restorer apps | Yes: **decisions needed** (below); writes touch only the fixture team | ~45 min, after 120 | Enabling the Teams adapter (task-104); 105 and 122 (Exchange) |
 | 117 | `sentinel-live-acceptance` | **Decision needed:** the gate is deferred by operator decision. When taken up: a TEST Log Analytics workspace with the `KeelEvents_CL` table, a DCE/DCR for the `Custom-KeelEvents` stream, a sender app with Monitoring Metrics Publisher on the DCR, and a separate reader app with Log Analytics Reader on the workspace | No tenant objects. Ingests 5 probe events (each twice) into the test workspace and runs two read-only KQL queries | ~30 min, plus ingestion delay | Claiming Sentinel export as live-qualified (task-80 adapter); 124 |
+| 118 | `servicenow-live-acceptance` | The non-production ServiceNow instance (2026-09-30 decision) with a non-default workflow mapped in a KEEL adapter config, the relay table, signing property and business rule (`ops/servicenow/keel-callback-relay.js`), two test accounts that are not people with their own tokens, and a `…_qualification` KEEL database | No tenant objects. Creates four records and four test-user approvals in the non-production instance only | ~45 min, plus instance setup | Claiming the ServiceNow workflow as live-qualified (task-97 adapter, D6); 124 |
 
 ### 113: authenticated deployed release acceptance
 
@@ -162,6 +163,25 @@ node tools/release/qualification.mjs verify --require-live --gate sentinel-live-
 
 The record is valid for 30 days, only for the build and tenant it names.
 
+### 118: ServiceNow non-default workflow qualification
+
+Steps: [servicenow-live-acceptance.md › Operator steps](servicenow-live-acceptance.md#operator-steps).
+The capture refuses any instance you have not declared non-production on its command line, and
+any instance that reports `glide.installation.production=true`. It acts in the instance only as
+your two declared test users, each with their own token. KEEL's own token creates the four records
+and writes only KEEL's fields. The KEEL side runs in a dedicated qualification database, never the
+production one.
+
+```bash
+node tools/qualification/servicenowLive.mjs plan --config servicenow-config.json --test-users servicenow-test-users.json   # offline first
+node tools/qualification/servicenowLive.mjs capture --confirm-non-production-instance <instance host> --declared-by "<you>" \
+  [see doc for all flags] --out docs/release/qualifications/servicenow-live-acceptance.json
+node tools/release/qualification.mjs verify --require-live --gate servicenow-live-acceptance \
+  --tenant <tenant_ref> --evidence docs/release/qualifications/servicenow-live-acceptance.json
+```
+
+The record is valid for 30 days, only for the build and tenant it names.
+
 ## Already qualified
 
 | Task | Gate | State |
@@ -176,7 +196,6 @@ The record is valid for 30 days, only for the build and tenant it names.
 | 104 | Teams adapter (merged, ships disabled) | Enabling waits on the 120 and 121 captures |
 | 105, 122 | A disposable mailbox configuration fixture and a qualified Exchange app/RBAC context | 105's code (ready to build now that 104 and 121's code have merged); 122 also waits on 121's capture |
 | 106, 123 | Disposable site and configuration-label fixtures plus family-specific privilege evidence | 105, 122 |
-| 118 | A configured non-production ServiceNow instance with mapped test users and workflow | 97 (ServiceNow adapter; session A's 93 → 96 → 97 chain is in progress) |
 | 112 | Six end-to-end journeys and the release ledger | Its dependency list, which includes 95 and other tasks still in progress |
 | 124 | Complete roadmap release verification without overclaiming | 112–119, and the task-114 dependency edit noted above |
 

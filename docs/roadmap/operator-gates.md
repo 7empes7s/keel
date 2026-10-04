@@ -33,6 +33,7 @@ including fixtures, credentials and what each command touches, are in the linked
 | 115 | `native-live-acceptance` | One empty `KEEL-RT-native-recovery-group` security group; the Restorer certificate with `Group.ReadWrite.All` | Yes: deletes that one group and restores it from deleted items | ~15 min | 124; native recovery claims on the Protect page |
 | 116 | `drill-live-acceptance` | Both setups complete (task-76 run ids); a read-only reconstruction result (task-68) | Yes: creates and removes one `keel-rehearsal-<startAt>` group | ~30 min | 124; the measured recovery-time figure |
 | 120 | `sharepoint-live-acceptance` | A disposable `KEEL-RT-<yyyymmdd>` communication site; separate Collector and Restorer apps | Yes: **decision needed** (below) | ~45 min | 121 (Teams) and enabling the SharePoint read and write adapters |
+| 121 | `teams-live-acceptance` | A verified task-120 record at the same build; a disposable private `KEEL-RT-<yyyymmdd>` team; a disposable member account not yet in it; separate Collector and Restorer apps | Yes: **decisions needed** (below); writes touch only the fixture team | ~45 min, after 120 | Enabling the Teams adapter (task-104); 105 and 122 (Exchange) |
 
 ### 113: authenticated deployed release acceptance
 
@@ -111,6 +112,32 @@ node tools/release/qualification.mjs verify --require-live --gate sharepoint-liv
 
 The record is valid for 30 days, and only for the build it names.
 
+### 121: Teams configuration workload qualification (decisions needed)
+
+Steps: [teams-live-acceptance.md › Operator steps](teams-live-acceptance.md#operator-steps).
+It runs only after 120's record verifies at the same build; the capture refuses before any
+request otherwise. It flips one setting on the fixture team only, then puts it back, and
+adds, promotes, demotes and removes the fixture member. No tenant-wide Teams setting changes.
+
+**Decisions needed before capture.**
+- Whether the disposable member account may exist permanently or is created for each
+  capture and deleted afterwards.
+- Granting the Teams application permissions (`TeamSettings.ReadWrite.All`,
+  `TeamMember.ReadWrite.All` and the read set). Graph has no per-team consent for these,
+  so they apply tenant-wide even though the capture addresses only the fixture team.
+
+```bash
+node tools/qualification/teamsLive.mjs plan --fixture-team-id <team id> --fixture-member-user-id <user id>   # offline preview first
+node tools/qualification/teamsLive.mjs capture --confirm-live-tenant-write [see doc for all flags] \
+  --sharepoint-evidence docs/release/qualifications/sharepoint-live-acceptance.json \
+  --out docs/release/qualifications/teams-live-acceptance.json
+node tools/release/qualification.mjs verify --require-live --gate teams-live-acceptance \
+  --evidence docs/release/qualifications/teams-live-acceptance.json
+```
+
+The record is valid for 30 days, only for the build it names, and only while the
+SharePoint record beside it also verifies.
+
 ## Already qualified
 
 | Task | Gate | State |
@@ -122,9 +149,8 @@ The record is valid for 30 days, and only for the build it names.
 
 | Task | Gate needs | Waiting on |
 |---|---|---|
-| 104 | Teams adapter; activation stays gated on SharePoint qualification | Code in progress tonight; enabling waits on 120's capture |
-| 121 | A disposable Team and membership fixture plus Teams-specific evidence | 104's code; 120's capture |
-| 105, 122 | A disposable mailbox configuration fixture and a qualified Exchange app/RBAC context | 104, 121 |
+| 104 | Teams adapter (merged, ships disabled) | Enabling waits on the 120 and 121 captures |
+| 105, 122 | A disposable mailbox configuration fixture and a qualified Exchange app/RBAC context | 105's code (ready to build now that 104 and 121's code have merged); 122 also waits on 121's capture |
 | 106, 123 | Disposable site and configuration-label fixtures plus family-specific privilege evidence | 105, 122 |
 | 118 | A configured non-production ServiceNow instance with mapped test users and workflow | 97 (ServiceNow adapter; session A's 93 → 96 → 97 chain is in progress) |
 | 117 | A test Log Analytics workspace, DCR/stream, identity and receiver query evidence | Deferred by operator decision |
@@ -135,5 +161,6 @@ The record is valid for 30 days, and only for the build it names.
 
 1. **113** and **114**: neither touches the tenant.
 2. **115** and **116**: one disposable group each, created or deleted only by the tool.
-3. **120**, once you have made the tenant-wide toggle decision. A pass unblocks 121, and
-   with it the Teams, Exchange and OneDrive chain.
+3. **120**, once you have made the tenant-wide toggle decision, then **121** at the same
+   build once you have made its two decisions. Together they unblock the Teams, Exchange
+   and OneDrive chain.

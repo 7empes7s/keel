@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 15:22 UTC
+- **Last updated:** 2026-10-04 16:50 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ then prove the path works.
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **120 passed, 121 failed on a tool bug** | Run at `124fbc6` (deployed 14:39): 120 verify ok (`claude/live-evidence-120` @ 3177f46); 121 refused because Graph omits the team's `tenantId`. Fixed in #77 (`2b2c338`). Whole chain reruns at `2b2c338` |
+| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **120, 121 passed at 2b2c338; 122 failed on a tool bug** | Rerun at `2b2c338` (15:32): 120 (`claude/live-evidence-120` @ ea45350) and 121 (`claude/live-evidence-121` @ 9ec0e2f; merge with 120) verify ok. 122 refused: EXO `ExternalDirectoryOrganizationId` is empty. Fix in PR #82. Master moved to `34f550b` (#78, #79), so the whole chain reruns at #82's build |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
 **Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
@@ -49,6 +49,7 @@ capture's sha256, carry no credential material, and still fail verification with
 
 ## Open PRs
 
+- **#82** `claude/exchange-tenant-proof`: gate 122 tool fix (organization tenant from the collector token's `tid` when Exchange reports none). Its deploy is the build for the next 120 → 123 run.
 - **#77** `claude/teams-tenant-proof` was **merged 15:21 UTC as `2b2c338`** (by the operator): gate 121 tool fix. Its deploy is the build for the 120 → 123 rerun. **Master frozen until that chain finishes.**
 - **#75** `claude/live-evidence-merge` was **merged 14:26 UTC as `359ec7c`** (by the operator): live evidence for 113, 114, 115, 118 is on master, and the placeholder tests accept only verified-shape live records.
 - **#74** `claude/fix-dead-doc-urls` was **merged 14:27 UTC as `124fbc6`** (by the operator). Its deploy is the build for the 120 → 123 chain (Q10). **Don't merge anything to master until that chain finishes.**
@@ -145,3 +146,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 14:32: PR #74 merged (`124fbc6`) a few seconds after #75. Q10 told to run at `124fbc6` once deployed; master frozen until the chain is done.
 - 2026-10-04 15:05: Q10 at `124fbc6`: 120 passed, 121 refused (Graph omits team `tenantId`). PR #77 opened with the tool fix; chain reruns after it deploys.
 - 2026-10-04 15:22: PR #77 merged (`2b2c338`). Q10 told to rerun 120 → 123 at `2b2c338` once deployed.
+- 2026-10-04 16:50: Q10 at `2b2c338`: 120, 121 passed; 122 refused (EXO org id empty). PR #82 opened. Master moved to `34f550b` (#78, #79, another thread). keel-operator asked to message the coordinator thread on every Q10 status change (the coordinator missed the 15:35 result for an hour).

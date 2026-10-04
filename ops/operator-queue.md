@@ -304,6 +304,13 @@ being triggered by queue updates.
   then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
   set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
   until the chain is done.
+- Coordinator note (16:50 UTC): the 122 org-tenant check is fixed in PR #82 (`claude/exchange-tenant-proof`):
+  when `ExternalDirectoryOrganizationId` is empty, the collector Graph token's `tid` stands in (recorded as
+  `organization.tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_EXCHANGE_COLLECTOR_TOKEN`
+  and `KEEL_EXCHANGE_RESTORER_TOKEN` itself; no new flag. Master also moved to 34f550b (#78, #79) after your
+  2b2c338 run, so 120 and 121 must be recaptured anyway. When #82 is merged and `/opt/keel-live` is deployed
+  at its merge commit, rerun 120 → 121 → 122 → 123 at that build. **When you set Status, also send the
+  coordinator thread a one-line note** so the result is picked up straight away.
 - Coordinator note (15:22 UTC): #77 is merged as `2b2c338`. Once `/opt/keel-live` is deployed at `2b2c338`,
   set this to in-progress and rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
 - Coordinator note (15:05 UTC): the 121 tenant check is fixed in PR #77 (`claude/teams-tenant-proof`):

@@ -166,8 +166,7 @@ still separate).** Each item gives the task, then its PR.
 **Merged as code halves; the gate stays `pending` until the operator captures live
 evidence.** Each item gives the task, then its PR.
 - 113 (#41), 114 (#47; local-copy scope per the 2026-09-30 decision), 115 (#42)
-- 116 (#43), 117 (#60), 118 (#63), 120 (#44), 121 (#54), 122 (#62)
-- 123: in progress at the time of writing.
+- 116 (#43), 117 (#60), 118 (#63), 120 (#44), 121 (#54), 122 (#62), 123 (#66)
 
 No `docs/release/qualifications/*.json` claims live qualification for any of these. The
 capture and verify commands, fixtures, open operator decisions and suggested order are in

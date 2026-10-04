@@ -296,11 +296,37 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
-- Status: in-progress
-- Result: **In progress.** Operator decision given in session (12:47 UTC, answering a yes/no prompt, like
-  D-118): "Yes, grant and run". Grant the Restorer `SharePointTenantSettings.ReadWrite.All` and the
-  Collector `SharePointTenantSettings.Read.All`, `Sites.Read.All` and `MailboxSettings.Read`, plus
-  the D-121b/D-122b/D-123b grants. Then run 120 → 121 → 122 → 123.
+- Status: blocked
+- Result: **Blocked on a code fix: three declared documentation URLs are dead (HTTP 404)**, so their
+  `docs.json` "retrieval" can't be recorded honestly. Nothing was captured; no gate was run.
+  Operator decision given in session (12:47 and 12:55 UTC): grant and run.
+  - Dead declared URLs (from `engine/collect/workloadContract.mjs`, at 87e366e). The verifier
+    requires exact matches (`sharepointAcceptance.mjs:241-243`):
+    - 120 read: `https://learn.microsoft.com/en-us/graph/api/tenantadmin-settings-get` returns 404.
+      It now lives at `https://learn.microsoft.com/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0` (200).
+    - 120 write: `…/graph/api/tenantadmin-settings-update?view=graph-rest-1.0` returns 404.
+      Now `…/graph/api/sharepointsettings-update?view=graph-rest-1.0` (200).
+    - 123 OneDrive (lines 111 and 196): `…/powershell/module/sharepoint-pnp/get-pnptenantsite`
+      returns 404. Now `https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html` (200).
+    - The other 22 declared pages for 120–123 return 200.
+    **Coordinator:** update those three sources (and any test pinning them), merge and deploy. Then
+    I run the whole chain at the new build.
+  - **Done and ready** (global admin used, logged in the vault):
+    - Collector Graph: SharePointTenantSettings.Read.All, Sites.Read.All, Sites.FullControl.All,
+      GroupMember.Read.All, Team.ReadBasic.All, TeamMember.Read.All, TeamSettings.Read.All,
+      MailboxSettings.Read.
+    - Collector SPO: Sites.FullControl.All. Collector roles: SharePoint, Exchange and Compliance
+      Administrator.
+    - Restorer Graph: SharePointTenantSettings.ReadWrite.All.
+    - Restorer SPO User.ReadWrite.All was granted for OneDrive provisioning, but SharePoint refuses
+      that app-only, so it was **revoked**.
+    - **alice's OneDrive provisioned** (operator ran Request-SPOPersonalSite; drive visible 13:06 UTC).
+    - Fixtures: site KEEL-RT-20261004 (Q8); team 9263e1d4 (owner maya); member carla
+      856db776 (D-121a, not in the team); mailbox alice (retention 14d).
+    - Configs in `/etc/keel/{exchange,purview}-{collector,restorer}.json`; grants files in
+      `/etc/keel/q10/`; modules PnP 3.4.1, EXO 3.10.1.
+    - Offline plans for 120–123 run clean. Label and policy for 123 (D-123d) not yet created;
+      they're created just before that capture.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

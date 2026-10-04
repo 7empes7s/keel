@@ -189,7 +189,9 @@ being triggered by queue updates.
   - Which `KEEL_DB_TEST_URL` the drill would use. Never the production database.
 
 ### Q6: Gate 116 (drill-live-acceptance)
-- Status: todo
+- Status: blocked
+- Result: Not started. Q5 found prerequisites missing: no completed setups or run ids, no recovery
+  authenticator, no task-67 manifest. No drill was run and no `keel-rehearsal-*` group was created.
 - Needs: Q5 done with everything present
 - Do: follow `docs/roadmap/drill-live-acceptance.md` › Operator steps.
   - Run, in order: build-manifest, the offline plan check, then the live bounded drill.

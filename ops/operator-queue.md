@@ -522,7 +522,12 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: blocked
+- Status: todo
+- Coordinator note (11:40 UTC): the operator reports "we fixed servicenow", i.e. the two
+  `u_keel_change` ACLs (read, write; role `u_keel_change_user`) should now exist. Re-check: as each
+  test user, GET and PATCH a probe record (delete it after). If both work, mark Q17 done and go
+  straight on to Q18. If not, mark blocked again with the exact error.
+- Previous status: blocked
 - Result: **Almost done; blocked on one manual step: two ACLs.** D-118 was confirmed by the operator in
   session, 11:22 UTC. Created in **dev426571** (admin via OAuth password grant):
   - table **`u_keel_change`** ("KEEL qualification change", sys_id ddd2b3dc…e3b4), string fields

@@ -299,18 +299,25 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
-- Status: in-progress
-- Result: Not started. Waiting on the operator: four decisions answer an either/or question with
-  "yes", which doesn't pick an option. I won't interpret them.
-  - **D-121a**: permanent `keel-rt-*` member (which user?) **or** one created and deleted for each capture?
-  - **D-122a**: `Exchange.ManageAsApp` + Exchange Administrator **or** a narrower custom role?
-    (Restorer already has Exchange.ManageAsApp + Exchange Administrator; see Q7.)
-  - **D-122c**: **which** organization-wide Exchange setting may be flipped and put back? Name it,
-    or leave blank to keep the org-config leg unqualified.
-  - **D-123a**: `Exchange.ManageAsApp` + Compliance Administrator **or** a narrower role group?
-    (Restorer already has both; see Q7.)
-  D-120, D-121b, D-122b, D-122d and D-123b–d are clear "yes" answers. Because the chain must run
-  120→123 in one sitting at one build, I'm not starting 120 until all four are answered.
+- Status: blocked
+- Result: Not started (no grants made, no tenant change). The four either/or decisions are now
+  clear, thanks. But the gates' own `requiredGrants()` (at deployed df0de36) need app grants that
+  **no filled decision authorizes**:
+  - **120 Restorer: `SharePointTenantSettings.ReadWrite.All`** (Graph, tenant-wide write). D-120 allows
+    the flip but doesn't grant the permission the flip needs.
+  - **120 Collector: `SharePointTenantSettings.Read.All` and Graph `Sites.Read.All`** (both read).
+  - **122 Collector: `MailboxSettings.Read`** (read; D-122b covers only the Exchange role).
+  Covered and ready to grant, with the global admin credential, logged:
+  - 120/123 Collector: Graph `Sites.FullControl.All` + SharePoint Administrator (D-123b);
+  - 121 Collector: `GroupMember.Read.All`, `Team.ReadBasic.All`, `TeamMember.Read.All`,
+    `TeamSettings.Read.All` (D-121b "the read set");
+  - 122 Collector: Exchange Administrator (D-122b);
+  - 123 Collector: Compliance Administrator (D-123b).
+  - The Restorer already holds everything 121–123 need.
+  **Operator: please add a decision**, e.g. "D-120b: grant the Restorer
+  SharePointTenantSettings.ReadWrite.All, and the Collector SharePointTenantSettings.Read.All,
+  Sites.Read.All and MailboxSettings.Read: yes/no". With that, I'll make all grants and run
+  120→121→122→123 in one sitting at the deployed build.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

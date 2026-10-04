@@ -643,7 +643,27 @@ being triggered by queue updates.
   moves mid-capture, stop and report.
 
 ### Q19: Make Settings › Setup able to check the tenant after PR #73 deploys
-- Status: in-progress
+- Status: done
+- Result: **Done** at deployed 2e8a5b9 (PR #73).
+  1. `keel-portal` (systemd) loads `EnvironmentFile=/etc/keel/db.env` and `/etc/keel/portal.env`.
+     Neither set `KEEL_COLLECTOR_CONFIG_PATH` nor `KEEL_RESTORER_CONFIG_PATH`. Neither default
+     exists (`/etc/keel/tenant-target.json`, `/etc/keel/restorer-target.json`), nor does `/etc/keel/setup.json`.
+  2. Backed up `/etc/keel/portal.env` as `portal.env.bak-q19-*`. Appended
+     `KEEL_COLLECTOR_CONFIG_PATH=/etc/keel/tenant.json` and
+     `KEEL_RESTORER_CONFIG_PATH=/etc/keel/restorer.json`, then restarted `keel-portal` (health ok).
+     Nothing else changed; **no setup.json created**. Note: the same two variables also feed the
+     restore dry-run route's worker paths (`portal/lib/restore-config.ts`).
+  3. `GET /api/setup`: **`canCheck: true`, `canProvision: true`** (expected false). Why: the
+     composed host has readers, adapters, credentials and build, so a run can be *started*. But with
+     no setup.json, `operations` is `{}`, so `qualify()` returns null and `ensure()` throws for every
+     write; `create-registration` and `configure-keel-permission` are always refused
+     (`engine/bootstrap/graphHost.mjs`). **No tenant write is possible.** A Setup run now observes and
+     journals: it creates `bootstrap_plan`/`bootstrap_event` and gets a run id, then stops at
+     pending-manual or at the first unqualified write.
+     - Live check now: read scope `observed: true`, keel-collector, consent and keel.collect
+       **done**, Intune "Read Only Operator" `not-checked`.
+     - Restore scope `observed: true`, keel-restorer, consent and keel.restore **done**, Privileged
+       Role Administrator (PIM) `waiting-for-you`.
 - Needs: PR #73 merged (**merged 13:34 UTC as `2e8a5b9`**) and `/opt/keel-live` deployed at or after that commit
 - Do: PR #73 builds the setup host from the Collector and Restorer credential files. It finds
   them at `KEEL_COLLECTOR_CONFIG_PATH` (default `/etc/keel/tenant-target.json`) and

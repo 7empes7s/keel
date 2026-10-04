@@ -142,13 +142,16 @@ jobs:
           roadmap/sharepoint-write.test.mjs
           roadmap/sharepoint-live-acceptance.test.mjs
           roadmap/teams-config.test.mjs
+          roadmap/teams-live-acceptance.test.mjs
           roadmap/drill-live-acceptance.test.mjs
           roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
           roadmap/breakglass-readiness.test.mjs
+          roadmap/policy-simulation.test.mjs
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
           roadmap/itsm-contract.test.mjs
+          roadmap/grounded-query.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

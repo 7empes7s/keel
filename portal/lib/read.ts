@@ -142,6 +142,10 @@ export const DATA_SURFACES = {
   // Task-83: the alerts inbox. Acknowledging and resolving are separate guarded actions.
   alertsApi: { capability: "read", source: "api/alerts/route.ts" },
   alertsPage: { capability: "read", source: "alerts/page.tsx" },
+  // Task-99: bounded, grounded questions. The engine applies the reader's entities in
+  // the SQL that selects and counts, so an entity-scoped reader is admitted.
+  askApi: { capability: "read", source: "api/ask/route.ts", entityScoped: true },
+  askPage: { capability: "read", source: "ask/page.tsx", entityScoped: true },
   // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
   readinessPage: { capability: "read", source: "readiness/page.tsx" },
 } as const;

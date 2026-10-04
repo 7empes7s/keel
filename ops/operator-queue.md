@@ -487,7 +487,7 @@ being triggered by queue updates.
      Set Q2's Status and Result as you go. Use the evidence head recorded in Q11.
 
 ### Q16: Locate the ServiceNow dev instance and inventory gate 118 prerequisites (read-only)
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do: read-only. The operator says a ServiceNow developer instance already exists and is reachable
   from this VPS. Find it and report, naming paths and variable names only, never values:

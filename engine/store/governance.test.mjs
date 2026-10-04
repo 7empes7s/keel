@@ -109,9 +109,12 @@ await client.query(
    VALUES ($1, 'governance-run-as@example.com', 'Governance run-as')`,
   [runAsPrincipalId],
 );
+// An explicit past active_from: the column default is the database's now() (microseconds),
+// while createPolicy checks the grant at a JS Date (milliseconds) taken a moment later, so a
+// default-dated grant is often not yet active at that instant and the check fails at random.
 await client.query(
-  `INSERT INTO role_grant (principal_id, role, granted_by, reason)
-   VALUES ($1, 'restorer', 'test', 'governance auto-remediation test')`,
+  `INSERT INTO role_grant (principal_id, role, granted_by, reason, active_from)
+   VALUES ($1, 'restorer', 'test', 'governance auto-remediation test', '2020-01-01Z')`,
   [runAsPrincipalId],
 );
 await createPolicy(client, {

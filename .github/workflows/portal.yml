@@ -13,6 +13,10 @@ on:
   # a code change must still get a run.
   push:
     branches: [master]
+  # A merge made with GITHUB_TOKEN does not trigger the push run above, so the merge gate
+  # dispatches this workflow on master after merging; the auto-deploy then sees a
+  # successful run on the merge commit.
+  workflow_dispatch:
 
 concurrency:
   group: portal-${{ github.ref }}
@@ -111,62 +115,13 @@ jobs:
         run: npm test
         working-directory: portal
       - name: Run restore engine tests
-        # The restore path's boundary suites (roadmap task Validate set). Serial:
-        # several suites share the one test database.
-        run: >-
-          node --test --test-concurrency=1
-          roadmap/relationship-restore.test.mjs roadmap/fidelity-ledger.test.mjs
-          roadmap/native-recovery.test.mjs roadmap/identity-completion.test.mjs
-          roadmap/content-effects.test.mjs roadmap/compensation.test.mjs
-          roadmap/incident-recovery.test.mjs roadmap/portal-experience.test.mjs
-          roadmap/named-objects.test.mjs roadmap/protect-page.test.mjs
-          roadmap/coverage-ui.test.mjs
-          roadmap/baseline-compliance-ui.test.mjs
-          roadmap/ownership.test.mjs
-          roadmap/scoped-authorization.test.mjs
-          roadmap/change-attribution.test.mjs
-          roadmap/policy-disclosure.test.mjs
-          roadmap/change-intents.test.mjs
-          roadmap/fidelity-expansion.test.mjs
-          roadmap/policy-fidelity.test.mjs
-          roadmap/administrative-fidelity.test.mjs
-          roadmap/drill-harness.test.mjs
-          roadmap/recovery-metrics.test.mjs
-          roadmap/schedule-forecast.test.mjs
-          roadmap/alert-state.test.mjs
-          roadmap/alert-escalation.test.mjs
-          roadmap/notification-adapters.test.mjs
-          roadmap/workload-contract.test.mjs
-          roadmap/sharepoint-read.test.mjs
-          roadmap/hybrid-contract.test.mjs
-          roadmap/sharepoint-write.test.mjs
-          roadmap/sharepoint-live-acceptance.test.mjs
-          roadmap/teams-config.test.mjs
-          roadmap/teams-live-acceptance.test.mjs
-          roadmap/sentinel-live-acceptance.test.mjs
-          roadmap/exchange-config.test.mjs
-          roadmap/exchange-live-acceptance.test.mjs
-          roadmap/onedrive-purview.test.mjs
-          roadmap/onedrive-purview-live-acceptance.test.mjs
-          roadmap/drill-live-acceptance.test.mjs
-          roadmap/native-live-acceptance.test.mjs
-          roadmap/deployed-acceptance.test.mjs
-          roadmap/breakglass-readiness.test.mjs
-          roadmap/policy-simulation.test.mjs
-          roadmap/visual-drift.test.mjs
-          roadmap/storage-live-acceptance.test.mjs
-          roadmap/recovery-set.test.mjs
-          roadmap/keel-recovery.test.mjs
-          roadmap/recovery-authenticator.test.mjs
-          roadmap/itsm-contract.test.mjs
-          roadmap/servicenow.test.mjs
-          roadmap/servicenow-live-acceptance.test.mjs
-          roadmap/value-reports.test.mjs
-          roadmap/grounded-query.test.mjs
-          roadmap/acceptance-harness.test.mjs
-          roadmap/bootstrap-ui.test.mjs roadmap/setup-host.test.mjs
-          restore/*.test.mjs reconcile/*.test.mjs
-          safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
-          ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs
-          roadmap/portal-parity.test.mjs ../tools/rehearsal/roundTrip.test.mjs
+        # Every tracked *.test.mjs under engine/, cli/ and tools/, found by
+        # tools/engine-test-files.sh (glob discovery: adding a test needs no edit here;
+        # the few host-only suites are excluded there with a reason). Serial: several
+        # suites share the one test database.
+        run: |
+          list="$(../tools/engine-test-files.sh)"
+          mapfile -t files <<< "$list"
+          echo "Running ${#files[@]} test files"
+          node --test --test-concurrency=1 "${files[@]}"
         working-directory: engine

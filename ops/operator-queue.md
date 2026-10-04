@@ -311,7 +311,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: in-progress
 - Result: **Stopped at the first failure: 120 passed, 121 failed (tool defect).** Build **124fbc6**
   (`/opt/keel-live`, clean, deployed 14:39 UTC). All 25 declared doc URLs return 200 and the grant
   requirements are unchanged.

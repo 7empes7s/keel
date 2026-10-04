@@ -144,6 +144,7 @@ jobs:
           roadmap/teams-config.test.mjs
           roadmap/teams-live-acceptance.test.mjs
           roadmap/sentinel-live-acceptance.test.mjs
+          roadmap/exchange-config.test.mjs
           roadmap/drill-live-acceptance.test.mjs
           roadmap/native-live-acceptance.test.mjs
           roadmap/deployed-acceptance.test.mjs
@@ -151,6 +152,7 @@ jobs:
           roadmap/policy-simulation.test.mjs
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
+          roadmap/itsm-contract.test.mjs
           roadmap/value-reports.test.mjs
           roadmap/grounded-query.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs

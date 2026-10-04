@@ -147,6 +147,10 @@ export const DATA_SURFACES = {
   // withheld from them.
   reportsPage: { capability: "read", source: "reports/page.tsx", entityScoped: true },
   valueReportApi: { capability: "read", source: "api/reports/value/route.ts", entityScoped: true },
+  // Task-99: bounded, grounded questions. The engine applies the reader's entities in
+  // the SQL that selects and counts, so an entity-scoped reader is admitted.
+  askApi: { capability: "read", source: "api/ask/route.ts", entityScoped: true },
+  askPage: { capability: "read", source: "ask/page.tsx", entityScoped: true },
   // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
   readinessPage: { capability: "read", source: "readiness/page.tsx" },
 } as const;

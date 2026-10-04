@@ -52,6 +52,8 @@ import { readinessVerdict, type Dimension, type ReadinessAccount, type Readiness
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
 import { ValueReportView } from "@/components/value-report-view";
 import { valueVerdict, type ValueReport } from "@/lib/value-report-view";
+import { AskView } from "@/components/ask-view";
+import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 
@@ -913,6 +915,41 @@ function reportsPage(report: ValueReport) {
     <div data-layer="explanation"><ValueReportView data={{ report, period: "30d", entity: null }} /></div></>;
 }
 
+// Task-99: bounded, grounded answers. A partial answer (part of the week not compared
+// yet), a failed-jobs answer, and an answer KEEL cannot give because it has no history.
+const ASK_BASE: Omit<GroundedAnswer, "status" | "intent" | "plan" | "records" | "total" | "shown" | "sentence"> = {
+  version: 1, understood: null, scope: { central: false, entities: ["SALES"] },
+  window: { from: "2026-09-28T00:00:00.000Z", to: now }, known: { from: "2026-09-18T00:00:00.000Z", to: "2026-10-02T06:00:00.000Z" },
+  gaps: [{ from: "2026-10-02T06:00:00.000Z", to: now, reason: "not-compared-yet" }], truncated: false, readBy: "rules", generatedAt: now,
+};
+const ASK_PLAN = { intent: "changes" as const, params: { entity: "SALES", from: "2026-09-28T00:00:00.000Z", to: now, resourceType: null, changeType: null, limit: 25 } };
+const ASK_ANSWERED: AskData = { generatedAt: now, entities: ["SALES"], scope: { central: false, entities: ["SALES"] }, answer: {
+  ...ASK_BASE, status: "partial", intent: "changes", plan: ASK_PLAN, question: "What changed for Sales this week?", total: 2, shown: 2,
+  sentence: "2 matching changes found.",
+  records: [
+    { kind: "change", id: "a5c00000-0000-4000-8000-000000000991", resourceType: "group", naturalKey: "group:Sales Admins", name: "Sales Admins", changeType: "modified", impact: "access-affecting", decision: null,
+      seenAt: "2026-10-01T06:00:00.000Z", window: { from: "2026-09-30T06:00:00.000Z", to: "2026-10-01T06:00:00.000Z" },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000991", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000992" } },
+    { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", resourceType: "conditionalAccessPolicy", naturalKey: "conditionalAccessPolicy:Sales VPN", name: null, changeType: "added", impact: "tenant-lockout", decision: "accept",
+      seenAt: "2026-09-29T06:00:00.000Z", window: { from: null, to: "2026-09-29T06:00:00.000Z" },
+      source: { kind: "change", id: "a5c00000-0000-4000-8000-000000000993", href: "/drift", collectionId: "c0110000-0000-4000-8000-000000000994" } },
+  ],
+} };
+const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "unknown", intent: "changes", question: "What changed between 2020-01-01 and 2020-01-20?",
+  plan: { intent: "changes", params: { entity: null, from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z", resourceType: null, changeType: null, limit: 25 } },
+  window: { from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z" }, known: null,
+  gaps: [{ from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z", reason: "no-history" }], total: 0, shown: 0, records: [],
+  sentence: "Not known.",
+} };
+
+function askPage(data: AskData) {
+  const verdict = askVerdict(data.answer);
+  return <>{header("Activity", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><AskView data={data} question={data.answer?.question ?? ""} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -954,6 +991,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return reportsPage(VALUE_REPORT);
     case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
+    case "/ask": return askPage(ASK_ANSWERED);
+    case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/drift": {

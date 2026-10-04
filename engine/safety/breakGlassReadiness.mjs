@@ -477,7 +477,7 @@ async function loadInventory(client, tenantRef) {
 }
 
 /** Group membership from the newest complete relationship reads, or null when unread. */
-async function loadGroupMembership(client, tenantRef, inventory) {
+export async function loadGroupMembership(client, tenantRef, inventory) {
   const groups = new Set();
   for (const resource of inventory.conditionalAccessPolicy?.resources ?? []) {
     const users = resource.payload?.conditions?.users ?? {};

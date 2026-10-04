@@ -33,6 +33,8 @@ const PAGES = [
   { name: "integrations", hash: "/integrations" },
   { name: "setup", hash: "/setup" },
   { name: "alerts", hash: "/alerts" },
+  { name: "ask", hash: "/ask" },
+  { name: "ask-unknown", hash: "/ask/unknown" },
   { name: "emergency-changes", hash: "/emergency-changes" },
 ];
 
@@ -457,6 +459,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
   reports: ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "job:a1000000-0000-4000-8000-000000000002", "change:d1f70000-0000-4000-8000-000000000101", "keel.mfa.admins", "e7a10000-0000-4000-8000-000000000203", "4c".repeat(32), "9b".repeat(32), "/etc/keel/value-estimate.json"],
   "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "entities FIN", "not-configured"],
+  ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
+  "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
 };
@@ -697,6 +701,34 @@ test("policy activation preview names dependencies above the limit and refuses a
   await page.getByRole("button", { name: "Preview turning on" }).click();
   await expect(page.locator("section.policy-preview .policy-preview-sentence")).toBeVisible();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+});
+
+// Task-99: a grounded answer cites each record and its window, says which part of the
+// period is not known, never reads missing history as "nothing changed", and fits a phone.
+test("ask cites its records, states unknown periods, and fits a phone", async ({ page }) => {
+  await open(page, "/ask", "dark");
+  const answer = page.locator(".ask-answer");
+  await expect(answer).toContainText("Understood as: Changes owned by SALES");
+  await expect(answer).toContainText("Only resources owned by SALES are included");
+  await expect(answer.locator(".ask-gap")).toContainText("KEEL has not compared a backup since then");
+  const records = answer.locator(".ask-record");
+  await expect(records).toHaveCount(2);
+  await expect(records.nth(0)).toContainText("Sales Admins (group)");
+  await expect(records.nth(0)).toContainText("Happened between");
+  await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /drift/);
+  await expect(records.nth(1)).toContainText("the earlier backup is not known");
+  await expect(page.locator("form[method='get']")).toHaveCount(2);
+  await expect(page.locator("form[method='post']")).toHaveCount(0);
+  await answer.locator("summary", { hasText: "Technical details" }).click();
+  await expect(answer.locator('[data-layer="record"]')).toContainText("a5c00000-0000-4000-8000-000000000991");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+  await open(page, "/ask/unknown", "light");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("Not known");
+  await expect(page.locator(".ask-answer")).toContainText("This is not the same as nothing happening");
+  await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
 
 // Task-93: an approved emergency change says what KEEL will hold back and until when,

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 14:00 UTC
+- **Last updated:** 2026-10-04 14:30 UTC
 
 ## How the work is organized
 
@@ -42,15 +42,15 @@ then prove the path works.
 | 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Ready except a code fix** | D-120b given in keel-operator's session; all grants made; alice's OneDrive provisioned. Three declared doc URLs were dead: fixed in PR #74. Runs once #74 deploys (Q10) |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
-**Evidence merge:** the tests that pinned each committed evidence file as a pending placeholder are
+**Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
 changed in PR #75 (operator-approved): a committed live record must be live-qualified, bind its raw
 capture's sha256, carry no credential material, and still fail verification without the HMAC key
 (`engine/test/committedEvidence.mjs`).
 
 ## Open PRs
 
-- **#75** `claude/live-evidence-merge`: lands the live evidence for 113, 114, 115, 118 and changes the placeholder tests to accept only verified-shape live records (operator approved 13:37). Merge it **before** #74 so its deploy doesn't land mid-chain.
-- **#74** `claude/fix-dead-doc-urls`: replaces three dead declared doc URLs that block gates 120 and 123. Opened 13:50 UTC by the coordinator.
+- **#75** `claude/live-evidence-merge` was **merged 14:26 UTC as `359ec7c`** (by the operator): live evidence for 113, 114, 115, 118 is on master, and the placeholder tests accept only verified-shape live records.
+- **#74** `claude/fix-dead-doc-urls`: replaces three dead declared doc URLs that block gates 120 and 123. Opened 13:50 UTC by the coordinator. Merge once #75's deploy is verified; its deploy starts Q10.
 - **#73** `claude/setup-host` (production Setup host for gate 116, task-76) was **merged 13:34 UTC as
   `2e8a5b9`** after the operator approved in chat. Writes stay disabled unless named with qualification
   + expiry; it never creates app registrations.
@@ -140,3 +140,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 13:50: D-120b given in keel-operator's session and grants made; Q10 blocked on dead doc URLs; PR #74 opened.
 - 2026-10-04 13:55: gate 116 recovery key handed to keel-operator as Q20 at the operator's request.
 - 2026-10-04 14:00: Q19 done (Setup can check; no writes enabled), Q20 done (recovery key enrolled), Q21 queued; PR #75 opened for the evidence + test change.
+- 2026-10-04 14:30: PR #75 merged (`359ec7c`, by the operator; Claude's merge was blocked again). Master CI running; #74 next.

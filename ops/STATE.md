@@ -39,7 +39,7 @@ then prove the path works.
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Ready except a code fix** | D-120b given in keel-operator's session; all grants made; alice's OneDrive provisioned. Three declared doc URLs were dead: fixed in PR #74. Runs once #74 deploys (Q10) |
+| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Ready, waiting on deploy** | D-120b given; all grants made; alice's OneDrive provisioned. Dead doc URLs fixed in #74 (`124fbc6`). Q10 runs at `124fbc6` once it deploys |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
 **Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
@@ -50,7 +50,7 @@ capture's sha256, carry no credential material, and still fail verification with
 ## Open PRs
 
 - **#75** `claude/live-evidence-merge` was **merged 14:26 UTC as `359ec7c`** (by the operator): live evidence for 113, 114, 115, 118 is on master, and the placeholder tests accept only verified-shape live records.
-- **#74** `claude/fix-dead-doc-urls`: replaces three dead declared doc URLs that block gates 120 and 123. Opened 13:50 UTC by the coordinator. Merge once #75's deploy is verified; its deploy starts Q10.
+- **#74** `claude/fix-dead-doc-urls` was **merged 14:27 UTC as `124fbc6`** (by the operator). Its deploy is the build for the 120 → 123 chain (Q10). **Don't merge anything to master until that chain finishes.**
 - **#73** `claude/setup-host` (production Setup host for gate 116, task-76) was **merged 13:34 UTC as
   `2e8a5b9`** after the operator approved in chat. Writes stay disabled unless named with qualification
   + expiry; it never creates app registrations.
@@ -141,3 +141,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 13:55: gate 116 recovery key handed to keel-operator as Q20 at the operator's request.
 - 2026-10-04 14:00: Q19 done (Setup can check; no writes enabled), Q20 done (recovery key enrolled), Q21 queued; PR #75 opened for the evidence + test change.
 - 2026-10-04 14:30: PR #75 merged (`359ec7c`, by the operator; Claude's merge was blocked again). Master CI running; #74 next.
+- 2026-10-04 14:32: PR #74 merged (`124fbc6`) a few seconds after #75. Q10 told to run at `124fbc6` once deployed; master frozen until the chain is done.

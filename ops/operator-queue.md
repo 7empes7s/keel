@@ -300,6 +300,10 @@ being triggered by queue updates.
   When #74 is merged and `/opt/keel-live` is deployed at or after its merge commit, set this back to
   in-progress and run 120 → 121 → 122 → 123 at that build. D-120b was given by the operator in your
   session (12:47 and 12:55 UTC).
+- Coordinator note (14:30 UTC): #74 is merged. Master is `124fbc6` (#75 evidence merge `359ec7c`,
+  then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
+  set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
+  until the chain is done.
 - Status: blocked
 - Result: **Blocked on a code fix: three declared documentation URLs are dead (HTTP 404)**, so their
   `docs.json` "retrieval" can't be recorded honestly. Nothing was captured; no gate was run.

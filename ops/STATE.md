@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 20:55 UTC
+- **Last updated:** 2026-10-04 21:00 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ not merged until it finishes.
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Blocked | Recording 117 as an accepted gap needs the operator's explicit go in its thread (classifier refused); recapture waits on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
-| Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | — | Diagnosing | Host diagnostics (Q23) |
+| Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 | Blocked | Offsite host 187.124.7.67 (Hostinger srv1872555) drops port 22 and ICMP (Q23); operator revives it or picks a new target. #100 held for the freeze |
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | CI running, held for the freeze | Host dry run (Q25). `keel-prune.timer` stays disabled: prune runs as a `prune` schedule row, enabled after #97 and #99 deploy |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
 | `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
@@ -67,6 +67,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 1. Merge PR #83 (#84 chain).
 2. Gate 116 (#85): read-setup scope and onboarding account, asked in its thread.
 3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
+4. Offsite (#89): revive the Hostinger VPS 187.124.7.67 or choose a new offsite target.
 
 ## Infrastructure facts
 
@@ -80,6 +81,8 @@ raw capture's sha256, carry no credential material, and fail verification withou
 - The Restorer app holds ~52 write permissions plus 9 directory roles, far more than needed. A
   least-privilege review is a suggested follow-up, not started.
 - keel-operator hasn't been tested through a crash or reboot.
+- The nightly DB dump (`mimule-backup`, outside KEEL) overwrites its file in place: the 14:21 rerun on
+  2026-10-04 replaced the 04:04 dump (Q23). No owning issue yet.
 
 ## ServiceNow (gate 118)
 
@@ -153,3 +156,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 20:45: #91 row (PR #97). Q24 (install scheduled collection) added on hold until #84 finishes and #97 deploys.
 - 2026-10-04 20:50: #92 row (PR #98). Drop the `restorer-target.json` infrastructure fact when #98 merges.
 - 2026-10-04 20:55: #90 row (PR #99); Q25 queued (read-only prune dry run). Q23 done (#89: offsite host unreachable, timer never enabled).
+- 2026-10-04 21:00: #89 row (PR #100, blocked on the offsite host). Dump-overwrite finding added to infrastructure facts.

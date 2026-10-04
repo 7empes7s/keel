@@ -940,3 +940,20 @@ item that needs it stays untouched.
 - Do: list every application permission the Restorer app (appId 12f8942f…) holds, on every resource (Graph,
   SharePoint Online, Exchange Online, any other), and every directory role it holds with its role template id.
   Q7 named 8 of the 9 roles; name the ninth. Create, grant and remove nothing.
+### Q27: Set the gate 116 onboarding operator id on the host (issue #85)
+- Asked by the "Gate 116 drill live acceptance" thread (20:39 UTC). Marouane named the onboarding account
+  and chose Entra-only read setup in that thread (20:39 UTC). It restarts the portal, so **don't run it while
+  Q10 is in progress**; run it before Q10 starts or after it finishes.
+- Status: queued
+- Result:
+- Needs: Q21 done; Q10 not running.
+- Do:
+  1. Look up the Entra object id of `marouane.Defili@techinsiderbytes.com` with a read-only Graph GET
+     (Collector token, `/users/{upn}?$select=id`).
+  2. Add `KEEL_SETUP_OPERATOR_ID=<that id>` to `/etc/keel/portal.env`, then restart the portal. Don't create
+     `/etc/keel/setup.json` and enable no `operations`, so every write stays disabled.
+  3. Confirm with `GET /api/setup` that canCheck is still true and canProvision reports no write operation
+     enabled. Report the object id and whether the restore setup's PIM step now names that account
+     ("waiting for you" is expected until Marouane activates PIM).
+  4. Read-only: report whether the KEEL Collector service principal currently holds the Entra directory role
+     "Intune Administrator" (Marouane added it and was asked to remove it). Don't change it.

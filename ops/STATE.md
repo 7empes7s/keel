@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:05 UTC
+- **Last updated:** 2026-10-04 21:10 UTC
 
 ## How the work is organized
 
@@ -159,3 +159,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 20:55: #90 row (PR #99); Q25 meant to be queued (landed 21:05). Q23 done (#89: offsite host unreachable, timer never enabled).
 - 2026-10-04 21:00: #89 row (PR #100, blocked on the offsite host). Dump-overwrite finding added to infrastructure facts.
 - 2026-10-04 21:05: #93 row (PR #101); Q26 (Restorer grants inventory) on hold; D-93a/D-93b added to Operator decisions.
+- 2026-10-04 21:10: Q27 queued (#85: set onboarding operator id; Entra-only read setup chosen by the operator). Not to run during Q10.

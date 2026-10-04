@@ -131,7 +131,24 @@ being triggered by queue updates.
   - Report the group's object id. Don't use `keel-rt-20260908-alice`.
 
 ### Q4: Gate 115 (native-live-acceptance)
-- Status: in-progress
+- Status: done
+- Result: `claude/live-evidence-115` @ b965a66, capture at build 33ad2a9 (= `/opt/keel-live`, clean).
+  `verify --require-live --gate native-live-acceptance --tenant sha256:f7b3959300856957 --build 33ad2a9…`:
+  `{"ok": true, "failures": []}`, exit 0.
+  Tenant: fixture `KEEL-RT-native-recovery-group` (b1b02d2f-3f30-4cb5-8a63-81f94de2734b) deleted and
+  restored by the capture **twice**. It is active afterwards, not in deleted items, still 0 members.
+  Nothing else touched.
+  Notes for the coordinator:
+  - **Attempt 1 failed** (exit 1, "read-back returned 404") although the restore returned 200.
+    This is Entra replication lag: `captureRoundTrip` retries `read-deleted` but not `read-back`
+    (`tools/qualification/nativeRecovery.mjs:136-137`). Attempt 2, unchanged, passed. The
+    attempt-1 files are kept locally, not committed. Suggest a code fix: retry read-back like
+    read-deleted.
+  - `/etc/keel/restorer-target.json` doesn't exist. I used `--target-config /etc/keel/restorer.json`
+    (same {tenantId, clientId, certPath, keyPath} shape; the drill docs name it). The record's
+    clientRef therefore says `/etc/keel/restorer.json`. The gate docs should be updated, or the file created.
+  - MS doc page fetched 2026-10-04 (HTTP 200, ms.date 2025-11-17, still lists Group.ReadWrite.All).
+  - Verify needs `KEEL_QUALIFICATION_HMAC_KEY` in the environment too. The doc's verify command omits it.
 - Needs: Q3 done, with `Group.ReadWrite.All` granted
 - Do: follow `docs/roadmap/native-live-acceptance.md` › Operator steps.
   - Fetch the Microsoft doc page it names and pass today's date as

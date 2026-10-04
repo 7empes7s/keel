@@ -304,6 +304,8 @@ being triggered by queue updates.
   then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
   set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
   until the chain is done.
+- Coordinator note (15:22 UTC): #77 is merged as `2b2c338`. Once `/opt/keel-live` is deployed at `2b2c338`,
+  set this to in-progress and rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
 - Coordinator note (15:05 UTC): the 121 tenant check is fixed in PR #77 (`claude/teams-tenant-proof`):
   when Graph omits the team's `tenantId`, the collector token's `tid` stands in (recorded as
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and

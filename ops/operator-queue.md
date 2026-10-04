@@ -158,7 +158,7 @@ being triggered by queue updates.
   - If verify exits 0, commit the two files to `claude/live-evidence-115`.
 
 ### Q5: Prerequisites for gate 116 (read-only)
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do: report each of the following, read-only. Create nothing.
   - Whether Settings › Setup shows the read and restore setups complete, and their

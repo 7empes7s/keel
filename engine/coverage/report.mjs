@@ -42,6 +42,8 @@ import { listWorkloads } from '../collect/registry.mjs';
 import '../collect/workloads/sharepoint.mjs';
 // Registers the Teams workload adapter (task-104), disabled like SharePoint.
 import '../collect/workloads/teams.mjs';
+// Registers the Exchange workload adapter (task-105), disabled behind Teams.
+import '../collect/workloads/exchange.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {
@@ -274,7 +276,7 @@ async function loadWorkloadCoverage(client, tenantRef) {
       status: row ? row.outcome : 'never-collected',
       covered: row ? ['complete', 'complete-empty'].includes(row.outcome) : false,
       observation: row ? { startedAt: asIsoInstant(row.observed_from), endedAt: asIsoInstant(row.observed_to) } : null,
-      resources: digest.discovery?.sites ?? digest.discovery?.teams ?? null,
+      resources: digest.discovery?.sites ?? digest.discovery?.teams ?? digest.discovery?.mailboxes ?? null,
       fieldCounts: digest.fieldCounts ?? null,
       outOfScope: Array.isArray(digest.outOfScope) ? digest.outOfScope.length : null,
       reasons: digest.reasons ?? [],

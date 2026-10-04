@@ -70,6 +70,22 @@ const truthy = (value) => value === true || value === 'true' || value === 'True'
 const enabledToDisabled = (before, after) => truthy(before) && !truthy(after);
 const disabledToEnabled = (before, after) => !truthy(before) && truthy(after);
 
+// Task-105: automatic reply audiences, narrowest to widest.
+const AUTOREPLY_AUDIENCE = ['none', 'contactsOnly', 'all'];
+/** Exchange timespans read as "d.hh:mm:ss" (or "hh:mm:ss"); days as a number, null when unreadable. */
+function timespanDays(value) {
+  const match = /^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})$/.exec(String(value ?? ''));
+  if (!match) return null;
+  return Number(match[1] ?? 0) + Number(match[2]) / 24 + Number(match[3]) / 1440 + Number(match[4]) / 86400;
+}
+
+// A changed window that cannot be read is treated as shorter: the safe direction.
+const shortensTimespan = (before, after) => {
+  const b = timespanDays(before);
+  const a = timespanDays(after);
+  return b === null || a === null ? true : a < b;
+};
+
 /** groupSetting stores its values as [{ name, value }]; address one by name. */
 const settingValue = (name) => (payload) => payload?.values?.find?.((entry) => entry?.name === name)?.value;
 
@@ -131,6 +147,23 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   teamsMembership: { reviewed: true, rules: [
     rule('guests', 'externally-sharing', addsEntry),
   ] },
+  // Task-105: Exchange mailbox and organization configuration. Turning a hold off
+  // releases mail to deletion; turning single item recovery off or shortening the
+  // deleted-item window lets mail be purged sooner; sending automatic replies to
+  // everyone outside discloses the reply text externally.
+  exchangeMailboxRetention: { reviewed: true, rules: [
+    rule('LitigationHoldEnabled', 'hold-releasing', enabledToDisabled),
+    rule('RetentionHoldEnabled', 'hold-releasing', enabledToDisabled),
+    rule('SingleItemRecoveryEnabled', 'retention-reducing', enabledToDisabled),
+    rule('RetainDeletedItemsFor', 'retention-reducing', shortensTimespan),
+  ] },
+  exchangeMailboxSettings: { reviewed: true, rules: [
+    rule('automaticRepliesSetting.externalAudience', 'externally-sharing', widens(AUTOREPLY_AUDIENCE)),
+  ] },
+  // Protocol access and organization mail tips change how mail is reached, not who
+  // can see it or how long it is kept.
+  exchangeClientAccess: { reviewed: true, rules: [] },
+  exchangeOrganizationConfig: { reviewed: true, rules: [] },
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },

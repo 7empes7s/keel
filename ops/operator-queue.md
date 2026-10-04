@@ -407,6 +407,16 @@ being triggered by queue updates.
   changes could be added safely. Don't change the script; the coordinator will propose the
   change.
 
+### Q14: What running the Settings › Setup flows would do (read-only report)
+- Status: todo
+- Needs: none
+- Do: read-only. Report what the read setup and the restore setup would actually do if run from
+  the portal:
+  - which Graph or Entra calls each makes;
+  - whether either would create apps, grant permissions or consent, or change tenant settings;
+  - what it records (task-76 run ids).
+  Use the code in `engine/bootstrap/` and the portal Setup routes. Run nothing.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

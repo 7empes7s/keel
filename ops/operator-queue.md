@@ -325,7 +325,33 @@ being triggered by queue updates.
   Stop at the first failure. Do only what the filled decisions allow.
 
 ### Q11: Build a recovery set for gate 114 (new tool from PR #70)
-- Status: in-progress
+- Status: done
+- Result: **Recovery set made: `/opt/keel-recovery-sets/2026-10-04/`** (66 MB, root-only dirs). Made by
+  `ops/keel-recovery-set.mjs` from a detached worktree at deployed **df0de36**. Dry run first
+  (exit 0), then the real run (exit 0).
+  - Source: `/opt/backups/2026-10-04/keel-db.sql.gz` (nightly 04:04 UTC) and
+    `/opt/backups/keel-db-manifest.json`. Only read; nothing in `/opt/backups` changed.
+  - The set was made at 09:09, not right after the backup. Consistency check: the live
+    `evidence_head` was last updated 2026-10-03 15:50 with 0 evidence rows since the dump, and
+    `schema.sql` is identical across 61e21af (the dump's build) → df0de36. So the dump, schema
+    pin and head agree.
+  - `recovery-set.json`:
+    - build `df0de3616841301bc0c596a4ba788996cc32ba1b`, schema pin `2a20d4ae…2e34fb`;
+    - tenant `sha256:f7b3959300856957`, snapshot `f74b0fac-a1ee-4f94-9cd2-d889e98dae55` (22 observation ids);
+    - **evidence head `2:90e032c183f167c2520ca0bcb40789ebae8fd97de35f5b4f518bc7dcecc48ebf:2`**;
+    - sha256: manifest `80231c6d…7e35e3`, dump `429bdf53…698ef1` (= the nightly checksum),
+      export manifest `d0ad81cf…00227e`.
+  - `keel-dump-manifest.mjs --verify` on the set: "verified … (recovery complete)", exit 0.
+  - **Key metadata** (references only; `/root/keel-key-metadata.json`): the dump is gzip only, with
+    no encryption key on the host. So I recorded what recovery actually needs:
+    - instructions: `ops/recovery-runbook.md`, and that the dump is unencrypted;
+    - heldBy: "KEEL operator (root on the Hetzner VPS)";
+    - location: `/etc/keel/db.env` (Postgres credential) and `/root/.ssh/playground_vps` (offsite
+      SSH key), plus "no separate offline copy exists yet".
+    The operator may want a real offline-held reference instead.
+  - Not copied anywhere. Q2 stays blocked until a real second volume is attached. Then resume Q2
+    Part B with this set (`--primary-root /opt/keel-recovery-sets/2026-10-04`, checkpoint from
+    the evidence head above, capture from a df0de36 checkout).
 - Needs:
   - `/opt/keel-live` at or after df0de36 (PR #70 merged; it adds `ops/keel-recovery-set.mjs`);
   - run from a checkout at the deployed build.

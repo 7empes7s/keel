@@ -131,7 +131,7 @@ being triggered by queue updates.
   - Report the group's object id. Don't use `keel-rt-20260908-alice`.
 
 ### Q4: Gate 115 (native-live-acceptance)
-- Status: todo
+- Status: in-progress
 - Needs: Q3 done, with `Group.ReadWrite.All` granted
 - Do: follow `docs/roadmap/native-live-acceptance.md` › Operator steps.
   - Fetch the Microsoft doc page it names and pass today's date as

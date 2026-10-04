@@ -341,7 +341,7 @@ being triggered by queue updates.
   attaches a real second volume. When one exists, resume Q2 Part B with this set.
 
 ### Q12: Report how the deploy builds images (read-only)
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do: report how `/opt/keel-deploy/deploy.sh` decides what to build and restart, without printing
   secrets. Say whether a step that rebuilds `keel-powershell:latest` when `ops/powershell/**`

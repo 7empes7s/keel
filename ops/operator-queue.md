@@ -699,7 +699,10 @@ being triggered by queue updates.
     - `keel-backup-tier1-3` and `keel-prune`: KEEL collection and pruning, no file backups.
     - Recovery-set builder (`ops/keel-recovery-set.mjs`) inputs: the dump, the dump manifest,
       `tenant.json` (read only, not copied), and key metadata. It writes only into its `--out`.
-    - Neither path is inside a git work tree.
+    - **Correction:** `/root` is a git work tree (`7empes7s/mimule`). Both PEMs were already
+      ignored by its `.gitignore` `*.pem`. I added `/keel-recovery-key/` and `/keel-key-metadata.json`
+      (Q11) to `/root/.git/info/exclude` (local only; the repo is unchanged), so `git status` shows
+      neither. `/etc/keel` is not in any git work tree.
   - No assertion signed and no reconstruction run (that's Q6).
 - Needs: none (the recovery authenticator from PR #72 is already deployed)
 - Operator instruction: Marouane, project chat 2026-10-04 13:37 UTC: "Send 3 to the operator to do"

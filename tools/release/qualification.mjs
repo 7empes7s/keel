@@ -940,6 +940,12 @@ async function captureCommand() {
 
 function main() {
   const command = process.argv[2];
+  // Task-112: the release ledger (fixture journeys kept apart from live acceptance).
+  if (command === 'ledger') {
+    import('./acceptanceLedger.mjs').then(({ runLedgerCommand }) => { process.exitCode = runLedgerCommand(process.argv); })
+      .catch((error) => { console.error(error.message); process.exit(1); });
+    return;
+  }
   if (command === 'capture-drill') {
     captureCommand().catch((error) => {
       console.error(error.message);
@@ -949,6 +955,7 @@ function main() {
   }
   if (command !== 'verify' || process.argv.includes('--help')) {
     console.error('usage: qualification.mjs verify --gate <gate> --evidence <file> [--tenant <ref>] [--require-live] [--max-age-hours N]\n'
+      + '       qualification.mjs ledger --fixture <journeys result> [--tenant <ref>] [--build <rev>] [--out <file>] [--require-ready]\n'
       + '       qualification.mjs capture-drill --out <file> --reconstruction <file> --onboarding <file> (--drill-row <file> | --db-url <url> --tenant <ref>) [--build <rev>]');
     process.exit(command === 'verify' ? 0 : 2);
   }

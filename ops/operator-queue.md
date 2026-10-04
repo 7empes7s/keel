@@ -860,3 +860,25 @@ item that needs it stays untouched.
   3. `getent hosts 187.124.7.67; timeout 10 bash -c '</dev/tcp/187.124.7.67/22' && echo TCP22_OK || echo TCP22_FAIL; ping -c2 -W3 187.124.7.67`
   4. `ssh -i /root/.ssh/playground_vps -o BatchMode=yes -o ConnectTimeout=15 -v root@187.124.7.67 'echo OK; df -h /opt; ls -la /opt/keel-offsite | tail -5' 2>&1 | grep -E 'OK|debug1: (Connecting|Connection|Authenticat|Offering|Server accepts|Authentications that can continue)|Permission denied|refused|timed out|No route|Filesystem|/opt|keel-db'`
   5. `/opt/keel/ops/keel-offsite.sh --dry-run; echo exit=$?` (only if the script supports `--dry-run`; check `--help` or the script header first, and skip it if not)
+### Q24: Install scheduled collection (issue #91)
+- Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
+  until the coordinator changes Status to queued.
+- Status: hold
+- Result:
+- Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
+- Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):
+  1. `set -a; . /etc/keel/db.env; set +a; node cli/keel-schedules-host.mjs preflight` (read-only). Report its
+     JSON. If `ok` is false, stop and report: a queued/running job backlog, enabled auto-remediate policies or
+     another tenant's schedules all need an operator decision before a worker starts.
+  2. Report `readlink -f /opt/keel` and whether it is the same tree as `/opt/keel-live` (names only).
+  3. `bash ops/keel-schedules-install.sh --root /opt/keel-live`. Installs keel-worker.service,
+     keel-scheduler.service/.timer (paths rewritten to /opt/keel-live), seeds collect tier1/2/3 schedule rows
+     for the tenant in /etc/keel/tenant.json, keeps the old keel-backup-tier* timers disabled, and enables the
+     worker and the scheduler timer. Prune and offsite stay unscheduled (issues #90, #89).
+  4. Back up `/opt/keel-deploy/deploy.sh`, then add `systemctl try-restart keel-worker` right after its
+     `systemctl restart keel-portal` (and in rollback after the portal restart), so the long-running worker
+     picks up each deploy. Report the diff.
+  5. `node cli/keel-schedules-host.mjs run-now`, wait for the three collect jobs to finish (tier2/3 can take a
+     while), wait one scheduler tick (5 min), then `node cli/keel-schedules-host.mjs health`. Report its JSON
+     and exit code; a tier with failedTypes is a result, not something to fix on the host.
+- Hard rules as usual: no tenant writes (collection is read-only), no grants, no secrets printed.

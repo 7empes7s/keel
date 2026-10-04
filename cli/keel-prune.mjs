@@ -5,54 +5,11 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { connect } from '../engine/store/db.mjs';
-import { OPEN_DRIFT_PREDICATE } from '../engine/store/openDrift.mjs';
-import { isPrunable, pruneSnapshots } from '../engine/store/retention.mjs';
+import { listPrunableSnapshots, pruneSnapshots } from '../engine/store/retention.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : fallback;
-}
-
-// The read half of pruneSnapshots (engine/store/retention.mjs): which snapshots
-// are prunable under the default retention policy. Used by --dry-run so that
-// nothing is deleted. The delete half lives only in pruneSnapshots.
-async function listPrunableSnapshots(client, { tenantRef, now }) {
-  const { rows: referencedSnapshots } = await client.query(
-    `SELECT DISTINCT snapshot_id
-     FROM (
-       SELECT rv.snapshot_id
-       FROM baseline_resource br
-       JOIN baseline b ON b.id = br.baseline_id
-       JOIN resource_version rv ON rv.id = br.resource_version_id
-       WHERE b.active
-       UNION
-       SELECT d.observed_snapshot AS snapshot_id
-       FROM drift d
-       WHERE ${OPEN_DRIFT_PREDICATE}
-       UNION
-       SELECT p.source_snapshot AS snapshot_id
-       FROM plan p
-     ) AS referenced_snapshots`,
-  );
-  const referencedSnapshotIds = new Set(referencedSnapshots.map(({ snapshot_id }) => snapshot_id));
-
-  const { rows: snapshots } = await client.query(
-    `SELECT s.*,
-            CASE
-              WHEN COALESCE(bool_or(rv.criticality = 'tier3'), false) THEN 'tier3'
-              WHEN COALESCE(bool_or(rv.criticality = 'tier2'), false) THEN 'tier2'
-              ELSE 'tier1'
-            END AS tier
-     FROM snapshot s
-     LEFT JOIN resource_version rv ON rv.snapshot_id = s.id
-     WHERE s.tenant_ref = $1
-     GROUP BY s.id
-     ORDER BY s.started_at`,
-    [tenantRef],
-  );
-  return snapshots
-    .filter((snapshot) => isPrunable(snapshot, { now, referencedSnapshotIds }))
-    .map((snapshot) => snapshot.id);
 }
 
 async function main() {

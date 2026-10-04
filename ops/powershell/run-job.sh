@@ -19,8 +19,9 @@
 #     "workload": "exo,scc,defender,teams,spo"   // or "all", or a single name
 #   }
 #
-# Only mode "probe" exists right now — it runs probe-workloads.ps1 and
-# streams its JSON straight through to stdout. Diagnostics go to stderr so
+# Mode "probe" runs probe-workloads.ps1 and streams its JSON straight through
+# to stdout. Mode "cmdlet" (task-105) runs run-cmdlet.ps1: one allowlisted
+# cmdlet whose parameters arrive as JSON data and are splatted, never parsed. Diagnostics go to stderr so
 # stdout stays pure JSON.
 
 set -euo pipefail
@@ -53,8 +54,13 @@ exec pwsh -NoLogo -NoProfile -NonInteractive -Command '
   }
 
   $mode = if ($job.mode) { $job.mode } else { "probe" }
+  # Roadmap task-105: one allowlisted cmdlet, parameters bound by splatting.
+  if ($mode -eq "cmdlet") {
+    & /app/run-cmdlet.ps1
+    exit $LASTEXITCODE
+  }
   if ($mode -ne "probe") {
-    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`" is implemented)")
+    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`" and `"cmdlet`" are implemented)")
     exit 2
   }
 

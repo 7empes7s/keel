@@ -313,6 +313,30 @@ being triggered by queue updates.
 
   Stop at the first failure. Do only what the filled decisions allow.
 
+### Q11: Build a recovery set for gate 114 (new tool from PR #70)
+- Status: todo
+- Needs:
+  - `/opt/keel-live` at or after df0de36 (PR #70 merged; it adds `ops/keel-recovery-set.mjs`);
+  - run from a checkout at the deployed build.
+- Do:
+  1. Run `ops/keel-recovery-set.mjs --dry-run` against the newest `/opt/backups/<date>/keel-db.sql.gz`.
+     Follow `docs/roadmap/storage-live-acceptance.md` › Operator steps.
+  2. Then run it for real with `--out /opt/keel-recovery-sets/<date>`. Make the set right after a
+     nightly backup if you can, because the evidence head comes from the live DB.
+  3. Key metadata is references only (where material lives and who holds it), never key
+     material. Use what actually exists on the host, and say in Result what you used.
+  4. Report the summary (`recovery-set.json`: build, tenant ref, evidence head, digests).
+- Don't copy the set to a "separate volume" on the same disk. Q2 stays blocked until the operator
+  attaches a real second volume. When one exists, resume Q2 Part B with this set.
+
+### Q12: Report how the deploy builds images (read-only)
+- Status: todo
+- Needs: none
+- Do: report how `/opt/keel-deploy/deploy.sh` decides what to build and restart, without printing
+  secrets. Say whether a step that rebuilds `keel-powershell:latest` when `ops/powershell/**`
+  changes could be added safely. Don't change the script; the coordinator will propose the
+  change.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

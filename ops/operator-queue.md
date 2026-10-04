@@ -640,7 +640,7 @@ being triggered by queue updates.
 
 ### Q19: Make Settings › Setup able to check the tenant after PR #73 deploys
 - Status: todo
-- Needs: PR #73 merged and `/opt/keel-live` deployed at or after its merge commit
+- Needs: PR #73 merged (**merged 13:34 UTC as `2e8a5b9`**) and `/opt/keel-live` deployed at or after that commit
 - Do: PR #73 builds the setup host from the Collector and Restorer credential files. It finds
   them at `KEEL_COLLECTOR_CONFIG_PATH` (default `/etc/keel/tenant-target.json`) and
   `KEEL_RESTORER_CONFIG_PATH` (default `/etc/keel/restorer-target.json`, which does not exist on

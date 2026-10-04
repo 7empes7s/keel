@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 12:45 UTC
+- **Last updated:** 2026-10-04 13:35 UTC
 
 ## How the work is organized
 
@@ -35,7 +35,7 @@ then prove the path works.
 | 113 | deployed-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-113` @ 48d37ca. Not mergeable: see "Evidence merge blocker" |
 | 114 | storage-live-acceptance | **Captured, verify ok** at `df0de36` | `claude/live-evidence-114` @ 4b1d3da. Copy on the second volume `/mnt/keel-copy` |
 | 115 | native-live-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-115` @ b965a66 |
-| 116 | drill-live-acceptance | **Blocked** | Needs PR #73 merged + Q19, a recovery key generated and enrolled, a Setup run (task-76 run id), then the reconstruction drill (Q6) |
+| 116 | drill-live-acceptance | **Blocked** | PR #73 merged 13:34; needs its deploy + Q19, a recovery key generated and enrolled, a Setup run (task-76 run id), then the reconstruction drill (Q6) |
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
@@ -50,7 +50,7 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## Open PRs
 
-- **#73** `claude/setup-host`: production Setup host for gate 116 (task-76). CI green; reviewed by the
+- None open. **#73** `claude/setup-host` was **merged 13:34 UTC as `2e8a5b9`** (operator approved in chat). Description:: production Setup host for gate 116 (task-76). CI green; reviewed by the
   coordinator (writes disabled unless named with qualification + expiry; never creates app
   registrations). **Merge blocked for Claude** ("Merge Without Review"): the operator merges it.
   After deploy, queue Q19 points the portal at `/etc/keel/restorer.json`.
@@ -68,7 +68,7 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 1. **D-120b** in the queue (Restorer `SharePointTenantSettings.ReadWrite.All`; Collector
    `SharePointTenantSettings.Read.All`, `Sites.Read.All`, `MailboxSettings.Read`): unblocks 120–123.
-2. **Merge PR #73**, then decide on the Collector read grants it needs (`Application.Read.All`,
+2. Decide on the Collector read grants it needs (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
 3. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
 4. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
@@ -140,3 +140,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).
 - 2026-10-04 12:55: PR #73 author notes added (Collector read grants needed for Setup checks).
 - 2026-10-04 13:00: AWS setup done on the VPS; budget guard still to run; keel-operator restart pending.
+- 2026-10-04 13:35: PR #73 merged (`2e8a5b9`); master deploy and Q19 next.

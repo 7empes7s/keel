@@ -993,8 +993,27 @@ item that needs it stays untouched.
 ### Q28: #90 prune dry-run breakdown (read-only)
 - Issue #90, asked by the "Prune timer review" thread (21:04 UTC) to check that Q25's 154 snapshots are the
   expected ones. Same rules as Q25: read-only, delete nothing, enable nothing; the `prune` schedule stays absent.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done (read-only; SQL inside `BEGIN READ ONLY … ROLLBACK`; nothing deleted or enabled; no `prune` schedule).**
+  1. Snapshots by tier, status and day (tenant sha256:f7b3959300856957, 182 total):
+     - 09-04: tier2 ×2 (464 versions).
+     - 09-07: tier2 ×6 (1392).
+     - 09-08: tier1 ×13 (8883), **tier1 running ×1 (84)**, tier2 ×2 (1366), tier3 ×1 (1367).
+     - 09-09 to 09-13: tier1 ×24 per day (25200–25296), tier2 ×1 per day (159–161).
+     - 09-14: tier1 ×20 (21080), tier2 ×1 (161), tier3 ×1 (159).
+     - 10-04: tier1 ×9 (9605), tier2 ×1 (163), tier3 ×1 (159).
+     - No snapshots 09-15 → 10-03 (collection was off). All complete except the one stale `running`
+       tier1 from 09-08.
+  2. `SELECT count(*) FROM evidence WHERE subject::text LIKE '%f74b0fac-…%'`: **0**.
+  3. I regenerated Q25's list with the same read-only dry run: still **154 ids**. Searched UUIDs only
+     (no contents printed) in every `origin/claude/live-evidence-*` branch's
+     `docs/release/qualifications` and in `/opt/keel-live/docs/release/qualifications`: 312 hits, 25 distinct
+     UUIDs. **None of them is a snapshot id, and none is in the 154.** So no committed or live gate evidence
+     cites a prunable snapshot.
+     - Only outside git: `f74b0fac-a1ee-4f94-9cd2-d889e98dae55` (in the 154) is the `snapshotId` in
+       `/opt/keel-recovery-sets/2026-10-04/recovery-set.json` and its vol2 copy
+       `/mnt/keel-copy/2026-10-04/recovery-set.json` (gate 114's set). The set embeds its own config export,
+       so a prune wouldn't break that set's verification, but the DB snapshot it names would be gone.
 - Needs: none
 - Do, as root with `/etc/keel/db.env` sourced, in psql against `KEEL_DB_URL`:
   1. ```sql

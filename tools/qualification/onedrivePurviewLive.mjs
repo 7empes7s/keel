@@ -240,7 +240,8 @@ export async function captureOneDrivePurviewAcceptance({
   };
   const siteRead = await readSite('collector', collector, site);
   const siteObserved = !siteRead.failed && observedFields(siteRead.result).length > 0;
-  capture(ONEDRIVE_OPERATION, siteObserved, siteObserved ? null : siteRead.failed?.error?.message ?? 'no site settings were observed');
+  const siteProblem = Object.values(siteRead.result.fieldCoverage).find((coverage) => coverage.error)?.error?.message;
+  capture(ONEDRIVE_OPERATION, siteObserved, siteObserved ? null : siteProblem ?? 'no site settings were observed');
   const labelsStart = await readLabels('collector', collector);
   for (const [id, group] of [['purview.label-definitions', 'label'], ['purview.label-publication', 'policy']]) {
     const failure = labelsStart.failures.find((item) => item.group === group);

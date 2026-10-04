@@ -12,7 +12,7 @@
 
 import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
-import { getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
+import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
 import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
 import { capabilityScope } from '../authz/can.mjs';
@@ -56,6 +56,17 @@ export class ApprovalInvalidatedError extends ApprovalExpiredError {
     super(message);
     this.reason = reason;
   }
+}
+
+// Task 96: the decision named a plan that is no longer the request's plan. Nothing is
+// decided; the request stays as it was.
+export class ApprovalPlanChangedError extends Error {}
+
+/** Task 96: the digest of the plan a request asks to approve: its action and its
+ * immutable params (for a restore, the dry-run artifact reference). An external mirror
+ * carries it, and a decision made against another digest is refused. */
+export function approvalPlanDigest(request) {
+  return canonicalDigest({ action: request.action, params: request.params ?? {} });
 }
 
 function approvalStatuses(statuses) {
@@ -252,10 +263,14 @@ async function closeIfExpired(client, request) {
   return request;
 }
 
+// Task 96: `expectedPlanDigest`, when given, must equal the locked request's plan digest
+// (approvalPlanDigest); a mirror callback passes the digest the external approver saw.
 /** @param {any} client
- * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any }} options
+ * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null }} options
  */
-export async function approveRequest(client, { tenantRef, id, decidedBy, enforceScope = false, approverScope = null }) {
+export async function approveRequest(client, {
+  tenantRef, id, decidedBy, enforceScope = false, approverScope = null, expectedPlanDigest = null,
+}) {
   let decided;
   await client.query('BEGIN');
   let committed = false;
@@ -273,6 +288,9 @@ export async function approveRequest(client, { tenantRef, id, decidedBy, enforce
     }
     if (request.status !== 'pending') {
       throw new ApprovalClosedError(`approval request already ${request.status}: ${id}`);
+    }
+    if (expectedPlanDigest != null && expectedPlanDigest !== approvalPlanDigest(request)) {
+      throw new ApprovalPlanChangedError(`approval request ${id} is for another plan than the one decided`);
     }
     // Self-approval is refused server-side, always: the approver principal must
     // differ from the requester.
@@ -365,9 +383,11 @@ export async function approveRequest(client, { tenantRef, id, decidedBy, enforce
 }
 
 /** @param {any} client
- * @param {{ tenantRef: string, id: string, decidedBy: string, reason?: any, enforceScope?: boolean, approverScope?: any }} options
+ * @param {{ tenantRef: string, id: string, decidedBy: string, reason?: any, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null }} options
  */
-export async function rejectRequest(client, { tenantRef, id, decidedBy, reason, enforceScope = false, approverScope = null }) {
+export async function rejectRequest(client, {
+  tenantRef, id, decidedBy, reason, enforceScope = false, approverScope = null, expectedPlanDigest = null,
+}) {
   let rejected;
   await client.query('BEGIN');
   let committed = false;
@@ -383,6 +403,9 @@ export async function rejectRequest(client, { tenantRef, id, decidedBy, reason, 
     }
     if (request.status !== 'pending') {
       throw new ApprovalClosedError(`approval request already ${request.status}: ${id}`);
+    }
+    if (expectedPlanDigest != null && expectedPlanDigest !== approvalPlanDigest(request)) {
+      throw new ApprovalPlanChangedError(`approval request ${id} is for another plan than the one decided`);
     }
     if (typeof reason !== 'string' || reason.trim().length === 0) {
       throw new ApprovalReasonRequiredError('a rejection reason is required');
@@ -419,6 +442,29 @@ export async function rejectRequest(client, { tenantRef, id, decidedBy, reason, 
     actor: decidedBy,
   });
   return rejected;
+}
+
+/**
+ * Task 96: re-planning. A pending request whose plan was replaced by `supersededBy` is
+ * closed as expired (reason `superseded: <id>`), so no decision, from the portal or a
+ * mirror, can approve the replaced plan. Returns the closed row, or null when the
+ * request was no longer pending (nothing to close).
+ */
+export async function supersedeRequest(client, { tenantRef, id, supersededBy, actor }) {
+  const { rows: [closed] } = await client.query(
+    `UPDATE approval_request SET status = 'expired', decided_at = now(), reason = $2
+      WHERE id = $1 AND status = 'pending'
+      RETURNING *`,
+    [id, `superseded: ${supersededBy}`],
+  );
+  if (!closed) return null;
+  await appendEvidence(client, {
+    tenantRef,
+    kind: APPROVAL_DECISION_EVIDENCE_KIND,
+    subject: { requestId: closed.id, action: closed.action, decision: 'superseded', supersededBy: String(supersededBy) },
+    actor,
+  });
+  return closed;
 }
 
 /**

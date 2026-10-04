@@ -595,7 +595,28 @@ being triggered by queue updates.
     (offline) and report its output.
 
 ### Q18: Gate 118 (servicenow-live-acceptance)
-- Status: in-progress
+- Status: done
+- Result: **Done.** `claude/live-evidence-118` @ 4ec37c1 (from origin/master 87e366e). Build **87e366e** =
+  `/opt/keel-live`, unchanged during the capture (12:24–12:25 UTC).
+  `verify --require-live --gate servicenow-live-acceptance --tenant sha256:f7b3959300856957`:
+  `{"ok": true, "failures": []}`, exit 0.
+  - Capture run from a worktree at 87e366e (engine `npm ci`), with
+    `--confirm-non-production-instance dev426571.service-now.com`, `--declared-by "Marouane"`, the
+    configs in `/etc/keel/servicenow-qualification/`, `--record-template` and fresh `docs.json`.
+    KEEL and each test user used their own bearer token (OAuth password grant, minted into env at run
+    time, never written). Exit 0.
+  - Scenarios (all as designed):
+    - **callback-duplicate**: mirrored, read-back match; callback applied ×2 (second idempotent);
+      decision delivered.
+    - **lost-callback**: callback withheld; poll applied; late callback `already-decided`.
+    - **conflict**: portal rejected first; instance approval gives callback `conflict`; conflict delivered.
+    - **revoked-approver**: grant revoked; callback `refused-not-eligible`.
+  - Instance writes: 4 `u_keel_change` records plus their relay rows (left in place; deletable), and 4
+    test-user approvals. Qualification DB `keel_servicenow_qualification`: schema, principals, 4
+    approval requests, 2 placeholder jobs (nothing runs them), and one revoked grant (test user 2).
+    Production KEEL DB untouched.
+  - Evidence scanned for every env-file secret, the base64 key, JWT/PEM/bearer patterns and DB URLs:
+    none found.
 - Needs: Q17 done; decision D-118
 - Do: run the capture and verify exactly as in `docs/roadmap/servicenow-live-acceptance.md`
   › Capture and Verify, at the build `/opt/keel-live` is deployed at, with

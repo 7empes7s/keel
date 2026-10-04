@@ -644,3 +644,36 @@ test('the capture tool is offline by default, refuses non-fixture mailboxes and 
   assert.equal(stuck.mailbox.cas.PopEnabled, true);
   assert.equal(verifyEvidenceFile(failed.outPath, options()).ok, false);
 });
+
+test('when Exchange reports an empty organization tenant id, the collector token\'s tenant proves it; an unproven or foreign tenant is refused', async () => {
+  // Live Get-OrganizationConfig can return an empty ExternalDirectoryOrganizationId: the collector token's tenant stands in.
+  const proven = await capturedFiles(exchangeFake({ orgTenant: '' }), { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.deepEqual(verifyEvidenceFile(proven.outPath, options()), { ok: true, failures: [] });
+  assert.equal(proven.record.subject.organization.externalDirectoryOrganizationId, TENANT);
+  assert.equal(proven.record.subject.organization.tenantIdSource, 'collector-token');
+
+  // A reported id is used as reported, and a reported foreign id still wins over the token.
+  const reported = await capture(exchangeFake(), { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.equal(reported.record.subject.organization.tenantIdSource, 'organization');
+  const foreign = exchangeFake({ orgTenant: OTHER_TENANT });
+  const foreignResult = await capture(foreign, { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.deepEqual(foreign.writes(), []);
+  assert.match(foreignResult.record.subject.writes.retention.error, /another tenant/);
+
+  // No reported id and no known token tenant: nothing is written.
+  const unknown = exchangeFake({ orgTenant: '' });
+  const refused = await capture(unknown);
+  assert.deepEqual(unknown.writes(), []);
+  assert.match(refused.record.subject.writes.retention.error, /did not report its tenant id/);
+
+  // A token for another tenant sends nothing.
+  for (const role of ['collector', 'restorer']) {
+    const untouched = exchangeFake();
+    await assert.rejects(capture(untouched, { credentialTenants: { [role]: OTHER_TENANT } }), new RegExp(`${role} token was issued for another tenant`));
+    assert.equal(untouched.calls.length, 0);
+  }
+
+  // A record whose tenant source was tampered with fails, even when re-signed.
+  const tampered = resign(proven.evidence, (e) => { e.subject.organization.tenantIdSource = 'operator-said-so'; return e; });
+  assert.match(verifyIn(tampered).failures.join('\n'), /organization's tenant has no recognized source/);
+});

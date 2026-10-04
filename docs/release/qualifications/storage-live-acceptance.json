@@ -1,6 +1,123 @@
 {
   "contractVersion": 1,
   "gate": "storage-live-acceptance",
-  "status": "pending",
-  "reason": "No independently captured local-copy recovery evidence exists yet. The operator runs tools/qualification/storageLiveAcceptance.mjs capture --live as the separate recovery account against the backup copy on its own volume; see docs/roadmap/storage-live-acceptance.md (Operator steps). Retention lock, immutability and the lock canary stay UNQUALIFIED for a local copy. This placeholder never verifies."
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "df0de3616841301bc0c596a4ba788996cc32ba1b",
+  "operation": "storage.local-copy-recovery",
+  "credentialMode": "recovery-reader",
+  "observedAt": "2026-10-04T10:40:28.669Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisite": {
+      "task-68": {
+        "recoveryManifestVersion": 1,
+        "recoveryPrerequisites": [
+          "recovery-key-material",
+          "artifact-storage-read",
+          "tenant-recovery-authorization"
+        ]
+      },
+      "task-69": {
+        "storageQualificationVersion": 1,
+        "provider": "local-disk",
+        "retentionLock": "unsupported",
+        "immutability": "unsupported"
+      }
+    },
+    "storage": {
+      "provider": "local-disk",
+      "retentionLock": "unsupported",
+      "immutability": "unsupported",
+      "copyRootRef": "/mnt/keel-copy/2026-10-04",
+      "volumes": {
+        "primary": {
+          "device": "2049"
+        },
+        "copy": {
+          "device": "2064"
+        }
+      }
+    },
+    "identity": {
+      "principalId": "os-user:keel-recovery",
+      "credentialRef": "os-login:keel-recovery@keel-vps (sudo -u from root; no password, nologin shell)",
+      "authenticatedBy": "os-account-login",
+      "independent": true,
+      "readerAccount": 995,
+      "writerAccounts": [
+        0
+      ],
+      "readerCanWrite": false,
+      "missingPrerequisites": []
+    },
+    "recovery": {
+      "manifestGeneratedAt": "2026-10-04T09:09:52.501Z",
+      "reads": [
+        {
+          "role": "manifest",
+          "name": "recovery-manifest.json",
+          "sha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3",
+          "expectedSha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3"
+        },
+        {
+          "role": "dump",
+          "name": "keel-db.sql.gz",
+          "sha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1",
+          "expectedSha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1"
+        },
+        {
+          "role": "export-manifest",
+          "name": "config-export/manifest.json",
+          "sha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e",
+          "expectedSha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e"
+        }
+      ],
+      "manifestVerification": {
+        "ok": true,
+        "failures": [],
+        "recoveryComplete": true,
+        "incomplete": []
+      },
+      "listing": {
+        "before": {
+          "count": 1058,
+          "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+        },
+        "after": {
+          "count": 1058,
+          "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+        }
+      }
+    },
+    "qualified": [
+      "independent-recovery-read",
+      "manifest-verification"
+    ],
+    "unqualified": {
+      "retentionLock": {
+        "status": "UNQUALIFIED",
+        "reason": "local-disk adapter: retentionLock unsupported (operator decision 2026-09-30)"
+      },
+      "immutability": {
+        "status": "UNQUALIFIED",
+        "reason": "local-disk adapter: immutability unsupported; filesystem permissions are revocable"
+      },
+      "lockCanary": {
+        "status": "UNQUALIFIED",
+        "reason": "not run: a local copy has no lock, so a deletion canary could only delete"
+      }
+    },
+    "captureSha256": "1ba2a37cf5e7864523de2afa7643e221335fe7c7a757d47c231057121af494c6"
+  },
+  "proof": {
+    "artifact": {
+      "path": "storage-live-acceptance.artifact.json",
+      "sha256": "1ba2a37cf5e7864523de2afa7643e221335fe7c7a757d47c231057121af494c6"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "27b3fc1ede7cf7a4332680eb6a60995d6623050c7108087dc56fed1b22885e96"
+    }
+  }
 }

@@ -42,11 +42,10 @@ then prove the path works.
 | 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Ready except a code fix** | D-120b given in keel-operator's session; all grants made; alice's OneDrive provisioned. Three declared doc URLs were dead: fixed in PR #74. Runs once #74 deploys (Q10) |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
-**Evidence merge blocker:** `engine/roadmap/deployed-acceptance.test.mjs` (and probably the other
-gates' tests) require the committed evidence file to stay a pending placeholder. Changing that test is
-blocked for Claude by the auto-mode classifier ("Security Test Removal"); it needs the operator, or a
-session the operator directs. Replacement checks were drafted in the old session: live record fields,
-build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the HMAC key.
+**Evidence merge:** the tests that pinned each committed evidence file as a pending placeholder are
+changed in PR #75 (operator-approved): a committed live record must be live-qualified, bind its raw
+capture's sha256, carry no credential material, and still fail verification without the HMAC key
+(`engine/test/committedEvidence.mjs`).
 
 ## Open PRs
 

@@ -299,7 +299,7 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
-- Status: blocked
+- Status: in-progress
 - Result: Not started. Waiting on the operator: four decisions answer an either/or question with
   "yes", which doesn't pick an option. I won't interpret them.
   - **D-121a**: permanent `keel-rt-*` member (which user?) **or** one created and deleted for each capture?

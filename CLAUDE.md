@@ -19,6 +19,7 @@ The live portal is https://keel.techinsiderbytes.com, behind Cloudflare Access.
 
 ## Shared rules (generated from 7empes7s/brain; edit the brain, not this section)
 
+<!-- brain:start -->
 <!-- generated from 7empes7s/brain; edit the brain, not this file -->
 ### Profile: Marouane (operator / CEO)
 
@@ -102,3 +103,4 @@ The live portal is https://keel.techinsiderbytes.com, behind Cloudflare Access.
 - **Open (2026-10-04):**
   - The offsite backup target is unreachable.
   - The prune timer needs review before it is enabled.
+<!-- brain:end -->

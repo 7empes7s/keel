@@ -202,7 +202,7 @@ being triggered by queue updates.
     that one `keel-rehearsal-*` group.
 
 ### Q7: Read-only inventory for the 120–123 decisions
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do: report each of the following, read-only. Create and grant nothing.
   - The application permissions and directory roles each KEEL app (Collector, Restorer)

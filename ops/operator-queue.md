@@ -720,6 +720,19 @@ being triggered by queue updates.
      key's fingerprint (sha256 of the public PEM), never the private key.
   Don't sign an assertion or run a reconstruction yet; that's Q6, after the Setup run.
 
+### Q21: Re-check gate 116 prerequisites now that Setup and the recovery key exist (read-only)
+- Status: todo
+- Needs: Q19 done, Q20 done
+- Do: read-only. Redo Q5's check against `docs/roadmap/drill-live-acceptance.md` and
+  `docs/roadmap/bootstrap-ui.md` (status 2026-10-04) at the deployed build:
+  - which task-76 run ids the drill needs (read setup, restore setup), and whether a run that ends
+    `pending-manual` (Intune "Read Only Operator" not-checked; PIM Privileged Role Administrator
+    waiting) is accepted, or whether those manual steps must be satisfied first;
+  - exactly which operator actions remain (PIM activation, the Intune role, any Collector read grant
+    such as `Application.Read.All`, `RoleManagement.Read.Directory`, `DeviceManagementRBAC.Read.All`);
+  - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
+  Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

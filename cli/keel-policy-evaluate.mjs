@@ -8,6 +8,7 @@
 // evaluation path used when drift is first recorded. This file only parses argv and
 // connects.
 import { evaluateOpenDrifts } from '../engine/policy/evaluate.mjs';
+import { settleChangeIntents } from '../engine/policy/changeIntent.mjs';
 import { connect } from '../engine/store/db.mjs';
 
 function arg(name, fallback) {
@@ -34,10 +35,12 @@ async function main() {
 
   const client = await connect(dbUrl);
   try {
-    const evaluations = await evaluateOpenDrifts(client, {
-      tenantRef: requireArg('tenant-ref'),
-    });
-    console.log(`evaluated ${evaluations.length} open drift row(s)`);
+    const tenantRef = requireArg('tenant-ref');
+    // Roadmap task-93: emergency changes whose window has ended are settled first: each
+    // resource is re-read and evaluated afresh, never rolled back from the approval.
+    const settled = await settleChangeIntents(client, { tenantRef });
+    const evaluations = await evaluateOpenDrifts(client, { tenantRef });
+    console.log(`settled ${settled.length} ended emergency change(s); evaluated ${evaluations.length} open drift row(s)`);
   } finally {
     await client.end();
   }

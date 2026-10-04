@@ -458,7 +458,17 @@ being triggered by queue updates.
   Use the code in `engine/bootstrap/` and the portal Setup routes. Run nothing.
 
 ### Q15: Mount the new second volume, then resume Q2 (gate 114) Part B
-- Status: in-progress
+- Status: done
+- Result: Volume `/dev/disk/by-id/scsi-0HC_Volume_107029601` (= /dev/sdb, ext4 UUID
+  4a0c67f6-c1be-4cb3-9232-fd7c19e62776, 97.9G) was already formatted and Hetzner had auto-mounted it
+  at `/mnt/HC_Volume_107029601`, with fstab line 13. It was empty (only `lost+found`). No mkfs.
+  **Changed that existing fstab entry's mount point** (no duplicate added; backup
+  `/etc/fstab.bak-q15-*`) to
+  `/dev/disk/by-id/scsi-0HC_Volume_107029601 /mnt/keel-copy ext4 discard,nofail,defaults 0 0`.
+  Then unmounted the old path, removed the empty directory, `daemon-reload` and `mount -a`.
+  `findmnt -D`: `/dev/sdb ext4 97.9G at /mnt/keel-copy`, a different filesystem from `/dev/sda1`
+  (`/`, which holds `/opt/backups` and `/opt/keel-recovery-sets`).
+  Q2 Part B resumed and is **done**: see Q2 (`claude/live-evidence-114` @ 4b1d3da, verify ok, exit 0).
 - Needs: none. The operator created and formatted the volume (ext4) at
   `/dev/disk/by-id/scsi-0HC_Volume_107029601`.
 - Do:

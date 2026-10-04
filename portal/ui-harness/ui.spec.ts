@@ -14,6 +14,8 @@ const PAGES = [
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
   { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
+  { name: "readiness", hash: "/readiness" },
+  { name: "readiness-ready", hash: "/readiness/ready" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
@@ -323,6 +325,27 @@ test("resilience shows measured values, names what does not count, and keeps unm
   await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
 });
 
+// Task-94: each emergency account shows its five checks separately; "Not known" is its
+// own state, checks KEEL cannot make stay listed, and a use leads the verdict.
+test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
+  await open(page, "/readiness");
+  await expect(page.locator(".verdict-headline")).toHaveText("An emergency account was used");
+  await expect(page.locator(".readiness-account-0 .readiness-check")).toHaveCount(5);
+  const second = page.locator(".readiness-account-1");
+  await expect(second.locator(".item-card-head .pill")).toHaveText("Not ready");
+  await expect(second.locator(".readiness-check-unknown")).toContainText("Not known");
+  await expect(second.locator(".readiness-check-fail")).toContainText("Block legacy auth");
+  await expect(second.locator(".readiness-check-due")).toContainText("a new test has been due since");
+  await expect(page.locator(".readiness-alerts")).toContainText("was used 1 hour ago, and made 2 changes after it.");
+  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
+  await expect(page.locator(".readiness-surface-unsupported").first()).toContainText("KEEL cannot check this");
+
+  await open(page, "/readiness/ready");
+  await expect(page.locator(".verdict-headline")).toHaveText("Ready");
+  await expect(page.locator(".verdict-sentence")).toContainText("4 areas need a manual check");
+  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
+});
+
 // Polish pass 1: the recovery surfaces added by tasks 63–66 get their own
 // baselines and a phone-width check that nothing scrolls sideways.
 for (const theme of ["dark", "light"] as const) {
@@ -401,6 +424,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
+  readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
+  "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
 };
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {

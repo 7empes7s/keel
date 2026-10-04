@@ -1109,6 +1109,51 @@ ALTER TABLE restore_dry_run DROP CONSTRAINT IF EXISTS restore_dry_run_source_che
 ALTER TABLE restore_dry_run ADD CONSTRAINT restore_dry_run_source_check
   CHECK (snapshot_id IS NOT NULL OR workload_restore IS NOT NULL);
 
+-- Roadmap task-94: emergency (break-glass) account lifecycle. An account is registered
+-- by Entra object id with its review intervals; its lifecycle events (a recorded
+-- emergency sign-in test, a recorded credential change, method evidence observed by a
+-- read-only reader or attested by a person) are append-only. KEEL never rotates a
+-- credential or changes a policy from these rows. Additive and retry-safe; an install
+-- without these tables reads as "not configured", never as ready.
+CREATE TABLE IF NOT EXISTS breakglass_account (
+  tenant_ref               text NOT NULL,
+  account_id               text NOT NULL CHECK (account_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
+  label                    text NOT NULL,
+  resource_key             text NOT NULL,
+  validation_interval_days int NOT NULL DEFAULT 90 CHECK (validation_interval_days BETWEEN 1 AND 366),
+  rotation_interval_days   int CHECK (rotation_interval_days IS NULL OR rotation_interval_days BETWEEN 1 AND 730),
+  registered_by            text NOT NULL,
+  registered_at            timestamptz NOT NULL DEFAULT now(),
+  retired_by               text,
+  retired_at               timestamptz,
+  retired_reason           text,
+  PRIMARY KEY (tenant_ref, account_id)
+);
+
+CREATE TABLE IF NOT EXISTS breakglass_lifecycle_event (
+  id          bigserial PRIMARY KEY,
+  tenant_ref  text NOT NULL,
+  account_id  text NOT NULL,
+  kind        text NOT NULL CHECK (kind IN ('validated','credential-rotated','methods-attested','methods-observed')),
+  occurred_at timestamptz NOT NULL,
+  recorded_by text NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  detail      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  FOREIGN KEY (tenant_ref, account_id) REFERENCES breakglass_account (tenant_ref, account_id)
+);
+CREATE INDEX IF NOT EXISTS breakglass_lifecycle_event_idx
+  ON breakglass_lifecycle_event (tenant_ref, account_id, kind, occurred_at DESC);
+
+CREATE OR REPLACE FUNCTION breakglass_lifecycle_event_append_only() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'breakglass_lifecycle_event is append-only';
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS breakglass_lifecycle_event_append_only ON breakglass_lifecycle_event;
+CREATE TRIGGER breakglass_lifecycle_event_append_only
+  BEFORE UPDATE OR DELETE ON breakglass_lifecycle_event
+  FOR EACH ROW EXECUTE FUNCTION breakglass_lifecycle_event_append_only();
+
 -- Roadmap task-92: immutable policy activation previews. Before an automatic roll-back
 -- policy is turned on, KEEL freezes what it would act on (matched changes, everything
 -- they depend on, run-as grants, limits, unsupported operations, benchmark findings)

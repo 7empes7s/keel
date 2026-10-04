@@ -8,7 +8,7 @@
  *   # Live: one bounded delete → restore round trip on ONE disposable fixture.
  *   node tools/qualification/nativeRecovery.mjs capture --live \
  *     --resource-type group --object-id <id> --confirm-disposable-fixture <id> \
- *     --target-config /etc/keel/restorer-target.json \
+ *     --target-config /etc/keel/restorer.json \
  *     --docs-retrieved-at YYYY-MM-DD --permission Group.ReadWrite.All --out DIR
  *
  * Writes DIR/native-live-acceptance.json (the record) and
@@ -49,7 +49,8 @@ export const OFFLINE_FIXTURE = Object.freeze({
   name: 'KEEL-RT-native-recovery-fixture',
   resourceType: 'group',
 });
-const DELETED_READ_ATTEMPTS = 5;
+/** Bounded attempts for reads that trail a directory write (Entra replication lag). */
+const LAGGED_READ_ATTEMPTS = 5;
 
 /** In-process Graph honouring read, DELETE (to deleted items) and restore. Offline only. */
 export function offlineGraph({ now = () => new Date() } = {}) {
@@ -100,11 +101,23 @@ export async function captureRoundTrip({ graph, resourceType, objectId, now = ()
   if (!route) throw new Error(`refused: ${resourceType} has no directory soft-delete route (Conditional Access stays manual)`);
   const steps = expectedExchanges(resourceType, objectId);
   const exchanges = [];
-  const call = async (step, fn) => {
+  const call = async (step, fn, extra = {}) => {
     const want = steps.find((s) => s.step === step);
     const res = await fn(want);
-    exchanges.push({ step, method: want.method, path: want.path, status: res.status, body: reduce(res.body, route.nameField) });
+    exchanges.push({ step, method: want.method, path: want.path, status: res.status, body: reduce(res.body, route.nameField), ...extra });
     return res;
+  };
+  // Re-reads with linear backoff until the object shows up or the bound is
+  // hit; the exchange records the last response plus every attempt's status.
+  const laggedRead = async (step) => {
+    const want = steps.find((s) => s.step === step);
+    const attempts = [];
+    for (let attempt = 1; ; attempt += 1) {
+      const res = await graph.read('v1.0', want.path);
+      attempts.push(res.status);
+      if (res.ok || attempt === LAGGED_READ_ATTEMPTS) return call(step, async () => res, { attempts });
+      await sleep(2000 * attempt);
+    }
   };
 
   const liveRead = await call('read-live', (w) => graph.read('v1.0', w.path));
@@ -120,20 +133,12 @@ export async function captureRoundTrip({ graph, resourceType, objectId, now = ()
 
   const del = await call('delete', (w) => graph.write('v1.0', w.path, { method: 'DELETE' }));
   if (del.status !== 204) return stop(`delete returned ${del.status}`);
-  let deletedRead = null;
-  for (let attempt = 0; attempt < DELETED_READ_ATTEMPTS; attempt += 1) {
-    const res = await graph.read('v1.0', `/directory/deletedItems/${objectId}`);
-    if (res.ok || attempt === DELETED_READ_ATTEMPTS - 1) {
-      deletedRead = await call('read-deleted', async () => res);
-      break;
-    }
-    await sleep(2000 * (attempt + 1));
-  }
+  const deletedRead = await laggedRead('read-deleted');
   if (!deletedRead.ok) return stop(`deleted-items read returned ${deletedRead.status}; the object is deleted and must be restored manually within retention`);
   const restore = await call('restore', (w) => graph.write('v1.0', w.path, { method: 'POST', body: {} }));
   if (restore.status !== 200) return stop(`restore returned ${restore.status}; restore manually within retention`);
   const restoredAt = now();
-  const readBack = await call('read-back', (w) => graph.read('v1.0', w.path));
+  const readBack = await laggedRead('read-back');
   if (!readBack.ok) return stop(`read-back returned ${readBack.status}`);
 
   result.operation = {

@@ -303,9 +303,11 @@ is reported and not shown as fixed.
    "waiting for you" and the run ends `pending-manual`, which gate 116 does
    not accept. It should finish `complete` with every step done. Copy the
    setup run id from the record layer.
-4. Restore setup: activate Privileged Role Administrator in PIM for the
-   account named in step 2 (an active assignment; eligibility alone stays
-   "waiting for you"), then start it. It should finish with the Restorer's extra grants listed on the consent
+4. Restore setup: the account named in step 2 needs an active
+   Privileged Role Administrator assignment, either activated in PIM or
+   assigned permanently (eligibility alone stays "waiting for you"). The
+   check matches that role exactly, so Global Administrator does not count.
+   Then start it. It should finish with the Restorer's extra grants listed on the consent
    step. Copy its run id.
 5. Write `onboarding.json` for gate 116 with both run ids (drill-live-acceptance
    step 2).

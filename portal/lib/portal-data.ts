@@ -21,12 +21,14 @@ import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityS
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
+import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
   getEvidenceIntegrity,
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 
+import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -1063,5 +1065,31 @@ export async function getResilienceData(): Promise<ResilienceData> {
       });
     }
     return { generatedAt: now.toISOString(), metrics, incidents, storage };
+  });
+}
+
+// Roadmap task-99: a bounded, grounded answer to one question. The engine runs a fixed,
+// parameterized read-only query for a validated plan (engine/query/execute.mjs). The
+// reader's scope comes from their grants and is applied in that SQL, never from the
+// question. No natural-language helper is configured, so questions are read by the
+// built-in rules.
+export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskInput | null = null): Promise<AskData> {
+  const ref = tenantRef();
+  const now = new Date();
+  const readerScope: EntityScope = scope.central ? CENTRAL_SCOPE : { central: false, entities: [...scope.entities] };
+  return withClient(async (client) => {
+    const known = (await knownEntities(client, { tenantRef: ref })) as string[];
+    const entities = readerScope.central ? known : readerScope.entities;
+    if (!input) return { generatedAt: now.toISOString(), answer: null, entities, scope: readerScope };
+    const request = input.question ? null : {
+      intent: input.intent,
+      params: Object.fromEntries(Object.entries({
+        entity: input.entity, period: input.period, resourceType: input.resourceType, changeType: input.changeType,
+      }).filter(([, value]) => value !== undefined)),
+    };
+    const answer = (await answerQuestion(client, {
+      tenantRef: ref, scope: readerScope, question: input.question ?? null, request, now,
+    })) as GroundedAnswer;
+    return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });
 }

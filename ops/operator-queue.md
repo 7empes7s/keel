@@ -5,6 +5,8 @@ Work queue between the **coordinator** (the KEEL Developer cloud session) and
 branch `claude/operator-queue` and is never merged to master. This keeps deploys from
 being triggered by queue updates.
 
+**Overall project state and where to pick up: `ops/STATE.md` on this branch.**
+
 ## Protocol
 
 **Who writes what**

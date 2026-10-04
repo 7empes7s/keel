@@ -17,6 +17,7 @@
  *   undefined tenantRef).
  */
 import { strict as assert } from 'node:assert';
+import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,7 @@ import {
   reconstructRecovery,
   runCli,
 } from '../../tools/recovery/reconstruct.mjs';
+import { signRecoveryAssertion } from '../../tools/recovery/recovery-assertion.mjs';
 
 const source = await createIsolatedTestDatabase(`${import.meta.url}#source`);
 const tmp = mkdtempSync(join(tmpdir(), 'keel-recovery-'));
@@ -883,4 +885,74 @@ test('the default disposable target factory refuses the production database URL'
     /refusing to reconstruct into the production database URL/,
   );
   await assert.rejects(createDisposableTarget({ targetUrl: '' }), TypeError);
+});
+
+test('CLI with the production signed-assertion authenticator recovers and writes the gate reconstruction.json', async () => {
+  // The trust root and replay ledger live outside the backup set (tmp holds
+  // the manifest, dump and export).
+  const trustRoot = mkdtempSync(join(tmpdir(), 'keel-recovery-trust-'));
+  try {
+    const officer = generateKeyPairSync('ed25519');
+    const trustStorePath = join(trustRoot, 'recovery-authenticators.json');
+    await writeFile(trustStorePath, JSON.stringify({
+      version: 1,
+      principals: [{ principalId: 'recovery-officer@example.test', keyId: 'officer-1', publicKey: officer.publicKey.export({ type: 'spki', format: 'pem' }) }],
+    }), { mode: 0o644 });
+    const assertionPath = join(trustRoot, 'assertion.json');
+    await writeFile(assertionPath, JSON.stringify(signRecoveryAssertion({
+      privateKey: officer.privateKey, principalId: 'recovery-officer@example.test', keyId: 'officer-1', tenantRef: TENANT,
+    })));
+    const resultOut = join(trustRoot, 'reconstruction.json');
+    const lines = [];
+    const errors = [];
+    const argv = [
+      'node', 'reconstruct.mjs',
+      '--manifest', fixture.manifestPath,
+      '--dump', fixture.dumpPath,
+      '--tenant-ref', TENANT,
+      '--build-revision', BUILD_REVISION,
+      '--schema-pin', schemaPin,
+      '--config-export-dir', fixture.exportDir,
+      '--evidence-head', `${fixture.checkpoint.headSeq}:${fixture.checkpoint.headHash}:${fixture.checkpoint.recordCount}`,
+      '--identity-principal', 'recovery-officer@example.test',
+      '--credential-ref', assertionPath,
+      '--authenticator', 'signed-assertion',
+      '--recovery-trust-store', trustStorePath,
+      '--recovery-replay-ledger', join(trustRoot, 'replay'),
+      '--recovery-key-ref', 'sealed envelope #7, offline safe',
+      '--storage-read-ref', 'backup service account reference',
+      '--tenant-authz-ref', 'change record CR-2026-1004',
+      '--result-out', resultOut,
+    ];
+    const run = () => runCli({
+      argv,
+      logger: { log: (line) => lines.push(String(line)), error: (line) => errors.push(String(line)) },
+      dependencies: { createTargetDatabase: newTarget },
+    });
+    assert.equal(await run(), 0, JSON.stringify(errors));
+    assert.ok(lines.includes('recovered read-only as recovery-officer@example.test (writers disabled)'));
+
+    const record = JSON.parse(await readFile(resultOut, 'utf8'));
+    // Exactly the fields capture-drill reads, bound to tenant and build.
+    assert.equal(record.ok, true);
+    assert.equal(record.stage, 'recovered');
+    assert.equal(record.readOnly, true);
+    assert.equal(record.writersDisabled, true);
+    assert.equal(record.tenantRef, TENANT);
+    assert.equal(record.buildRevision, BUILD_REVISION);
+    assert.ok(!Number.isNaN(Date.parse(record.completedAt)));
+    assert.deepEqual(record.recovered.evidence, { chainOk: true, ...fixture.checkpoint });
+    assert.equal(record.recovered.counts.schedules, 6);
+    assert.equal(record.identity.authenticator, 'signed-assertion');
+    assert.equal(record.identity.credentialRef, assertionPath);
+    assert.equal(record.access, undefined, 'the access handle is never persisted');
+    assert.equal(JSON.stringify(record).includes('requester@example.test'), false, 'no row contents');
+
+    // The same assertion cannot authorize a second reconstruction.
+    errors.length = 0;
+    assert.equal(await run(), 1);
+    assert.ok(errors.some((line) => line.startsWith('identity:') && line.includes('already used')), JSON.stringify(errors));
+  } finally {
+    rmSync(trustRoot, { recursive: true, force: true });
+  }
 });

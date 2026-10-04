@@ -320,34 +320,26 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **Re-run at 2b2c338 (PR #77): 120 and 121 passed; stopped at 122 (same kind of tool defect).**
-  Build 2b2c338 = `/opt/keel-live` (clean, deployed 15:32 UTC); grant requirements unchanged.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **ea45350** (adds the 2b2c338 record on
-    top of the earlier 124fbc6 commit 3177f46). Resharing false → true → false, restored.
-    `verify --require-live --build 2b2c338`: ok, exit 0.
-  - **121 Teams: passed** (PR #77's token-`tid` proof). `claude/live-evidence-121` @ **9ec0e2f**
-    (from origin/master 2b2c338).
-    - The settings toggle and add / promote / demote / remove of carla were each read back. Membership
-      and settings were restored (fingerprints match).
-    - `verify --require-live --gate teams-live-acceptance --build 2b2c338`: ok, exit 0, with the 120
-      record beside it. **Note:** on the 121 branch alone, verify fails "SharePoint record does not
-      verify", because that branch holds only the 121 files (per the evidence rule). Merge 120 and 121
-      together.
-  - **122 Exchange: refused before any write (exit 1).** Error: "the Exchange organization belongs to
-    another tenant (or did not report its tenant id)".
-    - **Cause:** in this tenant `Get-OrganizationConfig` returns an **empty
-      `ExternalDirectoryOrganizationId`** (checked read-only with the Collector cert; `Guid`
-      1901e775-… and `Name` lxtj.onmicrosoft.com are present). `tools/qualification/exchangeLive.mjs:265,284`
-      requires it to equal `--directory-tenant-id`.
-    - Nothing written; alice's mailbox is unchanged. The failed files are kept locally.
-    - **Coordinator:** fix like #77 (e.g. accept the tenant from the Graph token's `tid` used for the
-      same fixture, or from the EXO session's tenant, when the org config omits it). Then I re-run
-      120 → 123 at that build.
-  - 123 not run. Note: my first commit attempt at 2b2c338 hit a script bug. A stray commit landed on
-    my clone's local `master` only (never pushed; origin/master stayed 2b2c338) and was removed. The
-    121 push happened before its branch-local verify; that verify is expected to fail without 120 and
-    passes with it (above).
+- Status: blocked
+- Result: **Stopped at 121 again: a real residual from the 2b2c338 run. Do NOT merge
+  `claude/live-evidence-121` (9ec0e2f).** Build ffa05cd (PR #82) = `/opt/keel-live`, clean.
+  - **120 SharePoint at ffa05cd: passed.** `claude/live-evidence-120` @ **ea5380d**, verify ok, exit 0.
+  - **121 Teams at ffa05cd: refused before any write** (4 GETs): "the fixture user is already a
+    member of the fixture team".
+    - **Cause, a residual from the 15:33 run at 2b2c338:** carla (856db776) was still an **owner of
+      the fixture group** (`/groups/{id}/owners` = alice, carla, maya) and appeared in the Teams roster
+      as owner, though not in `/groups/{id}/members`.
+    - That run promoted, demoted and removed her. Its immediate read-backs of `/teams/{id}/members`
+      showed her gone, so it recorded `restoredToOriginal: true`. But the Entra owner link survived
+      and Teams re-synced it later. **The 121 record at 2b2c338 claims a restore that didn't hold.**
+  - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/owners/856db776…/$ref` returned 204.
+    Re-read after 20 s: owners = alice, maya; members = alice, emma, hugo, maya, priya. Carla is not in
+    the Teams roster. That matches the pre-capture state from Q7.
+  - **Tool defect (coordinator):** `tools/qualification/teamsLive.mjs` must undo the owner link (e.g.
+    verify and remove `/groups/{id}/owners/{user}`) and verify the restore against **both**
+    `/groups/{id}/owners` and `/groups/{id}/members` after a settle delay, not only the Teams roster
+    read immediately. Until then a re-run would leave the same residual and record a false restore.
+  - 122 and 123 not run. The 121 refusal files are kept locally.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

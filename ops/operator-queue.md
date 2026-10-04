@@ -1009,7 +1009,7 @@ item that needs it stays untouched.
      SELECT tier, status, day, count(*) AS snapshots, sum(versions) AS versions
      FROM t GROUP BY 1,2,3 ORDER BY 3,1,2;
      ```
-  2. `SELECT count(*) FROM evidence WHERE payload::text LIKE '%f74b0fac-a1ee-4f94-9cd2-d889e98dae55%';`
+  2. `SELECT count(*) FROM evidence WHERE subject::text LIKE '%f74b0fac-a1ee-4f94-9cd2-d889e98dae55%';`
      (a count only, no payloads).
   3. Without printing any file contents, grep the `claude/live-evidence-*` branches and the live gate evidence
      directories for snapshot ids, and list which ids from Q25's list they cite.

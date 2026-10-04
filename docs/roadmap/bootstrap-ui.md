@@ -61,10 +61,10 @@ the same injected readers and adapters their own tests use.
 
 `portal/lib/setup-host.ts` is the single place a deployment supplies planner
 readers, provisioning adapters, the collector/restorer reference pair, the build
-identifier and the qualification mode. It returns `NO_SETUP_HOST` today because
-the repository ships no qualified Microsoft transport (task-75: "A real adapter
-requires independent current official API review and tenant-specific
-qualification before use"). With no host:
+identifier and the qualification mode. Since 2026-10-04 it composes the
+production host in `engine/bootstrap/graphHost.mjs` when the deployment has both
+credential files (see the status section below). When either file is missing,
+or the configuration is invalid, it returns `NO_SETUP_HOST`:
 
 - the page shows every step and its instructions, marked "not checked" until a
   journal exists, and says the server cannot look at or change the tenant;
@@ -126,3 +126,178 @@ and restored (2026-10-03):
 The UI harness gained a `setup` route (axe in both themes, contract checks with
 its record ids) and an interaction check that the waiting step has no tick-off
 control and that "Continue setup" posts only `{ resume }`.
+
+## Status — 2026-10-04: production setup host
+
+The live host reported `canCheck: false`: `setupHost()` returned
+`NO_SETUP_HOST`, so no task-76 run could exist and gate 116
+([drill-live-acceptance.md › Operator steps](drill-live-acceptance.md#operator-steps),
+step 2) could not be captured. This change adds the production host.
+Its behavior is fixture-tested. The readers have not yet run against the live
+tenant from this change. No write operation is qualified, and every write
+operation ships disabled.
+
+### What the host does
+
+`engine/bootstrap/graphHost.mjs` (`createGraphSetupHost`), composed by
+`composeSetupHost()` in `portal/lib/setup-host.ts`:
+
+- **Credentials.** It uses the deployment's existing credential files, the same
+  ones restores use (`lib/restore-config.ts`):
+  - `KEEL_COLLECTOR_CONFIG_PATH`, default `/etc/keel/tenant-target.json`;
+  - `KEEL_RESTORER_CONFIG_PATH`, default `/etc/keel/restorer-target.json`.
+
+  Each file has `tenantId`, `clientId`, `certPath` and `keyPath`. Both must
+  belong to the tenant in `KEEL_TENANT_CONFIG_PATH`. They must also use
+  different app ids, certificates and keys. The approved artifact carries
+  references only: `credentialRef` is `file:<path>` and `identityRef` is the
+  app id. Tokens are held in memory and never journaled. A token issued for
+  another tenant is refused before anything is read.
+- **Readers (strictly read-only).** All reads use `GraphReader`
+  (`tools/tenant-probe/graph.mjs`). It cannot send anything but GET, and it
+  runs on the Collector credential. The readers look up:
+  - each identity's app registration and service principal **by its
+    configured app id** (`/applications(appId=…)`, `/servicePrincipals(appId=…)`),
+    so an unrelated app is never adopted. The planner matches the
+    registration by that binding (`keelIdentity`), so the real display names
+    ("KEEL Collector", "KEEL Restorer") are kept;
+  - Graph application permissions granted to each service principal
+    (`/servicePrincipals/{id}/appRoleAssignments`), with role ids resolved
+    against the Microsoft Graph service principal's `appRoles`;
+  - directory role assignments for both service principals and the
+    onboarding operator (`/roleManagement/directory/roleAssignments`), and
+    the operator's PIM eligibility (`/roleManagement/directory/roleEligibilitySchedules`);
+  - Intune roles (`/deviceManagement/roleDefinitions`, their
+    `roleAssignments`, each assignment's `members`) against the service
+    principal's transitive group membership
+    (`/servicePrincipals/{id}/transitiveMemberOf/microsoft.graph.group`);
+  - `/subscribedSkus`, for visibility only.
+
+  A 404 on a single object means absent. Any other failure throws, because
+  unknown is never absent. There are two exceptions. Intune roles need
+  `DeviceManagementRBAC.Read.All`, which is not in the Collector's registered
+  scopes. If they cannot be read, the Intune step is shown as **not
+  checked**, and a run that includes it **stops** rather than pausing. The
+  licence list is shown for visibility only. When the whole look fails, the
+  setup page shows every step as not checked and says it could not read the
+  tenant (`checkFailed`). The page does not fail.
+- **Observation (`observe`).** Each call takes a fresh read-only look,
+  re-derives the plan and returns the approved step's state:
+  - a registration is satisfied with its object id, app id and service
+    principal id;
+  - Intune role assignments and consent are taken from the fresh plan;
+  - PIM is satisfied only by an **active** assignment of the operator, never
+    by eligibility.
+- **KEEL permission.** A configured credential carries `keel.collect` or
+  `keel.restore` by deployment binding: the deployment configured it as that
+  role's credential. That binding is the KEEL permission.
+- **Grants beyond the plan.** The planner now records `excessScopes` on each
+  consent step: Graph permissions the identity holds beyond what setup
+  derives (the Restorer's `MailboxSettings.ReadWrite`, for example). The
+  setup page shows them on the consent step and says KEEL does not remove
+  them. Nothing narrows or removes a grant.
+- **Writes (`ensure`), disabled by default.** Only two operations exist:
+  - `grant-consent` adds the missing Graph application permissions to the
+    identity's service principal;
+  - `update-required-access` creates a missing service principal for an
+    existing app and adds missing Graph permissions to its declared access.
+
+  Each runs only when the setup config names it with `enabled: true`, a
+  `qualification` (`fixture-tested` or `live-qualified`) and an `expiresAt`.
+  The qualification must equal the host's `qualificationMode`, or the
+  executor refuses. When an operation is disabled, `qualify` returns nothing,
+  so the executor stops before any write, and `ensure` refuses again on its
+  own before sending a request. Writes use `GraphWriter` with the Restorer
+  credential. Two actions are never automated:
+  - `create-registration`: a new app's id cannot be bound to a credential
+    before approval (task-75);
+  - `configure-keel-permission`.
+- **Prerequisites.** The revision fingerprints the credential references, the
+  operator, the enabled operations, the build and the mode. Changing any of
+  them stops a run in progress. The kill switch (`AUTOMATION_KILL_SWITCH_PATH`)
+  is honored.
+
+Optional setup config, `KEEL_SETUP_CONFIG_PATH` (default `/etc/keel/setup.json`):
+
+```json
+{
+  "operatorPrincipalId": "<Entra object id of the person who runs setup>",
+  "build": "<deployed build; else KEEL_BUILD, else git rev-parse HEAD>",
+  "qualificationMode": "live-qualified",
+  "operations": { "grant-consent": { "enabled": false } }
+}
+```
+
+`qualificationMode` defaults to `live-qualified`, because runs observe the real
+tenant. That labels the run; it does not qualify any write. A run on a tenant
+that is already consented writes nothing.
+
+### Boundary tests
+
+`engine/roadmap/setup-host.test.mjs` (8 tests) runs against a fixture Graph
+(`engine/test/setupGraphFixture.mjs`, which replaces `fetch` and records every
+request). It covers:
+
+- the credential and operation configuration rules;
+- readers and every observation issuing only GETs;
+- a fully satisfied tenant completing a read setup with a run id (the
+  artifact id) and a `complete` journal event, with no write;
+- a missing Intune role and a merely eligible PIM role giving
+  `pending-manual`;
+- an unreadable Intune check showing as not checked and stopping the run;
+- the Restorer's extra grants reported as `excessScopes` and left in place;
+- disabled operations never writing (through the executor and through `ensure`
+  directly), a mode mismatch being refused, and an enabled `grant-consent`
+  writing only the one missing grant;
+- the portal end to end. It composes the host from credential files, checks
+  `canCheck`, completes read and restore setup, resumes after PIM activation
+  and falls back to not checked on a failed read.
+
+Mutations, each applied alone and restored:
+
+| Mutation | Pass | Fail |
+| --- | --- | --- |
+| Writes enabled and qualified by default | 7 | 1 |
+| PIM eligibility observed as an active role | 6 | 2 |
+| Unreadable Intune roles observed as absent | 7 | 1 |
+| Unreadable Intune roles not reported | 7 | 1 |
+| Registration matched by display name only | 2 | 6 |
+| Excess grants not reported | 7 | 1 |
+
+The UI harness has a `setup-checked` route that renders an observed tenant
+with the Restorer's extra grant. It passes the axe and contract checks (the
+contract allowlist stays empty), and an interaction check confirms the grant
+is reported and not shown as fixed.
+
+### Limits
+
+- Graph paths and permissions were checked against the Microsoft Graph v1.0
+  reference (`microsoftgraph/microsoft-graph-docs-contrib`, `api-reference/v1.0`,
+  retrieved 2026-10-04). They have not been exercised against the live tenant.
+- The Collector needs `Application.Read.All` (applications, service principals,
+  granted permissions) and `RoleManagement.Read.Directory` (role assignments,
+  PIM). Without them the look fails, and the page says so.
+- The Intune role check needs `DeviceManagementRBAC.Read.All` on the
+  Collector. It is not added to the registered prerequisites. Without it, run
+  read setup for Entra only; the first-collection gate accepts that.
+- Each observation re-reads the tenant (about 15 GETs), and the executor
+  observes each step two or three times. Runs stay in the request, as before.
+
+### Operator steps
+
+1. Confirm `/etc/keel/tenant-target.json` (Collector) and
+   `/etc/keel/restorer-target.json` (Restorer) exist and name this tenant.
+   Restart the portal; Settings › Setup should no longer say the server cannot
+   look at the tenant.
+2. Optionally write `/etc/keel/setup.json` with `operatorPrincipalId` (your
+   Entra object id) and `build`. Without an operator id, the restore setup's
+   PIM step stays "waiting for you". Leave `operations` out: no write is
+   needed on a consented tenant.
+3. Read setup: start it for Microsoft Entra settings. Include Intune only if
+   the Collector holds `DeviceManagementRBAC.Read.All`. It should finish with
+   every step done. Copy the setup run id from the record layer.
+4. Restore setup: activate Privileged Role Administrator in PIM, then start
+   it. It should finish with the Restorer's extra grants listed on the consent
+   step. Copy its run id.
+5. Write `onboarding.json` for gate 116 with both run ids (drill-live-acceptance
+   step 2).

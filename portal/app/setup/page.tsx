@@ -53,6 +53,7 @@ export default async function SetupPage() {
       {data.scopes.map((setup) => (
         <SetupProgress
           canCheck={data.canCheck}
+          checkFailed={data.checkFailed ?? false}
           canProvision={data.canProvision}
           canStart={canStart}
           key={setup.scope}

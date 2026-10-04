@@ -36,11 +36,12 @@ function runSentence(run: SetupRun, now: string): string {
 
 const RESUMABLE = new Set<SetupRun["state"]>(["waiting-for-you", "stopped", "interrupted", "ready"]);
 
-export function SetupProgress({ setup, now, canProvision, canCheck, canStart }: {
+export function SetupProgress({ setup, now, canProvision, canCheck, checkFailed = false, canStart }: {
   setup: SetupScope;
   now: string;
   canProvision: boolean;
   canCheck: boolean;
+  checkFailed?: boolean;
   canStart: boolean;
 }) {
   const [busy, setBusy] = useState(false);
@@ -103,6 +104,8 @@ export function SetupProgress({ setup, now, canProvision, canCheck, canStart }: 
         </p>
       ) : !canCheck ? (
         <p className="field-help">KEEL cannot look at your tenant from this server yet, so these steps show as not checked.</p>
+      ) : checkFailed ? (
+        <p className="field-help">KEEL could not read your tenant just now, so these steps show as not checked. Reload the page to try again.</p>
       ) : null}
 
       <ol className="setup-steps">

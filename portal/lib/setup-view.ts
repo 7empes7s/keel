@@ -13,6 +13,8 @@ export interface SetupStep {
   action: string;
   requiredScopes: string[];
   missingScopes: string[];
+  // Permissions the app already holds beyond what setup asks for. Shown, never removed.
+  excessScopes?: string[];
   manual: boolean;
   progress: StepProgress;
 }
@@ -46,6 +48,8 @@ export interface SetupState {
   firstCollection: { snapshotId: string; completedAt: string; read: number; notRead: number } | null;
   canCheck: boolean;
   canProvision: boolean;
+  // The server can check the tenant but the last look failed.
+  checkFailed?: boolean;
 }
 
 export const SCOPE_TITLES: Record<SetupScope["scope"], string> = {
@@ -109,8 +113,13 @@ export function stepHelp(step: SetupStep): string {
       return step.action === "reuse-existing"
         ? "KEEL found this app already registered with the permissions it needs and will reuse it."
         : `Creating or widening an app needs the Application Administrator or Cloud Application Administrator role. Its API permissions: ${step.requiredScopes.join(", ")}.`;
-    case "graph-permission":
-      return `Consent covers these Microsoft Graph permissions only: ${(step.missingScopes.length ? step.missingScopes : step.requiredScopes).join(", ")}. It does not assign Intune roles or activate admin roles.`;
+    case "graph-permission": {
+      const consent = `Consent covers these Microsoft Graph permissions only: ${(step.missingScopes.length ? step.missingScopes : step.requiredScopes).join(", ")}. It does not assign Intune roles or activate admin roles.`;
+      const extra = step.excessScopes ?? [];
+      return extra.length
+        ? `${consent} The app also holds ${extra.length === 1 ? "a permission" : "permissions"} this setup does not ask for: ${extra.join(", ")}. KEEL reports ${extra.length === 1 ? "it" : "them"} and does not remove ${extra.length === 1 ? "it" : "them"}; review ${extra.length === 1 ? "it" : "them"} in Microsoft Entra.`
+        : consent;
+    }
     case "workload-rbac":
       return "Assign it in the Intune admin center. Admin consent does not grant Intune roles.";
     case "pim-activation":

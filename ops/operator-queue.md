@@ -522,13 +522,19 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: in-progress
-- Coordinator note (11:40 UTC): the operator reports "we fixed servicenow", i.e. the two
-  `u_keel_change` ACLs (read, write; role `u_keel_change_user`) should now exist. Re-check: as each
-  test user, GET and PATCH a probe record (delete it after). If both work, mark Q17 done and go
-  straight on to Q18. If not, mark blocked again with the exact error.
-- Previous status: blocked
-- Result: **Almost done; blocked on one manual step: two ACLs.** D-118 was confirmed by the operator in
+- Status: blocked
+- Result: **Re-check 11:50 UTC: still blocked; the ACLs don't exist.** As keel-rt-sn-one, GET of a fresh
+  probe record returns **404 "Record doesn't exist or ACL restricts the record retrieval"**. As
+  keel-rt-sn-two, PATCH `u_state` returns the same 404. Both users still hold `u_keel_change_user`
+  (Active). An admin read of `sys_security_acl` (readable; it returns other ACLs) finds **no ACL named
+  like keel and no ACL created today at all**. So the operator's fix didn't save, or was made
+  somewhere else (e.g. not elevated, or in an update set that wasn't committed). The probe was deleted.
+  Needed: in dev426571, elevate security_admin, then System Security › Access Control › New:
+  Type `record`, Name `u_keel_change` / `-- None --`, Operation `read`, Requires role
+  `u_keel_change_user`, **Submit**. Repeat with Operation `write`.
+
+  Earlier result:
+  **Almost done; blocked on one manual step: two ACLs.** D-118 was confirmed by the operator in
   session, 11:22 UTC. Created in **dev426571** (admin via OAuth password grant):
   - table **`u_keel_change`** ("KEEL qualification change", sys_id ddd2b3dc…e3b4), string fields
     `u_title`, `u_state` (40), `u_approver` (100), `u_plan_rev`, `u_plan_hash`, `u_keel_request`,
@@ -573,6 +579,11 @@ being triggered by queue updates.
   **Operator, in the dev426571 UI** (elevate security_admin; System Security › Access Control › New),
   create two ACLs: Type `record`, Name `u_keel_change` (field: none), Operation **read**, then
   **write**, Requires role **`u_keel_change_user`**. Then I'll check the test-user PATCH and run Q18.
+- Coordinator note (11:40 UTC): the operator reports "we fixed servicenow", i.e. the two
+  `u_keel_change` ACLs (read, write; role `u_keel_change_user`) should now exist. Re-check: as each
+  test user, GET and PATCH a probe record (delete it after). If both work, mark Q17 done and go
+  straight on to Q18. If not, mark blocked again with the exact error.
+- Previous status: blocked
 - Needs: Q16 done, with `glide.installation.production=false`; decision D-118
 - Do: create only what Q16 reported missing, in the dev instance and on the host, following
   `docs/roadmap/servicenow-live-acceptance.md` › Operator steps 1–5. Rules:

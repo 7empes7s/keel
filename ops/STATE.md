@@ -125,4 +125,5 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 12:40: file created by the coordinator. Q16–Q18 done (gate 118 captured); Q17 needed
   two operator-made ACLs; Q15 mounted the second volume and finished gate 114.
 - 2026-10-04 12:45: D-117 answered: Sentinel scratched, gate 117 descoped. D-118 confirmed (ServiceNow OAuth + ACLs done).
-\n- 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).\n
+
+- 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).

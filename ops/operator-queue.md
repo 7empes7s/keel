@@ -202,7 +202,50 @@ being triggered by queue updates.
     that one `keel-rehearsal-*` group.
 
 ### Q7: Read-only inventory for the 120–123 decisions
-- Status: in-progress
+- Status: done
+- Result: Read-only; nothing created or granted. Reads used the Collector, except where marked
+  (Restorer, GET only, because the Collector lacks the scope).
+  - **Collector** (KEEL Collector, appId 87aa77c4…, SP f8741600…)
+    - Graph (18): DeviceManagement{ManagedDevices,ServiceConfig,RBAC,Configuration,Apps}.Read.All,
+      Policy.Read.PermissionGrant, Policy.Read.All, RoleManagement.Read.Directory, Group.Read.All,
+      AdministrativeUnit.Read.All, EntitlementManagement.Read.All, Directory.Read.All,
+      User.Read.All, Domain.Read.All, IdentityProvider.Read.All, AccessReview.Read.All,
+      Organization.Read.All, Application.Read.All.
+    - SharePoint Online: Sites.Read.All, TermStore.Read.All. Exchange Online: **Exchange.ManageAsApp**.
+    - Directory roles: **Global Reader, Security Reader**.
+  - **Restorer** (Keel Restorer, appId 12f8942f…, SP 8cd199c9…)
+    - Graph (52 ReadWrite roles; full list in Q3), incl. TeamSettings.ReadWrite.All,
+      TeamMember.ReadWrite.All, ChannelMember.ReadWrite.All, Sites.FullControl.All,
+      Files.ReadWrite.All, MailboxSettings.ReadWrite, Directory.ReadWrite.All,
+      Policy.ReadWrite.ConditionalAccess.
+    - SharePoint Online: Sites.FullControl.All, TermStore.ReadWrite.All. Exchange Online: **Exchange.ManageAsApp**.
+    - Directory roles: **Compliance Administrator, Compliance Data Administrator, Exchange
+      Administrator, Intune Administrator, Knowledge Administrator, Security Administrator,
+      SharePoint Administrator, Teams Administrator**.
+    - Note for D-121b/D-122a/D-123a/D-123b: much of what those decisions ask about is
+      **already granted** (the Teams write set, Exchange.ManageAsApp plus Exchange Admin,
+      Compliance Admin, Sites.FullControl.All plus SharePoint Admin, all on the Restorer).
+      The Collector already has Exchange.ManageAsApp but no Compliance or SharePoint admin role.
+  - **`isResharingByExternalUsersEnabled` = false.** SPO admin REST (Restorer, GET):
+    `PreventExternalUsersFromResharing: true`, `SharingCapability: 1`. The Graph
+    `/admin/sharepoint/settings` call is 403 for both apps (no SharePointTenantSettings.Read.All),
+    so a capture through Graph would need that scope. D-120's `--allow-widening-toggle` case applies.
+  - **KEEL-RT communication site: none.** The KEEL-RT sites are
+    `/sites/keel-rt-20260908-collaboration` (WebTemplate GROUP, the team site) and two
+    TEAMCHANNEL sites (Finance Private, Partner Shared).
+  - **Private KEEL-RT team: exists.** `KEEL-RT-20260908 Collaboration Hub`
+    (9263e1d4-7494-4141-b1b6-2012c98a7543, Private). Members: alice, emma, hugo, maya, priya.
+  - **keel-rt users not in that team: 13**: ben, carla, diego, farah, grace, iris, jon, kelly,
+    liam, noah, olivia, quinn, ryan (`keel-rt-20260908-*@techinsiderbytes.com`, all enabled).
+  - **keel-rt-20260908-alice:** `RetainDeletedItemsFor` = **14.00:00:00** (14 days),
+    SingleItemRecovery on, no litigation hold (EXO admin API `Get-Mailbox`, Collector). OneDrive:
+    **not provisioned** (Graph `/users/{id}/drive` returns 404 "User's mysite not found", Restorer GET).
+  - **KEEL-RT labels/policies: none.** 13 labels and 1 label policy in the tenant; none
+    named KEEL-RT* (`Get-Label`/`Get-LabelPolicy` via Connect-IPPSSession, Collector cert,
+    throwaway container from the current image).
+  - **PowerShell image:** `keel-powershell:latest` (231757b7ed3a, built 2026-09-08) has
+    only `probe-workloads.ps1` and `run-job.sh` in `/app`. **`run-cmdlet.ps1` is missing**,
+    though `ops/powershell/Dockerfile` copies it now. Q9 applies.
 - Needs: none
 - Do: report each of the following, read-only. Create and grant nothing.
   - The application permissions and directory roles each KEEL app (Collector, Restorer)

@@ -75,7 +75,7 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
    (details in `docs/roadmap/keel-recovery.md`). Blocked for Claude ("Secret-Store Writes").
 5. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
    vps-deployer's output.
-6. **Run the AWS setup script** (below).
+6. **Run the AWS budget guard** script (below).
 
 ## Infrastructure facts
 
@@ -107,20 +107,21 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 ## AWS
 
 - New account (new AWS experience) on the $100 free-credit tier, Region `eu-north-1`. **Create
-  nothing billable without saying so first.**
-- Setup script `/mnt/project-files/aws/setup-agent-toolkit.sh` (project shared files, not the repo),
-  run on the VPS as the Claude Code user. **Not yet run.** It:
-  - installs the AWS CLI and Agent Toolkit; CLI profile `keel` (`PROFILE=` overrides); Agent Toolkit
-    calls go to `us-east-1`;
-  - signs in with `aws login --remote` (headless browser code; no access keys);
-  - creates a $25/month AWS Budget `keel-monthly` with email alerts (`BUDGET_USD=` overrides);
-  - runs the agent-toolkit wizard (interactive);
-  - sets `AWS_MCP_PROXY_PROFILES=keel` on the aws-mcp entries (backups `*.bak-aws`), and adds the
-    AWS rules to `~/.claude/CLAUDE.md` between `BEGIN/END AWS Agent Toolkit rules` markers (not the
-    repo CLAUDE.md).
-- After it runs: verify with `aws sts get-caller-identity --profile keel` and
-  `aws agent-toolkit list-available-skills --region us-east-1 --profile keel`. keel-operator needs a
-  restart to load the AWS MCP tools, so time it around gate chains.
+  nothing billable without saying so first.** No AWS resources exist yet.
+- **Set up on the VPS (as root), 2026-10-04 12:45 UTC:**
+  - AWS CLI 2.37.9 in `/root/.local/bin`. Profile `keel` is signed in (account ending 5390, role
+    `AccountFullAccessRole`). Login lasts 12 h and auto-renews for 90 days; after that run
+    `aws login --profile keel --remote`.
+  - aws-mcp in `~/.claude.json` uses `AWS_MCP_PROXY_PROFILES=keel` (backup `~/.claude.json.bak-aws`).
+  - 24 AWS skills installed for Claude Code (`~/.claude/skills`), Codex/Gemini/OpenCode
+    (`~/.agents/skills`) and OpenClaw (`~/.openclaw/skills`). AWS rules sit in `/root/.claude/CLAUDE.md`
+    between `BEGIN/END AWS Agent Toolkit rules` markers (not the repo CLAUDE.md).
+- **Open:**
+  1. Budget guard `keel-monthly` ($25/month) is probably **not** created. Run
+     `bash /mnt/project-files/aws/budget-guard.sh` on the VPS (copy it there first).
+  2. keel-operator needs a restart to load the AWS MCP server; do it between gate chains.
+  3. Decide whether OpenClaw keeps the AWS skills.
+- Scripts live in the project shared files `/mnt/project-files/aws/` (not the repo).
 - Owned by the "AWS Agent Toolkit setup" project thread, which sends changes here.
 
 ## Hard limits (don't try to route around them)
@@ -138,3 +139,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 
 - 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).
 - 2026-10-04 12:55: PR #73 author notes added (Collector read grants needed for Setup checks).
+- 2026-10-04 13:00: AWS setup done on the VPS; budget guard still to run; keel-operator restart pending.

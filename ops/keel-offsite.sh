@@ -15,14 +15,18 @@
 #
 # Usage:
 #   keel-offsite.sh             # verify + ship + prune
-#   keel-offsite.sh --dry-run   # verify + report what would ship, ship nothing
+#   keel-offsite.sh --dry-run   # verify + check the remote answers, ship nothing
+#
+# The target defaults to the Hostinger host below. To move it without editing this
+# script, set KEEL_OFFSITE_REMOTE (user@host), KEEL_OFFSITE_SSH_KEY and
+# KEEL_OFFSITE_REMOTE_DIR, for example in /etc/keel/offsite.env (read by the unit).
 
 set -euo pipefail
 
 BACKUP_ROOT="${KEEL_OFFSITE_BACKUP_ROOT:-/opt/backups}"
-REMOTE_USER_HOST="root@187.124.7.67"
-SSH_KEY="/root/.ssh/playground_vps"
-REMOTE_DIR="/opt/keel-offsite"
+REMOTE_USER_HOST="${KEEL_OFFSITE_REMOTE:-root@187.124.7.67}"
+SSH_KEY="${KEEL_OFFSITE_SSH_KEY:-/root/.ssh/playground_vps}"
+REMOTE_DIR="${KEEL_OFFSITE_REMOTE_DIR:-/opt/keel-offsite}"
 RETENTION_DAYS=30
 MIN_COPY_BLOCKS=5
 
@@ -105,6 +109,14 @@ MANIFEST_SHA256="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(pr
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "DRY RUN: verification passed. Would ship $LOCAL_DUMP -> $REMOTE_USER_HOST:$REMOTE_DIR/$REMOTE_NAME"
+  # A dry run that never contacts the remote reports success while every real run
+  # fails, which hid an unreachable target. Probe it read-only: log in and check that
+  # the destination's parent is writable, changing nothing there.
+  REMOTE_PARENT="$(dirname "$REMOTE_DIR")"
+  if ! ssh "${SSH_OPTS[@]}" "$REMOTE_USER_HOST" "test -d '$REMOTE_DIR' || test -w '$REMOTE_PARENT'"; then
+    fail "DRY RUN: could not reach $REMOTE_USER_HOST, or neither $REMOTE_DIR exists nor $REMOTE_PARENT is writable there — a real run would fail"
+  fi
+  log "DRY RUN: remote $REMOTE_USER_HOST reachable and $REMOTE_DIR usable"
   log "DRY RUN: would prune remote copies older than $RETENTION_DAYS days"
   log "DRY RUN: transferring nothing"
   exit 0

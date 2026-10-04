@@ -680,7 +680,27 @@ being triggered by queue updates.
      `canProvision: false`.
 
 ### Q20: Gate 116 recovery key: generate and enroll (operator-directed)
-- Status: in-progress
+- Status: done
+- Result: **Done** with the deployed build 2e8a5b9 tools (sandbox shortcut per the PR #72 review: the private
+  key is on this server).
+  - Key pair: `/root/keel-recovery-key/` (dir 0700). `officer.pem` is the private key (0600, root;
+    never printed, logged or committed). `officer.pub.pem` is the public key (0644).
+  - **Key id `officer-2026-10`**, principal `recovery-officer@keel.local`. **Public key fingerprint
+    (sha256 of officer.pub.pem): `47854c27116f850a6e80a5e4286126aea39b01b490f7286abb995538b344a8f6`.**
+  - Trust store: **`/etc/keel/recovery-authenticators.json`** (root:root 0644): version 1, one
+    principal (recovery-officer@keel.local / officer-2026-10).
+  - Replay dir: **`/var/lib/keel/recovery-replay`** (0700).
+  - Backup-path check: none of `/root/keel-recovery-key`, `/etc/keel` or `/var/lib/keel` is a
+    source of any backup job.
+    - `mimule-backup` (`/opt/mimoun/backup.sh` writes to `/opt/backups`): newsbites content,
+      `/opt/mimoun/openclaw-config`, mimule scripts, the Caddyfile, the paperclip and keel DB dumps,
+      `/opt/keel` ops/ and cli/, and named systemd unit files.
+    - `keel-offsite`: ships only the keel DB dump.
+    - `keel-backup-tier1-3` and `keel-prune`: KEEL collection and pruning, no file backups.
+    - Recovery-set builder (`ops/keel-recovery-set.mjs`) inputs: the dump, the dump manifest,
+      `tenant.json` (read only, not copied), and key metadata. It writes only into its `--out`.
+    - Neither path is inside a git work tree.
+  - No assertion signed and no reconstruction run (that's Q6).
 - Needs: none (the recovery authenticator from PR #72 is already deployed)
 - Operator instruction: Marouane, project chat 2026-10-04 13:37 UTC: "Send 3 to the operator to do"
   (item 3 = generate and enroll the gate 116 recovery key). Sandbox shortcut accepted in PR #72's

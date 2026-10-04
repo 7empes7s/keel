@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 20:35 UTC
+- **Last updated:** 2026-10-04 20:40 UTC
 
 ## How the work is organized
 
@@ -35,9 +35,9 @@ not merged until it finishes.
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 | Blocked | #83 green, waiting for the operator's merge; then Q10 reruns 120 → 123 at its build |
-| Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | — | Blocked | Q21 mapping, then a Setup run, then the reconstruction drill (Q6); Collector read grants decision |
-| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Not started | Needs every live gate at one build; drop descoped 117 (`tools/release/acceptanceLedger.mjs:39`) or record it as an accepted gap |
-| CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #80 | Open | PR lacks `brain:start`/`brain:end` markers; master freeze |
+| Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fix to `bootstrap-ui.md`; 116 evidence joins it later) | Blocked on operator | Per Q21: operator picks read-setup scope (Entra-only recommended) and names the onboarding account (`KEEL_SETUP_OPERATOR_ID`), activates PIM Privileged Role Administrator, runs read + restore setup; then Q6. Collector read grants already held (Q21) |
+| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Blocked | Recording 117 as an accepted gap needs the operator's explicit go in its thread (classifier refused); recapture waits on #84 and #85 |
+| CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | — | Diagnosing | Host diagnostics (Q23) |
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | — | Open | Review before enabling |
@@ -64,8 +64,9 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Decide on the Collector read grants the Setup checks (PR #73) need (`Application.Read.All`,
-   `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
+1. Merge PR #83 (#84 chain).
+2. Gate 116 (#85): read-setup scope and onboarding account, asked in its thread.
+3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
 
 ## Infrastructure facts
 
@@ -148,3 +149,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 18:07: PR #83 CI green; waiting for the operator's merge.
 - 2026-10-04 20:30: tasks moved to GitHub issues #84–#93 (label `task`, operator-approved 20:19). "Open PRs" and the gates free-text column replaced by the Tasks table. Infrastructure, ServiceNow and AWS sections move to a docs file on master after the freeze.
 - 2026-10-04 20:35: thread links filled for #85–#93. #88: PR #94 replaces #76. #89: Q23 queued (read-only offsite diagnosis).
+- 2026-10-04 20:40: rows #85 (PR #96), #86, #87 (PR #95 replaces #80) updated from their threads. Collector read grants decision dropped: Q21 found them already held.

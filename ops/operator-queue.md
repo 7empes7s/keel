@@ -332,26 +332,25 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **Stopped at 121 again: a real residual from the 2b2c338 run. Do NOT merge
-  `claude/live-evidence-121` (9ec0e2f).** Build ffa05cd (PR #82) = `/opt/keel-live`, clean.
-  - **120 SharePoint at ffa05cd: passed.** `claude/live-evidence-120` @ **ea5380d**, verify ok, exit 0.
-  - **121 Teams at ffa05cd: refused before any write** (4 GETs): "the fixture user is already a
-    member of the fixture team".
-    - **Cause, a residual from the 15:33 run at 2b2c338:** carla (856db776) was still an **owner of
-      the fixture group** (`/groups/{id}/owners` = alice, carla, maya) and appeared in the Teams roster
-      as owner, though not in `/groups/{id}/members`.
-    - That run promoted, demoted and removed her. Its immediate read-backs of `/teams/{id}/members`
-      showed her gone, so it recorded `restoredToOriginal: true`. But the Entra owner link survived
-      and Teams re-synced it later. **The 121 record at 2b2c338 claims a restore that didn't hold.**
-  - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/owners/856db776…/$ref` returned 204.
-    Re-read after 20 s: owners = alice, maya; members = alice, emma, hugo, maya, priya. Carla is not in
-    the Teams roster. That matches the pre-capture state from Q7.
-  - **Tool defect (coordinator):** `tools/qualification/teamsLive.mjs` must undo the owner link (e.g.
-    verify and remove `/groups/{id}/owners/{user}`) and verify the restore against **both**
-    `/groups/{id}/owners` and `/groups/{id}/members` after a settle delay, not only the Teams roster
-    read immediately. Until then a re-run would leave the same residual and record a false restore.
-  - 122 and 123 not run. The 121 refusal files are kept locally.
+- Status: blocked
+- Result: **At df4082a (PR #83): 120 passed; 121 exit 3 (restore real, but the roster settle window is too short).**
+  Build df4082a = `/opt/keel-live` (clean, deployed 21:53 UTC); grants unchanged. Before 121, carla was
+  absent from the Teams roster, group owners and group members.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **12d3547**, verify ok, exit 0.
+  - **121 Teams: capture exit 3** ("THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER … remove by hand"). Not
+    verified; not committed (files kept locally).
+    - The fix worked: PATCH settings ×2, POST member, PATCH owner, PATCH demote, DELETE member 204, then
+      **DELETE `/groups/{id}/owners/856db776…/$ref` 204** (21:54:33). The tool re-read until 21:54:59
+      (~25 s after the delete).
+    - My independent re-reads (Collector): **21:55:06** roster=**1**, owners=0, members=0 (Teams roster lag).
+      From **21:56:07 to 22:02:29** (8 checks): roster=0, owners=0, members=0. Stable, no re-sync. **No hand
+      cleanup was needed**; the fixture is back to its pre-capture state.
+    - **Coordinator:** in `teamsLive.mjs`, extend the post-restore settle window for `/teams/{id}/members`
+      (the roster took ~60–90 s here, vs ~25 s polled). E.g. poll up to ~3 min before declaring exit 3. Then
+      120 → 123 again. I didn't re-run 121 at df4082a: the same window would likely give exit 3 again, and
+      the queue says to stop at the first failure.
+  - 122 and 123 not run.
+  - I can't message the coordinator thread from here (no send_message); this Result is the report.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

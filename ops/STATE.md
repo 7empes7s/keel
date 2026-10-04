@@ -71,9 +71,7 @@ capture's sha256, carry no credential material, and still fail verification with
 
 1. Decide on the Collector read grants the Setup checks (PR #73) need (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
-2. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
-   vps-deployer's output.
-3. **Run the AWS budget guard** script (below).
+2. **Run the AWS budget guard** script (below).
 
 ## Infrastructure facts
 

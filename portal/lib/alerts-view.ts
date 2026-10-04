@@ -96,6 +96,13 @@ export function causeSentence(alert: AlertItem): string {
     const change = CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "differs from the baseline";
     return alert.conditionActive ? `It ${change}.` : "It matches the baseline again.";
   }
+  // Task 94: emergency account alerts, resolved by a person after review.
+  if (alert.control === "break-glass") {
+    if (!alert.conditionActive) return "It was reviewed and closed.";
+    if (alert.condition === "emergency-account-used") return "This emergency account was used. Check that it was planned.";
+    if (alert.condition === "validation-due") return "Its emergency sign-in test is due.";
+    if (alert.condition === "rotation-due") return "Its credential review is due.";
+  }
   return alert.conditionActive ? "It needs attention." : "It is back to normal.";
 }
 

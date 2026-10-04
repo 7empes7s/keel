@@ -289,6 +289,9 @@ export function validateTeamsLiveSubject(evidence, context = {}) {
     failures.push(`the fixture team is not a disposable ${TEAMS_FIXTURE_PREFIX}* team`);
   }
   if (directoryTenantId && String(team.tenantId ?? '').toLowerCase() !== directoryTenantId) failures.push('the fixture team belongs to another tenant');
+  if (team.tenantIdSource !== undefined && !['team', 'collector-token'].includes(team.tenantIdSource)) {
+    failures.push('the fixture team\'s tenant has no recognized source');
+  }
   const member = subject.fixtureMember ?? {};
   const fixtureMember = {
     userId: typeof member.userId === 'string' && GUID_RE.test(member.userId) ? member.userId.toLowerCase() : null,

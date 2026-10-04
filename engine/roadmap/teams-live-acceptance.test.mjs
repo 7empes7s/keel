@@ -30,7 +30,7 @@ import {
   TEAMS_LIVE_GATE, TEAMS_LIVE_READS, TEAMS_LIVE_WRITES, teamsRequiredDocumentation, teamsRequiredGrants,
 } from '../../tools/qualification/teamsAcceptance.mjs';
 import {
-  TEAMS_TOGGLE_GROUP, TEAMS_TOGGLE_PROPERTY, captureTeamsAcceptance, ledgerEvidenceFromTeamsAcceptance, main as teamsMain,
+  TEAMS_TOGGLE_GROUP, TEAMS_TOGGLE_PROPERTY, captureTeamsAcceptance, ledgerEvidenceFromTeamsAcceptance, main as teamsMain, tokenTenantId,
   writeTeamsAcceptanceFiles,
 } from '../../tools/qualification/teamsLive.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
@@ -459,4 +459,43 @@ test('the capture tool is offline by default, refuses non-fixture teams, and rep
   assert.equal(notRemoved.needsManualRevert, true);
   assert.match(notRemoved.record.subject.membershipWrites.error, /FIXTURE USER MAY STILL BE A MEMBER/);
   assert.ok(sticky.members.some((member) => member.userId === FIXTURE_USER));
+});
+
+test('when Graph omits the team\'s tenantId, the collector token\'s tenant proves it; an unproven or foreign tenant is refused', async () => {
+  const jwt = (claims) => ['e30', Buffer.from(JSON.stringify(claims)).toString('base64url'), 'sig'].join('.');
+  assert.equal(tokenTenantId(jwt({ tid: TENANT.toUpperCase() })), TENANT);
+  assert.equal(tokenTenantId(jwt({})), null);
+  assert.equal(tokenTenantId('not-a-token'), null);
+
+  // Live Graph v1.0 returns no tenantId for app-only callers: the collector token's tenant stands in.
+  const silent = teamsGraph({ teamTenant: null });
+  const proven = await capturedFiles(silent, { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.deepEqual(verifyEvidenceFile(proven.outPath, options()), { ok: true, failures: [] });
+  assert.equal(proven.record.subject.fixtureTeam.tenantId, TENANT);
+  assert.equal(proven.record.subject.fixtureTeam.tenantIdSource, 'collector-token');
+
+  // A tenantId Graph does report is used as reported.
+  const reported = await capture(teamsGraph(), { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.equal(reported.record.subject.fixtureTeam.tenantIdSource, 'team');
+
+  // No tenantId and no known token tenant: nothing is written.
+  const unknown = teamsGraph({ teamTenant: null });
+  const refused = await capture(unknown);
+  assert.equal(unknown.calls.filter((call) => !call.startsWith('GET')).length, 0);
+  assert.match(refused.record.subject.settingsWrite.error, /did not report the fixture team's tenant/);
+
+  // A reported foreign tenant still wins over the token, and a token for another tenant sends nothing.
+  const foreign = teamsGraph({ teamTenant: OTHER_TENANT });
+  const foreignResult = await capture(foreign, { credentialTenants: { collector: TENANT, restorer: TENANT } });
+  assert.equal(foreign.calls.filter((call) => !call.startsWith('GET')).length, 0);
+  assert.match(foreignResult.record.subject.settingsWrite.error, /another tenant/);
+  for (const role of ['collector', 'restorer']) {
+    const untouched = teamsGraph();
+    await assert.rejects(capture(untouched, { credentialTenants: { [role]: OTHER_TENANT } }), new RegExp(`${role} token was issued for another tenant`));
+    assert.equal(untouched.calls.length, 0);
+  }
+
+  // A record whose tenant source was tampered with fails, even when re-signed.
+  const tampered = resign(proven.evidence, (e) => { e.subject.fixtureTeam.tenantIdSource = 'operator-said-so'; return e; });
+  assert.match(verifyIn(tampered).failures.join('\n'), /tenant has no recognized source/);
 });

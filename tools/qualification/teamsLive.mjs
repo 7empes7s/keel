@@ -112,7 +112,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
  */
 export async function captureTeamsAcceptance({
   collector, restorer, directoryTenantId, fixtureTeamId, fixtureMemberUserId, tenantRef, build, credentials, grants,
-  sharePointQualification, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  sharePointQualification, credentialTenants = {}, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000,
 }) {
   const problems = teamsFixtureProblems({ fixtureTeamId, fixtureMemberUserId });
@@ -126,6 +126,12 @@ export async function captureTeamsAcceptance({
     throw new Error('a capture needs the verified task-120 SharePoint record: Teams is qualified only after SharePoint');
   }
   const tenant = directoryTenantId.toLowerCase();
+  // The tenant each token was issued for (its `tid`), when known. A token for another
+  // tenant is refused before any request.
+  const tokenTenant = (role) => (typeof credentialTenants[role] === 'string' ? credentialTenants[role].toLowerCase() : null);
+  for (const role of ['collector', 'restorer']) {
+    if (tokenTenant(role) && tokenTenant(role) !== tenant) throw new Error(`the ${role} token was issued for another tenant; nothing was sent`);
+  }
   const teamId = fixtureTeamId.toLowerCase();
   const userId = fixtureMemberUserId.toLowerCase();
 
@@ -171,8 +177,17 @@ export async function captureTeamsAcceptance({
     refusal = `the fixture team is not a disposable ${TEAMS_FIXTURE_PREFIX}* team; nothing was read further or written`;
   } else {
     const [body] = (await read('teams.settings', { 'team-id': teamId })) ?? [];
-    fixtureTeam = { id: teamId, displayName: body?.displayName ?? listed.displayName, tenantId: body?.tenantId ?? null };
-    if (body && String(body.tenantId ?? '').toLowerCase() !== tenant) refusal = 'the fixture team belongs to another tenant; nothing was written';
+    // Graph v1.0 often omits a team's tenantId for app-only callers. A tenantId Graph
+    // reports must be the managed tenant's; when it reports none, the team's tenant is
+    // the tenant of the collector token that read it (only that tenant's teams are visible).
+    const reported = typeof body?.tenantId === 'string' && body.tenantId ? body.tenantId.toLowerCase() : null;
+    const teamTenant = reported ?? tokenTenant('collector');
+    fixtureTeam = {
+      id: teamId, displayName: body?.displayName ?? listed.displayName, tenantId: teamTenant,
+      tenantIdSource: reported ? 'team' : (teamTenant ? 'collector-token' : null),
+    };
+    if (body && reported && reported !== tenant) refusal = 'the fixture team belongs to another tenant; nothing was written';
+    else if (body && !teamTenant) refusal = 'Graph did not report the fixture team\'s tenant and the collector token\'s tenant is unknown; nothing was written';
     else {
       log.values.supportedFields = body ? TEAM_SETTING_FIELDS.filter((field) => Object.hasOwn(body, field)) : [];
       startMembers = await read('teams.membership', { 'team-id': teamId });
@@ -413,6 +428,20 @@ export function ledgerEvidenceFromTeamsAcceptance(evidence, options = {}) {
   };
 }
 
+/**
+ * The tenant a Graph access token was issued for: its `tid` claim, or null. Only the
+ * payload is decoded; the token itself is never logged or returned.
+ */
+export function tokenTenantId(token) {
+  try {
+    const [, payload] = String(token).split('.');
+    const tid = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))?.tid;
+    return typeof tid === 'string' && GUID_RE.test(tid) ? tid.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A fetch-backed transport for one bearer token. The token never leaves this closure. */
 export function teamsBearerTransport(token, fetchImpl = globalThis.fetch) {
   return async (url, init) => {
@@ -492,6 +521,7 @@ export async function main(argv = process.argv.slice(2), { out = console.log, en
     grants: JSON.parse(readFile(options.grants)),
     documentation: JSON.parse(readFile(options.docs)),
     sharePointQualification: { gate: SHAREPOINT_LIVE_GATE, evidence: basename(sharePointPath), captureLogSha256: sharePoint.subject.captureLogSha256 },
+    credentialTenants: { collector: tokenTenantId(env.KEEL_TEAMS_COLLECTOR_TOKEN), restorer: tokenTenantId(env.KEEL_TEAMS_RESTORER_TOKEN) },
   });
   const { evidence, logPath } = writeTeamsAcceptanceFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: TEAMS_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

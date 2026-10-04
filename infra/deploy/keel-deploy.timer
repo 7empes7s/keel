@@ -1,0 +1,10 @@
+[Unit]
+Description=Run KEEL live portal auto-deploy every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

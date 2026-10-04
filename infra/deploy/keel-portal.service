@@ -1,0 +1,27 @@
+# /etc/systemd/system/keel-portal.service
+#
+# KEEL operator portal (Next.js). Independent deployment clone at /opt/keel-live —
+# deliberately separate from /opt/keel, which keel-orchestrator.service owns and
+# mutates continuously. Never point this unit at /opt/keel.
+[Unit]
+Description=KEEL operator portal
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/keel-live/portal
+EnvironmentFile=/etc/keel/db.env
+EnvironmentFile=/etc/keel/portal.env
+ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3600
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=keel-portal
+
+[Install]
+WantedBy=multi-user.target

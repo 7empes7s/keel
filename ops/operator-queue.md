@@ -721,7 +721,7 @@ being triggered by queue updates.
   Don't sign an assertion or run a reconstruction yet; that's Q6, after the Setup run.
 
 ### Q21: Re-check gate 116 prerequisites now that Setup and the recovery key exist (read-only)
-- Status: todo
+- Status: in-progress
 - Needs: Q19 done, Q20 done
 - Do: read-only. Redo Q5's check against `docs/roadmap/drill-live-acceptance.md` and
   `docs/roadmap/bootstrap-ui.md` (status 2026-10-04) at the deployed build:

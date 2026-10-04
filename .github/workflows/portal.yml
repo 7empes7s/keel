@@ -143,6 +143,7 @@ jobs:
           roadmap/sharepoint-live-acceptance.test.mjs
           roadmap/teams-config.test.mjs
           roadmap/teams-live-acceptance.test.mjs
+          roadmap/sentinel-live-acceptance.test.mjs
           roadmap/exchange-config.test.mjs
           roadmap/exchange-live-acceptance.test.mjs
           roadmap/drill-live-acceptance.test.mjs
@@ -153,6 +154,7 @@ jobs:
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
           roadmap/itsm-contract.test.mjs
+          roadmap/servicenow.test.mjs
           roadmap/value-reports.test.mjs
           roadmap/grounded-query.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs

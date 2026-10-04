@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "gate": "sentinel-live-acceptance",
+  "status": "pending",
+  "operation": "sentinel.workspace-ingestion-qualification",
+  "credentialMode": "sender-ingest+reader-query",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true,
+  "note": "Placeholder. No test Log Analytics workspace, DCR/stream, sender identity or receiver query evidence exists yet, and task-117 is deferred by operator decision. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/sentinel-live-acceptance.md, Operator steps."
+}

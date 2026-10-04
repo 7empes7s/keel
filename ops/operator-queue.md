@@ -299,7 +299,18 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
-- Status: todo
+- Status: blocked
+- Result: Not started. Waiting on the operator: four decisions answer an either/or question with
+  "yes", which doesn't pick an option. I won't interpret them.
+  - **D-121a**: permanent `keel-rt-*` member (which user?) **or** one created and deleted for each capture?
+  - **D-122a**: `Exchange.ManageAsApp` + Exchange Administrator **or** a narrower custom role?
+    (Restorer already has Exchange.ManageAsApp + Exchange Administrator; see Q7.)
+  - **D-122c**: **which** organization-wide Exchange setting may be flipped and put back? Name it,
+    or leave blank to keep the org-config leg unqualified.
+  - **D-123a**: `Exchange.ManageAsApp` + Compliance Administrator **or** a narrower role group?
+    (Restorer already has both; see Q7.)
+  D-120, D-121b, D-122b, D-122d and D-123b–d are clear "yes" answers. Because the chain must run
+  120→123 in one sitting at one build, I'm not starting 120 until all four are answered.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

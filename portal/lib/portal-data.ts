@@ -20,6 +20,7 @@ import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
+import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
@@ -31,6 +32,7 @@ import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
@@ -1092,4 +1094,12 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     })) as GroundedAnswer;
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });
+}
+
+// Roadmap task-94: emergency account readiness and the usage canary's state. The
+// page guard runs first; the engine reader is pinned to this tenant and reads KEEL's
+// own tables only.
+export async function getReadinessData(): Promise<ReadinessData> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await loadBreakGlassReadiness(client, { tenantRef: ref, now: new Date() })) as unknown as ReadinessData);
 }

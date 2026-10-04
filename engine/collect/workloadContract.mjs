@@ -126,6 +126,25 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
     source: doc('/en-us/graph/api/team-list-members'),
   },
+  // Task-104: discovery, and the Microsoft 365 group behind each team. Group
+  // membership is a separate observation from Teams membership: the two can
+  // diverge, and one being complete says nothing about the other.
+  {
+    id: 'teams.team-discovery', workload: 'teams-settings', resource: 'Team list',
+    operation: graph('/teams'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Team.ReadBasic.All'], roles: [] },
+    paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
+    source: doc('/en-us/graph/api/teams-list'),
+  },
+  {
+    id: 'teams.group-membership', workload: 'teams-settings', resource: 'Members of the Microsoft 365 group behind a team',
+    operation: graph('/groups/{group-id}/members'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['GroupMember.Read.All'], roles: [] },
+    paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
+    source: doc('/en-us/graph/api/group-list-members'),
+  },
   {
     id: 'teams.meeting-policies', workload: 'teams-settings', resource: 'Teams meeting policies',
     operation: cmdlet('Get-CsTeamsMeetingPolicy', 'MicrosoftTeams'),

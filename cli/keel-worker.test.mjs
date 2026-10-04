@@ -719,3 +719,25 @@ const offsiteHandlers = { offsite: { ...JOB_HANDLERS.offsite, script: offsiteFix
   assertJobFailedUnRun(fake, /requester no longer authorized for kind: offsite/, 'read-only offsite');
 }
 console.log('keel-worker offsite — all assertions passed');
+
+// Task 94: the break-glass canary sweep is throttled, and a failing sweep is logged
+// (redacted) without stopping the worker.
+{
+  const { sweepBreakGlassCanary } = await import('./keel-worker.mjs');
+  const queries = [];
+  const failing = { query: async (text) => { queries.push(text); throw new Error('connection reset Bearer abc.def.ghi'); } };
+  const logs = [];
+  const start = new Date('2026-10-03T00:00:00Z');
+  assert.equal(await sweepBreakGlassCanary(failing, { workerId: 'w1', now: start, log: (line) => logs.push(line), force: true }), null);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /break-glass canary sweep failed/);
+  assert.doesNotMatch(logs[0], /abc\.def\.ghi/);
+  const before = queries.length;
+  // Within the interval the sweep does not touch the database.
+  assert.equal(await sweepBreakGlassCanary(failing, { workerId: 'w1', now: new Date(start.getTime() + 60_000), log: () => {} }), null);
+  assert.equal(queries.length, before);
+  // After it, it runs again.
+  await sweepBreakGlassCanary(failing, { workerId: 'w1', now: new Date(start.getTime() + 6 * 60_000), log: () => {} });
+  assert.ok(queries.length > before);
+}
+console.log('keel-worker break-glass canary — all assertions passed');

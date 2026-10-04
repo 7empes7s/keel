@@ -40,9 +40,15 @@ You also need:
 
 1. **Fetch the artifacts** with the `artifact-storage-read` credential:
    the recovery manifest, the dump it names, the configuration export tree.
-2. **Authenticate** your recovery identity through the independent channel.
-   Wrap `tools/recovery/reconstruct.mjs` so `dependencies.authenticator`
-   performs that check; the CLI refuses to run without one.
+2. **Authenticate** your recovery identity through the independent channel:
+   on the offline machine holding your enrolled Ed25519 key, sign a
+   single-use assertion bound to the tenant
+   (`node tools/recovery/recovery-assertion.mjs sign … --out assertion.json`)
+   and copy only `assertion.json` to the recovery host. Enrollment, trust
+   store and replay ledger setup are in
+   [keel-recovery.md › Operator steps](../docs/roadmap/keel-recovery.md#operator-steps).
+   The CLI refuses to run without `--authenticator signed-assertion`; no
+   other authenticator, fixture included, is selectable.
 3. **Run the reconstruction** (from the repository root, DB env sourced):
 
    ```bash
@@ -55,11 +61,19 @@ You also need:
      --evidence-head SEQ:HASH:COUNT \
      --target-url postgres://localhost/keel_scratch \
      --identity-principal recovery-officer@example.com \
-     --credential-ref 'break-glass token reference: safe #7' \
+     --credential-ref assertion.json \
+     --authenticator signed-assertion \
+     --recovery-trust-store /etc/keel/recovery-authenticators.json \
+     --recovery-replay-ledger /var/lib/keel/recovery-replay \
      --recovery-key-ref 'sealed envelope #7, offline safe' \
      --storage-read-ref 'backup service account reference' \
-     --tenant-authz-ref 'change record CR-YYYY-NNNN'
+     --tenant-authz-ref 'change record CR-YYYY-NNNN' \
+     --result-out reconstruction.json
    ```
+
+   The trust store and replay ledger must lie outside the backup set (the
+   manifest, dump and export directories); the assertion is refused once
+   expired (15 minutes at most) or already used.
 
    The workflow refuses, in order, with a named stage: `identity` (anonymous
    or unauthenticated), `prerequisites` (missing credentials, listed by
@@ -67,7 +81,9 @@ You also need:
    schema pin, export bytes, evidence head), `schema` (the schema about to be
    applied is not the pinned one — stops before import), `import`, `history`
    (the reconstructed evidence chain or head does not match the manifest
-   checkpoint).
+   checkpoint). `--result-out` writes the result record (verdicts, counts,
+   evidence checkpoint, tenant, build, completion time; no row contents) that
+   gate `drill-live-acceptance` takes as `reconstruction.json`.
 4. **On success** the instance is read-only: the access session has
    `default_transaction_read_only = on` at the database level plus a
    statement guard, so no write path exists during or after reconstruction.

@@ -418,25 +418,25 @@ item that needs it stays untouched.
   - Decision: yes
 - D-121a: is the 121 fixture member a permanent `keel-rt-*` account, or created per
   capture and deleted afterwards?
-  - Decision: yes
+  - Decision: permanent: use existing keel-rt-20260908-carla (not in the team); create or delete no user
 - D-121b: grant the Teams application permissions (`TeamSettings.ReadWrite.All`,
   `TeamMember.ReadWrite.All` and the read set) to the KEEL apps? They apply tenant-wide.
   - Decision: yes
 - D-122a: give the Restorer `Exchange.ManageAsApp` plus Exchange Administrator, or a
   narrower custom role (which changes task-105's declarations)?
-  - Decision: yes
+  - Decision: keep the existing managed-as-app and exch admin
 - D-122b: accept that the Collector's Exchange role isn't provably read-only (the log
   proves it never ran a `Set-` cmdlet)?
   - Decision: yes
 - D-122c: which organization-wide Exchange setting, if any, may be flipped and put back?
   Leave blank to keep the org-config leg unqualified.
-  - Decision: yes
+  - Decision: none
 - D-122d: accept that each capture adds a day to the fixture mailbox's deleted-item
   retention (about 16 captures before 30 days)?
   - Decision: yes
 - D-123a: give the Restorer `Exchange.ManageAsApp` plus Compliance Administrator, or a
   narrower custom role group?
-  - Decision: yes
+  - Decision: keep the existing exch.manageasapp and compliance admin
 - D-123b: accept the Collector grants (`Sites.FullControl.All` with SharePoint
   Administrator, plus Compliance Administrator), which can write?
   - Decision: yes

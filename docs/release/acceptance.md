@@ -20,12 +20,15 @@ Without the runner key, tenant and build, a non-placeholder record is reported
 
 ## Readiness rule
 
-- **`ready`**: every journey passed, every live gate is `live-qualified`, and no
-  objective is open.
+- **`ready`**: every journey passed, every live gate is `live-qualified` or an accepted
+  gap, and no objective is open.
 - **`blocked`**: a journey failed, or a live gate failed verification. The other
   results are still reported.
 - **`pending`**: everything else. That covers a missing record, a pending placeholder,
   an unverifiable record, a missing journey result, and an objective gap.
+- **Accepted gaps**: a gate descoped by operator decision (only 117 today) keeps its real
+  status and is never counted as qualified. It is listed under `readiness.acceptedGaps`
+  instead of holding readiness. If its record fails verification, it still blocks.
 
 ## Current ledger (fixture results kept apart from live acceptance)
 
@@ -39,7 +42,7 @@ Without the runner key, tenant and build, a non-placeholder record is reported
 | 114 | `storage-live-acceptance` | pending (retention lock and immutability unqualified by decision) |
 | 115 | `native-live-acceptance` | pending |
 | 116 | `drill-live-acceptance` | pending |
-| 117 | `sentinel-live-acceptance` | pending (deferred by operator decision 2026-09-30) |
+| 117 | `sentinel-live-acceptance` | pending, accepted gap (descoped by operator decision 2026-10-04) |
 | 118 | `servicenow-live-acceptance` | pending |
 | 119 | `nist-benchmark-acceptance` | unverified (needs the runner key, tenant and build) |
 | 120 | `sharepoint-live-acceptance` | pending |

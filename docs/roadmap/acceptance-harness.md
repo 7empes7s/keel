@@ -56,12 +56,14 @@ edited.
   - **Readiness.** `blocked` if any journey or live gate failed, otherwise `pending` if
     anything is unknown, otherwise `ready`. Every other result stays in the report, so
     one failed gate never hides independent work.
-  - **Task-117 (Sentinel).** Listed with its 2026-09-30 deferral note. It is still not
-    qualified, so readiness stays pending. Relaxing it is task-124's decision.
+  - **Task-117 (Sentinel).** Deferred 2026-09-30, then descoped by operator decision
+    2026-10-04 12:36 UTC (task-124). It is still listed and never counted as qualified,
+    but as an accepted gap it no longer holds readiness; it appears under
+    `readiness.acceptedGaps`. A failed Sentinel record still blocks.
 - **`tools/release/qualification.mjs`**: one new subcommand,
   `ledger --fixture <journeys result> [--tenant] [--build] [--out] [--require-ready]`. It
   exits 0 for a report, and with `--require-ready` it exits 1 unless the ledger is ready.
-- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 18 boundary tests, added to the
+- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 19 boundary tests, added to the
   CI engine step in `.github/workflows/portal.yml`.
 
 ## Objectives D1-D10 and G1-G8

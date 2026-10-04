@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 20:45 UTC
+- **Last updated:** 2026-10-04 20:50 UTC
 
 ## How the work is organized
 
@@ -42,7 +42,7 @@ not merged until it finishes.
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | — | Diagnosing | Host diagnostics (Q23) |
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | — | Open | Review before enabling |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
-| `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | — | Open | Host file is `/etc/keel/restorer.json` |
+| `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
 | Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | — | Open | Needs operator decisions |
 
 ### Gate evidence
@@ -151,3 +151,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 20:35: thread links filled for #85–#93. #88: PR #94 replaces #76. #89: Q23 queued (read-only offsite diagnosis).
 - 2026-10-04 20:40: rows #85 (PR #96), #86, #87 (PR #95 replaces #80) updated from their threads. Collector read grants decision dropped: Q21 found them already held.
 - 2026-10-04 20:45: #91 row (PR #97). Q24 (install scheduled collection) added on hold until #84 finishes and #97 deploys.
+- 2026-10-04 20:50: #92 row (PR #98). Drop the `restorer-target.json` infrastructure fact when #98 merges.

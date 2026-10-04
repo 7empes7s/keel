@@ -1,7 +1,8 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  KEEL PowerShell plane: run ONE allowlisted Exchange Online cmdlet (roadmap task-105).
+  KEEL PowerShell plane: run ONE allowlisted Exchange Online, Security & Compliance
+  (Purview) or PnP cmdlet (roadmap tasks 105 and 106).
 
 .DESCRIPTION
   Reads the job descriptor from $env:KEEL_JOB_JSON:
@@ -16,8 +17,9 @@
     { ok: false, error: { message, category, errorId } }       exit 1
   A cmdlet error is never reported as an empty success.
 
-  Fixture-tested only through engine/roadmap/exchange-config.test.mjs (which plays
-  this contract); it has not been run against a tenant.
+  Fixture-tested only through engine/roadmap/exchange-config.test.mjs and
+  engine/roadmap/onedrive-purview.test.mjs (which play this contract); it has not
+  been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -32,6 +34,22 @@ $Allowed = @{
     'Set-CASMailbox'         = @('Identity', 'OWAEnabled', 'ActiveSyncEnabled', 'PopEnabled', 'ImapEnabled', 'MAPIEnabled', 'EwsEnabled', 'SmtpClientAuthenticationDisabled')
     'Set-Mailbox'            = @('Identity', 'LitigationHoldEnabled', 'RetentionHoldEnabled', 'SingleItemRecoveryEnabled', 'RetainDeletedItemsFor')
     'Set-OrganizationConfig' = @('FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled', 'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled')
+}
+
+# Task-106: Purview label configuration runs in the Security & Compliance session
+# (Connect-IPPSSession). Only label DEFINITIONS and publishing policies: no cmdlet
+# here reads a labeled item or label usage. Writes take display text and AddLabels.
+$AllowedPurview = @{
+    'Get-Label'       = @()
+    'Get-LabelPolicy' = @()
+    'Set-Label'       = @('Identity', 'DisplayName', 'Tooltip', 'Comment')
+    'Set-LabelPolicy' = @('Identity', 'AddLabels')
+}
+
+# Task-106: OneDrive site-level settings through PnP, one named site at a time.
+# No file, folder or list-item cmdlet is allowed.
+$AllowedPnP = @{
+    'Get-PnPTenantSite' = @('Identity')
 }
 
 function Out-Envelope {
@@ -52,11 +70,16 @@ try {
 }
 
 $name = [string]$job['cmdlet']
-if (-not $Allowed.ContainsKey($name)) { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
+$module = [string]$job['module']
+# Each cmdlet belongs to exactly one session, and the job's module must match it.
+if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
+elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
+elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
+else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
 $params = @{}
 if ($null -ne $job['parameters']) {
     foreach ($key in $job['parameters'].Keys) {
-        if ($Allowed[$name] -notcontains $key) { Out-Failure -Message "parameter $key is not allowed for $name" -ErrorId 'ParameterNotAllowed' }
+        if ($permitted -notcontains $key) { Out-Failure -Message "parameter $key is not allowed for $name" -ErrorId 'ParameterNotAllowed' }
         $value = $job['parameters'][$key]
         if ($value -is [System.Collections.IDictionary]) { Out-Failure -Message "parameter $key must be a scalar" -ErrorId 'ParameterNotScalar' }
         $params[$key] = $value
@@ -67,10 +90,21 @@ $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPa
 try {
     $config = Get-Content -Raw -Path $tenantConfigPath | ConvertFrom-Json
     $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($config.certPath, $config.keyPath)
-    Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
-    Connect-ExchangeOnline -AppId $config.clientId -Organization $config.organization -Certificate $cert -ShowBanner:$false -ShowProgress:$false | Out-Null
+    if ($session -eq 'pnp') {
+        # PnP is never loaded beside ExchangeOnlineManagement (see probe-workloads.ps1).
+        Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
+        $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
+        Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
+    } else {
+        Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
+        if ($session -eq 'ipps') {
+            Connect-IPPSSession -AppId $config.clientId -Organization $config.organization -Certificate $cert -ShowBanner:$false | Out-Null
+        } else {
+            Connect-ExchangeOnline -AppId $config.clientId -Organization $config.organization -Certificate $cert -ShowBanner:$false -ShowProgress:$false | Out-Null
+        }
+    }
 } catch {
-    Out-Failure -Message "could not connect to Exchange Online: $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
+    Out-Failure -Message "could not connect ($session): $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
 }
 
 try {
@@ -80,5 +114,6 @@ try {
     $record = $_
     Out-Failure -Message $record.Exception.Message -Category ([string]$record.CategoryInfo.Category) -ErrorId ([string]$record.FullyQualifiedErrorId)
 } finally {
-    try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {}
+    if ($session -eq 'pnp') { try { Disconnect-PnPOnline -ErrorAction SilentlyContinue | Out-Null } catch {} }
+    else { try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
 }

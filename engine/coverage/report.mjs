@@ -44,6 +44,9 @@ import '../collect/workloads/sharepoint.mjs';
 import '../collect/workloads/teams.mjs';
 // Registers the Exchange workload adapter (task-105), disabled behind Teams.
 import '../collect/workloads/exchange.mjs';
+// Registers the OneDrive and Purview label adapters (task-106), disabled behind Exchange.
+import '../collect/workloads/onedrive.mjs';
+import '../collect/workloads/purview.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {

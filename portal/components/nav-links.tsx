@@ -46,6 +46,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/baselines", label: "Baselines", gate: null },
     { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
     { href: "/alerts", label: "Alerts", gate: "canRead", aliases: "alerts inbox acknowledge escalation" },
+    { href: "/emergency-changes", label: "Emergency changes", gate: "canApprove", aliases: "emergency deviation change intent approved change window" },
   ],
   Restore: [
     { href: "/restore", label: "Restore", gate: null },

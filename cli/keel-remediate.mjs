@@ -19,6 +19,7 @@ import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
 import { resolveQueuedAutomationPolicies } from '../engine/policy/execute.mjs';
+import { assertNoApprovedTransition } from '../engine/policy/changeIntent.mjs';
 import { assertSeparateRestorer, runRestore } from './keel-restore.mjs';
 
 function arg(name, fallback, argv = process.argv) {
@@ -116,6 +117,7 @@ export async function runRemediate({
     resolveRestoreScope: resolveRestoreScopeFn = resolveRestoreScope,
     runRestore: runRestoreFn = runRestore,
     resolveQueuedAutomationPolicies: resolveQueuedAutomationPoliciesFn = resolveQueuedAutomationPolicies,
+    assertNoApprovedTransition: assertNoApprovedTransitionFn = assertNoApprovedTransition,
     createArtifactId = randomUUID,
   } = dependencies;
 
@@ -133,6 +135,9 @@ export async function runRemediate({
     // the live policy rows, at both the dry run and again at artifact promotion.
     automationPolicyIds = (await resolveQueuedAutomationPoliciesFn(client, { driftIds }))
       .map((policy) => policy.id);
+    // Roadmap task-93: an automatic roll back queued before an emergency change was
+    // approved stops here, before any dry run or write, while that approval is in force.
+    if (automationPolicyIds.length > 0) await assertNoApprovedTransitionFn(client, { driftIds });
   } finally {
     await client?.end();
   }

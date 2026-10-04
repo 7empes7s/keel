@@ -320,7 +320,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: in-progress
 - Result: **Re-run at 2b2c338 (PR #77): 120 and 121 passed; stopped at 122 (same kind of tool defect).**
   Build 2b2c338 = `/opt/keel-live` (clean, deployed 15:32 UTC); grant requirements unchanged.
   - **120 SharePoint: passed.** `claude/live-evidence-120` @ **ea45350** (adds the 2b2c338 record on

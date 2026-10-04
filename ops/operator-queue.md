@@ -831,13 +831,18 @@ item that needs it stays untouched.
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
   the tenant or master, so it can run while Q10 waits.
-- Status: todo
+- Status: done
+- Result: **Done.** The `keel` login was valid (project account …5390). Ran
+  `ALERT_EMAIL=<operator address> bash ops/aws/budget-guard.sh` from the queue checkout. The alert
+  address was given by the operator in session; it's not written to the repo.
+  - `aws budgets describe-budget --budget-name keel-monthly --profile keel --region us-east-1`:
+    **exists**: COST, MONTHLY, **25.0 USD**.
+  - Notifications: **ACTUAL > 50 %, > 80 %, > 100 %; FORECASTED > 100 %**, each with an EMAIL
+    subscriber (AWS sends a subscription confirmation email that the operator may need to accept).
+  - No other AWS resources created.
 - Needs: none
 - Do: on the VPS as root, from the queue checkout, run `ALERT_EMAIL=<address> bash ops/aws/budget-guard.sh`
   (profile `keel`; budget `keel-monthly`, $25/month; alerts at 50/80/100% actual and 100% forecast; AWS
   Budgets' first two budgets are free). If the `keel` login has expired, report that and stop; don't sign in.
   Use the alert address the operator gives. If none is named here, ask him in your session. Don't write the
   address into the repo.
-- Result: whether `keel-monthly` exists now
-  (`aws budgets describe-budget --account-id <id> --budget-name keel-monthly --profile keel --region us-east-1`)
-  and whether the alerts were created.

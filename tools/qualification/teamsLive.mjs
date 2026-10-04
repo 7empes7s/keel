@@ -22,13 +22,17 @@
  * What a capture does, in order (and nothing else):
  *  1. collector: GET /teams (all pages; only the count is kept), to find the fixture
  *     team, whose display name must start with KEEL-RT-;
- *  2. collector: GET /teams/{fixture}, /teams/{fixture}/members and
- *     /groups/{fixture}/members;
+ *  2. collector: GET /teams/{fixture}, /teams/{fixture}/members,
+ *     /groups/{fixture}/members and /groups/{fixture}/owners;
  *  3. restorer: GET /teams/{fixture}; PATCH funSettings with allowCustomMemes set to
  *     the other value; read it back; PATCH the original funSettings back; read back;
  *  4. restorer: POST the fixture user as a member; read back; PATCH its roles to
  *     owner; read back; PATCH its roles back to member; read back; DELETE it; read
- *     back.
+ *     back. If the promotion left the fixture user as an owner of the team's group,
+ *     DELETE that owner link. Then read the roster, the group's owners and its
+ *     members until the user is absent from all three, wait a settle delay, and
+ *     read them once more: only that last read decides whether membership was
+ *     restored.
  * Every request is checked against the task-104 Teams request shapes before it is
  * sent. Only the fixture team, its group and the fixture user are addressed; no
  * message, chat, channel, tab or file endpoint is ever requested. Step 3 changes a
@@ -89,6 +93,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
     { step: 2, credential: 'collector', method: 'GET', path: team, operationId: 'teams.settings' },
     { step: 2, credential: 'collector', method: 'GET', path: `${team}/members`, operationId: 'teams.membership' },
     { step: 2, credential: 'collector', method: 'GET', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/members`, operationId: 'teams.group-membership' },
+    { step: 2, credential: 'collector', method: 'GET', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/owners`, operationId: 'teams.group-membership' },
     { step: 3, credential: 'restorer', method: 'GET', path: team, operationId: TEAMS_LIVE_SETTINGS_WRITE },
     { step: 3, credential: 'restorer', method: 'PATCH', path: `${team} { ${TEAMS_TOGGLE_GROUP}.${TEAMS_TOGGLE_PROPERTY}: <other value> } (this team only)`, operationId: TEAMS_LIVE_SETTINGS_WRITE },
     { step: 3, credential: 'restorer', method: 'GET', path: `${team} (read back)`, operationId: TEAMS_LIVE_SETTINGS_WRITE },
@@ -102,6 +107,8 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
     { step: 4, credential: 'restorer', method: 'GET', path: `${team}/members (read back)`, operationId: 'teams.membership.update' },
     { step: 4, credential: 'restorer', method: 'DELETE', path: `${team}/members/{fixture membership}`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'restorer', method: 'GET', path: `${team}/members (read back)`, operationId: 'teams.membership.remove' },
+    { step: 4, credential: 'restorer', method: 'DELETE', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/owners/${user}/$ref (only if the promotion left the owner link)`, operationId: 'teams.membership.remove' },
+    { step: 4, credential: 'collector', method: 'GET', path: `${team}/members (restorer), /v1.0/groups/${fixtureTeamId.toLowerCase()}/owners and /members (until absent, then again after a settle delay)`, operationId: 'teams.membership.remove' },
   ];
 }
 
@@ -113,7 +120,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
 export async function captureTeamsAcceptance({
   collector, restorer, directoryTenantId, fixtureTeamId, fixtureMemberUserId, tenantRef, build, credentials, grants,
   sharePointQualification, credentialTenants = {}, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
-  readBackAttempts = 5, readBackDelayMs = 2000,
+  readBackAttempts = 5, readBackDelayMs = 2000, settleDelayMs = 20000,
 }) {
   const problems = teamsFixtureProblems({ fixtureTeamId, fixtureMemberUserId });
   if (typeof directoryTenantId !== 'string' || !GUID_RE.test(directoryTenantId)) problems.push('--directory-tenant-id must be the managed tenant id (a GUID)');
@@ -171,6 +178,8 @@ export async function captureTeamsAcceptance({
   const listed = discovered.find((team) => String(team?.id ?? '').toLowerCase() === teamId) ?? null;
   let fixtureTeam = { id: teamId, displayName: listed?.displayName ?? null, tenantId: null };
   let startMembers = null;
+  let startGroupMembers = null;
+  let startOwners = null;
   let refusal = null;
   if (!listed) refusal = 'the fixture team was not discovered; nothing was written';
   else if (typeof listed.displayName !== 'string' || !listed.displayName.startsWith(TEAMS_FIXTURE_PREFIX)) {
@@ -191,14 +200,23 @@ export async function captureTeamsAcceptance({
     else {
       log.values.supportedFields = body ? TEAM_SETTING_FIELDS.filter((field) => Object.hasOwn(body, field)) : [];
       startMembers = await read('teams.membership', { 'team-id': teamId });
-      await read('teams.group-membership', { 'group-id': teamId });
+      startGroupMembers = await read('teams.group-membership', { 'group-id': teamId });
+      try {
+        startOwners = await teamsReadGroupOwners(asCollector, teamId);
+      } catch (error) {
+        refusal = `the fixture group's owners could not be read (${error.message}); nothing was written`;
+      }
     }
   }
   const supportedFields = log.values.supportedFields ?? [];
   const readsOk = !refusal && reads.length === TEAMS_LIVE_READS.length && reads.every((item) => item.ok);
   const memberBefore = startMembers ? startMembers.map(normalizeMember).some((member) => member.userId === userId) : null;
   if (!refusal && !readsOk) refusal = 'a read failed; nothing was written';
+  const ownerBefore = startOwners ? startOwners.includes(userId) : null;
+  const groupMemberBefore = startGroupMembers ? startGroupMembers.some((member) => String(member?.id ?? '').toLowerCase() === userId) : null;
   if (!refusal && memberBefore) refusal = 'the fixture user is already a member of the fixture team; remove it first; nothing was written';
+  if (!refusal && ownerBefore) refusal = 'the fixture user is already an owner of the fixture group; remove it first; nothing was written';
+  if (!refusal && groupMemberBefore) refusal = 'the fixture user is already a member of the fixture group; remove it first; nothing was written';
   if (!refusal && !startMembers.map(normalizeMember).some((member) => member.roles.includes('owner') && member.userId !== userId)) {
     refusal = 'the fixture team has no owner besides the fixture user; nothing was written';
   }
@@ -208,16 +226,21 @@ export async function captureTeamsAcceptance({
     writeMode: 'reversible-change', group: TEAMS_TOGGLE_GROUP, property: TEAMS_TOGGLE_PROPERTY,
     ok: false, readBackVerified: false, restoredToOriginal: false, preFingerprint: null, finalFingerprint: null,
   };
-  const membership = { captures: [], restoredToOriginal: false, preFingerprint: null, finalFingerprint: null };
-  const fixtureMember = { userId, tenantId: null, membershipId: null, memberBefore, memberAfter: null };
-  const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs };
+  const membership = {
+    captures: [], restoredToOriginal: false, preFingerprint: null, finalFingerprint: null,
+    ownersPreFingerprint: startOwners ? ownersFingerprint(startOwners) : null, ownersFinalFingerprint: null, ownerLinkRemoved: false,
+  };
+  const fixtureMember = {
+    userId, tenantId: null, membershipId: null, memberBefore, memberAfter: null, ownerBefore, ownerAfter: null, groupMemberBefore, groupMemberAfter: null,
+  };
+  const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs, settleMs: settleDelayMs };
   if (refusal) {
     settingsWrite.error = refusal;
     membership.error = refusal;
   } else {
     await teamsToggleAndRestore({ transport: asRestorer, teamId, capture: settingsWrite, log, timing });
     settingsWrite.capturedAt = now().toISOString();
-    await teamsMembershipRoundTrip({ transport: asRestorer, teamId, userId, membership, fixtureMember, log, timing, now });
+    await teamsMembershipRoundTrip({ transport: asRestorer, reader: asCollector, teamId, userId, membership, fixtureMember, log, timing, now });
   }
   settingsWrite.capturedAt ??= now().toISOString();
 
@@ -277,6 +300,24 @@ async function teamsReadMembers(transport, teamId, sleep) {
   return items;
 }
 
+/** Every id on one page-followed group listing (owners or members), lower-cased. */
+async function teamsReadGroupList(transport, teamId, list) {
+  const ids = [];
+  let url = `${GRAPH}/${VERSION}/groups/${teamId}/${list}`;
+  for (let page = 0; url; page += 1) {
+    if (page >= 50) throw new Error(`the group's ${list} did not finish paging`);
+    const response = await transport(url);
+    if (!ok(response)) throw new Error(`GET /groups/${teamId}/${list} failed (HTTP ${response.status})`);
+    for (const item of response.body?.value ?? []) ids.push(String(item?.id ?? '').toLowerCase());
+    url = response.body?.['@odata.nextLink'] ?? null;
+  }
+  return ids;
+}
+
+const teamsReadGroupOwners = (transport, teamId) => teamsReadGroupList(transport, teamId, 'owners');
+const teamsReadGroupMembers = (transport, teamId) => teamsReadGroupList(transport, teamId, 'members');
+const ownersFingerprint = (ids) => sha256Hex(JSON.stringify([...ids].sort()));
+
 async function teamsReadUntil(readOnce, matches, { sleep, attempts, delayMs }) {
   let body = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -316,7 +357,7 @@ async function teamsToggleAndRestore({ transport, teamId, capture, log, timing }
   }
 }
 
-async function teamsMembershipRoundTrip({ transport, teamId, userId, membership, fixtureMember, log, timing, now }) {
+async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, membership, fixtureMember, log, timing, now }) {
   const base = `${GRAPH}/${VERSION}/teams/${teamId}/members`;
   const readMembers = () => teamsReadMembers(transport, teamId, timing.sleep);
   const find = (members) => (members ?? []).map(normalizeMember).find((member) => member.userId === userId) ?? null;
@@ -374,16 +415,46 @@ async function teamsMembershipRoundTrip({ transport, teamId, userId, membership,
     if (log.values.memberAdded === true && !removed && fixtureMember.membershipId) {
       try { await teamsSendWrite(transport, `${base}/${fixtureMember.membershipId}`, { method: 'DELETE' }, timing.sleep); } catch { /* reported below */ }
     }
+    // The group's owners and members are read by the collector; only the restorer writes.
+    // Promoting to owner also makes the user an owner of the team's group, and demoting
+    // and removing the Teams membership can leave that link behind; Teams later re-adds
+    // the user from it. Remove the link if it is there, then confirm the user is absent
+    // from the Teams roster, the group's owners and the group's members, and still
+    // absent after a settle delay.
+    if (log.values.memberAdded === true) {
+      try {
+        const owners = await teamsReadGroupOwners(reader, teamId);
+        if (owners.includes(userId)) {
+          const unlinked = await teamsSendWrite(transport, `${GRAPH}/${VERSION}/groups/${teamId}/owners/${userId}/$ref`, { method: 'DELETE' }, timing.sleep);
+          membership.ownerLinkRemoved = ok(unlinked);
+          if (!ok(unlinked)) membership.error ??= `removing the fixture user's group owner link failed (HTTP ${unlinked.status})`;
+        }
+      } catch (error) {
+        membership.error ??= `the group owners read failed: ${error.message}`;
+      }
+    }
     try {
-      const final = await readMembers();
-      fixtureMember.memberAfter = find(final) !== null;
-      membership.finalFingerprint = membersFingerprint(final);
-      membership.restoredToOriginal = log.values.memberAdded === true && fixtureMember.memberAfter === false;
+      const readAll = async () => ({
+        members: await readMembers(),
+        owners: await teamsReadGroupOwners(reader, teamId),
+        groupMembers: await teamsReadGroupMembers(reader, teamId),
+      });
+      const absent = (state) => find(state.members) === null && !state.owners.includes(userId) && !state.groupMembers.includes(userId);
+      await teamsReadUntil(readAll, absent, timing);
+      if (timing.settleMs) await timing.sleep(timing.settleMs);
+      const final = await readAll();
+      fixtureMember.memberAfter = find(final.members) !== null;
+      fixtureMember.ownerAfter = final.owners.includes(userId);
+      fixtureMember.groupMemberAfter = final.groupMembers.includes(userId);
+      membership.finalFingerprint = membersFingerprint(final.members);
+      membership.ownersFinalFingerprint = ownersFingerprint(final.owners);
+      membership.restoredToOriginal = log.values.memberAdded === true && absent(final)
+        && membership.ownersFinalFingerprint === membership.ownersPreFingerprint;
     } catch (error) {
       membership.error ??= `the final membership read failed: ${error.message}`;
     }
-    if (log.values.memberAdded === true && fixtureMember.memberAfter !== false) {
-      membership.error = `THE FIXTURE USER MAY STILL BE A MEMBER: remove ${userId} from the fixture team by hand`;
+    if (log.values.memberAdded === true && membership.restoredToOriginal !== true) {
+      membership.error = `THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER: remove ${userId} from the fixture team, and from the owners and members of group ${teamId}, by hand`;
     }
   }
 }

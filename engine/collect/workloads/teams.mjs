@@ -70,6 +70,10 @@ export const TEAMS_REQUEST_SHAPES = Object.freeze([
   { method: 'POST', path: new RegExp(`^/v1\\.0/teams/${GUID}/members$`, 'i') },
   { method: 'PATCH', path: new RegExp(`^/v1\\.0/teams/${GUID}/members/[A-Za-z0-9=+_-]+$`) },
   { method: 'DELETE', path: new RegExp(`^/v1\\.0/teams/${GUID}/members/[A-Za-z0-9=+_-]+$`) },
+  // A Teams owner is also an owner of the team's group, and that link can outlive the
+  // Teams membership. The live capture reads it and, if its own promotion left it, removes it.
+  { method: 'GET', path: new RegExp(`^/v1\\.0/groups/${GUID}/owners$`, 'i') },
+  { method: 'DELETE', path: new RegExp(`^/v1\\.0/groups/${GUID}/owners/${GUID}/\\$ref$`, 'i') },
 ]);
 const ALLOWED_QUERY = new Set(['$skiptoken', '$top']);
 

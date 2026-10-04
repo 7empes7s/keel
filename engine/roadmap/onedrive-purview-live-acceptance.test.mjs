@@ -172,6 +172,7 @@ function teamsGraph() {
       return { status: 204, headers: {}, body: null };
     }
     if (path === `/v1.0/groups/${TEAM}/members`) return { status: 200, headers: {}, body: { value: members.map((member) => ({ id: member.userId })) } };
+    if (path === `/v1.0/groups/${TEAM}/owners`) return { status: 200, headers: {}, body: { value: [{ id: members[0].userId }] } };
     return { status: 404, headers: {}, body: null };
   };
 }

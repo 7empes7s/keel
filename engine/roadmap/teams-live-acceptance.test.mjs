@@ -91,7 +91,7 @@ before(async () => {
 });
 
 // ---- The Teams fake: two teams (one KEEL-RT), an owner, a fixture user to add and remove.
-function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT } = {}) {
+function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false } = {}) {
   const team = {
     '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#teams/$entity',
     id: TEAM, displayName: teamName, description: 'KEEL rehearsal team', visibility: 'private', isArchived: false, tenantId: teamTenant,
@@ -101,6 +101,11 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
   };
   const members = [{ id: 'MjA-owner', userId: OWNER, tenantId: TENANT, roles: ['owner'], displayName: 'Owner' }];
   if (startWithFixtureUser) members.push({ id: 'MjA-fixture', userId: FIXTURE_USER, tenantId: TENANT, roles: [], displayName: 'Fixture' });
+  // Promoting a member to owner also makes it an owner of the team's group. With
+  // leaveOwnerLink, demoting and removing the Teams membership leave that link behind,
+  // as live Graph did on 2026-10-04.
+  const owners = [OWNER];
+  if (fixtureOwnerBefore) owners.push(FIXTURE_USER);
   const calls = [];
   let throttled = false;
   let settingsPatches = 0;
@@ -138,15 +143,37 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
     if (membership) {
       const index = members.findIndex((member) => member.id === membership[1]);
       if (index < 0) return { status: 404, headers: {}, body: null };
-      if (method === 'PATCH') { if (!ignoreRoleWrites) members[index].roles = init.body.roles; return { status: 200, headers: {}, body: members[index] }; }
-      if (method === 'DELETE') { if (failRemove) return { status: 500, headers: {}, body: null }; members.splice(index, 1); return { status: 204, headers: {}, body: null }; }
+      const unown = (userId) => { if (!leaveOwnerLink && owners.includes(userId)) owners.splice(owners.indexOf(userId), 1); };
+      if (method === 'PATCH') {
+        if (!ignoreRoleWrites) {
+          members[index].roles = init.body.roles;
+          if (init.body.roles.includes('owner')) { if (!owners.includes(members[index].userId)) owners.push(members[index].userId); } else unown(members[index].userId);
+        }
+        return { status: 200, headers: {}, body: members[index] };
+      }
+      if (method === 'DELETE') {
+        if (failRemove) return { status: 500, headers: {}, body: null };
+        unown(members[index].userId);
+        members.splice(index, 1);
+        return { status: 204, headers: {}, body: null };
+      }
+    }
+    if (path === `/v1.0/groups/${TEAM}/owners` && method === 'GET') {
+      return { status: 200, headers: {}, body: { value: owners.map((id) => ({ '@odata.type': '#microsoft.graph.user', id })) } };
+    }
+    const ownerLink = new RegExp(`^/v1\\.0/groups/${TEAM}/owners/(.+)/\\$ref$`).exec(path);
+    if (ownerLink && method === 'DELETE') {
+      if (failOwnerUnlink) return { status: 500, headers: {}, body: null };
+      if (!owners.includes(ownerLink[1])) return { status: 404, headers: {}, body: null };
+      owners.splice(owners.indexOf(ownerLink[1]), 1);
+      return { status: 204, headers: {}, body: null };
     }
     if (path === `/v1.0/groups/${TEAM}/members` && method === 'GET') {
       return { status: 200, headers: {}, body: { value: members.map((member) => ({ '@odata.type': '#microsoft.graph.user', id: member.userId })) } };
     }
     return { status: 404, headers: {}, body: null };
   };
-  return { transport, calls, team, members };
+  return { transport, calls, team, members, owners };
 }
 
 const teamsDocumentation = () => teamsRequiredDocumentation().map((url) => ({ url, retrievedAt: '2026-10-02T12:00:00Z' }));
@@ -498,4 +525,52 @@ test('when Graph omits the team\'s tenantId, the collector token\'s tenant prove
   // A record whose tenant source was tampered with fails, even when re-signed.
   const tampered = resign(proven.evidence, (e) => { e.subject.fixtureTeam.tenantIdSource = 'operator-said-so'; return e; });
   assert.match(verifyIn(tampered).failures.join('\n'), /tenant has no recognized source/);
+});
+
+test('a promotion that leaves the group owner link is cleaned up and checked; an owner link that stays never verifies', async () => {
+  // Live Graph left the fixture user as a group owner after demote and remove, and Teams re-added it later.
+  const lingering = teamsGraph({ leaveOwnerLink: true });
+  const cleaned = await capturedFiles(lingering);
+  assert.deepEqual(verifyEvidenceFile(cleaned.outPath, options()), { ok: true, failures: [] });
+  assert.ok(lingering.calls.includes(`DELETE /v1.0/groups/${TEAM}/owners/${FIXTURE_USER}/$ref`));
+  assert.deepEqual(lingering.owners, [OWNER]);
+  const { membershipWrites, fixtureMember } = cleaned.record.subject;
+  assert.equal(membershipWrites.ownerLinkRemoved, true);
+  assert.equal(membershipWrites.restoredToOriginal, true);
+  assert.equal(membershipWrites.ownersPreFingerprint, membershipWrites.ownersFinalFingerprint);
+  assert.deepEqual([fixtureMember.ownerBefore, fixtureMember.ownerAfter, fixtureMember.groupMemberBefore, fixtureMember.groupMemberAfter], [false, false, false, false]);
+
+  // When Graph cleans up by itself, no owner link is removed.
+  const clean = teamsGraph();
+  const plain = await capturedFiles(clean);
+  assert.deepEqual(verifyEvidenceFile(plain.outPath, options()), { ok: true, failures: [] });
+  assert.ok(!clean.calls.some((call) => call.includes('/owners/')));
+  assert.equal(plain.record.subject.membershipWrites.ownerLinkRemoved, false);
+
+  // An owner link that cannot be removed is reported, needs a manual revert and never verifies.
+  const stuck = teamsGraph({ leaveOwnerLink: true, failOwnerUnlink: true });
+  const failed = await capturedFiles(stuck);
+  assert.equal(failed.needsManualRevert, true);
+  assert.equal(failed.record.subject.fixtureMember.ownerAfter, true);
+  assert.match(failed.record.subject.membershipWrites.error, /MAY STILL BE A MEMBER OR OWNER/);
+  const failures = verifyEvidenceFile(failed.outPath, options()).failures.join('\n');
+  assert.match(failures, /must not own the fixture group/);
+  assert.match(failures, /final owners do not match/);
+
+  // A fixture user who already owns the fixture group is refused before any write.
+  const owning = teamsGraph({ fixtureOwnerBefore: true });
+  const refused = await capture(owning);
+  assert.equal(owning.calls.filter((call) => !call.startsWith('GET')).length, 0);
+  assert.match(refused.record.subject.membershipWrites.error, /already an owner of the fixture group/);
+
+  // A record claiming a restore while the owner link stayed fails, even when re-signed;
+  // so does an owner-link removal aimed at another user.
+  const lied = resign(cleaned.evidence, (e) => { e.subject.fixtureMember.ownerAfter = true; return e; });
+  assert.match(verifyIn(lied).failures.join('\n'), /must not own the fixture group/);
+  const otherUser = resign(cleaned.evidence, (e) => {
+    const unlink = e.subject.requests.find((request) => request.method === 'DELETE' && request.path.includes('/owners/'));
+    unlink.path = `/groups/${TEAM}/owners/${OWNER}/$ref`;
+    return e;
+  });
+  assert.match(verifyIn(otherUser).failures.join('\n'), /other than the KEEL-RT fixture/);
 });

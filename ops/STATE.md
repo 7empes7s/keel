@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 13:35 UTC
+- **Last updated:** 2026-10-04 13:50 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ then prove the path works.
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Blocked on D-120b** | Queue Q10. Fixtures exist (Q8), PowerShell image rebuilt (Q9) |
+| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Ready except a code fix** | D-120b given in keel-operator's session; all grants made; alice's OneDrive provisioned. Three declared doc URLs were dead: fixed in PR #74. Runs once #74 deploys (Q10) |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
 **Evidence merge blocker:** `engine/roadmap/deployed-acceptance.test.mjs` (and probably the other
@@ -50,6 +50,7 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## Open PRs
 
+- **#74** `claude/fix-dead-doc-urls`: replaces three dead declared doc URLs that block gates 120 and 123. Opened 13:50 UTC by the coordinator.
 - None open. **#73** `claude/setup-host` was **merged 13:34 UTC as `2e8a5b9`** (operator approved in chat). Description: production Setup host for gate 116 (task-76). CI green; reviewed by the
   coordinator (writes disabled unless named with qualification + expiry; never creates app
   registrations). **Merge blocked for Claude** ("Merge Without Review"): the operator merges it.
@@ -66,8 +67,6 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## Waiting on the human operator
 
-1. **D-120b** in the queue (Restorer `SharePointTenantSettings.ReadWrite.All`; Collector
-   `SharePointTenantSettings.Read.All`, `Sites.Read.All`, `MailboxSettings.Read`): unblocks 120–123.
 2. Decide on the Collector read grants it needs (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
 3. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
@@ -141,3 +140,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 12:55: PR #73 author notes added (Collector read grants needed for Setup checks).
 - 2026-10-04 13:00: AWS setup done on the VPS; budget guard still to run; keel-operator restart pending.
 - 2026-10-04 13:35: PR #73 merged (`2e8a5b9`); master deploy and Q19 next.
+- 2026-10-04 13:50: D-120b given in keel-operator's session and grants made; Q10 blocked on dead doc URLs; PR #74 opened.

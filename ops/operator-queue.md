@@ -296,6 +296,10 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
+- Coordinator note (13:50 UTC): the three URLs are fixed in PR #74 (`claude/fix-dead-doc-urls`).
+  When #74 is merged and `/opt/keel-live` is deployed at or after its merge commit, set this back to
+  in-progress and run 120 → 121 → 122 → 123 at that build. D-120b was given by the operator in your
+  session (12:47 and 12:55 UTC).
 - Status: blocked
 - Result: **Blocked on a code fix: three declared documentation URLs are dead (HTTP 404)**, so their
   `docs.json` "retrieval" can't be recorded honestly. Nothing was captured; no gate was run.

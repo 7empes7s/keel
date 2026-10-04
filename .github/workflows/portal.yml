@@ -126,6 +126,7 @@ jobs:
           roadmap/scoped-authorization.test.mjs
           roadmap/change-attribution.test.mjs
           roadmap/policy-disclosure.test.mjs
+          roadmap/change-intents.test.mjs
           roadmap/fidelity-expansion.test.mjs
           roadmap/policy-fidelity.test.mjs
           roadmap/administrative-fidelity.test.mjs

@@ -109,7 +109,18 @@ being triggered by queue updates.
     the same disk). If there's no separate mount, mark the item `blocked`.
 
 ### Q3: Prerequisites for gate 115 (read-only check plus one fixture)
-- Status: in-progress
+- Status: done
+- Result: Restorer app (`/etc/keel/restorer.json`, appId 12f8942f-c4d0-4a0d-aee1-efe928b1de54; note that
+  `/etc/keel/restorer-target.json` **does not exist** on the host): granted application
+  permissions read from its token roles. **`Group.ReadWrite.All` is granted.** Nothing was granted
+  by me. Observation: the Restorer holds about 52 ReadWrite roles, including
+  `Policy.ReadWrite.ConditionalAccess`, `RoleManagement.ReadWrite.Directory`,
+  `Directory.ReadWrite.All` and `Application.ReadWrite.All`, plus 9 directory roles
+  (wids), which is far broader than native recovery needs.
+  Created fixture: security group **`KEEL-RT-native-recovery-group`**, object id
+  **`b1b02d2f-3f30-4cb5-8a63-81f94de2734b`** (2026-10-04T08:34:45Z, Restorer app; not
+  mail-enabled, not role-assignable; 0 members, 0 owners, 0 app role assignments, verified
+  via the Collector). `keel-rt-20260908-alice` not used. No evidence branch.
 - Needs: none
 - Do:
   - Check, read-only, which application permissions the Restorer app

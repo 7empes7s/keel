@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:10 UTC
+- **Last updated:** 2026-10-04 21:15 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ not merged until it finishes.
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Blocked | Recording 117 as an accepted gap needs the operator's explicit go in its thread (classifier refused); recapture waits on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
-| Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 | Blocked | Offsite host 187.124.7.67 (Hostinger srv1872555) drops port 22 and ICMP (Q23); operator revives it or picks a new target. #100 held for the freeze |
+| Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 (ships to `/mnt/keel-copy/keel-offsite`) | In review | Master freeze; then a Q-item deploys, dry-runs, enables `keel-offsite.timer`, runs once and checks sha256. Operator chose vol2 as the new target |
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | Dry run (Q25): 154 of 182 snapshots would go | Breakdown queued (Q28); `prune` schedule stays off until the gate chain finishes; #99 held for the freeze |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
 | `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
@@ -67,8 +67,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 1. Merge PR #83 (#84 chain).
 2. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
 3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
-4. Offsite (#89): revive the Hostinger VPS 187.124.7.67 or choose a new offsite target.
-5. Restorer least privilege (#93): D-93a and D-93b in the queue.
+4. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -164,3 +163,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:20: #85: operator has no PIM (permanent Global Administrator); PR #96 accepts that. Restore setup waits on #96 deploy and Q27.
 - 2026-10-04 21:05: Q25 done (prune dry run; #90 thread reviewing). Q27 done (#85 operator id set; read setup complete).
 - 2026-10-04 21:10: #90: Q28 queued (read-only breakdown of the 154 snapshots the dry run would prune).
+- 2026-10-04 21:15: #89: operator chose vol2 (`/mnt/keel-copy`) as the offsite target; PR #100 updated.

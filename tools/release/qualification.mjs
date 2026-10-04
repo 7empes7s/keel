@@ -21,6 +21,7 @@ import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicens
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
+import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
 import { SENTINEL_LIVE_GATE, validateSentinelLiveSubject } from '../qualification/sentinelAcceptance.mjs';
 import { SERVICENOW_LIVE_GATE, validateServiceNowLiveSubject } from '../qualification/servicenowAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
@@ -717,6 +718,9 @@ const GATE_VALIDATORS = {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
   // Task-122: Exchange live acceptance; needs both proofs and a verified task-121 record.
   [EXCHANGE_LIVE_GATE]: (evidence, context) => validateExchangeLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
+  // Task-123: OneDrive and Purview live acceptance; needs both proofs and a verified task-122 record.
+  [ONEDRIVE_PURVIEW_LIVE_GATE]: (evidence, context) => validateOneDrivePurviewLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
   // Task-117: Sentinel workspace ingestion; needs both proofs (runner signature and capture log).
   [SENTINEL_LIVE_GATE]: (evidence, context) => validateSentinelLiveSubject(evidence, {

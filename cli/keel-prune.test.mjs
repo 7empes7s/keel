@@ -73,6 +73,18 @@ const prunableSnapshotId = await seedSnapshot('prunable', oldEnough);
 const baselineSnapshotId = await seedSnapshot('baseline', oldEnough);
 const baselineId = await createBaseline(client, { tenantRef, setBy: 'test-operator' });
 await seedBaselineFromSnapshot(client, { baselineId, snapshotId: baselineSnapshotId });
+// Older than the window, but held by an active incident retention pin → must
+// survive, and the dry run must not list it either.
+const pinnedSnapshotId = await seedSnapshot('pinned', oldEnough);
+const { rows: incidentRows } = await client.query(
+  `INSERT INTO incident (tenant_ref, title, owner) VALUES ($1, 'prune test', 'test-operator') RETURNING id`,
+  [tenantRef],
+);
+await client.query(
+  `INSERT INTO retention_pin (tenant_ref, incident_id, snapshot_id, reason, pinned_by)
+   VALUES ($1, $2, $3, 'held', 'test-operator')`,
+  [tenantRef, incidentRows[0].id, pinnedSnapshotId],
+);
 // Inside its retention window → must survive.
 const recentSnapshotId = await seedSnapshot('recent', new Date());
 
@@ -81,6 +93,7 @@ const countBeforeDryRun = await snapshotCount();
 const dryRunOut = runCli('--dry-run');
 assert.match(dryRunOut, /would prune 1 snapshot\(s\)/);
 assert.ok(dryRunOut.includes(prunableSnapshotId));
+assert.ok(!dryRunOut.includes(pinnedSnapshotId));
 assert.equal(await snapshotCount(), countBeforeDryRun);
 assert.ok(await snapshotExists(prunableSnapshotId));
 
@@ -91,6 +104,7 @@ assert.ok(out.includes(prunableSnapshotId));
 assert.equal(await snapshotExists(prunableSnapshotId), false);
 assert.equal(await snapshotExists(baselineSnapshotId), true);
 assert.equal(await snapshotExists(recentSnapshotId), true);
+assert.equal(await snapshotExists(pinnedSnapshotId), true);
 
 } finally {
   await client?.end();

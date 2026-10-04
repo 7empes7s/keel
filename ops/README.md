@@ -52,6 +52,44 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now keel-offsite.timer
 ```
 
+## Snapshot retention prune
+
+Prune runs as the `prune` schedule ("Clean-up of old snapshots" on the Schedules page), which
+`keel-scheduler.timer` hands to `keel-worker` daily at 00:00 UTC. `keel-prune.timer` is the
+trigger from before the schedules migration: `cli/keel-schedules-migrate.mjs` disables it, and
+`keel-schedules-check-timers.sh` fails while it is enabled. Do not enable it; that would run the
+prune twice and break the check. `keel-prune.service` stays installed for a manual run.
+
+A prune deletes a snapshot (with its resource versions, references and relationship
+observations) only when the snapshot is older than its tier's window and nothing else points at
+it.
+
+| Tier | Captured | Kept in the database | Snapshots kept |
+| --- | --- | --- | --- |
+| tier1 | hourly | 7 days | about 168 |
+| tier2 | daily | 90 days | about 90 |
+| tier3 | weekly | 365 days | about 52 |
+
+A snapshot's tier is the highest criticality among its resources; an empty or failed snapshot
+counts as tier1. Once the offsite timer above is running, its 30-day copies of the nightly
+database dump still hold a pruned tier1 snapshot, so the oldest tier1 recovery point is about a
+month there, but only a week inside KEEL itself.
+
+A snapshot is always kept while any of these point at it: a baseline (active or superseded), a
+drift (open or dispositioned), a plan, a restore dry run, a resource symbol or lineage alias
+(including the last sighting of a since-deleted object), or an active incident retention pin.
+`engine/store/retention.test.mjs` fails if a new table gains a foreign key into snapshots that
+the prune does not account for.
+
+To see what the next prune would delete, without deleting anything:
+
+```sh
+set -a; . /etc/keel/db.env; set +a
+node /opt/keel/cli/keel-prune.mjs --dry-run
+```
+
+To stop pruning, turn the `prune` schedule off on the Schedules page.
+
 ## Round-trip rehearsal
 
 `tools/rehearsal/roundTrip.mjs` exercises a real tenant through Graph while writing KEEL's own

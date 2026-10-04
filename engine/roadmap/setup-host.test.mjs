@@ -149,6 +149,26 @@ test('unsatisfied manual steps report pending-manual and nothing is written', as
   assert.equal(state.scopes.find((scope) => scope.scope === 'restore').run.state, 'waiting-for-you');
 });
 
+test('an active Global Administrator satisfies the Privileged Role Administrator step; another role does not', async (t) => {
+  const GLOBAL_ADMIN = '62e90394-69f5-4237-9190-012177145e10';
+  const GLOBAL_READER = 'f2ef992c-3afb-46b9-b7cf-a126ee74c451';
+  const tenant = graph(t, fixtureTenant({ operatorActive: false, operatorEligible: false }));
+  const { client, owner } = await database(t);
+  const composed = host({ operatorPrincipalId: OPERATOR_ID });
+
+  tenant.directoryRoles.push({ principalId: OPERATOR_ID, roleDefinitionId: GLOBAL_READER, directoryScopeId: '/' });
+  const reader = await run({ client, owner, setupHost: composed, workloads: ['entra-restore'] });
+  assert.equal(reader.plan.steps.find((step) => step.kind === 'pim-activation').status, 'pending-manual');
+  assert.equal(reader.result.status, 'pending-manual');
+
+  tenant.directoryRoles.push({ principalId: OPERATOR_ID, roleDefinitionId: GLOBAL_ADMIN, directoryScopeId: '/' });
+  // A fresh host, as the portal composes per request: its readers see the new role.
+  const admin = await run({ client, owner, setupHost: host({ operatorPrincipalId: OPERATOR_ID }), workloads: ['entra-restore'] });
+  assert.equal(admin.plan.steps.find((step) => step.kind === 'pim-activation').status, 'satisfied');
+  assert.equal(admin.result.status, 'complete', admin.result.error?.message);
+  assert.deepEqual(writesIn(tenant), []);
+});
+
 test('an unreadable Intune role check is not checked, never missing; the run stops without writing', async (t) => {
   const tenant = graph(t, fixtureTenant({ intuneReadable: false }));
   const { client, owner } = await database(t);

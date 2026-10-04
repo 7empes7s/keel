@@ -679,6 +679,9 @@ test('PIM standing and eligibility each require the requested role template and 
       { name: 'unrelated privileged role', principalId: OPERATOR, roleDefinitionId: BOOTSTRAP_ROLE_TEMPLATES.applicationAdministrator, status: 'pending-manual' },
       { name: 'required role held by someone else', principalId: 'other-operator', roleDefinitionId: templateId, status: 'pending-manual' },
       { name: 'required role held by this operator', principalId: OPERATOR, roleDefinitionId: templateId, status: 'satisfied' },
+      { name: 'Global Administrator held by this operator', principalId: OPERATOR, roleDefinitionId: BOOTSTRAP_ROLE_TEMPLATES.globalAdministrator, status: 'satisfied' },
+      { name: 'Global Administrator held by someone else', principalId: 'other-operator', roleDefinitionId: BOOTSTRAP_ROLE_TEMPLATES.globalAdministrator, status: 'pending-manual' },
+      { name: 'Global Reader held by this operator', principalId: OPERATOR, roleDefinitionId: BOOTSTRAP_ROLE_TEMPLATES.globalReader, status: 'pending-manual' },
     ]) {
       const plan = await planBootstrap({
         tenantRef: TENANT, workloads: ['entra-restore'], operatorPrincipalId: OPERATOR, now: NOW,

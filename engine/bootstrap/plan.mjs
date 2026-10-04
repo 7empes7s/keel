@@ -42,7 +42,7 @@ import { assertTenantRef } from '../store/tenantRef.mjs';
 import { assertTokenFree } from '../../tools/tenant-probe/auth.mjs';
 import {
   BOOTSTRAP_CONTRACT_VERSION, BOOTSTRAP_ROLE_TEMPLATES, CONSENT_SATISFIES, GRANT_KINDS,
-  GRAPH_RESOURCE_APP_ID, assertRequestedGrantsDerived, prerequisiteForWorkload,
+  GRAPH_RESOURCE_APP_ID, assertRequestedGrantsDerived, prerequisiteForWorkload, rolesSatisfying,
 } from './prerequisites.mjs';
 
 export const PLAN_STEP_STATES = Object.freeze([
@@ -235,11 +235,12 @@ export async function planBootstrap({
       // PIM activation: a privileged OPERATOR prerequisite. Consent never
       // bypasses it; without an identified operator it cannot even be checked.
       for (const role of requirement.pimActivations) {
+        const satisfying = rolesSatisfying(role.templateId);
         const standing = operatorPrincipalId !== null && observed.roleAssignments.some(
-          (assignment) => assignment?.principalId === operatorPrincipalId && assignment?.roleDefinitionId === role.templateId,
+          (assignment) => assignment?.principalId === operatorPrincipalId && satisfying.includes(assignment?.roleDefinitionId),
         );
         const eligible = operatorPrincipalId !== null && observed.roleEligibilitySchedules.some(
-          (schedule) => schedule?.principalId === operatorPrincipalId && schedule?.roleDefinitionId === role.templateId,
+          (schedule) => schedule?.principalId === operatorPrincipalId && satisfying.includes(schedule?.roleDefinitionId),
         );
         step('pim-activation', identity, requirement.workload, role.displayName, {
           status: standing || eligible ? 'satisfied' : 'pending-manual',

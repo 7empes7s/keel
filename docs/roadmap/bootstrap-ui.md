@@ -304,10 +304,9 @@ is reported and not shown as fixed.
    not accept. It should finish `complete` with every step done. Copy the
    setup run id from the record layer.
 4. Restore setup: the account named in step 2 needs an active
-   Privileged Role Administrator assignment, either activated in PIM or
-   assigned permanently (eligibility alone stays "waiting for you"). The
-   check matches that role exactly, so Global Administrator does not count.
-   Then start it. It should finish with the Restorer's extra grants listed on the consent
+   Privileged Role Administrator or Global Administrator assignment, either
+   activated in PIM or assigned permanently (eligibility alone stays
+   "waiting for you"). Then start it. It should finish with the Restorer's extra grants listed on the consent
    step. Copy its run id.
 5. Write `onboarding.json` for gate 116 with both run ids (drill-live-acceptance
    step 2).

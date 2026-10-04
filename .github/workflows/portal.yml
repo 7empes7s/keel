@@ -151,6 +151,7 @@ jobs:
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
           roadmap/itsm-contract.test.mjs
+          roadmap/servicenow.test.mjs
           roadmap/value-reports.test.mjs
           roadmap/grounded-query.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs

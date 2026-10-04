@@ -72,7 +72,7 @@ export const SERVICENOW_DOC_SOURCE = Object.freeze({
 // The fields KEEL reads and writes, each mapped explicitly to a ServiceNow field.
 export const SERVICENOW_FIELD_ROLES = Object.freeze({
   state: 'the field whose value is the approval state',
-  approver: 'the field naming the person who decided (dot-walk allowed, e.g. u_approver.user_name)',
+  approver: 'the person who decided (a field of the table or a dot-walked reference field)',
   planVersion: 'the field KEEL writes the plan version into',
   planDigest: 'the field KEEL writes the plan digest into',
   keelRequest: 'the field KEEL writes its approval request id into',

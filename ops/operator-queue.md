@@ -643,7 +643,7 @@ being triggered by queue updates.
   moves mid-capture, stop and report.
 
 ### Q19: Make Settings › Setup able to check the tenant after PR #73 deploys
-- Status: todo
+- Status: in-progress
 - Needs: PR #73 merged (**merged 13:34 UTC as `2e8a5b9`**) and `/opt/keel-live` deployed at or after that commit
 - Do: PR #73 builds the setup host from the Collector and Restorer credential files. It finds
   them at `KEEL_COLLECTOR_CONFIG_PATH` (default `/etc/keel/tenant-target.json`) and

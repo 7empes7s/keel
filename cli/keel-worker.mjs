@@ -29,6 +29,7 @@ import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
 import { sweepEscalations } from '../engine/notify/escalation.mjs';
+import { sweepBreakGlassCanaries } from '../engine/safety/breakGlassReadiness.mjs';
 import {
   emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -608,6 +609,26 @@ export async function sweepAlertEscalations(client, { workerId, now, log = conso
   }
 }
 
+// Task 94: between job polls, at most once per interval, raise emergency-account
+// usage alerts from the ingested audit facts and the validation / credential
+// reminders. It reads KEEL's own tables only; it never calls Microsoft, rotates a
+// credential or changes a policy. Idempotent per audit event, so a restart re-sweeps
+// safely.
+export const BREAKGLASS_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+let lastBreakGlassSweep = -Infinity;
+export async function sweepBreakGlassCanary(client, {
+  workerId, now = new Date(), log = console.error, intervalMs = BREAKGLASS_SWEEP_INTERVAL_MS, force = false,
+} = {}) {
+  if (!force && now.getTime() - lastBreakGlassSweep < intervalMs) return null;
+  lastBreakGlassSweep = now.getTime();
+  try {
+    return await sweepBreakGlassCanaries(client, { now, log });
+  } catch (err) {
+    log(`worker ${workerId}: break-glass canary sweep failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    return null;
+  }
+}
+
 // Optional one-shot collection seam. The normal queue loop stays disabled for
 // audit ingestion unless a trusted caller explicitly invokes this bounded worker.
 export async function runAuditIngestion(client, options) {
@@ -699,6 +720,7 @@ async function main() {
       // durable, so a drain failure must not kill the worker: the next poll retries.
       await drainSiemOutbox(client, { workerId });
       await sweepAlertEscalations(client, { workerId });
+      await sweepBreakGlassCanary(client, { workerId });
       await sleep(pollIntervalMs);
       continue;
     }

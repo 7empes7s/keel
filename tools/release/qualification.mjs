@@ -20,6 +20,7 @@
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
+import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { STORAGE_LIVE_GATE, validateStorageLiveAcceptance } from '../../engine/storage/storageLiveEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
@@ -711,6 +712,9 @@ const GATE_VALIDATORS = {
   [SHAREPOINT_LIVE_GATE]: validateSharePointLiveSubject,
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
+  // Task-122: Exchange live acceptance; needs both proofs and a verified task-121 record.
+  [EXCHANGE_LIVE_GATE]: (evidence, context) => validateExchangeLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
 };
 

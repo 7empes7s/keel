@@ -920,7 +920,7 @@ item that needs it stays untouched.
 - Issue #90, asked by the "Prune timer review" thread (20:33 UTC). Doesn't touch the tenant, a service or
   master, so it can run while Q10 waits. Read-only: deletes nothing, starts or enables nothing. Leave
   `keel-prune.timer` disabled and don't touch `/opt/keel-live`.
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: none
 - Do, as root on the VPS:

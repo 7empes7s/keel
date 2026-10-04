@@ -341,7 +341,40 @@ being triggered by queue updates.
   attaches a real second volume. When one exists, resume Q2 Part B with this set.
 
 ### Q12: Report how the deploy builds images (read-only)
-- Status: in-progress
+- Status: done
+- Result: Read-only. Script not changed; no secrets printed.
+  **How it works today:** `keel-deploy.timer` runs `/opt/keel-deploy/deploy.sh` 5 minutes after the
+  previous run ends (oneshot, `TimeoutStartSec=20min`, `flock` against overlap). Each run:
+  1. `git fetch` in `/opt/keel-live`. If origin/master equals HEAD, it exits. If
+     `/var/lib/keel-deploy/failed/<sha>` exists, it skips.
+  2. **CI gate:** the newest `portal.yml` push run on that exact sha must be completed/success.
+     portal.yml runs on every master push with no path filter, so ops-only commits are gated too.
+  3. Refuses if the live tree has local edits (other than `portal/next-env.d.ts`), or if the
+     `engine/store/schema.sql` diff adds DROP/TRUNCATE/DELETE.
+  4. `build_at`: `git checkout --detach <sha>`, `npm ci` in engine, `npm ci && npm run build` in portal.
+  5. If schema.sql changed: `pg_dump` to /root/backups/keel-deploy (keeps 5). Then it **always**
+     applies schema.sql in one transaction.
+  6. `systemctl restart keel-portal`, then polls `/api/health` (20 × 3s).
+  7. Any failure: rollback (rebuild + restart the previous sha, mark the target failed, post a
+     GitHub status, notify vps-deployer).
+  **What it builds or restarts:** only the Node trees (engine, portal) and the `keel-portal` unit.
+  It **never builds any Docker image** and never touches other units. Note: no `keel-worker`,
+  `keel-scheduler` or `keel-backup-tier*` units from `ops/` are installed on the host (only
+  keel-portal, keel-deploy and keel-status-generate).
+  **Can a `keel-powershell:latest` rebuild be added safely? Yes**, with these constraints:
+  - Gate on `git diff --quiet "$CURRENT" "$TARGET" -- ops/powershell` so it runs only on change.
+  - Build from the checked-out tree, after `build_at` and before the restart, to a staging tag:
+    `docker build -t keel-powershell:candidate ops/powershell`. On success, tag the current
+    `:latest` as `:previous`, then `:candidate` as `:latest`. Nothing runs long-lived from the
+    image (`jobQueue.mjs` uses `docker run --rm` per job), so retagging needs no restart;
+    in-flight jobs finish on the old image.
+  - `rollback()` must also restore `:previous` → `:latest`. Otherwise a rolled-back portal is paired
+    with a newer image.
+  - The build pulls modules from PSGallery or the network (about 1–2 min here). A transient
+    failure should probably be fatal (rollback, so code and image stay consistent), or at least
+    call `agent` loudly. It fits within the 20-minute unit timeout.
+  - Prune afterwards (`docker image prune -f` for dangling layers): `/` is 87% used (13 GB free).
+  FYI: deploy moved `/opt/keel-live` to **df0de36** (PR #70) at 09:07:28 UTC today.
 - Needs: none
 - Do: report how `/opt/keel-deploy/deploy.sh` decides what to build and restart, without printing
   secrets. Say whether a step that rebuilds `keel-powershell:latest` when `ops/powershell/**`

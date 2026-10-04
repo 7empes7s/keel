@@ -54,12 +54,22 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
   coordinator (writes disabled unless named with qualification + expiry; never creates app
   registrations). **Merge blocked for Claude** ("Merge Without Review"): the operator merges it.
   After deploy, queue Q19 points the portal at `/etc/keel/restorer.json`.
+  Notes from the author session (`session_01E6SkVX9ZGScLQdWgjcBvbT`) for after it lands:
+  - The setup checks need the Collector to hold `Application.Read.All` and
+    `RoleManagement.Read.Directory`. The Intune role check also needs `DeviceManagementRBAC.Read.All`;
+    without it, run read setup for Entra only (the first-collection gate accepts that). These are
+    grants, so they need an operator decision before keel-operator adds them.
+  - `keel.collect`/`keel.restore` count as satisfied when the app is configured as that role's
+    credential. `qualificationMode` defaults to `live-qualified` as a label only. Excess scopes
+    (e.g. the Restorer's `MailboxSettings.ReadWrite`) are reported, never removed.
+  - Operator steps for gate 116: `docs/roadmap/bootstrap-ui.md` (status 2026-10-04).
 
 ## Waiting on the human operator
 
 1. **D-120b** in the queue (Restorer `SharePointTenantSettings.ReadWrite.All`; Collector
    `SharePointTenantSettings.Read.All`, `Sites.Read.All`, `MailboxSettings.Read`): unblocks 120–123.
-2. **Merge PR #73.**
+2. **Merge PR #73**, then decide on the Collector read grants it needs (`Application.Read.All`,
+   `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
 3. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
 4. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
    (details in `docs/roadmap/keel-recovery.md`). Blocked for Claude ("Secret-Store Writes").
@@ -127,3 +137,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 12:45: D-117 answered: Sentinel scratched, gate 117 descoped. D-118 confirmed (ServiceNow OAuth + ACLs done).
 
 - 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).
+- 2026-10-04 12:55: PR #73 author notes added (Collector read grants needed for Setup checks).

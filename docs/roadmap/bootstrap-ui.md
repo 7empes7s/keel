@@ -289,15 +289,23 @@ is reported and not shown as fixed.
    `/etc/keel/restorer-target.json` (Restorer) exist and name this tenant.
    Restart the portal; Settings › Setup should no longer say the server cannot
    look at the tenant.
-2. Optionally write `/etc/keel/setup.json` with `operatorPrincipalId` (your
-   Entra object id) and `build`. Without an operator id, the restore setup's
-   PIM step stays "waiting for you". Leave `operations` out: no write is
-   needed on a consented tenant.
+2. Give the host your Entra object id: `operatorPrincipalId` in
+   `/etc/keel/setup.json`, or `KEEL_SETUP_OPERATOR_ID` in the portal's
+   environment, then restart the portal. Without it the restore setup's PIM
+   step stays "waiting for you" and the restore setup can never finish
+   `complete`. Leave `operations` out: no write is needed on a consented
+   tenant, and without a setup config every write stays disabled.
 3. Read setup: start it for Microsoft Entra settings. Include Intune only if
-   the Collector holds `DeviceManagementRBAC.Read.All`. It should finish with
-   every step done. Copy the setup run id from the record layer.
-4. Restore setup: activate Privileged Role Administrator in PIM, then start
-   it. It should finish with the Restorer's extra grants listed on the consent
+   the Collector holds `DeviceManagementRBAC.Read.All` **and** an Intune
+   "Read Only Operator" role assignment (for example through a group the
+   Collector's service principal is a member of). The permission alone only
+   lets KEEL read the role; without the assignment the Intune step stays
+   "waiting for you" and the run ends `pending-manual`, which gate 116 does
+   not accept. It should finish `complete` with every step done. Copy the
+   setup run id from the record layer.
+4. Restore setup: activate Privileged Role Administrator in PIM for the
+   account named in step 2 (an active assignment; eligibility alone stays
+   "waiting for you"), then start it. It should finish with the Restorer's extra grants listed on the consent
    step. Copy its run id.
 5. Write `onboarding.json` for gate 116 with both run ids (drill-live-acceptance
    step 2).

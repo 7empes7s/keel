@@ -392,6 +392,38 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     requires: Object.freeze(['teams.settings.update']),
     source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-organizationconfig',
   }),
+  // Roadmap task-106: Purview sensitivity label configuration. Two operations, each
+  // with its own proof. They run in the Security & Compliance session of the same
+  // module, so they require the Exchange cmdlet write first (which requires Teams,
+  // then SharePoint); Exchange proof is never Purview proof. Only display text and
+  // adding a label to a policy are writable: nothing KEEL writes can weaken a label's
+  // protection or unpublish a label. No OneDrive write is declared.
+  'purview.label.update': Object.freeze({
+    workload: 'purview-labels',
+    resourceType: 'purviewLabel',
+    kind: 'cmdlet',
+    method: 'Set-Label',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'purview.label-definitions',
+    fields: Object.freeze(['DisplayName', 'Tooltip', 'Comment']),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['exchange.client-access.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-label',
+  }),
+  'purview.label-policy.update': Object.freeze({
+    workload: 'purview-labels',
+    resourceType: 'purviewLabelPolicy',
+    kind: 'cmdlet',
+    method: 'Set-LabelPolicy',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'purview.label-publication',
+    fields: Object.freeze(['AddLabels']),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['exchange.client-access.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
+  }),
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */

@@ -164,6 +164,12 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // can see it or how long it is kept.
   exchangeClientAccess: { reviewed: true, rules: [] },
   exchangeOrganizationConfig: { reviewed: true, rules: [] },
+  // Task-106: Purview sensitivity labels. KEEL writes only a label's display text
+  // and adds labels to a policy; neither changes who can see content or how long it
+  // is kept. A label or policy that reports a preservation lock is refused by the
+  // lock check above, before these rules.
+  purviewLabel: { reviewed: true, rules: [] },
+  purviewLabelPolicy: { reviewed: true, rules: [] },
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },

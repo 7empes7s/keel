@@ -61,7 +61,7 @@ being triggered by queue updates.
   This is not a keel-operator item.
 
 ### Q2: Gate 114 (storage-live-acceptance, local copy)
-- Status: todo
+- Status: in-progress
 - Needs: none. Doesn't touch the tenant.
 - Do: follow `docs/roadmap/storage-live-acceptance.md` › Operator steps.
   - **Part A (read-only).** Report:

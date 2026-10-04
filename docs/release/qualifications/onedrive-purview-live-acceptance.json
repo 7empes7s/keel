@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "gate": "onedrive-purview-live-acceptance",
+  "status": "pending",
+  "operation": "onedrive-purview.configuration-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true,
+  "note": "Placeholder. No live OneDrive or Purview capture exists, and the task-122 Exchange prerequisite (and task-121 Teams and task-120 SharePoint before it) is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/onedrive-purview-live-acceptance.md, Operator steps."
+}

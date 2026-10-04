@@ -282,7 +282,7 @@ being triggered by queue updates.
   Report their URL and ids. The 121 member account waits on decision D-121a.
 
 ### Q9: Rebuild the KEEL PowerShell image
-- Status: todo
+- Status: in-progress
 - Needs: Q7 shows `run-cmdlet.ps1` missing from the image
 - Do: rebuild the image from `ops/powershell/Dockerfile` at the deployed build, the same
   way the deploy builds it. Don't restart or redeploy services beyond what the normal

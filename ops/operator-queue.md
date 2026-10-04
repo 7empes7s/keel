@@ -158,7 +158,27 @@ being triggered by queue updates.
   - If verify exits 0, commit the two files to `claude/live-evidence-115`.
 
 ### Q5: Prerequisites for gate 116 (read-only)
-- Status: in-progress
+- Status: done
+- Result: Read-only check; nothing created. **Not everything is present, so Q6 is blocked.**
+  - **Settings › Setup** (portal `GET /api/setup` with an operator Access session, 08:38 UTC):
+    **neither setup is complete.** Read (plan-7be023537ea46afe) and restore
+    (plan-91167945a1d01ae0) both show `observed: false`, `run: null`, all steps
+    `not-checked`. **No task-76 run ids exist.** The live DB has no `bootstrap_plan` or
+    `bootstrap_event` tables (journal not set up). Note: the Collector already holds its
+    read scopes in Entra (Q3 token roles), but no setup run was ever recorded.
+  - **task-68 reconstruction:** can't run with a real authenticator today.
+    `tools/recovery/reconstruct.mjs` refuses without an injected independent authenticator,
+    and the only non-test one is `journeys.mjs:605` (`async () => true`, a fixture). No
+    deployment authenticator is wired. It also needs a task-67 recovery manifest (none
+    exists; see Q2), the config export, the evidence checkpoint, a disposable target DB and
+    the 3 prerequisite refs.
+  - `/etc/keel/tenant.json`: exists. `/etc/keel/restorer.json`: exists.
+  - `KEEL_DB_TEST_URL` (from `/etc/keel/db.env`): `postgres://keel:***@127.0.0.1:5433/keel_test`.
+    That's the `keel_test` database on the `keel-postgres` container (19 tables), not
+    production `keel`. Note: same server as production, and `db.env` defines
+    `KEEL_DB_TEST_URL` twice (same value).
+  Blocking for Q6: complete read and restore setups with run ids (task-76), a deployment
+  recovery authenticator, and a task-67 manifest (Q2).
 - Needs: none
 - Do: report each of the following, read-only. Create nothing.
   - Whether Settings › Setup shows the read and restore setups complete, and their

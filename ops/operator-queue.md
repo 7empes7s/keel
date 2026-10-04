@@ -721,7 +721,42 @@ being triggered by queue updates.
   Don't sign an assertion or run a reconstruction yet; that's Q6, after the Setup run.
 
 ### Q21: Re-check gate 116 prerequisites now that Setup and the recovery key exist (read-only)
-- Status: in-progress
+- Status: done
+- Result: Read-only at deployed 2e8a5b9; nothing written, no Setup run started.
+  - **Run ids needed:** two task-76 runs, one read setup and one restore setup, both ending **`complete`**.
+    `capture-drill`/verify require `onboarding.readSetup === 'complete'` and `restoreSetup === 'complete'`
+    plus both run ids (`tools/release/qualification.mjs:519-522`). **A `pending-manual` run is not
+    accepted.** The run id is the `bootstrap_plan.artifact_id`; I can read it from the DB afterwards.
+  - **Collector read grants:** already held: `Application.Read.All`, `RoleManagement.Read.Directory`,
+    `DeviceManagementRBAC.Read.All`. Intune role definitions read OK (200). Nothing to grant.
+  - **Why the manual steps don't pass today:**
+    - Intune "Read Only Operator": the KEEL Collector SP is in **no group** (`transitiveMemberOf` is
+      empty), so it holds no Intune role assignment.
+    - PIM "Privileged Role Administrator": PIM is satisfied only by an **active** assignment of the
+      **onboarding operator**, and the host knows no operator id. With neither `setup.json` nor
+      `KEEL_SETUP_OPERATOR_ID` set, `operatorPrincipalId` is null, so it stays "waiting for you" and
+      can't ever complete as configured now.
+  - **Recovery manifest:** exists: Q11's `/opt/keel-recovery-sets/2026-10-04/recovery-manifest.json`
+    (task-67, built at df0de36, "recovery complete"). `engine/store/schema.sql` is identical
+    df0de36..2e8a5b9. Its copy is on vol2 at `/mnt/keel-copy/2026-10-04`. The authenticator (PR #72)
+    and key (Q20) are in place.
+  **Remaining steps, in order:**
+  1. **Operator:** choose the read-setup scope. Either run read setup **Entra-only**
+     (`workloads: ['entra-collect']`; no Intune step; bootstrap-ui.md says the first-collection gate
+     accepts it, and the drill only checks `complete`), or put the KEEL Collector SP in a group holding
+     Intune "Read Only Operator".
+  2. **Operator, then keel-operator:** give the host the onboarding operator's Entra object id.
+     `KEEL_SETUP_OPERATOR_ID=<object id>` in `/etc/keel/portal.env` plus a portal restart keeps
+     writes disabled (no `setup.json`). I can do it once you name the account.
+  3. **Operator:** activate PIM "Privileged Role Administrator" for that account (an active
+     assignment, not just eligible).
+  4. **Operator, in the portal:** Settings › Setup, run read setup (step 1's scope) and restore setup.
+     Both should end `complete` with no writes (consent is already done). Then I read both run ids.
+  5. **keel-operator (Q6):** sign a 10-minute assertion with the Q20 key, then `reconstruct.mjs` from
+     the Q11 set into a disposable DB, giving `reconstruction.json`. Then `onboarding.json` from step 4.
+  6. **keel-operator (Q6):** build-manifest, offline plan check, live bounded drill (one
+     `keel-rehearsal-*` group), `capture-drill`, `verify --require-live`, and evidence on
+     `claude/live-evidence-116`.
 - Needs: Q19 done, Q20 done
 - Do: read-only. Redo Q5's check against `docs/roadmap/drill-live-acceptance.md` and
   `docs/roadmap/bootstrap-ui.md` (status 2026-10-04) at the deployed build:

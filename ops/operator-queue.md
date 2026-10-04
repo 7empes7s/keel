@@ -311,29 +311,34 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **Stopped at the first failure: 120 passed, 121 failed (tool defect).** Build **124fbc6**
-  (`/opt/keel-live`, clean, deployed 14:39 UTC). All 25 declared doc URLs return 200 and the grant
-  requirements are unchanged.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ 3177f46 (from origin/master 124fbc6).
-    - Capture exit 0, with `--allow-widening-toggle` (D-120): `isResharingByExternalUsersEnabled`
-      went false → true → false, read back, restored (pre and final fingerprints match). I confirmed
-      afterwards that the setting is `false`.
-    - `verify --require-live --gate sharepoint-live-acceptance --build 124fbc6…`:
-      `{"ok": true, "failures": []}`, exit 0. The evidence secret scan was clean.
-  - **121 Teams: refused before any write (capture exit 1).** Requests: GET `/teams` (200),
-    GET `/teams/9263e1d4…` (200), then refused with "the fixture team belongs to another tenant".
-    - **Cause:** live Graph v1.0 `GET /teams/{id}` returns **no `tenantId`** in this tenant
-      (app-only). It's absent from the default response, from `$select=tenantId` and from beta. But
-      `tools/qualification/teamsLive.mjs:175` requires `String(body.tenantId) === --directory-tenant-id`.
-    - Nothing was written; team membership is unchanged (carla is not a member). The failed capture
-      files are kept locally, not committed.
-    - **Coordinator:** the fix belongs in the tool, e.g. prove the tenant another way (the team's
-      group from `/groups/{id}` read with the tenant-bound Collector token, or the token's `tid`), or
-      treat an absent `tenantId` as "not reported" rather than foreign. Then merge and deploy, and I
-      re-run the whole chain 120 → 123 at the new build (120 must be re-captured at that build).
-  - 122 and 123 were not run (stopping at the first failure). Grants, fixtures, alice's OneDrive and
-    configs are all still in place.
+- Status: blocked
+- Result: **Re-run at 2b2c338 (PR #77): 120 and 121 passed; stopped at 122 (same kind of tool defect).**
+  Build 2b2c338 = `/opt/keel-live` (clean, deployed 15:32 UTC); grant requirements unchanged.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **ea45350** (adds the 2b2c338 record on
+    top of the earlier 124fbc6 commit 3177f46). Resharing false → true → false, restored.
+    `verify --require-live --build 2b2c338`: ok, exit 0.
+  - **121 Teams: passed** (PR #77's token-`tid` proof). `claude/live-evidence-121` @ **9ec0e2f**
+    (from origin/master 2b2c338).
+    - The settings toggle and add / promote / demote / remove of carla were each read back. Membership
+      and settings were restored (fingerprints match).
+    - `verify --require-live --gate teams-live-acceptance --build 2b2c338`: ok, exit 0, with the 120
+      record beside it. **Note:** on the 121 branch alone, verify fails "SharePoint record does not
+      verify", because that branch holds only the 121 files (per the evidence rule). Merge 120 and 121
+      together.
+  - **122 Exchange: refused before any write (exit 1).** Error: "the Exchange organization belongs to
+    another tenant (or did not report its tenant id)".
+    - **Cause:** in this tenant `Get-OrganizationConfig` returns an **empty
+      `ExternalDirectoryOrganizationId`** (checked read-only with the Collector cert; `Guid`
+      1901e775-… and `Name` lxtj.onmicrosoft.com are present). `tools/qualification/exchangeLive.mjs:265,284`
+      requires it to equal `--directory-tenant-id`.
+    - Nothing written; alice's mailbox is unchanged. The failed files are kept locally.
+    - **Coordinator:** fix like #77 (e.g. accept the tenant from the Graph token's `tid` used for the
+      same fixture, or from the EXO session's tenant, when the org config omits it). Then I re-run
+      120 → 123 at that build.
+  - 123 not run. Note: my first commit attempt at 2b2c338 hit a script bug. A stray commit landed on
+    my clone's local `master` only (never pushed; origin/master stayed 2b2c338) and was removed. The
+    121 push happened before its branch-local verify; that verify is expected to fail without 120 and
+    passes with it (above).
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

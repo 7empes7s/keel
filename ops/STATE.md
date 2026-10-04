@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:20 UTC
+- **Last updated:** 2026-10-04 21:35 UTC
 
 ## How the work is organized
 
@@ -40,7 +40,7 @@ not merged until it finishes.
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 (ships to `/mnt/keel-copy/keel-offsite`) | In review | Master freeze; then a Q-item deploys, dry-runs, enables `keel-offsite.timer`, runs once and checks sha256. Operator chose vol2 as the new target |
-| Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | Dry run (Q25): 154 of 182 snapshots would go | Breakdown queued (Q28); `prune` schedule stays off until the gate chain finishes; #99 held for the freeze |
+| Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | Dry run reviewed (154 old tier1, none cited by evidence) | #99 held for the freeze; Q29 (enable prune schedule) on hold until the chain, #97/#99 deploy and Q24 |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
 | `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
 | Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | #101 (review doc; `groupSetting` declares GroupSettings.ReadWrite.All) | Review written | Master freeze; Q26 inventory (on hold until #84); operator decisions D-93a, D-93b |
@@ -164,3 +164,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:10: #90: Q28 queued (read-only breakdown of the 154 snapshots the dry run would prune).
 - 2026-10-04 21:15: #89: operator chose vol2 (`/mnt/keel-copy`) as the offsite target; PR #100 updated.
 - 2026-10-04 21:20: master moved to b81a41d (operator commit: gate 117 recorded as an accepted gap). Q10 was not running (blocked on #83), so no evidence is affected; the chain build stays "#83's merge commit", which will include b81a41d.
+- 2026-10-04 21:35: Q28 done; #90 dry run reviewed. Q29 (enable prune schedule) added on hold.

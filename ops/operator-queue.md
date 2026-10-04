@@ -1032,3 +1032,21 @@ item that needs it stays untouched.
      (a count only, no payloads).
   3. Without printing any file contents, grep the `claude/live-evidence-*` branches and the live gate evidence
      directories for snapshot ids, and list which ids from Q25's list they cite.
+### Q29: #90 turn on the prune schedule
+- Drafted by the "Prune timer review" thread (21:32 UTC) after Q25/Q28 (the 154 are tier1 snapshots from
+  09-08 to 09-14, none cited by gate evidence). **On hold: don't start** until the coordinator changes Status
+  to queued.
+- Status: hold
+- Result:
+- Needs: Q10 finished; #97 and #99 merged and deployed; Q24 done with its health check passing.
+- Do, as root from the deployed tree with `/etc/keel/db.env` sourced:
+  1. `node cli/keel-prune.mjs --dry-run`. Report the count. Stop and report if it is far above about 154 plus
+     one day of tier1 per day since 10-04.
+  2. Get `TENANT_REF` the same way `keel-schedules-install.sh` does, then
+     `node cli/keel-schedules-migrate.mjs --tenant-ref "$TENANT_REF" --kinds prune`. It adds only the prune row
+     and keeps every existing row. Its timer check must still PASS with `keel-prune.timer` disabled or not
+     installed.
+  3. `SELECT job_kind, enabled, next_due_at FROM schedule WHERE job_kind='prune';` should return one enabled
+     row, due at the next 00:00 UTC.
+  4. After that first run, report the prune job's status and the `pruned N snapshot(s)` line from its result
+     (snapshot ids are fine; nothing else).

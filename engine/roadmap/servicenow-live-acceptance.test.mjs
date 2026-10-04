@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 import { SERVICENOW_SIGNATURE_HEADER } from '../itsm/adapters/servicenow.mjs';
 import { signEvidence, verifyEvidence, verifyEvidenceFile } from '../../tools/release/qualification.mjs';
+import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import {
   SERVICENOW_LIVE_GATE, SERVICENOW_LIVE_SCENARIOS, serviceNowRequiredDocumentation,
 } from '../../tools/qualification/servicenowAcceptance.mjs';
@@ -426,9 +427,14 @@ test('fixture evidence never elevates to live-qualified, and missing external ev
 
   // Missing external evidence: the checked-in placeholder, no record, no subject, no key.
   const placeholder = join(repo, 'docs/release/qualifications/servicenow-live-acceptance.json');
-  const pending = verifyEvidenceFile(placeholder, options());
-  assert.equal(pending.ok, false);
-  assert.match(pending.failures.join('\n'), /pending/);
+  if (isPendingPlaceholder(placeholder)) {
+    const pending = verifyEvidenceFile(placeholder, options());
+    assert.equal(pending.ok, false);
+    assert.match(pending.failures.join('\n'), /pending/);
+  } else {
+    // A live capture has replaced the placeholder: it must still never verify without the key.
+    assertCommittedLiveRecord(placeholder, { gate: SERVICENOW_LIVE_GATE, root: repo, verify: verifyEvidenceFile, verifyOptions: options() });
+  }
   const pendingWithFields = { ...evidence, status: 'pending' };
   assert.equal(verifyIn(pendingWithFields).ok, false, 'a pending status never verifies, whatever else the record holds');
   assert.match(failuresOf(resign(evidence, (e) => { delete e.subject; return e; })), /subject is missing/);

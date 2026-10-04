@@ -308,7 +308,9 @@ test('the checked-in qualification records keep readiness pending and report fix
   // Every required live gate is listed, none is qualified, and pending stays pending.
   assert.deepEqual(ledger.live.map((gate) => gate.task).sort(), LIVE_ACCEPTANCE_GATES.map((gate) => gate.task).sort());
   assert.ok(ledger.live.every((gate) => gate.status !== 'live-qualified'), JSON.stringify(ledger.live));
-  assert.ok(ledger.live.filter((gate) => gate.status === 'pending').length >= 9);
+  // Without the key, a committed live capture is 'unverified', never qualified; the rest stay pending.
+  assert.ok(ledger.live.every((gate) => ['missing', 'pending', 'unverified'].includes(gate.status)), JSON.stringify(ledger.live));
+  assert.ok(ledger.live.filter((gate) => ['pending', 'unverified'].includes(gate.status)).length >= 9);
   // Task-123's record is a pending placeholder once it lands; before that it is missing. Neither qualifies.
   assert.ok(['missing', 'pending'].includes(ledger.live.find((gate) => gate.gate === 'onedrive-purview-live-acceptance').status));
   // Fixture results never stand in for a live record.

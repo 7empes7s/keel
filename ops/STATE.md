@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 17:13 UTC
+- **Last updated:** 2026-10-04 17:30 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ then prove the path works.
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **120, 121 passed at 2b2c338; 122 failed on a tool bug** | Rerun at `2b2c338` (15:32): 120 (`claude/live-evidence-120` @ ea45350) and 121 (`claude/live-evidence-121` @ 9ec0e2f; merge with 120) verify ok. 122 refused: EXO `ExternalDirectoryOrganizationId` is empty. Fixed in #82 (`ffa05cd`). Whole chain reruns at `ffa05cd` |
+| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Running at `ffa05cd`** (started 17:28) | Earlier runs: 120 and 121 passed at `2b2c338`; 122 failed on the org tenant id, fixed in #82 (`ffa05cd`). All four are being recaptured at `ffa05cd` |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
 **Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
@@ -71,7 +71,6 @@ capture's sha256, carry no credential material, and still fail verification with
 
 1. Decide on the Collector read grants the Setup checks (PR #73) need (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
-2. **Run the AWS budget guard** script (below).
 
 ## Infrastructure facts
 
@@ -113,8 +112,7 @@ capture's sha256, carry no credential material, and still fail verification with
     (`~/.agents/skills`) and OpenClaw (`~/.openclaw/skills`). AWS rules sit in `/root/.claude/CLAUDE.md`
     between `BEGIN/END AWS Agent Toolkit rules` markers (not the repo CLAUDE.md).
 - **Open:**
-  1. Budget guard `keel-monthly` ($25/month) is probably **not** created. Run
-     `bash /mnt/project-files/aws/budget-guard.sh` on the VPS (copy it there first).
+  1. Budget guard `keel-monthly` **created** (Q22, 16:50): $25/month, alerts at 50/80/100% actual and 100% forecast. AWS may send a subscription-confirmation email to accept.
   2. keel-operator needs a restart to load the AWS MCP server; do it between gate chains.
   3. Decide whether OpenClaw keeps the AWS skills.
 - Scripts live in the project shared files `/mnt/project-files/aws/` (not the repo).
@@ -147,3 +145,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 16:50: Q10 at `2b2c338`: 120, 121 passed; 122 refused (EXO org id empty). PR #82 opened. Master moved to `34f550b` (#78, #79, another thread). keel-operator asked to message the coordinator thread on every Q10 status change (the coordinator missed the 15:35 result for an hour).
 - 2026-10-04 16:55: Q22 queued (AWS budget guard via `ops/aws/budget-guard.sh`, operator-directed).
 - 2026-10-04 17:13: PR #82 merged (`ffa05cd`). Q10 told to rerun 120 → 123 at `ffa05cd` once deployed.
+- 2026-10-04 17:30: Q22 done (AWS budget `keel-monthly` created). Q10 in progress at `ffa05cd`.

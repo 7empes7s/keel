@@ -1,10 +1,431 @@
 {
   "contractVersion": 1,
   "gate": "servicenow-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "87e366e064665263fe7003ccfbc450e0f5c06d5d",
   "operation": "servicenow.non-default-workflow-qualification",
   "credentialMode": "keel-oauth-reference+test-user-references",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No capture has run against the non-production ServiceNow instance: the relay business rule, relay table, mapped test users and non-default workflow are not yet confirmed in the instance. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/servicenow-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-04T12:25:06.898Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "adapter": "servicenow",
+    "prerequisites": [
+      "task-96",
+      "task-97"
+    ],
+    "runId": "keel-rt-servicenow-cde7a673-85a8-42f9-b352-f00814a53fe3",
+    "instance": {
+      "host": "dev426571.service-now.com",
+      "declaredNonProduction": {
+        "host": "dev426571.service-now.com",
+        "declaredBy": "Marouane",
+        "declaredAt": "2026-10-04T12:24:31.486Z"
+      },
+      "productionFlag": "false"
+    },
+    "workflow": {
+      "table": "u_keel_change",
+      "fields": {
+        "state": "u_state",
+        "approver": "u_approver",
+        "planVersion": "u_plan_rev",
+        "planDigest": "u_plan_hash",
+        "keelRequest": "u_keel_request",
+        "keelDecision": "u_keel_decision"
+      },
+      "approvedValues": [
+        "gate_passed"
+      ],
+      "rejectedValues": [
+        "gate_blocked",
+        "gate_withdrawn"
+      ],
+      "callbackWindowSeconds": 300,
+      "relayTable": "u_keel_callback_relay",
+      "isDefault": false
+    },
+    "credentials": {
+      "keel": "env:KEEL_SN_TOKEN",
+      "callbackSigning": "env:KEEL_SN_CALLBACK_SECRET"
+    },
+    "testUsers": [
+      {
+        "externalUser": "keel-rt-sn-one",
+        "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
+        "principalId": "a8be43d7-e71b-488e-becb-a2463b97d8a7"
+      },
+      {
+        "externalUser": "keel-rt-sn-two",
+        "credentialRef": "env:KEEL_SN_TEST_USER_TWO",
+        "principalId": "b4522f06-ee40-4370-bdcd-582ef18a8d27"
+      }
+    ],
+    "keelPrincipals": {
+      "requester": "68d01384-c8d3-4e6e-b238-08764dc95527",
+      "portalApprover": "deba0da1-0a84-431e-871f-3ddbcb0bbd0c"
+    },
+    "scenarios": [
+      {
+        "name": "callback-duplicate",
+        "tenantRef": "sha256:f7b3959300856957",
+        "sysId": "3dff77982fbfc390ef154c707fa4e334",
+        "requestId": "58bf1ec3-1dc8-454d-8b47-bf967843fb46",
+        "recordId": "2a86e8f9-e763-403e-a26f-cf1b9ca041a0",
+        "version": 1,
+        "planDigest": "978c4afed2c940fce14014a14e7ce401f610597011c5117bfa48f66e34847dcc",
+        "steps": [
+          {
+            "at": "2026-10-04T12:24:34.123Z",
+            "action": "mirror",
+            "outcome": "mirrored",
+            "recordId": "2a86e8f9-e763-403e-a26f-cf1b9ca041a0",
+            "requestId": "58bf1ec3-1dc8-454d-8b47-bf967843fb46"
+          },
+          {
+            "at": "2026-10-04T12:24:35.250Z",
+            "action": "outbound-record",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered",
+            "delivered": 1,
+            "retried": 0,
+            "quarantined": 0
+          },
+          {
+            "at": "2026-10-04T12:24:36.304Z",
+            "action": "readback-record",
+            "direction": "servicenow-to-keel",
+            "outcome": "match"
+          },
+          {
+            "at": "2026-10-04T12:24:37.744Z",
+            "action": "decide",
+            "direction": "servicenow",
+            "actor": "keel-rt-sn-one",
+            "value": "gate_passed"
+          },
+          {
+            "at": "2026-10-04T12:24:39.265Z",
+            "action": "callback",
+            "direction": "servicenow-to-keel",
+            "outcome": "applied",
+            "duplicate": false,
+            "eventId": "servicenow:3dff77982fbfc390ef154c707fa4e334:2",
+            "delivery": "first"
+          },
+          {
+            "at": "2026-10-04T12:24:40.197Z",
+            "action": "callback",
+            "direction": "servicenow-to-keel",
+            "outcome": "applied",
+            "duplicate": true,
+            "eventId": "servicenow:3dff77982fbfc390ef154c707fa4e334:2",
+            "delivery": "redelivered"
+          },
+          {
+            "at": "2026-10-04T12:24:41.358Z",
+            "action": "outbound-decision",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered"
+          }
+        ],
+        "canonical": {
+          "requestStatus": "approved",
+          "decidedBy": "a8be43d7-e71b-488e-becb-a2463b97d8a7",
+          "jobs": 1,
+          "decisions": [
+            {
+              "outcome": "approved",
+              "source": "itsm",
+              "version": 1,
+              "decidedBy": "a8be43d7-e71b-488e-becb-a2463b97d8a7",
+              "externalEventId": "servicenow:3dff77982fbfc390ef154c707fa4e334:2",
+              "decisionDigest": "73738eeb0eaa3537eacd327fd9b2087b71b9385db1bea26cf8c08e07c42549a4"
+            }
+          ]
+        },
+        "instanceAfter": {
+          "state": "gate_passed",
+          "approver": "keel-rt-sn-one",
+          "planVersion": "1",
+          "planDigest": "978c4afed2c940fce14014a14e7ce401f610597011c5117bfa48f66e34847dcc",
+          "keelRequest": "58bf1ec3-1dc8-454d-8b47-bf967843fb46",
+          "keelDecision": "KEEL decision: approved; digest 73738eeb0eaa3537eacd327fd9b2087b71b9385db1bea26cf8c08e07c42549a4; event keel:decision:5cd01a77-d9a0-45dd-86c7-846ae2f627c9"
+        }
+      },
+      {
+        "name": "lost-callback",
+        "tenantRef": "sha256:f7b3959300856957",
+        "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
+        "requestId": "ecec9ee4-af04-4643-ad44-d37d099aa321",
+        "recordId": "fc257335-9455-4896-a167-ac521cfa5a2e",
+        "version": 1,
+        "planDigest": "63235acf3e072572b1a4672cdf5dc5b708d34339f37d2ed29681fed2c469cb46",
+        "steps": [
+          {
+            "at": "2026-10-04T12:24:43.038Z",
+            "action": "mirror",
+            "outcome": "mirrored",
+            "recordId": "fc257335-9455-4896-a167-ac521cfa5a2e",
+            "requestId": "ecec9ee4-af04-4643-ad44-d37d099aa321"
+          },
+          {
+            "at": "2026-10-04T12:24:44.362Z",
+            "action": "outbound-record",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered",
+            "delivered": 1,
+            "retried": 0,
+            "quarantined": 0
+          },
+          {
+            "at": "2026-10-04T12:24:45.190Z",
+            "action": "readback-record",
+            "direction": "servicenow-to-keel",
+            "outcome": "match"
+          },
+          {
+            "at": "2026-10-04T12:24:46.155Z",
+            "action": "decide",
+            "direction": "servicenow",
+            "actor": "keel-rt-sn-one",
+            "value": "gate_passed"
+          },
+          {
+            "at": "2026-10-04T12:24:46.827Z",
+            "action": "callback-withheld",
+            "eventId": "servicenow:cc0088a82fbfc390ef154c707fa4e31e:2"
+          },
+          {
+            "at": "2026-10-04T12:24:47.668Z",
+            "action": "poll",
+            "direction": "servicenow-to-keel",
+            "outcome": "applied",
+            "duplicate": false
+          },
+          {
+            "at": "2026-10-04T12:24:48.390Z",
+            "action": "poll",
+            "direction": "servicenow-to-keel",
+            "outcome": "applied",
+            "duplicate": true
+          },
+          {
+            "at": "2026-10-04T12:24:49.131Z",
+            "action": "callback",
+            "direction": "servicenow-to-keel",
+            "outcome": "already-decided",
+            "duplicate": false,
+            "eventId": "servicenow:cc0088a82fbfc390ef154c707fa4e31e:2",
+            "delivery": "late"
+          },
+          {
+            "at": "2026-10-04T12:24:50.233Z",
+            "action": "outbound-decision",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered"
+          }
+        ],
+        "canonical": {
+          "requestStatus": "approved",
+          "decidedBy": "a8be43d7-e71b-488e-becb-a2463b97d8a7",
+          "jobs": 1,
+          "decisions": [
+            {
+              "outcome": "approved",
+              "source": "itsm",
+              "version": 1,
+              "decidedBy": "a8be43d7-e71b-488e-becb-a2463b97d8a7",
+              "externalEventId": "reconcile:cc0088a82fbfc390ef154c707fa4e31e:v1:approved:keel-rt-sn-one",
+              "decisionDigest": "a152e25c8266f1c3d7f9dc443a1e26d6b99a6ce544aba63a3ce2511bb3da7dd7"
+            }
+          ]
+        },
+        "instanceAfter": {
+          "state": "gate_passed",
+          "approver": "keel-rt-sn-one",
+          "planVersion": "1",
+          "planDigest": "63235acf3e072572b1a4672cdf5dc5b708d34339f37d2ed29681fed2c469cb46",
+          "keelRequest": "ecec9ee4-af04-4643-ad44-d37d099aa321",
+          "keelDecision": "KEEL decision: approved; digest a152e25c8266f1c3d7f9dc443a1e26d6b99a6ce544aba63a3ce2511bb3da7dd7; event keel:decision:7bea40ba-d284-44ec-9ab5-88b5c399a964"
+        }
+      },
+      {
+        "name": "conflict",
+        "tenantRef": "sha256:f7b3959300856957",
+        "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
+        "requestId": "38996039-3091-4d92-a9b8-36adb13927dd",
+        "recordId": "16e8f467-d3e3-464f-bfed-598cd842d28c",
+        "version": 1,
+        "planDigest": "2b099824f8c1772137b4704cea990b36e96750ed959fb4517e3360ed55d763bd",
+        "steps": [
+          {
+            "at": "2026-10-04T12:24:52.219Z",
+            "action": "mirror",
+            "outcome": "mirrored",
+            "recordId": "16e8f467-d3e3-464f-bfed-598cd842d28c",
+            "requestId": "38996039-3091-4d92-a9b8-36adb13927dd"
+          },
+          {
+            "at": "2026-10-04T12:24:53.464Z",
+            "action": "outbound-record",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered",
+            "delivered": 1,
+            "retried": 0,
+            "quarantined": 0
+          },
+          {
+            "at": "2026-10-04T12:24:54.030Z",
+            "action": "readback-record",
+            "direction": "servicenow-to-keel",
+            "outcome": "match"
+          },
+          {
+            "at": "2026-10-04T12:24:54.035Z",
+            "action": "portal-decision",
+            "outcome": "rejected",
+            "actor": "deba0da1-0a84-431e-871f-3ddbcb0bbd0c"
+          },
+          {
+            "at": "2026-10-04T12:24:55.005Z",
+            "action": "outbound-decision",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered"
+          },
+          {
+            "at": "2026-10-04T12:24:56.416Z",
+            "action": "decide",
+            "direction": "servicenow",
+            "actor": "keel-rt-sn-one",
+            "value": "gate_passed"
+          },
+          {
+            "at": "2026-10-04T12:24:57.803Z",
+            "action": "callback",
+            "direction": "servicenow-to-keel",
+            "outcome": "conflict",
+            "duplicate": false,
+            "eventId": "servicenow:0e00c8a82fbfc390ef154c707fa4e394:3",
+            "delivery": "first"
+          },
+          {
+            "at": "2026-10-04T12:24:58.780Z",
+            "action": "outbound-conflict",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered"
+          }
+        ],
+        "canonical": {
+          "requestStatus": "rejected",
+          "decidedBy": "deba0da1-0a84-431e-871f-3ddbcb0bbd0c",
+          "jobs": 0,
+          "decisions": [
+            {
+              "outcome": "rejected",
+              "source": "portal",
+              "version": 1,
+              "decidedBy": "deba0da1-0a84-431e-871f-3ddbcb0bbd0c",
+              "externalEventId": null,
+              "decisionDigest": "da763189c10c31d4b34e54b09fbcea3cd4c12b61a6e98c6e01bb4cda2d11843d"
+            }
+          ]
+        },
+        "instanceAfter": {
+          "state": "gate_passed",
+          "approver": "keel-rt-sn-one",
+          "planVersion": "1",
+          "planDigest": "2b099824f8c1772137b4704cea990b36e96750ed959fb4517e3360ed55d763bd",
+          "keelRequest": "38996039-3091-4d92-a9b8-36adb13927dd",
+          "keelDecision": "KEEL decision: rejected (ServiceNow said approved; KEEL's decision stands); digest da763189c10c31d4b34e54b09fbcea3cd4c12b61a6e98c6e01bb4cda2d11843d; event keel:conflict:06fde8a0-b0a4-4eb6-893c-6671683b7a19"
+        }
+      },
+      {
+        "name": "revoked-approver",
+        "tenantRef": "sha256:f7b3959300856957",
+        "sysId": "90100ca82fbfc390ef154c707fa4e346",
+        "requestId": "b0cc7504-1dd3-43c4-a94c-5294094e08ff",
+        "recordId": "7f74c4d4-373a-4375-8bfe-28a3b18040ba",
+        "version": 1,
+        "planDigest": "46998f69656f2a023823077135415528e6e194db6eddbc18def6e293ef7a3ac2",
+        "steps": [
+          {
+            "at": "2026-10-04T12:25:01.166Z",
+            "action": "mirror",
+            "outcome": "mirrored",
+            "recordId": "7f74c4d4-373a-4375-8bfe-28a3b18040ba",
+            "requestId": "b0cc7504-1dd3-43c4-a94c-5294094e08ff"
+          },
+          {
+            "at": "2026-10-04T12:25:02.309Z",
+            "action": "outbound-record",
+            "direction": "keel-to-servicenow",
+            "outcome": "delivered",
+            "delivered": 1,
+            "retried": 0,
+            "quarantined": 0
+          },
+          {
+            "at": "2026-10-04T12:25:02.766Z",
+            "action": "readback-record",
+            "direction": "servicenow-to-keel",
+            "outcome": "match"
+          },
+          {
+            "at": "2026-10-04T12:25:02.769Z",
+            "action": "revoke-grant",
+            "outcome": "revoked",
+            "principalId": "b4522f06-ee40-4370-bdcd-582ef18a8d27"
+          },
+          {
+            "at": "2026-10-04T12:25:04.402Z",
+            "action": "decide",
+            "direction": "servicenow",
+            "actor": "keel-rt-sn-two",
+            "value": "gate_passed"
+          },
+          {
+            "at": "2026-10-04T12:25:06.242Z",
+            "action": "callback",
+            "direction": "servicenow-to-keel",
+            "outcome": "refused-not-eligible",
+            "duplicate": false,
+            "eventId": "servicenow:90100ca82fbfc390ef154c707fa4e346:2",
+            "delivery": "first"
+          }
+        ],
+        "canonical": {
+          "requestStatus": "pending",
+          "decidedBy": null,
+          "jobs": 0,
+          "decisions": []
+        },
+        "instanceAfter": {
+          "state": "gate_passed",
+          "approver": "keel-rt-sn-two",
+          "planVersion": "1",
+          "planDigest": "46998f69656f2a023823077135415528e6e194db6eddbc18def6e293ef7a3ac2",
+          "keelRequest": "b0cc7504-1dd3-43c4-a94c-5294094e08ff",
+          "keelDecision": ""
+        }
+      }
+    ],
+    "documentation": [
+      {
+        "url": "https://www.servicenow.com/docs/r/api-reference/rest-apis/c_TableAPI.html",
+        "retrievedAt": "2026-10-04T12:24:26Z"
+      }
+    ],
+    "captureLogSha256": "d6701ae0474d199b209d6dfdd4c71772bcdddbf3f3e6697b40ac505946dd759f"
+  },
+  "proof": {
+    "artifact": {
+      "path": "servicenow-live-acceptance.capture.json",
+      "sha256": "d6701ae0474d199b209d6dfdd4c71772bcdddbf3f3e6697b40ac505946dd759f"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "d61aa25f686f8bdf06ea135704dd3fb0787721778da6a41629b3eaf7a91642eb"
+    }
+  }
 }

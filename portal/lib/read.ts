@@ -29,6 +29,7 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/integrations/[id]/quarantined/route.ts",
   },
+  integrationsServiceNowApi: { capability: "read", source: "api/integrations/servicenow/route.ts" },
   integrationsPage: { capability: "read", source: "integrations/page.tsx" },
   policiesApi: { capability: "policies", source: "api/policies/route.ts" },
   policyApi: { capability: "policies", source: "api/policies/[id]/route.ts" },

@@ -127,7 +127,8 @@ only through a mapped, enabled KEEL principal who may approve that request now.
 
   Callback signing relies on `GlideCertificateEncryption.generateMac(key, 'HmacSHA256',
   data)`, which returns base64 per the same index. The instance-side business rule or
-  flow that signs and sends is not built here (task-118).
+  flow that signs and sends is not built here; task-118 ships it as
+  `ops/servicenow/keel-callback-relay.js` (see `servicenow-live-acceptance.md`).
 - **Credential mode:** an OAuth bearer token, by reference only. How the token is
   obtained and refreshed (the OAuth app in `/etc/keel/servicenow.env`) is outside this
   task. A 401 is retried so that a refreshed token can take over.

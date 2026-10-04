@@ -155,6 +155,7 @@ jobs:
           roadmap/storage-live-acceptance.test.mjs
           roadmap/itsm-contract.test.mjs
           roadmap/servicenow.test.mjs
+          roadmap/servicenow-live-acceptance.test.mjs
           roadmap/value-reports.test.mjs
           roadmap/grounded-query.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs

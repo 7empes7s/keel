@@ -147,6 +147,44 @@ built; they do not start or stop any engine task.
   until one live collect → baseline → drift → restore journey has been recorded as live-qualified
   on the real tenant. The queue is not edited by this entry.
 
+## Implementation status — 2026-10-04 (overnight run)
+
+Two coordinated sessions worked through the queue on 2026-10-03/04, coordinated in issue
+#20. Every PR was reviewed and merged only with both CI checks green. Each task records its
+own implementation and limits in a dated status section of the doc it names. This is the index.
+
+**Merged, code complete (fixture-tested; live qualification where the task names one is
+still separate).** Each item gives the task, then its PR.
+- 72 (#29), 73 (#36), 82 (#24), 83 (#30), 84 (#31), 87 (#27), 89 (#23)
+- 90 (#34), 91 (#40), 92 (#46), 93 (#52), 94 (#49), 95 (#55), 96 (#57), 97 (#61)
+- 98 (#48), 99 (#53), 100 (#56), 101 (#32), 102 (#33), 103 (#35)
+- 107 (#28), 108 (#39), 109 (#45), 110 (#26), 111 (#37)
+- 130 (#14), 131 (#15)
+- Adapters that ship **disabled**, each until its workload's live qualification exists:
+  SharePoint 102/103, Teams 104 (#50), Exchange 105 (#59), OneDrive/Purview 106 (#64).
+
+**Merged as code halves; the gate stays `pending` until the operator captures live
+evidence.** Each item gives the task, then its PR.
+- 113 (#41), 114 (#47; local-copy scope per the 2026-09-30 decision), 115 (#42)
+- 116 (#43), 117 (#60), 118 (#63), 120 (#44), 121 (#54), 122 (#62)
+- 123: in progress at the time of writing.
+
+No `docs/release/qualifications/*.json` claims live qualification for any of these. The
+capture and verify commands, fixtures, open operator decisions and suggested order are in
+[operator-gates.md](operator-gates.md).
+
+**Not started:** 112 and 124. Their dependencies include live evidence that does not exist yet.
+
+**Integration.** #38 and #65 fixed issues found by running every engine, CLI and tools suite
+on master:
+- a grant timestamp-precision mismatch;
+- a benchmark test path;
+- approve-gated emergency changes missing from the read inventory;
+- a host-dependent rehearsal test.
+
+The remaining full-suite failures need the VPS: `/opt/keel`, `/opt/mimoun` and
+`/var/lib/keel/reference-data`.
+
 ## Task index
 
 | ID | Workstream | Deliverable | Prerequisites | Admission |

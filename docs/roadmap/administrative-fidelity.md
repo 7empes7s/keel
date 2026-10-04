@@ -19,8 +19,8 @@ the allowed three) and registrations in `engine/coverage/capabilities.mjs`:
 | Operation | Route | Writes | Checks | Permission |
 | --- | --- | --- | --- | --- |
 | administrativeUnit update | `PATCH /directory/administrativeUnits/{id}` | `displayName`, `description` | source authority; live object present; post-state of written fields | `AdministrativeUnit.ReadWrite.All` |
-| groupSetting update | `PATCH /groupSettings/{id}` | `values` | tenant-wide scope; source authority; template unchanged; value names defined by the template; post-state of every value and the template | `Directory.ReadWrite.All` |
-| groupSetting delete | `DELETE /groupSettings/{id}` | none | tenant-wide scope; source authority; complete snapshot observation of the collection; absent after delete | `Directory.ReadWrite.All` |
+| groupSetting update | `PATCH /groupSettings/{id}` | `values` | tenant-wide scope; source authority; template unchanged; value names defined by the template; post-state of every value and the template | `GroupSettings.ReadWrite.All` |
+| groupSetting delete | `DELETE /groupSettings/{id}` | none | tenant-wide scope; source authority; complete snapshot observation of the collection; absent after delete | `GroupSettings.ReadWrite.All` |
 
 Proof for all three: `engine/roadmap/administrative-fidelity.test.mjs`. None of
 the permissions is verified as granted to the KEEL Restorer.

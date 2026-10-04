@@ -631,7 +631,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   directorySettingTemplate: byHand('administrative-configuration', null, 'none', 'Microsoft-published template catalogue; a global reference template is never written'),
   // Roadmap task-109: the operation records and their parent, dependency and
   // source-authority checks live in engine/restore/administrativeOperations.mjs.
-  groupSetting: subset('administrative-configuration', 'PATCH /groupSettings/{id}; DELETE /groupSettings/{id}', 'Directory.ReadWrite.All',
+  groupSetting: subset('administrative-configuration', 'PATCH /groupSettings/{id}; DELETE /groupSettings/{id}', 'GroupSettings.ReadWrite.All',
     'update and delete of tenant-wide settings are fixture-tested; the template is never written; create and group-scoped settings are not qualified'),
   administrativeUnit: subset('administrative-configuration', 'PATCH /directory/administrativeUnits/{id}', 'AdministrativeUnit.ReadWrite.All',
     'update of displayName and description is fixture-tested; create, delete, soft-delete restore, membership and scoped role members are not qualified'),

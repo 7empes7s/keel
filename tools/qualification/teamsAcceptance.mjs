@@ -149,8 +149,11 @@ function teamsRequestProblems(requests, { teamId, member }) {
       continue;
     }
     const [pathOnly] = request.path.split('?');
-    if (pathOnly !== '/teams' && !pathOnly.startsWith(team) && pathOnly !== `/groups/${teamId}/members`) {
-      failures.push(`${label}: addresses a team or group other than the KEEL-RT fixture`);
+    const groupReads = [`/groups/${teamId}/members`, `/groups/${teamId}/owners`];
+    const ownerLink = member?.userId ? `/groups/${teamId}/owners/${member.userId}/$ref` : null;
+    if (pathOnly !== '/teams' && !pathOnly.startsWith(team) && !groupReads.includes(pathOnly) && pathOnly !== ownerLink) {
+      failures.push(`${label}: addresses a team, group or user other than the KEEL-RT fixture`);
+      continue;
     }
     if (request.method === 'GET') {
       const scope = scopeProblems({ kind: 'graph', method: 'GET', endpoint: request.path });
@@ -158,6 +161,11 @@ function teamsRequestProblems(requests, { teamId, member }) {
       if (request.credential === 'restorer' && pathOnly !== team && pathOnly !== `${team}/members`) {
         failures.push(`${label}: the restorer reads only the team and members it writes`);
       }
+      continue;
+    }
+    // Removing the fixture user's own group owner link is clean-up, not a qualified write.
+    if (request.method === 'DELETE' && pathOnly === ownerLink) {
+      if (request.credential !== 'restorer') failures.push(`${label}: only the restorer removes the fixture user's owner link`);
       continue;
     }
     const writeId = teamsWriteFor({ ...request, path: pathOnly }, teamId);
@@ -304,6 +312,12 @@ export function validateTeamsLiveSubject(evidence, context = {}) {
   if (member.memberBefore !== false || member.memberAfter !== false) {
     failures.push('the membership fixture user must be absent from the team before and after the capture');
   }
+  if (member.ownerBefore !== false || member.ownerAfter !== false) {
+    failures.push('the membership fixture user must not own the fixture group before or after the capture');
+  }
+  if (member.groupMemberBefore !== false || member.groupMemberAfter !== false) {
+    failures.push('the membership fixture user must be absent from the fixture group before and after the capture');
+  }
 
   // Reads: one successful, non-synthetic capture per operation, at the declared version.
   const reads = Array.isArray(subject.reads) ? subject.reads : [];
@@ -343,6 +357,9 @@ export function validateTeamsLiveSubject(evidence, context = {}) {
   if (membership.restoredToOriginal !== true) failures.push('membership: the fixture user was not removed again');
   if (typeof membership.preFingerprint !== 'string' || membership.preFingerprint !== membership.finalFingerprint) {
     failures.push('membership: the final membership does not match the starting membership');
+  }
+  if (typeof membership.ownersPreFingerprint !== 'string' || membership.ownersPreFingerprint !== membership.ownersFinalFingerprint) {
+    failures.push('membership: the fixture group\'s final owners do not match its starting owners');
   }
 
   // The raw capture log is bound into the signed subject.

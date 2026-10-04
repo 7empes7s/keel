@@ -34,6 +34,7 @@ including fixtures, credentials and what each command touches, are in the linked
 | 116 | `drill-live-acceptance` | Both setups complete (task-76 run ids); a read-only reconstruction result (task-68) | Yes: creates and removes one `keel-rehearsal-<startAt>` group | ~30 min | 124; the measured recovery-time figure |
 | 120 | `sharepoint-live-acceptance` | A disposable `KEEL-RT-<yyyymmdd>` communication site; separate Collector and Restorer apps | Yes: **decision needed** (below) | ~45 min | 121 (Teams) and enabling the SharePoint read and write adapters |
 | 121 | `teams-live-acceptance` | A verified task-120 record at the same build; a disposable private `KEEL-RT-<yyyymmdd>` team; a disposable member account not yet in it; separate Collector and Restorer apps | Yes: **decisions needed** (below); writes touch only the fixture team | ~45 min, after 120 | Enabling the Teams adapter (task-104); 105 and 122 (Exchange) |
+| 117 | `sentinel-live-acceptance` | **Decision needed:** the gate is deferred by operator decision. When taken up: a TEST Log Analytics workspace with the `KeelEvents_CL` table, a DCE/DCR for the `Custom-KeelEvents` stream, a sender app with Monitoring Metrics Publisher on the DCR, and a separate reader app with Log Analytics Reader on the workspace | No tenant objects. Ingests 5 probe events (each twice) into the test workspace and runs two read-only KQL queries | ~30 min, plus ingestion delay | Claiming Sentinel export as live-qualified (task-80 adapter); 124 |
 
 ### 113: authenticated deployed release acceptance
 
@@ -138,6 +139,29 @@ node tools/release/qualification.mjs verify --require-live --gate teams-live-acc
 The record is valid for 30 days, only for the build it names, and only while the
 SharePoint record beside it also verifies.
 
+### 117: Sentinel workspace ingestion qualification (decision needed)
+
+Steps: [sentinel-live-acceptance.md › Operator steps](sentinel-live-acceptance.md#operator-steps).
+Deferred by operator decision; nothing here needs doing until you take it up. Every Azure
+resource is yours to create in a TEST subscription; the tool never provisions anything. The
+capture sends probe events through the production task-80 adapter, restarts the adapter and
+replays them under the same event ids, then reads them back with two read-only KQL queries.
+The record proves logical dedup by event id. It never claims unique physical rows or
+exactly-once ingestion.
+
+**Decision needed before capture.** Whether to stand up the test workspace, DCE/DCR and the
+two app registrations at all, and in which subscription.
+
+```bash
+node tools/qualification/sentinelLive.mjs plan --tenant-ref <tenant_ref> --destination-id <id>   # offline preview first
+node tools/qualification/sentinelLive.mjs capture --confirm-live-workspace-ingest [see doc for all flags] \
+  --out docs/release/qualifications/sentinel-live-acceptance.json
+node tools/release/qualification.mjs verify --require-live --gate sentinel-live-acceptance \
+  --evidence docs/release/qualifications/sentinel-live-acceptance.json
+```
+
+The record is valid for 30 days, only for the build and tenant it names.
+
 ## Already qualified
 
 | Task | Gate | State |
@@ -153,7 +177,6 @@ SharePoint record beside it also verifies.
 | 105, 122 | A disposable mailbox configuration fixture and a qualified Exchange app/RBAC context | 105's code (ready to build now that 104 and 121's code have merged); 122 also waits on 121's capture |
 | 106, 123 | Disposable site and configuration-label fixtures plus family-specific privilege evidence | 105, 122 |
 | 118 | A configured non-production ServiceNow instance with mapped test users and workflow | 97 (ServiceNow adapter; session A's 93 → 96 → 97 chain is in progress) |
-| 117 | A test Log Analytics workspace, DCR/stream, identity and receiver query evidence | Deferred by operator decision |
 | 112 | Six end-to-end journeys and the release ledger | Its dependency list, which includes 95 and other tasks still in progress |
 | 124 | Complete roadmap release verification without overclaiming | 112–119, and the task-114 dependency edit noted above |
 
@@ -164,3 +187,5 @@ SharePoint record beside it also verifies.
 3. **120**, once you have made the tenant-wide toggle decision, then **121** at the same
    build once you have made its two decisions. Together they unblock the Teams, Exchange
    and OneDrive chain.
+4. **117**, only if you decide to take it up: it needs Azure resources in a test
+   subscription and touches no tenant object.

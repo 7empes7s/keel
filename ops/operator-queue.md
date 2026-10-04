@@ -325,7 +325,7 @@ being triggered by queue updates.
   Stop at the first failure. Do only what the filled decisions allow.
 
 ### Q11: Build a recovery set for gate 114 (new tool from PR #70)
-- Status: todo
+- Status: in-progress
 - Needs:
   - `/opt/keel-live` at or after df0de36 (PR #70 merged; it adds `ops/keel-recovery-set.mjs`);
   - run from a checkout at the deployed build.

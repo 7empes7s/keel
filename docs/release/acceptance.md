@@ -45,7 +45,7 @@ Without the runner key, tenant and build, a non-placeholder record is reported
 | 120 | `sharepoint-live-acceptance` | pending |
 | 121 | `teams-live-acceptance` | pending |
 | 122 | `exchange-live-acceptance` | pending |
-| 123 | `onedrive-purview-live-acceptance` | missing (no record) |
+| 123 | `onedrive-purview-live-acceptance` | missing on this branch; pending once task-123's placeholder is merged in |
 
 **Objectives:**
 

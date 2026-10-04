@@ -1255,3 +1255,133 @@ DROP TRIGGER IF EXISTS change_intent_event_append_only ON change_intent_event;
 CREATE TRIGGER change_intent_event_append_only
   BEFORE UPDATE OR DELETE ON change_intent_event
   FOR EACH ROW EXECUTE FUNCTION change_intent_append_only();
+
+-- Roadmap task-96: the canonical approval mirror. KEEL's approval_request (and a
+-- change_intent's decision_digest) is the one canonical decision; an ITSM change record
+-- is a mirror of it. itsm_record binds one external record to the CURRENT plan (an
+-- approval request and its plan digest) at a version; re-planning moves the record to a
+-- new version and supersedes the old request, so a delayed callback naming the old
+-- version can never approve the new plan. Additive: nothing existed before.
+CREATE TABLE IF NOT EXISTS itsm_record (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  adapter             text NOT NULL,
+  external_ref        text NOT NULL,
+  subject_kind        text NOT NULL CHECK (subject_kind IN ('approval_request','change_intent')),
+  approval_request_id uuid REFERENCES approval_request(id),
+  change_intent_id    uuid REFERENCES change_intent(id),
+  plan_digest         text NOT NULL,
+  version             int NOT NULL CHECK (version > 0),
+  created_by          text NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_ref, adapter, external_ref),
+  CHECK ((subject_kind = 'approval_request') = (approval_request_id IS NOT NULL)),
+  CHECK ((subject_kind = 'change_intent') = (change_intent_id IS NOT NULL))
+);
+
+-- Every version a record was bound to, append-only, so the plan an external approver
+-- saw at version N stays provable after re-planning.
+CREATE TABLE IF NOT EXISTS itsm_record_version (
+  record_id           uuid NOT NULL REFERENCES itsm_record(id),
+  tenant_ref          text NOT NULL,
+  version             int NOT NULL,
+  approval_request_id uuid REFERENCES approval_request(id),
+  change_intent_id    uuid REFERENCES change_intent(id),
+  plan_digest         text NOT NULL,
+  bound_by            text NOT NULL,
+  bound_at            timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (record_id, version)
+);
+
+-- External users are mapped to KEEL principals explicitly; an unmapped external user
+-- never decides. The mapping names who the person is, never what they may do: the
+-- principal's CURRENT grants decide that at decision time.
+CREATE TABLE IF NOT EXISTS itsm_identity_map (
+  tenant_ref    text NOT NULL,
+  adapter       text NOT NULL,
+  external_user text NOT NULL,
+  principal_id  uuid NOT NULL REFERENCES principal(id),
+  created_by    text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, adapter, external_user)
+);
+
+-- The canonical decision for one record version, append-only, at most one per version.
+-- id is the decision's immutable event id; decision_digest is canonicalDigest(decision).
+CREATE TABLE IF NOT EXISTS itsm_decision (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref          text NOT NULL,
+  record_id           uuid NOT NULL REFERENCES itsm_record(id),
+  version             int NOT NULL,
+  approval_request_id uuid REFERENCES approval_request(id),
+  change_intent_id    uuid REFERENCES change_intent(id),
+  outcome             text NOT NULL CHECK (outcome IN ('approved','rejected')),
+  source              text NOT NULL CHECK (source IN ('portal','itsm','keel')),
+  decided_by          text NOT NULL,
+  external_event_id   text,
+  decision            jsonb NOT NULL,
+  decision_digest     text NOT NULL,
+  recorded_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (record_id, version)
+);
+
+-- Inbound callbacks, deduplicated on the adapter's event id. outcome is written once the
+-- callback has been handled; 'applying' marks one being handled, so a redelivery after a
+-- crash resumes it instead of acting twice.
+CREATE TABLE IF NOT EXISTS itsm_inbox (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref        text NOT NULL,
+  adapter           text NOT NULL,
+  external_event_id text NOT NULL,
+  external_ref      text NOT NULL,
+  event             jsonb NOT NULL,
+  record_id         uuid REFERENCES itsm_record(id),
+  approval_request_id uuid REFERENCES approval_request(id),
+  principal_id      uuid REFERENCES principal(id),
+  outcome           text NOT NULL DEFAULT 'applying',
+  detail            jsonb NOT NULL DEFAULT '{}'::jsonb,
+  received_at       timestamptz NOT NULL DEFAULT now(),
+  handled_at        timestamptz,
+  UNIQUE (tenant_ref, adapter, external_event_id)
+);
+CREATE INDEX IF NOT EXISTS itsm_inbox_outcome_idx ON itsm_inbox (tenant_ref, outcome);
+
+-- Outbound mirror updates, at-least-once, deduplicated by the receiver on event_id
+-- (stable across retries). A poison event is quarantined with its reason, never dropped.
+CREATE TABLE IF NOT EXISTS itsm_outbox_event (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref        text NOT NULL,
+  adapter           text NOT NULL,
+  record_id         uuid NOT NULL REFERENCES itsm_record(id),
+  event_id          text NOT NULL,
+  kind              text NOT NULL CHECK (kind IN ('record','decision','conflict')),
+  payload           jsonb NOT NULL,
+  status            text NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending','delivered','quarantined')),
+  attempts          int NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  max_attempts      int NOT NULL DEFAULT 8 CHECK (max_attempts > 0),
+  next_attempt_at   timestamptz NOT NULL DEFAULT now(),
+  last_error        text,
+  delivered_at      timestamptz,
+  quarantine_reason text,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_ref, adapter, event_id)
+);
+CREATE INDEX IF NOT EXISTS itsm_outbox_event_due_idx
+  ON itsm_outbox_event (tenant_ref, adapter, status, next_attempt_at);
+
+CREATE OR REPLACE FUNCTION itsm_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $itsm$
+BEGIN
+  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME;
+END;
+$itsm$;
+DROP TRIGGER IF EXISTS itsm_decision_append_only ON itsm_decision;
+CREATE TRIGGER itsm_decision_append_only
+  BEFORE UPDATE OR DELETE ON itsm_decision
+  FOR EACH ROW EXECUTE FUNCTION itsm_append_only();
+DROP TRIGGER IF EXISTS itsm_record_version_append_only ON itsm_record_version;
+CREATE TRIGGER itsm_record_version_append_only
+  BEFORE UPDATE OR DELETE ON itsm_record_version
+  FOR EACH ROW EXECUTE FUNCTION itsm_append_only();

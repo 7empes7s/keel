@@ -463,7 +463,7 @@ being triggered by queue updates.
   Use the code in `engine/bootstrap/` and the portal Setup routes. Run nothing.
 
 ### Q15: Mount the new second volume, then resume Q2 (gate 114) Part B
-- Status: todo
+- Status: in-progress
 - Needs: none. The operator created and formatted the volume (ext4) at
   `/dev/disk/by-id/scsi-0HC_Volume_107029601`.
 - Do:

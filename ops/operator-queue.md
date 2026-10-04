@@ -415,7 +415,7 @@ being triggered by queue updates.
   change.
 
 ### Q14: What running the Settings › Setup flows would do (read-only report)
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do: read-only. Report what the read setup and the restore setup would actually do if run from
   the portal:

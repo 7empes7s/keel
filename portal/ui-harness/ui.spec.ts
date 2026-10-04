@@ -14,6 +14,8 @@ const PAGES = [
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
   { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
+  { name: "reports", hash: "/reports" },
+  { name: "reports-scoped", hash: "/reports/scoped" },
   { name: "readiness", hash: "/readiness" },
   { name: "readiness-ready", hash: "/readiness/ready" },
   { name: "activity", hash: "/activity" },
@@ -326,6 +328,37 @@ test("resilience shows measured values, names what does not count, and keeps unm
   await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
 });
 
+// Task-100: the value report counts each request once, keeps hours next to their
+// assumptions, shows no hours without an estimate, and fits a phone.
+test("the value report adds up, shows hours only with an estimate, and withholds tenant-wide sections from a scoped reader", async ({ page }) => {
+  await open(page, "/reports");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 of 5 put back and checked; 2 failed or changed again.");
+  const summary = page.locator("table.value-summary");
+  let total = 0;
+  for (const row of await summary.locator("tbody tr").all()) {
+    const cells = (await row.locator("td").allInnerTexts()).map(Number);
+    expect(cells[0] + cells[1]).toBe(cells[2]);
+    total += cells[2];
+  }
+  await expect(summary.locator(".value-total")).toHaveText(String(total));
+  await expect(page.locator(".value-outcomes tr[data-state='reopened']")).toContainText("Changed again: a later backup shows it changed again");
+  await expect(page.locator(".value-hours-list")).toContainText("1 checked restore × 90 minutes = 1.5 hours");
+  await expect(page.locator(".value-assumptions")).toContainText("A manual restore of one group and its members takes about 90 minutes.");
+  await expect(page.locator(".value-card-method")).toContainText("It is not a statement of compliance with any regulation or framework.");
+  await expect(page.getByRole("link", { name: "Download spreadsheet (CSV)" })).toHaveAttribute("href", /format=csv/);
+
+  await open(page, "/reports/scoped");
+  await expect(page.locator(".value-scope")).toContainText("Showing only what FIN owns.");
+  await expect(page.locator(".value-hours-list")).toHaveCount(0);
+  await expect(page.locator(".value-card-hours")).toContainText("No time-saving estimate is set, so this report shows no hours saved.");
+  expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/\d+(\.\d+)?\s*hours/i);
+  await expect(page.locator(".value-card-findings .value-sentence")).toContainText("shown only to people who can read all of it");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/reports");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Task-94: each emergency account shows its five checks separately; "Not known" is its
 // own state, checks KEEL cannot make stay listed, and a use leads the verdict.
 test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
@@ -424,6 +457,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
   resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],
   "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
+  reports: ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "job:a1000000-0000-4000-8000-000000000002", "change:d1f70000-0000-4000-8000-000000000101", "keel.mfa.admins", "e7a10000-0000-4000-8000-000000000203", "4c".repeat(32), "9b".repeat(32), "/etc/keel/value-estimate.json"],
+  "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "entities FIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],

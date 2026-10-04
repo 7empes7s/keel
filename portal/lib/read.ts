@@ -142,6 +142,11 @@ export const DATA_SURFACES = {
   // Task-83: the alerts inbox. Acknowledging and resolving are separate guarded actions.
   alertsApi: { capability: "read", source: "api/alerts/route.ts" },
   alertsPage: { capability: "read", source: "alerts/page.tsx" },
+  // Task-100: the value report. Entity-scoped readers see only outcomes their entities
+  // own; the engine applies the scope before counting, and tenant-wide sections are
+  // withheld from them.
+  reportsPage: { capability: "read", source: "reports/page.tsx", entityScoped: true },
+  valueReportApi: { capability: "read", source: "api/reports/value/route.ts", entityScoped: true },
   // Task-99: bounded, grounded questions. The engine applies the reader's entities in
   // the SQL that selects and counts, so an entity-scoped reader is admitted.
   askApi: { capability: "read", source: "api/ask/route.ts", entityScoped: true },

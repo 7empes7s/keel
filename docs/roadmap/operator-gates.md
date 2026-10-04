@@ -37,6 +37,7 @@ including fixtures, credentials and what each command touches, are in the linked
 | 117 | `sentinel-live-acceptance` | **Decision needed:** the gate is deferred by operator decision. When taken up: a TEST Log Analytics workspace with the `KeelEvents_CL` table, a DCE/DCR for the `Custom-KeelEvents` stream, a sender app with Monitoring Metrics Publisher on the DCR, and a separate reader app with Log Analytics Reader on the workspace | No tenant objects. Ingests 5 probe events (each twice) into the test workspace and runs two read-only KQL queries | ~30 min, plus ingestion delay | Claiming Sentinel export as live-qualified (task-80 adapter); 124 |
 | 118 | `servicenow-live-acceptance` | The non-production ServiceNow instance (2026-09-30 decision) with a non-default workflow mapped in a KEEL adapter config, the relay table, signing property and business rule (`ops/servicenow/keel-callback-relay.js`), two test accounts that are not people with their own tokens, and a `…_qualification` KEEL database | No tenant objects. Creates four records and four test-user approvals in the non-production instance only | ~45 min, plus instance setup | Claiming the ServiceNow workflow as live-qualified (task-97 adapter, D6); 124 |
 | 122 | `exchange-live-acceptance` | Verified 120 and 121 records at the same build; the fixture mailbox `keel-rt-20260908-alice` (or another `keel-rt-*` user mailbox) with deleted-item retention under 30 days; separate Collector and Restorer apps with Exchange app-only access | Yes: **decisions needed** (below); writes touch only the fixture mailbox's settings | ~45 min, after 121 | Enabling the Exchange adapter (task-105); 106 and 123 (OneDrive and Purview) |
+| 123 | `onedrive-purview-live-acceptance` | A verified 122 record at the same build; hand-made fixtures: a `KEEL-RT-*` label, a `KEEL-RT-*` publishing policy whose locations name only `keel-rt-*` users, and the fixture user's provisioned OneDrive; separate Collector and Restorer apps with Purview access | Yes: **decisions needed** (below); writes touch only the KEEL-RT label and policy | ~45 min, after 122 | Enabling the OneDrive and Purview adapter (task-106); 124 |
 
 ### 113: authenticated deployed release acceptance
 
@@ -214,6 +215,40 @@ node tools/release/qualification.mjs verify --require-live --gate exchange-live-
 The record is valid for 30 days, only for the build it names, and only while the Teams and
 SharePoint records beside it also verify.
 
+### 123: OneDrive and Purview configuration qualification (decisions needed)
+
+Steps: [onedrive-purview-live-acceptance.md › Operator steps](onedrive-purview-live-acceptance.md#operator-steps).
+It runs only after the 122 record verifies at the same build. It changes the fixture label's
+admin-only `Comment` and puts it back, and adds the fixture label to the fixture policy. It
+never removes the label, because removing it would unpublish. Before sending, it refuses
+anything that would weaken protection, unpublish a label, read item-applied labels or touch
+OneDrive content. A preservation-locked object is refused.
+
+**Decisions needed before capture** (full list in the doc's "Open operator decisions"):
+- **Restorer Purview grant.** `Set-Label` and `Set-LabelPolicy` need `Exchange.ManageAsApp`
+  and the Compliance Administrator role (tenant-wide), or a narrower custom role group,
+  which changes task-106's declarations.
+- **Collector grants** (`Sites.FullControl.All` with SharePoint Administrator, and Compliance
+  Administrator) can write; the log proves they never did, but not that the roles are
+  read-only.
+- **Tenant-wide label reads.** `Get-Label` and `Get-LabelPolicy` return every label and
+  policy *definition* (never content). The record keeps only counts and a fingerprint for
+  non-fixture objects. Confirm this is acceptable.
+- **Fixtures are made by hand**: KEEL has no create cmdlet. Each capture leaves its label
+  published to the fixture-only policy, so the next capture needs a fresh `KEEL-RT-*` label.
+
+```bash
+node tools/qualification/onedrivePurviewLive.mjs plan --fixture-site <OneDrive URL> \
+  --fixture-label KEEL-RT-<label> --fixture-policy KEEL-RT-<policy>   # offline preview first
+node tools/qualification/onedrivePurviewLive.mjs capture --confirm-live-tenant-write [see doc for all flags] \
+  --exchange-evidence docs/release/qualifications/exchange-live-acceptance.json \
+  --out docs/release/qualifications/onedrive-purview-live-acceptance.json
+node tools/release/qualification.mjs verify --require-live --gate onedrive-purview-live-acceptance \
+  --evidence docs/release/qualifications/onedrive-purview-live-acceptance.json
+```
+
+The record is valid for 30 days and only for the build it names.
+
 ## Already qualified
 
 | Task | Gate | State |
@@ -227,8 +262,7 @@ SharePoint records beside it also verify.
 |---|---|---|
 | 104, 105 | Teams and Exchange adapters (merged, ship disabled) | Enabling waits on the 120, 121 and 122 captures |
 | 106 | OneDrive and Purview label configuration adapter (merged, ships disabled) | Enabling waits on the 120, 121, 122 and 123 captures |
-| 123 | Disposable site and configuration-label fixtures plus family-specific privilege evidence | Its code half is in progress; the capture also waits on 122's capture |
-| 112 | Six end-to-end journeys and the release ledger | Its dependency list, which includes 95 and other tasks still in progress |
+| 112 | Six end-to-end journeys and the release ledger | Its code dependencies have all merged (95 included); the journeys need the live gates above |
 | 124 | Complete roadmap release verification without overclaiming | 112–119, and the task-114 dependency edit noted above |
 
 ## Suggested order

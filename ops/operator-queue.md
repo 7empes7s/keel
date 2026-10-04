@@ -851,7 +851,7 @@ item that needs it stays untouched.
 - Issue #89, asked by the "Offsite backup unreachable" thread (20:22 UTC). Doesn't touch the tenant or
   master, so it can run while Q10 waits. Read-only: no writes, no fixes, no secrets printed (the key
   file is listed, never read or shown).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: none
 - Do: on the KEEL VPS as root, run each and paste the output (report missing files, don't create them):

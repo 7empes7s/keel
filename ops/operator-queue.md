@@ -61,7 +61,7 @@ being triggered by queue updates.
   This is not a keel-operator item.
 
 ### Q2: Gate 114 (storage-live-acceptance, local copy)
-- Status: blocked
+- Status: in-progress
 - Result: Part A done, read-only. Part B not started. No evidence branch; nothing created on the host.
   1. Newest set: `/opt/backups/2026-10-04/` (04:04 UTC, made by the deployed build of that
      time). It has `keel-db.sql.gz`, `keel-config.tar.gz` (a tarball of the repo's `ops/`

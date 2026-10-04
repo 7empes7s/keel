@@ -295,7 +295,7 @@ being triggered by queue updates.
   way the deploy builds it. Don't restart or redeploy services beyond what the normal
   image rebuild does. Report the image id.
 
-### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
+### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
 - Coordinator note (13:50 UTC): the three URLs are fixed in PR #74 (`claude/fix-dead-doc-urls`).
   When #74 is merged and `/opt/keel-live` is deployed at or after its merge commit, set this back to
   in-progress and run 120 → 121 → 122 → 123 at that build. D-120b was given by the operator in your

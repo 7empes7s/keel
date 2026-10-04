@@ -4,10 +4,10 @@
 stands and where to pick up. It lives on branch `claude/operator-queue` (never merged to master, so
 edits don't deploy), next to the work queue `ops/operator-queue.md`.
 
-- **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
-  their changes and it updates this file. If you are a cold session without that thread, update this
-  file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 18:00 UTC
+- **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
+  coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
+  cold session without that thread, update this file yourself and say so in the change log.
+- **Last updated:** 2026-10-04 20:30 UTC
 
 ## How the work is organized
 
@@ -24,49 +24,43 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Old coordinator session** `session_01HgPnSVHKzzdtK4mY2PEVox` ("KEEL Developer") ran the
   overnight roadmap run and set up the queue. It is superseded; don't resume it.
 
-## Live qualification gates
+## Tasks
 
-Records bind to one build. The release ledger (task 124) needs **every** live gate verified at one
-frozen release-candidate build, so each gate is recaptured at that build at the end. Captures before
-then prove the path works.
+One GitHub issue per task (label `task`), one project thread per issue, one branch and PR per
+issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
+Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
+**Master is frozen while #84 runs** (same-build chain), so other PRs can be built and reviewed but
+not merged until it finishes.
 
-| Gate | What | State | Evidence / blocker |
-|---|---|---|---|
-| 113 | deployed-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-113` @ 48d37ca. In PR #75 |
-| 114 | storage-live-acceptance | **Captured, verify ok** at `df0de36` | `claude/live-evidence-114` @ 4b1d3da. Copy on the second volume `/mnt/keel-copy` |
-| 115 | native-live-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-115` @ b965a66 |
-| 116 | drill-live-acceptance | **Blocked** | Setup host deployed (2e8a5b9) and pointed at the host's credential files (Q19: canCheck true; no write operation enabled). Recovery key enrolled (Q20: key id `officer-2026-10`, private key `/root/keel-recovery-key/officer.pem`, trust store `/etc/keel/recovery-authenticators.json`). Remaining steps being mapped in Q21. Then a Setup run (task-76 run id), then the reconstruction drill (Q6) |
-| 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
-| 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
-| 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Blocked on a Teams tool fix (PR #83)** | At `ffa05cd`: 120 passed (`claude/live-evidence-120` @ ea5380d); 121 refused: the 2b2c338 run left carla as a group owner (owner link outlived demote/remove; cleaned up by keel-operator). **`claude/live-evidence-121` @ 9ec0e2f is void; never merge it.** Chain reruns at #83's build |
-| 124 | release ledger | Not started | Needs all live gates at one build |
+| Task | Issue | Thread | PR | State | Blocker |
+|---|---|---|---|---|---|
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 | Blocked | #83 green, waiting for the operator's merge; then Q10 reruns 120 → 123 at its build |
+| Gate 116 drill | #85 | — | — | Blocked | Q21 mapping, then a Setup run, then the reconstruction drill (Q6); Collector read grants decision |
+| Gate 124 release ledger | #86 | — | — | Not started | Needs every live gate at one build; drop descoped 117 (`tools/release/acceptanceLedger.mjs:39`) or record it as an accepted gap |
+| CLAUDE.md with brain markers | #87 | — | #80 | Open | PR lacks `brain:start`/`brain:end` markers; master freeze |
+| Status test temp dir | #88 | — | #76 | Open | Master freeze |
+| Offsite backup unreachable | #89 | — | — | Open | — |
+| Prune timer review | #90 | — | — | Open | Review before enabling |
+| Install scheduler and backup tiers on host | #91 | — | — | Open | — |
+| `restorer-target.json` default path | #92 | — | — | Open | Host file is `/etc/keel/restorer.json` |
+| Restorer least-privilege review | #93 | — | — | Open | Needs operator decisions |
 
-**Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
-changed in PR #75 (operator-approved): a committed live record must be live-qualified, bind its raw
-capture's sha256, carry no credential material, and still fail verification without the HMAC key
+### Gate evidence
+
+Records bind to one build; task 124 recaptures every live gate at one frozen release-candidate build.
+
+- 113 deployed-acceptance: verify ok at `33ad2a9`, `claude/live-evidence-113` @ 48d37ca (on master via #75).
+- 114 storage: verify ok at `df0de36`, `claude/live-evidence-114` @ 4b1d3da (copy on `/mnt/keel-copy`).
+- 115 native: verify ok at `33ad2a9`, `claude/live-evidence-115` @ b965a66.
+- 116 drill: Setup host deployed (2e8a5b9, Q19 canCheck true, no writes enabled); recovery key enrolled (Q20, key id `officer-2026-10`, trust store `/etc/keel/recovery-authenticators.json`).
+- 117 sentinel: descoped by the operator (12:36 UTC).
+- 118 ServiceNow: verify ok at `87e366e`, `claude/live-evidence-118` @ 4ec37c1.
+- 119, 126 (NIST, ScubaGear): already qualified.
+- 120 → 123: at `ffa05cd`, 120 passed (`claude/live-evidence-120` @ ea5380d); 121 refused on a residual group owner from the 2b2c338 run. **`claude/live-evidence-121` @ 9ec0e2f is void; never merge it.** The 120 and 121 records merge together.
+
+Committed evidence rule (#75 → `359ec7c`): a committed live record must be live-qualified, bind its
+raw capture's sha256, carry no credential material, and fail verification without the HMAC key
 (`engine/test/committedEvidence.mjs`).
-
-## Open PRs
-
-- **#83** `claude/teams-owner-restore`: gate 121 tool fix (remove and verify the group owner link the owner promotion leaves; restore judged after a settle delay). Its deploy is the build for the next 120 → 123 run.
-- **#82** merged 17:11 UTC as `ffa05cd` (gate 122 Exchange tenant fix).
-- **#77** `claude/teams-tenant-proof` was **merged 15:21 UTC as `2b2c338`** (by the operator): gate 121 tool fix. Its deploy is the build for the 120 → 123 rerun. **Master frozen until that chain finishes.**
-- **#75** `claude/live-evidence-merge` was **merged 14:26 UTC as `359ec7c`** (by the operator): live evidence for 113, 114, 115, 118 is on master, and the placeholder tests accept only verified-shape live records.
-- **#74** `claude/fix-dead-doc-urls` was **merged 14:27 UTC as `124fbc6`** (by the operator). Its deploy is the build for the 120 → 123 chain (Q10). **Don't merge anything to master until that chain finishes.**
-- **#73** `claude/setup-host` (production Setup host for gate 116, task-76) was **merged 13:34 UTC as
-  `2e8a5b9`** after the operator approved in chat. Writes stay disabled unless named with qualification
-  + expiry; it never creates app registrations.
-  After deploy, queue Q19 points the portal at `/etc/keel/restorer.json`.
-  Notes from the author session (`session_01E6SkVX9ZGScLQdWgjcBvbT`) for after it lands:
-  - The setup checks need the Collector to hold `Application.Read.All` and
-    `RoleManagement.Read.Directory`. The Intune role check also needs `DeviceManagementRBAC.Read.All`;
-    without it, run read setup for Entra only (the first-collection gate accepts that). These are
-    grants, so they need an operator decision before keel-operator adds them.
-  - `keel.collect`/`keel.restore` count as satisfied when the app is configured as that role's
-    credential. `qualificationMode` defaults to `live-qualified` as a label only. Excess scopes
-    (e.g. the Restorer's `MailboxSettings.ReadWrite`) are reported, never removed.
-  - Operator steps for gate 116: `docs/roadmap/bootstrap-ui.md` (status 2026-10-04).
 
 ## Waiting on the human operator
 
@@ -128,6 +122,9 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 
 ## Change log
 
+Last 24 hours only; git history keeps the rest.
+
+
 - 2026-10-04 12:40: file created by the coordinator. Q16–Q18 done (gate 118 captured); Q17 needed
   two operator-made ACLs; Q15 mounted the second volume and finished gate 114.
 - 2026-10-04 12:45: D-117 answered: Sentinel scratched, gate 117 descoped. D-118 confirmed (ServiceNow OAuth + ACLs done).
@@ -148,3 +145,5 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 17:13: PR #82 merged (`ffa05cd`). Q10 told to rerun 120 → 123 at `ffa05cd` once deployed.
 - 2026-10-04 17:30: Q22 done (AWS budget `keel-monthly` created). Q10 in progress at `ffa05cd`.
 - 2026-10-04 18:00: Q10 at `ffa05cd`: 120 passed; 121 refused on a residual group owner from the 2b2c338 run, whose 121 record is void. PR #83 opened (owner-link fix).
+- 2026-10-04 18:07: PR #83 CI green; waiting for the operator's merge.
+- 2026-10-04 20:30: tasks moved to GitHub issues #84–#93 (label `task`, operator-approved 20:19). "Open PRs" and the gates free-text column replaced by the Tasks table. Infrastructure, ServiceNow and AWS sections move to a docs file on master after the freeze.

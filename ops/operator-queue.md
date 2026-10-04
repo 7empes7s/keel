@@ -956,8 +956,29 @@ item that needs it stays untouched.
 - Asked by the "Gate 116 drill live acceptance" thread (20:39 UTC). Marouane named the onboarding account
   and chose Entra-only read setup in that thread (20:39 UTC). It restarts the portal, so **don't run it while
   Q10 is in progress**; run it before Q10 starts or after it finishes.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done** at deployed ffa05cd (Q10 not running).
+  1. `GET /users/marouane.Defili@techinsiderbytes.com?$select=id` (Collector) returned **`8dab2722-f4f9-443a-bd67-63782a46dfd0`**
+     (Marouane Defili, marouane.defili@techinsiderbytes.com).
+  2. Backed up `/etc/keel/portal.env` as `portal.env.bak-q27-*`. Appended
+     `KEEL_SETUP_OPERATOR_ID=8dab2722-f4f9-443a-bd67-63782a46dfd0` and restarted `keel-portal` (health ok).
+     **No `/etc/keel/setup.json`**, so operations stay `{}` and every write stays disabled (`graphHost.mjs`
+     `qualify()` returns null; `ensure()` throws).
+  3. `GET /api/setup`: `canCheck: true`, `canProvision: true`. The API doesn't list operations; as in Q19, `true`
+     only means a run can start, with no write operation enabled.
+     - **Read setup: run `cbd974b9ef10…` state `complete`** (Entra-only, `["entra-collect"]`, approved by
+       Marouane 20:40:48, build ffa05cd). This is gate 116's readSetupRunId.
+     - **Restore setup: run `ea7e91c24847…` state `waiting-for-you`** at the PIM step "Privileged Role
+       Administrator". Its other steps show `not-started`. The step JSON has **no field naming the
+       operator**, so I can't confirm from the page that it now refers to 8dab2722. That run was approved at
+       20:40:16, before the id was set. A fresh or resumed restore run after PIM activation (or after #96)
+       will observe with the new id.
+     - Note: no tenant-wide PIM data exists for Privileged Role Administrator (no active or eligible
+       instances, checked 18:17 UTC).
+     - Earlier stopped read run `c18bfc21…` (with Intune) remains in the journal.
+  4. Read-only: the **KEEL Collector SP still holds the directory role "Intune Administrator"**
+     (template `3a2c62db…`), alongside Global Reader, Security Reader and the Q10 grants (SharePoint,
+     Exchange and Compliance Administrator). Not changed.
 - Needs: Q21 done; Q10 not running.
 - Do:
   1. Look up the Entra object id of `marouane.Defili@techinsiderbytes.com` with a read-only Graph GET

@@ -522,7 +522,7 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: todo
+- Status: in-progress
 - Coordinator note (11:40 UTC): the operator reports "we fixed servicenow", i.e. the two
   `u_keel_change` ACLs (read, write; role `u_keel_change_user`) should now exist. Re-check: as each
   test user, GET and PATCH a probe record (delete it after). If both work, mark Q17 done and go

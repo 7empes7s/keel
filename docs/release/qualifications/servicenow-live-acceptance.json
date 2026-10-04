@@ -1,0 +1,10 @@
+{
+  "contractVersion": 1,
+  "gate": "servicenow-live-acceptance",
+  "status": "pending",
+  "operation": "servicenow.non-default-workflow-qualification",
+  "credentialMode": "keel-oauth-reference+test-user-references",
+  "evidenceLevel": "fixture-tested",
+  "synthetic": true,
+  "note": "Placeholder. No capture has run against the non-production ServiceNow instance: the relay business rule, relay table, mapped test users and non-default workflow are not yet confirmed in the instance. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/servicenow-live-acceptance.md, Operator steps."
+}

@@ -21,6 +21,7 @@ import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicens
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { SENTINEL_LIVE_GATE, validateSentinelLiveSubject } from '../qualification/sentinelAcceptance.mjs';
+import { SERVICENOW_LIVE_GATE, validateServiceNowLiveSubject } from '../qualification/servicenowAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { STORAGE_LIVE_GATE, validateStorageLiveAcceptance } from '../../engine/storage/storageLiveEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
@@ -715,6 +716,9 @@ const GATE_VALIDATORS = {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
   // Task-117: Sentinel workspace ingestion; needs both proofs (runner signature and capture log).
   [SENTINEL_LIVE_GATE]: (evidence, context) => validateSentinelLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // Task-118: ServiceNow non-default workflow; needs both proofs (runner signature and capture log).
+  [SERVICENOW_LIVE_GATE]: (evidence, context) => validateServiceNowLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
 };
 

@@ -827,3 +827,17 @@ item that needs it stays untouched.
   - Decision: no: scratch Sentinel; gate 117 descoped (Marouane, keel-operator thread, 2026-10-04 12:36 UTC; recorded verbatim by the coordinator)
 - D-118: is the non-production ServiceNow instance ready? If so, give its host.
   - Decision: yes, a ServiceNow dev instance already exists and is reachable from the VPS (Marouane, project chat, 2026-10-04 10:45 UTC; recorded verbatim by the coordinator). Host: dev426571.service-now.com (Q16); OAuth and ACLs set up (confirmed by Marouane 12:36 UTC).
+
+### Q22: AWS budget guard (operator-directed)
+- Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
+  the tenant or master, so it can run while Q10 waits.
+- Status: todo
+- Needs: none
+- Do: on the VPS as root, from the queue checkout, run `ALERT_EMAIL=<address> bash ops/aws/budget-guard.sh`
+  (profile `keel`; budget `keel-monthly`, $25/month; alerts at 50/80/100% actual and 100% forecast; AWS
+  Budgets' first two budgets are free). If the `keel` login has expired, report that and stop; don't sign in.
+  Use the alert address the operator gives. If none is named here, ask him in your session. Don't write the
+  address into the repo.
+- Result: whether `keel-monthly` exists now
+  (`aws budgets describe-budget --account-id <id> --budget-name keel-monthly --profile keel --region us-east-1`)
+  and whether the alerts were created.

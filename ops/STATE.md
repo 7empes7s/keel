@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 16:50 UTC
+- **Last updated:** 2026-10-04 16:55 UTC
 
 ## How the work is organized
 
@@ -145,3 +145,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 15:05: Q10 at `124fbc6`: 120 passed, 121 refused (Graph omits team `tenantId`). PR #77 opened with the tool fix; chain reruns after it deploys.
 - 2026-10-04 15:22: PR #77 merged (`2b2c338`). Q10 told to rerun 120 → 123 at `2b2c338` once deployed.
 - 2026-10-04 16:50: Q10 at `2b2c338`: 120, 121 passed; 122 refused (EXO org id empty). PR #82 opened. Master moved to `34f550b` (#78, #79, another thread). keel-operator asked to message the coordinator thread on every Q10 status change (the coordinator missed the 15:35 result for an hour).
+- 2026-10-04 16:55: Q22 queued (AWS budget guard via `ops/aws/budget-guard.sh`, operator-directed).

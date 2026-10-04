@@ -920,8 +920,20 @@ item that needs it stays untouched.
 - Issue #90, asked by the "Prune timer review" thread (20:33 UTC). Doesn't touch the tenant, a service or
   master, so it can run while Q10 waits. Read-only: deletes nothing, starts or enables nothing. Leave
   `keel-prune.timer` disabled and don't touch `/opt/keel-live`.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done (read-only; nothing deleted, started or enabled; `keel-prune.timer` still disabled).**
+  1. Scratch checkout of `origin/claude/prune-timer-review` (PR #99) at **1cfa616d216e18827e19f7c369143e5eeb5cda98**
+     ("Prune: keep every snapshot something points at, and share the dry run"), outside /opt/keel-live;
+     `engine npm ci` OK. Checked first: `--dry-run` calls `listPrunableSnapshots` (two SELECTs only);
+     the DELETE lives in `pruneSnapshots`.
+  2. `node ../cli/keel-prune.mjs --dry-run` (exit 0) printed **"would prune 154 snapshot(s): …"**: 154 ids
+     from `0e0c9371-…` to `f74b0fac-…`. Note: **`f74b0fac-a1ee-4f94-9cd2-d889e98dae55` is the snapshot the
+     Q11 recovery set's config export was built from.** The set holds its own copy of that export, so the
+     gate-114 evidence is unaffected, but a real prune would delete the snapshot in the live DB.
+  3. `SELECT … FROM schedule WHERE job_kind='prune'`: **0 rows** (no prune schedule).
+  4. Snapshots per tenant: `sha256:f7b3959300856957`: **182**, oldest 2026-09-04 10:02 UTC, newest
+     2026-10-04 20:00 UTC. So 28 are kept and 154 would go.
+  5. Scratch checkout removed.
 - Needs: none
 - Do, as root on the VPS:
   1. Make a scratch checkout of `origin/claude/prune-timer-review` (PR #99; outside `/opt/keel-live`; report

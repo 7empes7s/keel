@@ -19,6 +19,110 @@ only what a local copy can prove:
 Every record says so in `subject.unqualified`, with the reason. They are never
 claimed and never left out.
 
+## Status — 2026-10-04: recovery-set tool
+
+**The host blocker now has a tool; the gate still waits on live evidence.**
+The nightly backup set (`/opt/backups/<date>/keel-db.sql.gz`) had only the
+legacy `{path, checksum, timestamp}` manifest: no task-67 recovery manifest
+and no configuration export tree, and `backup.sh` lives outside this repo.
+`ops/keel-recovery-set.mjs` closes that gap without touching `backup.sh`. Given
+one existing, verified dump, it writes a complete task-114-ready set into a new
+or empty output directory:
+
+| Set entry | Where it comes from |
+| --- | --- |
+| `<dump name>` (e.g. `keel-db.sql.gz`) | a byte copy of the source dump; the copy is re-hashed and must match |
+| `config-export/manifest.json` and `config-export/<type>/<sha256>.json` | `engine/export/configExport.mjs` `exportSnapshot` (the code behind `cli/keel-export.mjs`), latest completed snapshot or `--snapshot-id` |
+| `recovery-manifest.json` | `engine/storage/recoveryManifest.mjs` `buildRecoveryManifest` (the code behind `keel-dump-manifest.mjs --recovery`) |
+| `recovery-set.json` | a summary: tenant ref, build, schema pin, snapshot, observation ids, evidence head (`seq:hash:count`), sha256 of the manifest, dump and export manifest. No secrets |
+
+The pins are derived the same way their verifiers expect:
+- **Tenant ref:** `tenantRefFor(tenantId)` from the tenant config
+  (`--tenant-config` or `KEEL_TENANT_CONFIG_PATH`).
+- **Build:** `--build`, or `git rev-parse HEAD` of the deployed checkout
+  (`--checkout`, default the checkout the tool runs from). An explicit
+  `--build` that differs from a git checkout's HEAD is refused.
+- **Schema pin:** `currentSchemaPin`, the sha256 of the checkout's
+  `engine/store/schema.sql`.
+- **Observation ids:** `<snapshotId>:<resourceType>` for every type in the
+  snapshot's coverage digest or persisted rows. These are the ids the export
+  backs.
+- **Evidence head:** the tenant's `evidence_head` row.
+
+The observation ids and evidence head are read in one
+`REPEATABLE READ READ ONLY` transaction that is always rolled back.
+
+The recovery manifest names the dump and export relative to the set, so the
+set verifies wherever it is copied. Before the tool reports success it runs
+`verifyRecoveryManifest` over the set. The set must verify with recovery
+complete.
+
+**Rules the tool enforces**
+- **Verified dumps only.** The dump's sha256 must equal the backup job's legacy
+  manifest (`--dump-manifest`, which must name this exact dump) or
+  `--dump-sha256`, and the gzip stream must be intact. With neither, it
+  refuses.
+- **Key metadata is references only.** It comes from `--key-instructions`,
+  `--key-held-by` and `--key-location`, or from a small JSON file
+  (`--key-metadata`, holding `{instructions, heldBy, location}` and no other
+  fields), never both. All three are required and non-empty. A value is
+  refused if it looks like a secret: a PEM block, `password=`/`passphrase:`
+  style assignments, a bearer token, a URL with a password, a JWT, a cloud
+  access key id, a long hex run, or a long mixed-case base64 run.
+- **Read-only outside the output directory.** It only reads the source dump,
+  the legacy manifest and every other existing backup. The output directory
+  must be new or empty, and must not be, or contain, the source backup
+  directory. On any refusal it removes only what it wrote.
+- **`--dry-run`** prints what it would read (dump, dump manifest, tenant
+  config, build, schema file, key metadata file, and the database URL with its
+  password masked) and what it would write. It reads no dump bytes, opens no
+  database connection and writes nothing.
+
+**Tests.** `engine/roadmap/recovery-set.test.mjs` (added to the CI engine step
+in `.github/workflows/portal.yml`) builds a set from fixtures: a gzip dump with
+a legacy manifest, plus a completed snapshot and a two-record evidence chain in
+the isolated test database. It then proves:
+- `ops/keel-dump-manifest.mjs --verify` (run as a process) accepts the set
+  with recovery complete;
+- the capture tool's `--live` path accepts the set copied to a second
+  directory (host facts injected, as in `storage-live-acceptance.test.mjs`),
+  and its signed record passes `qualification.mjs` verification with
+  `requireLive`.
+
+It also proves these are rejected:
+- missing or empty key instructions, by flag or file;
+- secret-looking key metadata, and unknown key-file fields;
+- a tampered export resource or export manifest, by `--verify` and by the
+  capture;
+- a wrong build, by the tool against a git checkout, by `--verify` and by the
+  capture;
+- an unverified dump;
+- a non-empty or overlapping output directory.
+
+It also checks that the source backup tree, the dump bytes and mtime and the
+evidence table are unchanged, and that `--dry-run` writes nothing.
+
+**Limits**
+- **The evidence head is the database's head when the set is made, not when the
+  dump was taken.** Make the set right after the nightly dump. If governed
+  actions ran in between, the head is newer than the dump's contents; it still
+  verifies against the set, but a reconstruction from the dump would end at an
+  earlier head.
+- **The export is of the current database's snapshot, not extracted from the
+  dump.** Likewise, it should be made from the same night's state.
+- **The checkout must be the deployed build.** The schema pin comes from that
+  checkout's schema file. A non-git checkout takes `--build` on the operator's
+  word.
+- **Secret detection is a pattern check.** A secret written as plain words
+  ("the key is apple banana …") is not detected. The tool states its rule;
+  the operator keeps key material out.
+- **It does not copy the set to the separate volume, run the capture or
+  produce evidence.** Those stay operator steps (below). The committed
+  placeholder `docs/release/qualifications/storage-live-acceptance.json` is
+  unchanged and still pending.
+- **The tests use fixtures.** They prove the tool and its consumers, not the
+  host's backup directory, volumes or accounts.
+
 ## Status — 2026-10-03
 
 **Code half shipped; the gate stays pending live evidence.** The verifier, the
@@ -160,11 +264,55 @@ writes `fixture-tested`, `synthetic: true`, and signs only as
 
 ## Operator steps
 
+**Make the recovery set (new, 2026-10-04).** Run on the host after the nightly
+backup has written and verified the newest dump. Use the deployed checkout
+(`/opt/keel`) so the build and schema pin are the deployed ones. It only reads
+the backup and the database. It writes only into `--out`.
+
+```bash
+cd /opt/keel
+latest=$(ls -1d /opt/backups/*/ | sort | tail -n 1); latest=${latest%/}
+set -a; . /etc/keel/db.env; set +a          # KEEL_DB_URL (read-only use)
+# References only, never key material:
+cat > /root/keel-key-metadata.json <<'JSON'
+{"instructions": "<runbook reference>", "heldBy": "<role or person>", "location": "<where the key is held>"}
+JSON
+node ops/keel-recovery-set.mjs --dry-run \
+  --dump "$latest/keel-db.sql.gz" --dump-manifest /opt/backups/keel-db-manifest.json \
+  --out "$latest/recovery-set" --tenant-config /etc/keel/tenant.json \
+  --key-metadata /root/keel-key-metadata.json
+# Review the plan, then run the same command without --dry-run.
+```
+
+The last lines it prints are the build, schema pin, evidence head and a
+ready-to-run `keel-dump-manifest.mjs --verify` command. All of them are also
+in `recovery-set.json`. If `/opt/backups/keel-db-manifest.json` already names
+a newer dump, pass `--dump-sha256 <checksum from that night's backup log>`
+instead.
+
+**Copy it to the separate volume.** The copy is a plain recursive copy. It
+must not remove or prune anything already on either side:
+
+```bash
+date=$(basename "$latest")
+install -d -m 0755 /mnt/keel-copy/$date
+cp -a --no-clobber "$latest/recovery-set/." /mnt/keel-copy/$date/
+stat -c '%d %n' "$latest/recovery-set" /mnt/keel-copy/$date   # device ids must differ
+chmod -R a-w /mnt/keel-copy/$date                              # the recovery account reads only
+```
+
+Then capture with `--primary-root "$latest/recovery-set"`, `--copy-root
+/mnt/keel-copy/<date>`, `--manifest recovery-manifest.json`, `--dump
+keel-db.sql.gz` and `--export config-export`. Take the `--checkpoint-*` values
+from `recovery-set.json` `evidenceHead` (`seq:hash:count`), and run from a
+checkout at `recovery-set.json` `build.revision`.
+
 **What is needed**
 - A backup set made by the deployed build: the dump, the configuration export
-  tree, and a task-67 recovery manifest
-  (`ops/keel-dump-manifest.mjs DUMP --recovery OUT … --evidence-head SEQ:HASH:COUNT
-  --key-instructions … --key-held-by … --key-location …`). Key instructions and
+  tree, and a task-67 recovery manifest. `ops/keel-recovery-set.mjs` (above)
+  makes all three. By hand, use `cli/keel-export.mjs` and
+  `ops/keel-dump-manifest.mjs DUMP --recovery OUT … --evidence-head SEQ:HASH:COUNT
+  --key-instructions … --key-held-by … --key-location …`. Key instructions and
   the evidence head are required: without them recovery is incomplete and the
   gate fails.
 - A copy of that set on a **separate volume** (a different mount from the

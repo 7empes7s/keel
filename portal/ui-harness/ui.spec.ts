@@ -33,6 +33,7 @@ const PAGES = [
   { name: "integrations", hash: "/integrations" },
   { name: "integrations-servicenow-off", hash: "/integrations/servicenow-off" },
   { name: "setup", hash: "/setup" },
+  { name: "setup-checked", hash: "/setup/checked" },
   { name: "alerts", hash: "/alerts" },
   { name: "ask", hash: "/ask" },
   { name: "ask-unknown", hash: "/ask/unknown" },
@@ -453,6 +454,7 @@ const RECORD_IDS: Record<string, string[]> = {
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
+  "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
   alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
@@ -653,6 +655,19 @@ test("setup shows the step waiting on the operator and continues through the gua
   await read.getByRole("button", { name: "Continue setup" }).click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("setup-call"))).not.toBeNull();
   expect(JSON.parse((await page.evaluate(() => sessionStorage.getItem("setup-call")))!)).toEqual({ resume: "5e7a" + "0b".repeat(30) });
+});
+
+// Task-76 production host: a grant broader than setup asks for is reported as found in
+// the tenant, never as something KEEL fixed or will remove.
+test("setup reports the restorer's extra grant as observed", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup/checked", "light");
+  const restore = page.locator("section", { has: page.getByRole("heading", { name: "Write access for restores" }) });
+  const consent = restore.locator(".setup-step", { has: page.getByRole("heading", { name: "Grant admin consent for keel-restorer" }) });
+  await expect(consent.locator(".pill")).toHaveText("Done");
+  await expect(consent).toContainText("The app also holds a permission this setup does not ask for: MailboxSettings.ReadWrite. KEEL reports it and does not remove it");
+  await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toHaveCount(0);
+  await expect(restore.locator(".setup-step-waiting-for-you h3")).toHaveText('Activate your "Privileged Role Administrator" role');
 });
 
 // A record inside a stacked table cell stays in the value column on a phone, an empty

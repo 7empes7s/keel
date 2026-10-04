@@ -88,6 +88,7 @@ async function latestRun(client, tenantRef, identity) {
 const stepView = (step, progress) => ({
   id: step.id, kind: step.kind, identity: step.identity, workload: step.workload ?? null, name: step.name,
   action: step.action, requiredScopes: step.requiredScopes ?? [], missingScopes: step.missingScopes ?? [],
+  excessScopes: step.excessScopes ?? [],
   manual: MANUAL_KINDS.includes(step.kind), progress,
 });
 
@@ -163,9 +164,14 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
       continue;
     }
     const plan = await planBootstrap({ tenantRef, workloads, readAdapters: readers ?? emptyReaders, operatorPrincipalId, now });
+    // A host reader may be unable to see one kind of authority (for example
+    // Intune roles without an Intune RBAC read grant). Those steps stay
+    // "not checked": an unreadable state is never shown as missing or present.
+    const unchecked = new Set(readers?.uncheckedKinds ? await readers.uncheckedKinds() : []);
     scopes.push({
       scope, workloads, observed: readers !== null, run: null, planId: plan.planId,
-      steps: plan.steps.map((step) => stepView(step, stepProgress(step, null, { observed: readers !== null }))),
+      steps: plan.steps.map((step) => stepView(step,
+        stepProgress(step, null, { observed: readers !== null && !unchecked.has(step.kind) }))),
     });
   }
   return {

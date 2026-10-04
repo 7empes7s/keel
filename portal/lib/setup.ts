@@ -16,13 +16,28 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
   const resolveHost = deps.host ?? setupHost;
   return guarded({ action: "setup:show", capability: "configuration" }, async ({ client, principalId, tenantRef }) => {
     const host = resolveHost();
-    const state = await loadSetupState(client, {
+    const load = (readers: SetupHost["readers"]) => loadSetupState(client, {
       tenantRef,
       viewerId: principalId,
-      readers: host.readers,
+      readers,
       operatorPrincipalId: host.operatorPrincipalId,
     } as unknown as Parameters<typeof loadSetupState>[1]);
-    return Response.json({ ...state, canCheck: canCheck(host), canProvision: canProvision(host) }, { headers: NO_STORE });
+    let state: Awaited<ReturnType<typeof load>>;
+    let checkFailed = false;
+    try {
+      state = await load(host.readers);
+    } catch (error) {
+      if (host.readers === null) throw error;
+      // The tenant could not be read just now: show every step as not checked
+      // rather than guessing. Only the message is logged; it carries no token.
+      console.error(error instanceof Error ? error.message : "setup: tenant check failed");
+      state = await load(null);
+      checkFailed = true;
+    }
+    return Response.json(
+      { ...state, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
+      { headers: NO_STORE },
+    );
   }, deps);
 }
 

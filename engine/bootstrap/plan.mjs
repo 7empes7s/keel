@@ -169,7 +169,12 @@ export async function planBootstrap({
     const derivedScopes = [...new Set(identityRequirements.flatMap((r) => r.graphPermissions))].sort();
     const displayName = appDisplayNameFor(identity);
 
-    const app = observed.applications.find((candidate) => candidate?.displayName === displayName) ?? null;
+    // A host that binds each identity to its configured app id (task-76 setup
+    // host) tags the observed registration with keelIdentity; otherwise the
+    // registration is recognised by its KEEL display name.
+    const app = observed.applications.find((candidate) => candidate?.keelIdentity === identity)
+      ?? observed.applications.find((candidate) => candidate?.keelIdentity === undefined && candidate?.displayName === displayName)
+      ?? null;
     const servicePrincipal = app
       ? observed.servicePrincipals.find((candidate) => candidate?.appId === app.appId) ?? null
       : null;
@@ -206,6 +211,9 @@ export async function planBootstrap({
       requiredScopes: derivedScopes,
       consentedScopes: [...consentedScopes].sort(),
       missingScopes: missingConsent,
+      // Grants this identity already holds beyond the derivation. Reported as
+      // observed; the plan never asks for them and nothing ever removes them.
+      excessScopes: [...consentedScopes].filter((scope) => !derivedScopes.includes(scope)).sort(),
     });
 
     // Workload RBAC: a separate authority from Graph consent.

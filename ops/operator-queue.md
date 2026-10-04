@@ -990,3 +990,26 @@ item that needs it stays untouched.
      ("waiting for you" is expected until Marouane activates PIM).
   4. Read-only: report whether the KEEL Collector service principal currently holds the Entra directory role
      "Intune Administrator" (Marouane added it and was asked to remove it). Don't change it.
+### Q28: #90 prune dry-run breakdown (read-only)
+- Issue #90, asked by the "Prune timer review" thread (21:04 UTC) to check that Q25's 154 snapshots are the
+  expected ones. Same rules as Q25: read-only, delete nothing, enable nothing; the `prune` schedule stays absent.
+- Status: queued
+- Result:
+- Needs: none
+- Do, as root with `/etc/keel/db.env` sourced, in psql against `KEEL_DB_URL`:
+  1. ```sql
+     WITH t AS (
+       SELECT s.id, s.status, s.started_at::date AS day,
+              CASE WHEN bool_or(rv.criticality='tier3') THEN 'tier3'
+                   WHEN bool_or(rv.criticality='tier2') THEN 'tier2' ELSE 'tier1' END AS tier,
+              count(rv.id) AS versions
+       FROM snapshot s LEFT JOIN resource_version rv ON rv.snapshot_id = s.id
+       WHERE s.tenant_ref = 'sha256:f7b3959300856957'
+       GROUP BY s.id)
+     SELECT tier, status, day, count(*) AS snapshots, sum(versions) AS versions
+     FROM t GROUP BY 1,2,3 ORDER BY 3,1,2;
+     ```
+  2. `SELECT count(*) FROM evidence WHERE payload::text LIKE '%f74b0fac-a1ee-4f94-9cd2-d889e98dae55%';`
+     (a count only, no payloads).
+  3. Without printing any file contents, grep the `claude/live-evidence-*` branches and the live gate evidence
+     directories for snapshot ids, and list which ids from Q25's list they cite.

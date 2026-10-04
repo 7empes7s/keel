@@ -659,6 +659,24 @@ being triggered by queue updates.
   3. Report `canCheck` and `canProvision` from a GET of `/api/setup`. Expected: `canCheck: true`,
      `canProvision: false`.
 
+### Q20: Gate 116 recovery key: generate and enroll (operator-directed)
+- Status: todo
+- Needs: none (the recovery authenticator from PR #72 is already deployed)
+- Operator instruction: Marouane, project chat 2026-10-04 13:37 UTC: "Send 3 to the operator to do"
+  (item 3 = generate and enroll the gate 116 recovery key). Sandbox shortcut accepted in PR #72's
+  review: the private key lives on this server instead of an offline machine.
+- Do: follow `docs/roadmap/keel-recovery.md` › Operator steps 1–2 at the deployed build:
+  1. `install -d -m 700 /root/keel-recovery-key`, then
+     `node tools/recovery/recovery-assertion.mjs keygen --private-out /root/keel-recovery-key/officer.pem --public-out /root/keel-recovery-key/officer.pub.pem`
+     and `chmod 600` the private key. It must stay outside every backup path, git, evidence and logs.
+     Never print it.
+  2. `node tools/recovery/recovery-assertion.mjs enroll --principal recovery-officer@keel.local --key-id officer-2026-10 --public-key /root/keel-recovery-key/officer.pub.pem --trust-store /etc/keel/recovery-authenticators.json`
+     (root-owned, mode 644, outside the backup set), then `install -d -m 700 /var/lib/keel/recovery-replay`.
+  3. Check that neither `/root/keel-recovery-key` nor the trust store is under any backup source path
+     (`/opt/backups`, the recovery-set builder's inputs). Report the paths, the key id and the public
+     key's fingerprint (sha256 of the public PEM), never the private key.
+  Don't sign an assertion or run a reconstruction yet; that's Q6, after the Setup run.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 13:50 UTC
+- **Last updated:** 2026-10-04 13:55 UTC
 
 ## How the work is organized
 
@@ -35,7 +35,7 @@ then prove the path works.
 | 113 | deployed-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-113` @ 48d37ca. Not mergeable: see "Evidence merge blocker" |
 | 114 | storage-live-acceptance | **Captured, verify ok** at `df0de36` | `claude/live-evidence-114` @ 4b1d3da. Copy on the second volume `/mnt/keel-copy` |
 | 115 | native-live-acceptance | **Captured, verify ok** at `33ad2a9` | `claude/live-evidence-115` @ b965a66 |
-| 116 | drill-live-acceptance | **Blocked** | PR #73 merged 13:34; needs its deploy + Q19, a recovery key generated and enrolled, a Setup run (task-76 run id), then the reconstruction drill (Q6) |
+| 116 | drill-live-acceptance | **Blocked** | PR #73 merged 13:34; needs its deploy + Q19, the recovery key (queued as Q20 for keel-operator, 13:40), a Setup run (task-76 run id), then the reconstruction drill (Q6) |
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
@@ -70,11 +70,9 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 1. Decide on the Collector read grants the Setup checks (PR #73) need (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
 2. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
-3. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
-   (details in `docs/roadmap/keel-recovery.md`). Blocked for Claude ("Secret-Store Writes").
-4. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
+3. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
    vps-deployer's output.
-5. **Run the AWS budget guard** script (below).
+4. **Run the AWS budget guard** script (below).
 
 ## Infrastructure facts
 
@@ -141,3 +139,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 13:00: AWS setup done on the VPS; budget guard still to run; keel-operator restart pending.
 - 2026-10-04 13:35: PR #73 merged (`2e8a5b9`); master deploy and Q19 next.
 - 2026-10-04 13:50: D-120b given in keel-operator's session and grants made; Q10 blocked on dead doc URLs; PR #74 opened.
+- 2026-10-04 13:55: gate 116 recovery key handed to keel-operator as Q20 at the operator's request.

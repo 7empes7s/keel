@@ -76,7 +76,7 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     auth: { application: true, delegated: true },
     rbac: { permissions: ['SharePointTenantSettings.Read.All'], roles: ['SharePoint Administrator'] },
     paging: 'none', throttle: 'graph-429-retry-after', consistency: 'eventual',
-    source: doc('/en-us/graph/api/tenantadmin-settings-get'),
+    source: doc('/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0'),
   },
   {
     id: 'sharepoint.site-discovery', workload: 'sharepoint-site-settings', resource: 'SharePoint site list',
@@ -108,7 +108,7 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
-    source: doc('/en-us/powershell/module/sharepoint-pnp/get-pnptenantsite'),
+    source: Object.freeze({ url: 'https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html', retrievedAt: null }),
   },
   {
     id: 'teams.settings', workload: 'teams-settings', resource: 'Team member, guest, messaging and fun settings',
@@ -193,7 +193,7 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
-    source: doc('/en-us/powershell/module/sharepoint-pnp/get-pnptenantsite'),
+    source: Object.freeze({ url: 'https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html', retrievedAt: null }),
   },
   {
     id: 'purview.label-definitions', workload: 'purview-labels', resource: 'Sensitivity label definitions',

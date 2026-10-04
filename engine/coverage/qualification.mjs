@@ -278,7 +278,7 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
       'isResharingByExternalUsersEnabled',
     ]),
     rbac: Object.freeze({ permissions: ['SharePointTenantSettings.ReadWrite.All'], roles: ['SharePoint Administrator'] }),
-    source: `${DOCS}/tenantadmin-settings-update?view=graph-rest-1.0`,
+    source: `${DOCS}/sharepointsettings-update?view=graph-rest-1.0`,
   }),
   // Roadmap task-104: Teams settings and structural membership. Each is its own
   // operation with its own proof. `requires` names the SharePoint write: Teams

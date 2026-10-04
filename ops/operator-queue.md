@@ -415,7 +415,45 @@ being triggered by queue updates.
   change.
 
 ### Q14: What running the Settings › Setup flows would do (read-only report)
-- Status: in-progress
+- Status: done
+- Result: Read-only (code at deployed df0de36 plus a GET of the live `/api/setup`). Nothing was run.
+  **Bottom line: on this deployment, running either Setup flow does nothing to the tenant and
+  records no run.** `portal/lib/setup-host.ts` `setupHost()` returns `NO_SETUP_HOST`
+  (readers, adapters, credentials and build all null), and the repo ships no implementation. Live
+  `/api/setup` reports `canCheck: false, canProvision: false`. `POST /api/actions/setup`
+  (`portal/lib/action.ts:597ff`) therefore returns **409 `provisioning_unavailable`** right after
+  the auth checks (configuration + approve, recorded as an attempt). That happens before
+  `migrateBootstrapJournal`, so not even the `bootstrap_plan`/`bootstrap_event` tables get
+  created. `cli/keel-bootstrap.mjs` supports offline `--mode plan --fixture` only.
+  **What a run would do if a host supplied qualified adapters** (`engine/bootstrap/execute.mjs`):
+  - Plan steps (live GET):
+    - read (entra-collect, intune-collect): `registration` collector create-registration
+      (keel-collector, 6 scopes); `graph-permission` grant-consent (admin consent for those 6
+      scopes); `workload-rbac` Intune "Read Only Operator" (**manual**);
+      `keel-app-permission` keel.collect.
+    - restore (entra-restore): `registration` keel-restorer (3 scopes); `graph-permission`
+      grant-consent; `pim-activation` Privileged Role Administrator (**manual**);
+      `keel-app-permission` keel.restore.
+  - Flow: approve (`approveBootstrapPlan`: checks the plan intent against a fresh derivation,
+    needs separate collector/restorer reference-only credentials and the kill switch off, then writes
+    `bootstrap_plan`). Execute: manual steps are observed first and stop as `pending-manual` if
+    unsatisfied. Then each step is desired, observed, and if not satisfied, qualified (a restorer
+    credential qualified for that op/build) and `adapters.ensure()`, then re-observed and verified.
+    Finally everything is re-observed and the run is `complete`.
+  - **Tenant effects, through the adapters only:** it **would create app registrations and service
+    principals** (create-registration), **grant admin consent / app-role assignments**
+    (grant-consent), and configure KEEL-side app permissions. It doesn't itself assign Entra roles
+    or activate PIM (manual: it waits for the operator). No tenant-wide settings are in the step
+    kinds. Graph calls are adapter-defined and none exist in the repo. Observations persist only
+    object, app and service-principal ids.
+  - **Records:** the task-76 "run id" is the approval's `artifact_id` in `bootstrap_plan`, with per-step
+    events in `bootstrap_event`. `complete`, `stopped` or `pending-manual` are the run states the
+    page and Q5/Q6 need.
+  - Note: since KEEL Collector/Restorer already exist with consent, a qualified host would mostly
+    observe "satisfied" and journal it, except the Restorer's 52-role grant set vs the plan's 3
+    scopes, which it wouldn't reduce.
+  **Consequence for Q6/116:** task-76 run ids can't exist until a deployment supplies readers,
+  adapters and credentials to `setupHost()`. That's a code or deploy change, not an operator step.
 - Needs: none
 - Do: read-only. Report what the read setup and the restore setup would actually do if run from
   the portal:

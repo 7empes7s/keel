@@ -348,7 +348,18 @@ Required mutations were each applied alone and then restored (2026-10-04):
 | Elevate fixture evidence to live-qualified (no fixture-claim check) | 8 | 1 |
 | Elevate fixture evidence to live-qualified (import seam without `--require-live`) | 8 | 1 |
 
-**Validation:** in progress; results are recorded here before the PR is opened.
+**Validation** (2026-10-04). It was run in a container without `/etc/keel/db.env`, with
+`KEEL_DB_TEST_URL` and `KEEL_TENANT_CONFIG_PATH` exported for a local PostgreSQL 16
+instead.
+- `node --test engine/roadmap/exchange-live-acceptance.test.mjs engine/authz/*.test.mjs
+  engine/jobs/*.test.mjs engine/collect/*.test.mjs engine/coverage/*.test.mjs
+  engine/cir/*.test.mjs` gives 23 pass, 0 fail.
+- The final `verify --require-live` step was run on the pending placeholder. It exits 1
+  with "exchange-live-acceptance external runner evidence pending", as it must until the
+  operator captures evidence.
+- The CI restore-engine set, with the new suite added to `.github/workflows/portal.yml`,
+  gives 394 pass, 0 fail.
+- Portal: `npm test` gives 156 pass, and `npm run build` is clean.
 
 ## Limitations
 

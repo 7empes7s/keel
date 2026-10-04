@@ -99,6 +99,7 @@ test("every server-rendered data page rejects before its loader without a read g
     protect,
     resilience,
     reports,
+    ask,
     readiness,
     workUnitModule,
     workModule,
@@ -122,6 +123,7 @@ test("every server-rendered data page rejects before its loader without a read g
     import("../app/protect/page"),
     import("../app/resilience/page"),
     import("../app/reports/page"),
+    import("../app/ask/page"),
     import("../app/readiness/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
@@ -151,6 +153,7 @@ test("every server-rendered data page rejects before its loader without a read g
     ["/protect", protect],
     ["/resilience", resilience],
     ["/reports", reports],
+    ["/ask", ask],
     ["/readiness", readiness],
   ] as const) {
     await renderWithoutReadGrant(
@@ -187,6 +190,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     protect,
     resilience,
     reports,
+    ask,
     readiness,
     workUnitModule,
     workModule,
@@ -210,6 +214,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     import("../app/protect/page"),
     import("../app/resilience/page"),
     import("../app/reports/page"),
+    import("../app/ask/page"),
     import("../app/readiness/page"),
     import("next/dist/server/app-render/work-unit-async-storage.external.js"),
     import("next/dist/server/app-render/work-async-storage.external.js"),
@@ -239,6 +244,7 @@ test("every server-rendered data page rejects a read grant without a principal i
     ["/protect", protect],
     ["/resilience", resilience],
     ["/reports", reports],
+    ["/ask", ask],
     ["/readiness", readiness],
   ] as const) {
     await renderWithoutReadGrant(

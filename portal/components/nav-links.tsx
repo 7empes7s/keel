@@ -60,6 +60,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },
     { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
     { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
+    { href: "/ask", label: "Ask", gate: "canRead", aliases: "question query search what changed failed jobs coverage" },
   ],
   Settings: [
     { href: "/policies", label: "Policies", gate: "canPolicies" },

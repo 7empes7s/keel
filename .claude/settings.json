@@ -1,5 +1,18 @@
 {
   "permissions": {
     "allow": ["mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__send_message"]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"${CLAUDE_CODE_REMOTE:-}\" = \"true\" ]; then \"$CLAUDE_PROJECT_DIR/tools/dev-setup.sh\"; fi",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
   }
 }

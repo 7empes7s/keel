@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:15 UTC
+- **Last updated:** 2026-10-04 21:20 UTC
 
 ## How the work is organized
 
@@ -36,7 +36,7 @@ not merged until it finishes.
 |---|---|---|---|---|---|
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 | Blocked | #83 green, waiting for the operator's merge; then Q10 reruns 120 → 123 at its build |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step) | Read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done (operator id set) | Freeze, then #96 deploy, then a fresh restore setup run; then Q6. Collector SP still holds Intune Administrator (operator asked to remove) |
-| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Blocked | Recording 117 as an accepted gap needs the operator's explicit go in its thread (classifier refused); recapture waits on #84 and #85 |
+| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs) | Ledger change on master (b81a41d, 117 as accepted gap); #102 in review | Recapture and ledger verification wait on #84 and #85; no automerge until the chain finishes |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 (ships to `/mnt/keel-copy/keel-offsite`) | In review | Master freeze; then a Q-item deploys, dry-runs, enables `keel-offsite.timer`, runs once and checks sha256. Operator chose vol2 as the new target |
@@ -66,8 +66,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 1. Merge PR #83 (#84 chain).
 2. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
-3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
-4. Restorer least privilege (#93): D-93a and D-93b in the queue.
+3. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -164,3 +163,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:05: Q25 done (prune dry run; #90 thread reviewing). Q27 done (#85 operator id set; read setup complete).
 - 2026-10-04 21:10: #90: Q28 queued (read-only breakdown of the 154 snapshots the dry run would prune).
 - 2026-10-04 21:15: #89: operator chose vol2 (`/mnt/keel-copy`) as the offsite target; PR #100 updated.
+- 2026-10-04 21:20: master moved to b81a41d (operator commit: gate 117 recorded as an accepted gap). Q10 was not running (blocked on #83), so no evidence is affected; the chain build stays "#83's merge commit", which will include b81a41d.

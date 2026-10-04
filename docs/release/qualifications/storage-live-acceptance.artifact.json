@@ -1,0 +1,72 @@
+{
+  "gate": "storage-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "df0de3616841301bc0c596a4ba788996cc32ba1b",
+  "operation": "storage.local-copy-recovery",
+  "capturedAt": "2026-10-04T10:40:28.669Z",
+  "storage": {
+    "provider": "local-disk",
+    "retentionLock": "unsupported",
+    "immutability": "unsupported",
+    "copyRootRef": "/mnt/keel-copy/2026-10-04",
+    "volumes": {
+      "primary": {
+        "device": "2049"
+      },
+      "copy": {
+        "device": "2064"
+      }
+    }
+  },
+  "identity": {
+    "principalId": "os-user:keel-recovery",
+    "credentialRef": "os-login:keel-recovery@keel-vps (sudo -u from root; no password, nologin shell)",
+    "authenticatedBy": "os-account-login",
+    "independent": true,
+    "readerAccount": 995,
+    "writerAccounts": [
+      0
+    ],
+    "readerCanWrite": false,
+    "missingPrerequisites": []
+  },
+  "recovery": {
+    "manifestGeneratedAt": "2026-10-04T09:09:52.501Z",
+    "reads": [
+      {
+        "role": "manifest",
+        "name": "recovery-manifest.json",
+        "sha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3",
+        "expectedSha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3"
+      },
+      {
+        "role": "dump",
+        "name": "keel-db.sql.gz",
+        "sha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1",
+        "expectedSha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1"
+      },
+      {
+        "role": "export-manifest",
+        "name": "config-export/manifest.json",
+        "sha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e",
+        "expectedSha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e"
+      }
+    ],
+    "manifestVerification": {
+      "ok": true,
+      "failures": [],
+      "recoveryComplete": true,
+      "incomplete": []
+    },
+    "listing": {
+      "before": {
+        "count": 1058,
+        "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+      },
+      "after": {
+        "count": 1058,
+        "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+      }
+    }
+  }
+}

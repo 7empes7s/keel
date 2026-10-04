@@ -488,35 +488,21 @@ being triggered by queue updates.
 
 ### Q16: Locate the ServiceNow dev instance and inventory gate 118 prerequisites (read-only)
 - Status: blocked
-- Result: **Blocked: can't authenticate to the instance**, so the production-flag check (step 2) couldn't
-  run and everything instance-side is unknown. Nothing written anywhere.
-  - Instance host: **`https://dev426571.service-now.com`**. It responds: `/` returns 200, and an
-    unauthenticated `/api/now/table/...` returns 401.
-  - Credentials: `/etc/keel/servicenow.env` (root 0600, written 2026-09-19) holds
-    `SERVICENOW_INSTANCE_URL`, `SERVICENOW_OAUTH_CLIENT_ID` and `SERVICENOW_OAUTH_CLIENT_SECRET`.
-    The vault (daily 2026-09-19) calls them an "OAuth Inbound Integration app" client. **No
-    username or password** for any instance user exists in `/etc/keel`, `/root` or the vault.
-  - **`POST /oauth_token.do` with `grant_type=client_credentials` returns 401
-    `server_error/access_denied`.** Either the OAuth app isn't enabled for the client-credentials
-    grant (it needs an "OAuth - client credentials" inbound integration with a run-as user), or
-    the developer instance was reclaimed and re-provisioned since 09-19 and the app is gone.
-    `glide.installation.production` is therefore **unreadable**, so per Q16 I stopped.
-  - Host-side inventory:
-    - adapter config file: **none**;
-    - `servicenow-test-users.json`: none;
-    - `…_qualification` database: **none** (only `keel`, `keel_test`);
-    - `docs.json`: none;
-    - live `itsm_adapter_config` rows: 0;
-    - offline `servicenow.mjs check`: not run, since there's no config.
-  - Instance-side items (workflow table, `u_keel_callback_relay`, `x_keel.callback_signing_key_b64`,
-    business rule, test users): **unknown**, because I can't log in.
-  **Operator:** either enable the client-credentials grant on that inbound integration (with a
-  run-as admin user), or put an instance admin username and password in `/etc/keel/servicenow.env`
-  as e.g. `SERVICENOW_ADMIN_USER` / `SERVICENOW_ADMIN_PASSWORD`. Also confirm the instance at
-  `dev426571` is the current one.
-  Also for the coordinator: D-118 was written by the coordinator (quoting the operator's chat), but the
-  protocol says decisions are written only by the human operator. I'll treat D-118 as unset for
-  Q17/Q18 until the operator writes or confirms it in the file.
+- Result: **Stopped: `glide.installation.production` = `true`.** Q16 says to stop and report if it's true.
+  After the operator added `SERVICENOW_ADMIN_USER` and `SERVICENOW_ADMIN_PASSWORD` to
+  `/etc/keel/servicenow.env` (11:21 UTC), authentication works:
+  - OAuth `client_credentials` still returns 401;
+  - basic auth returns 401 ("User is not authenticated"), so basic auth looks disabled on the instance;
+  - **OAuth `password` grant** (the inbound client plus the admin user) returns 200.
+  One authenticated GET of `sys_properties?name=glide.installation.production` on
+  `https://dev426571.service-now.com` returned `value: "true"`. The other inventory reads were not
+  done. Nothing created or changed on the instance or the host.
+  **Needs the operator or coordinator:** the host name is a developer-instance pattern (`devNNNNNN`),
+  but the instance declares itself production. The gate's `--confirm-non-production-instance` and the
+  Q16/Q17 rule both depend on this flag. Options: the operator sets
+  `glide.installation.production=false` on this developer instance themselves (or states in a
+  decision that it may be set), or the coordinator changes the rule. I won't change the property.
+  Note: D-118 is still the coordinator's entry, not the operator's (see the earlier note).
 - Needs: none
 - Do: read-only. The operator says a ServiceNow developer instance already exists and is reachable
   from this VPS. Find it and report, naming paths and variable names only, never values:

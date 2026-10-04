@@ -684,6 +684,6 @@ item that needs it stays untouched.
   - Decision: yes
 - D-117: stand up the Sentinel test workspace? If yes, which subscription? (Deferred
   until now.)
-  - Decision: 
-- D-118: is the non-production ServiceNow instance ready? If so, give its host.
   - Decision: no: scratch Sentinel; gate 117 descoped (Marouane, keel-operator thread, 2026-10-04 12:36 UTC; recorded verbatim by the coordinator)
+- D-118: is the non-production ServiceNow instance ready? If so, give its host.
+  - Decision: yes, a ServiceNow dev instance already exists and is reachable from the VPS (Marouane, project chat, 2026-10-04 10:45 UTC; recorded verbatim by the coordinator). Host: dev426571.service-now.com (Q16); OAuth and ACLs set up (confirmed by Marouane 12:36 UTC).

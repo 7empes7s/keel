@@ -1,0 +1,81 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:25.796Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/sites/getAllSites",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.054Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.158Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab/permissions",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.275Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.389Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.719Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:26.787Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:27.090Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/admin/sharepoint/settings",
+      "status": 200,
+      "at": "2026-10-04T14:40:27.161Z"
+    }
+  ],
+  "values": {
+    "discoveredSites": 44,
+    "original": false,
+    "wrote": true
+  }
+}

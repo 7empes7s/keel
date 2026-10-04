@@ -1,10 +1,206 @@
 {
   "contractVersion": 1,
   "gate": "sharepoint-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "124fbc6024d25f37ed4b59b14dae5cc97cd18154",
   "operation": "sharepoint.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No live SharePoint capture exists. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/sharepoint-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-04T14:40:27.162Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisites": [
+      "task-101",
+      "task-102",
+      "task-103"
+    ],
+    "tenantHost": "lxtj.sharepoint.com",
+    "fixtureSite": {
+      "id": "lxtj.sharepoint.com,cb253964-965b-42a8-b684-faaf83d1435d,4eb9a131-7455-4f9d-bd6c-b33562be5cab",
+      "webUrl": "https://lxtj.sharepoint.com/sites/KEEL-RT-20261004"
+    },
+    "credentials": {
+      "collector": "app:87aa77c4-e15d-453d-8101-20e3e998311e",
+      "restorer": "app:12f8942f-c4d0-4a0d-aee1-efe928b1de54"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All"
+        ],
+        "roles": [
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "SharePointTenantSettings.ReadWrite.All"
+        ],
+        "roles": [
+          "SharePoint Administrator"
+        ]
+      }
+    },
+    "reads": [
+      {
+        "operationId": "sharepoint.tenant-settings",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T14:40:25.796Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 1
+      },
+      {
+        "operationId": "sharepoint.site-discovery",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T14:40:26.055Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 44
+      },
+      {
+        "operationId": "sharepoint.site-properties",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T14:40:26.158Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 1
+      },
+      {
+        "operationId": "sharepoint.site-permissions",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T14:40:26.275Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 0
+      }
+    ],
+    "supportedFields": [
+      "sharingCapability",
+      "sharingDomainRestrictionMode",
+      "sharingAllowedDomainList",
+      "sharingBlockedDomainList",
+      "isResharingByExternalUsersEnabled"
+    ],
+    "write": {
+      "operationId": "sharepoint.tenant-settings.update",
+      "version": "v1.0",
+      "synthetic": false,
+      "writeMode": "reversible-change",
+      "field": "isResharingByExternalUsersEnabled",
+      "ok": true,
+      "readBackVerified": true,
+      "restoredToOriginal": true,
+      "preFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
+      "finalFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
+      "capturedAt": "2026-10-04T14:40:27.162Z"
+    },
+    "requests": [
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/getAllSites",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab/permissions",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/admin/sharepoint/settings",
+        "status": 200
+      }
+    ],
+    "throttle": {
+      "retryAfterResponses": 0
+    },
+    "documentation": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T14:40:24.799Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-getallsites",
+        "retrievedAt": "2026-10-04T14:40:24.850Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-get",
+        "retrievedAt": "2026-10-04T14:40:24.886Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-list-permissions",
+        "retrievedAt": "2026-10-04T14:40:24.921Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-update?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T14:40:24.936Z"
+      }
+    ],
+    "captureLogSha256": "ac0cc831be651cba6835311680ad63ae6591dd6c27fcc241e3052eb9a848de18"
+  },
+  "proof": {
+    "artifact": {
+      "path": "sharepoint-live-acceptance.capture.json",
+      "sha256": "ac0cc831be651cba6835311680ad63ae6591dd6c27fcc241e3052eb9a848de18"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "1eeade9001f13251fcf1639dc8d93e507379a3d35f63565a8eab803edc3ccdfd"
+    }
+  }
 }

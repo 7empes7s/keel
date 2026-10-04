@@ -1,5 +1,5 @@
 [Unit]
-Description=KEEL offsite database replication
+Description=KEEL offsite database replication (to the persistent volume)
 
 [Service]
 Type=oneshot

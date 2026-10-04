@@ -262,7 +262,7 @@ The record is valid for 30 days and only for the build it names.
 |---|---|---|
 | 104, 105 | Teams and Exchange adapters (merged, ship disabled) | Enabling waits on the 120, 121 and 122 captures |
 | 106 | OneDrive and Purview label configuration adapter (merged, ships disabled) | Enabling waits on the 120, 121, 122 and 123 captures |
-| 112 | Six end-to-end journeys and the release ledger | Code in progress (all dependencies merged); its ledger reports release readiness pending until the live gates above pass |
+| 112 | Six end-to-end journeys and the release ledger (merged, #68) | Its ledger reports release readiness pending until the live gates above pass (how to run it: [docs/release/acceptance.md](../release/acceptance.md)) |
 | 124 | Complete roadmap release verification without overclaiming | 112–119, and the task-114 dependency edit noted above |
 
 ## Suggested order

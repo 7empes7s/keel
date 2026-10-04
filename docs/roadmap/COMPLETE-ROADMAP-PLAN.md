@@ -172,9 +172,9 @@ No `docs/release/qualifications/*.json` claims live qualification for any of the
 capture and verify commands, fixtures, open operator decisions and suggested order are in
 [operator-gates.md](operator-gates.md).
 
-**In progress / not started:** 112 (fixture-tested journeys and the release ledger) was
-started once all 16 of its dependencies merged; its ledger keeps readiness pending while any
-live gate is pending. 124 is not started: it needs 112–119 and live evidence.
+**Release ledger:** 112 (#68) merged: six fixture-tested end-to-end journeys and the release
+qualification ledger, which reports readiness `pending` while any live gate is pending.
+**Not started:** 124, which needs live evidence for 113–119 and 120–123.
 
 **Integration.** #38 and #65 fixed issues found by running every engine, CLI and tools suite
 on master:

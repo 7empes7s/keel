@@ -522,7 +522,7 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: todo
+- Status: in-progress
 - Needs: Q16 done, with `glide.installation.production=false`; decision D-118
 - Do: create only what Q16 reported missing, in the dev instance and on the host, following
   `docs/roadmap/servicenow-live-acceptance.md` › Operator steps 1–5. Rules:

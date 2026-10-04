@@ -61,7 +61,31 @@ being triggered by queue updates.
   This is not a keel-operator item.
 
 ### Q2: Gate 114 (storage-live-acceptance, local copy)
-- Status: in-progress
+- Status: blocked
+- Result: Part A done, read-only. Part B not started. No evidence branch; nothing created on the host.
+  1. Newest set: `/opt/backups/2026-10-04/` (04:04 UTC, made by the deployed build of that
+     time). It has `keel-db.sql.gz`, `keel-config.tar.gz` (a tarball of the repo's `ops/`
+     files, not a config-export tree with `manifest.json`) and other non-KEEL archives.
+     **No task-67 recovery manifest**, so no key instructions and no evidence head.
+     `/opt/backups/keel-db-manifest.json` is the legacy `{path, checksum, timestamp}` only.
+     Command that would make one: `node ops/keel-dump-manifest.mjs /opt/backups/<date>/keel-db.sql.gz
+     --recovery <OUT> --tenant-ref <REF> --build-revision <REV> --schema-pin <HEX>
+     --config-export-dir <DIR> --observation <ID>... --evidence-head SEQ:HASH:COUNT
+     --key-instructions <TEXT> --key-held-by <WHO> --key-location <WHERE>`.
+     Inputs: tenant-ref, build-revision and evidence-head can be derived (tenant.json,
+     `/opt/keel-live` HEAD, read-only DB query). **Not known:** a config-export directory
+     (the backup job doesn't produce one), the schema-pin value and observation ids for
+     this set, and the key instructions, holder and location (the operator must supply
+     these). The backup job (`ops/keel-backup-tier*.service`) would need to call
+     `--recovery`, which is a code or ops change and out of scope here.
+  2. `findmnt -D` / `lsblk`: **no separate filesystem.** One disk, `sda`: `/dev/sda1`
+     ext4 at `/` (149.9G, 13.4G free, 87% used) holds `/opt/backups`. Otherwise only
+     `/boot/efi` (252M vfat), tmpfs and snap squashfs loops. No attached volume, mounted
+     or not.
+  3. `keel-recovery` OS account: does not exist (not created, because Part B can't run).
+  Blocking: a real second volume (e.g. a Hetzner Volume attached and mounted, with
+  >= ~70 MB free for the KEEL set) and a task-67 recovery manifest with config export,
+  key instructions and evidence head.
 - Needs: none. Doesn't touch the tenant.
 - Do: follow `docs/roadmap/storage-live-acceptance.md` › Operator steps.
   - **Part A (read-only).** Report:

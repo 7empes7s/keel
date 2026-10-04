@@ -332,7 +332,73 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     requires: Object.freeze(['sharepoint.tenant-settings.update']),
     source: `${DOCS}/team-delete-members?view=graph-rest-1.0`,
   }),
+  // Roadmap task-105: Exchange mailbox and organization configuration. Four
+  // distinct operations, each with its own proof. Every one requires the Teams
+  // settings write first (which itself requires SharePoint), and every one needs
+  // the restorer's grants OBSERVED (`grantsRequired`): unknown RBAC blocks the write.
+  // Cmdlet writes are bound to the ExchangeOnlineManagement version in use.
+  'exchange.mailbox-settings.update': Object.freeze({
+    workload: 'exchange-mailbox-settings',
+    resourceType: 'exchangeMailboxSettings',
+    method: 'PATCH',
+    endpoint: '/users/{user-id}/mailboxSettings',
+    version: 'v1.0',
+    readBack: 'exchange.mailbox-settings',
+    fields: Object.freeze(['automaticRepliesSetting', 'timeZone', 'language', 'workingHours', 'dateFormat', 'timeFormat', 'delegateMeetingMessageDeliveryOptions']),
+    rbac: Object.freeze({ permissions: ['MailboxSettings.ReadWrite'], roles: [] }),
+    grantsRequired: true,
+    requires: Object.freeze(['teams.settings.update']),
+    source: `${DOCS}/user-update-mailboxsettings?view=graph-rest-1.0`,
+  }),
+  'exchange.client-access.update': Object.freeze({
+    workload: 'exchange-mailbox-settings',
+    resourceType: 'exchangeClientAccess',
+    kind: 'cmdlet',
+    method: 'Set-CASMailbox',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'exchange.client-access',
+    fields: Object.freeze(['OWAEnabled', 'ActiveSyncEnabled', 'PopEnabled', 'ImapEnabled', 'MAPIEnabled', 'EwsEnabled', 'SmtpClientAuthenticationDisabled']),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['teams.settings.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-casmailbox',
+  }),
+  'exchange.mailbox-retention.update': Object.freeze({
+    workload: 'exchange-mailbox-settings',
+    resourceType: 'exchangeMailboxRetention',
+    kind: 'cmdlet',
+    method: 'Set-Mailbox',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'exchange.mailbox-hold',
+    fields: Object.freeze(['LitigationHoldEnabled', 'RetentionHoldEnabled', 'SingleItemRecoveryEnabled', 'RetainDeletedItemsFor']),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['teams.settings.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-mailbox',
+  }),
+  'exchange.organization-config.update': Object.freeze({
+    workload: 'exchange-mailbox-settings',
+    resourceType: 'exchangeOrganizationConfig',
+    kind: 'cmdlet',
+    method: 'Set-OrganizationConfig',
+    module: 'ExchangeOnlineManagement',
+    readBack: 'exchange.organization-config',
+    fields: Object.freeze([
+      'FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled',
+      'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled',
+    ]),
+    rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] }),
+    grantsRequired: true,
+    requires: Object.freeze(['teams.settings.update']),
+    source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-organizationconfig',
+  }),
 });
+
+/** The version a write runs under now: its Graph version, or its module's version. */
+function writeVersion(declared, runtime) {
+  if (declared.kind === 'cmdlet') return runtime?.modules?.[declared.module] ?? null;
+  return declared.version;
+}
 
 function writeEvidenceProblems(item, { tenantRef, version, now }) {
   const problems = [];
@@ -343,7 +409,8 @@ function writeEvidenceProblems(item, { tenantRef, version, now }) {
   if (Number.isNaN(at)) problems.push('no capture time');
   else if (at > now.getTime()) problems.push('captured in the future');
   else if (now.getTime() - at > WORKLOAD_WRITE_EVIDENCE_MAX_AGE_MS) problems.push('older than 30 days');
-  if (item.version !== version) problems.push(`captured at version ${item.version ?? 'unknown'}, not ${version}`);
+  if (version === null) problems.push('the version in use now is unknown');
+  else if (item.version !== version) problems.push(`captured at version ${item.version ?? 'unknown'}, not ${version}`);
   if (item.ok !== true) problems.push('the write failed');
   if (item.readBackVerified !== true) problems.push('the write was not read back and verified');
   return problems;
@@ -353,7 +420,13 @@ function writeEvidenceProblems(item, { tenantRef, version, now }) {
  * Whether one workload write may run. `readLedger` is the task-101 ledger;
  * `evidence` is every fixture result and write capture for this operation.
  */
-export function workloadWriteQualification(operationId, { readLedger = null, evidence = [], tenantRef = null, now = new Date(), _seen = new Set() } = {}) {
+/**
+ * `runtime.modules` gives the module versions in use now (a cmdlet write is bound
+ * to its module version). `grants` is what the RESTORER app is observed to hold
+ * ({ permissions, roles }); a write declared `grantsRequired` stays disabled while
+ * it is unknown or short of the declared RBAC.
+ */
+export function workloadWriteQualification(operationId, { readLedger = null, evidence = [], tenantRef = null, now = new Date(), runtime = {}, grants = null, _seen = new Set() } = {}) {
   const declared = WORKLOAD_WRITE_OPERATIONS[operationId];
   if (!declared) {
     return Object.freeze({ operationId, state: 'undeclared', enabled: false, reasons: [`${operationId} is not a declared workload write`], proof: { fixture: null, live: null } });
@@ -363,7 +436,7 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
   const reasons = [];
   let live = null;
   for (const item of mine.filter((candidate) => candidate.kind !== 'fixture')) {
-    const problems = writeEvidenceProblems(item, { tenantRef, version: declared.version, now });
+    const problems = writeEvidenceProblems(item, { tenantRef, version: writeVersion(declared, runtime), now });
     if (problems.length === 0) { live = item; break; }
     reasons.push(`${item.proofRef ?? 'capture'}: ${problems.join('; ')}`);
   }
@@ -375,10 +448,28 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
   let prerequisitesEnabled = true;
   for (const required of declared.requires ?? []) {
     if (_seen.has(required)) throw new Error(`${operationId}: circular workload write prerequisite ${required}`);
-    const prerequisite = workloadWriteQualification(required, { readLedger, evidence, tenantRef, now, _seen: new Set([..._seen, operationId]) });
+    const prerequisite = workloadWriteQualification(required, { readLedger, evidence, tenantRef, now, runtime, grants, _seen: new Set([..._seen, operationId]) });
     if (!prerequisite.enabled) {
       prerequisitesEnabled = false;
       reasons.push(`${required} must be live-qualified first (it is ${prerequisite.state})`);
+    }
+  }
+
+  // Task-105: unknown RBAC blocks a write that declares it needs observed grants.
+  let grantsSatisfied = true;
+  if (declared.grantsRequired) {
+    if (!grants || !Array.isArray(grants.permissions) || !Array.isArray(grants.roles)) {
+      grantsSatisfied = false;
+      reasons.push('the restorer\'s grants are unknown; its permissions and roles must be observed before this write');
+    } else {
+      const missing = [
+        ...declared.rbac.permissions.filter((name) => !grants.permissions.includes(name)),
+        ...declared.rbac.roles.filter((name) => !grants.roles.includes(name)),
+      ];
+      if (missing.length) {
+        grantsSatisfied = false;
+        reasons.push(`the restorer lacks ${missing.join(', ')}`);
+      }
     }
   }
 
@@ -389,7 +480,7 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
   return Object.freeze({
     operationId,
     state,
-    enabled: state === 'live-qualified' && readEnabled && prerequisitesEnabled,
+    enabled: state === 'live-qualified' && readEnabled && prerequisitesEnabled && grantsSatisfied,
     reasons: Object.freeze(reasons),
     proof: Object.freeze({
       fixture: fixture ? { proofRef: fixture.proofRef ?? null } : null,

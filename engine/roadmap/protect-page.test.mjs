@@ -147,7 +147,7 @@ test('Restore: the step title is the verdict and no credential path is rendered 
       'the only inputs are the resource checkboxes and the search box');
     assertPlain(visibleText(html), 'Restore');
     // The server decides the paths; a deployment may move them, a request never can.
-    assert.deepEqual(restoreCredentialPaths({}), { collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer-target.json' });
+    assert.deepEqual(restoreCredentialPaths({}), { collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer.json' });
     assert.equal(restoreCredentialPaths({ KEEL_RESTORER_CONFIG_PATH: '/srv/keel/r.json' }).targetConfig, '/srv/keel/r.json');
   `, {});
 });

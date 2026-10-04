@@ -336,7 +336,7 @@ try {
     closureKeys: ['group:Admins'],
     targetTenantId: 'target-tenant',
     collectorConfigPath: '/etc/keel/tenant-target.json',
-    targetConfigPath: '/etc/keel/restorer-target.json',
+    targetConfigPath: '/etc/keel/restorer.json',
     reconciliationResources: null,
     waves: [['group:Admins']],
     patches: [],
@@ -375,7 +375,7 @@ try {
       artifactId: completedArtifact.id,
       snapshotId: mismatchedSnapshotId,
       selection: ['group:Everyone'],
-      targetConfigPath: '/etc/keel/a-different-restorer-target.json',
+      targetConfigPath: '/etc/keel/a-different-restorer.json',
     },
     requestedBy: 'principal-restorer',
   });

@@ -61,31 +61,26 @@ being triggered by queue updates.
   This is not a keel-operator item.
 
 ### Q2: Gate 114 (storage-live-acceptance, local copy)
-- Status: in-progress
-- Result: Part A done, read-only. Part B not started. No evidence branch; nothing created on the host.
-  1. Newest set: `/opt/backups/2026-10-04/` (04:04 UTC, made by the deployed build of that
-     time). It has `keel-db.sql.gz`, `keel-config.tar.gz` (a tarball of the repo's `ops/`
-     files, not a config-export tree with `manifest.json`) and other non-KEEL archives.
-     **No task-67 recovery manifest**, so no key instructions and no evidence head.
-     `/opt/backups/keel-db-manifest.json` is the legacy `{path, checksum, timestamp}` only.
-     Command that would make one: `node ops/keel-dump-manifest.mjs /opt/backups/<date>/keel-db.sql.gz
-     --recovery <OUT> --tenant-ref <REF> --build-revision <REV> --schema-pin <HEX>
-     --config-export-dir <DIR> --observation <ID>... --evidence-head SEQ:HASH:COUNT
-     --key-instructions <TEXT> --key-held-by <WHO> --key-location <WHERE>`.
-     Inputs: tenant-ref, build-revision and evidence-head can be derived (tenant.json,
-     `/opt/keel-live` HEAD, read-only DB query). **Not known:** a config-export directory
-     (the backup job doesn't produce one), the schema-pin value and observation ids for
-     this set, and the key instructions, holder and location (the operator must supply
-     these). The backup job (`ops/keel-backup-tier*.service`) would need to call
-     `--recovery`, which is a code or ops change and out of scope here.
-  2. `findmnt -D` / `lsblk`: **no separate filesystem.** One disk, `sda`: `/dev/sda1`
-     ext4 at `/` (149.9G, 13.4G free, 87% used) holds `/opt/backups`. Otherwise only
-     `/boot/efi` (252M vfat), tmpfs and snap squashfs loops. No attached volume, mounted
-     or not.
-  3. `keel-recovery` OS account: does not exist (not created, because Part B can't run).
-  Blocking: a real second volume (e.g. a Hetzner Volume attached and mounted, with
-  >= ~70 MB free for the KEEL set) and a task-67 recovery manifest with config export,
-  key instructions and evidence head.
+- Status: done
+- Result: **Part B done (via Q15).** `claude/live-evidence-114` @ 4b1d3da, from origin/master 87e366e.
+  Record build **df0de36** (the recovery set's build); captured from a df0de36 checkout.
+  `KEEL_TENANT_CONFIG_PATH=/etc/keel/tenant.json verify --require-live --gate storage-live-acceptance
+  --build df0de3616841301bc0c596a4ba788996cc32ba1b`: `{"ok": true, "failures": []}`, exit 0.
+  Retention lock, immutability and lock canary: UNQUALIFIED (by decision).
+  - Set: Q11's `/opt/keel-recovery-sets/2026-10-04`. Copied with `cp -a --no-clobber` to
+    `/mnt/keel-copy/2026-10-04`: device 2064 (vol2 /dev/sdb) vs 2049 (/dev/sda1). Root-owned, then
+    `chmod -R go+rX,a-w`. Copy digests match the set (manifest 80231c6d…, dump 429bdf53…,
+    export manifest d0ad81cf…).
+  - Checkpoint 2:90e032c1…ebf:2 (Q11). `--manifest-sha256` was passed because keel-recovery can't
+    read the primary set.
+  - Host changes:
+    - system account **`keel-recovery`** (uid 995, nologin, no home, owns no files);
+    - `chmod o+x /opt/keel-recovery-sets` (traverse only, so the capture can stat the primary root).
+      `/opt/backups` was not touched;
+    - `/etc/keel-recovery/tenant.json`: tenantId only, 0644, because keel-recovery can't read `/etc/keel`.
+  - Refs (descriptions only): credential `os-login:keel-recovery@keel-vps`; key ref = Q11
+    key metadata; storage read = the vol2 copy; tenant authorization = this queue.
+  - Evidence scanned: no HMAC key, token or PEM. Nothing deleted, moved or pruned.
 - Needs: none. Doesn't touch the tenant.
 - Do: follow `docs/roadmap/storage-live-acceptance.md` › Operator steps.
   - **Part A (read-only).** Report:

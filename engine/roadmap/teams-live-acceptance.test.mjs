@@ -91,7 +91,7 @@ before(async () => {
 });
 
 // ---- The Teams fake: two teams (one KEEL-RT), an owner, a fixture user to add and remove.
-function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false } = {}) {
+function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0 } = {}) {
   const team = {
     '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#teams/$entity',
     id: TEAM, displayName: teamName, description: 'KEEL rehearsal team', visibility: 'private', isArchived: false, tenantId: teamTenant,
@@ -106,6 +106,10 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
   // as live Graph did on 2026-10-04.
   const owners = [OWNER];
   if (fixtureOwnerBefore) owners.push(FIXTURE_USER);
+  // With rosterLagReads, a removed member stays in the Teams roster for that many
+  // roster reads, as live Teams did for ~60-90 s on 2026-10-04.
+  let ghost = null;
+  let ghostReads = 0;
   const calls = [];
   let throttled = false;
   let settingsPatches = 0;
@@ -131,7 +135,11 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       }
     }
     if (path === `/v1.0/teams/${TEAM}/members`) {
-      if (method === 'GET') return { status: 200, headers: {}, body: { value: structuredClone(members) } };
+      if (method === 'GET') {
+        const roster = ghost && ghostReads > 0 ? [...members, ghost] : members;
+        if (ghostReads > 0) ghostReads -= 1;
+        return { status: 200, headers: {}, body: { value: structuredClone(roster) } };
+      }
       if (method === 'POST') {
         const userId = /users\('([^']+)'\)/.exec(init.body['user@odata.bind'])[1];
         const member = { id: `MjA-new-${next++}`, userId, tenantId: TENANT, roles: init.body.roles, displayName: 'Fixture' };
@@ -154,7 +162,8 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       if (method === 'DELETE') {
         if (failRemove) return { status: 500, headers: {}, body: null };
         unown(members[index].userId);
-        members.splice(index, 1);
+        [ghost] = members.splice(index, 1);
+        ghostReads = rosterLagReads;
         return { status: 204, headers: {}, body: null };
       }
     }
@@ -573,4 +582,18 @@ test('a promotion that leaves the group owner link is cleaned up and checked; an
     return e;
   });
   assert.match(verifyIn(otherUser).failures.join('\n'), /other than the KEEL-RT fixture/);
+});
+
+test('a Teams roster that lags the removal is polled until the user is gone, and a lag past the window never verifies', async () => {
+  // 20 lagging roster reads outlast the 5 ordinary read-backs but not the removal window.
+  const lagging = teamsGraph({ rosterLagReads: 20 });
+  const settled = await capturedFiles(lagging, { restoreReadDelayMs: 0 });
+  const { membershipWrites } = settled.record.subject;
+  assert.equal(membershipWrites.captures.find((item) => item.operationId === 'teams.membership.remove').readBackVerified, true);
+  assert.equal(membershipWrites.restoredToOriginal, true);
+  assert.deepEqual(verifyEvidenceFile(settled.outPath, options()), { ok: true, failures: [] });
+
+  const stale = await capture(teamsGraph({ rosterLagReads: 1000 }), { restoreReadDelayMs: 0 });
+  assert.equal(stale.record.subject.membershipWrites.restoredToOriginal, false);
+  assert.match(stale.record.subject.membershipWrites.error, /THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER/);
 });

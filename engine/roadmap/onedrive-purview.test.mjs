@@ -382,7 +382,8 @@ test('label definitions and their publication are read and change-tracked withou
   assert.equal(first.result.discovery.itemCrawl, false);
   assert.doesNotMatch(JSON.stringify(first.result), /LabelUsageCount|LabeledItems|Q3 board pack/);
   const { rows: stored } = await client.query(`SELECT resource_key, fields FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`, [first.run.id]);
-  assert.deepEqual(stored.map((row) => row.resource_key), [`label-policy:${POLICY}`, `label:${CONFIDENTIAL}`, `label:${PUBLIC}`]);
+  // Compared as a set: ORDER BY on text follows the database collation.
+  assert.deepEqual(stored.map((row) => row.resource_key).sort(), [`label-policy:${POLICY}`, `label:${CONFIDENTIAL}`, `label:${PUBLIC}`].sort());
   assert.doesNotMatch(JSON.stringify(stored), /LabelUsageCount|LabeledItems|Q3 board pack/);
 
   // An unchanged second run reports no change, though every save time moved.

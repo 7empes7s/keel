@@ -851,8 +851,30 @@ item that needs it stays untouched.
 - Issue #89, asked by the "Offsite backup unreachable" thread (20:22 UTC). Doesn't touch the tenant or
   master, so it can run while Q10 waits. Read-only: no writes, no fixes, no secrets printed (the key
   file is listed, never read or shown).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done (read-only; nothing written, no secrets shown; the key file was listed, never read).**
+  **Diagnosis: the offsite target host is unreachable, and the timer has never been enabled.**
+  1. `keel-offsite.timer` is **disabled, inactive**; `keel-offsite.service` is static and inactive.
+     `journalctl -u keel-offsite.service`: **"-- No entries --"** (it has never run on this host).
+  2. Files: `/opt/keel/ops/keel-offsite.sh` (7051 B, Sep 29), `/opt/keel/engine/schedules/offsite.mjs`
+     (Sep 29) and `/root/.ssh/playground_vps` (0600, Aug 1) exist. `/opt/backups/keel-db-manifest.json`
+     exists (0600, **rewritten 14:21 UTC today**). **`/opt/backups/keel-db-shipped-manifest.json` is
+     missing** (nothing ever shipped).
+  3. `187.124.7.67` resolves to `srv1872555.hstgr.cloud`. **TCP 22: FAIL** (10 s timeout). **Ping: 2/2 lost.**
+  4. `ssh -i /root/.ssh/playground_vps … root@187.124.7.67`: `Connecting to 187.124.7.67 port 22` then
+     **`Connection timed out`**. No auth attempt was reached, so the key is untested.
+  5. `keel-offsite.sh --dry-run` (supported per its header) exits **0**. Local side verified: candidate
+     `/opt/backups/2026-10-04/keel-db.sql.gz`, gzip OK, 63 COPY blocks, sha256 `4d11b857…`. "Would ship to
+     root@187.124.7.67:/opt/keel-offsite/keel-db-2026-10-04.sql.gz" and prune >30 d. The dry run doesn't
+     contact the remote.
+  **Conclusion:** local verification is fine. The remote Hostinger VPS (srv1872555) isn't answering on
+  22/ICMP from here: down, firewalled, or the IP has changed. Worth checking the Hostinger panel or its
+  firewall. The timer must also be enabled once the remote works.
+  **Side finding (not offsite):** `mimule-backup.service` ran at **14:14 and 14:21 UTC** today (its
+  description now says "Daily KEEL DB + KEEL config + Caddy backup", so the unit was changed). The
+  14:21 run **overwrote** `/opt/backups/2026-10-04/keel-db.sql.gz` (04:04 sha256 `429bdf53…`, now
+  `4d11b857…`) and the manifest. The Q11 recovery set and the vol2 copy keep their own `429bdf53…`
+  copy, so gate 114's evidence is unaffected. But same-day reruns replace the nightly dump in place.
 - Needs: none
 - Do: on the KEEL VPS as root, run each and paste the output (report missing files, don't create them):
   1. `systemctl status keel-offsite.timer keel-offsite.service --no-pager; journalctl -u keel-offsite.service -n 60 --no-pager`

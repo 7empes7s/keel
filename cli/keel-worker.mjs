@@ -15,6 +15,7 @@ import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
 import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
 import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
 import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
+import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -444,13 +445,14 @@ export const JOB_HANDLERS = {
         throw new Error('params.driftIds must be a non-empty array of drift ids');
       }
       const args = [];
+      const defaults = credentialPaths();
       for (const id of params.driftIds) args.push('--drift-id', requireString(id, 'params.driftIds entry'));
       args.push(
         '--collector-config', requireString(
-          params.collectorConfig ?? '/etc/keel/tenant-target.json', 'params.collectorConfig',
+          params.collectorConfig ?? defaults.collectorConfig, 'params.collectorConfig',
         ),
         '--target-config', requireString(
-          params.targetConfig ?? '/etc/keel/restorer-target.json', 'params.targetConfig',
+          params.targetConfig ?? defaults.targetConfig, 'params.targetConfig',
         ),
       );
       if (params.mode !== undefined) {

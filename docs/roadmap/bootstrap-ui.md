@@ -145,7 +145,7 @@ operation ships disabled.
 - **Credentials.** It uses the deployment's existing credential files, the same
   ones restores use (`lib/restore-config.ts`):
   - `KEEL_COLLECTOR_CONFIG_PATH`, default `/etc/keel/tenant-target.json`;
-  - `KEEL_RESTORER_CONFIG_PATH`, default `/etc/keel/restorer-target.json`.
+  - `KEEL_RESTORER_CONFIG_PATH`, default `/etc/keel/restorer.json`.
 
   Each file has `tenantId`, `clientId`, `certPath` and `keyPath`. Both must
   belong to the tenant in `KEEL_TENANT_CONFIG_PATH`. They must also use
@@ -286,7 +286,7 @@ is reported and not shown as fixed.
 ### Operator steps
 
 1. Confirm `/etc/keel/tenant-target.json` (Collector) and
-   `/etc/keel/restorer-target.json` (Restorer) exist and name this tenant.
+   `/etc/keel/restorer.json` (Restorer) exist and name this tenant.
    Restart the portal; Settings › Setup should no longer say the server cannot
    look at the tenant.
 2. Optionally write `/etc/keel/setup.json` with `operatorPrincipalId` (your

@@ -462,20 +462,20 @@ assert.deepEqual(
   JOB_HANDLERS.restore.argsFor({
     planId: 'plan-1',
     collectorConfig: '/etc/keel/tenant-target.json',
-    targetConfig: '/etc/keel/restorer-target.json',
+    targetConfig: '/etc/keel/restorer.json',
   }),
   ['--collector-config', '/etc/keel/tenant-target.json',
-    '--target-config', '/etc/keel/restorer-target.json', '--plan', 'plan-1'],
+    '--target-config', '/etc/keel/restorer.json', '--plan', 'plan-1'],
 );
 assert.deepEqual(
   JOB_HANDLERS.restore.argsFor({
     snapshotId: 'snapshot-1',
     selection: ['group:Admins', 'conditionalAccessPolicy:Protect-Admins'],
     collectorConfig: '/etc/keel/tenant-target.json',
-    targetConfig: '/etc/keel/restorer-target.json',
+    targetConfig: '/etc/keel/restorer.json',
   }),
   ['--collector-config', '/etc/keel/tenant-target.json',
-    '--target-config', '/etc/keel/restorer-target.json',
+    '--target-config', '/etc/keel/restorer.json',
     '--snapshot-id', 'snapshot-1',
     '--select', 'group:Admins', '--select', 'conditionalAccessPolicy:Protect-Admins'],
   'the raw selection becomes repeatable --select flags; the closure is the CLI\'s job',
@@ -483,7 +483,7 @@ assert.deepEqual(
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
     snapshotId: 'snapshot-1', selection: ['group:Admins'],
-    collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer-target.json',
+    collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer.json',
     mode: 'enforce',
   }),
   /params.artifactId is required to enforce a restore/,
@@ -493,7 +493,7 @@ assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
     planId: 'plan-1',
     collectorConfig: '/etc/keel/tenant-target.json',
-    targetConfig: '/etc/keel/restorer-target.json',
+    targetConfig: '/etc/keel/restorer.json',
     mode: 'enforce',
   }),
   /params.artifactId is required to enforce a restore/,
@@ -516,7 +516,7 @@ assert.deepEqual(
     closureKeys: ['group:Admins'],
     targetTenantId: 'target-from-artifact',
     collectorConfigPath: '/etc/keel/tenant-target.json',
-    targetConfigPath: '/etc/keel/restorer-target.json',
+    targetConfigPath: '/etc/keel/restorer.json',
     reconciliationResources: null,
   }),
   ['--artifact', 'artifact-1', '--enforce'],
@@ -575,12 +575,12 @@ assert.deepEqual(
   JOB_HANDLERS.remediate.argsFor({
     driftIds: ['drift-1', 'drift-2'],
     collectorConfig: '/etc/keel/tenant-target.json',
-    targetConfig: '/etc/keel/restorer-target.json',
+    targetConfig: '/etc/keel/restorer.json',
     mode: 'enforce',
   }),
   ['--drift-id', 'drift-1', '--drift-id', 'drift-2',
     '--collector-config', '/etc/keel/tenant-target.json',
-    '--target-config', '/etc/keel/restorer-target.json',
+    '--target-config', '/etc/keel/restorer.json',
     '--enforce'],
 );
 // An operator-approved remediate request (task 15) never supplies credential config
@@ -590,8 +590,22 @@ assert.deepEqual(
   JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'] }),
   ['--drift-id', 'drift-1',
     '--collector-config', '/etc/keel/tenant-target.json',
-    '--target-config', '/etc/keel/restorer-target.json'],
+    '--target-config', '/etc/keel/restorer.json'],
 );
+// The defaults follow the same server environment the portal reads (issue #92).
+{
+  const saved = process.env.KEEL_RESTORER_CONFIG_PATH;
+  process.env.KEEL_RESTORER_CONFIG_PATH = '/srv/keel/r.json';
+  try {
+    assert.deepEqual(
+      JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'] }).slice(-2),
+      ['--target-config', '/srv/keel/r.json'],
+    );
+  } finally {
+    if (saved === undefined) delete process.env.KEEL_RESTORER_CONFIG_PATH;
+    else process.env.KEEL_RESTORER_CONFIG_PATH = saved;
+  }
+}
 assert.throws(
   () => JOB_HANDLERS.remediate.argsFor({}),
   /params.driftIds must be a non-empty array/,

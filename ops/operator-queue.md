@@ -528,6 +528,23 @@ being triggered by queue updates.
   Push the record and its `.capture.json` to `claude/live-evidence-118`. If `/opt/keel-live`
   moves mid-capture, stop and report.
 
+### Q19: Make Settings › Setup able to check the tenant after PR #73 deploys
+- Status: todo
+- Needs: PR #73 merged and `/opt/keel-live` deployed at or after its merge commit
+- Do: PR #73 builds the setup host from the Collector and Restorer credential files. It finds
+  them at `KEEL_COLLECTOR_CONFIG_PATH` (default `/etc/keel/tenant-target.json`) and
+  `KEEL_RESTORER_CONFIG_PATH` (default `/etc/keel/restorer-target.json`, which does not exist on
+  this host; the Restorer file is `/etc/keel/restorer.json`). If either is missing, Setup stays
+  "provisioning unavailable".
+  1. Read-only: report which of those env vars the `keel-portal` service sets, and whether both
+     default paths exist (names and paths only).
+  2. If the Restorer path doesn't resolve, add `KEEL_RESTORER_CONFIG_PATH=/etc/keel/restorer.json`
+     (and the collector path if needed) to the portal's env file, back the file up first, and
+     restart `keel-portal`. Change nothing else; don't create `/etc/keel/setup.json`, so every
+     write operation stays disabled.
+  3. Report `canCheck` and `canProvision` from a GET of `/api/setup`. Expected: `canCheck: true`,
+     `canProvision: false`.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

@@ -42,6 +42,7 @@ RUN pwsh -NoLogo -NoProfile -NonInteractive -Command " \
 WORKDIR /app
 COPY run-job.sh /app/run-job.sh
 COPY probe-workloads.ps1 /app/probe-workloads.ps1
+COPY run-cmdlet.ps1 /app/run-cmdlet.ps1
 RUN chmod +x /app/run-job.sh
 
 # No credentials baked in — /etc/keel is bind-mounted read-only at `docker run`

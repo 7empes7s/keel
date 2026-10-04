@@ -169,6 +169,24 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc('/en-us/powershell/module/exchange/get-casmailbox'),
   },
+  // Task-105: the mailbox's hold and retention state, and the organization's
+  // Exchange configuration. Both are configuration; neither reads a message.
+  {
+    id: 'exchange.mailbox-hold', workload: 'exchange-mailbox-settings', resource: 'Mailbox hold and retention settings',
+    operation: cmdlet('Get-Mailbox', 'ExchangeOnlineManagement', { parameters: ['-Identity'] }),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'none', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc('/en-us/powershell/module/exchange/get-mailbox'),
+  },
+  {
+    id: 'exchange.organization-config', workload: 'exchange-mailbox-settings', resource: 'Exchange organization configuration',
+    operation: cmdlet('Get-OrganizationConfig', 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'none', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc('/en-us/powershell/module/exchange/get-organizationconfig'),
+  },
   {
     id: 'onedrive.site-settings', workload: 'onedrive-site-settings', resource: 'OneDrive site sharing and storage settings',
     operation: cmdlet('Get-PnPTenantSite', 'PnP.PowerShell', { parameters: ['-IncludeOneDriveSites'], probeName: 'Get-PnPTenantSite -IncludeOneDriveSites' }),

@@ -143,6 +143,7 @@ jobs:
           roadmap/sharepoint-live-acceptance.test.mjs
           roadmap/teams-config.test.mjs
           roadmap/teams-live-acceptance.test.mjs
+          roadmap/sentinel-live-acceptance.test.mjs
           roadmap/exchange-config.test.mjs
           roadmap/drill-live-acceptance.test.mjs
           roadmap/native-live-acceptance.test.mjs

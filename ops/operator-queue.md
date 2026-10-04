@@ -486,6 +486,48 @@ being triggered by queue updates.
 
      Set Q2's Status and Result as you go. Use the evidence head recorded in Q11.
 
+### Q16: Locate the ServiceNow dev instance and inventory gate 118 prerequisites (read-only)
+- Status: todo
+- Needs: none
+- Do: read-only. The operator says a ServiceNow developer instance already exists and is reachable
+  from this VPS. Find it and report, naming paths and variable names only, never values:
+  - the instance host, and where its credentials live (expected `/etc/keel/servicenow.env`;
+    otherwise search `/etc/keel`, `/root` and the vault notes for the host name);
+  - one authenticated GET of `sys_properties?name=glide.installation.production`: its value must
+    be `false`; if it is `true` or unreadable, stop and report;
+  - for each item in `docs/roadmap/servicenow-live-acceptance.md` › Operator steps, whether it
+    exists: a non-default workflow table, the KEEL adapter config file, the
+    `u_keel_callback_relay` table, the `x_keel.callback_signing_key_b64` property, the
+    `keel-callback-relay` business rule, two non-person test users with their own tokens, a
+    `…_qualification` KEEL database, and `docs.json`;
+  - if an adapter config exists, the result of
+    `node tools/qualification/servicenow.mjs check --config <file>` (offline).
+
+### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
+- Status: todo
+- Needs: Q16 done, with `glide.installation.production=false`; decision D-118
+- Do: create only what Q16 reported missing, in the dev instance and on the host, following
+  `docs/roadmap/servicenow-live-acceptance.md` › Operator steps 1–5. Rules:
+  - Instance objects only: a custom `u_keel_*` table (never the stock `change_request`),
+    the relay table, the signing property, the business rule from
+    `ops/servicenow/keel-callback-relay.js`, and two test users named `keel-rt-sn-*` that
+    are not people.
+  - Secrets (OAuth tokens, signing key) go only in root-only env files under `/etc/keel/`
+    and are referenced as `env:` refs; never printed, logged or committed.
+  - The qualification database is a new, empty `keel_servicenow_qualification` database,
+    never the production KEEL database.
+  - Report each object created and each file path written. Then run `servicenowLive.mjs plan`
+    (offline) and report its output.
+
+### Q18: Gate 118 (servicenow-live-acceptance)
+- Status: todo
+- Needs: Q17 done; decision D-118
+- Do: run the capture and verify exactly as in `docs/roadmap/servicenow-live-acceptance.md`
+  › Capture and Verify, at the build `/opt/keel-live` is deployed at, with
+  `--confirm-non-production-instance <host from Q16>` and `--declared-by "Marouane"`.
+  Push the record and its `.capture.json` to `claude/live-evidence-118`. If `/opt/keel-live`
+  moves mid-capture, stop and report.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every
@@ -529,4 +571,4 @@ item that needs it stays untouched.
   until now.)
   - Decision: 
 - D-118: is the non-production ServiceNow instance ready? If so, give its host.
-  - Decision: 
+  - Decision: yes, a ServiceNow dev instance already exists and is reachable from the VPS (Marouane, project chat, 2026-10-04 10:45 UTC; recorded verbatim by the coordinator). Host: the one Q16 finds.

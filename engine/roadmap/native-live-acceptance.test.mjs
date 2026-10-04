@@ -39,15 +39,21 @@ function clock(start = '2026-10-01T10:00:00.000Z') {
 }
 
 /** A Microsoft-shaped directory: GET/DELETE /users/{id}, deleted items and restore. */
-function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredId = OBJECT_ID } = {}) {
+function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredId = OBJECT_ID, readBackMisses = 0 } = {}) {
   const writes = [];
+  const reads = [];
+  let misses = readBackMisses;
   let state = 'live';
   let deletedDateTime = null;
   let restored = false;
   const body = () => ({ id: OBJECT_ID, userPrincipalName: name, displayName: 'native fixture', accountEnabled: false });
   return {
     writes,
+    reads,
     async read(_v, path) {
+      reads.push(path);
+      // Replication lag: the restored object 404s for the first few read-backs.
+      if (path === `/users/${OBJECT_ID}` && restored && misses > 0) { misses -= 1; return { ok: false, status: 404, body: null }; }
       if (path === `/users/${OBJECT_ID}`) return state === 'live' ? { ok: true, status: 200, body: { ...body(), id: restored ? restoredId : OBJECT_ID } } : { ok: false, status: 404, body: null };
       if (path === `/directory/deletedItems/${OBJECT_ID}`) return state === 'deleted' ? { ok: true, status: 200, body: { ...body(), deletedDateTime } } : { ok: false, status: 404, body: null };
       return { ok: false, status: 404, body: null };
@@ -74,7 +80,7 @@ const liveArgv = (out) => ['capture', '--live', '--resource-type', 'user', '--ob
 
 const quiet = { log() {}, error() {} };
 
-async function runnerCapture({ graphOptions = {}, argv = null, env = { KEEL_QUALIFICATION_HMAC_KEY: KEY } } = {}) {
+async function runnerCapture({ graphOptions = {}, argv = null, env = { KEEL_QUALIFICATION_HMAC_KEY: KEY }, sleep = async () => {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'keel-native-115-'));
   dirs.push(dir);
   const now = clock();
@@ -82,7 +88,7 @@ async function runnerCapture({ graphOptions = {}, argv = null, env = { KEEL_QUAL
   const errors = [];
   const code = await capture({
     argv: argv ?? liveArgv(dir), env, out: { log() {}, error: (m) => errors.push(m) },
-    deps: { now, build: BUILD, graph, readFile: () => JSON.stringify({ tenantId: TENANT_ID }), sleep: async () => {} },
+    deps: { now, build: BUILD, graph, readFile: () => JSON.stringify({ tenantId: TENANT_ID }), sleep },
   });
   const file = join(dir, `${NATIVE_LIVE_GATE}.json`);
   let evidence = null;
@@ -272,6 +278,36 @@ test('a failed restore is recorded as failed and never verifies', async () => {
 test('a restore that returns a different object id is not a preserved-id recovery', async () => {
   const run = await runnerCapture({ graphOptions: { restoredId: 'aaaaaaaa-0000-4000-8000-000000000000' } });
   failsWith(run.file, /object id was not preserved/);
+});
+
+function readBackExchange(run) {
+  const artifact = JSON.parse(readFileSync(join(run.dir, `${NATIVE_LIVE_GATE}.artifact.json`), 'utf8'));
+  return artifact.operations[0].exchanges.find((e) => e.step === 'read-back');
+}
+
+test('a read-back that 404s once after restore is retried and the capture verifies', async () => {
+  const sleeps = [];
+  const run = await runnerCapture({ graphOptions: { readBackMisses: 1 }, sleep: async (ms) => { sleeps.push(ms); } });
+  assert.equal(run.code, 0, run.errors.join(' | '));
+  assert.deepEqual(sleeps, [2000]);
+  const readBack = readBackExchange(run);
+  assert.equal(readBack.status, 200);
+  assert.deepEqual(readBack.attempts, [404, 200]);
+  assert.equal(run.evidence.subject.operations[0].idPreserved, true);
+  assert.equal(verifyEvidenceFile(run.file, verifyOpts).ok, true);
+});
+
+test('a read-back that keeps returning 404 stops after the bound with the same message', async () => {
+  const sleeps = [];
+  const run = await runnerCapture({ graphOptions: { readBackMisses: 99 }, sleep: async (ms) => { sleeps.push(ms); } });
+  assert.equal(run.code, 1);
+  assert.match(run.errors.join(' '), /read-back returned 404/);
+  assert.equal(sleeps.length, 4);
+  // One read-live plus five bounded read-backs against the live path.
+  assert.equal(run.graph.reads.filter((p) => p === `/users/${OBJECT_ID}`).length, 6);
+  assert.deepEqual(readBackExchange(run).attempts, [404, 404, 404, 404, 404]);
+  assert.equal(run.evidence.subject.operations[0].outcome, 'failed');
+  failsWith(run.file, /not a qualified recovery/);
 });
 
 test('existing gates keep their behaviour; an unknown gate still fails closed', () => {

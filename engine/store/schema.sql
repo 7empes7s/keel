@@ -1385,3 +1385,17 @@ DROP TRIGGER IF EXISTS itsm_record_version_append_only ON itsm_record_version;
 CREATE TRIGGER itsm_record_version_append_only
   BEFORE UPDATE OR DELETE ON itsm_record_version
   FOR EACH ROW EXECUTE FUNCTION itsm_append_only();
+
+-- Roadmap task-97 (WS8): per-tenant ITSM adapter configuration (ServiceNow first). The
+-- config holds explicit table, field, state and identity mappings plus credential
+-- REFERENCES only (env:NAME); engine/itsm/adapters/servicenow.mjs refuses secret values.
+-- An incomplete config is stored so the portal can name what is missing, and the
+-- adapter stays off until every mapping is present. Additive: nothing existed before.
+CREATE TABLE IF NOT EXISTS itsm_adapter_config (
+  tenant_ref  text NOT NULL,
+  adapter     text NOT NULL,
+  config      jsonb NOT NULL,
+  updated_by  text NOT NULL,
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, adapter)
+);

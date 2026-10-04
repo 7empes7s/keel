@@ -40,7 +40,9 @@ import { baselinesVerdict, complianceVerdict } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
-import { integrationsVerdict } from "@/lib/integrations-view";
+import { integrationsPageVerdict } from "@/lib/integrations-view";
+import { ServiceNowPanel } from "@/components/servicenow-panel";
+import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy } from "@/lib/policies";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
@@ -389,6 +391,30 @@ const DELIVERIES = [
 ];
 const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
 const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
+// Roadmap task-97: ServiceNow on with one decision update held back, and a second
+// tenant whose mapping is missing two settings.
+const SERVICENOW_ON: ServiceNowStatus = {
+  configured: true, enabled: true, problems: [],
+  mapping: {
+    instanceHost: "contoso.service-now.com", table: "u_keel_gated_change",
+    fields: { state: "u_gate", approver: "u_gate_owner.email", planVersion: "u_plan_rev", planDigest: "u_plan_hash", keelRequest: "u_keel_ref", keelDecision: "u_keel_outcome" },
+    approvedValues: ["gate_passed"], rejectedValues: ["gate_blocked", "gate_withdrawn"],
+    tokenRef: "env:KEEL_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_SERVICENOW_CALLBACK_SECRET",
+  },
+  mirror: { records: 12, waiting: 2, pendingUpdates: 1, heldBack: 1, conflicts: 0 },
+  heldBack: [{ eventId: "keel:decision:5e9c0000-0000-4000-8000-000000000097", kind: "decision", externalRef: "9d3f0000000040008000000000000097", attempts: 1, reason: "rejected by adapter", lastError: "ServiceNow PATCH returned HTTP 403", createdAt: now }],
+  updatedAt: now, updatedBy: "marouanedefili@gmail.com",
+  docSource: { url: "https://www.servicenow.com/docs/r/api-reference/rest-apis/c_TableAPI.html", retrievedAt: "2026-10-04" },
+};
+const SERVICENOW_OFF: ServiceNowStatus = {
+  ...SERVICENOW_ON, enabled: false,
+  problems: [
+    { code: "states-rejected", message: "No state value is mapped to rejected." },
+    { code: "field-approver", message: "No field is mapped for the person who decided (a field of the table or a dot-walked reference field)." },
+  ],
+  mapping: { ...SERVICENOW_ON.mapping!, rejectedValues: [], fields: { ...SERVICENOW_ON.mapping!.fields, approver: "" } },
+  mirror: { records: 0, waiting: 0, pendingUpdates: 0, heldBack: 0, conflicts: 0 }, heldBack: [],
+};
 const EVIDENCE = [
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
   { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "action-attempt", actor: "marouanedefili@gmail.com", subject: { action: "backup", decision: "attempted" } },
@@ -1026,9 +1052,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           subscriptions={[{ id: "5b500000-0000-4000-8000-0000000000f1", channel_id: CHANNELS[0].id, event_glob: "drift.detected", min_severity: "warning" }, { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "*", min_severity: "critical" }]} />
         <DeliveryTable channels={CHANNELS} deliveries={DELIVERIES} now={now} />
       </div></>;
-    case "/integrations": return <>{header("Settings", "Integrations", "Where KEEL copies its audit record: SIEM and webhook destinations.")}
-      <Verdict text={integrationsVerdict(DESTINATIONS, DESTINATION_STATUSES)} tone="attention" />
-      <div data-layer="explanation"><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>;
+    case "/integrations": case "/integrations/servicenow-off": {
+      const servicenow = path === "/integrations" ? SERVICENOW_ON : SERVICENOW_OFF;
+      const verdict = integrationsPageVerdict(DESTINATIONS, DESTINATION_STATUSES, servicenow);
+      return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": return <>{header("Changes", "Baselines", "How the tenant should look: the reference every change is measured against.")}
       <Verdict text={baselinesVerdict(BASELINES[0], now)} />
       <div data-layer="explanation">

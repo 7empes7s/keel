@@ -256,7 +256,8 @@ engine/coverage/*.test.mjs engine/cir/*.test.mjs` gives 23 pass, 0 fail.
 - The final `verify --require-live` step was run on the pending placeholder. It
   exits 1 with "teams-live-acceptance external runner evidence pending", as it must
   until the operator captures evidence.
-- The new suite has been added to the CI restore-engine set.
+- The CI restore-engine set, with the new suite added, gives 336 pass, 0 fail.
+- Portal: `npm test` gives 142 pass, and `npm run build` is clean.
 
 ## Limitations
 

@@ -304,37 +304,29 @@ being triggered by queue updates.
   then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
   set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
   until the chain is done.
-- Status: in-progress
-- Result: **Blocked on a code fix: three declared documentation URLs are dead (HTTP 404)**, so their
-  `docs.json` "retrieval" can't be recorded honestly. Nothing was captured; no gate was run.
-  Operator decision given in session (12:47 and 12:55 UTC): grant and run.
-  - Dead declared URLs (from `engine/collect/workloadContract.mjs`, at 87e366e). The verifier
-    requires exact matches (`sharepointAcceptance.mjs:241-243`):
-    - 120 read: `https://learn.microsoft.com/en-us/graph/api/tenantadmin-settings-get` returns 404.
-      It now lives at `https://learn.microsoft.com/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0` (200).
-    - 120 write: `…/graph/api/tenantadmin-settings-update?view=graph-rest-1.0` returns 404.
-      Now `…/graph/api/sharepointsettings-update?view=graph-rest-1.0` (200).
-    - 123 OneDrive (lines 111 and 196): `…/powershell/module/sharepoint-pnp/get-pnptenantsite`
-      returns 404. Now `https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html` (200).
-    - The other 22 declared pages for 120–123 return 200.
-    **Coordinator:** update those three sources (and any test pinning them), merge and deploy. Then
-    I run the whole chain at the new build.
-  - **Done and ready** (global admin used, logged in the vault):
-    - Collector Graph: SharePointTenantSettings.Read.All, Sites.Read.All, Sites.FullControl.All,
-      GroupMember.Read.All, Team.ReadBasic.All, TeamMember.Read.All, TeamSettings.Read.All,
-      MailboxSettings.Read.
-    - Collector SPO: Sites.FullControl.All. Collector roles: SharePoint, Exchange and Compliance
-      Administrator.
-    - Restorer Graph: SharePointTenantSettings.ReadWrite.All.
-    - Restorer SPO User.ReadWrite.All was granted for OneDrive provisioning, but SharePoint refuses
-      that app-only, so it was **revoked**.
-    - **alice's OneDrive provisioned** (operator ran Request-SPOPersonalSite; drive visible 13:06 UTC).
-    - Fixtures: site KEEL-RT-20261004 (Q8); team 9263e1d4 (owner maya); member carla
-      856db776 (D-121a, not in the team); mailbox alice (retention 14d).
-    - Configs in `/etc/keel/{exchange,purview}-{collector,restorer}.json`; grants files in
-      `/etc/keel/q10/`; modules PnP 3.4.1, EXO 3.10.1.
-    - Offline plans for 120–123 run clean. Label and policy for 123 (D-123d) not yet created;
-      they're created just before that capture.
+- Status: blocked
+- Result: **Stopped at the first failure: 120 passed, 121 failed (tool defect).** Build **124fbc6**
+  (`/opt/keel-live`, clean, deployed 14:39 UTC). All 25 declared doc URLs return 200 and the grant
+  requirements are unchanged.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ 3177f46 (from origin/master 124fbc6).
+    - Capture exit 0, with `--allow-widening-toggle` (D-120): `isResharingByExternalUsersEnabled`
+      went false → true → false, read back, restored (pre and final fingerprints match). I confirmed
+      afterwards that the setting is `false`.
+    - `verify --require-live --gate sharepoint-live-acceptance --build 124fbc6…`:
+      `{"ok": true, "failures": []}`, exit 0. The evidence secret scan was clean.
+  - **121 Teams: refused before any write (capture exit 1).** Requests: GET `/teams` (200),
+    GET `/teams/9263e1d4…` (200), then refused with "the fixture team belongs to another tenant".
+    - **Cause:** live Graph v1.0 `GET /teams/{id}` returns **no `tenantId`** in this tenant
+      (app-only). It's absent from the default response, from `$select=tenantId` and from beta. But
+      `tools/qualification/teamsLive.mjs:175` requires `String(body.tenantId) === --directory-tenant-id`.
+    - Nothing was written; team membership is unchanged (carla is not a member). The failed capture
+      files are kept locally, not committed.
+    - **Coordinator:** the fix belongs in the tool, e.g. prove the tenant another way (the team's
+      group from `/groups/{id}` read with the tenant-bound Collector token, or the token's `tid`), or
+      treat an absent `tenantId` as "not reported" rather than foreign. Then merge and deploy, and I
+      re-run the whole chain 120 → 123 at the new build (120 must be re-captured at that build).
+  - 122 and 123 were not run (stopping at the first failure). Grants, fixtures, alice's OneDrive and
+    configs are all still in place.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

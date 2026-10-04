@@ -1,11 +1,12 @@
 // status/generate.test.mjs
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from './generate.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-status-generate-'));
+process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 const configPath = join(dir, 'tenant.json');
 writeFileSync(configPath, JSON.stringify({ tenantId: 'test-tenant' }));
 const outPath = join(dir, 'index.html');

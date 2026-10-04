@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
@@ -5,6 +8,20 @@ import {
   getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
+
+// Separate Collector and Restorer configs for one fixture tenant, written to a temp dir.
+const fixtureConfigDir = mkdtempSync(join(tmpdir(), 'keel-roundtrip-'));
+function fixtureConfig(role) {
+  const path = join(fixtureConfigDir, `${role}.json`);
+  writeFileSync(path, JSON.stringify({
+    tenantId: '00000000-0000-0000-0000-0000000000c1',
+    clientId: `fixture-${role}-client`,
+    certPath: `/nonexistent/${role}.crt`,
+    keyPath: `/nonexistent/${role}.key`,
+  }));
+  return path;
+}
+
 
 // Production and rehearsal URLs with the same host and database identify the
 // same governance store even when their credentials differ.
@@ -197,8 +214,10 @@ assert.throws(
     runRoundTrip({
       mode: 'live',
       log: () => {},
-      collectorConfigPath: '/etc/keel/tenant.json',
-      restorerConfigPath: '/etc/keel/restorer.json',
+      // Fixture configs, not the host's /etc/keel: live mode reads both files (tenant
+      // pin and separate-credential check) before the injected reader fails.
+      collectorConfigPath: fixtureConfig('collector'),
+      restorerConfigPath: fixtureConfig('restorer'),
       dbUrl: 'postgres://u:p@127.0.0.1:5433/keel_test_fake',
       writer: failingWriter,
       reader: failingReader,

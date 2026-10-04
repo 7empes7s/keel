@@ -36,7 +36,12 @@ const READ_INVENTORY = join(ROOT, 'portal/lib/read.ts');
 // Task 34's approval inbox has its own approve-only contract and inventory;
 // health is the sole public route. Both are excluded exactly as the portal's
 // own read-inventory test excludes them.
-const NON_READ_SURFACES = new Set(['approvals/page.tsx', 'api/approvals/route.ts', 'api/health/route.ts']);
+// Approve-gated surfaces (an approver need not hold read): the approval inbox and,
+// since task-93, the approved emergency changes page and its API.
+const NON_READ_SURFACES = new Set([
+  'approvals/page.tsx', 'api/approvals/route.ts', 'api/health/route.ts',
+  'emergency-changes/page.tsx', 'api/change-intents/route.ts',
+]);
 
 // ---------------------------------------------------------------- contract
 

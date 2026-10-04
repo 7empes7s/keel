@@ -304,7 +304,7 @@ being triggered by queue updates.
   then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
   set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
   until the chain is done.
-- Status: blocked
+- Status: in-progress
 - Result: **Blocked on a code fix: three declared documentation URLs are dead (HTTP 404)**, so their
   `docs.json` "retrieval" can't be recorded honestly. Nothing was captured; no gate was run.
   Operator decision given in session (12:47 and 12:55 UTC): grant and run.

@@ -680,7 +680,7 @@ being triggered by queue updates.
      `canProvision: false`.
 
 ### Q20: Gate 116 recovery key: generate and enroll (operator-directed)
-- Status: todo
+- Status: in-progress
 - Needs: none (the recovery authenticator from PR #72 is already deployed)
 - Operator instruction: Marouane, project chat 2026-10-04 13:37 UTC: "Send 3 to the operator to do"
   (item 3 = generate and enroll the gate 116 recovery key). Sandbox shortcut accepted in PR #72's

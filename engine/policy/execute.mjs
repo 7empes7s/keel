@@ -34,6 +34,7 @@ import { appendEvidence } from '../govern/evidence.mjs';
 import { exceedsMaxBlastRadius } from './evaluate.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { assessDrift } from './changeIntent.mjs';
 
 export const AUTOMATION_KILL_SWITCH_PATH = '/var/lib/keel/AUTOMATION_DISABLED';
 export const AUTOMATION_EXECUTION_EVIDENCE_KIND = 'automation-execution';
@@ -170,7 +171,7 @@ export async function recordAutoRemediationTerminalOutcome(client, {
  * thrown — only a missing drift/policy row (a caller error) throws. */
 export async function executeAutoRemediation(client, {
   tenantRef, drift, policyId, actor = 'policy-automation',
-  killSwitchPath = AUTOMATION_KILL_SWITCH_PATH,
+  killSwitchPath = AUTOMATION_KILL_SWITCH_PATH, now = new Date(),
 }) {
   const refuse = async (outcome, extra = {}) => {
     await appendEvidence(client, {
@@ -226,6 +227,19 @@ export async function executeAutoRemediation(client, {
     };
   }
 
+  // Roadmap task-93: an approved emergency change is not rolled back automatically
+  // while its window is open — but only when EVERY field this drift changes is an
+  // approved transition (same field, same before, same after). Any other change on
+  // the resource, a different after value, or an added/removed resource falls through
+  // to the normal path below. The drift itself stays open and visible.
+  const intent = await assessDrift(client, { tenantRef, drift, now });
+  if (intent.state === 'approved') {
+    return refuse('change-intent-approved', { intentIds: intent.intentIds, approvedFields: intent.approvedFields });
+  }
+  const intentNote = intent.state === 'unapproved'
+    ? { changeIntent: { applied: false, reason: intent.reason, approvedFields: intent.approvedFields, unapprovedFields: intent.unapprovedFields } }
+    : {};
+
   if (policy.max_actions_per_window != null && policy.window_seconds != null) {
     const count = await countQueuedOrExecutedActions(client, {
       tenantRef, policyId: policy.id, windowSeconds: policy.window_seconds,
@@ -269,7 +283,7 @@ export async function executeAutoRemediation(client, {
     kind: AUTOMATION_EXECUTION_EVIDENCE_KIND,
     subject: {
       policyId: policy.id, driftId: drift.id, naturalKey: drift.natural_key,
-      outcome: 'queued', jobId: job.id,
+      outcome: 'queued', jobId: job.id, ...intentNote,
     },
     actor,
   });

@@ -31,6 +31,7 @@ const PAGES = [
   { name: "integrations", hash: "/integrations" },
   { name: "setup", hash: "/setup" },
   { name: "alerts", hash: "/alerts" },
+  { name: "emergency-changes", hash: "/emergency-changes" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -415,6 +416,7 @@ const RECORD_IDS: Record<string, string[]> = {
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
+  "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
   alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -659,5 +661,35 @@ test("policy activation preview names dependencies above the limit and refuses a
   await expect(preview).toHaveCount(0);
   await page.getByRole("button", { name: "Preview turning on" }).click();
   await expect(page.locator("section.policy-preview .policy-preview-sentence")).toBeVisible();
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+});
+
+// Task-93: an approved emergency change says what KEEL will hold back and until when,
+// keeps every other change on the resource in play, says what happened when one ended,
+// and refuses an approval by the person who made the change.
+test("emergency changes say what is held back, how each ended, and refuse self-approval", async ({ page }) => {
+  await open(page, "/emergency-changes");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; KEEL will not roll it back. The next approval ends in 3 hours.");
+  const active = page.locator("li.change-intent.is-active");
+  await expect(active.locator(".change-intent-sentence")).toHaveText(/^KEEL will not roll back the state change until .+ \(in 3 hours\)\.$/);
+  await expect(active).toContainText("Any other change to Block legacy auth (Conditional Access policy) is still rolled back as its policies say.");
+  await expect(active).toContainText("Change ticket CHG0031337.");
+  await expect(page.locator("li.change-intent.is-ended .change-intent-settled")).toHaveText("When it ended, KEEL checked again: it was still changed, so its policies acted on it as usual.");
+  await expect(page.locator("li.change-intent.is-revoked .change-intent-sentence")).toHaveText("Revoked 47 hours ago by Amara Okafor: migration finished early.");
+
+  const form = page.locator("form.change-intent-form");
+  const submit = form.getByRole("button", { name: "Approve emergency change" });
+  await expect(submit).toBeDisabled();
+  await form.getByLabel("Visibility").check();
+  await form.getByLabel("Who made or owns the change").selectOption({ label: "Amara Okafor" });
+  await form.getByLabel("Reason").fill("Responders need the group open");
+  await submit.click();
+  const toast = page.locator(".toast").first();
+  await expect(toast).toContainText("Not approved");
+  await expect(toast).toContainText("The person who made the change cannot approve it.");
+
+  await active.getByLabel(/Why revoke the approval/).fill("Partner app fixed");
+  await active.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.locator("dialog[open]").getByRole("button", { name: "Cancel" })).toBeFocused();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });

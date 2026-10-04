@@ -50,6 +50,8 @@ import { ReadinessView } from "@/components/readiness-view";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessVerdict, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
+import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
+import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -96,6 +98,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   // run-as account's access changed after the preview.
   if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
   if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
+  // Task-93: approving your own emergency change is refused; a revoke succeeds.
+  if (url.endsWith("/api/change-intents")) return json({ error: "owner-is-approver" }, 409);
+  if (url.includes("/api/change-intents/") && url.endsWith("/revoke")) return json({ intent: {}, settlement: { currentState: "matches-baseline", driftId: null } });
   if (url.endsWith("/api/actions/restore/completion")) {
     const body = JSON.parse(String(init?.body)) as { itemId: string; action: string; evidence?: { reference: string } };
     if (body.action === "complete" && /secret|BEGIN/i.test(body.evidence?.reference ?? "")) {
@@ -335,6 +340,42 @@ const ACTIVATION_PREVIEW: ActivationPreview = {
   digest: "5b".repeat(32),
   outcomes: { queued: 1, rolledBack: 0, failed: 0 },
 };
+// Task-93: approved emergency changes, one in force, one ended and settled, one revoked.
+const PERSON_AMARA = { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "amara.okafor@contoso.example", name: "Amara Okafor", readable: true };
+const PERSON_ONCALL = { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "oncall@contoso.example", name: "On-call engineer", readable: true };
+const INTENT_BASE = {
+  resourceType: "conditionalAccessPolicy", transitionDigest: "6d".repeat(32), owner: PERSON_ONCALL, approver: PERSON_AMARA,
+  revokedAt: null, revokedBy: null, revokeReason: null, settledAt: null, settlement: null,
+} as const;
+const INTENTS: ChangeIntent[] = [
+  {
+    ...INTENT_BASE, id: "c1a70000-0000-4000-8000-000000000093", naturalKey: "conditionalAccessPolicy:Block legacy auth",
+    transitions: [{ field: "state", before: { present: true, value: "enabled" }, after: { present: true, value: "enabledForReportingButNotEnforced" } }],
+    reason: "INC-4410: a partner app breaks under the block", externalChangeId: "CHG0031337", sourceDriftId: "d9300000-0000-4000-8000-000000000001",
+    windowStart: "2026-10-02T09:10:00Z", windowEnd: "2026-10-02T12:40:00Z", approvedAt: "2026-10-02T09:10:00Z", decisionDigest: "9d".repeat(32), state: "active",
+  },
+  {
+    ...INTENT_BASE, id: "c1a70000-0000-4000-8000-000000000094", naturalKey: "group:Finance", resourceType: "group",
+    transitions: [{ field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } }],
+    reason: "Open the group to responders", externalChangeId: null, sourceDriftId: null,
+    windowStart: "2026-10-01T08:00:00Z", windowEnd: "2026-10-01T12:00:00Z", approvedAt: "2026-10-01T08:00:00Z", decisionDigest: "8e".repeat(32), state: "ended",
+    settledAt: "2026-10-01T12:05:00Z", settlement: { endedAt: "2026-10-01T12:00:00Z", currentState: "drifted", snapshotId: "5a2be911-0000-4000-8000-000000000093", observedAt: "2026-10-01T11:50:00Z", driftId: "d9300000-0000-4000-8000-000000000002" },
+  },
+  {
+    ...INTENT_BASE, id: "c1a70000-0000-4000-8000-000000000095", naturalKey: "group:Payroll", resourceType: "group",
+    transitions: [{ field: "mailNickname", before: { present: true, value: "Payroll" }, after: { present: true, value: "PayrollOps" } }],
+    reason: "Mail routing during the migration", externalChangeId: null, sourceDriftId: null,
+    windowStart: "2026-09-30T08:00:00Z", windowEnd: "2026-10-01T08:00:00Z", approvedAt: "2026-09-30T08:00:00Z", decisionDigest: "7f".repeat(32), state: "revoked",
+    revokedAt: "2026-09-30T10:00:00Z", revokedBy: PERSON_AMARA, revokeReason: "migration finished early",
+  },
+];
+const INTENT_CHANGES: IntentCandidate[] = [{
+  driftId: "d9300000-0000-4000-8000-000000000003", naturalKey: "group:Old project team", resourceType: "group", detectedAt: "2026-10-02T08:30:00Z",
+  transitions: [
+    { field: "visibility", before: { present: true, value: "Private" }, after: { present: true, value: "Public" } },
+    { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
+  ],
+}];
 const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true }];
 const DELIVERIES = [
   { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z" },
@@ -892,6 +933,16 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div className="item-list" data-layer="explanation">
         {SETUP.scopes.map((setup) => <SetupProgress canCheck={SETUP.canCheck} canProvision={SETUP.canProvision} canStart key={setup.scope} now={now} setup={setup} />)}
       </div></>;
+    case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Changes", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
+      <Verdict text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation">
+        <h2>Approved now</h2>
+        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state === "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
+        <h2>Approve an emergency change</h2>
+        <ApproveIntentForm changes={INTENT_CHANGES} people={[{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }]} />
+        <h2>Ended</h2>
+        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state !== "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
+      </div></>; }
     case "/policies/p1": return <>{header("Settings", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
       <Verdict text={`Running. ${policySentence(POLICY)}`} />
       <div data-layer="explanation">

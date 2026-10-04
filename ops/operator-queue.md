@@ -109,7 +109,7 @@ being triggered by queue updates.
     the same disk). If there's no separate mount, mark the item `blocked`.
 
 ### Q3: Prerequisites for gate 115 (read-only check plus one fixture)
-- Status: todo
+- Status: in-progress
 - Needs: none
 - Do:
   - Check, read-only, which application permissions the Restorer app

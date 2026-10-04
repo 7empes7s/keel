@@ -595,7 +595,7 @@ being triggered by queue updates.
     (offline) and report its output.
 
 ### Q18: Gate 118 (servicenow-live-acceptance)
-- Status: todo
+- Status: in-progress
 - Needs: Q17 done; decision D-118
 - Do: run the capture and verify exactly as in `docs/roadmap/servicenow-live-acceptance.md`
   › Capture and Verify, at the build `/opt/keel-live` is deployed at, with

@@ -40,8 +40,13 @@ not trusted). It stages the copy under a `.partial` name and only `mv`s it into 
 hash matches; a mismatch deletes the partial copy and fails loudly rather than leaving a
 silently-truncated file behind. Remote copies older than 30 days are pruned on each successful run.
 Every failure path is `set -euo pipefail` and exits non-zero — nothing is swallowed with
-`|| true`. Run `keel-offsite.sh --dry-run` to verify the current dump and report what would ship
-without transferring anything.
+`|| true`. Run `keel-offsite.sh --dry-run` to verify the current dump, check that the remote
+accepts an SSH login and has a usable destination, and report what would ship without transferring
+anything. A dry run fails when the remote is unreachable, because a real run would too.
+
+To point it at a different host, put `KEEL_OFFSITE_REMOTE=user@host`, `KEEL_OFFSITE_SSH_KEY=/path/to/key`
+and `KEEL_OFFSITE_REMOTE_DIR=/path` (any subset) in `/etc/keel/offsite.env`; the unit reads that file
+when it exists. Unset values keep the Hostinger defaults above.
 
 Not installed or enabled by the build, matching the tiered backup units above:
 
@@ -49,6 +54,7 @@ Not installed or enabled by the build, matching the tiered backup units above:
 sudo install -m 0755 ops/keel-offsite.sh /opt/keel/ops/keel-offsite.sh
 sudo install -m 0644 ops/keel-offsite.service ops/keel-offsite.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo /opt/keel/ops/keel-offsite.sh --dry-run   # must pass before enabling the timer
 sudo systemctl enable --now keel-offsite.timer
 ```
 

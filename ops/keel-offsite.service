@@ -4,4 +4,5 @@ Description=KEEL offsite database replication
 [Service]
 Type=oneshot
 User=root
+EnvironmentFile=-/etc/keel/offsite.env
 ExecStart=/opt/keel/ops/keel-offsite.sh

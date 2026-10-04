@@ -280,6 +280,58 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     rbac: Object.freeze({ permissions: ['SharePointTenantSettings.ReadWrite.All'], roles: ['SharePoint Administrator'] }),
     source: `${DOCS}/tenantadmin-settings-update?view=graph-rest-1.0`,
   }),
+  // Roadmap task-104: Teams settings and structural membership. Each is its own
+  // operation with its own proof. `requires` names the SharePoint write: Teams
+  // activates only after SharePoint is qualified, and SharePoint proof is never
+  // Teams proof (evidence counts only for the operationId it names).
+  'teams.settings.update': Object.freeze({
+    workload: 'teams-settings',
+    resourceType: 'teamsTeamSettings',
+    method: 'PATCH',
+    endpoint: '/teams/{team-id}',
+    version: 'v1.0',
+    readBack: 'teams.settings',
+    fields: Object.freeze(['memberSettings', 'guestSettings', 'messagingSettings', 'funSettings', 'discoverySettings']),
+    rbac: Object.freeze({ permissions: ['TeamSettings.ReadWrite.All'], roles: [] }),
+    requires: Object.freeze(['sharepoint.tenant-settings.update']),
+    source: `${DOCS}/team-update?view=graph-rest-1.0`,
+  }),
+  'teams.membership.add': Object.freeze({
+    workload: 'teams-settings',
+    resourceType: 'teamsMembership',
+    method: 'POST',
+    endpoint: '/teams/{team-id}/members',
+    version: 'v1.0',
+    readBack: 'teams.membership',
+    fields: Object.freeze(['roles']),
+    rbac: Object.freeze({ permissions: ['TeamMember.ReadWrite.All'], roles: [] }),
+    requires: Object.freeze(['sharepoint.tenant-settings.update']),
+    source: `${DOCS}/team-post-members?view=graph-rest-1.0`,
+  }),
+  'teams.membership.update': Object.freeze({
+    workload: 'teams-settings',
+    resourceType: 'teamsMembership',
+    method: 'PATCH',
+    endpoint: '/teams/{team-id}/members/{membership-id}',
+    version: 'v1.0',
+    readBack: 'teams.membership',
+    fields: Object.freeze(['roles']),
+    rbac: Object.freeze({ permissions: ['TeamMember.ReadWrite.All'], roles: [] }),
+    requires: Object.freeze(['sharepoint.tenant-settings.update']),
+    source: `${DOCS}/team-update-members?view=graph-rest-1.0`,
+  }),
+  'teams.membership.remove': Object.freeze({
+    workload: 'teams-settings',
+    resourceType: 'teamsMembership',
+    method: 'DELETE',
+    endpoint: '/teams/{team-id}/members/{membership-id}',
+    version: 'v1.0',
+    readBack: 'teams.membership',
+    fields: Object.freeze([]),
+    rbac: Object.freeze({ permissions: ['TeamMember.ReadWrite.All'], roles: [] }),
+    requires: Object.freeze(['sharepoint.tenant-settings.update']),
+    source: `${DOCS}/team-delete-members?view=graph-rest-1.0`,
+  }),
 });
 
 function writeEvidenceProblems(item, { tenantRef, version, now }) {
@@ -301,7 +353,7 @@ function writeEvidenceProblems(item, { tenantRef, version, now }) {
  * Whether one workload write may run. `readLedger` is the task-101 ledger;
  * `evidence` is every fixture result and write capture for this operation.
  */
-export function workloadWriteQualification(operationId, { readLedger = null, evidence = [], tenantRef = null, now = new Date() } = {}) {
+export function workloadWriteQualification(operationId, { readLedger = null, evidence = [], tenantRef = null, now = new Date(), _seen = new Set() } = {}) {
   const declared = WORKLOAD_WRITE_OPERATIONS[operationId];
   if (!declared) {
     return Object.freeze({ operationId, state: 'undeclared', enabled: false, reasons: [`${operationId} is not a declared workload write`], proof: { fixture: null, live: null } });
@@ -318,6 +370,17 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
   const readRow = (readLedger?.rows ?? []).find((row) => row.id === declared.readBack) ?? null;
   const readEnabled = readRow?.enabled === true && (!tenantRef || readLedger?.tenantRef === tenantRef);
   if (!readEnabled) reasons.push(`${declared.readBack} (the read-back) is ${readRow?.state ?? 'not in the ledger'}, not enabled for this tenant`);
+  // A prerequisite workload write must itself be enabled. Its proof is evaluated
+  // for its own operationId and never transfers to this one.
+  let prerequisitesEnabled = true;
+  for (const required of declared.requires ?? []) {
+    if (_seen.has(required)) throw new Error(`${operationId}: circular workload write prerequisite ${required}`);
+    const prerequisite = workloadWriteQualification(required, { readLedger, evidence, tenantRef, now, _seen: new Set([..._seen, operationId]) });
+    if (!prerequisite.enabled) {
+      prerequisitesEnabled = false;
+      reasons.push(`${required} must be live-qualified first (it is ${prerequisite.state})`);
+    }
+  }
 
   let state;
   if (live) state = 'live-qualified';
@@ -326,7 +389,7 @@ export function workloadWriteQualification(operationId, { readLedger = null, evi
   return Object.freeze({
     operationId,
     state,
-    enabled: state === 'live-qualified' && readEnabled,
+    enabled: state === 'live-qualified' && readEnabled && prerequisitesEnabled,
     reasons: Object.freeze(reasons),
     proof: Object.freeze({
       fixture: fixture ? { proofRef: fixture.proofRef ?? null } : null,

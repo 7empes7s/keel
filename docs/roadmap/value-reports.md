@@ -203,7 +203,7 @@ Required mutation checks, each applied, confirmed to fail a test, and reverted
 
 - The Validate command was run with the environment from `/etc/keel/db.env`:
   - `node --test engine/roadmap/value-reports.test.mjs engine/authz/*.test.mjs engine/jobs/*.test.mjs`: 12 tests, all passed.
-  - `portal`: `npm run typecheck` was clean, and `npm test` passed 147 of 147.
+  - `portal`: `npm run typecheck` was clean, and `npm test` passed 156 of 156 after merging master.
     Without the DB environment, the two database-backed portal tests (evidence and
     principals) cannot connect.
 - The UI harness was built and `npx playwright test -c ui-harness/playwright.config.ts`

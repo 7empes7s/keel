@@ -19,6 +19,9 @@ import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 const NON_READ_SURFACES = new Set([
   "approvals/page.tsx",
   "api/approvals/route.ts",
+  // Roadmap task-93: approved emergency changes declare approve, like the inbox.
+  "emergency-changes/page.tsx",
+  "api/change-intents/route.ts",
 ]);
 
 function getRequest(

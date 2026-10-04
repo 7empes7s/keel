@@ -461,6 +461,10 @@ export function validateExchangeLiveSubject(evidence, context = {}) {
   if (directoryTenantId && String(subject.organization?.externalDirectoryOrganizationId ?? '').toLowerCase() !== directoryTenantId) {
     failures.push('the Exchange organization belongs to another tenant');
   }
+  const orgSource = subject.organization?.tenantIdSource;
+  if (orgSource !== undefined && !['organization', 'collector-token'].includes(orgSource)) {
+    failures.push('the Exchange organization\'s tenant has no recognized source');
+  }
   const mailbox = subject.fixtureMailbox ?? {};
   const identity = exchangeIsFixtureIdentity(mailbox.identity) ? mailbox.identity : null;
   if (!identity) failures.push(`the fixture mailbox is not a disposable ${EXCHANGE_FIXTURE_PREFIX}* mailbox`);

@@ -67,7 +67,7 @@ import {
   exchangeDurationMs, exchangeDurationText, exchangeGroupFingerprint, exchangeIsFixtureIdentity, exchangeOperationVersion, exchangeReadDescriptor,
 } from './exchangeAcceptance.mjs';
 import { TEAMS_LIVE_GATE } from './teamsAcceptance.mjs';
-import { teamsBearerTransport } from './teamsLive.mjs';
+import { teamsBearerTransport, tokenTenantId } from './teamsLive.mjs';
 
 const GRAPH = 'https://graph.microsoft.com';
 const VERSION = 'v1.0';
@@ -163,7 +163,7 @@ const present = (body, fields) => (body && typeof body === 'object' ? fields.fil
  */
 export async function captureExchangeAcceptance({
   collector, restorer, directoryTenantId, fixtureMailbox, probeIdentity = null, tenantRef, build, credentials, grants, moduleVersion,
-  teamsQualification, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  teamsQualification, credentialTenants = {}, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000,
 }) {
   const problems = exchangeFixtureProblems({ fixtureMailbox });
@@ -178,6 +178,12 @@ export async function captureExchangeAcceptance({
     throw new Error('a capture needs the verified task-121 Teams record: Exchange is qualified only after Teams');
   }
   const tenant = directoryTenantId.toLowerCase();
+  // The tenant each Graph token was issued for (its `tid`), when known. A token for
+  // another tenant is refused before any request.
+  const tokenTenant = (role) => (typeof credentialTenants[role] === 'string' ? credentialTenants[role].toLowerCase() : null);
+  for (const role of ['collector', 'restorer']) {
+    if (tokenTenant(role) && tokenTenant(role) !== tenant) throw new Error(`the ${role} token was issued for another tenant; nothing was sent`);
+  }
   const identity = fixtureMailbox;
   const probe = probeIdentity ?? exchangeProbeIdentity(identity);
   if (!exchangeIsFixtureIdentity(probe) || probe.toLowerCase() === identity.toLowerCase()) throw new Error('the platform-error probe must be another keel-rt-* identity');
@@ -262,7 +268,17 @@ export async function captureExchangeAcceptance({
   const casBody = await readCapture('exchange.client-access', async () => exchangeSingle('Get-CASMailbox', await collect.cmdlet('Get-CASMailbox', { Identity: identity })));
   supportedFields.clientAccess = present(casBody, CLIENT_ACCESS_FIELDS);
 
-  const organization = { externalDirectoryOrganizationId: organizationBody?.ExternalDirectoryOrganizationId ?? null };
+  // Some tenants return an empty ExternalDirectoryOrganizationId. A reported id must be
+  // the managed tenant's. When none is reported, the organization's tenant is the
+  // collector Graph token's: the same fixture UPN answered both through that token and
+  // in this Exchange session, and a verified UPN domain belongs to exactly one tenant.
+  const reportedOrg = typeof organizationBody?.ExternalDirectoryOrganizationId === 'string' && organizationBody.ExternalDirectoryOrganizationId
+    ? organizationBody.ExternalDirectoryOrganizationId.toLowerCase() : null;
+  const orgTenant = reportedOrg ?? tokenTenant('collector');
+  const organization = {
+    externalDirectoryOrganizationId: orgTenant,
+    tenantIdSource: reportedOrg ? 'organization' : (orgTenant ? 'collector-token' : null),
+  };
   const mailboxFacts = pick(mailboxBody, MAILBOX_IDENTITY_FIELDS);
   const fixture = {
     identity, userPrincipalName: mailboxFacts.UserPrincipalName, objectId: mailboxFacts.ExternalDirectoryObjectId,
@@ -281,7 +297,8 @@ export async function captureExchangeAcceptance({
 
   let refusal = null;
   if (!reads.every((item) => item.ok)) refusal = 'a read failed; nothing was written';
-  else if (String(organization.externalDirectoryOrganizationId ?? '').toLowerCase() !== tenant) refusal = 'the Exchange organization belongs to another tenant (or did not report its tenant id); nothing was written';
+  else if (!organization.externalDirectoryOrganizationId) refusal = 'the Exchange organization did not report its tenant id and the collector token\'s tenant is unknown; nothing was written';
+  else if (organization.externalDirectoryOrganizationId !== tenant) refusal = 'the Exchange organization belongs to another tenant; nothing was written';
   else if (String(fixture.userPrincipalName ?? '').toLowerCase() !== identity.toLowerCase()) refusal = 'the fixture mailbox did not answer as the identity named; nothing was written';
   else if (fixture.recipientTypeDetails !== 'UserMailbox') refusal = 'the fixture is not a user mailbox; nothing was written';
   else if (platformError.status === 'ok') refusal = 'the platform-error probe identity exists; it must not; nothing was written';
@@ -545,6 +562,7 @@ export async function main(argv = process.argv.slice(2), {
     grants: JSON.parse(readFile(options.grants)),
     documentation: JSON.parse(readFile(options.docs)),
     teamsQualification: { gate: TEAMS_LIVE_GATE, evidence: basename(teamsPath), captureLogSha256: teams.subject.captureLogSha256 },
+    credentialTenants: { collector: tokenTenantId(env.KEEL_EXCHANGE_COLLECTOR_TOKEN), restorer: tokenTenantId(env.KEEL_EXCHANGE_RESTORER_TOKEN) },
   });
   const { evidence, logPath } = writeExchangeAcceptanceFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: EXCHANGE_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

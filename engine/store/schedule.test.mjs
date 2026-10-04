@@ -32,6 +32,15 @@ try {
   for (const row of rows) assert.ok(row.next_due_at > now);
   await seedSchedules(client, { tenantRef: 'seed-test', now: new Date(now.valueOf() + 86400000) });
   assert.deepEqual((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1 ORDER BY job_kind, tier', ['seed-test'])).rows, rows);
+  // A partial seed adds only the named kinds; a later full seed adds the rest.
+  await seedSchedules(client, { tenantRef: 'seed-partial', now, jobKinds: ['collect'] });
+  const partial = (await client.query('SELECT job_kind, tier FROM schedule WHERE tenant_ref = $1 ORDER BY tier', ['seed-partial'])).rows;
+  assert.deepEqual(partial.map((row) => [row.job_kind, row.tier]), [['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3']]);
+  await seedSchedules(client, { tenantRef: 'seed-partial', now });
+  assert.equal((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1', ['seed-partial'])).rows.length, 6);
+  for (const jobKinds of [[], ['backup'], 'collect']) {
+    await assert.rejects(() => seedSchedules(client, { tenantRef: 'seed-bad', now, jobKinds }), /jobKinds must be/);
+  }
   const boundary = initialSchedules(new Date('2026-09-14T00:00:00Z'));
   assert.deepEqual(boundary.map((row) => row.nextDueAt.toISOString()), [
     '2026-09-14T01:00:00.000Z', '2026-09-15T00:00:00.000Z', '2026-09-21T00:00:00.000Z',

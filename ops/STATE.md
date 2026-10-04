@@ -51,9 +51,9 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 ## Open PRs
 
 - **#74** `claude/fix-dead-doc-urls`: replaces three dead declared doc URLs that block gates 120 and 123. Opened 13:50 UTC by the coordinator.
-- None open. **#73** `claude/setup-host` was **merged 13:34 UTC as `2e8a5b9`** (operator approved in chat). Description: production Setup host for gate 116 (task-76). CI green; reviewed by the
-  coordinator (writes disabled unless named with qualification + expiry; never creates app
-  registrations). **Merge blocked for Claude** ("Merge Without Review"): the operator merges it.
+- **#73** `claude/setup-host` (production Setup host for gate 116, task-76) was **merged 13:34 UTC as
+  `2e8a5b9`** after the operator approved in chat. Writes stay disabled unless named with qualification
+  + expiry; it never creates app registrations.
   After deploy, queue Q19 points the portal at `/etc/keel/restorer.json`.
   Notes from the author session (`session_01E6SkVX9ZGScLQdWgjcBvbT`) for after it lands:
   - The setup checks need the Collector to hold `Application.Read.All` and
@@ -67,14 +67,14 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## Waiting on the human operator
 
-2. Decide on the Collector read grants it needs (`Application.Read.All`,
+1. Decide on the Collector read grants the Setup checks (PR #73) need (`Application.Read.All`,
    `RoleManagement.Read.Directory`, optionally `DeviceManagementRBAC.Read.All`).
-3. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
-4. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
+2. **Evidence-placeholder test change**, so 113, 114, 115 and 118 evidence can merge.
+3. **Gate 116 recovery key:** `node tools/recovery/recovery-assertion.mjs keygen`, then `enroll`
    (details in `docs/roadmap/keel-recovery.md`). Blocked for Claude ("Secret-Store Writes").
-5. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
+4. **Rotate the Restorer key** `/etc/keel/keel-restorer.key`: a search printed part of it into
    vps-deployer's output.
-6. **Run the AWS budget guard** script (below).
+5. **Run the AWS budget guard** script (below).
 
 ## Infrastructure facts
 

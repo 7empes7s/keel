@@ -161,4 +161,5 @@ jobs:
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs
+          roadmap/portal-parity.test.mjs ../tools/rehearsal/roundTrip.test.mjs
         working-directory: engine

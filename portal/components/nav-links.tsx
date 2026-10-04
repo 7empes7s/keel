@@ -55,6 +55,7 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
   Approvals: [{ href: "/approvals", label: "Approvals", gate: "canApprove" }],
   Activity: [
     { href: "/activity", label: "Activity", gate: "canRead", aliases: "jobs evidence audit record history" },
+    { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },
     { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
     { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
   ],

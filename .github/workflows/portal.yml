@@ -145,6 +145,7 @@ jobs:
           roadmap/deployed-acceptance.test.mjs
           roadmap/visual-drift.test.mjs
           roadmap/storage-live-acceptance.test.mjs
+          roadmap/value-reports.test.mjs
           restore/*.test.mjs reconcile/*.test.mjs
           safety/*.test.mjs policy/*.test.mjs ../cli/keel-restore.test.mjs
           ../cli/keel-remediate.test.mjs ../cli/keel-worker.test.mjs

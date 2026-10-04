@@ -113,6 +113,11 @@ The capture tool's offline mode always writes `fixture-tested`,
 - **A failed step stops the run.** The tool records `outcome: "failed"` and
   exits 1, and that record never verifies. If the failure came after the
   delete, the message tells the operator to restore manually within retention.
+- **Reads after a write are re-tried, within a bound.** Entra replication lag
+  can 404 the deleted-items read and the post-restore read-back for a few
+  seconds. Each is read at most 5 times with a 2s, 4s, 6s, 8s backoff. The
+  artifact keeps every attempt's status in the exchange's `attempts`; a read
+  that still fails after 5 tries stops the run as above.
 
 ### Limits
 
@@ -154,7 +159,7 @@ The capture tool's offline mode always writes `fixture-tested`,
   role or app assignments. A `keel-rehearsal-*` group, user or application
   also qualifies. Don't use the Exchange fixture user
   `keel-rt-20260908-alice`: deleting it would disturb task-122.
-- The KEEL Restorer credential (`/etc/keel/restorer-target.json`, certificate
+- The KEEL Restorer credential (`/etc/keel/restorer.json`, certificate
   auth) with `Group.ReadWrite.All`, or the matching permission for the type.
 - `KEEL_QUALIFICATION_HMAC_KEY` for the release runner, kept outside git.
 - A fresh look at
@@ -169,7 +174,7 @@ export KEEL_QUALIFICATION_HMAC_KEY=...   # release runner key, not in git
 node tools/qualification/nativeRecovery.mjs capture --live \
   --resource-type group --object-id <fixture-object-id> \
   --confirm-disposable-fixture <fixture-object-id> \
-  --target-config /etc/keel/restorer-target.json \
+  --target-config /etc/keel/restorer.json \
   --docs-retrieved-at <YYYY-MM-DD> --permission Group.ReadWrite.All \
   --out docs/release/qualifications
 ```
@@ -184,8 +189,11 @@ Capture on the commit you will verify against: the record binds to
 
 **Verify.** This is the task's final Validate step:
 
+`verify --require-live` checks the runner signature, so the same key must be
+in the environment:
+
 ```bash
-node tools/release/qualification.mjs verify --require-live \
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/release/qualification.mjs verify --require-live \
   --gate native-live-acceptance \
   --evidence docs/release/qualifications/native-live-acceptance.json \
   --tenant <sha256:… tenant ref> --build <commit the capture ran on>

@@ -73,10 +73,10 @@ Do not use the Exchange fixture user `keel-rt-20260908-alice`; deleting it would
 task-122. Conditional Access recovery stays manual.
 
 ```bash
-node tools/qualification/nativeRecovery.mjs capture --live --resource-type group \
-  --object-id <id> --confirm-disposable-fixture <id> --target-config /etc/keel/restorer-target.json \
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/nativeRecovery.mjs capture --live --resource-type group \
+  --object-id <id> --confirm-disposable-fixture <id> --target-config /etc/keel/restorer.json \
   --docs-retrieved-at <YYYY-MM-DD> --permission Group.ReadWrite.All --out docs/release/qualifications
-node tools/release/qualification.mjs verify --require-live --gate native-live-acceptance \
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/release/qualification.mjs verify --require-live --gate native-live-acceptance \
   --evidence docs/release/qualifications/native-live-acceptance.json --tenant <ref> --build <capture commit>
 ```
 

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** the KEEL coordinator thread in the "Keel" Claude project. Other sessions send it
   their changes and it updates this file. If you are a cold session without that thread, update this
   file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 17:30 UTC
+- **Last updated:** 2026-10-04 18:00 UTC
 
 ## How the work is organized
 
@@ -39,7 +39,7 @@ then prove the path works.
 | 117 | sentinel-live-acceptance | **Descoped** (operator, 12:36 UTC: "scratch it") | The release ledger still lists task-117 (`tools/release/acceptanceLedger.mjs:39`), so task 124 must drop it or record it as an accepted gap |
 | 118 | servicenow-live-acceptance | **Captured, verify ok** at `87e366e` | `claude/live-evidence-118` @ 4ec37c1. Reviewed: live-qualified, no secrets |
 | 119, 126 | NIST, ScubaGear | Already qualified | — |
-| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Running at `ffa05cd`** (started 17:28) | Earlier runs: 120 and 121 passed at `2b2c338`; 122 failed on the org tenant id, fixed in #82 (`ffa05cd`). All four are being recaptured at `ffa05cd` |
+| 120 → 123 | SharePoint, Teams, Exchange, OneDrive/Purview (one sitting, same build) | **Blocked on a Teams tool fix (PR #83)** | At `ffa05cd`: 120 passed (`claude/live-evidence-120` @ ea5380d); 121 refused: the 2b2c338 run left carla as a group owner (owner link outlived demote/remove; cleaned up by keel-operator). **`claude/live-evidence-121` @ 9ec0e2f is void; never merge it.** Chain reruns at #83's build |
 | 124 | release ledger | Not started | Needs all live gates at one build |
 
 **Evidence merge (done, #75 → `359ec7c`):** the tests that pinned each committed evidence file as a pending placeholder are
@@ -49,7 +49,8 @@ capture's sha256, carry no credential material, and still fail verification with
 
 ## Open PRs
 
-- **#82** `claude/exchange-tenant-proof` was **merged 17:11 UTC as `ffa05cd`** (by the operator): gate 122 tool fix. Its deploy is the build for the 120 → 123 rerun. **Master frozen until that chain finishes.**
+- **#83** `claude/teams-owner-restore`: gate 121 tool fix (remove and verify the group owner link the owner promotion leaves; restore judged after a settle delay). Its deploy is the build for the next 120 → 123 run.
+- **#82** merged 17:11 UTC as `ffa05cd` (gate 122 Exchange tenant fix).
 - **#77** `claude/teams-tenant-proof` was **merged 15:21 UTC as `2b2c338`** (by the operator): gate 121 tool fix. Its deploy is the build for the 120 → 123 rerun. **Master frozen until that chain finishes.**
 - **#75** `claude/live-evidence-merge` was **merged 14:26 UTC as `359ec7c`** (by the operator): live evidence for 113, 114, 115, 118 is on master, and the placeholder tests accept only verified-shape live records.
 - **#74** `claude/fix-dead-doc-urls` was **merged 14:27 UTC as `124fbc6`** (by the operator). Its deploy is the build for the 120 → 123 chain (Q10). **Don't merge anything to master until that chain finishes.**
@@ -146,3 +147,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 16:55: Q22 queued (AWS budget guard via `ops/aws/budget-guard.sh`, operator-directed).
 - 2026-10-04 17:13: PR #82 merged (`ffa05cd`). Q10 told to rerun 120 → 123 at `ffa05cd` once deployed.
 - 2026-10-04 17:30: Q22 done (AWS budget `keel-monthly` created). Q10 in progress at `ffa05cd`.
+- 2026-10-04 18:00: Q10 at `ffa05cd`: 120 passed; 121 refused on a residual group owner from the 2b2c338 run, whose 121 record is void. PR #83 opened (owner-link fix).

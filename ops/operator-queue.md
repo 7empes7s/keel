@@ -304,6 +304,13 @@ being triggered by queue updates.
   then #74). Wait until `/opt/keel-live` is deployed at `124fbc6` (master CI must go green first), then
   set this to in-progress and run 120 → 121 → 122 → 123 at that build. Nothing else will merge to master
   until the chain is done.
+- Coordinator note (18:00 UTC): thanks for catching the owner residual. The Teams tool fix is PR #83
+  (`claude/teams-owner-restore`): it reads `/groups/{id}/owners` before writing, removes the fixture user's
+  own owner link after the round trip (`DELETE /groups/{id}/owners/{user}/$ref`, restorer), and decides the
+  restore from roster + group owners + group members read after a 20 s settle delay. Confirm carla is absent
+  from all three before you run. `claude/live-evidence-121` @ 9ec0e2f is void and won't be merged. When #83
+  is merged and `/opt/keel-live` is deployed at its merge commit, rerun 120 → 121 → 122 → 123 at that build
+  and message the coordinator thread.
 - Coordinator note (17:13 UTC): #82 is merged as `ffa05cd`. Once `/opt/keel-live` is deployed at `ffa05cd`, set this
   to in-progress and rerun 120 → 121 → 122 → 123 at that build, then message the coordinator thread.
 - Coordinator note (16:50 UTC): the 122 org-tenant check is fixed in PR #82 (`claude/exchange-tenant-proof`):

@@ -1194,3 +1194,64 @@ CREATE TABLE IF NOT EXISTS policy_activation (
 );
 CREATE INDEX IF NOT EXISTS policy_activation_policy_idx
   ON policy_activation (tenant_ref, policy_id, activated_at DESC);
+
+-- Roadmap task-93: time-bounded approved emergency deviations. A change intent is an
+-- immutable approval of exact field transitions (before -> after) on one resource,
+-- with an owner, an approver who is not the owner, a window [window_start, window_end)
+-- and an optional external change id. While the window is open, automatic roll back of
+-- a drift whose every changed field matches an approved transition is refused; the drift
+-- stays open and visible. Any other field change on the same resource is handled
+-- normally. decision_digest is the canonical digest of the decision a future ITSM mirror
+-- (task-97) must carry, so both records name the same approval.
+-- Additive: nothing existed before; a tenant with no rows behaves exactly as before.
+CREATE TABLE IF NOT EXISTS change_intent (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref            text NOT NULL,
+  natural_key           text NOT NULL,
+  resource_type         text NOT NULL,
+  transitions           jsonb NOT NULL,
+  transition_digest     text NOT NULL,
+  owner_principal_id    uuid NOT NULL REFERENCES principal(id),
+  approver_principal_id uuid NOT NULL REFERENCES principal(id),
+  reason                text NOT NULL CHECK (length(btrim(reason)) > 0),
+  external_change_id    text,
+  source_drift_id       uuid REFERENCES drift(id),
+  window_start          timestamptz NOT NULL,
+  window_end            timestamptz NOT NULL,
+  approved_at           timestamptz NOT NULL,
+  decision_digest       text NOT NULL,
+  CHECK (window_end > window_start),
+  CHECK (owner_principal_id <> approver_principal_id),
+  CHECK (jsonb_typeof(transitions) = 'array' AND jsonb_array_length(transitions) > 0)
+);
+CREATE INDEX IF NOT EXISTS change_intent_resource_idx
+  ON change_intent (tenant_ref, natural_key, window_end);
+
+-- State transitions of an intent, append-only: 'revoked' ends the window early;
+-- 'settled' records that the intent's resource was evaluated afresh after the window
+-- ended. One of each per intent, so a repeated or concurrent settle acts once.
+CREATE TABLE IF NOT EXISTS change_intent_event (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_ref  text NOT NULL,
+  intent_id   uuid NOT NULL REFERENCES change_intent(id),
+  kind        text NOT NULL CHECK (kind IN ('revoked','settled')),
+  occurred_at timestamptz NOT NULL,
+  actor       text NOT NULL,
+  detail      jsonb NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (intent_id, kind)
+);
+
+CREATE OR REPLACE FUNCTION change_intent_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $change_intent$
+BEGIN
+  RAISE EXCEPTION '% is append-only', TG_TABLE_NAME;
+END;
+$change_intent$;
+DROP TRIGGER IF EXISTS change_intent_append_only ON change_intent;
+CREATE TRIGGER change_intent_append_only
+  BEFORE UPDATE OR DELETE ON change_intent
+  FOR EACH ROW EXECUTE FUNCTION change_intent_append_only();
+DROP TRIGGER IF EXISTS change_intent_event_append_only ON change_intent_event;
+CREATE TRIGGER change_intent_event_append_only
+  BEFORE UPDATE OR DELETE ON change_intent_event
+  FOR EACH ROW EXECUTE FUNCTION change_intent_append_only();

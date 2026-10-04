@@ -261,7 +261,7 @@ being triggered by queue updates.
   - Whether the KEEL PowerShell image includes `run-cmdlet.ps1`.
 
 ### Q8: Fixtures for 120 and 121 (decision-free parts)
-- Status: todo
+- Status: in-progress
 - Needs: Q7 done
 - Do: create only what Q7 found missing:
   - a `KEEL-RT-<yyyymmdd>` communication site;

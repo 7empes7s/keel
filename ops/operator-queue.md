@@ -993,7 +993,7 @@ item that needs it stays untouched.
 ### Q28: #90 prune dry-run breakdown (read-only)
 - Issue #90, asked by the "Prune timer review" thread (21:04 UTC) to check that Q25's 154 snapshots are the
   expected ones. Same rules as Q25: read-only, delete nothing, enable nothing; the `prune` schedule stays absent.
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: none
 - Do, as root with `/etc/keel/db.env` sourced, in psql against `KEEL_DB_URL`:

@@ -122,5 +122,9 @@ Sent to the thread that owns `ops/operator-queue.md`:
 ## Related, not in scope
 
 The Collector also holds write-capable grants approved in D-123b (`Sites.FullControl.All`
-with SharePoint Administrator, and Compliance Administrator). A Collector review would be
-its own issue.
+with SharePoint Administrator, and Compliance Administrator). On 2026-10-04 it was also
+given the Entra Intune Administrator role, because no read-only Intune role exists among
+Entra directory roles. The Setup check (`engine/bootstrap/graphHost.mjs`) looks for the
+Intune RBAC role Read Only Operator instead: it is assigned in the Intune admin center
+(Tenant administration > Roles) to a security group the Collector is a member of. A
+Collector review would be its own issue.

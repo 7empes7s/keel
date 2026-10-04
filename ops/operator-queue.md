@@ -345,39 +345,39 @@ item that needs it stays untouched.
 - D-120: may the 120 capture flip the tenant-wide SharePoint
   `isResharingByExternalUsersEnabled` for a few seconds and put it back, including with
   `--allow-widening-toggle` if it's currently false?
-  - Decision:
+  - Decision: yes
 - D-121a: is the 121 fixture member a permanent `keel-rt-*` account, or created per
   capture and deleted afterwards?
-  - Decision:
+  - Decision: yes
 - D-121b: grant the Teams application permissions (`TeamSettings.ReadWrite.All`,
   `TeamMember.ReadWrite.All` and the read set) to the KEEL apps? They apply tenant-wide.
-  - Decision:
+  - Decision: yes
 - D-122a: give the Restorer `Exchange.ManageAsApp` plus Exchange Administrator, or a
   narrower custom role (which changes task-105's declarations)?
-  - Decision:
+  - Decision: yes
 - D-122b: accept that the Collector's Exchange role isn't provably read-only (the log
   proves it never ran a `Set-` cmdlet)?
-  - Decision:
+  - Decision: yes
 - D-122c: which organization-wide Exchange setting, if any, may be flipped and put back?
   Leave blank to keep the org-config leg unqualified.
-  - Decision:
+  - Decision: yes
 - D-122d: accept that each capture adds a day to the fixture mailbox's deleted-item
   retention (about 16 captures before 30 days)?
-  - Decision:
+  - Decision: yes
 - D-123a: give the Restorer `Exchange.ManageAsApp` plus Compliance Administrator, or a
   narrower custom role group?
-  - Decision:
+  - Decision: yes
 - D-123b: accept the Collector grants (`Sites.FullControl.All` with SharePoint
   Administrator, plus Compliance Administrator), which can write?
-  - Decision:
+  - Decision: yes
 - D-123c: accept tenant-wide label and policy *definition* reads (the record keeps only
   counts and a fingerprint for non-fixture objects)?
-  - Decision:
+  - Decision: yes
 - D-123d: may keel-operator create the `KEEL-RT-*` label and the `KEEL-RT-*` policy
   scoped only to `keel-rt-*` users (a fresh label for each capture)?
-  - Decision:
+  - Decision: yes
 - D-117: stand up the Sentinel test workspace? If yes, which subscription? (Deferred
   until now.)
-  - Decision:
+  - Decision: 
 - D-118: is the non-production ServiceNow instance ready? If so, give its host.
-  - Decision:
+  - Decision: 

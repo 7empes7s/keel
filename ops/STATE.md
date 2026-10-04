@@ -96,14 +96,22 @@ build match, capture checksum, no `eyJ…`/`CF_Authorization`, fails without the
 
 ## AWS
 
-- New account on the $100 free-credit tier, Region `eu-north-1`, profile `keel`. **Create nothing
-  billable without saying so first.**
-- `/mnt/project-files/aws/setup-agent-toolkit.sh` (project shared files, not the repo) installs the
-  AWS CLI and Agent Toolkit, signs in (browser code flow), creates a $25/month budget with alerts
-  at 50/80/100% and on forecast, and points the AWS MCP server at the profile. **Not yet run**; the
-  operator runs it over SSH as the user that runs Claude Code. keel-operator needs a restart to
-  pick up the AWS tools, so time that around gate chains.
-- Owned by the "AWS Agent Toolkit setup" project thread.
+- New account (new AWS experience) on the $100 free-credit tier, Region `eu-north-1`. **Create
+  nothing billable without saying so first.**
+- Setup script `/mnt/project-files/aws/setup-agent-toolkit.sh` (project shared files, not the repo),
+  run on the VPS as the Claude Code user. **Not yet run.** It:
+  - installs the AWS CLI and Agent Toolkit; CLI profile `keel` (`PROFILE=` overrides); Agent Toolkit
+    calls go to `us-east-1`;
+  - signs in with `aws login --remote` (headless browser code; no access keys);
+  - creates a $25/month AWS Budget `keel-monthly` with email alerts (`BUDGET_USD=` overrides);
+  - runs the agent-toolkit wizard (interactive);
+  - sets `AWS_MCP_PROXY_PROFILES=keel` on the aws-mcp entries (backups `*.bak-aws`), and adds the
+    AWS rules to `~/.claude/CLAUDE.md` between `BEGIN/END AWS Agent Toolkit rules` markers (not the
+    repo CLAUDE.md).
+- After it runs: verify with `aws sts get-caller-identity --profile keel` and
+  `aws agent-toolkit list-available-skills --region us-east-1 --profile keel`. keel-operator needs a
+  restart to load the AWS MCP tools, so time it around gate chains.
+- Owned by the "AWS Agent Toolkit setup" project thread, which sends changes here.
 
 ## Hard limits (don't try to route around them)
 
@@ -117,3 +125,4 @@ tenant fixtures are only `KEEL-RT-*` or `keel-rehearsal-*`.
 - 2026-10-04 12:40: file created by the coordinator. Q16–Q18 done (gate 118 captured); Q17 needed
   two operator-made ACLs; Q15 mounted the second volume and finished gate 114.
 - 2026-10-04 12:45: D-117 answered: Sentinel scratched, gate 117 descoped. D-118 confirmed (ServiceNow OAuth + ACLs done).
+\n- 2026-10-04 12:50: AWS section updated from the AWS thread (budget name, MCP profile env, verify commands).\n

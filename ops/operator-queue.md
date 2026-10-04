@@ -261,7 +261,19 @@ being triggered by queue updates.
   - Whether the KEEL PowerShell image includes `run-cmdlet.ps1`.
 
 ### Q8: Fixtures for 120 and 121 (decision-free parts)
-- Status: in-progress
+- Status: done
+- Result: Created only what Q7 found missing (Restorer app, SPO `Sites.FullControl.All`, 08:41 UTC):
+  - **Communication site `KEEL-RT-20261004`**: https://lxtj.sharepoint.com/sites/KEEL-RT-20261004
+    (WebTemplate SITEPAGEPUBLISHING, empty, ShareByEmail off). Site collection id
+    cb253964-965b-42a8-b684-faaf83d1435d, web id 4eb9a131-7455-4f9d-bd6c-b33562be5cab, Graph id
+    `lxtj.sharepoint.com,cb253964-965b-42a8-b684-faaf83d1435d,4eb9a131-7455-4f9d-bd6c-b33562be5cab`.
+    App-only creation needs an owner; the owner is fixture user `keel-rt-20260908-ben` (not alice).
+  - **Private team: not created.** It already exists: `KEEL-RT-20260908 Collaboration Hub`
+    (group/team id 9263e1d4-7494-4141-b1b6-2012c98a7543, Private, site
+    https://lxtj.sharepoint.com/sites/keel-rt-20260908-collaboration). Its name is dated 20260908, not
+    today. If the 121 doc needs a `KEEL-RT-<today>` team, the coordinator should say so.
+  - The 121 member account waits on D-121a. Candidates not in the team: ben, carla, diego, farah,
+    grace, iris, jon, kelly, liam, noah, olivia, quinn, ryan (Q7).
 - Needs: Q7 done
 - Do: create only what Q7 found missing:
   - a `KEEL-RT-<yyyymmdd>` communication site;

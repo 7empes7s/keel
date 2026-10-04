@@ -522,18 +522,14 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: blocked
-- Result: **Re-check 11:50 UTC: still blocked; the ACLs don't exist.** As keel-rt-sn-one, GET of a fresh
-  probe record returns **404 "Record doesn't exist or ACL restricts the record retrieval"**. As
-  keel-rt-sn-two, PATCH `u_state` returns the same 404. Both users still hold `u_keel_change_user`
-  (Active). An admin read of `sys_security_acl` (readable; it returns other ACLs) finds **no ACL named
-  like keel and no ACL created today at all**. So the operator's fix didn't save, or was made
-  somewhere else (e.g. not elevated, or in an update set that wasn't committed). The probe was deleted.
-  Needed: in dev426571, elevate security_admin, then System Security › Access Control › New:
-  Type `record`, Name `u_keel_change` / `-- None --`, Operation `read`, Requires role
-  `u_keel_change_user`, **Submit**. Repeat with Operation `write`.
+- Status: done
+- Result: **Done.** The operator created the two ACLs in the UI (12:20 and 12:23 UTC): `u_keel_change`
+  read and write, role `u_keel_change_user`. Re-check on a probe record:
+  - keel-rt-sn-one: GET 200; PATCH `u_state=gate_passed` returns 200 with `u_approver=keel-rt-sn-one`.
+  - keel-rt-sn-two: PATCH `gate_withdrawn` returns 200 with `u_approver=keel-rt-sn-two`.
+  - Two relay rows were written (mod 1 and 2). Probe and relay rows deleted.
 
-  Earlier result:
+  Setup (unchanged from the earlier result):
   **Almost done; blocked on one manual step: two ACLs.** D-118 was confirmed by the operator in
   session, 11:22 UTC. Created in **dev426571** (admin via OAuth password grant):
   - table **`u_keel_change`** ("KEEL qualification change", sys_id ddd2b3dc…e3b4), string fields

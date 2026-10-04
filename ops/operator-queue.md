@@ -462,6 +462,25 @@ being triggered by queue updates.
   - what it records (task-76 run ids).
   Use the code in `engine/bootstrap/` and the portal Setup routes. Run nothing.
 
+### Q15: Mount the new second volume, then resume Q2 (gate 114) Part B
+- Status: todo
+- Needs: none. The operator created and formatted the volume (ext4) at
+  `/dev/disk/by-id/scsi-0HC_Volume_107029601`.
+- Do:
+  1. Check that it's ext4 and empty (`blkid`, `lsblk -f`). Don't run mkfs again.
+  2. Mount it at `/mnt/keel-copy` with a persistent fstab entry, using
+     `/dev/disk/by-id/scsi-0HC_Volume_107029601 /mnt/keel-copy ext4 discard,nofail,defaults 0 0`
+     (or its UUID). Then `mount -a`, and confirm with `findmnt -D` that it's a different
+     filesystem from the one holding `/opt/backups` and `/opt/keel-recovery-sets`.
+  3. Resume **Q2 Part B** with the Q11 set (`/opt/keel-recovery-sets/2026-10-04`, built at df0de36):
+     - create `keel-recovery`;
+     - copy the set to `/mnt/keel-copy/2026-10-04`, read-only for that account;
+     - capture as `keel-recovery` from a checkout at the build the set was made with;
+     - run `verify --require-live`;
+     - commit to `claude/live-evidence-114`.
+
+     Set Q2's Status and Result as you go. Use the evidence head recorded in Q11.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

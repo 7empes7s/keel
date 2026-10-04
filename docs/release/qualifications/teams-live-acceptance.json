@@ -1,10 +1,332 @@
 {
   "contractVersion": 1,
   "gate": "teams-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "2b2c338f2f6a5af8bc3910de40017d8a2d23fa6a",
   "operation": "teams.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No live Teams capture exists, and the task-120 SharePoint prerequisite is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/teams-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-04T15:33:34.724Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisites": [
+      "task-104",
+      "task-120"
+    ],
+    "sharePointQualification": {
+      "gate": "sharepoint-live-acceptance",
+      "evidence": "sharepoint-live-acceptance.json",
+      "captureLogSha256": "82146de7db501d34e8b92b5b636387b12d3f4fbf52da7dfe2edf1277ccb40d53"
+    },
+    "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+    "fixtureTeam": {
+      "id": "9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "displayName": "KEEL-RT-20260908 Collaboration Hub",
+      "tenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+      "tenantIdSource": "collector-token"
+    },
+    "fixtureMember": {
+      "userId": "856db776-4cb7-473c-ac8e-860159e72e08",
+      "tenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+      "membershipId": "MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "memberBefore": false,
+      "memberAfter": false
+    },
+    "credentials": {
+      "collector": "app:87aa77c4-e15d-453d-8101-20e3e998311e",
+      "restorer": "app:12f8942f-c4d0-4a0d-aee1-efe928b1de54"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "GroupMember.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All"
+        ],
+        "roles": []
+      },
+      "restorer": {
+        "permissions": [
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All"
+        ],
+        "roles": []
+      }
+    },
+    "reads": [
+      {
+        "operationId": "teams.team-discovery",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T15:33:22.654Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 11
+      },
+      {
+        "operationId": "teams.settings",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T15:33:22.953Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 1
+      },
+      {
+        "operationId": "teams.membership",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T15:33:23.432Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 5
+      },
+      {
+        "operationId": "teams.group-membership",
+        "version": "v1.0",
+        "capturedAt": "2026-10-04T15:33:23.727Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 5
+      }
+    ],
+    "supportedFields": [
+      "memberSettings",
+      "guestSettings",
+      "messagingSettings",
+      "funSettings",
+      "discoverySettings"
+    ],
+    "settingsWrite": {
+      "operationId": "teams.settings.update",
+      "version": "v1.0",
+      "synthetic": false,
+      "writeMode": "reversible-change",
+      "group": "funSettings",
+      "property": "allowCustomMemes",
+      "ok": true,
+      "readBackVerified": true,
+      "restoredToOriginal": true,
+      "preFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
+      "finalFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
+      "capturedAt": "2026-10-04T15:33:25.713Z"
+    },
+    "membershipWrites": {
+      "captures": [
+        {
+          "operationId": "teams.membership.add",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-04T15:33:27.756Z"
+        },
+        {
+          "operationId": "teams.membership.update",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-04T15:33:31.917Z"
+        },
+        {
+          "operationId": "teams.membership.remove",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-04T15:33:34.045Z"
+        }
+      ],
+      "restoredToOriginal": true,
+      "preFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3",
+      "finalFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3"
+    },
+    "requests": [
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "POST",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 201,
+        "memberUserId": "856db776-4cb7-473c-ac8e-860159e72e08"
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      }
+    ],
+    "throttle": {
+      "retryAfterResponses": 0
+    },
+    "documentation": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/teams-list",
+        "retrievedAt": "2026-10-04T15:33:20.292Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-get",
+        "retrievedAt": "2026-10-04T15:33:20.581Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-list-members",
+        "retrievedAt": "2026-10-04T15:33:20.888Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/group-list-members",
+        "retrievedAt": "2026-10-04T15:33:21.194Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-update?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T15:33:21.366Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-post-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T15:33:21.531Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-update-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T15:33:21.685Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-delete-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-04T15:33:21.826Z"
+      }
+    ],
+    "captureLogSha256": "72c952da91388d88e7800b6259055025b343955b28eadf0a30709626a6004de6"
+  },
+  "proof": {
+    "artifact": {
+      "path": "teams-live-acceptance.capture.json",
+      "sha256": "72c952da91388d88e7800b6259055025b343955b28eadf0a30709626a6004de6"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "9f4629f57a793b39845e4ea89a9358e9920ee58fd1314da577e990bdc2b1d311"
+    }
+  }
 }

@@ -1,0 +1,170 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams",
+      "status": 200,
+      "at": "2026-10-04T15:33:22.654Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-04T15:33:22.953Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:23.432Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:23.727Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-04T15:33:24.084Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 204,
+      "at": "2026-10-04T15:33:24.715Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-04T15:33:25.100Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 204,
+      "at": "2026-10-04T15:33:25.484Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-04T15:33:25.713Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:26.169Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 201,
+      "at": "2026-10-04T15:33:27.756Z",
+      "memberUserId": "856db776-4cb7-473c-ac8e-860159e72e08"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:28.071Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 200,
+      "at": "2026-10-04T15:33:29.386Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:29.808Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 200,
+      "at": "2026-10-04T15:33:31.499Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:31.917Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 204,
+      "at": "2026-10-04T15:33:34.045Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:34.351Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-04T15:33:34.724Z"
+    }
+  ],
+  "values": {
+    "discoveredTeams": 11,
+    "supportedFields": [
+      "memberSettings",
+      "guestSettings",
+      "messagingSettings",
+      "funSettings",
+      "discoverySettings"
+    ],
+    "originalToggle": true,
+    "settingsWritten": true,
+    "memberAdded": true
+  }
+}

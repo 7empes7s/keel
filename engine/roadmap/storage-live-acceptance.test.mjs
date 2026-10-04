@@ -22,6 +22,7 @@ import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { signEvidence, verifyEvidence, verifyEvidenceFile } from '../../tools/release/qualification.mjs';
+import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { STORAGE_OFFLINE_FIXTURE, main as capture, writeStorageFixtureBackup } from '../../tools/qualification/storageLiveAcceptance.mjs';
 import { STORAGE_LIVE_GATE } from '../storage/storageLiveEvidence.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
@@ -172,6 +173,11 @@ test('mutation check: missing external evidence fails (no artifact, no runner, p
   failsWith(join(run.dir, 'absent.json'), /evidence unreadable/);
 
   const placeholder = join(ROOT, 'docs/release/qualifications/storage-live-acceptance.json');
+  if (!isPendingPlaceholder(placeholder)) {
+    // A live capture has replaced the placeholder: it must still never verify without the key.
+    assertCommittedLiveRecord(placeholder, { gate: STORAGE_LIVE_GATE, root: ROOT, verify: verifyEvidenceFile, verifyOptions: verifyOpts });
+    return;
+  }
   assert.equal(JSON.parse(readFileSync(placeholder, 'utf8')).status, 'pending');
   failsWith(placeholder, /external runner evidence pending/);
   failsWith(placeholder, /external runner evidence pending/, { ...verifyOpts, requireLive: false });

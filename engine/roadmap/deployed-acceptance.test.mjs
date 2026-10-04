@@ -23,6 +23,7 @@ import {
   DEPLOYED_ACCEPTANCE_GATE, DEPLOYED_ACCEPTANCE_PROBES, RESTORE_REVIEW_PROBE_ID,
   configuredTenantRef, signEvidence, verifyEvidence, verifyEvidenceFile,
 } from '../../tools/release/qualification.mjs';
+import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { buildDeployedAcceptance } from '../../tools/release/deployed-acceptance.mjs';
 import { ACCESS_ASSERTION_HEADER } from '../../tools/release/readiness.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
@@ -277,8 +278,12 @@ test('fixture evidence can never be elevated to live-qualified', async () => {
   cleanup(c);
 });
 
-test('the committed evidence file is pending and fails the live CLI verification', () => {
+test('the committed evidence file is a pending placeholder or an unforgeable live record, and never verifies without the key', () => {
   const committed = join(ROOT, 'docs/release/qualifications/deployed-acceptance.json');
+  if (!isPendingPlaceholder(committed)) {
+    assertCommittedLiveRecord(committed, { gate: DEPLOYED_ACCEPTANCE_GATE, root: ROOT, verify: verifyEvidenceFile, verifyOptions: verifyOptions() });
+    return;
+  }
   const record = JSON.parse(readFileSync(committed, 'utf8'));
   assert.equal(record.status, 'pending');
   assert.notEqual(record.evidenceLevel, 'live-qualified');

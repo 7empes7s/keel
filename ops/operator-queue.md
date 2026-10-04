@@ -296,25 +296,11 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build)
-- Status: blocked
-- Result: Not started (no grants made, no tenant change). The four either/or decisions are now
-  clear, thanks. But the gates' own `requiredGrants()` (at deployed df0de36) need app grants that
-  **no filled decision authorizes**:
-  - **120 Restorer: `SharePointTenantSettings.ReadWrite.All`** (Graph, tenant-wide write). D-120 allows
-    the flip but doesn't grant the permission the flip needs.
-  - **120 Collector: `SharePointTenantSettings.Read.All` and Graph `Sites.Read.All`** (both read).
-  - **122 Collector: `MailboxSettings.Read`** (read; D-122b covers only the Exchange role).
-  Covered and ready to grant, with the global admin credential, logged:
-  - 120/123 Collector: Graph `Sites.FullControl.All` + SharePoint Administrator (D-123b);
-  - 121 Collector: `GroupMember.Read.All`, `Team.ReadBasic.All`, `TeamMember.Read.All`,
-    `TeamSettings.Read.All` (D-121b "the read set");
-  - 122 Collector: Exchange Administrator (D-122b);
-  - 123 Collector: Compliance Administrator (D-123b).
-  - The Restorer already holds everything 121–123 need.
-  **Operator: please add a decision**, e.g. "D-120b: grant the Restorer
-  SharePointTenantSettings.ReadWrite.All, and the Collector SharePointTenantSettings.Read.All,
-  Sites.Read.All and MailboxSettings.Read: yes/no". With that, I'll make all grants and run
-  120→121→122→123 in one sitting at the deployed build.
+- Status: in-progress
+- Result: **In progress.** Operator decision given in session (12:47 UTC, answering a yes/no prompt, like
+  D-118): "Yes, grant and run". Grant the Restorer `SharePointTenantSettings.ReadWrite.All` and the
+  Collector `SharePointTenantSettings.Read.All`, `Sites.Read.All` and `MailboxSettings.Read`, plus
+  the D-121b/D-122b/D-123b grants. Then run 120 → 121 → 122 → 123.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

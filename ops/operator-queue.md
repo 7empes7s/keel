@@ -296,6 +296,11 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (22:35 UTC): thanks; the roster lag is fixed in PR #103 (`claude/teams-roster-settle`):
+  removal read-backs and the final absent check now poll for up to ~3 min (37 × 5 s) before the 20 s settle
+  delay. `claude/live-evidence-120` @ 12d3547 (df4082a) is superseded once the chain reruns; don't merge it on
+  its own. When #103 is merged and `/opt/keel-live` is deployed at its merge commit, rerun 120 → 121 → 122 →
+  123 at that build (same pre-checks as before).
 - Coordinator note (21:45 UTC): **#83 is merged as `df4082a`** (on top of the operator's b81a41d). Once
   master CI is green and `/opt/keel-live` is deployed at `df4082a`, set this to in-progress and rerun
   120 → 121 → 122 → 123 at that build. Before 121, confirm carla is absent from the Teams roster, group owners

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:45 UTC
+- **Last updated:** 2026-10-04 22:35 UTC
 
 ## How the work is organized
 
@@ -34,7 +34,7 @@ not merged until it finishes.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 (merged as `df4082a`) | Waiting for deploy at `df4082a`, then Q10 reruns 120 → 123 | — |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window) | Blocked: 121 exit 3 at `df4082a` (restore real, roster lag ~60-90 s); 120 passed (`claude/live-evidence-120` @ 12d3547) | #103 CI, then the operator's merge; then Q10 reruns 120 → 123 |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step) | Read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done (operator id set) | Freeze, then #96 deploy, then a fresh restore setup run; then Q6. Collector SP still holds Intune Administrator (operator asked to remove) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs) | Ledger change on master (b81a41d, 117 as accepted gap); #102 in review | Recapture and ledger verification wait on #84 and #85; no automerge until the chain finishes |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
@@ -56,7 +56,7 @@ Records bind to one build; task 124 recaptures every live gate at one frozen rel
 - 117 sentinel: descoped by the operator (12:36 UTC).
 - 118 ServiceNow: verify ok at `87e366e`, `claude/live-evidence-118` @ 4ec37c1.
 - 119, 126 (NIST, ScubaGear): already qualified.
-- 120 → 123: at `ffa05cd`, 120 passed (`claude/live-evidence-120` @ ea5380d); 121 refused on a residual group owner from the 2b2c338 run. **`claude/live-evidence-121` @ 9ec0e2f is void; never merge it.** The 120 and 121 records merge together.
+- 120 → 123: at `df4082a`, 120 passed (`claude/live-evidence-120` @ 12d3547); 121 exit 3 on Teams roster lag (restore real, no residual). Earlier: at `ffa05cd` 121 refused on a residual owner from the 2b2c338 run. **`claude/live-evidence-121` @ 9ec0e2f is void; never merge it.** The 120 and 121 records merge together.
 
 Committed evidence rule (#75 → `359ec7c`): a committed live record must be live-qualified, bind its
 raw capture's sha256, carry no credential material, and fail verification without the HMAC key
@@ -64,8 +64,9 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
-2. Restorer least privilege (#93): D-93a and D-93b in the queue.
+1. Merge PR #103 (#84 chain).
+2. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
+3. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -165,3 +166,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:20: master moved to b81a41d (operator commit: gate 117 recorded as an accepted gap). Q10 was not running (blocked on #83), so no evidence is affected; the chain build stays "#83's merge commit", which will include b81a41d.
 - 2026-10-04 21:35: Q28 done; #90 dry run reviewed. Q29 (enable prune schedule) added on hold.
 - 2026-10-04 21:45: PR #83 merged by the operator as `df4082a`. Q10 told to rerun 120 → 123 at that build once deployed. Master stays frozen until the chain finishes.
+- 2026-10-04 22:35: Q10 at `df4082a`: 120 passed; 121 exit 3 (owner-link fix worked, but the roster lagged ~60-90 s past the tool's window). PR #103 widens the window to ~3 min. Freeze continues.

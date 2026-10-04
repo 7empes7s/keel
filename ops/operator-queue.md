@@ -828,6 +828,18 @@ item that needs it stays untouched.
   - Decision: no: scratch Sentinel; gate 117 descoped (Marouane, keel-operator thread, 2026-10-04 12:36 UTC; recorded verbatim by the coordinator)
 - D-118: is the non-production ServiceNow instance ready? If so, give its host.
   - Decision: yes, a ServiceNow dev instance already exists and is reachable from the VPS (Marouane, project chat, 2026-10-04 10:45 UTC; recorded verbatim by the coordinator). Host: dev426571.service-now.com (Q16); OAuth and ACLs set up (confirmed by Marouane 12:36 UTC).
+- D-93a (issue #93): add `GroupSettings.ReadWrite.All` to the Restorer and remove every grant not in the
+  minimal set in `docs/roadmap/restorer-least-privilege.md` (PR #101)? Minimal set: Graph
+  Group.ReadWrite.All, Application.ReadWrite.All, RoleManagement.ReadWrite.Directory,
+  Policy.ReadWrite.ConditionalAccess, AdministrativeUnit.ReadWrite.All, GroupSettings.ReadWrite.All,
+  SharePointTenantSettings.ReadWrite.All, TeamSettings.ReadWrite.All, TeamMember.ReadWrite.All,
+  MailboxSettings.ReadWrite; Exchange.ManageAsApp; roles Exchange Administrator, Compliance Administrator,
+  SharePoint Administrator. After applying, rerun gate 115 and the 120 → 123 chain as the regression check.
+  - Decision:
+- D-93b (issue #93): keep RoleManagement.ReadWrite.Directory and Application.ReadWrite.All
+  (role-assignment and application restore stay automated, but each grant lets the app escalate itself),
+  or remove them and make both restores manual?
+  - Decision:
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
@@ -904,3 +916,27 @@ item that needs it stays untouched.
      while), wait one scheduler tick (5 min), then `node cli/keel-schedules-host.mjs health`. Report its JSON
      and exit code; a tier with failedTypes is a result, not something to fix on the host.
 - Hard rules as usual: no tenant writes (collection is read-only), no grants, no secrets printed.
+### Q25: #90 prune dry run against the live DB (read-only)
+- Issue #90, asked by the "Prune timer review" thread (20:33 UTC). Doesn't touch the tenant, a service or
+  master, so it can run while Q10 waits. Read-only: deletes nothing, starts or enables nothing. Leave
+  `keel-prune.timer` disabled and don't touch `/opt/keel-live`.
+- Status: queued
+- Result:
+- Needs: none
+- Do, as root on the VPS:
+  1. Make a scratch checkout of `origin/claude/prune-timer-review` (PR #99; outside `/opt/keel-live`; report
+     its commit), then `cd engine && npm ci`.
+  2. `set -a; . /etc/keel/db.env; set +a; node ../cli/keel-prune.mjs --dry-run`. If the CLI doesn't print that
+     it is a dry run, stop and report. Paste the output (snapshot ids are fine, no payloads).
+  3. `SELECT job_kind, tier, enabled, next_due_at FROM schedule WHERE job_kind='prune';`
+  4. Snapshot count per tenant with `min(started_at)`.
+  5. Delete the scratch checkout.
+### Q26: #93 Restorer grants inventory (read-only)
+- Issue #93, asked by the "Restorer least-privilege review" thread (20:34 UTC). **On hold: don't start**
+  until the coordinator changes Status to queued (after the 120 → 123 chain).
+- Status: hold
+- Result:
+- Needs: Q10 finished.
+- Do: list every application permission the Restorer app (appId 12f8942f…) holds, on every resource (Graph,
+  SharePoint Online, Exchange Online, any other), and every directory role it holds with its role template id.
+  Q7 named 8 of the 9 roles; name the ninth. Create, grant and remove nothing.

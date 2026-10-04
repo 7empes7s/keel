@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 21:00 UTC
+- **Last updated:** 2026-10-04 21:05 UTC
 
 ## How the work is organized
 
@@ -43,7 +43,7 @@ not merged until it finishes.
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | CI running, held for the freeze | Host dry run (Q25). `keel-prune.timer` stays disabled: prune runs as a `prune` schedule row, enabled after #97 and #99 deploy |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
 | `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
-| Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | — | Open | Needs operator decisions |
+| Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | #101 (review doc; `groupSetting` declares GroupSettings.ReadWrite.All) | Review written | Master freeze; Q26 inventory (on hold until #84); operator decisions D-93a, D-93b |
 
 ### Gate evidence
 
@@ -68,6 +68,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 2. Gate 116 (#85): read-setup scope and onboarding account, asked in its thread.
 3. Gate 124 (#86): go for recording 117 as an accepted gap, asked in its thread.
 4. Offsite (#89): revive the Hostinger VPS 187.124.7.67 or choose a new offsite target.
+5. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -155,5 +156,6 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 20:40: rows #85 (PR #96), #86, #87 (PR #95 replaces #80) updated from their threads. Collector read grants decision dropped: Q21 found them already held.
 - 2026-10-04 20:45: #91 row (PR #97). Q24 (install scheduled collection) added on hold until #84 finishes and #97 deploys.
 - 2026-10-04 20:50: #92 row (PR #98). Drop the `restorer-target.json` infrastructure fact when #98 merges.
-- 2026-10-04 20:55: #90 row (PR #99); Q25 queued (read-only prune dry run). Q23 done (#89: offsite host unreachable, timer never enabled).
+- 2026-10-04 20:55: #90 row (PR #99); Q25 meant to be queued (landed 21:05). Q23 done (#89: offsite host unreachable, timer never enabled).
 - 2026-10-04 21:00: #89 row (PR #100, blocked on the offsite host). Dump-overwrite finding added to infrastructure facts.
+- 2026-10-04 21:05: #93 row (PR #101); Q26 (Restorer grants inventory) on hold; D-93a/D-93b added to Operator decisions.

@@ -266,6 +266,8 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TransportRule' -Block { Get-TransportRule }
         # Task 101: mailbox client-access settings (configuration only, no mailbox content).
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CASMailbox' -Block { Get-CASMailbox -ResultSize 1 }
+        # Task 105: mailbox hold and retention settings (configuration only).
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-Mailbox' -Block { Get-Mailbox -ResultSize 1 }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

@@ -142,6 +142,11 @@ export const DATA_SURFACES = {
   // Task-83: the alerts inbox. Acknowledging and resolving are separate guarded actions.
   alertsApi: { capability: "read", source: "api/alerts/route.ts" },
   alertsPage: { capability: "read", source: "alerts/page.tsx" },
+  // Task-100: the value report. Entity-scoped readers see only outcomes their entities
+  // own; the engine applies the scope before counting, and tenant-wide sections are
+  // withheld from them.
+  reportsPage: { capability: "read", source: "reports/page.tsx", entityScoped: true },
+  valueReportApi: { capability: "read", source: "api/reports/value/route.ts", entityScoped: true },
 } as const;
 
 export interface DataSurface {

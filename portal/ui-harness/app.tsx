@@ -48,6 +48,8 @@ import { AlertInbox } from "@/components/alert-inbox";
 import { alertsVerdict, type AlertItem } from "@/lib/alerts-view";
 import { ResilienceView } from "@/components/resilience-view";
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
+import { ValueReportView } from "@/components/value-report-view";
+import { valueVerdict, type ValueReport } from "@/lib/value-report-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -709,6 +711,81 @@ function resiliencePage(data: ResilienceData) {
     <div data-layer="explanation"><ResilienceView data={data} /></div></>;
 }
 
+// Roadmap task-100: the value report. VALUE_REPORT has a retried restore that was put
+// back and checked, a change that came back after being undone, one waiting and one
+// failed request, control findings with a reopened one, measured recovery and a
+// configured estimate with its assumptions. VALUE_REPORT_SCOPED is an entity-scoped
+// reader with no estimate: no hours, and the tenant-wide sections withheld.
+const VALUE_SUMMARY = (verified: number, reopened: number, unconfirmed: number, queued: number, failed: number, attempts: number) => {
+  const total = verified + reopened + unconfirmed + queued + failed;
+  return { total, states: { verified, reopened, unconfirmed, queued, failed }, attempts, retries: attempts - total, percentVerified: total ? Math.round((verified / total) * 1000) / 10 : null };
+};
+const VALUE_REPORT: ValueReport = {
+  version: 1,
+  tenantRef: "sha256:5e7a0b0b0b0b0b0b",
+  generatedAt: now,
+  period: { from: "2026-09-02T09:40:00.000Z", to: "2026-10-02T09:40:00.000Z", days: 30 },
+  scope: { central: true, entities: [] },
+  outcomes: {
+    ...VALUE_SUMMARY(1, 1, 1, 1, 1, 7),
+    byFamily: { restore: VALUE_SUMMARY(1, 0, 1, 0, 1, 4), remediation: VALUE_SUMMARY(0, 1, 0, 1, 0, 3) },
+    rows: [
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000100", family: "restore", state: "verified", reason: "journal-and-completion-verified", attempts: 2, retries: 1, firstRequestedAt: "2026-09-20T10:00:00.000Z", lastEventAt: "2026-09-20T11:30:00.000Z", verifiedAt: "2026-09-20T11:30:00.000Z", reopenedAt: null, resources: 3, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000100", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000001", "job:a1000000-0000-4000-8000-000000000002"] },
+      { id: "change:d1f70000-0000-4000-8000-000000000101", family: "remediation", state: "reopened", reason: "changed-again", attempts: 2, retries: 1, firstRequestedAt: "2026-09-15T00:00:00.000Z", lastEventAt: "2026-09-28T00:00:00.000Z", verifiedAt: null, reopenedAt: "2026-09-28T00:00:00.000Z", resources: 1, resourceType: "conditionalAccessPolicy", changeType: "modified", planId: null, driftId: "d1f70000-0000-4000-8000-000000000101", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000003", "job:a1000000-0000-4000-8000-000000000004"] },
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000102", family: "restore", state: "unconfirmed", reason: "completion-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-09-30T08:00:00.000Z", lastEventAt: "2026-09-30T08:05:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000102", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000005"] },
+      { id: "change:d1f70000-0000-4000-8000-000000000103", family: "remediation", state: "queued", reason: "attempt-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-10-02T09:00:00.000Z", lastEventAt: "2026-10-02T09:00:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: "group", changeType: "added", planId: null, driftId: "d1f70000-0000-4000-8000-000000000103", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000006"] },
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000104", family: "restore", state: "failed", reason: "all-attempts-failed", attempts: 1, retries: 0, firstRequestedAt: "2026-09-10T12:00:00.000Z", lastEventAt: "2026-09-10T12:01:00.000Z", verifiedAt: null, reopenedAt: null, resources: 2, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000104", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000007"] },
+    ],
+    rowsShown: 5,
+    undoRunsExcluded: 1,
+  },
+  findings: {
+    withheld: false, total: 3, states: { resolved: 1, open: 1, unchecked: 1 }, reopened: 1, percentResolved: 33.3, rowsShown: 3,
+    rows: [
+      { id: "finding:keel-custom|1.0.0|default|keel.mfa.admins|1", controlId: "keel.mfa.admins", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "open", reopened: true, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-25T00:00:00.000Z", lastEvaluatedAt: "2026-09-25T00:00:00.000Z", lastVerdict: "fail", lastEvaluationId: "e7a10000-0000-4000-8000-000000000201" },
+      { id: "finding:keel-custom|1.0.0|default|keel.guests.invite|1", controlId: "keel.guests.invite", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "unchecked", reopened: false, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-15T00:00:00.000Z", lastVerdict: "unknown", lastEvaluationId: "e7a10000-0000-4000-8000-000000000202" },
+      { id: "finding:keel-custom|1.0.0|default|keel.groups.owner|1", controlId: "keel.groups.owner", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "resolved", reopened: false, resolvedAt: "2026-09-12T00:00:00.000Z", resolvedBy: { evaluationId: "e7a10000-0000-4000-8000-000000000203", evidenceSeq: "18190" }, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-19T00:00:00.000Z", lastVerdict: "pass", lastEvaluationId: "e7a10000-0000-4000-8000-000000000204" },
+    ],
+  },
+  recovery: {
+    withheld: false,
+    recoveryTime: { state: "measured", samples: 2, medianMs: 14 * 60_000, worstMs: 20 * 60_000, notCounted: 1, drills: 1, restores: 1 },
+    freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
+    recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
+  },
+  estimate: { state: "configured", source: "/etc/keel/value-estimate.json" },
+  hoursSaved: {
+    hours: 2, basis: "verified-outcomes-only", owner: "the IT lead", setAt: "2026-09-01T00:00:00.000Z", notEstimated: ["remediation"],
+    byFamily: [{ family: "restore", verified: 1, minutesEach: 90, hours: 1.5 }, { family: "finding", verified: 1, minutesEach: 30, hours: 0.5 }],
+    assumptions: ["A manual restore of one group and its members takes about 90 minutes.", "Fixing one failing control by hand takes about 30 minutes."],
+  },
+  complianceClaim: null,
+  provenance: {
+    reportVersion: 1,
+    countingRules: ["One outcome per restore plan or detected change; further jobs for it are retries."],
+    sources: { restoreJobsRead: 4, remediateJobsRead: 3, collectionsChecked: 6, evaluationsRead: 9 },
+    complete: true,
+    evidenceHead: { seq: "18201", hash: "9b".repeat(32), records: "18201" },
+    digest: "4c".repeat(32),
+  },
+};
+const VALUE_REPORT_SCOPED: ValueReport = {
+  ...VALUE_REPORT,
+  scope: { central: false, entities: ["FIN"] },
+  outcomes: { ...VALUE_REPORT.outcomes, ...VALUE_SUMMARY(1, 0, 0, 0, 0, 2), byFamily: { restore: VALUE_SUMMARY(1, 0, 0, 0, 0, 2), remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: [VALUE_REPORT.outcomes.rows[0]], rowsShown: 1, undoRunsExcluded: null },
+  findings: { withheld: true },
+  recovery: { withheld: true },
+  estimate: { state: "not-configured", source: null, problems: [] },
+  hoursSaved: null,
+};
+
+function reportsPage(report: ValueReport) {
+  const verdict = valueVerdict(report);
+  return <>{header("Activity", "Value report", "What KEEL put back and checked, which failing controls were fixed, and how long recovery took, for a period you choose.")}
+    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><ValueReportView data={{ report, period: "30d", entity: null }} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -748,6 +825,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
+    case "/reports": return reportsPage(VALUE_REPORT);
+    case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
     case "/drift": {
       const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}

@@ -522,7 +522,52 @@ being triggered by queue updates.
     `node tools/qualification/servicenow.mjs check --config <file>` (offline).
 
 ### Q17: Set up the missing gate 118 pieces in the ServiceNow dev instance
-- Status: in-progress
+- Status: blocked
+- Result: **Almost done; blocked on one manual step: two ACLs.** D-118 was confirmed by the operator in
+  session, 11:22 UTC. Created in **dev426571** (admin via OAuth password grant):
+  - table **`u_keel_change`** ("KEEL qualification change", sys_id ddd2b3dc…e3b4), string fields
+    `u_title`, `u_state` (40), `u_approver` (100), `u_plan_rev`, `u_plan_hash`, `u_keel_request`,
+    `u_keel_decision` (255). Non-default states: approved `gate_passed`; rejected `gate_blocked`,
+    `gate_withdrawn`. Not `change_request`.
+  - table **`u_keel_callback_relay`** (4a53f390…e3fc): `u_record` (64), `u_signature` (255),
+    `u_body` (8000).
+  - property **`x_keel.callback_signing_key_b64`** (password2, 92e3ffd0…e362) = base64 of the
+    secret.
+  - business rule **`keel-callback-relay`** (f9343b14…e3cd): after update on u_keel_change, condition
+    `current.u_state.changes()`, script = `ops/servicenow/keel-callback-relay.js` with FIELDS =
+    u_state/u_approver/u_plan_rev/u_plan_hash.
+  - business rule **`keel-qualification-approver`** (6724f714…e39f): before update, same condition,
+    `current.u_approver = gs.getUserName()`. This is the doc's step 1 "approver field that the
+    workflow sets to the deciding user". `sys_updated_by` would be overwritten by KEEL's own
+    write-back in the lost-callback and duplicate scenarios.
+  - role **`u_keel_change_user`** (d18337d0…e30e). Test users **`keel-rt-sn-one`** (6f9337d0…e37a)
+    and **`keel-rt-sn-two`** (32a33f90…e38b): "KEEL RT / ServiceNow test N", no email, not people,
+    with that role.
+  - Also changed (Q16): `glide.installation.production` set to false, as the operator authorized.
+  - **Probe:** an admin PATCH on a probe record set u_approver, the relay row was written, and **its
+    signature matches a local HMAC-SHA256 with the KEEL secret**. So the password2 property,
+    `generateMac` and the base64 key are proven. The probe record and relay row were deleted.
+  Host (all root 0600; nothing printed or committed):
+  - `/etc/keel/servicenow-qualification.env`: `KEEL_SN_TEST_USER_ONE_PASSWORD`,
+    `KEEL_SN_TEST_USER_TWO_PASSWORD`, `KEEL_SN_CALLBACK_SECRET`,
+    `KEEL_SERVICENOW_QUALIFICATION_DB_URL`.
+  - `/etc/keel/servicenow-qualification/`: `servicenow-config.json` (tokenRef
+    `env:KEEL_SN_TOKEN`, secretRef `env:KEEL_SN_CALLBACK_SECRET`), `servicenow-test-users.json`
+    (`env:KEEL_SN_TEST_USER_ONE` / `_TWO`), `record-template.json` (`u_title`; the table has no
+    short_description), `docs.json` (Table API page HTTP 200, retrieved 11:34Z; refreshed at
+    capture).
+  - Bearer tokens (KEEL = admin, test users = their own) are minted by password grant at capture
+    time into those env vars.
+  - Postgres: new empty DB **`keel_servicenow_qualification`** (0 tables; the capture applies the
+    schema). Not production.
+  - `servicenow.mjs check`: ok, `problems: []`, exit 0. `servicenowLive.mjs plan`: exit 0. The only
+    refusals are `--confirm-non-production-instance` and `--declared-by`, which the capture passes.
+  **Blocker:** the test users get **404 "ACL restricts the record retrieval"** on u_keel_change.
+  The API created the table without ACLs, and inserting `sys_security_acl` via REST returns 403
+  (needs an elevated security_admin session, UI only). I won't work around that control.
+  **Operator, in the dev426571 UI** (elevate security_admin; System Security › Access Control › New),
+  create two ACLs: Type `record`, Name `u_keel_change` (field: none), Operation **read**, then
+  **write**, Requires role **`u_keel_change_user`**. Then I'll check the test-user PATCH and run Q18.
 - Needs: Q16 done, with `glide.installation.production=false`; decision D-118
 - Do: create only what Q16 reported missing, in the dev instance and on the host, following
   `docs/roadmap/servicenow-live-acceptance.md` › Operator steps 1–5. Rules:

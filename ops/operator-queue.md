@@ -282,7 +282,17 @@ being triggered by queue updates.
   Report their URL and ids. The 121 member account waits on decision D-121a.
 
 ### Q9: Rebuild the KEEL PowerShell image
-- Status: in-progress
+- Status: done
+- Result: Rebuilt `keel-powershell:latest` from `ops/powershell/Dockerfile` at deployed build 33ad2a9.
+  Context: a clean `git archive` of `ops/powershell`. Command: `docker build -t keel-powershell:latest .`
+  (the tag `engine/powershell/jobQueue.mjs` DEFAULT_IMAGE uses). Build exit 0.
+  - **New image id: `sha256:0af11b0f3f9a389f8ae03c42454ddecee652d364dd337f11a11b83e6d99e49f8`.**
+    `/app` now has `run-cmdlet.ps1`, `probe-workloads.ps1` and `run-job.sh`.
+    Modules: ExchangeOnlineManagement 3.10.1, MicrosoftTeams 7.9.0, PnP.PowerShell 3.4.1.
+  - The previous image (231757b7ed3a, 2026-09-08) is kept as `keel-powershell:pre-q9` for rollback.
+  - No services restarted or redeployed. Jobs use `docker run --rm` per job, so they pick up the
+    new image on their next run. Note: `/opt/keel-deploy/deploy.sh` never builds this image, so it
+    will go stale again after future `ops/powershell` changes. This needs an ops or deploy follow-up.
 - Needs: Q7 shows `run-cmdlet.ps1` missing from the image
 - Do: rebuild the image from `ops/powershell/Dockerfile` at the deployed build, the same
   way the deploy builds it. Don't restart or redeploy services beyond what the normal

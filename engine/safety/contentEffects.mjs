@@ -119,6 +119,18 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('sharingBlockedDomainList', 'externally-sharing', removesEntry),
     rule('sharingAllowedDomainList', 'externally-sharing', addsEntry),
   ] },
+  // Task-104: Teams team settings. Giving guests channel rights, or making a team
+  // discoverable to everyone, widens who reaches the team's content.
+  teamsTeamSettings: { reviewed: true, rules: [
+    rule('guestSettings.allowCreateUpdateChannels', 'externally-sharing', disabledToEnabled),
+    rule('guestSettings.allowDeleteChannels', 'externally-sharing', disabledToEnabled),
+    rule('discoverySettings.showInTeamsSearchAndSuggestions', 'externally-sharing', disabledToEnabled),
+  ] },
+  // Task-104: Teams membership, as { guests: [identity...] }. Adding a guest gives
+  // someone outside the organization access to the team's content.
+  teamsMembership: { reviewed: true, rules: [
+    rule('guests', 'externally-sharing', addsEntry),
+  ] },
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },

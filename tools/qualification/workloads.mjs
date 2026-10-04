@@ -37,9 +37,11 @@ const SAMPLE = Object.freeze({
   'sharepoint.site-properties': { id: 'contoso.sharepoint.com,site-guid,web-guid', displayName: 'Fixture site' },
   'teams.settings': { memberSettings: { allowCreateUpdateChannels: true }, guestSettings: { allowCreateUpdateChannels: false } },
   'teams.membership': [{ id: 'm1', roles: ['owner'] }, { id: 'm2', roles: [] }],
+  'teams.team-discovery': [{ id: 'team-1', displayName: 'Fixture team' }, { id: 'team-2', displayName: 'Second team' }],
+  'teams.group-membership': [{ id: 'user-1' }, { id: 'user-2' }],
   'exchange.mailbox-settings': { timeZone: 'UTC', automaticRepliesSetting: { status: 'disabled' } },
 });
-const SUBSTITUTE = Object.freeze({ 'site-id': 'fixture-site', 'team-id': 'fixture-team', 'user-id': 'fixture-user' });
+const SUBSTITUTE = Object.freeze({ 'site-id': 'fixture-site', 'team-id': 'fixture-team', 'group-id': 'fixture-team', 'user-id': 'fixture-user' });
 
 /**
  * A fake Graph for one operation: the first request is throttled (Retry-After: 2),

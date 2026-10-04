@@ -21,6 +21,7 @@ import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicens
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
+import { SENTINEL_LIVE_GATE, validateSentinelLiveSubject } from '../qualification/sentinelAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { STORAGE_LIVE_GATE, validateStorageLiveAcceptance } from '../../engine/storage/storageLiveEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
@@ -716,6 +717,9 @@ const GATE_VALIDATORS = {
   // Task-122: Exchange live acceptance; needs both proofs and a verified task-121 record.
   [EXCHANGE_LIVE_GATE]: (evidence, context) => validateExchangeLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
+  // Task-117: Sentinel workspace ingestion; needs both proofs (runner signature and capture log).
+  [SENTINEL_LIVE_GATE]: (evidence, context) => validateSentinelLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
 };
 
 export function verifyEvidence(evidence, {

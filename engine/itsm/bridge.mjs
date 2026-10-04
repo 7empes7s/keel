@@ -563,10 +563,11 @@ export async function reconcileRecord(client, { tenantRef, adapter, externalRef 
 
 /** One mirror cycle for an adapter: record decisions made in the portal, then deliver
  * due outbox events. */
-export async function runMirrorCycle(client, { tenantRef, adapter, now = new Date() }) {
+export async function runMirrorCycle(client, { tenantRef, adapter, now = null }) {
   assertAdapter(adapter);
   const recorded = await syncMirrorDecisions(client, { tenantRef, adapter: adapter.name });
-  const delivery = await drainItsmOutbox(client, { tenantRef, adapter, now });
+  // The clock is read after recording, so the decisions just recorded are due.
+  const delivery = await drainItsmOutbox(client, { tenantRef, adapter, now: now ?? new Date() });
   return { recorded: recorded.length, ...delivery };
 }
 

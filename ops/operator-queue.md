@@ -847,3 +847,16 @@ item that needs it stays untouched.
   Budgets' first two budgets are free). If the `keel` login has expired, report that and stop; don't sign in.
   Use the alert address the operator gives. If none is named here, ask him in your session. Don't write the
   address into the repo.
+### Q23: #89 offsite diagnosis (read-only)
+- Issue #89, asked by the "Offsite backup unreachable" thread (20:22 UTC). Doesn't touch the tenant or
+  master, so it can run while Q10 waits. Read-only: no writes, no fixes, no secrets printed (the key
+  file is listed, never read or shown).
+- Status: queued
+- Result:
+- Needs: none
+- Do: on the KEEL VPS as root, run each and paste the output (report missing files, don't create them):
+  1. `systemctl status keel-offsite.timer keel-offsite.service --no-pager; journalctl -u keel-offsite.service -n 60 --no-pager`
+  2. `ls -l /opt/keel/ops/keel-offsite.sh /opt/keel/engine/schedules/offsite.mjs /root/.ssh/playground_vps /opt/backups/keel-db-manifest.json /opt/backups/keel-db-shipped-manifest.json`
+  3. `getent hosts 187.124.7.67; timeout 10 bash -c '</dev/tcp/187.124.7.67/22' && echo TCP22_OK || echo TCP22_FAIL; ping -c2 -W3 187.124.7.67`
+  4. `ssh -i /root/.ssh/playground_vps -o BatchMode=yes -o ConnectTimeout=15 -v root@187.124.7.67 'echo OK; df -h /opt; ls -la /opt/keel-offsite | tail -5' 2>&1 | grep -E 'OK|debug1: (Connecting|Connection|Authenticat|Offering|Server accepts|Authentications that can continue)|Permission denied|refused|timed out|No route|Filesystem|/opt|keel-db'`
+  5. `/opt/keel/ops/keel-offsite.sh --dry-run; echo exit=$?` (only if the script supports `--dry-run`; check `--help` or the script header first, and skip it if not)

@@ -7,7 +7,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 - **Maintainer:** each task thread sends updates for its own row in **Tasks** to the KEEL
   coordinator thread in the "Keel" Claude project, which owns the rest of this file. If you are a
   cold session without that thread, update this file yourself and say so in the change log.
-- **Last updated:** 2026-10-04 20:30 UTC
+- **Last updated:** 2026-10-04 20:35 UTC
 
 ## How the work is organized
 
@@ -35,15 +35,15 @@ not merged until it finishes.
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #83 | Blocked | #83 green, waiting for the operator's merge; then Q10 reruns 120 → 123 at its build |
-| Gate 116 drill | #85 | — | — | Blocked | Q21 mapping, then a Setup run, then the reconstruction drill (Q6); Collector read grants decision |
-| Gate 124 release ledger | #86 | — | — | Not started | Needs every live gate at one build; drop descoped 117 (`tools/release/acceptanceLedger.mjs:39`) or record it as an accepted gap |
-| CLAUDE.md with brain markers | #87 | — | #80 | Open | PR lacks `brain:start`/`brain:end` markers; master freeze |
-| Status test temp dir | #88 | — | #76 | Open | Master freeze |
-| Offsite backup unreachable | #89 | — | — | Open | — |
-| Prune timer review | #90 | — | — | Open | Review before enabling |
-| Install scheduler and backup tiers on host | #91 | — | — | Open | — |
-| `restorer-target.json` default path | #92 | — | — | Open | Host file is `/etc/keel/restorer.json` |
-| Restorer least-privilege review | #93 | — | — | Open | Needs operator decisions |
+| Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | — | Blocked | Q21 mapping, then a Setup run, then the reconstruction drill (Q6); Collector read grants decision |
+| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | — | Not started | Needs every live gate at one build; drop descoped 117 (`tools/release/acceptanceLedger.mjs:39`) or record it as an accepted gap |
+| CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #80 | Open | PR lacks `brain:start`/`brain:end` markers; master freeze |
+| Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
+| Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | — | Diagnosing | Host diagnostics (Q23) |
+| Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | — | Open | Review before enabling |
+| Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | — | Open | — |
+| `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | — | Open | Host file is `/etc/keel/restorer.json` |
+| Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | — | Open | Needs operator decisions |
 
 ### Gate evidence
 
@@ -147,3 +147,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 18:00: Q10 at `ffa05cd`: 120 passed; 121 refused on a residual group owner from the 2b2c338 run, whose 121 record is void. PR #83 opened (owner-link fix).
 - 2026-10-04 18:07: PR #83 CI green; waiting for the operator's merge.
 - 2026-10-04 20:30: tasks moved to GitHub issues #84–#93 (label `task`, operator-approved 20:19). "Open PRs" and the gates free-text column replaced by the Tasks table. Infrastructure, ServiceNow and AWS sections move to a docs file on master after the freeze.
+- 2026-10-04 20:35: thread links filled for #85–#93. #88: PR #94 replaces #76. #89: Q23 queued (read-only offsite diagnosis).

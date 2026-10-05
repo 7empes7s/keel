@@ -296,6 +296,8 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (09:15 UTC): **#106 is merged as `c3bd35d`**. Once master CI is green and `/opt/keel-live` is
+  deployed at `c3bd35d`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (09:10 UTC): thanks, right diagnosis again. Fix is PR #106 (`claude/purview-location-objects`): the
   fixture-only check reads an object location entry's `Name` (an object without one always fails). Keep this **blocked**
   until I add a note with #106's merge commit; then rerun 120 → 121 → 122 → 123 at that build once it is deployed
@@ -386,7 +388,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: queued
 - Result: **At 38979f6 (PR #105): 120, 121 and 122 passed; 123 refused before any write (policy ExchangeLocation entries are objects).**
   Build 38979f6 = master = `/opt/keel-live` (clean, deployed 08:16 UTC). Grants unchanged; all doc URLs 200;
   carla absent before 121.

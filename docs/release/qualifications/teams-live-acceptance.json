@@ -1,10 +1,417 @@
 {
   "contractVersion": 1,
   "gate": "teams-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "248b12c6cd3c8e8c06dfb3f44adfcce2c7d8f28b",
   "operation": "teams.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No live Teams capture exists, and the task-120 SharePoint prerequisite is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/teams-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-05T12:37:19.484Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisites": [
+      "task-104",
+      "task-120"
+    ],
+    "sharePointQualification": {
+      "gate": "sharepoint-live-acceptance",
+      "evidence": "sharepoint-live-acceptance.json",
+      "captureLogSha256": "cd2ee6ddb1600a069ebf1d87cd1b92e3bf131f4716cdae3b2ef4258e284c8af6"
+    },
+    "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+    "fixtureTeam": {
+      "id": "9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "displayName": "KEEL-RT-20260908 Collaboration Hub",
+      "tenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+      "tenantIdSource": "collector-token"
+    },
+    "fixtureMember": {
+      "userId": "856db776-4cb7-473c-ac8e-860159e72e08",
+      "tenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+      "membershipId": "MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "memberBefore": false,
+      "memberAfter": false,
+      "ownerBefore": false,
+      "ownerAfter": false,
+      "groupMemberBefore": false,
+      "groupMemberAfter": false
+    },
+    "credentials": {
+      "collector": "app:87aa77c4-e15d-453d-8101-20e3e998311e",
+      "restorer": "app:12f8942f-c4d0-4a0d-aee1-efe928b1de54"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "GroupMember.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All"
+        ],
+        "roles": []
+      },
+      "restorer": {
+        "permissions": [
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All"
+        ],
+        "roles": []
+      }
+    },
+    "reads": [
+      {
+        "operationId": "teams.team-discovery",
+        "version": "v1.0",
+        "capturedAt": "2026-10-05T12:36:42.633Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 11
+      },
+      {
+        "operationId": "teams.settings",
+        "version": "v1.0",
+        "capturedAt": "2026-10-05T12:36:42.902Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 1
+      },
+      {
+        "operationId": "teams.membership",
+        "version": "v1.0",
+        "capturedAt": "2026-10-05T12:36:43.347Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 5
+      },
+      {
+        "operationId": "teams.group-membership",
+        "version": "v1.0",
+        "capturedAt": "2026-10-05T12:36:43.441Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 5
+      }
+    ],
+    "supportedFields": [
+      "memberSettings",
+      "guestSettings",
+      "messagingSettings",
+      "funSettings",
+      "discoverySettings"
+    ],
+    "settingsWrite": {
+      "operationId": "teams.settings.update",
+      "version": "v1.0",
+      "synthetic": false,
+      "writeMode": "reversible-change",
+      "group": "funSettings",
+      "property": "allowCustomMemes",
+      "ok": true,
+      "readBackVerified": true,
+      "restoredToOriginal": true,
+      "preFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
+      "finalFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
+      "capturedAt": "2026-10-05T12:36:45.028Z"
+    },
+    "membershipWrites": {
+      "captures": [
+        {
+          "operationId": "teams.membership.add",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-05T12:36:46.667Z"
+        },
+        {
+          "operationId": "teams.membership.update",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-05T12:36:50.901Z"
+        },
+        {
+          "operationId": "teams.membership.remove",
+          "version": "v1.0",
+          "synthetic": false,
+          "ok": true,
+          "readBackVerified": true,
+          "capturedAt": "2026-10-05T12:36:52.317Z"
+        }
+      ],
+      "restoredToOriginal": true,
+      "preFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3",
+      "finalFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3",
+      "ownersPreFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
+      "ownersFinalFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
+      "ownerLinkRemoved": true,
+      "error": "removing the fixture user's group member link failed (HTTP 400)"
+    },
+    "requests": [
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "POST",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 201,
+        "memberUserId": "856db776-4cb7-473c-ac8e-860159e72e08"
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+        "status": 400
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      }
+    ],
+    "throttle": {
+      "retryAfterResponses": 0
+    },
+    "documentation": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/teams-list",
+        "retrievedAt": "2026-10-05T12:36:41.776Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-get",
+        "retrievedAt": "2026-10-05T12:36:41.826Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-list-members",
+        "retrievedAt": "2026-10-05T12:36:41.873Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/group-list-members",
+        "retrievedAt": "2026-10-05T12:36:41.909Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-update?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-05T12:36:41.921Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-post-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-05T12:36:41.943Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-update-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-05T12:36:41.964Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/team-delete-members?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-05T12:36:41.989Z"
+      }
+    ],
+    "captureLogSha256": "d5f241446298564d9626d5f689e01bd0b98037fa0dff6ba7f632ed2cc8d33649"
+  },
+  "proof": {
+    "artifact": {
+      "path": "teams-live-acceptance.capture.json",
+      "sha256": "d5f241446298564d9626d5f689e01bd0b98037fa0dff6ba7f632ed2cc8d33649"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b5333348354476449650a86d180dfa3223034af01eaccd588fa209fbe7c96bed"
+    }
+  }
 }

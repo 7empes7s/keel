@@ -24,7 +24,8 @@
  * 4. schema        — the schema about to be applied must hash to exactly the
  *                    manifest's schema pin; an incompatible schema stops
  *                    BEFORE any import.
- * 5. import        — the pinned schema, then the dump's data, are loaded into
+ * 5. import        — the pinned schema, the build's runtime migrations
+ *                    (RUNTIME_MIGRATIONS), then the dump's data, are loaded into
  *                    a DISPOSABLE database supplied by the caller
  *                    (createTargetDatabase). Never the production database;
  *                    the default target factory refuses KEEL_DB_URL outright.
@@ -61,8 +62,17 @@ import { sha256Hex } from '../../engine/export/manifest.mjs';
 import { verifyChain } from '../../engine/govern/evidence.mjs';
 import { connect } from '../../engine/store/db.mjs';
 import { importDump } from './dumpImport.mjs';
+import { migrateBootstrapJournal } from '../../engine/bootstrap/journal.mjs';
+import { migrateAuditIngestion } from '../../engine/identity/auditIngest.mjs';
 import { assertTenantRef } from '../../engine/store/tenantRef.mjs';
 import { verifyRecoveryManifest } from '../../engine/storage/recoveryManifest.mjs';
+
+/**
+ * Tables KEEL creates at runtime rather than in schema.sql. A live database has
+ * them once the feature has run (Setup, audit ingestion), so its dumps carry
+ * their rows. Each is additive and idempotent, and comes from this build.
+ */
+export const RUNTIME_MIGRATIONS = Object.freeze([migrateBootstrapJournal, migrateAuditIngestion]);
 
 function refusal(stage, failures, extra = {}) {
   return {
@@ -273,6 +283,7 @@ export async function reconstructRecovery({
     const importClient = await target.connect();
     try {
       await importClient.query(schemaBytes.toString('utf8'));
+      for (const migrate of RUNTIME_MIGRATIONS) await migrate(importClient);
       await importDump(importClient, dumpSql);
     } finally {
       await importClient.end();

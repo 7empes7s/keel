@@ -1469,7 +1469,7 @@ item that needs it stays untouched.
   capture-drill (both `--db-url "$DRILL_URL"`), `verify --require-live` (exit 0), evidence to `claude/live-evidence-116`.
   If a deploy lands mid-run, stop and restart from the recovery set at the new build.
 - Coordinator note (16:16 UTC, #8): **#125 is merged as `04d213d`** (on top of #124 `e3d9563` and #120 `3f31f85`). Run note #7 at `04d213d` once `/opt/keel-live` is deployed there. Master is frozen until Q36 finishes.
-- Status: queued
+- Status: in-progress
 - Result: **Blocked at the live drill (note #5 rerun, fcd9610): the drill DB is fine now, but the rollback step fails its own
   post-write check.** The tenant is clean, and no evidence was committed. I didn't rerun, because each run creates another group.
   - **#5 steps 1–3 done:** I created a fresh `keel_drill_q36` (not KEEL_DB_URL). I applied `engine/store/schema.sql`

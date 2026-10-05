@@ -382,34 +382,26 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At 94ddb0a: 120, 121 and 122 passed; 123 refused before any write (`Get-LabelPolicy` output isn't clean JSON).**
-  - **120** `claude/live-evidence-120` @ d046168. **121** `claude/live-evidence-121` @ 64279c2 (both from 05:53).
-  - **122 fixture prep (coordinator option b):** Restorer `PATCH /users/keel-rt-20260908-alice/mailboxSettings
-    {"timeZone":"UTC"}` returned 200. Before: timeZone/dateFormat/timeFormat = null/null/null. After:
-    **"UTC"/""/""**. No other mailbox or setting touched.
-  - **122 Exchange: passed.** `claude/live-evidence-122` @ **897f412** (from origin/master 94ddb0a). Capture exit
-    0; `verify --require-live --build 94ddb0a` (with 120 and 121 beside it): ok, exit 0.
-    - Mailbox settings and client access toggled, read back and restored; retention **15 → 16 days** (D-122d);
-      org config untouched (D-122c).
-    - Re-read: timeZone UTC, PopEnabled True, no holds, RetainDeletedItemsFor 16.00:00:00.
-  - **123 fixtures (D-123d, Restorer via Connect-IPPSSession):** labels **`KEEL-RT-20261005-anchor`** (guid
-    aa0f3a5c-0ed5-45c7-8277-c055f91c7135) and **`KEEL-RT-20261005-label`** (guid
-    89801085-049c-450c-b603-9e99c1d987eb). Policy **`KEEL-RT-20261005-policy`** publishes only the anchor, with
-    ExchangeLocation = keel-rt-20260908-alice only. The fixture label is **not** in the policy. They're left in
-    place for the rerun.
-  - **123 OneDrive/Purview: capture exit 1, "a read failed; nothing was written".** No tenant write.
-    - Reads: Get-PnPTenantSite on alice's OneDrive OK; Get-Label OK; **Get-LabelPolicy failed `BAD_JSON`**.
-      (Get-PnPTenantSite on `keel-rt-absent-*` erroring is the tool's own negative probe.)
-    - **Root cause (reproduced read-only through the image's `run-job.sh` stdin path):** for Get-LabelPolicy the
-      container's stdout is **3 lines**: `WARNING: Force Validate not set` ×2 (PowerShell warning stream,
-      ANSI-coloured), then the JSON envelope. `engine/powershell/jobQueue.mjs:134` does `JSON.parse(stdout)`
-      and fails. Get-Label emits no warning, so it parses. Calling `run-cmdlet.ps1` directly gives 1 clean
-      line.
-    - **Coordinator:** fix in `ops/powershell/run-cmdlet.ps1` (e.g. `$WarningPreference='SilentlyContinue'`,
-      or `3>$null` on the cmdlet call), or `run-job.sh`, or parse the last JSON line in `jobQueue.mjs`. Then
-      rebuild the `keel-powershell` image (deploy doesn't do it; Q12/Q9). Since it changes code, the build
-      moves and **120 → 123 must be re-captured at the new build** (alice retention then 17/30).
+- Status: blocked
+- Result: **At 38979f6 (PR #105): 120, 121 and 122 passed; 123 refused before any write (policy ExchangeLocation entries are objects).**
+  Build 38979f6 = master = `/opt/keel-live` (clean, deployed 08:16 UTC). Grants unchanged; all doc URLs 200;
+  carla absent before 121.
+  - **120** `claude/live-evidence-120` @ **fbebc79**; **121** `claude/live-evidence-121` @ **187441c**; **122**
+    `claude/live-evidence-122` @ **3afba5d**. Each verify --require-live --build 38979f6 is ok (exit 0) with the
+    others beside it. These supersede the 94ddb0a records on the same branches.
+    - 121: my re-checks 08:17 → 08:20 (5×): roster, owners and members all 0.
+    - 122: timeZone toggled and restored to UTC; client access restored; retention now **17.00:00:00** (D-122d).
+  - **123 OneDrive/Purview: capture exit 1**: "the fixture policy is not fixture-only (ExchangeLocation publishes to
+    [object Object], not only to KEEL-RT fixtures); nothing was written". No tenant write.
+    - **Cause (read-only check through the image's run-job path):** in `Get-LabelPolicy` output, each
+      `ExchangeLocation` entry is an **object**, e.g. `{"DisplayName":"KEEL-RT-20260908 Alice Martin",
+      "Name":"keel-rt-20260908-alice@techinsiderbytes.com","ImmutableIdentity":"abbaf24b-…","Type":{…},…}`,
+      not a string. `onedrivePurviewPolicyAudienceProblems` (`onedrivePurviewAcceptance.mjs`, used at
+      `onedrivePurviewLive.mjs:299`) stringifies it to "[object Object]". The fixture policy really does
+      publish only to keel-rt-20260908-alice.
+    - **Coordinator:** read location entries as `entry.Name` (or `ImmutableIdentity`) when they're objects,
+      for all four location fields. Then rerun 120 → 123 at that build (retention will go up one more day).
+  - 123 fixtures `KEEL-RT-20261005-anchor`/`-label`/`-policy` are unchanged and still in place.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

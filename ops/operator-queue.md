@@ -1404,8 +1404,24 @@ item that needs it stays untouched.
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
 
 ### Q35: Rerun gates 120 → 121 → 122 → 123 at the build after #111 and #116 (LabelActions, #109) — issue #84
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done: 120, 121, 122 and 123 all verified at one build, 76ee9b5** (the coordinator's 14:30 build; contains af926b4/#117,
+  #116, #111, plus #112, #113). `/opt/keel-live` = master = 76ee9b5 (clean, deployed 14:39:58), unchanged throughout.
+  - **Worker restarted** before the chain: `keel-worker` active since **Mon 2026-10-05 14:41:06 UTC** (runs 76ee9b5). No queued or running jobs at start.
+  - Pre-checks: grants unchanged; all 25 doc URLs 200; carla absent from roster, owners and members before 121.
+  | Gate | Branch @ commit | Capture | verify --require-live --build 76ee9b5 (all four side by side) |
+  |---|---|---|---|
+  | 120 SharePoint | `claude/live-evidence-120` @ **9f83a9a** | 0 | ok, exit 0 |
+  | 121 Teams | `claude/live-evidence-121` @ **1102578** | 0 | ok, exit 0 |
+  | 122 Exchange | `claude/live-evidence-122` @ **72e2036** | 0 | ok, exit 0 |
+  | 123 OneDrive/Purview | `claude/live-evidence-123` @ **41de485** | 0 | ok, exit 0 |
+  - **Gate 123 `notQualifiedFields`: `{"label": []}`, empty as expected** (protection fields read from LabelActions).
+    Fixture label: fresh `KEEL-RT-20261005-label3` (created 14:30, unpublished before the capture; now published by
+    KEEL-RT-20261005-policy, alice only, Comment restored).
+  - 121: the record notes one intermediate "removing the fixture user's group member link failed (HTTP 400)", but the
+    restore verified, and my re-checks 14:42 → 14:46 (5×) show roster, owners and members all 0.
+  - After: SharePoint resharing back to false ("isResharingByExternalUsersEnabled": false). Alice timeZone UTC, client access restored, retention **20.00:00:00** (D-122d).
+  - Secret scan of all eight files: clean. These supersede the 248b12c records (merge the four together).
 - Needs: PR #111 merged and deployed; **Q24 finished first** (stale jobs cancelled, worker installed, its run-now
   collections done), so no collection starts mid-chain.
 - Before the chain: `systemctl restart keel-worker` once `/opt/keel-live` is at the named build, so the worker runs it too

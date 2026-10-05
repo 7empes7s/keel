@@ -978,8 +978,24 @@ item that needs it stays untouched.
 ### Q24: Install scheduled collection (issue #91)
 - Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
   until the coordinator changes Status to queued.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: **Blocked at step 1: preflight `ok: false`. Operator decision needed before any worker starts.** Nothing installed.
+  1. `node cli/keel-schedules-host.mjs preflight` (from /opt/keel-live at 248b12c, read-only), exit 1:
+     `{"tenantRef":"sha256:f7b3959300856957","backlog":[{"kind":"backup","status":"queued","count":1,"oldest":"2026-10-02T10:46:37.682Z"},{"kind":"restore","status":"queued","count":1,"oldest":"2026-10-03T15:50:44.811Z"}],"autoRemediatePolicies":0,"schedules":[],"blockers":["jobs are queued or running; a new worker would run them"],"ok":false}`
+     The queued jobs (read-only SELECT):
+     - `16869853-ebe2-48ae-9ef4-75b77e663ba1` **backup** `{"tier":"tier1"}`, queued 2026-10-02 10:46 UTC.
+     - `6f682eec-8338-4530-8dc8-0216dc38e6fe` **restore** of **`authorizationPolicy:Authorization Policy`** (a
+       tenant-wide setting) from snapshot `f74b0fac…` (artifact `49e68fce…`), queued 2026-10-03 15:50 UTC.
+       `targetConfig` `/etc/keel/restorer-target.json` (doesn't exist, so it would likely fail),
+       `collectorConfig` `/etc/keel/tenant-target.json` (doesn't exist).
+     **A worker must not start while this restore is queued.** Hard rules: no tenant-wide settings.
+  2. `readlink -f /opt/keel` = `/opt/keel`: **not** the same tree as `/opt/keel-live` (separate directory, the
+     stopped driver's checkout).
+  3–5. Not run.
+  **Operator / coordinator:** cancel both stale jobs through KEEL's own path (portal job cancel, or a KEEL CLI
+  cancel, so it is recorded as evidence; no hand SQL), or explicitly decide otherwise. Then re-queue Q24.
+  Note: step 4 edits `/opt/keel-deploy/deploy.sh`. keel-operator's standing instructions say not to touch
+  `/opt/keel-deploy` (vps-deployer owns it), so that step needs the operator's explicit OK or should go to vps-deployer.
 - Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
 - Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):
   1. `set -a; . /etc/keel/db.env; set +a; node cli/keel-schedules-host.mjs preflight` (read-only). Report its

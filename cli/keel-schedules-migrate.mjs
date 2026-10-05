@@ -27,4 +27,6 @@ try {
 } finally {
   await client.end();
 }
-execFileSync('bash', [fileURLToPath(new URL('../ops/keel-schedules-disable-timers.sh', import.meta.url))], { stdio: 'inherit' });
+// Retire only the old timers of the kinds just seeded: a kind still left out keeps its timer.
+const disableArgs = jobKinds ? [jobKinds.join(',')] : [];
+execFileSync('bash', [fileURLToPath(new URL('../ops/keel-schedules-disable-timers.sh', import.meta.url)), ...disableArgs], { stdio: 'inherit' });

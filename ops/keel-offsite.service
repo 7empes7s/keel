@@ -5,4 +5,4 @@ Description=KEEL offsite database replication (to the persistent volume)
 Type=oneshot
 User=root
 EnvironmentFile=-/etc/keel/offsite.env
-ExecStart=/opt/keel/ops/keel-offsite.sh
+ExecStart=/opt/keel-live/ops/keel-offsite.sh

@@ -402,7 +402,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: queued
+- Status: in-progress
 - Result: **At 4d8c1ec (PR #107): 120, 121 and 122 passed; 123 captured but did NOT verify (label field list doesn't match live Get-Label).**
   Build 4d8c1ec = master = `/opt/keel-live` (clean, deployed 11:19 UTC); unchanged through the chain.
   - **120** @ **ae3f40b**; **121** @ **30a1e36**; **122** @ **0bd6744** (branches `claude/live-evidence-12{0,1,2}`). Each

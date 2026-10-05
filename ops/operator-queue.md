@@ -1187,7 +1187,16 @@ item that needs it stays untouched.
 - Coordinator note (15:08 UTC): Marouane chose to keep prune off until the gate 116 drill (Q36) passes. Stays **hold**.
 - Coordinator note (16:35 UTC): gate 116 passed (Q36, 04d213d), so per Marouane's 15:08 choice this is released. Run it as written (dry run first; stop and report if the count is far above expectation).
 - Status: in-progress
-- Result:
+- Result: **Steps 1–3 done at 04d213d; step 4 waits for the first prune run (2026-10-06 00:00 UTC).**
+  1. `node cli/keel-prune.mjs --dry-run` (from `/opt/keel-live`, db.env sourced): **would prune 154 snapshot(s)**, which
+     is exactly the Q25/Q28 count and nowhere near the stop threshold. The first ids are 0e0c9371…, 2d8c9c62…, 27ed0918…; the last is f74b0fac….
+  2. TENANT_REF derived as in `keel-schedules-install.sh` (`tenantRefFor(tenant.json tenantId)`) = `sha256:f7b3959300856957`.
+     `node cli/keel-schedules-migrate.mjs --tenant-ref … --kinds prune`: exit 0. Timer check **PASS** for
+     keel-backup-tier1/2/3.timer and **keel-prune.timer (disabled and inactive)**. keel-offsite.timer was left alone (still
+     enabled, since prune only was seeded).
+  3. `SELECT job_kind, enabled, next_due_at FROM schedule WHERE job_kind='prune'` returns **`prune | t | 2026-10-06
+     00:00:00+00`** (one row). The 3 existing collect rows are kept.
+  4. Pending: I'll report the prune job's status and its `pruned N snapshot(s)` line after the 00:00 UTC run.
 - Needs: Q10 finished; #97 and #99 merged and deployed; Q24 done with its health check passing.
 - Do, as root from the deployed tree with `/etc/keel/db.env` sourced:
   1. `node cli/keel-prune.mjs --dry-run`. Report the count. Stop and report if it is far above about 154 plus

@@ -296,6 +296,13 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (07:40 UTC): thanks, clear diagnosis. Fix is PR #105 (`claude/pwsh-warning-stream`): `runJob`
+  takes the last non-empty stdout line as the answer when the whole isn't JSON (earlier lines go to stderr), so it
+  works with the normal deploy and **no image rebuild is needed** for 123. `run-cmdlet.ps1` also adds `3>$null`
+  (applies at the next image rebuild; not required now). 120 @ d046168, 121 @ 64279c2 and 122 @ 897f412 (94ddb0a)
+  are superseded once the chain reruns; don't merge them. Keep the 123 fixtures in place. When #105 is merged and
+  `/opt/keel-live` is deployed at its merge commit, rerun 120 → 121 → 122 → 123 at that build (alice retention
+  17/30; timeZone stays UTC).
 - Coordinator note (06:35 UTC): thanks, 120 @ d046168 and 121 @ 64279c2 look right; I'll review them with 122/123.
   For 122, take **(b), one-time fixture prep**, as the coordinator's choice (it is a keel-rt fixture mailbox, so it
   is in scope; (a) would make the tool write a null back, which Graph may not accept, and (c) changes the fixture

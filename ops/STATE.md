@@ -30,11 +30,11 @@ One GitHub issue per task (label `task`), one project thread per issue, one bran
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
 **Master is frozen while #84 runs** (same-build chain). The operator merged every open PR (#94–#103) at 01:57–01:59 UTC
-on 10-05, the chain reruns at `94ddb0a` (#104). No other merges until it finishes.
+on 10-05, the chain reruns after #105. No other merges until it finishes.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #104 (delete the async owner link whenever seen), merged as `94ddb0a` | At `94ddb0a`: 120 passed (`claude/live-evidence-120` @ d046168), 121 passed (`claude/live-evidence-121` @ 64279c2); 122 stopped: fixture mailbox alice has no timeZone | Q10: set alice's timeZone to UTC (fixture prep, coordinator choice), then 122 and 123 at `94ddb0a` |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #105 (read the PowerShell answer past warning lines) | At `94ddb0a`: 120, 121, 122 passed (d046168, 64279c2, 897f412); 123 refused before any write: Get-LabelPolicy warnings broke the JSON read | #105 CI, then the operator's merge; then Q10 reruns 120 → 123 |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step), merged as `36fc2b3` | #96 merged; read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done | After Q10: Q33 (keel-operator runs the fresh restore setup and removes Intune Administrator from the Collector, per Marouane 07:15), then Q32 (onboarding check, then Q6) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs), merged as `6fee591` | Merged; first checkbox done (ledger code b81a41d) | Recapture of every gate at one frozen build and ledger verification wait on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed), merged as `702b1ee` | Done (issue closed) | None. `adopt.sh` run twice still unverified against the real brain script (needs a brain-side session) |
@@ -64,7 +64,8 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Restorer least privilege (#93): D-93a and D-93b in the queue.
+1. Merge PR #105 (#84 chain) once CI is green.
+2. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -172,3 +173,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 05:45: #104 merged as `94ddb0a`. Q10 reruns at that build. Freeze continues.
 - 2026-10-05 06:35: at `94ddb0a` 120 and 121 passed; 122 refused (alice's mailbox timeZone is null). Q10 re-queued: set timeZone UTC on the fixture, then 122 and 123.
 - 2026-10-05 07:20: Q33 (#85 restore setup + Collector Intune role removal, by keel-operator per Marouane 07:15) added on hold until Q10; Q32 now waits on Q33.
+- 2026-10-05 07:40: at `94ddb0a` 120-122 passed (alice timeZone set to UTC); 123 refused before writing (pwsh warnings ahead of JSON). PR #105 fixes the parse. Freeze continues.

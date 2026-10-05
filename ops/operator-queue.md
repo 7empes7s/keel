@@ -388,7 +388,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: queued
+- Status: in-progress
 - Result: **At 38979f6 (PR #105): 120, 121 and 122 passed; 123 refused before any write (policy ExchangeLocation entries are objects).**
   Build 38979f6 = master = `/opt/keel-live` (clean, deployed 08:16 UTC). Grants unchanged; all doc URLs 200;
   carla absent before 121.

@@ -55,7 +55,7 @@ import {
   runCli,
 } from '../../tools/recovery/reconstruct.mjs';
 import { signRecoveryAssertion } from '../../tools/recovery/recovery-assertion.mjs';
-import { decodeCopyField, parseDump } from '../../tools/recovery/dumpImport.mjs';
+import { copyColumnNames, decodeCopyField, DumpImportError, importDump, parseDump } from '../../tools/recovery/dumpImport.mjs';
 
 const source = await createIsolatedTestDatabase(`${import.meta.url}#source`);
 const tmp = mkdtempSync(join(tmpdir(), 'keel-recovery-'));
@@ -111,7 +111,8 @@ async function renderDumpSql(client, { corruptEvidenceHash = false, omitTables =
     }).join(', ')})`);
     statements.push(`INSERT INTO ${table} (${columns.join(', ')}) VALUES\n${values.join(',\n')};`);
   }
-  statements.push(`SELECT setval('evidence_seq_seq', (SELECT max(seq) FROM evidence));`);
+  const { rows: [{ max }] } = await client.query('SELECT max(seq)::text AS max FROM evidence');
+  if (max !== null) statements.push(`SELECT setval('evidence_seq_seq', ${max}, true);`);
   return statements.join('\n');
 }
 
@@ -466,6 +467,49 @@ test('a dump carrying any psql meta-command other than \\restrict is refused at 
   assert.equal(result.ok, false);
   assert.equal(result.stage, 'import');
   assert.ok(result.failures.some((f) => f.includes('meta-command \\!')), JSON.stringify(result.failures));
+});
+
+test('a self-referencing table loads parents first across statements; identity and quoted columns load as written', async () => {
+  const target = await newTarget();
+  const client = await target.connect();
+  try {
+    await client.query(`CREATE TABLE node (
+      id int PRIMARY KEY,
+      parent int REFERENCES node(id),
+      seq bigint GENERATED ALWAYS AS IDENTITY,
+      "a,b" text)`);
+    // 2500 rows, each child written before its parent, so parent and child
+    // fall in different INSERT statements unless the import reorders them.
+    const count = 2500;
+    const lines = [];
+    for (let id = count; id >= 1; id -= 1) lines.push(`${id}\t${id === 1 ? '\\N' : id - 1}\t${id}\tv${id}`);
+    const dump = `\\restrict k\nCOPY public.node (id, parent, seq, "a,b") FROM stdin;\n${lines.join('\n')}\n\\.\n`
+      + "SELECT pg_catalog.setval('public.node_seq_seq', 2500, true);\n\\unrestrict k\n";
+    const result = await importDump(client, dump);
+    assert.deepEqual({ rows: result.rows, sequences: result.sequences }, { rows: count, sequences: 1 });
+    const { rows: [check] } = await client.query(
+      `SELECT count(*)::int AS n, max(seq)::int AS seq, min("a,b") AS v, nextval('node_seq_seq')::int AS next FROM node`,
+    );
+    assert.deepEqual(check, { n: count, seq: count, v: 'v1', next: count + 1 });
+  } finally {
+    await client.end();
+  }
+});
+
+test('the dump import refuses statements a plain dump never carries', async () => {
+  for (const [dump, message] of [
+    ['DELETE FROM schedule;', /DELETE statement/],
+    ['UPDATE schedule SET name = 1;', /UPDATE statement/],
+    ['TRUNCATE schedule;', /TRUNCATE statement/],
+    ["COPY schedule TO '/tmp/x';", /COPY statement/],
+    ['  \\! echo hi\nSELECT 1;', /meta-command \\!/],
+    ['SELECT 1; \\! echo hi', /meta-command \\!/],
+    ['SELECT 1 \\! echo hi;', /meta-command inside a statement/],
+    ["SELECT pg_catalog.setval('public.s', 1, true), pg_sleep(1);", /setval this import does not accept/],
+  ]) {
+    await assert.rejects(importDump({ query: async () => assert.fail('nothing may run') }, dump), (error) => error instanceof DumpImportError && message.test(error.message), dump);
+  }
+  assert.deepEqual(copyColumnNames('(id, "Col", "a,b", "q""x")'), ['id', 'Col', 'a,b', 'q"x']);
 });
 
 test('COPY text fields decode NULL, escapes, octal and hex bytes', () => {

@@ -1460,7 +1460,7 @@ item that needs it stays untouched.
      drill with `--db-url "$DRILL_URL"`; then `capture-drill --db-url "$DRILL_URL" --tenant <ref> --build fcd9610…`,
      then `verify --require-live` (must exit 0). Push the evidence to `claude/live-evidence-116`. Set Status in-progress
      when you start.
-- Status: queued
+- Status: in-progress
 - Result: **Blocked at the live drill (step 2), at fcd9610: reconstruction now passes (#122 works), but the drill's DB
   `keel_test` (`KEEL_DB_TEST_URL`) has a stale schema.** Tenant is clean (no residual); no evidence committed.
   1. **Pre-check** on the fresh dump: `comm -23` printed nothing; 65 dump tables.

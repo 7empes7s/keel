@@ -1448,28 +1448,33 @@ item that needs it stays untouched.
   Once #122 is merged and deployed I'll add a note with its build; then rerun Q36 from step 1 (fresh recovery set) at that build.
 - Coordinator note (15:10 UTC, #3): **#122 is merged as `0cbf9f7`.** Once master CI is green and `/opt/keel-live` is deployed at `0cbf9f7` (or any later master that contains it; #121 is evidence only), set this to in-progress and rerun from step 1 at the deployed build: run the read-only table pre-check from note #2 first (stop if it prints a table), then a fresh recovery set, reconstruction, the bounded drill, and evidence to `claude/live-evidence-116`. Record the build you ran at.
 - Coordinator note (15:16 UTC, #4): #121 (evidence only) merged as `fcd9610` right after `0cbf9f7`. Run at **`fcd9610`** so its deploy (which restarts keel-worker) doesn't land mid-drill.
-- Status: in-progress
-- Result: **Pre-check (15:10 UTC, read-only, writes only /tmp) on `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`: `comm -23` printed nothing** — every COPY table in the dump is in the reconstruction list. `wc -l` dump tables: **65** (list: 70; the 5 in the list but not the dump are audit_change_fact, audit_ingest_event, audit_ingest_run, audit_ingest_state, audit_sign_in_fact, which is harmless). Still blocked until #122 is merged and deployed.
-    Earlier: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
-    fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.
-    1. **Fresh recovery set at 76ee9b5:** read-only `pg_dump` to `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`
-       (sha256 a02008c5…), then `ops/keel-recovery-set.mjs --dump-sha256 … --out /opt/keel-recovery-sets/2026-10-05-q36`.
-       Result: build 76ee9b5, schema pin 2a20d4ae…, snapshot c82fddf2…, **evidence head
-       306:7506c853b952cf0a828cf44b0ba53a97112eec848d6102a7c6a5da4f0d754537:306** (stable across dump and set), manifest
-       sha256 e57cc8f4…. `keel-dump-manifest.mjs --verify`: "recovery complete".
-    2. Fresh 10-min assertion (Q20 key). `reconstruct.mjs … --target-url <keel_recovery_q6> --authenticator
-       signed-assertion … --result-out` ended with **exit 1: `import: dump import failed: relation "bootstrap_event" does not exist`**.
-       - **Cause:** the importer creates the target from `engine/store/schema.sql`, then loads the dump's data.
-         `bootstrap_plan` and `bootstrap_event` are **not in schema.sql** (0 matches). They're created at runtime by
-         `migrateBootstrapJournal` (`engine/bootstrap/journal.mjs:22,30`) when the portal's Setup action first runs (that
-         happened 2026-10-04). The live dump contains `CREATE TABLE public.bootstrap_event/plan` and their COPY data
-         (lines ~404/443, ~3996/4044). Comparing live tables with schema.sql, those two are the only ones missing
-         (`schedule` is present, without IF NOT EXISTS).
-       - The half-import was discarded; `keel_recovery_q6` has 0 tables.
-    **Coordinator, code fix:** add the bootstrap journal tables to `engine/store/schema.sql` (idempotent `CREATE TABLE
-    IF NOT EXISTS`, matching `journal.mjs`), or have reconstruct apply runtime migrations (migrateBootstrapJournal) after
-    schema.sql, or skip unknown tables explicitly. Then redo Q36 at the new build: fresh set, assertion, reconstruct,
-    build-manifest, offline plan, live drill, capture-drill, verify. onboarding.json stays valid.
+- Status: blocked
+- Result: **Blocked at the live drill (step 2), at fcd9610: reconstruction now passes (#122 works), but the drill's DB
+  `keel_test` (`KEEL_DB_TEST_URL`) has a stale schema.** Tenant is clean (no residual); no evidence committed.
+  1. **Pre-check** on the fresh dump: `comm -23` printed nothing; 65 dump tables.
+  2. **Fresh recovery set at fcd9610** (`/opt/keel-recovery-sets/2026-10-05-q36b`, dump sha256 8aa01c92…, manifest sha256
+     93055447…): schema pin 2a20d4ae…, snapshot 33cce13e…, **evidence head
+     401:19f0353efdf8f134f078f32dfe441e21c7872f6a7ba32a2ea4ed197dc4fe6c6d:401** (stable across dump and set). `--verify`:
+     "recovery complete".
+  3. **Reconstruction OK** (exit 0) into disposable `keel_recovery_q6` (never KEEL_DB_URL), signed-assertion (Q20 key):
+     ok, stage recovered, readOnly, writersDisabled, recoveryComplete, incomplete [], buildRevision fcd9610…, completedAt
+     2026-10-05T15:28:18.214Z; evidence 401 records, chain ok, head seq 401. → `/root/keel-q6-116/reconstruction.json`.
+  4. **build-manifest OK:** one object `group:keel-rehearsal-2026-10-05T15-28-23-358Z`, bounds 900000 ms / 30 writes.
+     **Offline plan OK:** `{"mode":"offline","ok":true,"findings":[]}`.
+  5. **Live bounded drill: exit 1, outcome `failed`** after 25.9 s, 6 writes: **`column "source_snapshot_id" of relation
+     "baseline" does not exist`**. It created group a5cfe46e-36a4-4b27-8281-f75faa316739, then removed it ("removed orphaned
+     rehearsal group"); its cleanup check saw it still in deleted-items (status `failed`, `countsAsRecoveryDrill: false`).
+     Drill record: keel_test evidence seq 6 (failed).
+     - **Residual re-checked at 15:29–15:31 (Collector, read-only):** `/groups/a5cfe46e…` 404, `/directory/deletedItems/a5cfe46e…`
+       404, no `keel-rehearsal*` group live or in deleted items. So the "residual" was replication lag; nothing left.
+     - **Cause:** the drill writes KEEL governance state to `keel_test`, which has an old **19-table** schema
+       (approval_request … subscription; no `source_snapshot_id` on baseline, which schema.sql adds at L981 since 415a7d3,
+       task-87). Live `keel` has 65 tables and the column. Nothing in `tools/rehearsal` applies schema.sql to the DB.
+  **Coordinator, decision needed (I didn't improvise):** either (a) say I may bring `keel_test` up to date by applying
+  `engine/store/schema.sql` from fcd9610 to it (non-production DB; or drop/recreate it first), then rerun from
+  build-manifest, which creates **a second** `keel-rehearsal-*` group (one per drill run); or (b) a code fix so the
+  drill applies the schema to its DB. Steps 1–3 stay valid at fcd9610 (reconstruction.json, onboarding.json), so a rerun
+  only needs build-manifest → offline plan → live drill → capture-drill → verify, as long as the build stays fcd9610.
 - Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
 - Do:
   1. Build a fresh recovery set (backup dump + manifest) at the deployed build, as in Q32.

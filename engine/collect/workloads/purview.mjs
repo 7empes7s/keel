@@ -12,7 +12,8 @@
  *    DEFINITIONS. KEEL never lists files, mail or sites to see which carry a label,
  *    never reads an item-applied label, and never counts label usage. Only the two
  *    Get cmdlets above run, with no parameters; anything a definition answer carries
- *    beyond the declared fields is dropped unread.
+ *    beyond the declared fields is dropped unread, except LabelActions, which is read
+ *    only to derive the declared protection fields (labelActionFields()).
  *  - Changes are tracked between runs. trackLabelChanges() compares each label and
  *    policy with the previous recorded run, field by field, and the run records which
  *    were added, removed or changed. That comparison uses the recorded definitions
@@ -56,8 +57,8 @@ export const LABEL_FIELDS = Object.freeze([
   'SiteExternalSharingControlType', 'WhenChangedUTC',
 ]);
 // Live Get-Label (ExchangeOnlineManagement 3.10.1, 2026-10-05) returns none of these as
-// properties: protection settings live in LabelActions, which KEEL does not read yet. They
-// stay declared so a module that does return them is compared, but a live gate qualifies
+// properties: protection settings live in LabelActions, and labelActionFields() derives them
+// from there. A module that returns them as properties still wins. A live gate qualifies
 // them only when observed, and otherwise records them as not qualified.
 export const LABEL_ACTION_FIELDS = Object.freeze([
   'EncryptionEnabled', 'EncryptionProtectionType', 'EncryptionOfflineAccessDays',
@@ -136,11 +137,71 @@ export function lockState(body) {
   return present.some((marker) => body[marker] === true || body[marker] === 'True' || body[marker] === 'true') ? 'locked' : 'unlocked';
 }
 
+// LabelActions, as Get-Label returns it: one JSON string (or object) per action,
+// { Type, SubType, Settings: [{ Key, Value }] }. Measured on a protected fixture label
+// (Q34, 2026-10-05): applycontentmarking header/footer, applywatermarking, encrypt,
+// protectgroup and protectsite.
+const PROTECTION_TYPES = Object.freeze({ template: 'Template', userdefined: 'UserDefined', removeprotection: 'RemoveProtection' });
+const PRIVACY = Object.freeze({ private: 'Private', public: 'Public' });
+
+function parseLabelActions(raw) {
+  if (!Array.isArray(raw)) return null;
+  const actions = [];
+  for (const item of raw) {
+    let action = item;
+    if (typeof item === 'string') {
+      try { action = JSON.parse(item); } catch { return null; }
+    }
+    if (!action || typeof action !== 'object' || typeof action.Type !== 'string' || !Array.isArray(action.Settings ?? [])) return null;
+    const settings = {};
+    for (const setting of action.Settings ?? []) {
+      if (!setting || typeof setting.Key !== 'string') return null;
+      settings[setting.Key.toLowerCase()] = setting.Value;
+    }
+    if (String(settings.disabled).toLowerCase() === 'true') continue;
+    actions.push({ type: action.Type.toLowerCase(), subType: action.SubType == null ? null : String(action.SubType).toLowerCase(), settings });
+  }
+  return actions;
+}
+
+const bool = (value) => (value === undefined || value === null ? null : String(value).toLowerCase() === 'true');
+
+/**
+ * The LABEL_ACTION_FIELDS a Get-Label answer encodes in LabelActions, or null when it
+ * carries no LabelActions list KEEL can read (then those fields stay unknown). A list that
+ * parses is the label's complete set of enabled actions, so an action that is absent
+ * reads as false (or null for its settings).
+ */
+export function labelActionFields(body) {
+  const actions = parseLabelActions(body?.LabelActions);
+  if (!actions) return null;
+  const find = (type, subType) => actions.find((action) => action.type === type && (subType === undefined || action.subType === subType));
+  const encrypt = find('encrypt');
+  const group = find('protectgroup');
+  const site = find('protectsite');
+  const offline = encrypt?.settings.offlineaccessdays;
+  const protection = encrypt?.settings.protectiontype;
+  const privacy = group?.settings.privacy;
+  return {
+    EncryptionEnabled: Boolean(encrypt),
+    EncryptionProtectionType: protection == null ? null : PROTECTION_TYPES[String(protection).toLowerCase()] ?? String(protection),
+    EncryptionOfflineAccessDays: offline == null || offline === '' ? null : Number(offline),
+    ApplyContentMarkingHeaderEnabled: Boolean(find('applycontentmarking', 'header')),
+    ApplyContentMarkingFooterEnabled: Boolean(find('applycontentmarking', 'footer')),
+    ApplyWaterMarkingEnabled: Boolean(find('applywatermarking')),
+    SiteAndGroupProtectionEnabled: Boolean(group || site),
+    SiteAndGroupProtectionPrivacy: privacy == null ? null : PRIVACY[String(privacy).toLowerCase()] ?? String(privacy),
+    SiteAndGroupProtectionAllowAccessToGuestUsers: bool(group?.settings.allowaccesstoguestusers),
+    SiteExternalSharingControlType: site?.settings.externalsharingcontroltype ?? null,
+  };
+}
+
 function observeObject(group, body) {
   const { fields, operation } = PURVIEW_GROUPS[group];
   const entry = { id: objectId(body), fields: {}, fieldCoverage: {}, lock: lockState(body) };
+  const derived = group === 'label' ? labelActionFields(body) : null;
   for (const field of fields) {
-    const value = body[field];
+    const value = body[field] !== undefined || !derived || !(field in derived) ? body[field] : derived[field];
     if (value === undefined) {
       entry.fieldCoverage[field] = { status: 'unknown', operation };
       continue;

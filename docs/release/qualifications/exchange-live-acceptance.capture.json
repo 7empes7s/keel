@@ -7,7 +7,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:38.762Z"
+      "at": "2026-10-05T14:46:57.743Z"
     },
     {
       "credential": "collector",
@@ -15,7 +15,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T12:41:38.762Z"
+      "at": "2026-10-05T14:46:57.743Z"
     },
     {
       "credential": "collector",
@@ -25,7 +25,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:41:45.147Z"
+      "at": "2026-10-05T14:47:04.009Z"
     },
     {
       "credential": "collector",
@@ -35,17 +35,17 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:41:48.607Z"
+      "at": "2026-10-05T14:47:07.696Z"
     },
     {
       "credential": "collector",
       "transport": "powershell-cmdlet-job",
       "cmdlet": "Get-Mailbox",
       "parameters": {
-        "Identity": "keel-rt-absent-847f70fb1f2a@techinsiderbytes.com"
+        "Identity": "keel-rt-absent-37415a284059@techinsiderbytes.com"
       },
       "outcome": "failed",
-      "at": "2026-10-05T12:41:51.935Z",
+      "at": "2026-10-05T14:47:10.996Z",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "[],Write-ErrorMessage"
@@ -58,7 +58,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:55.392Z"
+      "at": "2026-10-05T14:47:14.440Z"
     },
     {
       "credential": "restorer",
@@ -67,7 +67,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:55.468Z"
+      "at": "2026-10-05T14:47:14.595Z"
     },
     {
       "credential": "restorer",
@@ -76,7 +76,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:55.577Z"
+      "at": "2026-10-05T14:47:14.699Z"
     },
     {
       "credential": "restorer",
@@ -85,7 +85,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:55.637Z"
+      "at": "2026-10-05T14:47:14.772Z"
     },
     {
       "credential": "restorer",
@@ -94,7 +94,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-05T12:41:55.771Z"
+      "at": "2026-10-05T14:47:14.875Z"
     },
     {
       "credential": "restorer",
@@ -104,7 +104,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:41:55.771Z"
+      "at": "2026-10-05T14:47:14.875Z"
     },
     {
       "credential": "restorer",
@@ -115,7 +115,7 @@
         "PopEnabled": false
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:01.884Z"
+      "at": "2026-10-05T14:47:20.450Z"
     },
     {
       "credential": "restorer",
@@ -125,7 +125,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:06.140Z"
+      "at": "2026-10-05T14:47:24.681Z"
     },
     {
       "credential": "restorer",
@@ -136,7 +136,7 @@
         "PopEnabled": true
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:09.379Z"
+      "at": "2026-10-05T14:47:27.796Z"
     },
     {
       "credential": "restorer",
@@ -146,7 +146,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:12.759Z"
+      "at": "2026-10-05T14:47:31.136Z"
     },
     {
       "credential": "restorer",
@@ -156,7 +156,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:15.901Z"
+      "at": "2026-10-05T14:47:34.088Z"
     },
     {
       "credential": "restorer",
@@ -164,10 +164,10 @@
       "cmdlet": "Set-Mailbox",
       "parameters": {
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
-        "RetainDeletedItemsFor": "19.00:00:00"
+        "RetainDeletedItemsFor": "20.00:00:00"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:19.177Z"
+      "at": "2026-10-05T14:47:37.404Z"
     },
     {
       "credential": "restorer",
@@ -177,7 +177,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T12:42:22.814Z"
+      "at": "2026-10-05T14:47:40.972Z"
     }
   ],
   "values": {

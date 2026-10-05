@@ -91,7 +91,7 @@ before(async () => {
 });
 
 // ---- The Teams fake: two teams (one KEEL-RT), an owner, a fixture user to add and remove.
-function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0 } = {}) {
+function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0, ownerLinkDelayReads = 0 } = {}) {
   const team = {
     '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#teams/$entity',
     id: TEAM, displayName: teamName, description: 'KEEL rehearsal team', visibility: 'private', isArchived: false, tenantId: teamTenant,
@@ -108,6 +108,11 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
   if (fixtureOwnerBefore) owners.push(FIXTURE_USER);
   // With rosterLagReads, a removed member stays in the Teams roster for that many
   // roster reads, as live Teams did for ~60-90 s on 2026-10-04.
+  // With ownerLinkDelayReads, promoting creates the group owner link only after that many
+  // reads of the group's owners, and the late link survives the demote and the removal (as
+  // live Graph did on 2026-10-05).
+  let pendingOwner = null;
+  let pendingOwnerReads = 0;
   let ghost = null;
   let ghostReads = 0;
   const calls = [];
@@ -155,7 +160,8 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       if (method === 'PATCH') {
         if (!ignoreRoleWrites) {
           members[index].roles = init.body.roles;
-          if (init.body.roles.includes('owner')) { if (!owners.includes(members[index].userId)) owners.push(members[index].userId); } else unown(members[index].userId);
+          if (init.body.roles.includes('owner') && ownerLinkDelayReads) { pendingOwner = members[index].userId; pendingOwnerReads = ownerLinkDelayReads; }
+          else if (init.body.roles.includes('owner')) { if (!owners.includes(members[index].userId)) owners.push(members[index].userId); } else unown(members[index].userId);
         }
         return { status: 200, headers: {}, body: members[index] };
       }
@@ -168,6 +174,7 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       }
     }
     if (path === `/v1.0/groups/${TEAM}/owners` && method === 'GET') {
+      if (pendingOwner && (pendingOwnerReads -= 1) <= 0) { owners.push(pendingOwner); pendingOwner = null; }
       return { status: 200, headers: {}, body: { value: owners.map((id) => ({ '@odata.type': '#microsoft.graph.user', id })) } };
     }
     const ownerLink = new RegExp(`^/v1\\.0/groups/${TEAM}/owners/(.+)/\\$ref$`).exec(path);
@@ -597,3 +604,24 @@ test('a Teams roster that lags the removal is polled until the user is gone, and
   assert.equal(stale.record.subject.membershipWrites.restoredToOriginal, false);
   assert.match(stale.record.subject.membershipWrites.error, /THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER/);
 });
+
+test('a group owner link that appears after the removal is deleted when seen, and the restore re-checks after the settle delay', async () => {
+  // The link shows up on the settle read, after the first round looked clean: a second round removes it.
+  const late = teamsGraph({ ownerLinkDelayReads: 2 });
+  const settled = await capturedFiles(late, { restoreReadDelayMs: 0, settleDelayMs: 0 });
+  assert.deepEqual(late.owners, [OWNER]);
+  assert.equal(late.calls.filter((call) => call === `DELETE /v1.0/groups/${TEAM}/owners/${FIXTURE_USER}/$ref`).length, 1);
+  const { membershipWrites, fixtureMember } = settled.record.subject;
+  assert.equal(membershipWrites.ownerLinkRemoved, true);
+  assert.equal(membershipWrites.restoredToOriginal, true);
+  assert.equal(fixtureMember.ownerAfter, false);
+  assert.deepEqual(verifyEvidenceFile(settled.outPath, options()), { ok: true, failures: [] });
+
+  // A link already there on the first read is removed in the first round.
+  const early = teamsGraph({ ownerLinkDelayReads: 1 });
+  const first = await capturedFiles(early, { restoreReadDelayMs: 0, settleDelayMs: 0 });
+  assert.deepEqual(early.owners, [OWNER]);
+  assert.equal(first.record.subject.membershipWrites.restoredToOriginal, true);
+  assert.deepEqual(verifyEvidenceFile(first.outPath, options()), { ok: true, failures: [] });
+});
+

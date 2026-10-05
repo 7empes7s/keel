@@ -185,3 +185,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 13:01: PR #110 (120-123 evidence at 248b12c) merged.
 - 2026-10-05 13:15: GitHub Actions jobs refused (account payment/spending limit) since the 13:01 master push; nothing auto-deploys until fixed. PR #111 (job cancel, unblocks Q24) waiting on CI. Asked Marouane to check billing.
 - 2026-10-05 13:17: #89 done (Q31). Q30 and Q33 done; Q32 queued after Q34.
+- 2026-10-05 13:45: PR #111 merged as `b9e5f6b` (job cancel, gate tests accept live 120-123 records, LabelActions reader #109). Next: deploy, Q24 resume, then Q35 (120-123 rerun).

@@ -1257,8 +1257,40 @@ item that needs it stays untouched.
 ### Q32: Gate 116 onboarding result, then unblock Q6 — issue #85
 - Drafted by the "Gate 116 drill live acceptance" thread (02:00 UTC). **On hold: don't start** until the
   coordinator changes Status to queued (after Q10 and Q33 finish).
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: **Step 1–2 partly done; Q6 blocked at the task-68 reconstruction (importer can't load a real pg_dump).** No drill
+  was run; no `keel-rehearsal-*` group was created; nothing was written to the tenant.
+  1. Deployed **248b12c** includes 36fc2b3 (#96). Setup runs (`bootstrap_plan`/`bootstrap_event`, read-only):
+     - **read: `cbd974b9ef106fda5b2d31467b7d07b36de6e092eb16b5a76892ec5b34dda144` complete** (Entra-only, build ffa05cd)
+     - **restore: `174d8db69f61c81cb76c54c1a5708a09d04a70754e5911a7207316dcb35d3d74` complete** (build 248b12c, Q33)
+     - (also: c18bfc21 stopped; ea7e91c2 approved/stale; untouched.)
+  2. Wrote `/root/keel-q6-116/onboarding.json` (task-76; both complete; both run ids). Then started Q6:
+     - **The Q11 set can't serve 248b12c:** `capture-drill` needs `reconstruction.buildRevision === --build`
+       (`qualification.mjs:585`), and the Q11 manifest is pinned to df0de36. The live evidence head has also moved
+       (now seq 12).
+     - So I built a **fresh recovery set at 248b12c**: read-only `pg_dump` of the live DB to
+       `/root/keel-q6-116/keel-db-2026-10-05-q6.sql.gz` (sha256 80b47c92…, 65 COPY blocks), then
+       `ops/keel-recovery-set.mjs --dump-sha256 … --out /opt/keel-recovery-sets/2026-10-05-q6`. Result: build
+       248b12c, schema pin 2a20d4ae…, snapshot 3c2c2968…, **evidence head
+       12:9d6e29f864690a474a53eabb352eb64abeaf0f9886c8b25c7da7f7ce2a37f8b2:12** (unchanged across dump and set),
+       manifest sha256 d455bdb1…. `keel-dump-manifest.mjs --verify`: "recovery complete".
+     - Disposable target DB **`keel_recovery_q6`** (new, empty; never KEEL_DB_URL). Signed a 10-min single-use
+       assertion with the Q20 key (recovery-officer@keel.local / officer-2026-10).
+     - `reconstruct.mjs … --authenticator signed-assertion … --result-out` ended with **exit 1:
+       `import: dump import failed: syntax error at or near "\"`**. No reconstruction.json.
+     - **Root cause:** `tools/recovery/reconstruct.mjs` (~L270) runs the whole dump as one
+       `importClient.query(dumpSql)` through node-postgres. Plain `pg_dump` output (pg_dump **16.14** in keel-postgres)
+       contains psql meta-commands: **`\restrict <key>`** (line 5) and `\unrestrict` (end), and every table's data as
+       **`COPY … FROM stdin;` … `\.`** blocks. Neither can run through a plain query (COPY needs the COPY protocol).
+       **Every KEEL dump has this**: the 2026-10-04 and 2026-10-05 nightlies, the Q11 set and this fresh set (2
+       restrict lines each). So no real backup can be reconstructed today (only synthetic INSERT-style fixtures).
+     - Cleanup: reconstruct discarded its half-import schema; `keel_recovery_q6` has 0 tables.
+  **Coordinator, tool fix:** load the dump with `psql` (e.g. `docker exec -i keel-postgres psql -v ON_ERROR_STOP=1 -d
+  <disposable db>`, or psql on the host) or implement COPY-stdin streaming and strip `\restrict`/`\unrestrict`. Then
+  redo: fresh set at the new build (head moves), assertion, reconstruct, build-manifest, offline plan, live bounded
+  drill, capture-drill, verify.
+  Kept for the rerun: onboarding.json (run ids stay valid), the recovery key, the trust store; the 2026-10-05-q6 set is
+  build-pinned to 248b12c, so it's only reusable at 248b12c.
 - Needs: Q10 finished; Q27 done; PR #96 (`36fc2b3`) deployed; Q33 done (fresh restore setup complete).
 - Do:
   1. Read-only: confirm the deployed build includes `36fc2b3`. From `bootstrap_plan`/`bootstrap_event`, report the

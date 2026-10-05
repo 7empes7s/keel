@@ -1185,8 +1185,18 @@ item that needs it stays untouched.
      (snapshot ids are fine; nothing else).
 
 ### Q30: Remove the Q19 Restorer config override after #98 deploys — issue #92
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done** at deployed 248b12c (≥ 76e503e, #98).
+  1. Backed up `/etc/keel/portal.env` as **`/etc/keel/portal.env.bak-q30-202610051309`**. Removed only
+     `KEEL_RESTORER_CONFIG_PATH=…`. The file now sets CLOUDFLARE_ACCESS_TEAM_DOMAIN, CLOUDFLARE_ACCESS_AUD, HOST, PORT,
+     NODE_ENV, **KEEL_COLLECTOR_CONFIG_PATH** (kept) and KEEL_SETUP_OPERATOR_ID. Restarted `keel-portal`; health ok.
+  2. `GET /api/setup` after the restart: **canCheck true, canProvision true, checkFailed false**. Same as before.
+     - Read setup run `complete` (keel-collector, consent and keel.collect done).
+     - Restore setup run `waiting-for-you` at the PIM step.
+     - The Restorer config is found through #98's default (`/etc/keel/restorer.json`); no missing-config error.
+     - Note: the pre-change `/api/setup` read failed only because my Access token had expired (a new
+       `cloudflared access login` was approved by the operator at 13:11 UTC). Nothing to do with the change.
+  3. No rollback needed.
 - Needs: Q10 finished; `/opt/keel-live` deployed at or after `76e503e` (#98: portal and worker now default to
   `/etc/keel/restorer.json`).
 - Do:

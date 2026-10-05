@@ -2,6 +2,7 @@
 // /opt/keel/cli/keel-schedules-host.mjs
 //
 // node keel-schedules-host.mjs preflight|run-now|health --tenant-config /etc/keel/tenant.json [--db-url $KEEL_DB_URL]
+// node keel-schedules-host.mjs cancel --job ID --reason TEXT [--db-url $KEEL_DB_URL]
 //
 // Host checks around installing keel-worker and keel-scheduler (issue #91):
 //   preflight  read-only. Lists what a worker would pick up the moment it starts: queued or
@@ -13,11 +14,14 @@
 //   health     per tier: the schedule row is enabled and due in the future, and the newest
 //              collect job for that tier succeeded with full coverage and queued its drift
 //              detection. Exits 1 unless all three tiers pass.
+//   cancel     withdraws one queued job that preflight listed, so a stale backlog never runs
+//              when the worker starts. Running and finished jobs are left alone. Exits 1 when
+//              the job was not queued.
 // It prints JSON only: counts, ids, kinds and times, never job params or results.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
-import { enqueue } from '../engine/jobs/queue.mjs';
+import { enqueue, cancelQueued } from '../engine/jobs/queue.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { snapshotHasFullCoverage } from '../engine/schedules/completions.mjs';
 import { snapshotIdForJob } from '../engine/schedules/forecast.mjs';
@@ -67,6 +71,14 @@ export async function runNow(client, { tenantRef, now = new Date() }) {
   return { tenantRef, jobs };
 }
 
+export async function cancel(client, { jobId, reason }) {
+  if (!jobId) throw new Error('--job is required');
+  const job = await cancelQueued(client, { id: jobId, reason });
+  if (job) return { jobId, kind: job.kind, status: job.status, ok: true };
+  const { rows: [current] } = await client.query('SELECT kind, status FROM job WHERE id = $1', [jobId]);
+  return { jobId, kind: current?.kind ?? null, status: current?.status ?? 'not found', ok: false };
+}
+
 async function tierHealth(client, { tenantRef, tier, now }) {
   const { rows: [schedule] } = await client.query(
     `SELECT enabled, next_due_at FROM schedule
@@ -112,17 +124,20 @@ function arg(argv, name, fallback) {
 
 export async function main(argv = process.argv.slice(2)) {
   const command = argv[0];
-  const commands = { preflight, 'run-now': runNow, health };
+  const commands = { preflight, 'run-now': runNow, health, cancel };
   if (!commands[command]) {
-    console.error('usage: keel-schedules-host.mjs preflight|run-now|health --tenant-config FILE [--db-url URL]');
+    console.error('usage: keel-schedules-host.mjs preflight|run-now|health --tenant-config FILE [--db-url URL]\n'
+      + '       keel-schedules-host.mjs cancel --job ID --reason TEXT [--db-url URL]');
     return 2;
   }
-  const config = JSON.parse(readFileSync(arg(argv, 'tenant-config', '/etc/keel/tenant.json'), 'utf8'));
+  const options = command === 'cancel'
+    ? { jobId: arg(argv, 'job'), reason: arg(argv, 'reason') }
+    : { tenantRef: tenantRefFor(JSON.parse(readFileSync(arg(argv, 'tenant-config', '/etc/keel/tenant.json'), 'utf8')).tenantId) };
   const dbUrl = arg(argv, 'db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connect(dbUrl);
   try {
-    const result = await commands[command](client, { tenantRef: tenantRefFor(config.tenantId) });
+    const result = await commands[command](client, options);
     console.log(JSON.stringify(result, null, 2));
     return result.ok === false ? 1 : 0;
   } finally {

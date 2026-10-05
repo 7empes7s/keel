@@ -24,10 +24,12 @@
  * 4. schema        — the schema about to be applied must hash to exactly the
  *                    manifest's schema pin; an incompatible schema stops
  *                    BEFORE any import.
- * 5. import        — schema + dump are loaded into a DISPOSABLE database
- *                    supplied by the caller (createTargetDatabase). Never the
- *                    production database; the default target factory refuses
- *                    KEEL_DB_URL outright.
+ * 5. import        — the pinned schema, then the dump's data, are loaded into
+ *                    a DISPOSABLE database supplied by the caller
+ *                    (createTargetDatabase). Never the production database;
+ *                    the default target factory refuses KEEL_DB_URL outright.
+ *                    The dump is plain pg_dump output (COPY blocks, \restrict)
+ *                    or INSERT statements; its DDL is not run (dumpImport.mjs).
  * 6. history       — a fresh read-only session (writers disabled at the
  *                    database level, mutation check: enable writes during
  *                    reconstruction) verifies the evidence chain and requires
@@ -58,6 +60,7 @@ import {
 import { sha256Hex } from '../../engine/export/manifest.mjs';
 import { verifyChain } from '../../engine/govern/evidence.mjs';
 import { connect } from '../../engine/store/db.mjs';
+import { importDump } from './dumpImport.mjs';
 import { assertTenantRef } from '../../engine/store/tenantRef.mjs';
 import { verifyRecoveryManifest } from '../../engine/storage/recoveryManifest.mjs';
 
@@ -270,7 +273,7 @@ export async function reconstructRecovery({
     const importClient = await target.connect();
     try {
       await importClient.query(schemaBytes.toString('utf8'));
-      await importClient.query(dumpSql);
+      await importDump(importClient, dumpSql);
     } finally {
       await importClient.end();
     }

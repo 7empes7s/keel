@@ -90,6 +90,24 @@ export async function fail(client, { id, error }) {
   return rows[0] ?? null;
 }
 
+// Withdraws a job that has not started. Only a queued job can be cancelled: a running one
+// belongs to a live worker, and a finished one is history. The reason is kept in `error`
+// so the job list shows who cancelled it and why.
+export async function cancelQueued(client, { id, reason, eventSink = createEventSink() }) {
+  if (typeof reason !== 'string' || reason.trim().length === 0) {
+    throw new TypeError('a cancel reason is required');
+  }
+  const { rows } = await client.query(
+    `UPDATE job
+     SET status = 'cancelled', error = $2, finished_at = now(), heartbeat_at = NULL
+     WHERE id = $1 AND status = 'queued'
+     RETURNING *, started_at::text AS event_started_at`,
+    [id, `cancelled: ${reason.trim()}`],
+  );
+  if (rows[0]) emitJobEvent(rows[0], 'job.cancelled', eventSink);
+  return rows[0] ?? null;
+}
+
 /**
  * Roadmap task-130: job summary fields — the requester resolved to a name, and the
  * baseline, plan (dry run), undone restore, changes and snapshot a job's params point

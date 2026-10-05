@@ -95,9 +95,10 @@ cover it. Purview grants never count as OneDrive grants, and the reverse.
   within 24 hours of the record.
 - The OneDrive read was made in the `-Identity` form the adapter uses, not the
   `-IncludeOneDriveSites` listing in the task-101 probe row.
-- Every declared OneDrive, label and policy field was observed live. The exception is the label protection
-  settings Get-Label keeps in `LabelActions` (encryption, content marking, watermark, site and group protection):
-  any it does not return are listed in `notQualifiedFields.label` and are not qualified by this gate.
+- Every declared OneDrive, label and policy field was observed live. Get-Label keeps the label protection
+  settings (encryption, content marking, watermark, site and group protection) in `LabelActions`, and the
+  adapter derives them from there. Any it still cannot observe are listed in `notQualifiedFields.label`
+  and are not qualified by this gate.
 - Inherited versus explicit state was recorded for every OneDrive field. The conditional
   fields (`DefaultSharingLinkType`, `DefaultLinkPermission`, `ExternalUserExpirationInDays`,
   `AnonymousLinkExpirationInDays`) must be determined, not `undetermined`.

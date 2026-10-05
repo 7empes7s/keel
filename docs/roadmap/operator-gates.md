@@ -34,7 +34,7 @@ including fixtures, credentials and what each command touches, are in the linked
 | 116 | `drill-live-acceptance` | Both setups complete (task-76 run ids); a read-only reconstruction result (task-68) | Yes: creates and removes one `keel-rehearsal-<startAt>` group | ~30 min | 124; the measured recovery-time figure |
 | 120 | `sharepoint-live-acceptance` | A disposable `KEEL-RT-<yyyymmdd>` communication site; separate Collector and Restorer apps | Yes: **decision needed** (below) | ~45 min | 121 (Teams) and enabling the SharePoint read and write adapters |
 | 121 | `teams-live-acceptance` | A verified task-120 record at the same build; a disposable private `KEEL-RT-<yyyymmdd>` team; a disposable member account not yet in it; separate Collector and Restorer apps | Yes: **decisions needed** (below); writes touch only the fixture team | ~45 min, after 120 | Enabling the Teams adapter (task-104); 105 and 122 (Exchange) |
-| 117 | `sentinel-live-acceptance` | **Decision needed:** the gate is deferred by operator decision. When taken up: a TEST Log Analytics workspace with the `KeelEvents_CL` table, a DCE/DCR for the `Custom-KeelEvents` stream, a sender app with Monitoring Metrics Publisher on the DCR, and a separate reader app with Log Analytics Reader on the workspace | No tenant objects. Ingests 5 probe events (each twice) into the test workspace and runs two read-only KQL queries | ~30 min, plus ingestion delay | Claiming Sentinel export as live-qualified (task-80 adapter); 124 |
+| 117 | `sentinel-live-acceptance` | **Descoped** by operator decision 2026-10-04; the release ledger reports it as an accepted gap. If ever taken up: a TEST Log Analytics workspace with the `KeelEvents_CL` table, a DCE/DCR for the `Custom-KeelEvents` stream, a sender app with Monitoring Metrics Publisher on the DCR, and a separate reader app with Log Analytics Reader on the workspace | No tenant objects. Ingests 5 probe events (each twice) into the test workspace and runs two read-only KQL queries | ~30 min, plus ingestion delay | Claiming Sentinel export as live-qualified (task-80 adapter); 124 |
 | 118 | `servicenow-live-acceptance` | The non-production ServiceNow instance (2026-09-30 decision) with a non-default workflow mapped in a KEEL adapter config, the relay table, signing property and business rule (`ops/servicenow/keel-callback-relay.js`), two test accounts that are not people with their own tokens, and a `…_qualification` KEEL database | No tenant objects. Creates four records and four test-user approvals in the non-production instance only | ~45 min, plus instance setup | Claiming the ServiceNow workflow as live-qualified (task-97 adapter, D6); 124 |
 | 122 | `exchange-live-acceptance` | Verified 120 and 121 records at the same build; the fixture mailbox `keel-rt-20260908-alice` (or another `keel-rt-*` user mailbox) with deleted-item retention under 30 days; separate Collector and Restorer apps with Exchange app-only access | Yes: **decisions needed** (below); writes touch only the fixture mailbox's settings | ~45 min, after 121 | Enabling the Exchange adapter (task-105); 106 and 123 (OneDrive and Purview) |
 | 123 | `onedrive-purview-live-acceptance` | A verified 122 record at the same build; hand-made fixtures: a `KEEL-RT-*` label, a `KEEL-RT-*` publishing policy whose locations name only `keel-rt-*` users, and the fixture user's provisioned OneDrive; separate Collector and Restorer apps with Purview access | Yes: **decisions needed** (below); writes touch only the KEEL-RT label and policy | ~45 min, after 122 | Enabling the OneDrive and Purview adapter (task-106); 124 |
@@ -142,10 +142,10 @@ node tools/release/qualification.mjs verify --require-live --gate teams-live-acc
 The record is valid for 30 days, only for the build it names, and only while the
 SharePoint record beside it also verifies.
 
-### 117: Sentinel workspace ingestion qualification (decision needed)
+### 117: Sentinel workspace ingestion qualification (descoped)
 
 Steps: [sentinel-live-acceptance.md › Operator steps](sentinel-live-acceptance.md#operator-steps).
-Deferred by operator decision; nothing here needs doing until you take it up. Every Azure
+Descoped by operator decision 2026-10-04 12:36 UTC; the release ledger lists it as an accepted gap. Nothing here needs doing unless you take it up again. Every Azure
 resource is yours to create in a TEST subscription; the tool never provisions anything. The
 capture sends probe events through the production task-80 adapter, restarts the adapter and
 replays them under the same event ids, then reads them back with two read-only KQL queries.
@@ -275,5 +275,5 @@ The record is valid for 30 days and only for the build it names.
    previous record to verify at the same build.
 4. **118**, once the non-production ServiceNow instance is set up: it touches no tenant
    object.
-5. **117**, only if you decide to take it up: it needs Azure resources in a test
+5. **117** is descoped (accepted gap). Only if you take it up again: it needs Azure resources in a test
    subscription and touches no tenant object.

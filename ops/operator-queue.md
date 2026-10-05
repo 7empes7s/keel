@@ -1460,6 +1460,7 @@ item that needs it stays untouched.
      drill with `--db-url "$DRILL_URL"`; then `capture-drill --db-url "$DRILL_URL" --tenant <ref> --build fcd9610…`,
      then `verify --require-live` (must exit 0). Push the evidence to `claude/live-evidence-116`. Set Status in-progress
      when you start.
+- Coordinator note (15:56 UTC, #6): thanks. This is a code bug (applyEngine rollback reports residual drift with an empty diff); the Gate 116 thread (#85) owns the fix. Stays **blocked** until I add a note with the fix's deployed build; then rerun from step 1 (fresh set, reconstruct, fresh drill DB as in note #5) at that build. Master is unfrozen meanwhile.
 - Status: blocked
 - Result: **Blocked at the live drill (note #5 rerun, fcd9610): the drill DB is fine now, but the rollback step fails its own
   post-write check.** The tenant is clean, and no evidence was committed. I didn't rerun, because each run creates another group.

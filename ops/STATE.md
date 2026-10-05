@@ -30,11 +30,11 @@ One GitHub issue per task (label `task`), one project thread per issue, one bran
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
 **Master is frozen while #84 runs** (same-build chain). The operator merged every open PR (#94–#103) at 01:57–01:59 UTC
-on 10-05, so the chain runs at `6fee591`. No new merges until it finishes.
+on 10-05, the chain ran at `6fee591` (121 blocked) and reruns after #104. No other merges until it finishes.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window), merged as `5a7f58c` | Q10 queued for a rerun at the deployed master head (now `6fee591`); 120 @ 12d3547 (df4082a) superseded | Master CI and deploy at `6fee591`, then keel-operator reruns 120 → 123 |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #104 (delete the async owner link whenever seen) | Blocked: at `6fee591` 120 passed (`claude/live-evidence-120` @ 427633d), 121 exit 3: the group owner link appeared after the tool's DELETE (404); operator removed it by hand, team back to its pre-capture state | #104 CI, then the operator's merge; then Q10 reruns 120 → 123 |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step), merged as `36fc2b3` | #96 merged; read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done | After deploy, Marouane runs a fresh restore setup; then Q32 (on hold) checks both runs and unblocks Q6. Collector SP still holds Intune Administrator (operator asked to remove) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs), merged as `6fee591` | Merged; first checkbox done (ledger code b81a41d) | Recapture of every gate at one frozen build and ledger verification wait on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed), merged as `702b1ee` | Done (issue closed) | None. `adopt.sh` run twice still unverified against the real brain script (needs a brain-side session) |
@@ -64,8 +64,9 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Gate 116 (#85): after the chain and the deploy, run a fresh restore setup and tell Claude when it completes (unblocks Q32); remove Intune Administrator from the Collector.
-2. Restorer least privilege (#93): D-93a and D-93b in the queue.
+1. Merge PR #104 (#84 chain) once CI is green.
+2. Gate 116 (#85): after the chain and the deploy, run a fresh restore setup and tell Claude when it completes (unblocks Q32); remove Intune Administrator from the Collector.
+3. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -169,3 +170,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 02:10: operator merged #95 (#87 done), #96, #97, #99, #100. Chain now runs at `c99a9f2` or later. Host Q-items (Q24, Q26, Q29, Q30, #89's) all wait for Q10.
 - 2026-10-05 02:15: #101 and #102 merged; master `6fee591`, no open PRs. Q31 (#89 offsite enable) added on hold.
 - 2026-10-05 02:20: Q32 (#85 onboarding check, then Q6) added on hold.
+- 2026-10-05 02:55: Q10 at `6fee591`: 120 passed; 121 exit 3 (Teams created the group owner link after the tool's DELETE). Operator cleaned up. PR #104 re-deletes the link whenever seen. Freeze continues.

@@ -296,6 +296,12 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (02:55 UTC): thanks for the clean-up and the timeline. Fix is PR #104
+  (`claude/teams-owner-async`), your option (b): every restore read that shows carla as a group owner re-issues
+  the owner-ref DELETE (404 = not yet), and if the read after the settle delay isn't clean the round repeats (at
+  most 3 rounds of ~3 min poll + 20 s settle). `claude/live-evidence-120` @ 427633d (6fee591) is superseded once
+  the chain reruns; don't merge it alone. When #104 is merged and `/opt/keel-live` is deployed at its merge
+  commit, rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (02:15 UTC): #101 and #102 merged too; **master is `6fee591` with no open PRs**. Run the chain at
   `6fee591` once master CI is green and it is deployed. Nothing else will merge until Q10 finishes.
 - Coordinator note (02:10 UTC): master is now `c99a9f2` (#95, #96, #97, #99, #100 also merged). #101 and #102 are

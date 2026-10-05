@@ -1315,7 +1315,7 @@ item that needs it stays untouched.
 
 
 ### Q34: Protected fixture label for LabelActions — issue #109
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Needs: Q10 finished (don't add a label while the chain runs; 123 counts tenant labels).
 - Ask (Marouane chose 12:42 UTC that KEEL reads LabelActions): with the Restorer via Connect-IPPSSession, create
   **one** label `KEEL-RT-<date>-protected`, unpublished (in **no** label policy), with:

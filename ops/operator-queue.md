@@ -1394,3 +1394,13 @@ item that needs it stays untouched.
 - Then, read-only: `Get-Label -Identity <that label> | ConvertTo-Json -Depth 10` and paste the **LabelActions** and
   **Settings** values, plus which of the 10 LABEL_ACTION_FIELDS names appear as top-level properties, into the
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
+
+### Q35: Rerun gates 120 → 121 → 122 → 123 at PR #111's build (LabelActions, #109) — issue #84
+- Status: hold (coordinator flips to queued once #111 is merged and `/opt/keel-live` is deployed at its merge commit)
+- Result:
+- Needs: PR #111 merged and deployed. Do Q24's unblock (cancel the two stale jobs) first if it is also waiting, but do
+  **not** start the worker (Q24 step 3) until this chain finishes, so no collection runs mid-chain.
+- Do: exactly as Q10 (same pre-checks and decisions), at the new build, with a fresh unpublished
+  `KEEL-RT-<date>-label3` for 123. Expect gate 123's `notQualifiedFields.label` to be **empty**: the ten protection fields
+  now come from LabelActions. If any are still listed, stop and report the 123 capture's label fieldCoverage.
+  Commit each gate to `claude/live-evidence-<gate>` as before. Poll every 5 minutes while queued or running.

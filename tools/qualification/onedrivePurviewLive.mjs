@@ -61,7 +61,7 @@ import { pathToFileURL } from 'node:url';
 
 import { ONEDRIVE_FIELDS, ONEDRIVE_MODULE, ONEDRIVE_OPERATION, oneDriveCmdlet, oneDriveSite, readOneDriveSite } from '../../engine/collect/workloads/onedrive.mjs';
 import {
-  POLICY_FIELDS, PURVIEW_MODULE, definitionFingerprint, labelKey, purviewCmdlet, readPurview,
+  LABEL_ACTION_FIELDS, POLICY_FIELDS, PURVIEW_MODULE, definitionFingerprint, labelKey, purviewCmdlet, readPurview,
 } from '../../engine/collect/workloads/purview.mjs';
 import { planPurviewRestore } from '../../engine/restore/workloads/purview.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
@@ -253,6 +253,8 @@ export async function captureOneDrivePurviewAcceptance({
   const label = labels.length === 1 ? labels[0] : null;
   const policy = policies.length === 1 ? policies[0] : null;
   const supportedFields = { onedrive: observedFields(siteRead.result), label: observedFields(label), policy: observedFields(policy) };
+  // Get-Label carries protection settings in LabelActions; the ones it did not return are not qualified.
+  const notQualifiedFields = { label: label ? LABEL_ACTION_FIELDS.filter((field) => !supportedFields.label.includes(field)) : [] };
   const fixtureKeys = [label?.resourceKey, policy?.resourceKey].filter(Boolean);
 
   // 2. A platform error, as it comes back: the absent probe OneDrive.
@@ -343,6 +345,7 @@ export async function captureOneDrivePurviewAcceptance({
       grants,
       reads,
       supportedFields,
+      notQualifiedFields,
       inheritance,
       writes,
       tenantDefinitions: {

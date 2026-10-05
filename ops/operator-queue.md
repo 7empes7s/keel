@@ -996,6 +996,13 @@ item that needs it stays untouched.
   cancel, so it is recorded as evidence; no hand SQL), or explicitly decide otherwise. Then re-queue Q24.
   Note: step 4 edits `/opt/keel-deploy/deploy.sh`. keel-operator's standing instructions say not to touch
   `/opt/keel-deploy` (vps-deployer owns it), so that step needs the operator's explicit OK or should go to vps-deployer.
+- Coordinator note (13:13 UTC): Marouane chose (13:11) to cancel both stale jobs through a new KEEL command,
+  PR #111 (`keel-schedules-host cancel`). **Wait for #111 to merge and `/opt/keel-live` to deploy at or after its
+  merge commit**, then: (a) `node cli/keel-schedules-host.mjs cancel --job 6f682eec-8338-4530-8dc8-0216dc38e6fe
+  --reason "stale 2026-10-03 restore; cancelled before worker install (Q24, Marouane 13:11)"` and the same for
+  `16869853-ebe2-48ae-9ef4-75b77e663ba1` (reason "stale 2026-10-02 backup; …"); report both JSON outputs;
+  (b) re-run step 1 preflight, which should be `ok: true`; (c) steps 3 and 5. **Skip step 4** (deploy.sh): it goes to
+  vps-deployer separately. Set Status back to queued yourself once #111 is deployed.
 - Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
 - Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):
   1. `set -a; . /etc/keel/db.env; set +a; node cli/keel-schedules-host.mjs preflight` (read-only). Report its

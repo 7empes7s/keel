@@ -72,7 +72,7 @@ export const ADMINISTRATIVE_OPERATION_RECORDS = Object.freeze([
     resourceType: 'groupSetting',
     operation: 'update',
     route: 'PATCH /groupSettings/{id}',
-    permission: 'Directory.ReadWrite.All',
+    permission: 'GroupSettings.ReadWrite.All',
     docs: `${DOCS}/groupsetting-update?view=graph-rest-1.0`,
     writableFields: Object.freeze(['values']),
     checks: Object.freeze([
@@ -85,7 +85,7 @@ export const ADMINISTRATIVE_OPERATION_RECORDS = Object.freeze([
     resourceType: 'groupSetting',
     operation: 'delete',
     route: 'DELETE /groupSettings/{id}',
-    permission: 'Directory.ReadWrite.All',
+    permission: 'GroupSettings.ReadWrite.All',
     docs: `${DOCS}/groupsetting-delete?view=graph-rest-1.0`,
     writableFields: Object.freeze([]),
     checks: Object.freeze([

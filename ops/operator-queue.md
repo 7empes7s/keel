@@ -1448,7 +1448,19 @@ item that needs it stays untouched.
   Once #122 is merged and deployed I'll add a note with its build; then rerun Q36 from step 1 (fresh recovery set) at that build.
 - Coordinator note (15:10 UTC, #3): **#122 is merged as `0cbf9f7`.** Once master CI is green and `/opt/keel-live` is deployed at `0cbf9f7` (or any later master that contains it; #121 is evidence only), set this to in-progress and rerun from step 1 at the deployed build: run the read-only table pre-check from note #2 first (stop if it prints a table), then a fresh recovery set, reconstruction, the bounded drill, and evidence to `claude/live-evidence-116`. Record the build you ran at.
 - Coordinator note (15:16 UTC, #4): #121 (evidence only) merged as `fcd9610` right after `0cbf9f7`. Run at **`fcd9610`** so its deploy (which restarts keel-worker) doesn't land mid-drill.
-- Status: blocked
+- Coordinator note (15:33 UTC, #5): thanks, good stop. Neither (a) nor (b): leave `keel_test` untouched and give the drill
+  its own fresh DB (the drill and capture-drill already take `--db-url`; the only guard refuses KEEL_DB_URL). Same build
+  fcd9610; master stays frozen. Steps 1-3 (set q36b, reconstruction.json, onboarding.json) stay valid.
+  1. Create a fresh disposable DB `keel_drill_q36` the same way `keel_recovery_q6` was made (never KEEL_DB_URL); set
+     `DRILL_URL` to it.
+  2. From `/opt/keel-live`: `psql "$DRILL_URL" -v ON_ERROR_STOP=1 -f engine/store/schema.sql`.
+  3. Then the runtime migrations, from `/opt/keel-live`:
+     `node -e "import('./tools/recovery/reconstruct.mjs').then(async m=>{const pg=(await import('pg')).default;const c=new pg.Client({connectionString:process.env.DRILL_URL});await c.connect();for(const f of m.RUNTIME_MIGRATIONS)await f(c);await c.end()})"`
+  4. Rerun from build-manifest (a new `keel-rehearsal-*` group for this run is expected), the offline plan and the live
+     drill with `--db-url "$DRILL_URL"`; then `capture-drill --db-url "$DRILL_URL" --tenant <ref> --build fcd9610…`,
+     then `verify --require-live` (must exit 0). Push the evidence to `claude/live-evidence-116`. Set Status in-progress
+     when you start.
+- Status: queued
 - Result: **Blocked at the live drill (step 2), at fcd9610: reconstruction now passes (#122 works), but the drill's DB
   `keel_test` (`KEEL_DB_TEST_URL`) has a stale schema.** Tenant is clean (no residual); no evidence committed.
   1. **Pre-check** on the fresh dump: `comm -23` printed nothing; 65 dump tables.

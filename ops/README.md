@@ -1,16 +1,28 @@
-# KEEL backup timers
+# KEEL scheduled collection
 
-The tiered backup units are deliberately not installed or started by the build. An operator may
-install and enable them after confirming the Collector registration and `/etc/keel/db.env` are
-configured for the intended tenant:
+Tier 1/2/3 collection runs from `schedule` rows: `keel-scheduler.timer` turns due rows into jobs
+every five minutes, and `keel-worker` runs them through `cli/keel-collect.mjs --tier tierN`.
+The per-tier `keel-backup-tier*.timer` units are the older trigger; `keel-schedules-migrate.mjs`
+keeps them disabled, and they should not be enabled alongside the scheduler.
+
+Nothing is installed by the build. On the host, as root, from the deployed tree:
 
 ```sh
-sudo install -m 0644 ops/keel-backup-tier1.service ops/keel-backup-tier1.timer /etc/systemd/system/
-sudo install -m 0644 ops/keel-backup-tier2.service ops/keel-backup-tier2.timer /etc/systemd/system/
-sudo install -m 0644 ops/keel-backup-tier3.service ops/keel-backup-tier3.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now keel-backup-tier1.timer keel-backup-tier2.timer keel-backup-tier3.timer
+bash ops/keel-schedules-install.sh --root /opt/keel-live   # preflight, units, collect schedules, enable
+node cli/keel-schedules-host.mjs run-now                   # one collection per tier now
+node cli/keel-schedules-host.mjs health                    # after those jobs finish; exit 0 = all tiers healthy
 ```
+
+- The install stops before changing anything when `preflight` finds queued or running jobs (no
+  worker has run them, and a new worker would), enabled auto-remediate policies, or enabled
+  schedules for another tenant. `preflight` is read-only and can be run on its own.
+- `--root` is the tree the units run from; the unit files say `/opt/keel` and are installed with
+  that prefix replaced.
+- Only `collect` schedules are seeded by default. Add prune and offsite later with
+  `node cli/keel-schedules-migrate.mjs --tenant-ref REF --kinds prune,offsite`; rows already there
+  are kept.
+- `keel-worker` is long-running, so a deploy that moves the tree should also run
+  `systemctl try-restart keel-worker` (a no-op when it is not installed).
 
 ## KEEL status dashboard
 

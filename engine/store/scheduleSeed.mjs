@@ -27,9 +27,18 @@ export function initialSchedules(now = new Date()) {
   ];
 }
 
-export async function seedSchedules(client, { tenantRef, now = new Date() }) {
+// jobKinds limits the seed to those kinds, so a host can turn on collection before
+// prune and offsite are ready; a later run with the remaining kinds adds them.
+export async function seedSchedules(client, { tenantRef, now = new Date(), jobKinds }) {
   if (typeof tenantRef !== 'string' || !tenantRef.trim()) throw new Error('tenantRef is required');
-  const schedules = initialSchedules(now);
+  let schedules = initialSchedules(now);
+  if (jobKinds !== undefined) {
+    const known = new Set(schedules.map((row) => row.jobKind));
+    if (!Array.isArray(jobKinds) || jobKinds.length === 0 || jobKinds.some((kind) => !known.has(kind))) {
+      throw new Error(`jobKinds must be a non-empty list of: ${[...known].join(', ')}`);
+    }
+    schedules = schedules.filter((row) => jobKinds.includes(row.jobKind));
+  }
   await client.query('BEGIN');
   try {
     for (const row of schedules) {

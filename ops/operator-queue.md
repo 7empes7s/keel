@@ -1276,7 +1276,7 @@ item that needs it stays untouched.
 - Drafted by the "Gate 116 drill live acceptance" thread (07:16 UTC). Asked by Marouane in the project chat,
   2026-10-05 07:15 UTC: "I think these could be solved by the deployer/operator sessions?" **On hold: don't start**
   until the coordinator changes Status to queued (after Q10 finishes).
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Result:
 - Needs: Q10 finished; Q27 done; `36fc2b3` (PR #96) deployed to `/opt/keel-live`.
 - Do:

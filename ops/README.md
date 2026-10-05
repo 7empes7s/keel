@@ -66,16 +66,14 @@ Settings, all optional, go in `/etc/keel/offsite.env`, which the unit reads when
 `KEEL_OFFSITE_DIR` (destination, default `/mnt/keel-copy/keel-offsite`), and `KEEL_OFFSITE_REMOTE=user@host`
 with `KEEL_OFFSITE_SSH_KEY` to ship over SSH to another host instead.
 
-Not installed or enabled by the build. As with the other units, the unit file says `/opt/keel`;
-install it with that prefix replaced by the deployed tree (`/opt/keel-live` on the VPS; `/opt/keel`
-there is an old, stopped checkout whose script still targets the retired host):
+Not installed or enabled by the build. The unit runs the script from `/opt/keel-live`, the tree
+`keel-deploy.timer` keeps current; `/opt/keel` on the VPS is an old, stopped checkout whose script
+still targets the retired host:
 
 ```sh
-ROOT=/opt/keel-live
-sed "s#/opt/keel/#$ROOT/#g" "$ROOT/ops/keel-offsite.service" | sudo tee /etc/systemd/system/keel-offsite.service >/dev/null
-sudo install -m 0644 "$ROOT/ops/keel-offsite.timer" /etc/systemd/system/
+sudo install -m 0644 /opt/keel-live/ops/keel-offsite.service /opt/keel-live/ops/keel-offsite.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo "$ROOT/ops/keel-offsite.sh" --dry-run   # must pass before enabling the timer
+sudo /opt/keel-live/ops/keel-offsite.sh --dry-run   # must pass before enabling the timer
 sudo systemctl enable --now keel-offsite.timer
 ```
 

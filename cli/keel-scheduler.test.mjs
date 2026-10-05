@@ -302,7 +302,8 @@ try {
     // stale-manifest paths exercised with the freshness guard mutated away.
     await writeFile(join(directory, 'scp'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
     await writeFile(join(directory, 'ssh'), `#!/bin/sh\ncase "$*" in *sha256sum*) echo '${manifest.checksum} fixture';; esac\n`, { mode: 0o700 });
-    const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: directory, PATH: `${directory}:${process.env.PATH}` };
+    // KEEL_OFFSITE_REMOTE selects the SSH transport, so the fake ssh/scp above stand in for the target.
+    const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: directory, KEEL_OFFSITE_REMOTE: 'fixture@offsite', PATH: `${directory}:${process.env.PATH}` };
     await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { env }), (error) => /not newer/.test(error.stderr));
     // A scheduled stale shipment must surface as a failed job, never success.
     await clearJobs();

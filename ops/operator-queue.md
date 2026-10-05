@@ -978,24 +978,30 @@ item that needs it stays untouched.
 ### Q24: Install scheduled collection (issue #91)
 - Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
   until the coordinator changes Status to queued.
-- Status: in-progress
-- Result: **Blocked at step 1: preflight `ok: false`. Operator decision needed before any worker starts.** Nothing installed.
-  1. `node cli/keel-schedules-host.mjs preflight` (from /opt/keel-live at 248b12c, read-only), exit 1:
-     `{"tenantRef":"sha256:f7b3959300856957","backlog":[{"kind":"backup","status":"queued","count":1,"oldest":"2026-10-02T10:46:37.682Z"},{"kind":"restore","status":"queued","count":1,"oldest":"2026-10-03T15:50:44.811Z"}],"autoRemediatePolicies":0,"schedules":[],"blockers":["jobs are queued or running; a new worker would run them"],"ok":false}`
-     The queued jobs (read-only SELECT):
-     - `16869853-ebe2-48ae-9ef4-75b77e663ba1` **backup** `{"tier":"tier1"}`, queued 2026-10-02 10:46 UTC.
-     - `6f682eec-8338-4530-8dc8-0216dc38e6fe` **restore** of **`authorizationPolicy:Authorization Policy`** (a
-       tenant-wide setting) from snapshot `f74b0fac…` (artifact `49e68fce…`), queued 2026-10-03 15:50 UTC.
-       `targetConfig` `/etc/keel/restorer-target.json` (doesn't exist, so it would likely fail),
-       `collectorConfig` `/etc/keel/tenant-target.json` (doesn't exist).
-     **A worker must not start while this restore is queued.** Hard rules: no tenant-wide settings.
-  2. `readlink -f /opt/keel` = `/opt/keel`: **not** the same tree as `/opt/keel-live` (separate directory, the
-     stopped driver's checkout).
-  3–5. Not run.
-  **Operator / coordinator:** cancel both stale jobs through KEEL's own path (portal job cancel, or a KEEL CLI
-  cancel, so it is recorded as evidence; no hand SQL), or explicitly decide otherwise. Then re-queue Q24.
-  Note: step 4 edits `/opt/keel-deploy/deploy.sh`. keel-operator's standing instructions say not to touch
-  `/opt/keel-deploy` (vps-deployer owns it), so that step needs the operator's explicit OK or should go to vps-deployer.
+- Status: done
+- Result: **Done** (13:13 note: cancel both, preflight, steps 3 and 5; **step 4 skipped**, deploy.sh goes to vps-deployer).
+  Started at `/opt/keel-live` = **b9e5f6b** (#111).
+  - (a) `keel-schedules-host cancel`, both returned `{"status":"cancelled","ok":true}` with `job.cancelled` events:
+    - `6f682eec-8338-4530-8dc8-0216dc38e6fe` (restore of authorizationPolicy), reason "stale 2026-10-03 restore;
+      cancelled before worker install (Q24, Marouane 13:11)".
+    - `16869853-ebe2-48ae-9ef4-75b77e663ba1` (backup tier1), reason "stale 2026-10-02 backup; …".
+  - (b) preflight: `{"backlog":[],"autoRemediatePolicies":0,"schedules":[],"blockers":[],"ok":true}`, exit 0.
+  - Step 2 (earlier): `/opt/keel` is not `/opt/keel-live`.
+  - Step 3 `bash ops/keel-schedules-install.sh --root /opt/keel-live` exit 0: installed `keel-worker.service`,
+    `keel-scheduler.service/.timer` (ExecStart/WorkingDirectory under /opt/keel-live), seeded collect schedules for
+    sha256:f7b3959300856957, enabled the worker and the scheduler timer (both active).
+    - **Note:** before install, `keel-backup-tier1/2/3.timer` were **enabled and active** (not disabled as assumed);
+      the migrate step disabled them (PASS lines).
+    - **Note: it also disabled `keel-offsite.timer`**, which Q31 had enabled at 13:12 today. The daily vol2
+      offsite copy is **now off** (the script keeps offsite unscheduled, #89). Left as the installer set it.
+      Coordinator: decide whether offsite runs via its own timer (re-enable) or a scheduler job.
+  - Step 5 `run-now` queued tier1 `993a8d4c…`, tier2 `6d0cdf49…`, tier3 `841a12a7…`. All **succeeded**
+    (14:09:07 / 14:09:19 / 14:09:21; snapshots 328ac529… / 1062d201… / c82fddf2…). After one scheduler tick,
+    `health`: **ok true, exit 0**. Every tier: scheduled, lastRunSucceeded, fullCoverage, driftQueued all true,
+    **failedTypes []**. nextDueAt: tier1 2026-10-05T15:00Z (hourly), tier2 2026-10-06T00:00Z, tier3 2026-10-12T00:00Z.
+  - **Note:** `/opt/keel-live` was deployed to **ab074dc** during the wait. Because step 4 (worker try-restart in
+    deploy.sh) is pending with vps-deployer, the long-running worker (active since Mon 2026-10-05 14:08:49 UTC) still runs the b9e5f6b code
+    until it's restarted.
 - Coordinator note (13:13 UTC): Marouane chose (13:11) to cancel both stale jobs through a new KEEL command,
   PR #111 (`keel-schedules-host cancel`). **Wait for #111 to merge and `/opt/keel-live` to deploy at or after its
   merge commit**, then: (a) `node cli/keel-schedules-host.mjs cancel --job 6f682eec-8338-4530-8dc8-0216dc38e6fe

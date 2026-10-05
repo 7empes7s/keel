@@ -1209,7 +1209,7 @@ item that needs it stays untouched.
 ### Q31: #89 enable offsite to vol2 — issue #89
 - Drafted by the "Offsite backup unreachable" thread (02:00 UTC). **On hold: don't start** until the coordinator
   changes Status to queued.
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Result:
 - Needs: Q10 finished; the deployed tree (`/opt/keel`, see Q24 step 2 for `/opt/keel` vs `/opt/keel-live`) at or
   after `c99a9f2` (#100).

@@ -550,6 +550,12 @@ export async function applyWave(writer, governor, wave, {
       live = updateReRead?.body ?? updateReRead;
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
         const residual = residualDiff(desired, live, resource.resourceType);
+        if (residual.length === 0) {
+          // The hashes differ only where an empty array or object meets an absent field.
+          await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
+          applied.push({ naturalKey: resource.naturalKey, targetId });
+          continue;
+        }
         const immutable = immutableDrift(desired, live, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
@@ -643,6 +649,12 @@ export async function applyWave(writer, governor, wave, {
 
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)) {
         const residual = residualDiff(normalisedDesired, live, resource.resourceType);
+        if (residual.length === 0) {
+          // The hashes differ only where an empty array or object meets an absent field.
+          await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
+          applied.push({ naturalKey: resource.naturalKey, targetId });
+          continue;
+        }
         const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),

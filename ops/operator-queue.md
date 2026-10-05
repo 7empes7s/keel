@@ -1529,8 +1529,10 @@ item that needs it stays untouched.
 
 
 ### Q38: Drop the throwaway drill and recovery databases — issues #84, #85
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done.** Step 1 listed 4 databases: `keel_drill_q36`, `keel_drill_q36b`, `keel_recovery_q36c`, `keel_recovery_q6`.
+  Each was dropped on its own with `DROP DATABASE` (all succeeded). Rerunning the step 1 query: **0 rows**. Remaining
+  databases: `postgres`, `keel` (live), `keel_test`, `keel_servicenow_qualification`, all untouched.
 - Why: the gate 116 attempts left disposable databases on the host (keel_drill_q36, keel_drill_q36b,
   keel_recovery_q36c and older keel_recovery_* ones). Gate 116 evidence is merged (#126), so none is needed.
 - Do, as root with `/etc/keel/db.env` sourced:

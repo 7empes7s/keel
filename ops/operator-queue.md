@@ -359,27 +359,32 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At 6fee591 (all PRs incl. #103 merged): 120 passed; 121 exit 3. The owner link appears late; cleaned by hand.**
-  Build 6fee591 = master = `/opt/keel-live` (clean, deployed 02:11 UTC). Grants unchanged; all 25 doc URLs
-  return 200. Before 121, carla was absent from the roster, group owners and group members.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **427633d**, verify ok, exit 0.
-  - **121 Teams: capture exit 3** ("may still be a member or owner … by hand"). Not committed; files kept locally.
-    - Timeline from the capture log: 02:11:52 PATCH promote (200); 02:11:53 PATCH demote (200); 02:11:55
-      DELETE member (204); **02:11:56 DELETE `/groups/{id}/owners/{carla}/$ref` returned 404** (the owner link
-      didn't exist yet). The tool then polled until 02:15:36 (~4 min, #103) and gave up correctly.
-    - **Residual:** my read at **02:15:46**: roster=1, **owners=1**, members=0. Teams created the Entra owner
-      link from the promotion asynchronously, *after* the tool's owner DELETE, and it then survived the
-      removal (as in the 2b2c338 run).
-    - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/owners/856db776…/$ref` returned **204**.
-      Re-reads: 02:16:00 roster=1 owners=0 members=0; **02:17:02 → 02:25:12 (9 checks) all 0.** The team is back
-      to its pre-capture state (owners alice and maya; members alice, emma, hugo, maya and priya).
-  - **Coordinator, tool fix:** the owner link materialises seconds to minutes *after* the promote PATCH. Options:
-    (a) after promoting, poll `/groups/{id}/owners` until carla appears before demoting; or (b) during the
-    post-removal settle loop, **re-issue the owner-ref DELETE whenever `/groups/{id}/owners` shows carla**
-    (treating 404 as "not yet"), and only declare restored when roster, owners and members have all been
-    clean for a stable interval. The current single DELETE races the async link.
-  - 122 and 123 not run. No other tenant change.
+- Status: blocked
+- Result: **At 94ddb0a (PR #104): 120 and 121 passed; 122 stopped (alice's mailbox has no timeZone).**
+  Build 94ddb0a = master = `/opt/keel-live` (clean, deployed 05:53 UTC). Grants unchanged; all doc URLs 200;
+  carla absent from the roster, owners and members before 121.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **d046168**, verify ok, exit 0.
+  - **121 Teams: passed.** `claude/live-evidence-121` @ **64279c2**, which supersedes the void 2b2c338 record
+    9ec0e2f. Capture exit 0; verify (with 120 beside it) ok, exit 0; restoredToOriginal true.
+    - My independent re-checks 05:54 → 05:57 (5×): roster, owners and members all 0. No residual this time.
+    - As before, verify on the 121 branch alone needs the 120 record beside it; merge them together.
+  - **122 Exchange: capture exit 1 (not committed; files kept locally).**
+    - `exchange.mailbox-settings.update` refused: **"timeZone was not read; nothing was written"**. Graph
+      `GET /users/keel-rt-20260908-alice/mailboxSettings` is 200, but `timeZone`, `dateFormat` and
+      `timeFormat` are **null** (her mailbox regional settings were never initialised; nobody has signed in
+      to Outlook as her).
+    - The other legs worked: `exchange.client-access.update` (PopEnabled toggled, read back, **restored**)
+      and `exchange.mailbox-retention.update` (14 → **15** days, read back; D-122d).
+    - Re-read afterwards: PopEnabled True (original), ImapEnabled True, LitigationHold False,
+      SingleItemRecovery True, RetainDeletedItemsFor 15.00:00:00. No other change.
+    - **Coordinator or operator decision needed**, either:
+      (a) tool fix: when `timeZone` is null, toggle to a value and restore it to null/unset, if Graph allows
+          clearing it; or
+      (b) one-time fixture prep: set alice's mailbox `timeZone` (e.g. "UTC"), a write to the keel-rt fixture
+          mailbox's settings not covered by any current decision; or
+      (c) pick another fixture mailbox that has regional settings.
+    - Each 122 retry adds another retention day (now 15/30).
+  - 123 not run.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

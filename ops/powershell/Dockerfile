@@ -28,11 +28,13 @@ ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
 # the RUN step's exit code 0 — a silent no-op build that skipped every
 # Install-Module call beneath it. Confirmed by content size: the broken image
 # was byte-for-byte the same size as the bare base image.
+# MicrosoftTeams is pinned: an unpinned rebuild on 2026-10-05 pulled 8.0.0, a major
+# version Teams capture has not been tested on. Bump it on purpose, with a live check.
 RUN pwsh -NoLogo -NoProfile -NonInteractive -Command " \
       \$ErrorActionPreference = 'Stop'; \
       Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
       Install-Module -Name ExchangeOnlineManagement -MinimumVersion 3.0.0 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
-      Install-Module -Name MicrosoftTeams -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
+      Install-Module -Name MicrosoftTeams -RequiredVersion 7.9.0 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Install-Module -Name PnP.PowerShell -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Write-Host 'module install complete:'; \
       Get-Module -ListAvailable ExchangeOnlineManagement,MicrosoftTeams,PnP.PowerShell | Select-Object Name,Version | Format-Table -AutoSize | Out-String | Write-Host; \

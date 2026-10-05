@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "teams-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "94ddb0a5c17c22056e9df3049f5faea70333167e",
+  "build": "38979f6d8ed52f108515cf4b5aada16b7910161b",
   "operation": "teams.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-05T05:54:14.134Z",
+  "observedAt": "2026-10-05T08:17:23.811Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "sharePointQualification": {
       "gate": "sharepoint-live-acceptance",
       "evidence": "sharepoint-live-acceptance.json",
-      "captureLogSha256": "585657d9141d66706f796f5366afa6428f8bc27a4344b3cbaca896f51f362122"
+      "captureLogSha256": "708ac9cf3f012ba1faf55fd4d53dbb247212f681c04d53ab309169e862cd8a7d"
     },
     "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
     "fixtureTeam": {
@@ -62,7 +62,7 @@
       {
         "operationId": "teams.team-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T05:53:42.307Z",
+        "capturedAt": "2026-10-05T08:16:45.290Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -71,7 +71,7 @@
       {
         "operationId": "teams.settings",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T05:53:42.579Z",
+        "capturedAt": "2026-10-05T08:16:45.651Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -80,7 +80,7 @@
       {
         "operationId": "teams.membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T05:53:42.996Z",
+        "capturedAt": "2026-10-05T08:16:46.312Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -89,7 +89,7 @@
       {
         "operationId": "teams.group-membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T05:53:43.090Z",
+        "capturedAt": "2026-10-05T08:16:46.395Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -115,7 +115,7 @@
       "restoredToOriginal": true,
       "preFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
       "finalFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
-      "capturedAt": "2026-10-05T05:53:45.230Z"
+      "capturedAt": "2026-10-05T08:16:48.791Z"
     },
     "membershipWrites": {
       "captures": [
@@ -125,7 +125,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T05:53:47.029Z"
+          "capturedAt": "2026-10-05T08:16:50.727Z"
         },
         {
           "operationId": "teams.membership.update",
@@ -133,7 +133,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T05:53:51.149Z"
+          "capturedAt": "2026-10-05T08:16:55.256Z"
         },
         {
           "operationId": "teams.membership.remove",
@@ -141,7 +141,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T05:53:52.648Z"
+          "capturedAt": "2026-10-05T08:16:56.695Z"
         }
       ],
       "restoredToOriginal": true,
@@ -149,7 +149,7 @@
       "finalFingerprint": "e8ed744393d6482245f75a6772bee922ad61966cb9b15df7fe6ab06f7dc7bef3",
       "ownersPreFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
       "ownersFinalFingerprint": "c99fdc31383377bb1f21d191a497a28d010f394afb78210e64e619efaee1eecb",
-      "ownerLinkRemoved": false
+      "ownerLinkRemoved": true
     },
     "requests": [
       {
@@ -309,6 +309,34 @@
       },
       {
         "credential": "restorer",
+        "method": "DELETE",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+        "status": 204
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
         "method": "GET",
         "version": "v1.0",
         "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
@@ -335,47 +363,47 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/teams-list",
-        "retrievedAt": "2026-10-05T05:53:41.305Z"
+        "retrievedAt": "2026-10-05T08:16:44.412Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-get",
-        "retrievedAt": "2026-10-05T05:53:41.354Z"
+        "retrievedAt": "2026-10-05T08:16:44.444Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-list-members",
-        "retrievedAt": "2026-10-05T05:53:41.399Z"
+        "retrievedAt": "2026-10-05T08:16:44.479Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/group-list-members",
-        "retrievedAt": "2026-10-05T05:53:41.447Z"
+        "retrievedAt": "2026-10-05T08:16:44.526Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T05:53:41.464Z"
+        "retrievedAt": "2026-10-05T08:16:44.541Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-post-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T05:53:41.493Z"
+        "retrievedAt": "2026-10-05T08:16:44.565Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T05:53:41.520Z"
+        "retrievedAt": "2026-10-05T08:16:44.594Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-delete-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T05:53:41.550Z"
+        "retrievedAt": "2026-10-05T08:16:44.621Z"
       }
     ],
-    "captureLogSha256": "9a3628a55ae765d6e0a43272ba15846e73ddfb051829b37ebb10e0928acae75b"
+    "captureLogSha256": "6630e54feebf36d873f6f99e7d39a5851a85b8ba84b69e65adde15abbf86d923"
   },
   "proof": {
     "artifact": {
       "path": "teams-live-acceptance.capture.json",
-      "sha256": "9a3628a55ae765d6e0a43272ba15846e73ddfb051829b37ebb10e0928acae75b"
+      "sha256": "6630e54feebf36d873f6f99e7d39a5851a85b8ba84b69e65adde15abbf86d923"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "24501ffaa313cb12cabaa84ee302d86129732f10044e4f91d29eaffa23de8e8e"
+      "signature": "80c1bc3590748577691530673a5363ab1c3f8555bca02c94793b8efa5ee326c9"
     }
   }
 }

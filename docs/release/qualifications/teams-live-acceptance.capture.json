@@ -6,7 +6,7 @@
       "version": "v1.0",
       "path": "/teams",
       "status": 200,
-      "at": "2026-10-05T05:53:42.307Z"
+      "at": "2026-10-05T08:16:45.290Z"
     },
     {
       "credential": "collector",
@@ -14,7 +14,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 200,
-      "at": "2026-10-05T05:53:42.579Z"
+      "at": "2026-10-05T08:16:45.651Z"
     },
     {
       "credential": "collector",
@@ -22,7 +22,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:42.996Z"
+      "at": "2026-10-05T08:16:46.312Z"
     },
     {
       "credential": "collector",
@@ -30,7 +30,7 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:43.090Z"
+      "at": "2026-10-05T08:16:46.395Z"
     },
     {
       "credential": "collector",
@@ -38,7 +38,7 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
       "status": 200,
-      "at": "2026-10-05T05:53:43.160Z"
+      "at": "2026-10-05T08:16:46.853Z"
     },
     {
       "credential": "restorer",
@@ -46,7 +46,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 200,
-      "at": "2026-10-05T05:53:43.422Z"
+      "at": "2026-10-05T08:16:47.162Z"
     },
     {
       "credential": "restorer",
@@ -54,7 +54,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 204,
-      "at": "2026-10-05T05:53:43.854Z"
+      "at": "2026-10-05T08:16:47.752Z"
     },
     {
       "credential": "restorer",
@@ -62,7 +62,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 200,
-      "at": "2026-10-05T05:53:44.235Z"
+      "at": "2026-10-05T08:16:48.036Z"
     },
     {
       "credential": "restorer",
@@ -70,7 +70,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 204,
-      "at": "2026-10-05T05:53:44.819Z"
+      "at": "2026-10-05T08:16:48.525Z"
     },
     {
       "credential": "restorer",
@@ -78,7 +78,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
       "status": 200,
-      "at": "2026-10-05T05:53:45.229Z"
+      "at": "2026-10-05T08:16:48.791Z"
     },
     {
       "credential": "restorer",
@@ -86,7 +86,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:45.591Z"
+      "at": "2026-10-05T08:16:49.214Z"
     },
     {
       "credential": "restorer",
@@ -94,7 +94,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 201,
-      "at": "2026-10-05T05:53:47.029Z",
+      "at": "2026-10-05T08:16:50.727Z",
       "memberUserId": "856db776-4cb7-473c-ac8e-860159e72e08"
     },
     {
@@ -103,7 +103,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:47.512Z"
+      "at": "2026-10-05T08:16:51.065Z"
     },
     {
       "credential": "restorer",
@@ -111,7 +111,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
       "status": 200,
-      "at": "2026-10-05T05:53:48.895Z"
+      "at": "2026-10-05T08:16:52.725Z"
     },
     {
       "credential": "restorer",
@@ -119,7 +119,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:49.235Z"
+      "at": "2026-10-05T08:16:53.060Z"
     },
     {
       "credential": "restorer",
@@ -127,7 +127,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
       "status": 200,
-      "at": "2026-10-05T05:53:50.792Z"
+      "at": "2026-10-05T08:16:54.889Z"
     },
     {
       "credential": "restorer",
@@ -135,7 +135,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:51.149Z"
+      "at": "2026-10-05T08:16:55.256Z"
     },
     {
       "credential": "restorer",
@@ -143,7 +143,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
       "status": 204,
-      "at": "2026-10-05T05:53:52.648Z"
+      "at": "2026-10-05T08:16:56.695Z"
     },
     {
       "credential": "restorer",
@@ -151,7 +151,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:53.015Z"
+      "at": "2026-10-05T08:16:57.079Z"
     },
     {
       "credential": "restorer",
@@ -159,7 +159,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:53.360Z"
+      "at": "2026-10-05T08:16:57.430Z"
     },
     {
       "credential": "collector",
@@ -167,7 +167,7 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
       "status": 200,
-      "at": "2026-10-05T05:53:53.474Z"
+      "at": "2026-10-05T08:16:57.532Z"
     },
     {
       "credential": "collector",
@@ -175,7 +175,15 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:53:53.542Z"
+      "at": "2026-10-05T08:16:57.621Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+      "status": 204,
+      "at": "2026-10-05T08:16:57.811Z"
     },
     {
       "credential": "restorer",
@@ -183,7 +191,7 @@
       "version": "v1.0",
       "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:54:13.991Z"
+      "at": "2026-10-05T08:17:03.106Z"
     },
     {
       "credential": "collector",
@@ -191,7 +199,7 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
       "status": 200,
-      "at": "2026-10-05T05:54:14.059Z"
+      "at": "2026-10-05T08:17:03.183Z"
     },
     {
       "credential": "collector",
@@ -199,7 +207,31 @@
       "version": "v1.0",
       "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
       "status": 200,
-      "at": "2026-10-05T05:54:14.134Z"
+      "at": "2026-10-05T08:17:03.251Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T08:17:23.641Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+      "status": 200,
+      "at": "2026-10-05T08:17:23.735Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T08:17:23.810Z"
     }
   ],
   "values": {

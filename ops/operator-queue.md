@@ -394,27 +394,29 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At c3bd35d (PR #106): 120 passed; 121 exit 3 again (a group *membership* survived this time); cleaned by hand.**
-  Build c3bd35d = master = `/opt/keel-live` (clean, deployed 09:27 UTC). Grants unchanged; all doc URLs 200;
-  carla absent before 121.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **6c9f51b**, verify ok, exit 0.
-  - **121 Teams: capture exit 3** ("may still be a member or owner … by hand"). Not committed; files kept locally.
-    - Log: 09:28:53/54 PATCH settings ×2 (204); 09:28:56 POST member (201); 09:28:58 PATCH promote; 09:29:00
-      PATCH demote; **09:29:01 DELETE `/teams/{id}/members/{membership}` returned 204**. No owner-link DELETE was
-      needed (it never showed). The tool polled until **09:40:09** (11 min, 361 requests) and saw carla stay.
-    - **Residual:** my reads 09:40:09 → 09:44:46: **roster=1, owners=0, members=1** (steady). The Teams member
-      DELETE returned 204, but the Entra group membership persisted or was re-synced back after the
-      promote/demote, the same async pattern as the owner link before (#104), now on the *member* link.
-    - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/members/856db776…/$ref` returned **204**
-      (09:44:46). Re-reads: 09:44:53 roster=1 (lag); **09:45:54 → 09:54:07 (9 checks) all 0.** The team is back to
-      its pre-capture state.
-  - **Coordinator, tool fix:** like #104 for owners, during the settle loop also **re-issue `DELETE
-    /groups/{id}/members/{user}/$ref` whenever `/groups/{id}/members` shows carla** (404 = gone), and only declare
-    restored after roster, owners and members have been clean for a stable interval.
-    - Note: each 121 run behaves differently (owner link late, roster lag, member link persisting). The Teams
-      fixture membership loop is the flaky part of this chain.
-  - 122 and 123 not run at c3bd35d (the alice retention is unchanged at 17).
+- Status: blocked
+- Result: **At 4d8c1ec (PR #107): 120, 121 and 122 passed; 123 captured but did NOT verify (label field list doesn't match live Get-Label).**
+  Build 4d8c1ec = master = `/opt/keel-live` (clean, deployed 11:19 UTC); unchanged through the chain.
+  - **120** @ **ae3f40b**; **121** @ **30a1e36**; **122** @ **0bd6744** (branches `claude/live-evidence-12{0,1,2}`). Each
+    verify --require-live --build 4d8c1ec is ok (exit 0) with the others beside it; they supersede earlier records.
+    - 121: the record notes one intermediate "removing the fixture user's group owner link failed (HTTP 400)", but
+      the restore verified, and my re-checks 11:30 → 11:33 (5×) show roster, owners and members all 0.
+    - 122: alice retention now **18.00:00:00** (D-122d); timeZone restored to UTC; client access restored.
+  - **123 OneDrive/Purview: capture exit 1** (captured, verify failed). Writes happened and were read back:
+    `Set-Label -Comment` on KEEL-RT-20261005-label (restored), and `Set-LabelPolicy -AddLabels` (the fixture label
+    is **now published** by KEEL-RT-20261005-policy, still only to keel-rt-20260908-alice; one-way by design).
+    - **Verify failures:** "supported field not observed live: label.EncryptionEnabled / EncryptionProtectionType /
+      EncryptionOfflineAccessDays / ApplyContentMarkingHeaderEnabled / ApplyContentMarkingFooterEnabled /
+      ApplyWaterMarkingEnabled / SiteAndGroupProtectionEnabled / SiteAndGroupProtectionPrivacy /
+      SiteAndGroupProtectionAllowAccessToGuestUsers / SiteExternalSharingControlType".
+    - **Cause (read-only check through the job path):** `Get-Label` output (ExchangeOnlineManagement 3.10.1) has
+      **none** of these as top-level properties on **any** of the tenant's 15 labels. Label settings come back in
+      `LabelActions` (empty here) and `Settings` (`[key, value]` strings). The tool's supported-field list
+      assumes properties this module doesn't return.
+    - **Coordinator:** map those fields from `LabelActions`/`Settings` (or drop them from the required
+      observed-live set when absent everywhere), then rerun 120 → 123 at the new build.
+    - **Rerun needs a fresh fixture label** (D-123d): KEEL-RT-20261005-label is now published. I'll create a new
+      `KEEL-RT-<date>-label` (unpublished) just before the next 123 capture. The anchor and policy stay.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

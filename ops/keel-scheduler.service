@@ -1,3 +1,5 @@
+# Install with ops/keel-schedules-install.sh --root <deployed tree>, which rewrites the
+# /opt/keel paths below to that tree. Copied as-is, this unit would run the old /opt/keel checkout.
 [Unit]
 Description=KEEL schedule execution engine
 After=network-online.target

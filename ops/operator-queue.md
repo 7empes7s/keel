@@ -1426,8 +1426,11 @@ item that needs it stays untouched.
 - Hard rules as usual: no tenant-wide settings, no grants, no secrets printed.
 
 ### Q37: Re-enable the offsite timer after Q24 — issue #89
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done.** `systemctl enable --now keel-offsite.timer` re-created the timers.target.wants link.
+  `systemctl list-timers keel-offsite.timer`: **NEXT Tue 2026-10-06 05:00:00 UTC**, LAST Mon 2026-10-05 13:12:05 UTC
+  (no catch-up run fired this time). `is-enabled`: **enabled**; `is-active`: active. The service unit still has
+  `ExecStart=/opt/keel-live/ops/keel-offsite.sh` (Q31). Nothing else changed; installer not re-run.
 - Why: the Q24 installer (before #112) turns `keel-offsite.timer` off; Q31 had it enabled for vol2.
 - Do, as root: `systemctl enable --now keel-offsite.timer`, then `systemctl list-timers keel-offsite.timer`. Report the
   next run (expect 2026-10-06 05:00 UTC) and `systemctl is-enabled keel-offsite.timer`. Nothing else.

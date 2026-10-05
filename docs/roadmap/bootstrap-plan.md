@@ -94,7 +94,10 @@ mutates a tenant.
   assignment display name the adapter reports; the per-tenant role
   definition id is resolved at execution time (task-75). PIM satisfaction
   requires an identified `operatorPrincipalId`; without one the step stays
-  `pending-manual` and is never assumed.
+  `pending-manual` and is never assumed. A role that includes the required
+  one also satisfies it (`ROLES_INCLUDED_BY` in `prerequisites.mjs`: Global
+  Administrator for Privileged Role Administrator), so a Global
+  Administrator is not asked to take a second role.
 - The Intune RBAC mapping (`Read Only Operator` for read-only collection)
   follows Microsoft's least-privilege guidance on the Intune RBAC page
   (retrieved 2026-09-25); per-tenant custom roles with equivalent rights are

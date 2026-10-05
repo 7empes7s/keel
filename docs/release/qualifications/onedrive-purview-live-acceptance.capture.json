@@ -1,0 +1,180 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "module": "PnP.PowerShell",
+      "cmdlet": "Get-PnPTenantSite",
+      "parameters": {
+        "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T12:42:26.958Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:42:46.838Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:42:46.838Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "module": "PnP.PowerShell",
+      "cmdlet": "Get-PnPTenantSite",
+      "parameters": {
+        "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f"
+      },
+      "outcome": "failed",
+      "at": "2026-10-05T12:42:46.838Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "PnP.PowerShell.Commands.GetTenantSite"
+      }
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:10.874Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:10.874Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Set-Label",
+      "parameters": {
+        "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+        "Comment": "KEEL-RT qualification 2026-10-05T12:42:51.653Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:10.874Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:40.638Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:40.638Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Set-Label",
+      "parameters": {
+        "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+        "Comment": "KEEL gate 123 fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T12:43:40.638Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:07.109Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:07.109Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:26.677Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:26.677Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Set-LabelPolicy",
+      "parameters": {
+        "Identity": "9581a855-3e69-447b-8219-9cb5a1979db1",
+        "AddLabels": [
+          "KEEL-RT-20261005-label2"
+        ]
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:26.677Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-Label",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:58.701Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "cmdlet": "Get-LabelPolicy",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T12:44:58.701Z"
+    }
+  ],
+  "values": {
+    "originalComment": "KEEL gate 123 fixture",
+    "labelWritten": true
+  }
+}

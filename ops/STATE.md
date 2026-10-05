@@ -29,8 +29,8 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 One GitHub issue per task (label `task`), one project thread per issue, one branch and PR per
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
-**Master is unfrozen (2026-10-05 12:55 UTC).** Gates 120 → 123 all verified at `248b12c`; evidence in PR #110. #109
-(LabelActions reader) will need one more full chain rerun at its build, so the freeze returns briefly then.
+**Master is unfrozen (2026-10-05 15:00 UTC).** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
+fields qualified (#109); evidence in PR #121. Gate 116 (Q36) waits on a reconstruction fix and reruns at that fix's build.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
@@ -190,3 +190,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 14:13: #89: the schedules installer (Q24 step 3) disables keel-offsite.timer; fixed in #112 (awaiting CI + Marouane's merge). Q37 re-enables the timer after Q24.
 - 2026-10-05 14:22: Q24 done (#91): worker and scheduler live, health ok; tier1 hourly. Q37 re-enabled keel-offsite.timer (next 2026-10-06 05:00). ab074dc deployed; worker still on b9e5f6b until restarted. Q35/Q36 wait for #117.
 - 2026-10-05 14:30: #117, #113 (Teams pin) and #112 (offsite installer) merged. deploy.sh now restarts keel-worker (vps-deployer, Marouane 14:17). **Master frozen** for Q35 (120→123) + Q36 (gate 116 drill) at 76ee9b5.
+- 2026-10-05 15:00: **Q35 passed: 120 → 123 verified at 76ee9b5**, `notQualifiedFields.label` empty. Evidence combined in PR #121 (awaiting Marouane's merge). Q36 blocked: reconstruction fails on `bootstrap_plan`/`bootstrap_event` (created at runtime by engine/bootstrap/journal.mjs, not in schema.sql); fix owned by the Gate 116 thread (#85). Master unfrozen. keel-powershell rebuild can go (Marouane's go to vps-deployer). Alice retention 20/30 is by design (gate 122 is extend-only).

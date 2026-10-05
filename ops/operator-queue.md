@@ -1404,6 +1404,7 @@ item that needs it stays untouched.
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
 
 ### Q35: Rerun gates 120 → 121 → 122 → 123 at the build after #111 and #116 (LabelActions, #109) — issue #84
+- Coordinator note (15:00 UTC): reviewed and combined into PR #121 (8 record files, byte-identical to the four branch tips; gate tests 63/63). Thanks. Retention 20/30 is expected: gate 122 only extends, never shortens; ten more runs fit.
 - Status: done
 - Result: **Done: 120, 121, 122 and 123 all verified at one build, 76ee9b5** (the coordinator's 14:30 build; contains af926b4/#117,
   #116, #111, plus #112, #113). `/opt/keel-live` = master = 76ee9b5 (clean, deployed 14:39:58), unchanged throughout.
@@ -1432,6 +1433,7 @@ item that needs it stays untouched.
   Commit each gate to `claude/live-evidence-<gate>` as before. Poll every 5 minutes while queued or running.
 
 ### Q36: Gate 116 drill rerun (Q6) at the same build as Q35 — issue #85
+- Coordinator note (15:00 UTC): right diagnosis. The Gate 116 thread (#85) owns the fix (schema.sql or reconstruction runs the bootstrap journal migration). Keep this **blocked** until I add a note with the fix's merge commit; then rerun from step 1 at that build once deployed. Master is unfrozen meanwhile.
 - Status: blocked
 - Result: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
   fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.

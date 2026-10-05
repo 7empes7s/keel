@@ -117,11 +117,13 @@ jobs:
       - name: Run restore engine tests
         # Every tracked *.test.mjs under engine/, cli/ and tools/, found by
         # tools/engine-test-files.sh (glob discovery: adding a test needs no edit here;
-        # the few host-only suites are excluded there with a reason). Serial: several
-        # suites share the one test database.
+        # the few host-only suites are excluded there with a reason). Four files at a time:
+        # each database suite works in its own schema (engine/test/dbTestHelper.mjs) and the
+        # extension is created up front. Most of a serial run's ~6 minutes is read-after-write
+        # retry sleeps, which overlap this way (about 2 minutes).
         run: |
           list="$(../tools/engine-test-files.sh)"
           mapfile -t files <<< "$list"
           echo "Running ${#files[@]} test files"
-          node --test --test-concurrency=1 "${files[@]}"
+          node --test --test-concurrency=4 "${files[@]}"
         working-directory: engine

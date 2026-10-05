@@ -296,6 +296,9 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (02:10 UTC): master is now `c99a9f2` (#95, #96, #97, #99, #100 also merged). #101 and #102 are
+  still open. Run the chain at the deployed head as below. Q24 (scheduler install, #97) and the other host items
+  stay on hold until Q10 finishes, so nothing starts a worker or restarts the portal mid-chain.
 - Coordinator note (02:05 UTC): master moved on after #103 (#98 as `76e503e`, #94 as `c4e24ac`), and more merges
   may follow. Run the chain at whatever master head `/opt/keel-live` is deployed at when you start (CI green for
   that commit), record that SHA, and don't let a deploy land mid-chain: if one does, stop and restart at the new

@@ -1469,35 +1469,33 @@ item that needs it stays untouched.
   capture-drill (both `--db-url "$DRILL_URL"`), `verify --require-live` (exit 0), evidence to `claude/live-evidence-116`.
   If a deploy lands mid-run, stop and restart from the recovery set at the new build.
 - Coordinator note (16:16 UTC, #8): **#125 is merged as `04d213d`** (on top of #124 `e3d9563` and #120 `3f31f85`). Run note #7 at `04d213d` once `/opt/keel-live` is deployed there. Master is frozen until Q36 finishes.
-- Status: in-progress
-- Result: **Blocked at the live drill (note #5 rerun, fcd9610): the drill DB is fine now, but the rollback step fails its own
-  post-write check.** The tenant is clean, and no evidence was committed. I didn't rerun, because each run creates another group.
-  - **#5 steps 1–3 done:** I created a fresh `keel_drill_q36` (not KEEL_DB_URL). I applied `engine/store/schema.sql`
-    (fcd9610, exit 0) and then `RUNTIME_MIGRATIONS` (2). It now has 70 tables, including `baseline.source_snapshot_id`. I ran from
-    `wt-fcd`, a clean worktree at the same commit as `/opt/keel-live` (fcd9610), so nothing was run inside keel-live.
-  - **build-manifest:** one object, `group:keel-rehearsal-2026-10-05T15-48-40-879Z`, bounds 900000 ms / 30 writes.
-    The old manifest was kept as `drill-failed-152823.json`. **Offline plan:** ok, no findings.
-  - **Live drill (`--db-url keel_drill_q36`): exit 1, outcome `failed`**, 61.4 s, 6 writes,
-    `countsAsRecoveryDrill: false`. Steps 1–4 ok: group 74e40e6d-a0d1-4846-93a1-fdd7c546586e created; baseline
-    839c5fa1 (snapshot 2b1dadfc); drift applied (displayName "… (drifted)", description "…drift"); drift c0453b05
-    detected (snapshot f6d8092b, `modified`). **The rollback failed:** `rollback did not apply exactly once:
-    {"failed":[{"naturalKey":"group:keel-rehearsal-…","error":"residual drift after update","residual":[]}]}`. Cleanup
-    then removed the group ("removed orphaned rehearsal group"), and the check flagged it in deleted-items, which was replication lag.
-    - **Residual re-check at about 15:51 (Collector, read-only):** `/groups/74e40e6d…` 404, `/directory/deletedItems/74e40e6d…` 404, no
-      `keel-rehearsal*` group live or in deleted items. **The tenant is clean.**
-    - **Likely cause (code):** the error is from `engine/restore/applyEngine.mjs:551–562` (or the twin at 645–655). After
-      the follow-up PATCH, `canonicalHash(live) !== canonicalHash(desired)`, yet `residualDiff(desired, live)` is **empty**. So the hash
-      sees a difference that the diff can't name. The desired state is the baseline payload, which still carries nulls
-      (`visibility`, `membershipRule`, `isAssignableToRole`, `onPremisesSyncEnabled`, `membershipRuleProcessingState`) and
-      `@odata.context`. On this path, unlike the update path at 627 (`forVerification(withoutNulls(…))`), the re-read
-      isn't normalised. A null-vs-absent or metadata key mismatch, or a re-read that is still stale (`readAfterWrite`
-      retries ran out), would give exactly this. `rollback_entry` in keel_drill_q36 is empty, so it couldn't be checked further.
-    - The drill DB also holds a read-only policy evaluation for `organization:lxtj` (drift `modified`, tenant-lockout,
-      matched false). This is from the collection; there was no write to the organization (6 writes total, all on the rehearsal group).
-  - Drill evidence in keel_drill_q36: seq 3 `recovery-drill` (failed). Both failed records stay in their DBs, and nothing was captured.
-  **Coordinator: code fix needed** in the rollback verification (normalise like the update path, or have residualDiff and
-  canonicalHash agree). After that, rerun from build-manifest on a fresh drill DB. Each attempt creates one more
-  `keel-rehearsal-*` group. Steps 1–3 (set q36b, reconstruction.json, onboarding.json) stay valid only while the build stays fcd9610.
+- Status: done
+- Result: **Done. Gate 116 (drill-live-acceptance) is live-qualified at `04d213d`: evidence `claude/live-evidence-116` @ `3bb5e20`
+  (`verify --require-live`: `{"ok":true,"failures":[]}`, exit 0).** The build stayed 04d213d for the whole run (checked
+  before each stage); keel-worker was on it since 16:25.
+  - **Table pre-check** (fresh dump): `comm -23` printed nothing; 65 dump tables.
+  - **Fresh recovery set** `/opt/keel-recovery-sets/2026-10-05-q36c`: dump sha256 33ebb5d4…, manifest sha256 6e2b7e74…,
+    schema pin 2a20d4ae…, snapshot 3b235127…, **evidence head
+    496:d5909bd0722217c7a760f2390730a4f773c9f0d8aa817b9fdd5ba414ad6b7c85:496** (stable across dump and set). `--verify`:
+    recovery complete.
+  - **Reconstruction** (signed-assertion, Q20 key) into a fresh disposable `keel_recovery_q36c` (never KEEL_DB_URL): exit 0;
+    ok, stage recovered, readOnly, writersDisabled, recoveryComplete, incomplete [], buildRevision 04d213d…, completedAt
+    2026-10-05T16:29:32.858Z; 496 records, chain ok.
+  - **Drill DB** `keel_drill_q36b` (fresh; schema.sql + 2 RUNTIME_MIGRATIONS; 70 tables).
+  - **build-manifest:** one object `group:keel-rehearsal-2026-10-05T16-29-47-942Z`, bounds 900000 ms / 30 writes.
+    **Offline plan:** ok, no findings.
+  - **Live drill: exit 0, outcome `passed`, `countsAsRecoveryDrill: true`**, 63.5 s, 10 writes. Group
+    4f4f42c0-9032-4c6d-9fce-7dbaec6772cc created → baseline eaeed3bf (snapshot df2eaecb, hash 93723a09…) → drift →
+    drift 11345f82 detected → **rollback applied 1, failed 0** → restored hash = baseline hash → immutable-field probes
+    (mailNickname 204; mailEnabled, securityEnabled, groupTypes 400 as expected) → deleted; **cleanup complete,
+    verifiedAbsent, residuals []**. Re-checked: `/groups/4f4f42c0…` and `/directory/deletedItems/4f4f42c0…` both 404, 0
+    `keel-rehearsal*` groups.
+  - **capture-drill** `--db-url keel_drill_q36b --build 04d213d…`: evidenceLevel live-qualified. Committed
+    `drill-live-acceptance.json` + `.capture.json` (secret scan clean: no HMAC key, DB credential, JWT or PEM).
+  - Run ids (onboarding.json): read setup `cbd974b9ef106fda5b2d31467b7d07b36de6e092eb16b5a76892ec5b34dda144`, restore
+    setup `174d8db69f61c81cb76c54c1a5708a09d04a70754e5911a7207316dcb35d3d74`.
+  - Credentials: Collector (tenant.json) + Restorer (restorer.json); no global admin. Earlier failed attempts (fcd9610)
+    left no tenant residue; their disposable DBs `keel_test` (untouched), `keel_drill_q36`, `keel_recovery_q6` remain.
 - Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
 - Do:
   1. Build a fresh recovery set (backup dump + manifest) at the deployed build, as in Q32.

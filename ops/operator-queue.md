@@ -296,6 +296,9 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (12:28 UTC): **#108 is merged as `248b12c`**. Once master CI is green and `/opt/keel-live` is
+  deployed at `248b12c`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks, with a
+  fresh unpublished `KEEL-RT-<date>-label` for 123. Please poll every 5 minutes while this is queued or running.
 - Coordinator note (12:20 UTC): thanks. Fix is PR #108 (`claude/purview-label-action-fields`): the capture lists the
   LabelActions fields Get-Label didn't return in `notQualifiedFields.label` and the verifier accepts only those.
   Keep this **blocked** until I add a note with #108's merge commit; then rerun 120 → 123 at that build once deployed
@@ -399,7 +402,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: queued
 - Result: **At 4d8c1ec (PR #107): 120, 121 and 122 passed; 123 captured but did NOT verify (label field list doesn't match live Get-Label).**
   Build 4d8c1ec = master = `/opt/keel-live` (clean, deployed 11:19 UTC); unchanged through the chain.
   - **120** @ **ae3f40b**; **121** @ **30a1e36**; **122** @ **0bd6744** (branches `claude/live-evidence-12{0,1,2}`). Each

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "onedrive-purview-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "248b12c6cd3c8e8c06dfb3f44adfcce2c7d8f28b",
+  "build": "76ee9b510fe8ada4a34107d61540de5befbbc56e",
   "operation": "onedrive-purview.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-05T12:44:58.701Z",
+  "observedAt": "2026-10-05T14:50:49.640Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "exchangeQualification": {
       "gate": "exchange-live-acceptance",
       "evidence": "exchange-live-acceptance.json",
-      "captureLogSha256": "918f8f40fec5824833c35aab841d7070b1046259d201fa95ef416c322bc596e0"
+      "captureLogSha256": "e1e00303fdca9f92c1a996278cf128e8c80de6643cfcaa015d6231a235d4b0b3"
     },
     "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
     "fixtureSite": {
@@ -25,8 +25,8 @@
       "lockState": "Unlock"
     },
     "fixtureLabel": {
-      "id": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
-      "name": "KEEL-RT-20261005-label2",
+      "id": "3106132e-891f-43b8-99f4-b07b6132acc3",
+      "name": "KEEL-RT-20261005-label3",
       "lock": "not-reported"
     },
     "fixturePolicy": {
@@ -120,7 +120,7 @@
       {
         "operationId": "onedrive.site-settings",
         "version": "3.4.1",
-        "capturedAt": "2026-10-05T12:42:29.153Z",
+        "capturedAt": "2026-10-05T14:47:47.199Z",
         "ok": true,
         "synthetic": false,
         "form": "Get-PnPTenantSite -Identity"
@@ -128,14 +128,14 @@
       {
         "operationId": "purview.label-definitions",
         "version": "3.10.1",
-        "capturedAt": "2026-10-05T12:42:46.838Z",
+        "capturedAt": "2026-10-05T14:48:13.395Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "purview.label-publication",
         "version": "3.10.1",
-        "capturedAt": "2026-10-05T12:42:46.838Z",
+        "capturedAt": "2026-10-05T14:48:13.395Z",
         "ok": true,
         "synthetic": false
       }
@@ -169,6 +169,16 @@
         "Disabled",
         "Tooltip",
         "Comment",
+        "EncryptionEnabled",
+        "EncryptionProtectionType",
+        "EncryptionOfflineAccessDays",
+        "ApplyContentMarkingHeaderEnabled",
+        "ApplyContentMarkingFooterEnabled",
+        "ApplyWaterMarkingEnabled",
+        "SiteAndGroupProtectionEnabled",
+        "SiteAndGroupProtectionPrivacy",
+        "SiteAndGroupProtectionAllowAccessToGuestUsers",
+        "SiteExternalSharingControlType",
         "WhenChangedUTC"
       ],
       "policy": [
@@ -186,18 +196,7 @@
       ]
     },
     "notQualifiedFields": {
-      "label": [
-        "EncryptionEnabled",
-        "EncryptionProtectionType",
-        "EncryptionOfflineAccessDays",
-        "ApplyContentMarkingHeaderEnabled",
-        "ApplyContentMarkingFooterEnabled",
-        "ApplyWaterMarkingEnabled",
-        "SiteAndGroupProtectionEnabled",
-        "SiteAndGroupProtectionPrivacy",
-        "SiteAndGroupProtectionAllowAccessToGuestUsers",
-        "SiteExternalSharingControlType"
-      ]
+      "label": []
     },
     "inheritance": {
       "Template": "explicit",
@@ -228,20 +227,21 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "preFingerprint": "2912d1003a1a42e5a9b4a91276f0838a8fea5f589bda300b57eddc51df15d50f",
-        "finalFingerprint": "2912d1003a1a42e5a9b4a91276f0838a8fea5f589bda300b57eddc51df15d50f",
-        "capturedAt": "2026-10-05T12:44:07.110Z"
+        "preFingerprint": "3ccbfd349e662dcbb2581541dbd108c9244e9baf7ef3d973a05a38285da56512",
+        "finalFingerprint": "3ccbfd349e662dcbb2581541dbd108c9244e9baf7ef3d973a05a38285da56512",
+        "capturedAt": "2026-10-05T14:49:50.226Z"
       },
       "policy": {
         "operationId": "purview.label-policy.update",
         "version": "3.10.1",
         "synthetic": false,
         "writeMode": "add-only",
-        "addedLabel": "KEEL-RT-20261005-label2",
+        "addedLabel": "KEEL-RT-20261005-label3",
         "ok": true,
         "readBackVerified": true,
         "before": {
           "Labels": [
+            "KEEL-RT-20261005-label2",
             "KEEL-RT-20261005-anchor",
             "KEEL-RT-20261005-label"
           ]
@@ -250,19 +250,20 @@
           "Labels": [
             "KEEL-RT-20261005-label2",
             "KEEL-RT-20261005-anchor",
-            "KEEL-RT-20261005-label"
+            "KEEL-RT-20261005-label",
+            "KEEL-RT-20261005-label3"
           ]
         },
         "preFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
         "finalFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
-        "capturedAt": "2026-10-05T12:44:58.701Z"
+        "capturedAt": "2026-10-05T14:50:49.640Z"
       }
     },
     "tenantDefinitions": {
-      "labels": 16,
+      "labels": 18,
       "policies": 2,
-      "otherFingerprint": "094dbba4e1b14f981ff2b93f3383964415194475443b9bc11d7269a3d5a6926f",
-      "finalOtherFingerprint": "094dbba4e1b14f981ff2b93f3383964415194475443b9bc11d7269a3d5a6926f"
+      "otherFingerprint": "e0921022cb9e2cb86805f2ad75ae24a98bd688f5e6bc9812c56812c5a52d53bc",
+      "finalOtherFingerprint": "e0921022cb9e2cb86805f2ad75ae24a98bd688f5e6bc9812c56812c5a52d53bc"
     },
     "refusals": {
       "protectionWeakening": {
@@ -306,13 +307,13 @@
       }
     },
     "platformError": {
-      "site": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f",
+      "site": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-f3c228a2805f",
       "status": "failed",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "PnP.PowerShell.Commands.GetTenantSite",
         "category": "NotSpecified",
-        "message": "Cannot get site https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f."
+        "message": "Cannot get site https://lxtj-my.sharepoint.com/personal/keel-rt-absent-f3c228a2805f."
       }
     },
     "requests": [
@@ -348,7 +349,7 @@
         "module": "PnP.PowerShell",
         "cmdlet": "Get-PnPTenantSite",
         "parameters": {
-          "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f"
+          "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-f3c228a2805f"
         },
         "outcome": "failed",
         "error": {
@@ -378,8 +379,8 @@
         "module": "ExchangeOnlineManagement",
         "cmdlet": "Set-Label",
         "parameters": {
-          "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
-          "Comment": "KEEL-RT qualification 2026-10-05T12:42:51.653Z"
+          "Identity": "3106132e-891f-43b8-99f4-b07b6132acc3",
+          "Comment": "KEEL-RT qualification 2026-10-05T14:48:19.098Z"
         },
         "outcome": "ok"
       },
@@ -405,7 +406,7 @@
         "module": "ExchangeOnlineManagement",
         "cmdlet": "Set-Label",
         "parameters": {
-          "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+          "Identity": "3106132e-891f-43b8-99f4-b07b6132acc3",
           "Comment": "KEEL gate 123 fixture"
         },
         "outcome": "ok"
@@ -450,7 +451,7 @@
         "parameters": {
           "Identity": "9581a855-3e69-447b-8219-9cb5a1979db1",
           "AddLabels": [
-            "KEEL-RT-20261005-label2"
+            "KEEL-RT-20261005-label3"
           ]
         },
         "outcome": "ok"
@@ -475,35 +476,35 @@
     "documentation": [
       {
         "url": "https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html",
-        "retrievedAt": "2026-10-05T12:42:26.502Z"
+        "retrievedAt": "2026-10-05T14:47:44.521Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-label",
-        "retrievedAt": "2026-10-05T12:42:26.590Z"
+        "retrievedAt": "2026-10-05T14:47:44.614Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-labelpolicy",
-        "retrievedAt": "2026-10-05T12:42:26.680Z"
+        "retrievedAt": "2026-10-05T14:47:44.691Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-label",
-        "retrievedAt": "2026-10-05T12:42:26.765Z"
+        "retrievedAt": "2026-10-05T14:47:44.765Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy",
-        "retrievedAt": "2026-10-05T12:42:26.843Z"
+        "retrievedAt": "2026-10-05T14:47:44.834Z"
       }
     ],
-    "captureLogSha256": "3be9d11388280f342e38ebb1496c5a39b7a6b35f19d96cdcf9b60f5e26226329"
+    "captureLogSha256": "016c4acc45e4221a76cdc05908794882faac27a71f1522c7cf6a87aac5c52fa1"
   },
   "proof": {
     "artifact": {
       "path": "onedrive-purview-live-acceptance.capture.json",
-      "sha256": "3be9d11388280f342e38ebb1496c5a39b7a6b35f19d96cdcf9b60f5e26226329"
+      "sha256": "016c4acc45e4221a76cdc05908794882faac27a71f1522c7cf6a87aac5c52fa1"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "d4b7c740579333e9358037d5747e5541885d993705c096a037e3b11d803f3c65"
+      "signature": "836efa33b71ec5c03dbb93622e77f7ef26e71332d584ccb86eb38281f3a60ff2"
     }
   }
 }

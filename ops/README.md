@@ -16,6 +16,9 @@ node cli/keel-schedules-host.mjs health                    # after those jobs fi
 - The install stops before changing anything when `preflight` finds queued or running jobs (no
   worker has run them, and a new worker would), enabled auto-remediate policies, or enabled
   schedules for another tenant. `preflight` is read-only and can be run on its own.
+- A stale queued job that preflight lists can be withdrawn with
+  `node cli/keel-schedules-host.mjs cancel --job ID --reason TEXT`. The job row keeps the reason and
+  shows as cancelled; running or finished jobs are left alone.
 - `--root` is the tree the units run from; the unit files say `/opt/keel` and are installed with
   that prefix replaced.
 - Only `collect` schedules are seeded by default. Add prune and offsite later with

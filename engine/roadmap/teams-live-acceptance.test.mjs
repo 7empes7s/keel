@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { workloadWriteQualification } from '../coverage/qualification.mjs';
 import { signEvidence, verifyEvidence, verifyEvidenceFile } from '../../tools/release/qualification.mjs';
+import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { SHAREPOINT_LIVE_GATE, requiredDocumentation, requiredGrants } from '../../tools/qualification/sharepointAcceptance.mjs';
 import { captureSharePointAcceptance, ledgerEvidenceFromAcceptance, writeAcceptanceFiles } from '../../tools/qualification/sharepointLive.mjs';
 import {
@@ -358,10 +359,15 @@ test('a missing prerequisite fails, and SharePoint proof never stands in for Tea
 test('missing external evidence fails: the checked-in pending record, an absent file, the release CLI', async () => {
   const pending = join(repo, 'docs/release/qualifications/teams-live-acceptance.json');
   const record = JSON.parse(readFileSync(pending, 'utf8'));
-  assert.equal(record.status, 'pending');
-  assert.equal(record.synthetic, true);
-  assert.match(verifyEvidenceFile(pending, options()).failures.join('\n'), /pending/);
-  assert.equal(verifyEvidenceFile(pending, options({ requireLive: false })).ok, false);
+  const placeholder = isPendingPlaceholder(pending);
+  if (placeholder) {
+    assert.equal(record.synthetic, true);
+    assert.match(verifyEvidenceFile(pending, options()).failures.join('\n'), /pending/);
+    assert.equal(verifyEvidenceFile(pending, options({ requireLive: false })).ok, false);
+  } else {
+    // A live capture has replaced the placeholder: it must still never verify without the key.
+    assertCommittedLiveRecord(pending, { gate: TEAMS_LIVE_GATE, root: repo, verify: verifyEvidenceFile, verifyOptions: options() });
+  }
   assert.equal(verifyEvidenceFile(join(dir, 'absent.json'), options()).ok, false);
   // A record without its capture log, or without a runner signature, is not evidence.
   const { evidence, logPath } = await capturedFiles();
@@ -369,11 +375,13 @@ test('missing external evidence fails: the checked-in pending record, an absent 
   assert.match(verifyIn(evidence).failures.join('\n'), /Teams capture artifact required/);
   const { proof, ...unsigned } = evidence;
   assert.match(verifyIn({ ...unsigned, proof: { artifact: proof.artifact } }, { requireLive: false }).failures.join('\n'), /Teams runner proof required/);
-  // The exact release command exits nonzero on the checked-in record.
-  assert.throws(() => execFileSync(process.execPath, [
-    'tools/release/qualification.mjs', 'verify', '--require-live', '--gate', TEAMS_LIVE_GATE,
-    '--evidence', 'docs/release/qualifications/teams-live-acceptance.json',
-  ], { cwd: repo, stdio: 'pipe' }), (error) => error.status === 1 && /pending/.test(String(error.stdout)));
+  if (placeholder) {
+    // The exact release command exits nonzero on the checked-in record.
+    assert.throws(() => execFileSync(process.execPath, [
+      'tools/release/qualification.mjs', 'verify', '--require-live', '--gate', TEAMS_LIVE_GATE,
+      '--evidence', 'docs/release/qualifications/teams-live-acceptance.json',
+    ], { cwd: repo, stdio: 'pipe' }), (error) => error.status === 1 && /pending/.test(String(error.stdout)));
+  }
 });
 
 test('fixture evidence is never elevated to live-qualified, and only a verified record reaches the ledgers', async () => {

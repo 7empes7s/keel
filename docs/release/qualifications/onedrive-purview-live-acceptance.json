@@ -1,10 +1,509 @@
 {
   "contractVersion": 1,
   "gate": "onedrive-purview-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "248b12c6cd3c8e8c06dfb3f44adfcce2c7d8f28b",
   "operation": "onedrive-purview.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No live OneDrive or Purview capture exists, and the task-122 Exchange prerequisite (and task-121 Teams and task-120 SharePoint before it) is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/onedrive-purview-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-05T12:44:58.701Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisites": [
+      "task-106",
+      "task-122"
+    ],
+    "exchangeQualification": {
+      "gate": "exchange-live-acceptance",
+      "evidence": "exchange-live-acceptance.json",
+      "captureLogSha256": "918f8f40fec5824833c35aab841d7070b1046259d201fa95ef416c322bc596e0"
+    },
+    "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+    "fixtureSite": {
+      "url": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com",
+      "template": "SPSPERS#12",
+      "lockState": "Unlock"
+    },
+    "fixtureLabel": {
+      "id": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+      "name": "KEEL-RT-20261005-label2",
+      "lock": "not-reported"
+    },
+    "fixturePolicy": {
+      "id": "9581a855-3e69-447b-8219-9cb5a1979db1",
+      "name": "KEEL-RT-20261005-policy",
+      "lock": "not-reported",
+      "locations": {
+        "ExchangeLocation": [
+          {
+            "DisplayName": "KEEL-RT-20260908 Alice Martin",
+            "Name": "keel-rt-20260908-alice@techinsiderbytes.com",
+            "ImmutableIdentity": "abbaf24b-4722-4b7c-a0b3-c2f2685c82e5",
+            "Type": {
+              "value": 0,
+              "Value": "IndividualResource"
+            },
+            "Status": {
+              "value": 2,
+              "Value": "Success"
+            },
+            "Workload": {
+              "value": 1,
+              "Value": "Exchange"
+            },
+            "SourceType": null,
+            "SourceTypeDisplayName": null,
+            "SourceProvider": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SourceEntryType": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "SchemaVersion": 2,
+            "Resources": null,
+            "ScopingGroup": {
+              "value": 0,
+              "Value": "Unknown"
+            },
+            "GroupSet": "Default"
+          }
+        ],
+        "ModernGroupLocation": [],
+        "SharePointLocation": [],
+        "OneDriveLocation": []
+      }
+    },
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "modules": {
+        "PnP.PowerShell": "3.4.1",
+        "ExchangeOnlineManagement": "3.10.1"
+      }
+    },
+    "credentials": {
+      "collector": "app:87aa77c4-e15d-453d-8101-20e3e998311e",
+      "restorer": "app:12f8942f-c4d0-4a0d-aee1-efe928b1de54"
+    },
+    "grants": {
+      "collector": {
+        "onedrive": {
+          "permissions": [
+            "Sites.FullControl.All"
+          ],
+          "roles": [
+            "SharePoint Administrator"
+          ]
+        },
+        "purview": {
+          "permissions": [
+            "Exchange.ManageAsApp"
+          ],
+          "roles": [
+            "Compliance Administrator"
+          ]
+        }
+      },
+      "restorer": {
+        "purview": {
+          "permissions": [
+            "Exchange.ManageAsApp"
+          ],
+          "roles": [
+            "Compliance Administrator"
+          ]
+        }
+      }
+    },
+    "reads": [
+      {
+        "operationId": "onedrive.site-settings",
+        "version": "3.4.1",
+        "capturedAt": "2026-10-05T12:42:29.153Z",
+        "ok": true,
+        "synthetic": false,
+        "form": "Get-PnPTenantSite -Identity"
+      },
+      {
+        "operationId": "purview.label-definitions",
+        "version": "3.10.1",
+        "capturedAt": "2026-10-05T12:42:46.838Z",
+        "ok": true,
+        "synthetic": false
+      },
+      {
+        "operationId": "purview.label-publication",
+        "version": "3.10.1",
+        "capturedAt": "2026-10-05T12:42:46.838Z",
+        "ok": true,
+        "synthetic": false
+      }
+    ],
+    "supportedFields": {
+      "onedrive": [
+        "Template",
+        "Owner",
+        "SharingCapability",
+        "SharingDomainRestrictionMode",
+        "SharingAllowedDomainList",
+        "SharingBlockedDomainList",
+        "DefaultSharingLinkType",
+        "DefaultLinkPermission",
+        "OverrideTenantExternalUserExpirationPolicy",
+        "ExternalUserExpirationInDays",
+        "OverrideTenantAnonymousLinkExpirationPolicy",
+        "AnonymousLinkExpirationInDays",
+        "StorageQuota",
+        "StorageQuotaWarningLevel",
+        "LockState",
+        "SensitivityLabel",
+        "ConditionalAccessPolicy"
+      ],
+      "label": [
+        "Name",
+        "DisplayName",
+        "ParentId",
+        "Priority",
+        "ContentType",
+        "Disabled",
+        "Tooltip",
+        "Comment",
+        "WhenChangedUTC"
+      ],
+      "policy": [
+        "Name",
+        "Enabled",
+        "Mode",
+        "Priority",
+        "Labels",
+        "ExchangeLocation",
+        "ModernGroupLocation",
+        "SharePointLocation",
+        "OneDriveLocation",
+        "Settings",
+        "WhenChangedUTC"
+      ]
+    },
+    "notQualifiedFields": {
+      "label": [
+        "EncryptionEnabled",
+        "EncryptionProtectionType",
+        "EncryptionOfflineAccessDays",
+        "ApplyContentMarkingHeaderEnabled",
+        "ApplyContentMarkingFooterEnabled",
+        "ApplyWaterMarkingEnabled",
+        "SiteAndGroupProtectionEnabled",
+        "SiteAndGroupProtectionPrivacy",
+        "SiteAndGroupProtectionAllowAccessToGuestUsers",
+        "SiteExternalSharingControlType"
+      ]
+    },
+    "inheritance": {
+      "Template": "explicit",
+      "Owner": "explicit",
+      "SharingCapability": "explicit",
+      "SharingDomainRestrictionMode": "explicit",
+      "SharingAllowedDomainList": "explicit",
+      "SharingBlockedDomainList": "explicit",
+      "DefaultSharingLinkType": "explicit",
+      "DefaultLinkPermission": "explicit",
+      "OverrideTenantExternalUserExpirationPolicy": "explicit",
+      "ExternalUserExpirationInDays": "inherited",
+      "OverrideTenantAnonymousLinkExpirationPolicy": "explicit",
+      "AnonymousLinkExpirationInDays": "inherited",
+      "StorageQuota": "undetermined",
+      "StorageQuotaWarningLevel": "undetermined",
+      "LockState": "explicit",
+      "SensitivityLabel": "explicit",
+      "ConditionalAccessPolicy": "explicit"
+    },
+    "writes": {
+      "label": {
+        "operationId": "purview.label.update",
+        "version": "3.10.1",
+        "synthetic": false,
+        "writeMode": "reversible-change",
+        "property": "Comment",
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "preFingerprint": "2912d1003a1a42e5a9b4a91276f0838a8fea5f589bda300b57eddc51df15d50f",
+        "finalFingerprint": "2912d1003a1a42e5a9b4a91276f0838a8fea5f589bda300b57eddc51df15d50f",
+        "capturedAt": "2026-10-05T12:44:07.110Z"
+      },
+      "policy": {
+        "operationId": "purview.label-policy.update",
+        "version": "3.10.1",
+        "synthetic": false,
+        "writeMode": "add-only",
+        "addedLabel": "KEEL-RT-20261005-label2",
+        "ok": true,
+        "readBackVerified": true,
+        "before": {
+          "Labels": [
+            "KEEL-RT-20261005-anchor",
+            "KEEL-RT-20261005-label"
+          ]
+        },
+        "after": {
+          "Labels": [
+            "KEEL-RT-20261005-label2",
+            "KEEL-RT-20261005-anchor",
+            "KEEL-RT-20261005-label"
+          ]
+        },
+        "preFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
+        "finalFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
+        "capturedAt": "2026-10-05T12:44:58.701Z"
+      }
+    },
+    "tenantDefinitions": {
+      "labels": 16,
+      "policies": 2,
+      "otherFingerprint": "094dbba4e1b14f981ff2b93f3383964415194475443b9bc11d7269a3d5a6926f",
+      "finalOtherFingerprint": "094dbba4e1b14f981ff2b93f3383964415194475443b9bc11d7269a3d5a6926f"
+    },
+    "refusals": {
+      "protectionWeakening": {
+        "cmdlet": "Set-Label",
+        "parameter": "EncryptionEnabled",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-Label does not take EncryptionEnabled from KEEL"
+      },
+      "unpublish": {
+        "cmdlet": "Set-LabelPolicy",
+        "parameter": "RemoveLabels",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-LabelPolicy does not take RemoveLabels from KEEL"
+      },
+      "itemLabels": {
+        "cmdlet": "Export-ContentExplorerData",
+        "parameter": null,
+        "refused": true,
+        "sent": false,
+        "reason": "Export-ContentExplorerData is not a Purview label configuration cmdlet KEEL runs; labeled items, usage and content are never read"
+      },
+      "oneDriveContent": {
+        "cmdlet": "Get-PnPListItem",
+        "parameter": null,
+        "refused": true,
+        "sent": false,
+        "reason": "Get-PnPListItem is not a OneDrive configuration cmdlet KEEL runs; files, items and per-file permissions are never read"
+      },
+      "oneDrivePath": {
+        "refused": true,
+        "sent": false,
+        "reason": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com/Documents/Shared is not a personal site root; KEEL never addresses a path inside a OneDrive",
+        "path": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com/Documents/Shared"
+      },
+      "preservationLock": {
+        "refused": true,
+        "sent": false,
+        "reason": "preservation-locked: purviewLabel is under a platform preservation lock — KEEL never changes or deletes it"
+      }
+    },
+    "platformError": {
+      "site": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f",
+      "status": "failed",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "PnP.PowerShell.Commands.GetTenantSite",
+        "category": "NotSpecified",
+        "message": "Cannot get site https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f."
+      }
+    },
+    "requests": [
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "module": "PnP.PowerShell",
+        "cmdlet": "Get-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "module": "PnP.PowerShell",
+        "cmdlet": "Get-PnPTenantSite",
+        "parameters": {
+          "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-79987041bb6f"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "PnP.PowerShell.Commands.GetTenantSite"
+        }
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Set-Label",
+        "parameters": {
+          "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+          "Comment": "KEEL-RT qualification 2026-10-05T12:42:51.653Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Set-Label",
+        "parameters": {
+          "Identity": "7cd83d30-e6e5-4327-97ce-143f3ef03a35",
+          "Comment": "KEEL gate 123 fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Set-LabelPolicy",
+        "parameters": {
+          "Identity": "9581a855-3e69-447b-8219-9cb5a1979db1",
+          "AddLabels": [
+            "KEEL-RT-20261005-label2"
+          ]
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-Label",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "module": "ExchangeOnlineManagement",
+        "cmdlet": "Get-LabelPolicy",
+        "parameters": {},
+        "outcome": "ok"
+      }
+    ],
+    "documentation": [
+      {
+        "url": "https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html",
+        "retrievedAt": "2026-10-05T12:42:26.502Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-label",
+        "retrievedAt": "2026-10-05T12:42:26.590Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-labelpolicy",
+        "retrievedAt": "2026-10-05T12:42:26.680Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-label",
+        "retrievedAt": "2026-10-05T12:42:26.765Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy",
+        "retrievedAt": "2026-10-05T12:42:26.843Z"
+      }
+    ],
+    "captureLogSha256": "3be9d11388280f342e38ebb1496c5a39b7a6b35f19d96cdcf9b60f5e26226329"
+  },
+  "proof": {
+    "artifact": {
+      "path": "onedrive-purview-live-acceptance.capture.json",
+      "sha256": "3be9d11388280f342e38ebb1496c5a39b7a6b35f19d96cdcf9b60f5e26226329"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "d4b7c740579333e9358037d5747e5541885d993705c096a037e3b11d803f3c65"
+    }
+  }
 }

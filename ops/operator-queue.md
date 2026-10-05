@@ -978,7 +978,7 @@ item that needs it stays untouched.
 ### Q24: Install scheduled collection (issue #91)
 - Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
   until the coordinator changes Status to queued.
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Result:
 - Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
 - Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):

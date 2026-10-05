@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -45,6 +45,7 @@ assert.deepEqual(
 // --- impure wrapper, against a real throwaway git repo ---
 
 const dir = mkdtempSync(join(tmpdir(), 'keel-status-buildprogress-'));
+process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 execFileSync('git', ['init', '-q'], { cwd: dir });
 execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
 execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });

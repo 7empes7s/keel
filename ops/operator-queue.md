@@ -1276,8 +1276,25 @@ item that needs it stays untouched.
 - Drafted by the "Gate 116 drill live acceptance" thread (07:16 UTC). Asked by Marouane in the project chat,
   2026-10-05 07:15 UTC: "I think these could be solved by the deployer/operator sessions?" **On hold: don't start**
   until the coordinator changes Status to queued (after Q10 finishes).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done.**
+  1. Deployed build **248b12c** includes **36fc2b3** (#96). No `/etc/keel/setup.json` (no operations enabled).
+  2. **Restore setup:** `POST /api/actions/setup {"scope":"restore"}` with the operator Access session (renewed
+     13:11 UTC) returned HTTP 200, **run `174d8db69f61c81cb76c54c1a5708a09d04a70754e5911a7207316dcb35d3d74`, status
+     `complete`**. Approved by principal 2a47535a… (Marouane), workloads `["entra-restore"]`, 13:12:59 UTC. The stale
+     run `ea7e91c2…` was not resumed.
+     - Journal (`bootstrap_event` 25–40): approved, then **PIM step `step-c0b20175…` observed `satisfied`**, then
+       registration keel-restorer (appId 12f8942f…, objectId 31f2eb26…), admin consent and keel.restore, each
+       desired → observed `satisfied` → verified. Final re-observe all satisfied; `complete`
+       (`qualification: live-qualified`). **No `uncertain` or write events: nothing was written to the tenant.**
+     - Gate 116 onboarding: **readSetupRunId `cbd974b9ef10…`** (Q27, Entra-only, complete) and **restoreSetupRunId
+       `174d8db69f61…`** (complete).
+  3. **Collector cleanup:** removed the "Intune Administrator" role assignment
+     `22IsOhhTDUKNdCOv_uXZ1QAWdPiAU7NMt5Bm_pqX37Q-1` (template 3a2c62db…) from the KEEL Collector SP
+     (f8741600…) with the Restorer: `DELETE /roleManagement/directory/roleAssignments/{id}` returned **204**.
+     - Read back after 10 s: Intune Administrator gone. Remaining (unchanged): **Global Reader, Security Reader**,
+       plus the Q10 grants Compliance Administrator, Exchange Administrator and SharePoint Administrator. Nothing granted.
+  4. Ready for the coordinator to queue Q32.
 - Needs: Q10 finished; Q27 done; `36fc2b3` (PR #96) deployed to `/opt/keel-live`.
 - Do:
   1. Confirm the deployed build includes `36fc2b3`. If it doesn't, stop and report.

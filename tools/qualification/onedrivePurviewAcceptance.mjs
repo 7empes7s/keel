@@ -147,14 +147,22 @@ export function onedrivePurviewFixtureSite(url, myHost) {
   return onedrivePurviewIsFixtureName(normalized.split('/').pop()) ? normalized : null;
 }
 
+// Get-LabelPolicy returns each location entry as an object ({ Name, DisplayName, ImmutableIdentity, Type, ... }),
+// not a string. Its Name is the address or URL; an object without a string Name is null and always fails.
+function policyLocationEntry(entry) {
+  if (entry && typeof entry === 'object') return typeof entry.Name === 'string' ? entry.Name : null;
+  return String(entry);
+}
+
 /** Every location entry of a policy names a fixture (no `All`, nothing else). Empty is allowed. */
 export function onedrivePurviewPolicyAudienceProblems(fields) {
   const problems = [];
   for (const location of ONEDRIVE_PURVIEW_POLICY_LOCATIONS) {
     const value = fields?.[location];
-    const entries = Array.isArray(value) ? value.map(String) : value === null || value === undefined || value === '' ? [] : [String(value)];
+    const entries = Array.isArray(value) ? value.map(policyLocationEntry) : value === null || value === undefined || value === '' ? [] : [policyLocationEntry(value)];
     for (const entry of entries) {
-      if (!entry.toLowerCase().includes(ONEDRIVE_PURVIEW_FIXTURE_PREFIX)) problems.push(`${location} publishes to ${entry}, not only to KEEL-RT fixtures`);
+      if (entry === null) problems.push(`${location} has an entry without a Name, so it is not shown to be a KEEL-RT fixture`);
+      else if (!entry.toLowerCase().includes(ONEDRIVE_PURVIEW_FIXTURE_PREFIX)) problems.push(`${location} publishes to ${entry}, not only to KEEL-RT fixtures`);
     }
   }
   return problems;

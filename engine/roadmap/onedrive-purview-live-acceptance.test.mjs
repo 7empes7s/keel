@@ -37,7 +37,8 @@ import { captureTeamsAcceptance, ledgerEvidenceFromTeamsAcceptance, writeTeamsAc
 import { EXCHANGE_LIVE_GATE, exchangeRequiredDocumentation, exchangeRequiredGrants } from '../../tools/qualification/exchangeAcceptance.mjs';
 import { captureExchangeAcceptance, ledgerEvidenceFromExchangeAcceptance, writeExchangeAcceptanceFiles } from '../../tools/qualification/exchangeLive.mjs';
 import {
-  ONEDRIVE_PURVIEW_LIVE_GATE, ONEDRIVE_PURVIEW_READS, ONEDRIVE_PURVIEW_WRITES, onedrivePurviewRequiredDocumentation, onedrivePurviewRequiredGrants,
+  ONEDRIVE_PURVIEW_LIVE_GATE, ONEDRIVE_PURVIEW_READS, ONEDRIVE_PURVIEW_WRITES, onedrivePurviewPolicyAudienceProblems, onedrivePurviewRequiredDocumentation,
+  onedrivePurviewRequiredGrants,
 } from '../../tools/qualification/onedrivePurviewAcceptance.mjs';
 import {
   captureOneDrivePurviewAcceptance, ledgerEvidenceFromOneDrivePurviewAcceptance, main as onedrivePurviewMain, writeOneDrivePurviewAcceptanceFiles,
@@ -401,6 +402,28 @@ test('a valid independently captured record verifies, and the capture touched on
   // No usage count, no content and no secret anywhere in the record or log.
   const text = readFileSync(outPath, 'utf8') + readFileSync(join(dir, evidence.proof.artifact.path), 'utf8');
   assert.doesNotMatch(text, /LabelUsageCount|4242|Q3 board pack|bearer\s|authorization|access_?token|BEGIN .*PRIVATE KEY/i);
+});
+
+test('Get-LabelPolicy location entries are objects: their Name decides fixture-only, and an All object still refuses', async () => {
+  // The live cmdlet returns each location as an object, not a string (seen on the tenant at gate 123).
+  const location = (name) => ({ DisplayName: name, Name: name, ImmutableIdentity: '00000000-0000-0000-0000-000000000001', Type: { Value: 'User' } });
+  assert.deepEqual(onedrivePurviewPolicyAudienceProblems({ ExchangeLocation: [location(MAILBOX)], OneDriveLocation: [location(SITE)] }), []);
+  assert.deepEqual(onedrivePurviewPolicyAudienceProblems({ ExchangeLocation: [location('All')] }), ['ExchangeLocation publishes to All, not only to KEEL-RT fixtures']);
+  assert.match(onedrivePurviewPolicyAudienceProblems({ ExchangeLocation: [{ DisplayName: 'KEEL-RT-20260908 Alice Martin' }] })[0], /ExchangeLocation has an entry without a Name/,
+    'an object without a Name fails, even when another field names a fixture');
+
+  const fake = purviewFake({ policies: [
+    policyBody(POLICY_ID, POLICY_NAME, { ExchangeLocation: [location(MAILBOX)], OneDriveLocation: [location(SITE)] }),
+    policyBody(GLOBAL_POLICY_ID, 'Global label policy', { Labels: ['Confidential'], ExchangeLocation: [location('All')], OneDriveLocation: [] }),
+  ] });
+  const { outPath, record } = await capturedFiles(fake);
+  assert.equal(record.subject.writes.label.error ?? null, null);
+  assert.deepEqual(verifyEvidenceFile(outPath, options()), { ok: true, failures: [] });
+
+  const everyone = purviewFake({ policyAudience: [location('All')] });
+  const refused = await capturedFiles(everyone);
+  assert.deepEqual(everyone.writes(), []);
+  assert.match(refused.record.subject.writes.label.error, /not fixture-only \(ExchangeLocation publishes to All/);
 });
 
 test('an altered signature or capture-log digest fails', async () => {

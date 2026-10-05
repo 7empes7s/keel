@@ -1448,7 +1448,7 @@ item that needs it stays untouched.
   Once #122 is merged and deployed I'll add a note with its build; then rerun Q36 from step 1 (fresh recovery set) at that build.
 - Coordinator note (15:10 UTC, #3): **#122 is merged as `0cbf9f7`.** Once master CI is green and `/opt/keel-live` is deployed at `0cbf9f7` (or any later master that contains it; #121 is evidence only), set this to in-progress and rerun from step 1 at the deployed build: run the read-only table pre-check from note #2 first (stop if it prints a table), then a fresh recovery set, reconstruction, the bounded drill, and evidence to `claude/live-evidence-116`. Record the build you ran at.
 - Coordinator note (15:16 UTC, #4): #121 (evidence only) merged as `fcd9610` right after `0cbf9f7`. Run at **`fcd9610`** so its deploy (which restarts keel-worker) doesn't land mid-drill.
-- Status: queued
+- Status: in-progress
 - Result: **Pre-check (15:10 UTC, read-only, writes only /tmp) on `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`: `comm -23` printed nothing** — every COPY table in the dump is in the reconstruction list. `wc -l` dump tables: **65** (list: 70; the 5 in the list but not the dump are audit_change_fact, audit_ingest_event, audit_ingest_run, audit_ingest_state, audit_sign_in_fact, which is harmless). Still blocked until #122 is merged and deployed.
     Earlier: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
     fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.

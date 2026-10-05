@@ -28,12 +28,13 @@
  *     the other value; read it back; PATCH the original funSettings back; read back;
  *  4. restorer: POST the fixture user as a member; read back; PATCH its roles to
  *     owner; read back; PATCH its roles back to member; read back; DELETE it; read
- *     back. If the promotion left the fixture user as an owner of the team's group,
- *     DELETE that owner link. Then read the roster, the group's owners and its
- *     members until the user is absent from all three (polled for about 3 minutes,
- *     since the roster can lag a removal by a minute or more), wait a settle delay, and
- *     read them once more: only that last read decides whether membership was
- *     restored.
+ *     back. Then read the roster, the group's owners and its members until the user
+ *     is absent from all three (polled for about 3 minutes, since the roster can lag
+ *     a removal by a minute or more), wait a settle delay, and read them once more;
+ *     whenever a read shows the fixture user as an owner of the team's group (the
+ *     promotion creates that link asynchronously), DELETE that owner link, and if the
+ *     last read is not clean, repeat (at most 3 rounds). Only the last read decides
+ *     whether membership was restored.
  * Every request is checked against the task-104 Teams request shapes before it is
  * sent. Only the fixture team, its group and the fixture user are addressed; no
  * message, chat, channel, tab or file endpoint is ever requested. Step 3 changes a
@@ -108,7 +109,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
     { step: 4, credential: 'restorer', method: 'GET', path: `${team}/members (read back)`, operationId: 'teams.membership.update' },
     { step: 4, credential: 'restorer', method: 'DELETE', path: `${team}/members/{fixture membership}`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'restorer', method: 'GET', path: `${team}/members (read back)`, operationId: 'teams.membership.remove' },
-    { step: 4, credential: 'restorer', method: 'DELETE', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/owners/${user}/$ref (only if the promotion left the owner link)`, operationId: 'teams.membership.remove' },
+    { step: 4, credential: 'restorer', method: 'DELETE', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/owners/${user}/$ref (whenever a read shows the owner link)`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'collector', method: 'GET', path: `${team}/members (restorer), /v1.0/groups/${fixtureTeamId.toLowerCase()}/owners and /members (until absent, then again after a settle delay)`, operationId: 'teams.membership.remove' },
   ];
 }
@@ -322,6 +323,10 @@ const teamsReadGroupOwners = (transport, teamId) => teamsReadGroupList(transport
 const teamsReadGroupMembers = (transport, teamId) => teamsReadGroupList(transport, teamId, 'members');
 const ownersFingerprint = (ids) => sha256Hex(JSON.stringify([...ids].sort()));
 
+// Settle rounds for the membership restore: the group owner link can reappear after
+// the settle delay, so the restore re-checks (and re-deletes) at most this many times.
+const TEAMS_RESTORE_ROUNDS = 3;
+
 // The Teams roster can lag a removal by a minute or more (2026-10-04: ~60-90 s), so
 // removal read-backs poll over a longer window than other read-backs.
 const restoreTiming = ({ sleep, restoreAttempts, restoreDelayMs }) => ({ sleep, attempts: restoreAttempts, delayMs: restoreDelayMs });
@@ -426,40 +431,46 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
     // The group's owners and members are read by the collector; only the restorer writes.
     // Promoting to owner also makes the user an owner of the team's group, and demoting
     // and removing the Teams membership can leave that link behind; Teams later re-adds
-    // the user from it. Remove the link if it is there, then confirm the user is absent
-    // from the Teams roster, the group's owners and the group's members, and still
-    // absent after a settle delay.
+    // the user from it. The link is created asynchronously, sometimes after the removal
+    // (2026-10-05: the DELETE returned 404, then the link appeared), so every read of the
+    // group's owners that shows the user re-issues the owner-link DELETE (404 = not there
+    // yet). The restore holds once the user is absent from the Teams roster, the group's
+    // owners and the group's members, and still absent after a settle delay; if the link
+    // reappears during the settle delay, the round repeats (at most TEAMS_RESTORE_ROUNDS).
     if (log.values.memberAdded === true) {
       try {
-        const owners = await teamsReadGroupOwners(reader, teamId);
-        if (owners.includes(userId)) {
+        const unlinkOwner = async () => {
           const unlinked = await teamsSendWrite(transport, `${GRAPH}/${VERSION}/groups/${teamId}/owners/${userId}/$ref`, { method: 'DELETE' }, timing.sleep);
-          membership.ownerLinkRemoved = ok(unlinked);
-          if (!ok(unlinked)) membership.error ??= `removing the fixture user's group owner link failed (HTTP ${unlinked.status})`;
+          if (ok(unlinked)) membership.ownerLinkRemoved = true;
+          else if (unlinked.status !== 404) membership.error ??= `removing the fixture user's group owner link failed (HTTP ${unlinked.status})`;
+        };
+        const readAll = async () => {
+          const state = {
+            members: await readMembers(),
+            owners: await teamsReadGroupOwners(reader, teamId),
+            groupMembers: await teamsReadGroupMembers(reader, teamId),
+          };
+          if (state.owners.includes(userId)) await unlinkOwner();
+          return state;
+        };
+        const absent = (state) => find(state.members) === null && !state.owners.includes(userId) && !state.groupMembers.includes(userId);
+        let final = null;
+        for (let round = 0; round < TEAMS_RESTORE_ROUNDS; round += 1) {
+          await teamsReadUntil(readAll, absent, restoreTiming(timing));
+          if (timing.settleMs) await timing.sleep(timing.settleMs);
+          final = await readAll();
+          if (absent(final)) break;
         }
+        fixtureMember.memberAfter = find(final.members) !== null;
+        fixtureMember.ownerAfter = final.owners.includes(userId);
+        fixtureMember.groupMemberAfter = final.groupMembers.includes(userId);
+        membership.finalFingerprint = membersFingerprint(final.members);
+        membership.ownersFinalFingerprint = ownersFingerprint(final.owners);
+        membership.restoredToOriginal = absent(final)
+          && membership.ownersFinalFingerprint === membership.ownersPreFingerprint;
       } catch (error) {
-        membership.error ??= `the group owners read failed: ${error.message}`;
+        membership.error ??= `the final membership read failed: ${error.message}`;
       }
-    }
-    try {
-      const readAll = async () => ({
-        members: await readMembers(),
-        owners: await teamsReadGroupOwners(reader, teamId),
-        groupMembers: await teamsReadGroupMembers(reader, teamId),
-      });
-      const absent = (state) => find(state.members) === null && !state.owners.includes(userId) && !state.groupMembers.includes(userId);
-      await teamsReadUntil(readAll, absent, restoreTiming(timing));
-      if (timing.settleMs) await timing.sleep(timing.settleMs);
-      const final = await readAll();
-      fixtureMember.memberAfter = find(final.members) !== null;
-      fixtureMember.ownerAfter = final.owners.includes(userId);
-      fixtureMember.groupMemberAfter = final.groupMembers.includes(userId);
-      membership.finalFingerprint = membersFingerprint(final.members);
-      membership.ownersFinalFingerprint = ownersFingerprint(final.owners);
-      membership.restoredToOriginal = log.values.memberAdded === true && absent(final)
-        && membership.ownersFinalFingerprint === membership.ownersPreFingerprint;
-    } catch (error) {
-      membership.error ??= `the final membership read failed: ${error.message}`;
     }
     if (log.values.memberAdded === true && membership.restoredToOriginal !== true) {
       membership.error = `THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER: remove ${userId} from the fixture team, and from the owners and members of group ${teamId}, by hand`;

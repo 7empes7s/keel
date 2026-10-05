@@ -388,26 +388,27 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At 38979f6 (PR #105): 120, 121 and 122 passed; 123 refused before any write (policy ExchangeLocation entries are objects).**
-  Build 38979f6 = master = `/opt/keel-live` (clean, deployed 08:16 UTC). Grants unchanged; all doc URLs 200;
+- Status: blocked
+- Result: **At c3bd35d (PR #106): 120 passed; 121 exit 3 again (a group *membership* survived this time); cleaned by hand.**
+  Build c3bd35d = master = `/opt/keel-live` (clean, deployed 09:27 UTC). Grants unchanged; all doc URLs 200;
   carla absent before 121.
-  - **120** `claude/live-evidence-120` @ **fbebc79**; **121** `claude/live-evidence-121` @ **187441c**; **122**
-    `claude/live-evidence-122` @ **3afba5d**. Each verify --require-live --build 38979f6 is ok (exit 0) with the
-    others beside it. These supersede the 94ddb0a records on the same branches.
-    - 121: my re-checks 08:17 → 08:20 (5×): roster, owners and members all 0.
-    - 122: timeZone toggled and restored to UTC; client access restored; retention now **17.00:00:00** (D-122d).
-  - **123 OneDrive/Purview: capture exit 1**: "the fixture policy is not fixture-only (ExchangeLocation publishes to
-    [object Object], not only to KEEL-RT fixtures); nothing was written". No tenant write.
-    - **Cause (read-only check through the image's run-job path):** in `Get-LabelPolicy` output, each
-      `ExchangeLocation` entry is an **object**, e.g. `{"DisplayName":"KEEL-RT-20260908 Alice Martin",
-      "Name":"keel-rt-20260908-alice@techinsiderbytes.com","ImmutableIdentity":"abbaf24b-…","Type":{…},…}`,
-      not a string. `onedrivePurviewPolicyAudienceProblems` (`onedrivePurviewAcceptance.mjs`, used at
-      `onedrivePurviewLive.mjs:299`) stringifies it to "[object Object]". The fixture policy really does
-      publish only to keel-rt-20260908-alice.
-    - **Coordinator:** read location entries as `entry.Name` (or `ImmutableIdentity`) when they're objects,
-      for all four location fields. Then rerun 120 → 123 at that build (retention will go up one more day).
-  - 123 fixtures `KEEL-RT-20261005-anchor`/`-label`/`-policy` are unchanged and still in place.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **6c9f51b**, verify ok, exit 0.
+  - **121 Teams: capture exit 3** ("may still be a member or owner … by hand"). Not committed; files kept locally.
+    - Log: 09:28:53/54 PATCH settings ×2 (204); 09:28:56 POST member (201); 09:28:58 PATCH promote; 09:29:00
+      PATCH demote; **09:29:01 DELETE `/teams/{id}/members/{membership}` returned 204**. No owner-link DELETE was
+      needed (it never showed). The tool polled until **09:40:09** (11 min, 361 requests) and saw carla stay.
+    - **Residual:** my reads 09:40:09 → 09:44:46: **roster=1, owners=0, members=1** (steady). The Teams member
+      DELETE returned 204, but the Entra group membership persisted or was re-synced back after the
+      promote/demote, the same async pattern as the owner link before (#104), now on the *member* link.
+    - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/members/856db776…/$ref` returned **204**
+      (09:44:46). Re-reads: 09:44:53 roster=1 (lag); **09:45:54 → 09:54:07 (9 checks) all 0.** The team is back to
+      its pre-capture state.
+  - **Coordinator, tool fix:** like #104 for owners, during the settle loop also **re-issue `DELETE
+    /groups/{id}/members/{user}/$ref` whenever `/groups/{id}/members` shows carla** (404 = gone), and only declare
+    restored after roster, owners and members have been clean for a stable interval.
+    - Note: each 121 run behaves differently (owner link late, roster lag, member link persisting). The Teams
+      fixture membership loop is the flaky part of this chain.
+  - 122 and 123 not run at c3bd35d (the alice retention is unchanged at 17).
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

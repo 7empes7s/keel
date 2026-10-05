@@ -350,25 +350,27 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At df4082a (PR #83): 120 passed; 121 exit 3 (restore real, but the roster settle window is too short).**
-  Build df4082a = `/opt/keel-live` (clean, deployed 21:53 UTC); grants unchanged. Before 121, carla was
-  absent from the Teams roster, group owners and group members.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **12d3547**, verify ok, exit 0.
-  - **121 Teams: capture exit 3** ("THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER … remove by hand"). Not
-    verified; not committed (files kept locally).
-    - The fix worked: PATCH settings ×2, POST member, PATCH owner, PATCH demote, DELETE member 204, then
-      **DELETE `/groups/{id}/owners/856db776…/$ref` 204** (21:54:33). The tool re-read until 21:54:59
-      (~25 s after the delete).
-    - My independent re-reads (Collector): **21:55:06** roster=**1**, owners=0, members=0 (Teams roster lag).
-      From **21:56:07 to 22:02:29** (8 checks): roster=0, owners=0, members=0. Stable, no re-sync. **No hand
-      cleanup was needed**; the fixture is back to its pre-capture state.
-    - **Coordinator:** in `teamsLive.mjs`, extend the post-restore settle window for `/teams/{id}/members`
-      (the roster took ~60–90 s here, vs ~25 s polled). E.g. poll up to ~3 min before declaring exit 3. Then
-      120 → 123 again. I didn't re-run 121 at df4082a: the same window would likely give exit 3 again, and
-      the queue says to stop at the first failure.
-  - 122 and 123 not run.
-  - I can't message the coordinator thread from here (no send_message); this Result is the report.
+- Status: blocked
+- Result: **At 6fee591 (all PRs incl. #103 merged): 120 passed; 121 exit 3. The owner link appears late; cleaned by hand.**
+  Build 6fee591 = master = `/opt/keel-live` (clean, deployed 02:11 UTC). Grants unchanged; all 25 doc URLs
+  return 200. Before 121, carla was absent from the roster, group owners and group members.
+  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **427633d**, verify ok, exit 0.
+  - **121 Teams: capture exit 3** ("may still be a member or owner … by hand"). Not committed; files kept locally.
+    - Timeline from the capture log: 02:11:52 PATCH promote (200); 02:11:53 PATCH demote (200); 02:11:55
+      DELETE member (204); **02:11:56 DELETE `/groups/{id}/owners/{carla}/$ref` returned 404** (the owner link
+      didn't exist yet). The tool then polled until 02:15:36 (~4 min, #103) and gave up correctly.
+    - **Residual:** my read at **02:15:46**: roster=1, **owners=1**, members=0. Teams created the Entra owner
+      link from the promotion asynchronously, *after* the tool's owner DELETE, and it then survived the
+      removal (as in the 2b2c338 run).
+    - **Cleanup (fixture write, Restorer):** `DELETE /groups/9263e1d4…/owners/856db776…/$ref` returned **204**.
+      Re-reads: 02:16:00 roster=1 owners=0 members=0; **02:17:02 → 02:25:12 (9 checks) all 0.** The team is back
+      to its pre-capture state (owners alice and maya; members alice, emma, hugo, maya and priya).
+  - **Coordinator, tool fix:** the owner link materialises seconds to minutes *after* the promote PATCH. Options:
+    (a) after promoting, poll `/groups/{id}/owners` until carla appears before demoting; or (b) during the
+    post-removal settle loop, **re-issue the owner-ref DELETE whenever `/groups/{id}/owners` shows carla**
+    (treating 404 as "not yet"), and only declare restored when roster, owners and members have all been
+    clean for a stable interval. The current single DELETE races the async link.
+  - 122 and 123 not run. No other tenant change.
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

@@ -1186,7 +1186,7 @@ item that needs it stays untouched.
   to queued.
 - Coordinator note (15:08 UTC): Marouane chose to keep prune off until the gate 116 drill (Q36) passes. Stays **hold**.
 - Coordinator note (16:35 UTC): gate 116 passed (Q36, 04d213d), so per Marouane's 15:08 choice this is released. Run it as written (dry run first; stop and report if the count is far above expectation).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: Q10 finished; #97 and #99 merged and deployed; Q24 done with its health check passing.
 - Do, as root from the deployed tree with `/etc/keel/db.env` sourced:

@@ -30,7 +30,8 @@
  *     owner; read back; PATCH its roles back to member; read back; DELETE it; read
  *     back. If the promotion left the fixture user as an owner of the team's group,
  *     DELETE that owner link. Then read the roster, the group's owners and its
- *     members until the user is absent from all three, wait a settle delay, and
+ *     members until the user is absent from all three (polled for about 3 minutes,
+ *     since the roster can lag a removal by a minute or more), wait a settle delay, and
  *     read them once more: only that last read decides whether membership was
  *     restored.
  * Every request is checked against the task-104 Teams request shapes before it is
@@ -120,7 +121,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
 export async function captureTeamsAcceptance({
   collector, restorer, directoryTenantId, fixtureTeamId, fixtureMemberUserId, tenantRef, build, credentials, grants,
   sharePointQualification, credentialTenants = {}, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
-  readBackAttempts = 5, readBackDelayMs = 2000, settleDelayMs = 20000,
+  readBackAttempts = 5, readBackDelayMs = 2000, settleDelayMs = 20000, restoreReadAttempts = 37, restoreReadDelayMs = 5000,
 }) {
   const problems = teamsFixtureProblems({ fixtureTeamId, fixtureMemberUserId });
   if (typeof directoryTenantId !== 'string' || !GUID_RE.test(directoryTenantId)) problems.push('--directory-tenant-id must be the managed tenant id (a GUID)');
@@ -233,7 +234,10 @@ export async function captureTeamsAcceptance({
   const fixtureMember = {
     userId, tenantId: null, membershipId: null, memberBefore, memberAfter: null, ownerBefore, ownerAfter: null, groupMemberBefore, groupMemberAfter: null,
   };
-  const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs, settleMs: settleDelayMs };
+  const timing = {
+    sleep, attempts: readBackAttempts, delayMs: readBackDelayMs, settleMs: settleDelayMs,
+    restoreAttempts: restoreReadAttempts, restoreDelayMs: restoreReadDelayMs,
+  };
   if (refusal) {
     settingsWrite.error = refusal;
     membership.error = refusal;
@@ -317,6 +321,10 @@ async function teamsReadGroupList(transport, teamId, list) {
 const teamsReadGroupOwners = (transport, teamId) => teamsReadGroupList(transport, teamId, 'owners');
 const teamsReadGroupMembers = (transport, teamId) => teamsReadGroupList(transport, teamId, 'members');
 const ownersFingerprint = (ids) => sha256Hex(JSON.stringify([...ids].sort()));
+
+// The Teams roster can lag a removal by a minute or more (2026-10-04: ~60-90 s), so
+// removal read-backs poll over a longer window than other read-backs.
+const restoreTiming = ({ sleep, restoreAttempts, restoreDelayMs }) => ({ sleep, attempts: restoreAttempts, delayMs: restoreDelayMs });
 
 async function teamsReadUntil(readOnce, matches, { sleep, attempts, delayMs }) {
   let body = null;
@@ -406,7 +414,7 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
     removed = true;
     if (!ok(deleted)) { remove.error = `REMOVING THE FIXTURE USER FAILED (HTTP ${deleted.status}): remove ${userId} from the fixture team by hand`; return; }
     remove.ok = true;
-    const gone = await teamsReadUntil(readMembers, (members) => find(members) === null, timing);
+    const gone = await teamsReadUntil(readMembers, (members) => find(members) === null, restoreTiming(timing));
     remove.readBackVerified = gone.matched;
   } catch (error) {
     membership.error = error.message;
@@ -440,7 +448,7 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
         groupMembers: await teamsReadGroupMembers(reader, teamId),
       });
       const absent = (state) => find(state.members) === null && !state.owners.includes(userId) && !state.groupMembers.includes(userId);
-      await teamsReadUntil(readAll, absent, timing);
+      await teamsReadUntil(readAll, absent, restoreTiming(timing));
       if (timing.settleMs) await timing.sleep(timing.settleMs);
       const final = await readAll();
       fixtureMember.memberAfter = find(final.members) !== null;

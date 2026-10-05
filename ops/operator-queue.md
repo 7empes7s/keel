@@ -1518,3 +1518,14 @@ item that needs it stays untouched.
   next run (expect 2026-10-06 05:00 UTC) and `systemctl is-enabled keel-offsite.timer`. Nothing else.
 - Don't re-run `keel-schedules-install.sh` until #112 is deployed.
 
+
+### Q38: Drop the throwaway drill and recovery databases — issues #84, #85
+- Status: queued (low priority; after Q29)
+- Result:
+- Why: the gate 116 attempts left disposable databases on the host (keel_drill_q36, keel_drill_q36b,
+  keel_recovery_q36c and older keel_recovery_* ones). Gate 116 evidence is merged (#126), so none is needed.
+- Do, as root with `/etc/keel/db.env` sourced:
+  1. List them: `SELECT datname FROM pg_database WHERE datname LIKE 'keel\_drill\_%' OR datname LIKE 'keel\_recovery\_%';`
+  2. `DROP DATABASE` each listed name, one at a time. Only names matching those two patterns. Never the live
+     database, `keel_test`, or anything else.
+  3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.

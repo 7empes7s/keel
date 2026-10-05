@@ -1315,7 +1315,42 @@ item that needs it stays untouched.
 
 
 ### Q34: Protected fixture label for LabelActions — issue #109
-- Status: in-progress
+- Status: done
+- Result: **Done.** Created **one** label, **`KEEL-RT-20261005-protected`** (guid 266cb4eb-e949-4088-be48-f25602b164e6), with the Restorer via Connect-IPPSSession.
+  It's **unpublished** (in no label policy, checked after creation). Nothing else touched.
+  - Content marking header + footer + watermark, text "KEEL-RT fixture": **applied**.
+  - **Encryption: applied as UserDefined + EncryptionPromptUser + EncryptionDoNotForward.** First attempts without
+    DoNotForward were refused: "ContentType includes both File and Email. To set -EncryptionProtectionType to
+    UserDefined, you must also set EncryptionPromptUser and either -EncryptionEncryptOnly or -EncryptionDoNotForward".
+    No template, user or group assignment involved.
+  - **Site and group protection: applied** (ContentType extended to `File, Email, Site, UnifiedGroup`): privacy
+    Private, guest access off, external sharing ExistingExternalUserSharingOnly. The tenant accepted it.
+  - Order: `New-Label` with markings (the fallback after the two encryption refusals), then one `Set-Label` adding
+    encryption and site/group.
+  **Read-only `Get-Label -Identity KEEL-RT-20261005-protected | ConvertTo-Json -Depth 10`:**
+  - **Top-level LABEL_ACTION_FIELDS present: none (0 of 10).** EncryptionEnabled, EncryptionProtectionType,
+    EncryptionOfflineAccessDays, ApplyContentMarkingHeaderEnabled, ApplyContentMarkingFooterEnabled,
+    ApplyWaterMarkingEnabled, SiteAndGroupProtectionEnabled, SiteAndGroupProtectionPrivacy,
+    SiteAndGroupProtectionAllowAccessToGuestUsers and SiteExternalSharingControlType are all absent as properties.
+  - They're encoded in **LabelActions** (an array of JSON **strings**, each `{Type, SubType, Settings:[{Key,Value}]}`)
+    and **Settings** (`"[key, value]"` strings). Values (no GUIDs present):
+  ```json
+  {
+   "LabelActions": [
+    "{\"Type\":\"applycontentmarking\",\"SubType\":\"footer\",\"Settings\":[{\"Key\":\"alignment\",\"Value\":\"Left\"},{\"Key\":\"disabled\",\"Value\":\"false\"},{\"Key\":\"fontcolor\",\"Value\":\"#000000\"},{\"Key\":\"fontsize\",\"Value\":\"10\"},{\"Key\":\"margin\",\"Value\":\"5\"},{\"Key\":\"placement\",\"Value\":\"Footer\"},{\"Key\":\"text\",\"Value\":\"KEEL-RT fixture\"}]}",
+    "{\"Type\":\"applycontentmarking\",\"SubType\":\"header\",\"Settings\":[{\"Key\":\"alignment\",\"Value\":\"Left\"},{\"Key\":\"disabled\",\"Value\":\"false\"},{\"Key\":\"fontcolor\",\"Value\":\"#000000\"},{\"Key\":\"fontsize\",\"Value\":\"10\"},{\"Key\":\"margin\",\"Value\":\"5\"},{\"Key\":\"placement\",\"Value\":\"Header\"},{\"Key\":\"text\",\"Value\":\"KEEL-RT fixture\"}]}",
+    "{\"Type\":\"applywatermarking\",\"SubType\":null,\"Settings\":[{\"Key\":\"disabled\",\"Value\":\"false\"},{\"Key\":\"fontcolor\",\"Value\":\"#000000\"},{\"Key\":\"fontsize\",\"Value\":\"10\"},{\"Key\":\"layout\",\"Value\":\"Diagonal\"},{\"Key\":\"text\",\"Value\":\"KEEL-RT fixture\"}]}",
+    "{\"Type\":\"encrypt\",\"SubType\":null,\"Settings\":[{\"Key\":\"donotforward\",\"Value\":\"true\"},{\"Key\":\"disabled\",\"Value\":\"false\"},{\"Key\":\"encryptonly\",\"Value\":\"false\"},{\"Key\":\"promptuser\",\"Value\":\"true\"},{\"Key\":\"protectiontype\",\"Value\":\"userdefined\"}]}",
+    "{\"Type\":\"protectgroup\",\"SubType\":null,\"Settings\":[{\"Key\":\"allowaccesstoguestusers\",\"Value\":\"false\"},{\"Key\":\"allowemailfromguestusers\",\"Value\":\"false\"},{\"Key\":\"disabled\",\"Value\":\"false\"},{\"Key\":\"privacy\",\"Value\":\"private\"}]}",
+    "{\"Type\":\"protectsite\",\"SubType\":null,\"Settings\":[{\"Key\":\"allowfullaccess\",\"Value\":\"false\"},{\"Key\":\"allowlimitedaccess\",\"Value\":\"false\"},{\"Key\":\"blockaccess\",\"Value\":\"false\"},{\"Key\":\"externalsharingcontroltype\",\"Value\":\"ExistingExternalUserSharingOnly\"},{\"Key\":\"disabled\",\"Value\":\"false\"}]}"
+   ],
+   "Settings": [
+    "[isparent, False]",
+    "[contenttype, File, Email, Site, UnifiedGroup]",
+    "[tooltip, KEEL disposable qualification fixture (gate 123, LabelActions). Do not use.]",
+    "[displayname, KEEL-RT-20261005-protected]"
+   ]
+  }```
 - Needs: Q10 finished (don't add a label while the chain runs; 123 counts tenant labels).
 - Ask (Marouane chose 12:42 UTC that KEEL reads LabelActions): with the Restorer via Connect-IPPSSession, create
   **one** label `KEEL-RT-<date>-protected`, unpublished (in **no** label policy), with:

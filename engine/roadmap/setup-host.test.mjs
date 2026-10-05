@@ -29,7 +29,7 @@ function host(options = {}) {
   return createGraphSetupHost({
     tenantRef, tenantId: TENANT_ID,
     collector: { config: collectorConfig, credentialRef: 'file:/etc/keel/tenant-target.json' },
-    restorer: { config: restorerConfig, credentialRef: 'file:/etc/keel/restorer-target.json' },
+    restorer: { config: restorerConfig, credentialRef: 'file:/etc/keel/restorer.json' },
     build: 'fixture-build-1', getToken: fakeGetToken(), killSwitchPath: missingKillSwitch,
     ...options,
   });
@@ -67,7 +67,7 @@ test('configuration: separate reference-only credentials, and every write operat
   const composed = host();
   assert.deepEqual(composed.credentials, {
     collector: { credentialRef: 'file:/etc/keel/tenant-target.json', identityRef: COLLECTOR_APP_ID },
-    restorer: { credentialRef: 'file:/etc/keel/restorer-target.json', identityRef: RESTORER_APP_ID },
+    restorer: { credentialRef: 'file:/etc/keel/restorer.json', identityRef: RESTORER_APP_ID },
   });
   assert.equal(composed.qualificationMode, 'live-qualified');
   assert.doesNotMatch(JSON.stringify(composed.credentials), /\.key|\.crt/, 'only the config file is referenced');
@@ -230,7 +230,7 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const files = {
     tenant: join(directory, 'tenant.json'), collector: join(directory, 'tenant-target.json'),
-    restorer: join(directory, 'restorer-target.json'), setup: join(directory, 'setup.json'),
+    restorer: join(directory, 'restorer.json'), setup: join(directory, 'setup.json'),
   };
   writeFileSync(files.tenant, JSON.stringify({ tenantId: TENANT_ID }));
   writeFileSync(files.collector, JSON.stringify(collectorConfig));

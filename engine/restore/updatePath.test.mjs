@@ -62,6 +62,30 @@ assert.equal(nonConverging.failed[0].error, 'residual drift after update');
 assert.ok(nonConverging.failed[0].residual.length > 0);
 assert.ok(nonConverging.failed[0].residual.includes('description'));
 
+// An empty array that the re-read omits is not drift. Before the fix the
+// hashes differed while the residual named no field, so the live gate 116
+// drill's rollback failed with "residual drift after update" and residual [].
+const emptyValueUpdate = { ...groupUpdate, payload: { ...desiredGroup, groupTypes: [] } };
+const emptyValueLive = { ...desiredGroup, id: 'target-group-id' };
+assert.notEqual(
+  canonicalHash(emptyValueUpdate.payload, 'group'),
+  canonicalHash(emptyValueLive, 'group'),
+);
+const emptyValue = await applyWave(fakeWriter(emptyValueLive), governor, [emptyValueUpdate], {
+  targetTenant: 'target', mode: 'enforce',
+});
+assert.deepEqual(emptyValue.failed, []);
+assert.equal(emptyValue.applied.length, 1);
+
+// A populated array the re-read omits is still a residual (groupTypes is
+// immutable, so it reads as not remediable rather than applied).
+const populatedUpdate = { ...groupUpdate, payload: { ...desiredGroup, groupTypes: ['Unified'] } };
+const populated = await applyWave(fakeWriter(emptyValueLive), governor, [populatedUpdate], {
+  targetTenant: 'target', mode: 'enforce',
+});
+assert.equal(populated.applied.length, 0);
+assert.equal(populated.notRemediable.length, 1);
+
 // Conditional Access writes are report-only even when the desired payload
 // says enabled; inspect the body actually supplied to PATCH.
 const caUpdate = {

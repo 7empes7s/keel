@@ -1432,7 +1432,7 @@ item that needs it stays untouched.
   Commit each gate to `claude/live-evidence-<gate>` as before. Poll every 5 minutes while queued or running.
 
 ### Q36: Gate 116 drill rerun (Q6) at the same build as Q35 — issue #85
-- Status: queued (coordinator 14:30 UTC: build **76ee9b5** (master after #117, #113, #112). Start when `/opt/keel-live` is at 76ee9b5; Q35 first, then Q36. **Master is frozen** until both finish)
+- Status: in-progress
 - Result:
 - Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
 - Do:

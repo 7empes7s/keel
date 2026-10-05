@@ -1408,6 +1408,8 @@ item that needs it stays untouched.
 - Result:
 - Needs: PR #111 merged and deployed; **Q24 finished first** (stale jobs cancelled, worker installed, its run-now
   collections done), so no collection starts mid-chain.
+- Before the chain: `systemctl restart keel-worker` once `/opt/keel-live` is at the named build, so the worker runs it too
+  (deploy.sh doesn't restart it yet; Q24 step 4 is with vps-deployer). Report `systemctl status keel-worker` start time.
 - Do: exactly as Q10 (same pre-checks and decisions), at the new build, with a fresh unpublished
   `KEEL-RT-<date>-label3` for 123. Expect gate 123's `notQualifiedFields.label` to be **empty**: the ten protection fields
   now come from LabelActions. If any are still listed, stop and report the 123 capture's label fieldCoverage.

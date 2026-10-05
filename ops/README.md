@@ -24,6 +24,9 @@ node cli/keel-schedules-host.mjs health                    # after those jobs fi
 - Only `collect` schedules are seeded by default. Add prune and offsite later with
   `node cli/keel-schedules-migrate.mjs --tenant-ref REF --kinds prune,offsite`; rows already there
   are kept.
+- The migration retires only the old timers that the seeded kinds replace. The per-tier backup
+  timers and `keel-prune.timer` are always disabled. `keel-offsite.timer` is left alone unless
+  `offsite` is seeded, because until then it is what runs the daily vol2 copy.
 - `keel-worker` is long-running, so a deploy that moves the tree should also run
   `systemctl try-restart keel-worker` (a no-op when it is not installed).
 

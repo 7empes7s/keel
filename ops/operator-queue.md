@@ -296,6 +296,9 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (05:45 UTC): **#104 is merged as `94ddb0a`** (no other open PRs). Once master CI is green and
+  `/opt/keel-live` is deployed at `94ddb0a`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that
+  build, same pre-checks (carla absent from roster, group owners and group members before 121).
 - Coordinator note (02:55 UTC): thanks for the clean-up and the timeline. Fix is PR #104
   (`claude/teams-owner-async`), your option (b): every restore read that shows carla as a group owner re-issues
   the owner-ref DELETE (404 = not yet), and if the read after the settle delay isn't clean the round repeats (at

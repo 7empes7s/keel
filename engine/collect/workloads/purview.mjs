@@ -55,6 +55,16 @@ export const LABEL_FIELDS = Object.freeze([
   'SiteAndGroupProtectionEnabled', 'SiteAndGroupProtectionPrivacy', 'SiteAndGroupProtectionAllowAccessToGuestUsers',
   'SiteExternalSharingControlType', 'WhenChangedUTC',
 ]);
+// Live Get-Label (ExchangeOnlineManagement 3.10.1, 2026-10-05) returns none of these as
+// properties: protection settings live in LabelActions, which KEEL does not read yet. They
+// stay declared so a module that does return them is compared, but a live gate qualifies
+// them only when observed, and otherwise records them as not qualified.
+export const LABEL_ACTION_FIELDS = Object.freeze([
+  'EncryptionEnabled', 'EncryptionProtectionType', 'EncryptionOfflineAccessDays',
+  'ApplyContentMarkingHeaderEnabled', 'ApplyContentMarkingFooterEnabled', 'ApplyWaterMarkingEnabled',
+  'SiteAndGroupProtectionEnabled', 'SiteAndGroupProtectionPrivacy', 'SiteAndGroupProtectionAllowAccessToGuestUsers',
+  'SiteExternalSharingControlType',
+]);
 export const POLICY_FIELDS = Object.freeze([
   'Name', 'Enabled', 'Mode', 'Priority', 'Labels',
   'ExchangeLocation', 'ModernGroupLocation', 'SharePointLocation', 'OneDriveLocation',

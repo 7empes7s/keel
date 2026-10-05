@@ -1447,26 +1447,27 @@ item that needs it stays untouched.
   ```
   Once #122 is merged and deployed I'll add a note with its build; then rerun Q36 from step 1 (fresh recovery set) at that build.
 - Status: blocked
-- Result: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
-  fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.
-  1. **Fresh recovery set at 76ee9b5:** read-only `pg_dump` to `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`
-     (sha256 a02008c5…), then `ops/keel-recovery-set.mjs --dump-sha256 … --out /opt/keel-recovery-sets/2026-10-05-q36`.
-     Result: build 76ee9b5, schema pin 2a20d4ae…, snapshot c82fddf2…, **evidence head
-     306:7506c853b952cf0a828cf44b0ba53a97112eec848d6102a7c6a5da4f0d754537:306** (stable across dump and set), manifest
-     sha256 e57cc8f4…. `keel-dump-manifest.mjs --verify`: "recovery complete".
-  2. Fresh 10-min assertion (Q20 key). `reconstruct.mjs … --target-url <keel_recovery_q6> --authenticator
-     signed-assertion … --result-out` ended with **exit 1: `import: dump import failed: relation "bootstrap_event" does not exist`**.
-     - **Cause:** the importer creates the target from `engine/store/schema.sql`, then loads the dump's data.
-       `bootstrap_plan` and `bootstrap_event` are **not in schema.sql** (0 matches). They're created at runtime by
-       `migrateBootstrapJournal` (`engine/bootstrap/journal.mjs:22,30`) when the portal's Setup action first runs (that
-       happened 2026-10-04). The live dump contains `CREATE TABLE public.bootstrap_event/plan` and their COPY data
-       (lines ~404/443, ~3996/4044). Comparing live tables with schema.sql, those two are the only ones missing
-       (`schedule` is present, without IF NOT EXISTS).
-     - The half-import was discarded; `keel_recovery_q6` has 0 tables.
-  **Coordinator, code fix:** add the bootstrap journal tables to `engine/store/schema.sql` (idempotent `CREATE TABLE
-  IF NOT EXISTS`, matching `journal.mjs`), or have reconstruct apply runtime migrations (migrateBootstrapJournal) after
-  schema.sql, or skip unknown tables explicitly. Then redo Q36 at the new build: fresh set, assertion, reconstruct,
-  build-manifest, offline plan, live drill, capture-drill, verify. onboarding.json stays valid.
+- Result: **Pre-check (15:10 UTC, read-only, writes only /tmp) on `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`: `comm -23` printed nothing** — every COPY table in the dump is in the reconstruction list. `wc -l` dump tables: **65** (list: 70; the 5 in the list but not the dump are audit_change_fact, audit_ingest_event, audit_ingest_run, audit_ingest_state, audit_sign_in_fact, which is harmless). Still blocked until #122 is merged and deployed.
+    Earlier: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
+    fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.
+    1. **Fresh recovery set at 76ee9b5:** read-only `pg_dump` to `/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`
+       (sha256 a02008c5…), then `ops/keel-recovery-set.mjs --dump-sha256 … --out /opt/keel-recovery-sets/2026-10-05-q36`.
+       Result: build 76ee9b5, schema pin 2a20d4ae…, snapshot c82fddf2…, **evidence head
+       306:7506c853b952cf0a828cf44b0ba53a97112eec848d6102a7c6a5da4f0d754537:306** (stable across dump and set), manifest
+       sha256 e57cc8f4…. `keel-dump-manifest.mjs --verify`: "recovery complete".
+    2. Fresh 10-min assertion (Q20 key). `reconstruct.mjs … --target-url <keel_recovery_q6> --authenticator
+       signed-assertion … --result-out` ended with **exit 1: `import: dump import failed: relation "bootstrap_event" does not exist`**.
+       - **Cause:** the importer creates the target from `engine/store/schema.sql`, then loads the dump's data.
+         `bootstrap_plan` and `bootstrap_event` are **not in schema.sql** (0 matches). They're created at runtime by
+         `migrateBootstrapJournal` (`engine/bootstrap/journal.mjs:22,30`) when the portal's Setup action first runs (that
+         happened 2026-10-04). The live dump contains `CREATE TABLE public.bootstrap_event/plan` and their COPY data
+         (lines ~404/443, ~3996/4044). Comparing live tables with schema.sql, those two are the only ones missing
+         (`schedule` is present, without IF NOT EXISTS).
+       - The half-import was discarded; `keel_recovery_q6` has 0 tables.
+    **Coordinator, code fix:** add the bootstrap journal tables to `engine/store/schema.sql` (idempotent `CREATE TABLE
+    IF NOT EXISTS`, matching `journal.mjs`), or have reconstruct apply runtime migrations (migrateBootstrapJournal) after
+    schema.sql, or skip unknown tables explicitly. Then redo Q36 at the new build: fresh set, assertion, reconstruct,
+    build-manifest, offline plan, live drill, capture-drill, verify. onboarding.json stays valid.
 - Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
 - Do:
   1. Build a fresh recovery set (backup dump + manifest) at the deployed build, as in Q32.

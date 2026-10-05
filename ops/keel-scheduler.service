@@ -1,3 +1,4 @@
+# ops/keel-schedules-install.sh --root DIR rewrites /opt/keel-live to DIR when it installs this unit.
 [Unit]
 Description=KEEL schedule execution engine
 After=network-online.target
@@ -6,10 +7,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/opt/keel
+WorkingDirectory=/opt/keel-live
 Environment=TZ=UTC
 EnvironmentFile=/etc/keel/db.env
-ExecStart=/usr/bin/node /opt/keel/cli/keel-scheduler.mjs
+ExecStart=/usr/bin/node /opt/keel-live/cli/keel-scheduler.mjs
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=keel-scheduler

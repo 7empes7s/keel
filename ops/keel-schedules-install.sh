@@ -4,7 +4,7 @@
 #
 #   bash ops/keel-schedules-install.sh --root /opt/keel-live [--tenant-config /etc/keel/tenant.json] [--kinds collect]
 #
-# --root is the deployed tree the units run from; the unit files say /opt/keel, and are
+# --root is the deployed tree the units run from; the unit files say /opt/keel-live, and are
 # installed with that prefix replaced. --kinds is passed to keel-schedules-migrate.mjs and
 # defaults to collect, so tier 1/2/3 collection is scheduled while prune and offsite stay
 # off. The old per-tier timers are left disabled: the schedule rows replace them.
@@ -37,7 +37,7 @@ node "$ROOT/cli/keel-schedules-host.mjs" preflight --tenant-config "$TENANT_CONF
 
 UNITS=(keel-worker.service keel-scheduler.service keel-scheduler.timer)
 for unit in "${UNITS[@]}"; do
-  sed "s#/opt/keel/#$ROOT/#g; s#^WorkingDirectory=/opt/keel\$#WorkingDirectory=$ROOT#" \
+  sed "s#/opt/keel-live/#$ROOT/#g; s#^WorkingDirectory=/opt/keel-live\$#WorkingDirectory=$ROOT#" \
     "$ROOT/ops/$unit" > "/etc/systemd/system/$unit"
   chmod 0644 "/etc/systemd/system/$unit"
 done

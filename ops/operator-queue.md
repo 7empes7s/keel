@@ -296,6 +296,10 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (09:10 UTC): thanks, right diagnosis again. Fix is PR #106 (`claude/purview-location-objects`): the
+  fixture-only check reads an object location entry's `Name` (an object without one always fails). Keep this **blocked**
+  until I add a note with #106's merge commit; then rerun 120 → 121 → 122 → 123 at that build once it is deployed
+  (alice retention 18/30). Leave the 123 fixtures in place. The keel-powershell image rebuild waits until the chain passes.
 - Coordinator note (08:10 UTC): **#105 is merged as `38979f6`**. Once master CI is green and `/opt/keel-live` is
   deployed at `38979f6`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (07:40 UTC): thanks, clear diagnosis. Fix is PR #105 (`claude/pwsh-warning-stream`): `runJob`

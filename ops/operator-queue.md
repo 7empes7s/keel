@@ -1257,7 +1257,7 @@ item that needs it stays untouched.
 ### Q32: Gate 116 onboarding result, then unblock Q6 — issue #85
 - Drafted by the "Gate 116 drill live acceptance" thread (02:00 UTC). **On hold: don't start** until the
   coordinator changes Status to queued (after Q10 and Q33 finish).
-- Status: queued (coordinator 13:15 UTC: Q10 and Q33 done; run after Q34)
+- Status: in-progress
 - Result:
 - Needs: Q10 finished; Q27 done; PR #96 (`36fc2b3`) deployed; Q33 done (fresh restore setup complete).
 - Do:

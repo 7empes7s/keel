@@ -6,7 +6,7 @@ import { seedSchedules } from '../engine/store/scheduleSeed.mjs';
 import { complete, fail } from '../engine/jobs/queue.mjs';
 import { processCollectionCompletions } from '../engine/schedules/completions.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
-import { preflight, runNow, health, TIERS } from './keel-schedules-host.mjs';
+import { preflight, runNow, health, cancel, TIERS } from './keel-schedules-host.mjs';
 
 const TENANT = 'sha256:00000000000000aa';
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -27,6 +27,24 @@ try {
     const other = await preflight(client, { tenantRef: TENANT });
     assert.deepEqual(other.blockers, ['enabled schedules exist for another tenant']);
     await client.query('DELETE FROM schedule');
+  });
+
+  await test('cancel withdraws a queued job with its reason and leaves running ones alone', async () => {
+    const { rows: [queued] } = await client.query(`INSERT INTO job (kind, requested_by) VALUES ('restore', 'operator') RETURNING id`);
+    const { rows: [running] } = await client.query(`INSERT INTO job (kind, requested_by, status) VALUES ('backup', 'operator', 'running') RETURNING id`);
+    await assert.rejects(cancel(client, { jobId: queued.id, reason: ' ' }), /reason is required/);
+    assert.deepEqual(await cancel(client, { jobId: queued.id, reason: 'stale before worker install' }),
+      { jobId: queued.id, kind: 'restore', status: 'cancelled', ok: true });
+    const { rows: [row] } = await client.query('SELECT status, error, finished_at FROM job WHERE id = $1', [queued.id]);
+    assert.equal(row.error, 'cancelled: stale before worker install');
+    assert.ok(row.finished_at);
+    assert.deepEqual(await cancel(client, { jobId: queued.id, reason: 'again' }),
+      { jobId: queued.id, kind: 'restore', status: 'cancelled', ok: false });
+    assert.deepEqual(await cancel(client, { jobId: running.id, reason: 'no' }),
+      { jobId: running.id, kind: 'backup', status: 'running', ok: false });
+    const after = await preflight(client, { tenantRef: TENANT });
+    assert.deepEqual(after.backlog.map(({ kind, status }) => [kind, status]), [['backup', 'running']]);
+    await client.query('DELETE FROM job');
   });
 
   await test('run-now enqueues one collect job per tier, once per day', async () => {

@@ -296,6 +296,8 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (11:12 UTC): **#107 is merged as `4d8c1ec`**. Once master CI is green and `/opt/keel-live` is
+  deployed at `4d8c1ec`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (10:10 UTC): thanks for the clean-up and the clear diagnosis. Fix is PR #107
   (`claude/teams-member-link`): every restore read that shows carla in the group's members re-issues
   `DELETE /groups/{id}/members/{user}/$ref` (404 = gone), as #104 does for owners. Keep this **blocked** until I add a
@@ -392,7 +394,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: queued
 - Result: **At c3bd35d (PR #106): 120 passed; 121 exit 3 again (a group *membership* survived this time); cleaned by hand.**
   Build c3bd35d = master = `/opt/keel-live` (clean, deployed 09:27 UTC). Grants unchanged; all doc URLs 200;
   carla absent before 121.

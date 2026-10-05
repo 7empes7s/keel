@@ -296,6 +296,11 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (12:20 UTC): thanks. Fix is PR #108 (`claude/purview-label-action-fields`): the capture lists the
+  LabelActions fields Get-Label didn't return in `notQualifiedFields.label` and the verifier accepts only those.
+  Keep this **blocked** until I add a note with #108's merge commit; then rerun 120 → 123 at that build once deployed
+  (alice retention 19/30). Yes, create a fresh unpublished `KEEL-RT-<date>-label` just before 123 (D-123d); the anchor
+  and policy stay. The 121 HTTP 400 on an owner-link DELETE: please paste its error body (no secrets) in the Result.
 - Coordinator note (11:12 UTC): **#107 is merged as `4d8c1ec`**. Once master CI is green and `/opt/keel-live` is
   deployed at `4d8c1ec`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (10:10 UTC): thanks for the clean-up and the clear diagnosis. Fix is PR #107

@@ -18,7 +18,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,6 +53,7 @@ import {
   createDisposableTarget,
   reconstructRecovery,
   runCli,
+  RUNTIME_MIGRATIONS,
 } from '../../tools/recovery/reconstruct.mjs';
 import { signRecoveryAssertion } from '../../tools/recovery/recovery-assertion.mjs';
 import { copyColumnNames, decodeCopyField, DumpImportError, importDump, parseDump } from '../../tools/recovery/dumpImport.mjs';
@@ -459,6 +460,76 @@ test('a real pg_dump of the source reconstructs the same history', async (t) => 
   assert.match(sql, /^COPY public\.evidence /m, 'the real dump carries COPY blocks');
   const result = await reconstructRecovery(await optionsForDump('dump-real.sql.gz', sql));
   await assertRoundTrip(result);
+});
+
+test('a real pg_dump carrying runtime-created tables (Setup journal, audit ingestion) reconstructs them', async (t) => {
+  // A live database gains these tables when Setup or audit ingestion first runs;
+  // schema.sql does not create them, so the reconstruction must.
+  for (const migrate of RUNTIME_MIGRATIONS) await migrate(sourceClient);
+  await sourceClient.query(
+    `INSERT INTO bootstrap_plan (tenant_ref, artifact_id, artifact, approved_by) VALUES ($1, 'plan-1', '{"steps":[]}', 'approver@example.test')`,
+    [TENANT],
+  );
+  await sourceClient.query(
+    `INSERT INTO bootstrap_event (tenant_ref, artifact_id, step_id, state, evidence) VALUES ($1, 'plan-1', NULL, 'approved', '{}'), ($1, 'plan-1', 'entra-collect', 'complete', '{"ok":true}')`,
+    [TENANT],
+  );
+  await sourceClient.query(
+    `INSERT INTO audit_ingest_state (tenant_ref, source, cursor, complete) VALUES ($1, 'directoryAudits', 7, true)`,
+    [TENANT],
+  );
+  const url = process.env.KEEL_DB_TEST_URL;
+  const dump = spawnSync('pg_dump', ['--schema', source.schema, url], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (dump.error || dump.status !== 0) {
+    t.skip(`pg_dump unavailable for this server: ${dump.error?.message ?? dump.stderr.trim()}`);
+    return;
+  }
+  const sql = dump.stdout.replaceAll(`"${source.schema}"`, 'public').replaceAll(source.schema, 'public');
+  assert.match(sql, /^COPY public\.bootstrap_event /m);
+  const result = await reconstructRecovery(await optionsForDump('dump-runtime.sql.gz', sql));
+  assert.equal(result.ok, true, JSON.stringify(result.failures));
+  const client = await result.target.connect();
+  try {
+    const { rows: [counts] } = await client.query(`SELECT
+      (SELECT count(*)::int FROM bootstrap_plan) AS plans,
+      (SELECT count(*)::int FROM bootstrap_event) AS events,
+      (SELECT max(cursor)::int FROM audit_ingest_state) AS cursor,
+      nextval('bootstrap_event_id_seq')::int AS next_event_id`);
+    assert.deepEqual(counts, { plans: 1, events: 2, cursor: 7, next_event_id: 3 });
+  } finally {
+    await client.end();
+    await result.access.client.end();
+  }
+});
+
+test('every table KEEL creates at runtime is created by a reconstruction runtime migration', async () => {
+  // A table created outside schema.sql and RUNTIME_MIGRATIONS would make every
+  // live dump that carries its rows fail at import.
+  const root = new URL('../../', import.meta.url);
+  const created = new Set();
+  const walk = (dir) => {
+    for (const entry of readdirSync(new URL(dir, root), { withFileTypes: true })) {
+      const rel = `${dir}${entry.name}`;
+      if (entry.isDirectory()) {
+        if (!['node_modules', '.next', 'test'].includes(entry.name)) walk(`${rel}/`);
+      } else if (/\.(mjs|js|ts)$/.test(entry.name) && !/\.test\./.test(entry.name)) {
+        for (const m of readFileSync(new URL(rel, root), 'utf8').matchAll(/CREATE TABLE IF NOT EXISTS\s+(\w+)/g)) created.add(m[1]);
+      }
+    }
+  };
+  for (const dir of ['engine/', 'cli/', 'portal/lib/', 'portal/app/', 'tools/']) walk(dir);
+  assert.ok(created.has('bootstrap_event'), 'the scan finds runtime-created tables');
+  const target = await newTarget();
+  const client = await target.connect();
+  try {
+    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    for (const migrate of RUNTIME_MIGRATIONS) await migrate(client);
+    const { rows } = await client.query(`SELECT tablename FROM pg_tables WHERE schemaname = current_schema()`);
+    const present = new Set(rows.map((row) => row.tablename));
+    assert.deepEqual([...created].filter((table) => !present.has(table)), []);
+  } finally {
+    await client.end();
+  }
 });
 
 test('a dump carrying any psql meta-command other than \\restrict is refused at import', async () => {

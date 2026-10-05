@@ -437,6 +437,10 @@ being triggered by queue updates.
 
   Stop at the first failure. Do only what the filled decisions allow.
 
+  - Coordinator note (12:55 UTC): Q10 reviewed, evidence combined in PR #110 for Marouane to merge. Released Q34, Q30,
+    Q33, Q26, Q24 and Q31 to queued; please work them **in that order** (Q34 feeds #109). Q29 follows Q24, Q32 follows
+    Q33. Poll every 5 minutes and write each Result as soon as an item finishes.
+
 ### Q11: Build a recovery set for gate 114 (new tool from PR #70)
 - Status: done
 - Result: **Recovery set made: `/opt/keel-recovery-sets/2026-10-04/`** (66 MB, root-only dirs). Made by
@@ -974,7 +978,7 @@ item that needs it stays untouched.
 ### Q24: Install scheduled collection (issue #91)
 - Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
   until the coordinator changes Status to queued.
-- Status: hold
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Result:
 - Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
 - Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):
@@ -1023,7 +1027,7 @@ item that needs it stays untouched.
 ### Q26: #93 Restorer grants inventory (read-only)
 - Issue #93, asked by the "Restorer least-privilege review" thread (20:34 UTC). **On hold: don't start**
   until the coordinator changes Status to queued (after the 120 → 123 chain).
-- Status: hold
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Result:
 - Needs: Q10 finished.
 - Do: list every application permission the Restorer app (appId 12f8942f…) holds, on every resource (Graph,
@@ -1129,7 +1133,7 @@ item that needs it stays untouched.
      (snapshot ids are fine; nothing else).
 
 ### Q30: Remove the Q19 Restorer config override after #98 deploys — issue #92
-- Status: hold (coordinator flips to queued after Q10 finishes)
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Result:
 - Needs: Q10 finished; `/opt/keel-live` deployed at or after `76e503e` (#98: portal and worker now default to
   `/etc/keel/restorer.json`).
@@ -1143,7 +1147,7 @@ item that needs it stays untouched.
 ### Q31: #89 enable offsite to vol2 — issue #89
 - Drafted by the "Offsite backup unreachable" thread (02:00 UTC). **On hold: don't start** until the coordinator
   changes Status to queued.
-- Status: hold
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Result:
 - Needs: Q10 finished; the deployed tree (`/opt/keel`, see Q24 step 2 for `/opt/keel` vs `/opt/keel-live`) at or
   after `c99a9f2` (#100).
@@ -1181,7 +1185,7 @@ item that needs it stays untouched.
 - Drafted by the "Gate 116 drill live acceptance" thread (07:16 UTC). Asked by Marouane in the project chat,
   2026-10-05 07:15 UTC: "I think these could be solved by the deployer/operator sessions?" **On hold: don't start**
   until the coordinator changes Status to queued (after Q10 finishes).
-- Status: hold
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Result:
 - Needs: Q10 finished; Q27 done; `36fc2b3` (PR #96) deployed to `/opt/keel-live`.
 - Do:
@@ -1203,7 +1207,7 @@ item that needs it stays untouched.
 
 
 ### Q34: Protected fixture label for LabelActions — issue #109
-- Status: hold
+- Status: queued (coordinator 12:55 UTC: Q10 done)
 - Needs: Q10 finished (don't add a label while the chain runs; 123 counts tenant labels).
 - Ask (Marouane chose 12:42 UTC that KEEL reads LabelActions): with the Restorer via Connect-IPPSSession, create
   **one** label `KEEL-RT-<date>-protected`, unpublished (in **no** label policy), with:

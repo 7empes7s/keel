@@ -29,12 +29,12 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 One GitHub issue per task (label `task`), one project thread per issue, one branch and PR per
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
-**Master is frozen while #84 runs** (same-build chain). The operator merged every open PR (#94–#103) at 01:57–01:59 UTC
-on 10-05, the chain reruns at `38979f6` (#105). No other merges until it finishes.
+**Master is unfrozen (2026-10-05 12:55 UTC).** Gates 120 → 123 all verified at `248b12c`; evidence in PR #110. #109
+(LabelActions reader) will need one more full chain rerun at its build, so the freeze returns briefly then.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #107 merged as `4d8c1ec`; #108 (label LabelActions fields) merged as `248b12c` | At `4d8c1ec` 120-122 passed (ae3f40b, 30a1e36, 0bd6744); 123 captured but didn't verify (10 label protection fields not returned by Get-Label). Q10 queued for a rerun at `248b12c` | Master CI and deploy at `248b12c`, then keel-operator reruns 120 → 123; keel-powershell image rebuild after the chain |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #106–#108 merged; evidence PR #110 (Marouane merges) | **Chain passed at `248b12c`** (Q10): 120 60683a5, 121 211a372, 122 da8a341, 123 eeac328, all verify --require-live side by side. 123 lists 10 label action fields as notQualified | Merge #110; keel-powershell rebuild (Marouane go to vps-deployer); #109 LabelActions reader after Q34, then a chain rerun |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step), merged as `36fc2b3` | #96 merged; read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done | After Q10: Q33 (keel-operator runs the fresh restore setup and removes Intune Administrator from the Collector, per Marouane 07:15), then Q32 (onboarding check, then Q6) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs), merged as `6fee591` | Merged; first checkbox done (ledger code b81a41d) | Recapture of every gate at one frozen build and ledger verification wait on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed), merged as `702b1ee` | Done (issue closed) | None. `adopt.sh` run twice still unverified against the real brain script (needs a brain-side session) |
@@ -181,3 +181,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 12:20: at `4d8c1ec` 120-122 passed; 123 failed verify on label fields Get-Label doesn't return. PR #108 records them as not qualified. Freeze continues.
 - 2026-10-05 12:28: #108 merged as `248b12c`; Q10 queued to rerun at that build. Freeze continues.
 - 2026-10-05 12:45: Marouane chose that KEEL reads LabelActions (issue #109). Q34 (protected fixture label, read-only dump) on hold until Q10 finishes. The 248b12c rerun continues.
+- 2026-10-05 12:55: **Q10 passed: 120 → 123 verified at 248b12c.** Evidence combined in PR #110. Master unfrozen. Q34, Q30, Q33, Q26, Q24, Q31 released to queued (Q29 after Q24, Q32 after Q33). keel-powershell rebuild can go.

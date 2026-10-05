@@ -1434,6 +1434,17 @@ item that needs it stays untouched.
 
 ### Q36: Gate 116 drill rerun (Q6) at the same build as Q35 — issue #85
 - Coordinator note (15:00 UTC): right diagnosis. The Gate 116 thread (#85) owns the fix (schema.sql or reconstruction runs the bootstrap journal migration). Keep this **blocked** until I add a note with the fix's merge commit; then rerun from step 1 at that build once deployed. Master is unfrozen meanwhile.
+- Coordinator note (15:00 UTC, #2): fix is PR #122 (reconstruction runs KEEL's runtime migrations after schema.sql). **You can run
+  this read-only pre-check now** (it writes nothing but /tmp) and put its output in the Result. If it prints any table
+  name, stop and report it; the drill doesn't rerun until it prints nothing. The dump is the Q36 one
+  (`/root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz`; use the copy in the recovery set if that's where it is):
+  ```
+  zcat /root/keel-q6-116/keel-db-2026-10-05-q36.sql.gz | grep -oE '^COPY public\.[a-z_0-9]+' | cut -d. -f2 | sort -u > /tmp/dump-tables.txt
+  echo "alert alert_escalation_rule alert_event_receipt alert_transition api_drift_candidate api_drift_source approval_request audit_change_fact audit_ingest_event audit_ingest_run audit_ingest_state audit_sign_in_fact auto_remediation_execution baseline baseline_resource benchmark_evaluation benchmark_exception bootstrap_event bootstrap_plan breakglass_account breakglass_lifecycle_event change_intent change_intent_event channel content_effect_approval delivery disposition drift evidence evidence_head incident incident_compromise_interval incident_recovery_override incident_snapshot_assessment itsm_adapter_config itsm_decision itsm_identity_map itsm_inbox itsm_outbox_event itsm_record itsm_record_version job plan policy policy_activation policy_activation_preview principal recovery_completion_event recovery_completion_item relationship_edge relationship_edge_set resource_lineage resource_lineage_alias resource_lineage_recovery resource_ownership_evidence resource_reference resource_symbol resource_version restore_dry_run retention_pin role_grant rollback_entry schedule siem_destination siem_outbox_event siem_replay_checkpoint snapshot subscription workload_collection workload_observation" | tr ' ' '\n' | sort -u > /tmp/recon-tables.txt
+  comm -23 /tmp/dump-tables.txt /tmp/recon-tables.txt   # must print nothing
+  wc -l < /tmp/dump-tables.txt
+  ```
+  Once #122 is merged and deployed I'll add a note with its build; then rerun Q36 from step 1 (fresh recovery set) at that build.
 - Status: blocked
 - Result: **Blocked at the reconstruction (step 2), at 76ee9b5: the importer now gets past `\restrict`/COPY (#116/#117), but
   fails on tables that aren't in `schema.sql`.** No drill run; no `keel-rehearsal-*` group; nothing written to the tenant.

@@ -1461,7 +1461,14 @@ item that needs it stays untouched.
      then `verify --require-live` (must exit 0). Push the evidence to `claude/live-evidence-116`. Set Status in-progress
      when you start.
 - Coordinator note (15:56 UTC, #6): thanks. This is a code bug (applyEngine rollback reports residual drift with an empty diff); the Gate 116 thread (#85) owns the fix. Stays **blocked** until I add a note with the fix's deployed build; then rerun from step 1 (fresh set, reconstruct, fresh drill DB as in note #5) at that build. Master is unfrozen meanwhile.
-- Status: blocked
+- Coordinator note (16:06 UTC, #7): the rollback fix is **PR #125**. Once #125 is merged and `/opt/keel-live` is deployed
+  at a build that contains it (check: `git -C /opt/keel-live log --oneline | grep -m1 "#125"`, or a later coordinator
+  note naming the sha), set this to in-progress and rerun **every step** at that build (capture-drill requires the
+  reconstruction build to match): table pre-check, fresh recovery set, reconstruct, a fresh drill DB (new name, e.g.
+  `keel_drill_q36b`; schema.sql + RUNTIME_MIGRATIONS as in note #5), build-manifest, offline plan, the live drill and
+  capture-drill (both `--db-url "$DRILL_URL"`), `verify --require-live` (exit 0), evidence to `claude/live-evidence-116`.
+  If a deploy lands mid-run, stop and restart from the recovery set at the new build.
+- Status: queued
 - Result: **Blocked at the live drill (note #5 rerun, fcd9610): the drill DB is fine now, but the rollback step fails its own
   post-write check.** The tenant is clean, and no evidence was committed. I didn't rerun, because each run creates another group.
   - **#5 steps 1–3 done:** I created a fresh `keel_drill_q36` (not KEEL_DB_URL). I applied `engine/store/schema.sql`

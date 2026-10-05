@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { createSnapshot, insertResourceVersion } from './db.mjs';
 import { recordDisposition, recordDrift } from './governance.mjs';
-import { isPrunable, pruneSnapshots } from './retention.mjs';
+import { isPrunable, listPrunableSnapshots, pruneSnapshots } from './retention.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const now = new Date('2026-09-04T12:00:00.000Z');
@@ -124,20 +124,133 @@ const { rows: expiredIgnoreSnapshots } = await client.query(
 );
 assert.equal(expiredIgnoreSnapshots.length, 1);
 
+// A dispositioned (closed) drift still points at its observed snapshot. Drift and its
+// disposition are the governance record, so the snapshot stays, and the prune run
+// completes instead of failing on drift_observed_snapshot_fkey.
 const unexpiredIgnoreSnapshotId = await createOldSnapshotWithIgnoredDrift(unexpiredIgnoreAt);
-const deletedSnapshotIds = [];
-const deleteSnapshotFake = {
-  query(query, values) {
-    if (query === 'DELETE FROM snapshot WHERE id = ANY($1::uuid[])') {
-      deletedSnapshotIds.push(...values[0]);
-      return Promise.resolve({ rows: [] });
-    }
-    return client.query(query, values);
-  },
-};
-const unexpiredPrunedSnapshotIds = await pruneSnapshots(deleteSnapshotFake, { tenantRef, policy, now });
-assert.ok(unexpiredPrunedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
-assert.ok(deletedSnapshotIds.includes(unexpiredIgnoreSnapshotId));
+
+async function createOldSnapshot(naturalKey) {
+  const snapshotId = await createSnapshot(client, { tenantRef });
+  await insertResourceVersion(client, {
+    snapshotId,
+    resource: {
+      naturalKey,
+      resourceType: 'group',
+      payload: { displayName: naturalKey },
+      payloadHash: `${naturalKey}-hash`,
+      criticality: 'tier1',
+      blastRadius: 'access-affecting',
+      fidelity: 'full',
+      provenance: { adapter: 'test' },
+    },
+  });
+  await client.query(
+    'UPDATE snapshot SET started_at = $2, completed_at = $2 WHERE id = $1',
+    [snapshotId, oldTier1Snapshot.startedAt],
+  );
+  return snapshotId;
+}
+
+// A superseded (inactive) baseline keeps its baseline_resource rows and its source
+// snapshot; both point into the old snapshot.
+const supersededBaselineSnapshotId = await createOldSnapshot('group:retention-superseded');
+const { rows: supersededRows } = await client.query(
+  `INSERT INTO baseline (tenant_ref, set_by, active, source_snapshot_id)
+   VALUES ($1, 'test-operator', false, $2)
+   RETURNING id`,
+  [tenantRef, supersededBaselineSnapshotId],
+);
+await client.query(
+  `INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id)
+   SELECT $1, natural_key, id FROM resource_version WHERE snapshot_id = $2`,
+  [supersededRows[0].id, supersededBaselineSnapshotId],
+);
+
+// The snapshot that last evidenced a since-deleted object (a tombstoned symbol).
+const tombstoneSnapshotId = await createOldSnapshot('group:retention-tombstone');
+await client.query(
+  `INSERT INTO resource_symbol (tenant_ref, resource_type, source_id, natural_key, source_snapshot, tombstoned_at)
+   VALUES ($1, 'group', 'retention-tombstone', 'group:retention-tombstone', $2, now())`,
+  [tenantRef, tombstoneSnapshotId],
+);
+
+// An active incident pin keeps its snapshot; a released one does not.
+const { rows: incidentRows } = await client.query(
+  `INSERT INTO incident (tenant_ref, title, owner) VALUES ($1, 'retention test', 'test-operator') RETURNING id`,
+  [tenantRef],
+);
+const pinnedSnapshotId = await createOldSnapshot('group:retention-pinned');
+const releasedPinSnapshotId = await createOldSnapshot('group:retention-released');
+await client.query(
+  `INSERT INTO retention_pin (tenant_ref, incident_id, snapshot_id, reason, pinned_by, released_at)
+   VALUES ($1, $2, $3, 'held', 'test-operator', NULL),
+          ($1, $2, $4, 'held', 'test-operator', now())`,
+  [tenantRef, incidentRows[0].id, pinnedSnapshotId, releasedPinSnapshotId],
+);
+
+// The snapshot's own relationship observations go with it.
+const edgeSetSnapshotId = await createOldSnapshot('group:retention-edges');
+const { rows: edgeSetRows } = await client.query(
+  `INSERT INTO relationship_edge_set
+     (snapshot_id, tenant_ref, parent_type, parent_source_id, family, edge_type, direction, outcome)
+   VALUES ($1, $2, 'group', 'retention-edges', 'membership', 'member', 'outbound', 'complete')
+   RETURNING id`,
+  [edgeSetSnapshotId, tenantRef],
+);
+await client.query(
+  `INSERT INTO relationship_edge (set_id, tenant_ref, edge_key, target_source_id)
+   VALUES ($1, $2, 'retention-target', 'retention-target')`,
+  [edgeSetRows[0].id, tenantRef],
+);
+
+const expectedPrunable = [releasedPinSnapshotId, edgeSetSnapshotId].sort();
+assert.deepEqual((await listPrunableSnapshots(client, { tenantRef, policy, now })).sort(), expectedPrunable);
+assert.deepEqual((await pruneSnapshots(client, { tenantRef, policy, now })).sort(), expectedPrunable);
+
+const { rows: survivors } = await client.query('SELECT id FROM snapshot WHERE tenant_ref = $1', [tenantRef]);
+assert.deepEqual(survivors.map(({ id }) => id).sort(), [
+  activeBaselineSnapshotId,
+  expiredIgnoreSnapshotId,
+  unexpiredIgnoreSnapshotId,
+  supersededBaselineSnapshotId,
+  tombstoneSnapshotId,
+  pinnedSnapshotId,
+].sort());
+const { rows: leftoverEdgeSets } = await client.query(
+  'SELECT 1 FROM relationship_edge_set WHERE snapshot_id = $1',
+  [edgeSetSnapshotId],
+);
+assert.equal(leftoverEdgeSets.length, 0);
+
+// Every foreign key into a snapshot (directly or through resource_version) must be
+// either a dependency the prune honours or one of the snapshot's own rows it deletes.
+// A new table that points at snapshots fails here until retention.mjs handles it.
+const honouredOrOwned = new Set([
+  'baseline_resource.resource_version_id',
+  'baseline.source_snapshot_id',
+  'drift.observed_snapshot',
+  'plan.source_snapshot',
+  'restore_dry_run.snapshot_id',
+  'resource_symbol.source_snapshot',
+  'resource_lineage_alias.source_snapshot',
+  'resource_version.snapshot_id',
+  'resource_reference.from_version',
+  'relationship_edge_set.snapshot_id',
+]);
+const { rows: foreignKeys } = await client.query(
+  `SELECT k.conrelid::regclass::text AS table_name, a.attname AS column_name
+   FROM pg_constraint k
+   JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
+   WHERE k.contype = 'f'
+     AND k.connamespace = current_schema()::regnamespace
+     AND k.confrelid IN ('snapshot'::regclass, 'resource_version'::regclass)`,
+);
+for (const { table_name: tableName, column_name: columnName } of foreignKeys) {
+  assert.ok(
+    honouredOrOwned.has(`${tableName}.${columnName}`),
+    `${tableName}.${columnName} points at a snapshot but retention.mjs does not account for it`,
+  );
+}
 
 } finally {
   await client?.end();

@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { oneDriveActivation } from '../collect/workloads/onedrive.mjs';
-import { purviewActivation } from '../collect/workloads/purview.mjs';
+import { LABEL_ACTION_FIELDS, purviewActivation } from '../collect/workloads/purview.mjs';
 import { workloadWriteQualification } from '../coverage/qualification.mjs';
 import { signEvidence, verifyEvidence, verifyEvidenceFile } from '../../tools/release/qualification.mjs';
 import { SHAREPOINT_LIVE_GATE, requiredDocumentation, requiredGrants } from '../../tools/qualification/sharepointAcceptance.mjs';
@@ -424,6 +424,28 @@ test('Get-LabelPolicy location entries are objects: their Name decides fixture-o
   const refused = await capturedFiles(everyone);
   assert.deepEqual(everyone.writes(), []);
   assert.match(refused.record.subject.writes.label.error, /not fixture-only \(ExchangeLocation publishes to All/);
+});
+
+test('LabelActions fields Get-Label does not return are recorded as not qualified, and only those', async () => {
+  // Live Get-Label (ExchangeOnlineManagement 3.10.1) returns no protection properties on any label.
+  const live = (body) => Object.fromEntries(Object.entries(body).filter(([key]) => !LABEL_ACTION_FIELDS.includes(key)));
+  const fake = purviewFake({ labels: [live(labelBody(LABEL_ID, LABEL_NAME)), live(labelBody(CONFIDENTIAL_ID, 'Confidential'))] });
+  const { outPath, record, evidence } = await capturedFiles(fake);
+  assert.deepEqual(record.subject.notQualifiedFields.label, [...LABEL_ACTION_FIELDS]);
+  assert.deepEqual(verifyEvidenceFile(outPath, options()), { ok: true, failures: [] });
+
+  // A field Get-Label does return can never be marked not qualified, and nothing observed is listed.
+  const failuresOf = (change) => verifyIn(resign(evidence, change)).failures.join('\n');
+  assert.match(failuresOf((e) => { e.subject.supportedFields.label = e.subject.supportedFields.label.filter((f) => f !== 'Tooltip'); e.subject.notQualifiedFields.label.push('Tooltip'); return e; }),
+    /not observed live: label.Tooltip[\s\S]*label.Tooltip is listed as not qualified but is not a LabelActions field/);
+  assert.match(failuresOf((e) => { e.subject.notQualifiedFields.label = e.subject.notQualifiedFields.label.filter((f) => f !== 'EncryptionEnabled'); return e; }),
+    /not observed live: label.EncryptionEnabled/);
+  assert.match(failuresOf((e) => { e.subject.supportedFields.label.push('EncryptionEnabled'); return e; }),
+    /label.EncryptionEnabled is listed as not qualified but was observed live/);
+
+  // When the module does return them they are observed, and nothing is left unqualified.
+  const full = await capturedFiles(purviewFake());
+  assert.deepEqual(full.record.subject.notQualifiedFields.label, []);
 });
 
 test('an altered signature or capture-log digest fails', async () => {

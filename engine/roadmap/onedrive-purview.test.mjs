@@ -27,8 +27,8 @@ import {
   oneDriveActivation, readOneDrive, siteKey,
 } from '../collect/workloads/onedrive.mjs';
 import {
-  PURVIEW_CMDLET_PARAMETERS, PURVIEW_OPERATIONS, PurviewScopeError, assertPurviewCmdlet, collectPurview, loadPurviewCollection,
-  purviewActivation, readPurview, trackLabelChanges,
+  LABEL_ACTION_FIELDS, PURVIEW_CMDLET_PARAMETERS, PURVIEW_OPERATIONS, PurviewScopeError, assertPurviewCmdlet, collectPurview,
+  labelActionFields, loadPurviewCollection, purviewActivation, readPurview, trackLabelChanges,
 } from '../collect/workloads/purview.mjs';
 import { SHAREPOINT_OPERATIONS } from '../collect/workloads/sharepoint.mjs';
 import { TEAMS_OPERATIONS } from '../collect/workloads/teams.mjs';
@@ -437,6 +437,61 @@ test('label definitions and their publication are read and change-tracked withou
 });
 
 // ----------------------------------------------------------- activation
+
+// Get-Label as ExchangeOnlineManagement 3.10.1 returns it (Q34, 2026-10-05): no protection
+// properties, LabelActions as JSON strings. Copied from the protected fixture label's dump.
+const LIVE_LABEL_ACTIONS = [
+  '{"Type":"applycontentmarking","SubType":"footer","Settings":[{"Key":"disabled","Value":"false"},{"Key":"text","Value":"KEEL-RT fixture"}]}',
+  '{"Type":"applycontentmarking","SubType":"header","Settings":[{"Key":"disabled","Value":"false"},{"Key":"text","Value":"KEEL-RT fixture"}]}',
+  '{"Type":"applywatermarking","SubType":null,"Settings":[{"Key":"disabled","Value":"false"},{"Key":"layout","Value":"Diagonal"}]}',
+  '{"Type":"encrypt","SubType":null,"Settings":[{"Key":"donotforward","Value":"true"},{"Key":"disabled","Value":"false"},{"Key":"encryptonly","Value":"false"},{"Key":"promptuser","Value":"true"},{"Key":"protectiontype","Value":"userdefined"}]}',
+  '{"Type":"protectgroup","SubType":null,"Settings":[{"Key":"allowaccesstoguestusers","Value":"false"},{"Key":"allowemailfromguestusers","Value":"false"},{"Key":"disabled","Value":"false"},{"Key":"privacy","Value":"private"}]}',
+  '{"Type":"protectsite","SubType":null,"Settings":[{"Key":"allowfullaccess","Value":"false"},{"Key":"externalsharingcontroltype","Value":"ExistingExternalUserSharingOnly"},{"Key":"disabled","Value":"false"}]}',
+];
+const liveLabel = (id, name, extra = {}) => {
+  const body = label(id, name, extra);
+  for (const field of LABEL_ACTION_FIELDS) if (!(field in extra)) delete body[field];
+  return body;
+};
+
+test('protection fields are read from LabelActions when Get-Label does not return them as properties', async () => {
+  assert.deepEqual(labelActionFields({ LabelActions: LIVE_LABEL_ACTIONS }), {
+    EncryptionEnabled: true, EncryptionProtectionType: 'UserDefined', EncryptionOfflineAccessDays: null,
+    ApplyContentMarkingHeaderEnabled: true, ApplyContentMarkingFooterEnabled: true, ApplyWaterMarkingEnabled: true,
+    SiteAndGroupProtectionEnabled: true, SiteAndGroupProtectionPrivacy: 'Private', SiteAndGroupProtectionAllowAccessToGuestUsers: false,
+    SiteExternalSharingControlType: 'ExistingExternalUserSharingOnly',
+  });
+  // A label with no actions has none of them; a disabled action does not count.
+  const plain = labelActionFields({ LabelActions: ['{"Type":"encrypt","SubType":null,"Settings":[{"Key":"disabled","Value":"true"}]}'] });
+  assert.equal(plain.EncryptionEnabled, false);
+  assert.equal(plain.SiteAndGroupProtectionEnabled, false);
+  assert.equal(plain.SiteAndGroupProtectionPrivacy, null);
+  assert.equal(labelActionFields({ LabelActions: [] }).ApplyWaterMarkingEnabled, false);
+  // Encryption with a template and offline access keeps the day count as a number.
+  assert.equal(labelActionFields({ LabelActions: [{ Type: 'encrypt', Settings: [{ Key: 'protectiontype', Value: 'template' }, { Key: 'offlineaccessdays', Value: '7' }] }] }).EncryptionOfflineAccessDays, 7);
+  // No list, or one KEEL cannot parse, derives nothing: the fields stay unknown.
+  assert.equal(labelActionFields({}), null);
+  assert.equal(labelActionFields({ LabelActions: ['{not json'] }), null);
+  assert.equal(labelActionFields({ LabelActions: [{ SubType: 'header' }] }), null);
+
+  const tenant = fakeTenant();
+  tenant.state.labels = [
+    liveLabel(CONFIDENTIAL, 'Confidential', { LabelActions: LIVE_LABEL_ACTIONS }),
+    liveLabel(PUBLIC, 'Public'),
+    // A property the module does return wins over LabelActions.
+    liveLabel(SECRET, 'Secret', { EncryptionEnabled: false, LabelActions: LIVE_LABEL_ACTIONS }),
+  ];
+  const read = await readPurview({ powershell: tenant.powershell });
+  const byKey = Object.fromEntries(read.resources.map((entry) => [entry.resourceKey, entry]));
+  const confidential = byKey[`label:${CONFIDENTIAL}`];
+  for (const field of LABEL_ACTION_FIELDS) assert.equal(confidential.fieldCoverage[field].status, 'observed', field);
+  assert.equal(confidential.fields.EncryptionProtectionType, 'UserDefined');
+  assert.equal(confidential.fields.LabelActions, undefined, 'the raw list is not stored');
+  for (const field of LABEL_ACTION_FIELDS) assert.equal(byKey[`label:${PUBLIC}`].fieldCoverage[field].status, 'unknown', field);
+  assert.equal(byKey[`label:${SECRET}`].fields.EncryptionEnabled, false);
+  assert.equal(byKey[`label:${SECRET}`].fields.ApplyWaterMarkingEnabled, true);
+  assert.deepEqual(tenant.cmdlets(), ['Get-Label', 'Get-LabelPolicy']);
+});
 
 test('proof for another family cannot enable OneDrive or Purview reads or writes', async (t) => {
   const client = await schemaClient(t);

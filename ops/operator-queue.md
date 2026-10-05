@@ -296,6 +296,8 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (02:15 UTC): #101 and #102 merged too; **master is `6fee591` with no open PRs**. Run the chain at
+  `6fee591` once master CI is green and it is deployed. Nothing else will merge until Q10 finishes.
 - Coordinator note (02:10 UTC): master is now `c99a9f2` (#95, #96, #97, #99, #100 also merged). #101 and #102 are
   still open. Run the chain at the deployed head as below. Q24 (scheduler install, #97) and the other host items
   stay on hold until Q10 finishes, so nothing starts a worker or restarts the portal mid-chain.
@@ -1082,4 +1084,23 @@ item that needs it stays untouched.
   2. `GET /api/setup` (or Settings › Setup): confirm the Restorer config is still found and read (same
      `canCheck`/`canProvision` as before, no missing-config error). Print no file contents or secrets.
   3. If it fails, restore the backup, restart, and report what the portal said.
+
+### Q31: #89 enable offsite to vol2 — issue #89
+- Drafted by the "Offsite backup unreachable" thread (02:00 UTC). **On hold: don't start** until the coordinator
+  changes Status to queued.
+- Status: hold
+- Result:
+- Needs: Q10 finished; the deployed tree (`/opt/keel`, see Q24 step 2 for `/opt/keel` vs `/opt/keel-live`) at or
+  after `c99a9f2` (#100).
+- Do, as root on the KEEL VPS (use whichever of `/opt/keel` or `/opt/keel-live` the deploy updates):
+  1. `findmnt /mnt/keel-copy` (it must be `/dev/sdb`, not the root fs). Stop and report if not.
+  2. `grep -c KEEL_OFFSITE_DIR /opt/keel/ops/keel-offsite.sh` (expect > 0; the script comes with the deploy).
+  3. `install -m 0644 /opt/keel/ops/keel-offsite.service /opt/keel/ops/keel-offsite.timer /etc/systemd/system/ && systemctl daemon-reload`
+  4. `/opt/keel/ops/keel-offsite.sh --dry-run; echo exit=$?` (must be 0).
+  5. `systemctl start keel-offsite.service; journalctl -u keel-offsite.service -n 30 --no-pager` (expect
+     "sha256 verified" and "done").
+  6. `ls -l /mnt/keel-copy/keel-offsite/; sha256sum /mnt/keel-copy/keel-offsite/keel-db-*.sql.gz;
+     jq -r .checksum /opt/backups/keel-db-shipped-manifest.json`. The hashes must match and the file must be
+     mode 0600.
+  7. `systemctl enable --now keel-offsite.timer; systemctl list-timers keel-offsite.timer --no-pager`
 

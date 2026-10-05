@@ -1216,8 +1216,30 @@ item that needs it stays untouched.
 ### Q31: #89 enable offsite to vol2 — issue #89
 - Drafted by the "Offsite backup unreachable" thread (02:00 UTC). **On hold: don't start** until the coordinator
   changes Status to queued.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done: offsite now ships to vol2 daily.**
+  1. `findmnt /mnt/keel-copy`: **/dev/sdb** ext4 (not the root fs).
+  2. **Tree:** the deploy updates **`/opt/keel-live`** (at 248b12c, which includes c99a9f2/#100). `/opt/keel` is the
+     stopped driver's checkout: its `keel-offsite.sh` has **0** `KEEL_OFFSITE_DIR` refs (old remote-only script),
+     while `/opt/keel-live/ops/keel-offsite.sh` has 2. The repo unit's `ExecStart` is `/opt/keel/ops/keel-offsite.sh`,
+     so I installed it **with ExecStart rewritten to `/opt/keel-live/ops/keel-offsite.sh`** (same idea as Q24's path
+     rewrite). Otherwise the unit would run the old script against the unreachable host.
+  3. Backed up the old units (`/etc/systemd/system/keel-offsite.{service,timer}.bak-q31-*`). Installed the service
+     (rewritten) and the timer (as in repo: `OnCalendar=*-*-* 05:00:00 UTC`, `Persistent=true`), 0644; `daemon-reload`.
+     `EnvironmentFile=-/etc/keel/offsite.env` is absent, so defaults apply (no remote; target `/mnt/keel-copy/keel-offsite`).
+  4. `keel-offsite.sh --dry-run`: **exit 0**. Candidate `/opt/backups/2026-10-05/keel-db.sql.gz` (gzip OK, 65 COPY
+     blocks, sha256 c36c4620…0b1), "target /mnt/keel-copy/keel-offsite usable".
+  5. `systemctl start keel-offsite.service` (13:12:00): "**sha256 verified — transfer is byte-identical**" … "keel-offsite:
+     **done**. Shipped keel-db-2026-10-05.sql.gz".
+  6. `/mnt/keel-copy/keel-offsite/keel-db-2026-10-05.sql.gz` (69,192,098 B, **mode 0600** root). sha256
+     **c36c462007bd2cce53d9b3ddebc42ccc7f537a1431205ae42163e69c0e1ed0b1** = `keel-db-shipped-manifest.json` .checksum. Match.
+  7. `systemctl enable --now keel-offsite.timer`: enabled and active; **next run Tue 2026-10-06 05:00 UTC**.
+     - Note: `Persistent=true` fired a catch-up run at 13:12:05, which **refused** ("dump manifest is not newer than
+       last shipped manifest", exit 1), because today's dump had just shipped in step 5. Benign. I cleared the failed
+       state (`reset-failed`). **Coordinator:** the script exits 1 for "nothing new to ship"; consider exit 0 there
+       so a same-day rerun doesn't show as a failed unit.
+     - Note: the other repo units (keel-backup-tier*, keel-prune, …) also point at `/opt/keel`; the same rewrite
+       question applies to them.
 - Needs: Q10 finished; the deployed tree (`/opt/keel`, see Q24 step 2 for `/opt/keel` vs `/opt/keel-live`) at or
   after `c99a9f2` (#100).
 - Do, as root on the KEEL VPS (use whichever of `/opt/keel` or `/opt/keel-live` the deploy updates):

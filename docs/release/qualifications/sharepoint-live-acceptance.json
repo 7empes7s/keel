@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "sharepoint-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "38979f6d8ed52f108515cf4b5aada16b7910161b",
+  "build": "c3bd35dc11401e71d0d5efeb9451dc282cc0c6d3",
   "operation": "sharepoint.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-05T08:16:37.425Z",
+  "observedAt": "2026-10-05T09:28:42.396Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -47,7 +47,7 @@
       {
         "operationId": "sharepoint.tenant-settings",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T08:16:35.574Z",
+        "capturedAt": "2026-10-05T09:28:41.133Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -56,7 +56,7 @@
       {
         "operationId": "sharepoint.site-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T08:16:35.829Z",
+        "capturedAt": "2026-10-05T09:28:41.348Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -65,7 +65,7 @@
       {
         "operationId": "sharepoint.site-properties",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T08:16:35.993Z",
+        "capturedAt": "2026-10-05T09:28:41.450Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -74,7 +74,7 @@
       {
         "operationId": "sharepoint.site-permissions",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T08:16:36.069Z",
+        "capturedAt": "2026-10-05T09:28:41.537Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -99,7 +99,7 @@
       "restoredToOriginal": true,
       "preFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
       "finalFingerprint": "3b576503bdf39630230d4cc385b9d7d8235403dbc5ab8f48fcad0274bc51b441",
-      "capturedAt": "2026-10-05T08:16:37.425Z"
+      "capturedAt": "2026-10-05T09:28:42.396Z"
     },
     "requests": [
       {
@@ -172,35 +172,35 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-get?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T08:16:34.796Z"
+        "retrievedAt": "2026-10-05T09:28:40.248Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-getallsites",
-        "retrievedAt": "2026-10-05T08:16:34.853Z"
+        "retrievedAt": "2026-10-05T09:28:40.310Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-get",
-        "retrievedAt": "2026-10-05T08:16:34.886Z"
+        "retrievedAt": "2026-10-05T09:28:40.356Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/site-list-permissions",
-        "retrievedAt": "2026-10-05T08:16:34.920Z"
+        "retrievedAt": "2026-10-05T09:28:40.404Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/sharepointsettings-update?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T08:16:34.935Z"
+        "retrievedAt": "2026-10-05T09:28:40.439Z"
       }
     ],
-    "captureLogSha256": "708ac9cf3f012ba1faf55fd4d53dbb247212f681c04d53ab309169e862cd8a7d"
+    "captureLogSha256": "aa13b1ee8733b0201c56b4aa289d1ff1aa213546236f386d40f40df7522a132f"
   },
   "proof": {
     "artifact": {
       "path": "sharepoint-live-acceptance.capture.json",
-      "sha256": "708ac9cf3f012ba1faf55fd4d53dbb247212f681c04d53ab309169e862cd8a7d"
+      "sha256": "aa13b1ee8733b0201c56b4aa289d1ff1aa213546236f386d40f40df7522a132f"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "29e3472cf0bcb4d88bb05540aad9651a15b99c4e196f2d19beccc0f3be207d0e"
+      "signature": "840a042f4af7534c079a9b46139f41f51bef28d1030c0aa367cd262b45bc6cb1"
     }
   }
 }

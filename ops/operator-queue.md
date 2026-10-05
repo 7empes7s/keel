@@ -1184,6 +1184,7 @@ item that needs it stays untouched.
 - Drafted by the "Prune timer review" thread (21:32 UTC) after Q25/Q28 (the 154 are tier1 snapshots from
   09-08 to 09-14, none cited by gate evidence). **On hold: don't start** until the coordinator changes Status
   to queued.
+- Coordinator note (15:08 UTC): Marouane chose to keep prune off until the gate 116 drill (Q36) passes. Stays **hold**.
 - Status: hold
 - Result:
 - Needs: Q10 finished; #97 and #99 merged and deployed; Q24 done with its health check passing.

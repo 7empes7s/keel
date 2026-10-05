@@ -29,6 +29,7 @@ import {
 } from '../../tools/release/qualification.mjs';
 import { buildDrillManifest, runBoundedDrill, validateDrillPlan } from '../../tools/rehearsal/qualification.mjs';
 import { tenantRefFor } from '../../tools/rehearsal/roundTrip.mjs';
+import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -283,14 +284,18 @@ test('missing prerequisite or missing external evidence fails', () => {
   assertFails(verify(unsigned, { requireLive: false }), /runner proof required/);
   assertFails(verify({ contractVersion: 1, gate: DRILL_LIVE_GATE, status: 'pending' }), /pending/);
 
-  // The checked-in record is a pending placeholder and fails the live gate, file and CLI alike.
+  // The checked-in record: a pending placeholder fails the live gate, file and CLI alike. Once a live
+  // capture replaces it, it must still never verify without the key.
   const checkedIn = join(ROOT, 'docs/release/qualifications/drill-live-acceptance.json');
-  assert.equal(JSON.parse(readFileSync(checkedIn, 'utf8')).status, 'pending');
-  assertFails(verifyEvidenceFile(checkedIn, { ...options, requireLive: true }), /pending/);
-  const cli = spawnSync(process.execPath, ['tools/release/qualification.mjs', 'verify', '--require-live', '--gate', DRILL_LIVE_GATE,
-    '--evidence', checkedIn, '--tenant', tenantRef, '--build', BUILD], { cwd: ROOT, encoding: 'utf8' });
-  assert.equal(cli.status, 1, cli.stderr);
-  assert.equal(JSON.parse(cli.stdout).ok, false);
+  if (isPendingPlaceholder(checkedIn)) {
+    assertFails(verifyEvidenceFile(checkedIn, { ...options, requireLive: true }), /pending/);
+    const cli = spawnSync(process.execPath, ['tools/release/qualification.mjs', 'verify', '--require-live', '--gate', DRILL_LIVE_GATE,
+      '--evidence', checkedIn, '--tenant', tenantRef, '--build', BUILD], { cwd: ROOT, encoding: 'utf8' });
+    assert.equal(cli.status, 1, cli.stderr);
+    assert.equal(JSON.parse(cli.stdout).ok, false);
+  } else {
+    assertCommittedLiveRecord(checkedIn, { gate: DRILL_LIVE_GATE, root: ROOT, verify: verifyEvidenceFile, verifyOptions: options });
+  }
 });
 
 test('the drill must be live, bounded, cleaned up and scoped to the named disposable object', async () => {

@@ -1,6 +1,5 @@
 # ops/keel-worker.service
-# Install with ops/keel-schedules-install.sh --root <deployed tree>, which rewrites the
-# /opt/keel paths below to that tree. Copied as-is, this unit would run the old /opt/keel checkout.
+# ops/keel-schedules-install.sh --root DIR rewrites /opt/keel-live to DIR when it installs this unit.
 [Unit]
 Description=KEEL job worker
 After=network-online.target
@@ -10,7 +9,7 @@ Wants=network-online.target
 Type=simple
 User=root
 EnvironmentFile=/etc/keel/db.env
-ExecStart=/usr/bin/node /opt/keel/cli/keel-worker.mjs
+ExecStart=/usr/bin/node /opt/keel-live/cli/keel-worker.mjs
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

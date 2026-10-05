@@ -1404,7 +1404,7 @@ item that needs it stays untouched.
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
 
 ### Q35: Rerun gates 120 → 121 → 122 → 123 at the build after #111 and #116 (LabelActions, #109) — issue #84
-- Status: queued (coordinator 14:30 UTC: build **76ee9b5** (master after #117, #113, #112). Start when `/opt/keel-live` is at 76ee9b5; Q35 first, then Q36. **Master is frozen** until both finish)
+- Status: in-progress
 - Result:
 - Needs: PR #111 merged and deployed; **Q24 finished first** (stale jobs cancelled, worker installed, its run-now
   collections done), so no collection starts mid-chain.

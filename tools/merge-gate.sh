@@ -57,7 +57,11 @@ check_pr() {
   return 0
 }
 
-for n in $(gh api "repos/$repo/issues?labels=automerge&state=open&per_page=100" -q '.[] | select(.pull_request) | .number'); do
+# A failed list must fail the job: inside $(...) in a for list, set -e would not stop it,
+# and the error text would be read as PR numbers.
+prs=$(gh api "repos/$repo/issues?labels=automerge&state=open&per_page=100" -q '.[] | select(.pull_request) | .number') \
+  || { echo "could not list automerge PRs" >&2; exit 1; }
+for n in $prs; do
   if check_pr "$n"; then
     if [ -n "${DRY_RUN:-}" ]; then echo "#$n: ready (dry run)"; continue; fi
     echo "#$n: merging"

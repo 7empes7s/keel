@@ -110,6 +110,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
     { step: 4, credential: 'restorer', method: 'DELETE', path: `${team}/members/{fixture membership}`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'restorer', method: 'GET', path: `${team}/members (read back)`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'restorer', method: 'DELETE', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/owners/${user}/$ref (whenever a read shows the owner link)`, operationId: 'teams.membership.remove' },
+    { step: 4, credential: 'restorer', method: 'DELETE', path: `/v1.0/groups/${fixtureTeamId.toLowerCase()}/members/${user}/$ref (whenever a read shows the member link after the Teams removal)`, operationId: 'teams.membership.remove' },
     { step: 4, credential: 'collector', method: 'GET', path: `${team}/members (restorer), /v1.0/groups/${fixtureTeamId.toLowerCase()}/owners and /members (until absent, then again after a settle delay)`, operationId: 'teams.membership.remove' },
   ];
 }
@@ -434,7 +435,9 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
     // the user from it. The link is created asynchronously, sometimes after the removal
     // (2026-10-05: the DELETE returned 404, then the link appeared), so every read of the
     // group's owners that shows the user re-issues the owner-link DELETE (404 = not there
-    // yet). The restore holds once the user is absent from the Teams roster, the group's
+    // yet). The group member link can persist the same way after the Teams removal returned
+    // 204 (2026-10-05: members=1 for 11 minutes), so every read of the group's members that
+    // shows the user re-issues the member-link DELETE too. The restore holds once the user is absent from the Teams roster, the group's
     // owners and the group's members, and still absent after a settle delay; if the link
     // reappears during the settle delay, the round repeats (at most TEAMS_RESTORE_ROUNDS).
     if (log.values.memberAdded === true) {
@@ -444,6 +447,11 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
           if (ok(unlinked)) membership.ownerLinkRemoved = true;
           else if (unlinked.status !== 404) membership.error ??= `removing the fixture user's group owner link failed (HTTP ${unlinked.status})`;
         };
+        const unlinkMember = async () => {
+          const unlinked = await teamsSendWrite(transport, `${GRAPH}/${VERSION}/groups/${teamId}/members/${userId}/$ref`, { method: 'DELETE' }, timing.sleep);
+          if (ok(unlinked)) membership.memberLinkRemoved = true;
+          else if (unlinked.status !== 404) membership.error ??= `removing the fixture user's group member link failed (HTTP ${unlinked.status})`;
+        };
         const readAll = async () => {
           const state = {
             members: await readMembers(),
@@ -451,6 +459,7 @@ async function teamsMembershipRoundTrip({ transport, reader, teamId, userId, mem
             groupMembers: await teamsReadGroupMembers(reader, teamId),
           };
           if (state.owners.includes(userId)) await unlinkOwner();
+          if (state.groupMembers.includes(userId)) await unlinkMember();
           return state;
         };
         const absent = (state) => find(state.members) === null && !state.owners.includes(userId) && !state.groupMembers.includes(userId);

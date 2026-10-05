@@ -91,7 +91,7 @@ before(async () => {
 });
 
 // ---- The Teams fake: two teams (one KEEL-RT), an owner, a fixture user to add and remove.
-function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0, ownerLinkDelayReads = 0 } = {}) {
+function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0, ownerLinkDelayReads = 0, memberLinkPersists = false } = {}) {
   const team = {
     '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#teams/$entity',
     id: TEAM, displayName: teamName, description: 'KEEL rehearsal team', visibility: 'private', isArchived: false, tenantId: teamTenant,
@@ -112,6 +112,9 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
   // reads of the group's owners, and the late link survives the demote and the removal (as
   // live Graph did on 2026-10-05).
   let pendingOwner = null;
+  // With memberLinkPersists, the Teams removal returns 204 but the group member link stays
+  // until it is deleted directly (seen live on 2026-10-05).
+  const lingeringGroupMembers = [];
   let pendingOwnerReads = 0;
   let ghost = null;
   let ghostReads = 0;
@@ -168,6 +171,7 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       if (method === 'DELETE') {
         if (failRemove) return { status: 500, headers: {}, body: null };
         unown(members[index].userId);
+        if (memberLinkPersists) lingeringGroupMembers.push(members[index].userId);
         [ghost] = members.splice(index, 1);
         ghostReads = rosterLagReads;
         return { status: 204, headers: {}, body: null };
@@ -185,11 +189,18 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       return { status: 204, headers: {}, body: null };
     }
     if (path === `/v1.0/groups/${TEAM}/members` && method === 'GET') {
-      return { status: 200, headers: {}, body: { value: members.map((member) => ({ '@odata.type': '#microsoft.graph.user', id: member.userId })) } };
+      const ids = [...members.map((member) => member.userId), ...lingeringGroupMembers];
+      return { status: 200, headers: {}, body: { value: ids.map((id) => ({ '@odata.type': '#microsoft.graph.user', id })) } };
+    }
+    const memberLink = new RegExp(`^/v1\\.0/groups/${TEAM}/members/(.+)/\\$ref$`).exec(path);
+    if (memberLink && method === 'DELETE') {
+      if (!lingeringGroupMembers.includes(memberLink[1])) return { status: 404, headers: {}, body: null };
+      lingeringGroupMembers.splice(lingeringGroupMembers.indexOf(memberLink[1]), 1);
+      return { status: 204, headers: {}, body: null };
     }
     return { status: 404, headers: {}, body: null };
   };
-  return { transport, calls, team, members, owners };
+  return { transport, calls, team, members, owners, lingeringGroupMembers };
 }
 
 const teamsDocumentation = () => teamsRequiredDocumentation().map((url) => ({ url, retrievedAt: '2026-10-02T12:00:00Z' }));
@@ -603,6 +614,28 @@ test('a Teams roster that lags the removal is polled until the user is gone, and
   const stale = await capture(teamsGraph({ rosterLagReads: 1000 }), { restoreReadDelayMs: 0 });
   assert.equal(stale.record.subject.membershipWrites.restoredToOriginal, false);
   assert.match(stale.record.subject.membershipWrites.error, /THE FIXTURE USER MAY STILL BE A MEMBER OR OWNER/);
+});
+
+test('a group member link that outlives the Teams removal is deleted when seen, and the record verifies', async () => {
+  const persisting = teamsGraph({ memberLinkPersists: true });
+  const settled = await capturedFiles(persisting, { restoreReadDelayMs: 0, settleDelayMs: 0 });
+  assert.deepEqual(persisting.lingeringGroupMembers, []);
+  assert.equal(persisting.calls.filter((call) => call === `DELETE /v1.0/groups/${TEAM}/members/${FIXTURE_USER}/$ref`).length, 1);
+  const { membershipWrites, fixtureMember } = settled.record.subject;
+  assert.equal(membershipWrites.memberLinkRemoved, true);
+  assert.equal(membershipWrites.restoredToOriginal, true);
+  assert.equal(fixtureMember.groupMemberAfter, false);
+  assert.deepEqual(verifyEvidenceFile(settled.outPath, options()), { ok: true, failures: [] });
+
+  // A clean run never touches the group member link, and only the fixture user's link may be removed.
+  const clean = teamsGraph();
+  await capture(clean, { restoreReadDelayMs: 0, settleDelayMs: 0 });
+  assert.ok(!clean.calls.some((call) => call.includes('/members/') && call.includes('/groups/')));
+  const other = resign(settled.evidence, (e) => {
+    e.subject.requests.push({ credential: 'restorer', method: 'DELETE', version: 'v1.0', path: `/groups/${TEAM}/members/${OWNER}/$ref`, status: 204 });
+    return e;
+  });
+  assert.match(verifyIn(other).failures.join('\n'), /addresses a team, group or user other than the KEEL-RT fixture/);
 });
 
 test('a group owner link that appears after the removal is deleted when seen, and the restore re-checks after the settle delay', async () => {

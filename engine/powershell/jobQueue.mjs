@@ -28,6 +28,26 @@ export class JobQueueError extends Error {
   }
 }
 
+// Strips ANSI colour sequences (pwsh colours its warning stream).
+const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+
+/**
+ * The container answers with one JSON document on stdout. pwsh can print warning-stream
+ * lines ahead of it (2026-10-05: Get-LabelPolicy's "WARNING: Force Validate not set"),
+ * so when the whole of stdout is not JSON, the last non-empty line is taken as the answer
+ * and the lines before it are returned as `noise`. Anything else still fails to parse.
+ */
+export function parseJobStdout(stdout) {
+  try {
+    return { value: JSON.parse(stdout), noise: [] };
+  } catch (error) {
+    const lines = String(stdout).replace(ANSI, '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const last = lines.at(-1);
+    if (lines.length < 2 || !last.startsWith('{')) throw error;
+    return { value: JSON.parse(last), noise: lines.slice(0, -1) };
+  }
+}
+
 /**
  * Run one job descriptor against the PowerShell collection container.
  *
@@ -131,7 +151,7 @@ export async function runJob(job, options = {}) {
 
         let parsed;
         try {
-          parsed = JSON.parse(stdout);
+          parsed = parseJobStdout(stdout);
         } catch (err) {
           reject(new JobQueueError(
             `job ${jobId} produced non-JSON stdout: ${err.message}`,
@@ -140,7 +160,9 @@ export async function runJob(job, options = {}) {
           return;
         }
 
-        resolve({ jobId, result: parsed, stderr });
+        // Lines pwsh printed before the answer (warnings) are kept as diagnostics.
+        const noise = parsed.noise.length ? `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}${parsed.noise.join('\n')}\n` : stderr;
+        resolve({ jobId, result: parsed.value, stderr: noise });
       });
     });
 
@@ -230,7 +252,7 @@ const clip = (text) => (typeof text === 'string' ? text.slice(0, MAX_DETAIL_TEXT
 
 function envelopeOf(stdout) {
   try {
-    const parsed = JSON.parse(stdout);
+    const parsed = parseJobStdout(stdout).value;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) && typeof parsed.ok === 'boolean' ? parsed : null;
   } catch {
     return null;

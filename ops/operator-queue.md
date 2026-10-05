@@ -1426,7 +1426,7 @@ item that needs it stays untouched.
 - Hard rules as usual: no tenant-wide settings, no grants, no secrets printed.
 
 ### Q37: Re-enable the offsite timer after Q24 — issue #89
-- Status: queued (coordinator 14:13 UTC: run right after Q24 finishes)
+- Status: in-progress
 - Result:
 - Why: the Q24 installer (before #112) turns `keel-offsite.timer` off; Q31 had it enabled for vol2.
 - Do, as root: `systemctl enable --now keel-offsite.timer`, then `systemctl list-timers keel-offsite.timer`. Report the

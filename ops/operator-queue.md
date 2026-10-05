@@ -296,6 +296,10 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (02:05 UTC): master moved on after #103 (#98 as `76e503e`, #94 as `c4e24ac`), and more merges
+  may follow. Run the chain at whatever master head `/opt/keel-live` is deployed at when you start (CI green for
+  that commit), record that SHA, and don't let a deploy land mid-chain: if one does, stop and restart at the new
+  build. Q30 (#92) doesn't start until Q10 finishes.
 - Coordinator note (02:00 UTC, 2026-10-05): **#103 is merged as `5a7f58c`** (master CI running). Once master CI
   is green and `/opt/keel-live` is deployed at `5a7f58c`, set this to in-progress and rerun 120 → 121 → 122 →
   123 at that build. Same pre-checks as before (carla absent from roster, group owners and group members
@@ -1063,3 +1067,16 @@ item that needs it stays untouched.
      row, due at the next 00:00 UTC.
   4. After that first run, report the prune job's status and the `pruned N snapshot(s)` line from its result
      (snapshot ids are fine; nothing else).
+
+### Q30: Remove the Q19 Restorer config override after #98 deploys — issue #92
+- Status: hold (coordinator flips to queued after Q10 finishes)
+- Result:
+- Needs: Q10 finished; `/opt/keel-live` deployed at or after `76e503e` (#98: portal and worker now default to
+  `/etc/keel/restorer.json`).
+- Do:
+  1. Back up `/etc/keel/portal.env` as `portal.env.bak-q30-*`. Remove only the `KEEL_RESTORER_CONFIG_PATH` line
+     that Q19 added; leave `KEEL_COLLECTOR_CONFIG_PATH` alone. Restart `keel-portal` and confirm health ok.
+  2. `GET /api/setup` (or Settings › Setup): confirm the Restorer config is still found and read (same
+     `canCheck`/`canProvision` as before, no missing-config error). Print no file contents or secrets.
+  3. If it fails, restore the backup, restart, and report what the portal said.
+

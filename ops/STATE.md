@@ -34,15 +34,15 @@ not merged until it finishes.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window), merged as `5a7f58c` | Q10 queued for a rerun at `5a7f58c`; 120 @ 12d3547 (df4082a) superseded | Master CI and deploy at `5a7f58c`, then keel-operator reruns 120 → 123 |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window), merged as `5a7f58c` | Q10 queued for a rerun at the deployed master head (now `c4e24ac`); 120 @ 12d3547 (df4082a) superseded | Master CI and deploy, then keel-operator reruns 120 → 123 |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step) | Read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done (operator id set) | Freeze, then #96 deploy, then a fresh restore setup run; then Q6. Collector SP still holds Intune Administrator (operator asked to remove) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs) | Ledger change on master (b81a41d, 117 as accepted gap); #102 in review | Recapture and ledger verification wait on #84 and #85; no automerge until the chain finishes |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
-| Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed) | Built, verified locally, CI running | Master freeze; `automerge` label held until #84 finishes |
+| Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed), merged as `c4e24ac` | Merged | None |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 (ships to `/mnt/keel-copy/keel-offsite`) | In review | Master freeze; then a Q-item deploys, dry-runs, enables `keel-offsite.timer`, runs once and checks sha256. Operator chose vol2 as the new target |
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99 | Dry run reviewed (154 old tier1, none cited by evidence) | #99 held for the freeze; Q29 (enable prune schedule) on hold until the chain, #97/#99 deploy and Q24 |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97 | Built, waiting on master freeze | Merge after #84; then Q24 (on hold) installs it on the host |
-| `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98 | Built and tested locally, CI running | Master freeze; `automerge` label held until #84 finishes. After deploy, operator checks the portal reads `/etc/keel/restorer.json` without the Q19 override |
+| `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98, merged as `76e503e` | Merged; portal and worker default to `/etc/keel/restorer.json` | Q30 (on hold until Q10): remove the Q19 override and confirm Setup still reads the Restorer config |
 | Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | #101 (review doc; `groupSetting` declares GroupSettings.ReadWrite.All) | Review written | Master freeze; Q26 inventory (on hold until #84); operator decisions D-93a, D-93b |
 
 ### Gate evidence
@@ -74,8 +74,6 @@ raw capture's sha256, carry no credential material, and fail verification withou
 - Scheduled collection and the tier-1/2/3 backup services from `ops/` are **not installed** on the host
   (only `keel-portal`, `keel-deploy` and the status generator). The nightly DB dump comes from a
   separate host script. The deploy never rebuilds the PowerShell image (Q12 report).
-- Portal, worker and CLI default to `/etc/keel/restorer-target.json`, which doesn't exist; the host
-  file is `/etc/keel/restorer.json`.
 - The Restorer app holds ~52 write permissions plus 9 directory roles, far more than needed. A
   least-privilege review is a suggested follow-up, not started.
 - keel-operator hasn't been tested through a crash or reboot.
@@ -167,3 +165,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:45: PR #83 merged by the operator as `df4082a`. Q10 told to rerun 120 → 123 at that build once deployed. Master stays frozen until the chain finishes.
 - 2026-10-04 22:35: Q10 at `df4082a`: 120 passed; 121 exit 3 (owner-link fix worked, but the roster lagged ~60-90 s past the tool's window). PR #103 widens the window to ~3 min. Freeze continues.
 - 2026-10-05 02:00: #103 merged as `5a7f58c`. Q10 rerun at that build once master CI is green and it deploys. Freeze continues.
+- 2026-10-05 02:05: #98 (`76e503e`) and #94 (`c4e24ac`) merged. Chain runs at the deployed master head. Q30 (#92) added on hold. Dropped the `restorer-target.json` fact.

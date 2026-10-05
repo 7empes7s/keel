@@ -1003,6 +1003,8 @@ item that needs it stays untouched.
   `16869853-ebe2-48ae-9ef4-75b77e663ba1` (reason "stale 2026-10-02 backup; …"); report both JSON outputs;
   (b) re-run step 1 preflight, which should be `ok: true`; (c) steps 3 and 5. **Skip step 4** (deploy.sh): it goes to
   vps-deployer separately. Set Status back to queued yourself once #111 is deployed.
+- Coordinator note (14:13 UTC): step 3's `keel-schedules-install.sh` currently **disables `keel-offsite.timer`** (fixed in
+  #112, not yet deployed). Q37 re-enables it right after Q24; don't run the installer again until #112 is deployed.
 - Needs: #84 chain (Q10) finished; PR #97 merged and `/opt/keel-live` deployed at its merge commit.
 - Do, as root on the VPS, from `/opt/keel-live` (read-only git, no edits to the tree):
   1. `set -a; . /etc/keel/db.env; set +a; node cli/keel-schedules-host.mjs preflight` (read-only). Report its
@@ -1416,4 +1418,12 @@ item that needs it stays untouched.
      `--build` = the deployed build, `verify --require-live` (expect exit 0). Push the evidence to `claude/live-evidence-116`.
   3. Report the run ids and the evidence commit in Result.
 - Hard rules as usual: no tenant-wide settings, no grants, no secrets printed.
+
+### Q37: Re-enable the offsite timer after Q24 — issue #89
+- Status: queued (coordinator 14:13 UTC: run right after Q24 finishes)
+- Result:
+- Why: the Q24 installer (before #112) turns `keel-offsite.timer` off; Q31 had it enabled for vol2.
+- Do, as root: `systemctl enable --now keel-offsite.timer`, then `systemctl list-timers keel-offsite.timer`. Report the
+  next run (expect 2026-10-06 05:00 UTC) and `systemctl is-enabled keel-offsite.timer`. Nothing else.
+- Don't re-run `keel-schedules-install.sh` until #112 is deployed.
 

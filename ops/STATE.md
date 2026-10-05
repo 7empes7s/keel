@@ -30,7 +30,7 @@ One GitHub issue per task (label `task`), one project thread per issue, one bran
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
 **Master is unfrozen (2026-10-05 16:35 UTC).** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
-fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213d` (Q36; evidence `claude/live-evidence-116` @ 3bb5e20, PR from #85).
+fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213d` (Q36; evidence merged in PR #126 as `9e1f92f`, docs/release/qualifications/drill-live-acceptance.json; #85 closed).
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
@@ -195,3 +195,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 15:56: Q36 at fcd9610: reconstruction passed (#122); drill on a fresh keel_drill_q36 DB failed at rollback ("residual drift after update", empty diff): applyEngine bug, fix owned by #85. Tenant clean. **Master unfrozen**; Q36 reruns at the fix's build.
 - 2026-10-05 16:16: #124, #120 and #125 (drill rollback fix) merged; master `04d213d`. Q36 queued at 04d213d (every step again). **Master frozen** until the gate 116 drill finishes.
 - 2026-10-05 16:35: **Q36 passed: gate 116 live-qualified at 04d213d** (drill passed, rollback applied, cleanup verified; evidence 3bb5e20). Sent to #85 for review/PR. **Master unfrozen.** Q29 (prune) released to queued per Marouane. keel-powershell rebuild can go (Marouane's go to vps-deployer).
+- 2026-10-05 16:36: #126 merged (`9e1f92f`, gate 116 evidence at 04d213d); #85 closed as completed.

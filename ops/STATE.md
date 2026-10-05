@@ -196,3 +196,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 16:16: #124, #120 and #125 (drill rollback fix) merged; master `04d213d`. Q36 queued at 04d213d (every step again). **Master frozen** until the gate 116 drill finishes.
 - 2026-10-05 16:35: **Q36 passed: gate 116 live-qualified at 04d213d** (drill passed, rollback applied, cleanup verified; evidence 3bb5e20). Sent to #85 for review/PR. **Master unfrozen.** Q29 (prune) released to queued per Marouane. keel-powershell rebuild can go (Marouane's go to vps-deployer).
 - 2026-10-05 16:36: #126 merged (`9e1f92f`, gate 116 evidence at 04d213d); #85 closed as completed.
+- 2026-10-05 16:55: Master red after #126 (drill test still expected the pending placeholder); fix PR #127 green, awaiting Marouane's merge. Q29 steps 1-3 done (dry run 154; prune schedule enabled, first run 2026-10-06 00:00 UTC). Q38 (drop drill/recovery DBs) queued.

@@ -1529,7 +1529,7 @@ item that needs it stays untouched.
 
 
 ### Q38: Drop the throwaway drill and recovery databases — issues #84, #85
-- Status: queued (low priority; after Q29)
+- Status: queued (low priority; can run now, it does not depend on Q29 step 4)
 - Result:
 - Why: the gate 116 attempts left disposable databases on the host (keel_drill_q36, keel_drill_q36b,
   keel_recovery_q36c and older keel_recovery_* ones). Gate 116 evidence is merged (#126), so none is needed.

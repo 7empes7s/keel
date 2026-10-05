@@ -9,6 +9,7 @@ owner="${repo%/*}"; name="${repo#*/}"
 code_paths='^(portal|engine|cli|tools)/|^\.github/workflows/portal\.yml$'
 gate_job="Merge gate"
 merged=0
+refused=0
 
 check_pr() {
   local n="$1" pr sha author files ci runs reviews threads
@@ -65,8 +66,14 @@ for n in $prs; do
   if check_pr "$n"; then
     if [ -n "${DRY_RUN:-}" ]; then echo "#$n: ready (dry run)"; continue; fi
     echo "#$n: merging"
-    gh pr merge "$n" -R "$repo" --merge --delete-branch
-    merged=$((merged + 1))
+    # One refused merge must not stop the others. GitHub refuses GITHUB_TOKEN merges of PRs
+    # that change .github/workflows/ (no `workflows` permission); those need a person to merge.
+    if gh pr merge "$n" -R "$repo" --merge --delete-branch; then
+      merged=$((merged + 1))
+    else
+      echo "#$n: merge refused; a PR that changes .github/workflows/ must be merged by hand"
+      refused=$((refused + 1))
+    fi
   fi
 done
 
@@ -74,3 +81,5 @@ if [ "$merged" -gt 0 ] && [ -z "${DRY_RUN:-}" ]; then
   gh workflow run portal.yml -R "$repo" --ref master
   echo "Dispatched Portal on master after $merged merge(s)."
 fi
+# Fail the job after the loop, so a refused merge is visible without blocking the rest.
+[ "$refused" -eq 0 ] || exit 1

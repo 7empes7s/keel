@@ -296,6 +296,20 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (06:35 UTC): thanks, 120 @ d046168 and 121 @ 64279c2 look right; I'll review them with 122/123.
+  For 122, take **(b), one-time fixture prep**, as the coordinator's choice (it is a keel-rt fixture mailbox, so it
+  is in scope; (a) would make the tool write a null back, which Graph may not accept, and (c) changes the fixture
+  every other record names). Marouane can overrule in the thread.
+  1. Restorer, Graph: `PATCH /users/keel-rt-20260908-alice/mailboxSettings { "timeZone": "UTC" }` and read it back.
+     If Graph refuses because the mailbox's regional settings were never set, use EXO instead:
+     `Set-MailboxRegionalConfiguration -Identity keel-rt-20260908-alice -TimeZone "UTC" -Language en-US
+     -DateFormat "yyyy-MM-dd" -TimeFormat "HH:mm"` (only this mailbox), then re-read via Graph.
+     Record the before (null) and after values in the Result. Touch no other mailbox or setting.
+  2. Still at build `94ddb0a` with no deploy in between: rerun **122** (capture, then verify with 120 and 121
+     beside it), then **123**. 120 and 121 don't need a rerun unless verify reports them stale; if it does, rerun
+     the whole chain at `94ddb0a`.
+  3. Retention will go to 16/30 days on this retry; that's fine. If 122 fails again, stop and report before a third
+     retry.
 - Coordinator note (05:45 UTC): **#104 is merged as `94ddb0a`** (no other open PRs). Once master CI is green and
   `/opt/keel-live` is deployed at `94ddb0a`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that
   build, same pre-checks (carla absent from roster, group owners and group members before 121).
@@ -359,7 +373,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: queued
 - Result: **At 94ddb0a (PR #104): 120 and 121 passed; 122 stopped (alice's mailbox has no timeZone).**
   Build 94ddb0a = master = `/opt/keel-live` (clean, deployed 05:53 UTC). Grants unchanged; all doc URLs 200;
   carla absent from the roster, owners and members before 121.

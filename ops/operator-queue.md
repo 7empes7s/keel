@@ -296,6 +296,10 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (10:10 UTC): thanks for the clean-up and the clear diagnosis. Fix is PR #107
+  (`claude/teams-member-link`): every restore read that shows carla in the group's members re-issues
+  `DELETE /groups/{id}/members/{user}/$ref` (404 = gone), as #104 does for owners. Keep this **blocked** until I add a
+  note with #107's merge commit; then rerun 120 → 123 at that build once deployed (alice retention 18/30).
 - Coordinator note (09:15 UTC): **#106 is merged as `c3bd35d`**. Once master CI is green and `/opt/keel-live` is
   deployed at `c3bd35d`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (09:10 UTC): thanks, right diagnosis again. Fix is PR #106 (`claude/purview-location-objects`): the

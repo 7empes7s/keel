@@ -183,3 +183,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 12:45: Marouane chose that KEEL reads LabelActions (issue #109). Q34 (protected fixture label, read-only dump) on hold until Q10 finishes. The 248b12c rerun continues.
 - 2026-10-05 12:55: **Q10 passed: 120 → 123 verified at 248b12c.** Evidence combined in PR #110. Master unfrozen. Q34, Q30, Q33, Q26, Q24, Q31 released to queued (Q29 after Q24, Q32 after Q33). keel-powershell rebuild can go.
 - 2026-10-05 13:01: PR #110 (120-123 evidence at 248b12c) merged.
+- 2026-10-05 13:15: GitHub Actions jobs refused (account payment/spending limit) since the 13:01 master push; nothing auto-deploys until fixed. PR #111 (job cancel, unblocks Q24) waiting on CI. Asked Marouane to check billing.

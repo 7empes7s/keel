@@ -197,4 +197,5 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 16:35: **Q36 passed: gate 116 live-qualified at 04d213d** (drill passed, rollback applied, cleanup verified; evidence 3bb5e20). Sent to #85 for review/PR. **Master unfrozen.** Q29 (prune) released to queued per Marouane. keel-powershell rebuild can go (Marouane's go to vps-deployer).
 - 2026-10-05 16:36: #126 merged (`9e1f92f`, gate 116 evidence at 04d213d); #85 closed as completed.
 - 2026-10-05 16:55: Master red after #126 (drill test still expected the pending placeholder); fix PR #127 green, awaiting Marouane's merge. Q29 steps 1-3 done (dry run 154; prune schedule enabled, first run 2026-10-06 00:00 UTC). Q38 (drop drill/recovery DBs) queued.
-- 2026-10-05 17:11: #127 merged (`f6523ab`); master Portal run green, so master deploys again.
+- 2026-10-05 17:11: #127 merged (`f6523ab`); master Portal run green, but NOT deployed.
+- 2026-10-05 17:22: Live stays on `04d213d`. deploy.sh accepts only Portal runs with event=push (/opt/keel-deploy/deploy.sh:63), and merge-gate merges get a workflow_dispatch run, so automerged commits never deploy (also e3d9563, 3f31f85, f6523ab). vps-deployer has a fix ready (accept push or workflow_dispatch on master for the exact SHA), waiting for Marouane's go (asked in the ops watch thread).

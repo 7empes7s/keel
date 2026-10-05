@@ -31,6 +31,8 @@ permissions:
   pull-requests: write
   actions: write
   checks: read
+  # Listing PRs by label goes through the issues API.
+  issues: read
 
 jobs:
   gate:

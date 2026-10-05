@@ -1,0 +1,258 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams",
+      "status": 200,
+      "at": "2026-10-05T12:36:42.632Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-05T12:36:42.902Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:43.347Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:43.441Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+      "status": 200,
+      "at": "2026-10-05T12:36:43.525Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-05T12:36:43.717Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 204,
+      "at": "2026-10-05T12:36:44.098Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-05T12:36:44.404Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 204,
+      "at": "2026-10-05T12:36:44.759Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543",
+      "status": 200,
+      "at": "2026-10-05T12:36:45.028Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:45.395Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 201,
+      "at": "2026-10-05T12:36:46.667Z",
+      "memberUserId": "856db776-4cb7-473c-ac8e-860159e72e08"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:47.217Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 200,
+      "at": "2026-10-05T12:36:48.708Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:48.962Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 200,
+      "at": "2026-10-05T12:36:50.540Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:50.901Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members/MCMjMSMjNzNiNmJlZWYtOWQ0MC00ZWE2LThhZDYtMmRhNmI0ODE4ZjI5IyM5MjYzZTFkNC03NDk0LTQxNDEtYjFiNi0yMDEyYzk4YTc1NDMjIzg1NmRiNzc2LTRjYjctNDczYy1hYzhlLTg2MDE1OWU3MmUwOA==",
+      "status": 204,
+      "at": "2026-10-05T12:36:52.317Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:52.626Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:52.971Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+      "status": 200,
+      "at": "2026-10-05T12:36:53.041Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:53.130Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+      "status": 204,
+      "at": "2026-10-05T12:36:53.350Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members/856db776-4cb7-473c-ac8e-860159e72e08/$ref",
+      "status": 400,
+      "at": "2026-10-05T12:36:53.495Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:58.828Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+      "status": 200,
+      "at": "2026-10-05T12:36:58.896Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:36:58.974Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:37:19.327Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/owners",
+      "status": 200,
+      "at": "2026-10-05T12:37:19.392Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/9263e1d4-7494-4141-b1b6-2012c98a7543/members",
+      "status": 200,
+      "at": "2026-10-05T12:37:19.484Z"
+    }
+  ],
+  "values": {
+    "discoveredTeams": 11,
+    "supportedFields": [
+      "memberSettings",
+      "guestSettings",
+      "messagingSettings",
+      "funSettings",
+      "discoverySettings"
+    ],
+    "originalToggle": true,
+    "settingsWritten": true,
+    "memberAdded": true
+  }
+}

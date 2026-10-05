@@ -1043,8 +1043,44 @@ item that needs it stays untouched.
 ### Q26: #93 Restorer grants inventory (read-only)
 - Issue #93, asked by the "Restorer least-privilege review" thread (20:34 UTC). **On hold: don't start**
   until the coordinator changes Status to queued (after the 120 → 123 chain).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: **Done (read-only; nothing created, granted or removed).** Restorer = Keel Restorer, appId 12f8942f…, SP 8cd199c9-a96e-4666-924f-aa0ca6910f32.
+  **Application permissions (56):**
+  - **Microsoft Graph (53):** AccessReview.ReadWrite.All, AdministrativeUnit.ReadWrite.All, Application.ReadWrite.All,
+    Channel.Create, Channel.ReadBasic.All, ChannelMember.ReadWrite.All, ChannelSettings.ReadWrite.All,
+    DeviceManagementApps.ReadWrite.All, DeviceManagementConfiguration.ReadWrite.All,
+    DeviceManagementManagedDevices.ReadWrite.All, DeviceManagementRBAC.ReadWrite.All,
+    DeviceManagementServiceConfig.ReadWrite.All, Directory.ReadWrite.All, Domain.ReadWrite.All,
+    EntitlementManagement.ReadWrite.All, Files.ReadWrite.All, Group.ReadWrite.All, IdentityProvider.ReadWrite.All,
+    MailboxSettings.ReadWrite, Organization.ReadWrite.All, Policy.ReadWrite.AccessReview,
+    Policy.ReadWrite.ApplicationConfiguration, Policy.ReadWrite.AuthenticationFlows, Policy.ReadWrite.AuthenticationMethod,
+    Policy.ReadWrite.Authorization, Policy.ReadWrite.B2BManagementPolicy, Policy.ReadWrite.ConditionalAccess,
+    Policy.ReadWrite.ConsentRequest, Policy.ReadWrite.CrossTenantAccess, Policy.ReadWrite.CrossTenantCapability,
+    Policy.ReadWrite.DeviceConfiguration, Policy.ReadWrite.ExternalIdentities, Policy.ReadWrite.FeatureRollout,
+    Policy.ReadWrite.FedTokenValidation, Policy.ReadWrite.IdentityProtection, Policy.ReadWrite.PermissionGrant,
+    Policy.ReadWrite.Recovery, Policy.ReadWrite.SecurityDefaults, Policy.ReadWrite.TrustFramework,
+    RecordsManagement.ReadWrite.All, RoleManagement.ReadWrite.CloudPC, RoleManagement.ReadWrite.Defender,
+    RoleManagement.ReadWrite.Directory, RoleManagement.ReadWrite.Exchange, SecurityAlert.ReadWrite.All,
+    SecurityIncident.ReadWrite.All, **SharePointTenantSettings.ReadWrite.All** (added 2026-10-04 for gate 120),
+    Sites.Create.All, Sites.FullControl.All, Team.ReadBasic.All, TeamMember.ReadWrite.All, TeamSettings.ReadWrite.All,
+    User.ReadWrite.All.
+  - **Office 365 SharePoint Online (2):** Sites.FullControl.All, TermStore.ReadWrite.All.
+    (User.ReadWrite.All was granted on 2026-10-04 at 13:00 UTC and **revoked** at 13:05 UTC.)
+  - **Office 365 Exchange Online (1):** Exchange.ManageAsApp.
+  - No other resource.
+  **Directory role assignments (8, all scope `/`):**
+  - Compliance Administrator `17315797-102d-40b4-93e0-432062caca18`
+  - Compliance Data Administrator `e6d1a23a-da11-4be4-9570-befc86d067a7`
+  - Exchange Administrator `29232cdf-9323-42fd-ade2-1d097af3e4de`
+  - Intune Administrator `3a2c62db-5318-420d-8d74-23affee5d9d5`
+  - Knowledge Administrator `b5a8dcf3-09d5-43a9-a639-8e29ef291470`
+  - Security Administrator `194ae4cb-b126-40b2-bd5b-6091b380977d`
+  - SharePoint Administrator `f28a1f50-f6e7-4571-818b-6a12f2af6b6c`
+  - Teams Administrator `69091246-20e8-4a56-aa4d-066075b2a7a8`
+  **The "ninth" from Q7** came from the token's `wids` claim: `0997a1d0-0d1d-4acb-b408-d5ca73121e90`. It is **not a
+  directory role**: no role definition has that templateId, `roleAssignments` for it returns 404, and the same wid
+  appears in the Collector's token. It's an implicit claim on app-only tokens, not a grant. So the Restorer holds
+  **8** directory roles. (Q7's "9 directory roles (wids)" over-counted by this one.)
 - Needs: Q10 finished.
 - Do: list every application permission the Restorer app (appId 12f8942f…) holds, on every resource (Graph,
   SharePoint Online, Exchange Online, any other), and every directory role it holds with its role template id.

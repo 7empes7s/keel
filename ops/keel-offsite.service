@@ -1,7 +1,8 @@
 [Unit]
-Description=KEEL offsite database replication
+Description=KEEL offsite database replication (to the persistent volume)
 
 [Service]
 Type=oneshot
 User=root
+EnvironmentFile=-/etc/keel/offsite.env
 ExecStart=/opt/keel/ops/keel-offsite.sh

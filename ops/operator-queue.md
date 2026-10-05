@@ -1104,3 +1104,21 @@ item that needs it stays untouched.
      mode 0600.
   7. `systemctl enable --now keel-offsite.timer; systemctl list-timers keel-offsite.timer --no-pager`
 
+### Q32: Gate 116 onboarding result, then unblock Q6 — issue #85
+- Drafted by the "Gate 116 drill live acceptance" thread (02:00 UTC). **On hold: don't start** until the
+  coordinator changes Status to queued (after Q10 finishes and Marouane says the fresh restore setup has completed).
+- Status: hold
+- Result:
+- Needs: Q10 finished; Q27 done; PR #96 (`36fc2b3`) deployed; the operator's fresh restore setup complete.
+- Do:
+  1. Read-only: confirm the deployed build includes `36fc2b3`. From `bootstrap_plan`/`bootstrap_event`, report the
+     newest read-setup run that ended `complete` (expected `cbd974b9…`, Entra only, at ffa05cd) and the newest
+     restore-setup run that ended `complete`, with each run's id, final state and build. Don't start or resume any
+     setup run.
+  2. If both are `complete`, write `onboarding.json` (`task: "task-76"`, `readSetup: "complete"`,
+     `restoreSetup: "complete"`, `readSetupRunId`, `restoreSetupRunId`) next to the Q6 working files. Then set Q6
+     back to ready and run it as written, per Q21 steps 5-6: assertion with the Q20 key, `reconstruct.mjs` from the
+     Q11 set into a disposable DB, build-manifest, offline plan check, live bounded drill (one `keel-rehearsal-*`
+     group), `capture-drill`, `verify --require-live`, evidence on `claude/live-evidence-116`.
+  3. If either isn't `complete`, stop and report its state and its waiting step. Change nothing.
+

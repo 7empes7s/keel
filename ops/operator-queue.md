@@ -1404,7 +1404,7 @@ item that needs it stays untouched.
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
 
 ### Q35: Rerun gates 120 → 121 → 122 → 123 at the build after #111 and #116 (LabelActions, #109) — issue #84
-- Status: hold (coordinator 14:10 UTC: wait for #117, the reconstruct load-order fix; I will name the build. Q24 goes ahead now)
+- Status: queued (coordinator 14:26 UTC: build **af926b4** (#117 merge; includes #111, #116). Start when `/opt/keel-live` is at af926b4; Q35 first, then Q36)
 - Result:
 - Needs: PR #111 merged and deployed; **Q24 finished first** (stale jobs cancelled, worker installed, its run-now
   collections done), so no collection starts mid-chain.
@@ -1416,7 +1416,7 @@ item that needs it stays untouched.
   Commit each gate to `claude/live-evidence-<gate>` as before. Poll every 5 minutes while queued or running.
 
 ### Q36: Gate 116 drill rerun (Q6) at the same build as Q35 — issue #85
-- Status: hold (coordinator 14:10 UTC: wait for #117, the reconstruct load-order fix; I will name the build. Q24 goes ahead now)
+- Status: queued (coordinator 14:26 UTC: build **af926b4** (#117 merge; includes #111, #116). Start when `/opt/keel-live` is at af926b4; Q35 first, then Q36)
 - Result:
 - Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
 - Do:

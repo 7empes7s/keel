@@ -40,20 +40,31 @@ database only, and are safe to run freely for that reason.
 ## Offsite database replication
 
 `keel-offsite.sh` ships the most recent `/opt/backups/<YYYY-MM-DD>/keel-db.sql.gz` (produced
-nightly by `/opt/mimoun/backup.sh`) to a second, independent host — Hostinger at `187.124.7.67`,
-reached via `ssh -i /root/.ssh/playground_vps`, under `/opt/keel-offsite/` there. A dump on the same
-host as the database it protects is not a backup: if this VPS is lost, every tenant baseline goes
-with it unless a copy exists elsewhere.
+nightly by `/opt/mimoun/backup.sh`) off the VPS root disk, to `/mnt/keel-copy/keel-offsite/` on
+"vol2": the persistent Hetzner volume (`/dev/disk/by-id/scsi-0HC_Volume_107029601`) mounted at
+`/mnt/keel-copy`. The volume outlives the server, so a rebuilt or deleted VPS doesn't take the only
+copy of the backup with it. The earlier target, a Hostinger VPS at `187.124.7.67`, stopped answering
+(issue #89).
+
+Because the volume is mounted with `nofail`, a missing volume leaves `/mnt/keel-copy` as an empty
+directory on the root disk. The script refuses to ship unless `/mnt/keel-copy` is on a different
+filesystem from `/opt/backups`.
 
 It verifies the dump twice: `gzip -t` plus a `>= 5` `^COPY public` block count *before* shipping
 (a corrupt dump shipped offsite is worse than none, because it looks like protection), and a
-remote-computed sha256 compared against the local one *after* transfer (scp's exit code alone is
-not trusted). It stages the copy under a `.partial` name and only `mv`s it into place once the
+sha256 of the staged copy compared against the local one *after* transfer (the copy's exit code
+alone is not trusted). It stages the copy under a `.partial` name and only `mv`s it into place once the
 hash matches; a mismatch deletes the partial copy and fails loudly rather than leaving a
-silently-truncated file behind. Remote copies older than 30 days are pruned on each successful run.
+silently-truncated file behind. Copies are root-only (`umask 077`). Offsite copies older than 30
+days are pruned on each successful run.
 Every failure path is `set -euo pipefail` and exits non-zero — nothing is swallowed with
-`|| true`. Run `keel-offsite.sh --dry-run` to verify the current dump and report what would ship
-without transferring anything.
+`|| true`. Run `keel-offsite.sh --dry-run` to verify the current dump, check that the target is
+usable, and report what would ship without copying anything. A dry run fails when the target
+is unusable, because a real run would too.
+
+Settings, all optional, go in `/etc/keel/offsite.env`, which the unit reads when it exists:
+`KEEL_OFFSITE_DIR` (destination, default `/mnt/keel-copy/keel-offsite`), and `KEEL_OFFSITE_REMOTE=user@host`
+with `KEEL_OFFSITE_SSH_KEY` to ship over SSH to another host instead.
 
 Not installed or enabled by the build, matching the tiered backup units above:
 
@@ -61,6 +72,7 @@ Not installed or enabled by the build, matching the tiered backup units above:
 sudo install -m 0755 ops/keel-offsite.sh /opt/keel/ops/keel-offsite.sh
 sudo install -m 0644 ops/keel-offsite.service ops/keel-offsite.timer /etc/systemd/system/
 sudo systemctl daemon-reload
+sudo /opt/keel/ops/keel-offsite.sh --dry-run   # must pass before enabling the timer
 sudo systemctl enable --now keel-offsite.timer
 ```
 

@@ -351,6 +351,33 @@ test('one failed critical gate blocks the ready label but leaves every other res
   assert.equal(withFailedJourney.readiness.label, 'blocked');
 });
 
+test('a descoped gate is reported as an accepted gap, never qualified, and still blocks when it fails', () => {
+  // Only task-117 (Sentinel) is descoped by operator decision.
+  assert.deepEqual(LIVE_ACCEPTANCE_GATES.filter((gate) => gate.acceptedGap).map((gate) => gate.task), ['task-117']);
+  const qualified = LIVE_ACCEPTANCE_GATES.map((gate) => ({ gate: gate.gate, task: gate.task, status: 'live-qualified', failures: [] }));
+  const withSentinel = (status, failures = []) => qualified.map((entry) => (entry.task === 'task-117' ? { ...entry, status, failures } : entry));
+
+  for (const status of ['missing', 'pending', 'unverified']) {
+    const ledger = buildReleaseLedger({ fixture: passingFixture(), live: withSentinel(status), hmacKey: null, objectiveGapsAllowed: true });
+    assert.equal(ledger.readiness.label, 'ready', status);
+    const sentinel = ledger.live.find((gate) => gate.task === 'task-117');
+    assert.equal(sentinel.status, status, 'the gate keeps its real status, never live-qualified');
+    assert.match(sentinel.acceptedGap, /descoped by operator decision 2026-10-04/);
+    assert.equal(ledger.readiness.acceptedGaps.length, 1);
+    assert.match(ledger.readiness.acceptedGaps[0], /sentinel-live-acceptance \(task-117\)/);
+    assert.ok(!ledger.readiness.reasons.some((reason) => reason.includes('sentinel')));
+  }
+  // A Sentinel record that was checked and did not verify still blocks.
+  const failed = buildReleaseLedger({ fixture: passingFixture(), live: withSentinel('failed', ['signature mismatch']), hmacKey: null, objectiveGapsAllowed: true });
+  assert.equal(failed.readiness.label, 'blocked');
+  assert.deepEqual(failed.readiness.acceptedGaps, []);
+  // Any other gate that is not qualified keeps readiness pending.
+  const otherPending = withSentinel('pending').map((entry) => (entry.task === 'task-113' ? { ...entry, status: 'pending' } : entry));
+  assert.equal(buildReleaseLedger({ fixture: passingFixture(), live: otherPending, hmacKey: null, objectiveGapsAllowed: true }).readiness.label, 'pending');
+  // When Sentinel does qualify, nothing is listed as an accepted gap.
+  assert.deepEqual(buildReleaseLedger({ fixture: passingFixture(), live: qualified, hmacKey: null, objectiveGapsAllowed: true }).readiness.acceptedGaps, []);
+});
+
 test('a pending or synthetic record never classifies as live-qualified; a signed live record verifies only with its key', () => {
   const dir = mkdtempSync(join(workdir, 'records-'));
   const pending = { gate: 'deployed-acceptance', status: 'pending', evidenceLevel: 'fixture-tested', synthetic: true };

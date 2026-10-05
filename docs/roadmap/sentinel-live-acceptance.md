@@ -1,7 +1,8 @@
 # Sentinel workspace ingestion qualification (task 117)
 
 Date: 2026-10-04 UTC. Status: the code half is implemented and fixture-tested.
-**The gate stays pending.** No live evidence exists. No workspace, DCR or Azure
+**The gate stays pending.** It was descoped by operator decision 2026-10-04 12:36 UTC, so the
+release ledger reports it as an accepted gap rather than holding readiness. No live evidence exists. No workspace, DCR or Azure
 resource was read, written or created. Sentinel export stays fixture-tested only.
 
 The external admission gate needs things that cannot exist in a builder container:

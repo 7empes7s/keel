@@ -1,10 +1,418 @@
 {
   "contractVersion": 1,
   "gate": "exchange-live-acceptance",
-  "status": "pending",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "94ddb0a5c17c22056e9df3049f5faea70333167e",
   "operation": "exchange.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "evidenceLevel": "fixture-tested",
-  "synthetic": true,
-  "note": "Placeholder. No live Exchange capture exists, and the task-121 Teams prerequisite (and task-120 SharePoint before it) is itself pending. This record fails `verify --require-live` until the operator replaces it with a signed capture; see docs/roadmap/exchange-live-acceptance.md, Operator steps."
+  "observedAt": "2026-10-05T06:49:27.569Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "prerequisites": [
+      "task-105",
+      "task-121"
+    ],
+    "teamsQualification": {
+      "gate": "teams-live-acceptance",
+      "evidence": "teams-live-acceptance.json",
+      "captureLogSha256": "9a3628a55ae765d6e0a43272ba15846e73ddfb051829b37ebb10e0928acae75b"
+    },
+    "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+    "organization": {
+      "externalDirectoryOrganizationId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
+      "tenantIdSource": "collector-token"
+    },
+    "fixtureMailbox": {
+      "identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+      "userPrincipalName": "keel-rt-20260908-alice@techinsiderbytes.com",
+      "objectId": "abbaf24b-4722-4b7c-a0b3-c2f2685c82e5",
+      "recipientTypeDetails": "UserMailbox"
+    },
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:87aa77c4-e15d-453d-8101-20e3e998311e",
+      "restorer": "app:12f8942f-c4d0-4a0d-aee1-efe928b1de54"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "Exchange.ManageAsApp",
+          "MailboxSettings.Read"
+        ],
+        "roles": [
+          "Exchange Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "Exchange.ManageAsApp",
+          "MailboxSettings.ReadWrite"
+        ],
+        "roles": [
+          "Exchange Administrator"
+        ]
+      }
+    },
+    "reads": [
+      {
+        "operationId": "exchange.mailbox-settings",
+        "version": "v1.0",
+        "capturedAt": "2026-10-05T06:48:44.423Z",
+        "ok": true,
+        "synthetic": false
+      },
+      {
+        "operationId": "exchange.organization-config",
+        "version": "3.10.1",
+        "capturedAt": "2026-10-05T06:48:48.842Z",
+        "ok": true,
+        "synthetic": false
+      },
+      {
+        "operationId": "exchange.mailbox-hold",
+        "version": "3.10.1",
+        "capturedAt": "2026-10-05T06:48:51.991Z",
+        "ok": true,
+        "synthetic": false
+      },
+      {
+        "operationId": "exchange.client-access",
+        "version": "3.10.1",
+        "capturedAt": "2026-10-05T06:48:55.294Z",
+        "ok": true,
+        "synthetic": false
+      }
+    ],
+    "supportedFields": {
+      "mailboxSettings": [
+        "automaticRepliesSetting",
+        "timeZone",
+        "language",
+        "workingHours",
+        "dateFormat",
+        "timeFormat",
+        "delegateMeetingMessageDeliveryOptions",
+        "userPurpose"
+      ],
+      "organization": [
+        "FocusedInboxOn",
+        "MailTipsAllTipsEnabled",
+        "MailTipsExternalRecipientsTipsEnabled",
+        "MailTipsGroupMetricsEnabled",
+        "MailTipsLargeAudienceThreshold",
+        "OAuth2ClientProfileEnabled",
+        "SmtpActionableMessagesEnabled",
+        "ConnectorsEnabled"
+      ],
+      "retention": [
+        "LitigationHoldEnabled",
+        "RetentionHoldEnabled",
+        "SingleItemRecoveryEnabled",
+        "RetainDeletedItemsFor",
+        "InPlaceHolds",
+        "ComplianceTagHoldApplied",
+        "DelayHoldApplied",
+        "DelayReleaseHoldApplied",
+        "LitigationHoldDuration"
+      ],
+      "clientAccess": [
+        "OWAEnabled",
+        "ActiveSyncEnabled",
+        "PopEnabled",
+        "ImapEnabled",
+        "MAPIEnabled",
+        "EwsEnabled",
+        "SmtpClientAuthenticationDisabled"
+      ]
+    },
+    "writes": {
+      "mailboxSettings": {
+        "operationId": "exchange.mailbox-settings.update",
+        "version": "v1.0",
+        "synthetic": false,
+        "writeMode": "reversible-change",
+        "property": "timeZone",
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "preFingerprint": "6cfbc807d2946f265ab5618aac5468c83c6532d2b2516bf1989ef0c069d0e8a1",
+        "finalFingerprint": "6cfbc807d2946f265ab5618aac5468c83c6532d2b2516bf1989ef0c069d0e8a1",
+        "capturedAt": "2026-10-05T06:48:59.089Z"
+      },
+      "clientAccess": {
+        "operationId": "exchange.client-access.update",
+        "version": "3.10.1",
+        "synthetic": false,
+        "writeMode": "reversible-change",
+        "property": "PopEnabled",
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "preFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
+        "finalFingerprint": "b1fb15afc1522e78bd300fcfd2f85314e35c3ee50bb480afd67f2a2e0f839a48",
+        "capturedAt": "2026-10-05T06:49:16.587Z"
+      },
+      "retention": {
+        "operationId": "exchange.mailbox-retention.update",
+        "version": "3.10.1",
+        "synthetic": false,
+        "writeMode": "extend-only",
+        "property": "RetainDeletedItemsFor",
+        "ok": true,
+        "readBackVerified": true,
+        "before": {
+          "LitigationHoldEnabled": false,
+          "RetentionHoldEnabled": false,
+          "SingleItemRecoveryEnabled": true,
+          "RetainDeletedItemsFor": "15.00:00:00"
+        },
+        "after": {
+          "LitigationHoldEnabled": false,
+          "RetentionHoldEnabled": false,
+          "SingleItemRecoveryEnabled": true,
+          "RetainDeletedItemsFor": "16.00:00:00"
+        },
+        "complianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
+        "finalComplianceHoldsFingerprint": "cf4196e3e26e0fd624955dc958f42107de5d9ebbf96d706801bb3d7287b4dffe",
+        "capturedAt": "2026-10-05T06:49:27.569Z"
+      }
+    },
+    "refusals": {
+      "heldField": {
+        "cmdlet": "Set-Mailbox",
+        "parameter": "LitigationHoldDuration",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-Mailbox does not take LitigationHoldDuration from KEEL"
+      },
+      "contentPath": {
+        "path": "/users/{fixture}/messages",
+        "refused": true,
+        "sent": false,
+        "reason": "GET /v1.0/users/keel-rt-20260908-alice@techinsiderbytes.com/messages is not an Exchange configuration request; mail, folders, rules and calendars are never read"
+      }
+    },
+    "platformError": {
+      "identity": "keel-rt-absent-ff7cb4fbbc32@techinsiderbytes.com",
+      "status": "failed",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "[],Write-ErrorMessage",
+        "category": "NotSpecified",
+        "message": "||The operation couldn't be performed because object 'keel-rt-absent-ff7cb4fbbc32@techinsiderbytes.com' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
+      }
+    },
+    "requests": [
+      {
+        "credential": "collector",
+        "transport": "graph",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-OrganizationConfig",
+        "parameters": {},
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-Mailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-Mailbox",
+        "parameters": {
+          "Identity": "keel-rt-absent-ff7cb4fbbc32@techinsiderbytes.com"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "[],Write-ErrorMessage"
+        }
+      },
+      {
+        "credential": "restorer",
+        "transport": "graph",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "transport": "graph",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "transport": "graph",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "transport": "graph",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "transport": "graph",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Set-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+          "PopEnabled": false
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Set-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+          "PopEnabled": true
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-CASMailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-Mailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Set-Mailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+          "RetainDeletedItemsFor": "16.00:00:00"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "transport": "powershell-cmdlet-job",
+        "cmdlet": "Get-Mailbox",
+        "parameters": {
+          "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+        },
+        "outcome": "ok"
+      }
+    ],
+    "throttle": {
+      "retryAfterResponses": 0
+    },
+    "documentation": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/user-get-mailboxsettings",
+        "retrievedAt": "2026-10-05T06:48:41.781Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-casmailbox",
+        "retrievedAt": "2026-10-05T06:48:42.214Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-mailbox",
+        "retrievedAt": "2026-10-05T06:48:42.276Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-organizationconfig",
+        "retrievedAt": "2026-10-05T06:48:42.728Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/user-update-mailboxsettings?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-05T06:48:42.745Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-casmailbox",
+        "retrievedAt": "2026-10-05T06:48:43.167Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-mailbox",
+        "retrievedAt": "2026-10-05T06:48:43.582Z"
+      }
+    ],
+    "captureLogSha256": "79cd9cb60db79d0bde2c98689d0642ca0929d1c2287e3b3a9de9f976bcc82344"
+  },
+  "proof": {
+    "artifact": {
+      "path": "exchange-live-acceptance.capture.json",
+      "sha256": "79cd9cb60db79d0bde2c98689d0642ca0929d1c2287e3b3a9de9f976bcc82344"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "758bc22e83b5c7f5cfc6d7eaa08557fa3e658000c4511a423a547a1ea0b87ae0"
+    }
+  }
 }

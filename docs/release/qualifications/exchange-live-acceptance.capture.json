@@ -1,0 +1,189 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "transport": "graph",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:44.423Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-OrganizationConfig",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-05T06:48:44.423Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-Mailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:48:48.843Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:48:51.991Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-Mailbox",
+      "parameters": {
+        "Identity": "keel-rt-absent-ff7cb4fbbc32@techinsiderbytes.com"
+      },
+      "outcome": "failed",
+      "at": "2026-10-05T06:48:55.294Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "[],Write-ErrorMessage"
+      }
+    },
+    {
+      "credential": "restorer",
+      "transport": "graph",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:58.695Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "graph",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:58.773Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "graph",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:58.858Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "graph",
+      "method": "PATCH",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:58.997Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "graph",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
+      "status": 200,
+      "at": "2026-10-05T06:48:59.089Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:48:59.089Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Set-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+        "PopEnabled": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:02.386Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:06.596Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Set-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+        "PopEnabled": true
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:09.753Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-CASMailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:13.295Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-Mailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:16.588Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Set-Mailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
+        "RetainDeletedItemsFor": "16.00:00:00"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:20.010Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-Mailbox",
+      "parameters": {
+        "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
+      },
+      "outcome": "ok",
+      "at": "2026-10-05T06:49:24.290Z"
+    }
+  ],
+  "values": {
+    "originalTimeZone": "UTC",
+    "settingsWritten": true,
+    "originalClientAccess": true,
+    "clientAccessWritten": true
+  }
+}

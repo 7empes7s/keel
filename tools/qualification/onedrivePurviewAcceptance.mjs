@@ -50,7 +50,7 @@ import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs'
 import {
   INHERITANCE_STATES, ONEDRIVE_FIELDS, ONEDRIVE_MODULE, ONEDRIVE_OPERATION, OneDriveScopeError, assertOneDriveCmdlet, oneDriveSite,
 } from '../../engine/collect/workloads/onedrive.mjs';
-import { LABEL_FIELDS, POLICY_FIELDS, PURVIEW_MODULE, PURVIEW_OPERATIONS, assertPurviewCmdlet } from '../../engine/collect/workloads/purview.mjs';
+import { LABEL_ACTION_FIELDS, LABEL_FIELDS, POLICY_FIELDS, PURVIEW_MODULE, PURVIEW_OPERATIONS, assertPurviewCmdlet } from '../../engine/collect/workloads/purview.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../engine/coverage/qualification.mjs';
 import { EXCHANGE_LIVE_GATE } from './exchangeAcceptance.mjs';
 
@@ -482,8 +482,17 @@ export function validateOneDrivePurviewLiveSubject(evidence, context = {}) {
   }
   const onedriveRead = reads.find((item) => item?.operationId === ONEDRIVE_OPERATION);
   if (onedriveRead && onedriveRead.form !== 'Get-PnPTenantSite -Identity') failures.push(`${ONEDRIVE_OPERATION}: not captured in the -Identity form the adapter uses`);
+  // A LabelActions field Get-Label does not return is recorded as not qualified instead of observed.
+  const notQualified = Array.isArray(subject.notQualifiedFields?.label) ? subject.notQualifiedFields.label : [];
   for (const [group, fields] of Object.entries({ onedrive: Object.keys(ONEDRIVE_FIELDS), label: LABEL_FIELDS, policy: POLICY_FIELDS })) {
-    for (const field of onedrivePurviewMissing(subject.supportedFields?.[group], fields)) failures.push(`supported field not observed live: ${group}.${field}`);
+    for (const field of onedrivePurviewMissing(subject.supportedFields?.[group], fields)) {
+      if (group === 'label' && LABEL_ACTION_FIELDS.includes(field) && notQualified.includes(field)) continue;
+      failures.push(`supported field not observed live: ${group}.${field}`);
+    }
+  }
+  for (const field of notQualified) {
+    if (!LABEL_ACTION_FIELDS.includes(field)) failures.push(`label.${field} is listed as not qualified but is not a LabelActions field`);
+    else if (Array.isArray(subject.supportedFields?.label) && subject.supportedFields.label.includes(field)) failures.push(`label.${field} is listed as not qualified but was observed live`);
   }
   // Inherited versus explicit, recorded for every OneDrive field; a conditional field is determined.
   for (const [field, spec] of Object.entries(ONEDRIVE_FIELDS)) {

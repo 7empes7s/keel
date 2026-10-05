@@ -978,7 +978,7 @@ item that needs it stays untouched.
 ### Q24: Install scheduled collection (issue #91)
 - Drafted by the "Scheduler and backup tiers on host" thread (20:26 UTC). **On hold: don't start**
   until the coordinator changes Status to queued.
-- Status: queued (coordinator 13:50 UTC: start once `/opt/keel-live` is deployed at b9e5f6b, #111; follow the 13:13 note)
+- Status: in-progress
 - Result: **Blocked at step 1: preflight `ok: false`. Operator decision needed before any worker starts.** Nothing installed.
   1. `node cli/keel-schedules-host.mjs preflight` (from /opt/keel-live at 248b12c, read-only), exit 1:
      `{"tenantRef":"sha256:f7b3959300856957","backlog":[{"kind":"backup","status":"queued","count":1,"oldest":"2026-10-02T10:46:37.682Z"},{"kind":"restore","status":"queued","count":1,"oldest":"2026-10-03T15:50:44.811Z"}],"autoRemediatePolicies":0,"schedules":[],"blockers":["jobs are queued or running; a new worker would run them"],"ok":false}`

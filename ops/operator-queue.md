@@ -1138,10 +1138,10 @@ item that needs it stays untouched.
 
 ### Q32: Gate 116 onboarding result, then unblock Q6 — issue #85
 - Drafted by the "Gate 116 drill live acceptance" thread (02:00 UTC). **On hold: don't start** until the
-  coordinator changes Status to queued (after Q10 finishes and Marouane says the fresh restore setup has completed).
+  coordinator changes Status to queued (after Q10 and Q33 finish).
 - Status: hold
 - Result:
-- Needs: Q10 finished; Q27 done; PR #96 (`36fc2b3`) deployed; the operator's fresh restore setup complete.
+- Needs: Q10 finished; Q27 done; PR #96 (`36fc2b3`) deployed; Q33 done (fresh restore setup complete).
 - Do:
   1. Read-only: confirm the deployed build includes `36fc2b3`. From `bootstrap_plan`/`bootstrap_event`, report the
      newest read-setup run that ended `complete` (expected `cbd974b9…`, Entra only, at ffa05cd) and the newest
@@ -1153,4 +1153,28 @@ item that needs it stays untouched.
      Q11 set into a disposable DB, build-manifest, offline plan check, live bounded drill (one `keel-rehearsal-*`
      group), `capture-drill`, `verify --require-live`, evidence on `claude/live-evidence-116`.
   3. If either isn't `complete`, stop and report its state and its waiting step. Change nothing.
+
+### Q33: Gate 116 restore setup and Collector role cleanup — issue #85
+- Drafted by the "Gate 116 drill live acceptance" thread (07:16 UTC). Asked by Marouane in the project chat,
+  2026-10-05 07:15 UTC: "I think these could be solved by the deployer/operator sessions?" **On hold: don't start**
+  until the coordinator changes Status to queued (after Q10 finishes).
+- Status: hold
+- Result:
+- Needs: Q10 finished; Q27 done; `36fc2b3` (PR #96) deployed to `/opt/keel-live`.
+- Do:
+  1. Confirm the deployed build includes `36fc2b3`. If it doesn't, stop and report.
+  2. Restore setup: through the portal API with the operator Access session, `POST /api/actions/setup`
+     `{ "scope": "restore" }` to start a **fresh** run. Don't resume the stale run `ea7e91c24847…`. No `setup.json`
+     and no enabled operations, so the run must write nothing. Report the run id and final state. It should end
+     `complete`, with the PIM step satisfied by Marouane's active Global Administrator (operator id from Q27). If it
+     ends `pending-manual`, report the waiting step and stop; don't resume or retry. If the operator Access session
+     can't approve setup runs (it needs `configuration` + `approve`), report that and stop this step: Marouane will
+     click "Start again" himself.
+  3. Collector cleanup: remove the Entra directory role assignment "Intune Administrator" (template
+     `3a2c62db-5318-420d-8d74-23affee5d9d5`) from the KEEL Collector service principal, and nothing else. Find it with
+     `GET /roleManagement/directory/roleAssignments?$filter=principalId eq '<Collector SP id>'`, then DELETE only that
+     one assignment id with the Restorer credential (it holds RoleManagement.ReadWrite.Directory). Read back: the
+     assignment is gone and the Collector's other roles (Global Reader, Security Reader) are unchanged. If the
+     Restorer can't delete it, report the error and stop. Don't grant anything to anyone.
+  4. Then the coordinator queues Q32.
 

@@ -24,6 +24,9 @@ node cli/keel-schedules-host.mjs health                    # after those jobs fi
 - Only `collect` schedules are seeded by default. Add prune and offsite later with
   `node cli/keel-schedules-migrate.mjs --tenant-ref REF --kinds prune,offsite`; rows already there
   are kept.
+- The migration retires only the old timers that the seeded kinds replace. The per-tier backup
+  timers and `keel-prune.timer` are always disabled. `keel-offsite.timer` is left alone unless
+  `offsite` is seeded, because until then it is what runs the daily vol2 copy.
 - `keel-worker` is long-running, so a deploy that moves the tree should also run
   `systemctl try-restart keel-worker` (a no-op when it is not installed).
 
@@ -69,15 +72,21 @@ Settings, all optional, go in `/etc/keel/offsite.env`, which the unit reads when
 `KEEL_OFFSITE_DIR` (destination, default `/mnt/keel-copy/keel-offsite`), and `KEEL_OFFSITE_REMOTE=user@host`
 with `KEEL_OFFSITE_SSH_KEY` to ship over SSH to another host instead.
 
-Not installed or enabled by the build, matching the tiered backup units above:
+Not installed or enabled by the build. The unit runs the script from `/opt/keel-live`, the tree
+`keel-deploy.timer` keeps current; `/opt/keel` on the VPS is an old, stopped checkout whose script
+still targets the retired host:
 
 ```sh
-sudo install -m 0755 ops/keel-offsite.sh /opt/keel/ops/keel-offsite.sh
-sudo install -m 0644 ops/keel-offsite.service ops/keel-offsite.timer /etc/systemd/system/
+sudo install -m 0644 /opt/keel-live/ops/keel-offsite.service /opt/keel-live/ops/keel-offsite.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo /opt/keel/ops/keel-offsite.sh --dry-run   # must pass before enabling the timer
+sudo /opt/keel-live/ops/keel-offsite.sh --dry-run   # must pass before enabling the timer
 sudo systemctl enable --now keel-offsite.timer
 ```
+
+A run exits 1 when the dump manifest is no newer than the last shipped one. That is deliberate: if
+the nightly dump stops being produced, the offsite unit fails visibly instead of passing quietly. A
+second run on the same day (for example the timer's catch-up after a manual run) fails the same way;
+clear it with `systemctl reset-failed keel-offsite.service`.
 
 ## Snapshot retention prune
 

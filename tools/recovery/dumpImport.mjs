@@ -13,14 +13,18 @@
  *   with bound parameters (each value goes through its column type's input
  *   function, as COPY would);
  * - `INSERT INTO …` statements run as written;
- * - `SELECT [pg_catalog.]setval(…)` statements run last, so sequences resume
- *   after the restored rows;
+ * - `SELECT [pg_catalog.]setval('<sequence>', <n>, true|false)` statements run
+ *   last, so sequences resume after the restored rows;
+ * - UPDATE, DELETE, TRUNCATE, MERGE, COPY other than FROM stdin, DO and CALL
+ *   are refused: a plain dump never carries them;
  * - every other statement (CREATE, ALTER, SET, COMMENT, …) is not executed:
  *   the structure is the pinned schema's, never the dump's;
  * - `\restrict` / `\unrestrict` are skipped; any other meta-command is refused.
  *
  * Tables load parents first, in the target's foreign-key order, since a full
- * dump orders data without regard to constraints it adds afterwards. Names
+ * dump orders data without regard to constraints it adds afterwards. Within a
+ * table that references itself, rows load parents first too, so a child that
+ * pg_dump wrote before its parent never lands in an earlier statement. Names
  * qualified with `public.` (pg_dump's default) resolve through the target's
  * search_path instead, so a disposable target need not be the public schema.
  */
@@ -37,7 +41,6 @@ export function parseDump(text) {
   const items = [];
   let i = 0;
   const n = text.length;
-  const atLineStart = (pos) => pos === 0 || text[pos - 1] === '\n';
   const lineEnd = (pos) => {
     const end = text.indexOf('\n', pos);
     return end === -1 ? n : end;
@@ -53,7 +56,7 @@ export function parseDump(text) {
       i = end + 2;
       continue;
     }
-    if (ch === '\\' && atLineStart(i)) {
+    if (ch === '\\') {
       const end = lineEnd(i);
       const line = text.slice(i + 1, end).trim();
       items.push({ kind: 'meta', name: line.split(/\s+/, 1)[0], line });
@@ -104,6 +107,8 @@ export function parseDump(text) {
         continue;
       }
       if (c === ';') break;
+      // psql would run an unquoted backslash command even mid-statement.
+      if (c === '\\') throw new DumpImportError('dump contains a psql meta-command inside a statement');
       i += 1;
     }
     if (quote !== null) throw new DumpImportError('unterminated quoted text in dump');
@@ -165,6 +170,19 @@ export function decodeCopyField(field) {
   return Buffer.from(bytes).toString('utf8');
 }
 
+/** Splits a COPY column list `(a, "b,c")` into names, unquoted names folded to lower case. */
+export function copyColumnNames(list) {
+  const names = [];
+  const re = /\s*(?:"((?:[^"]|"")*)"|([^\s,"]+))\s*(?:,|$)/gy;
+  const inner = list.slice(1, -1);
+  let m;
+  while (re.lastIndex < inner.length && (m = re.exec(inner))) {
+    names.push(m[1] !== undefined ? m[1].replaceAll('""', '"') : m[2].toLowerCase());
+  }
+  if (re.lastIndex < inner.length) throw new DumpImportError(`cannot read the COPY column list ${list}`);
+  return names;
+}
+
 /** `public.foo` → `foo`; other names are left as written. */
 function localName(name) {
   return name.trim().replace(/^(?:public|"public")\./, '');
@@ -185,17 +203,56 @@ function classify(item) {
     return null;
   }
   if (item.kind === 'copy') {
-    const width = item.columns ? item.columns.slice(1, -1).split(',').length : null;
-    return { kind: 'copy', key: tableKey(item.table), table: localName(item.table), columns: item.columns, width, rows: item.rows };
+    const names = item.columns ? copyColumnNames(item.columns) : null;
+    return { kind: 'copy', key: tableKey(item.table), table: localName(item.table), columns: item.columns, names, rows: item.rows };
   }
   const insert = /^INSERT\s+INTO\s+((?:"(?:[^"]|"")*"|[\w$]+)(?:\.(?:"(?:[^"]|"")*"|[\w$]+))?)/i.exec(item.text);
   if (insert) {
     return { kind: 'insert', key: tableKey(insert[1]), text: `INSERT INTO ${localName(insert[1])}${item.text.slice(insert[0].length)}` };
   }
-  if (/^SELECT\s+(?:pg_catalog\.)?setval\s*\(/i.test(item.text)) {
-    return { kind: 'setval', text: item.text.replace(/setval\s*\(\s*'public\./i, "setval('") };
+  if (/^SELECT\s+(?:pg_catalog\.)?setval\b/i.test(item.text)) {
+    const setval = /^SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'(?:public\.)?((?:[^']|'')+)'\s*,\s*(\d+)\s*,\s*(true|false)\s*\)$/i.exec(item.text);
+    if (!setval) throw new DumpImportError(`dump contains a setval this import does not accept: ${item.text.slice(0, 120)}`);
+    return { kind: 'setval', text: `SELECT pg_catalog.setval('${setval[1]}', ${setval[2]}, ${setval[3].toLowerCase()})` };
   }
+  const refused = /^(UPDATE|DELETE|TRUNCATE|MERGE|COPY|DO|CALL)\b/i.exec(item.text);
+  if (refused) throw new DumpImportError(`dump contains a ${refused[1].toUpperCase()} statement; a plain dump only loads data`);
   return { kind: 'skipped' };
+}
+
+/** Single-column foreign keys from a table to itself: table → { column, references }. */
+async function selfReferences(client) {
+  const { rows } = await client.query(`
+    SELECT rel.relname AS table, a.attname AS column, ra.attname AS references
+      FROM pg_constraint c
+      JOIN pg_class rel     ON rel.oid = c.conrelid
+      JOIN pg_attribute a   ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+      JOIN pg_attribute ra  ON ra.attrelid = c.confrelid AND ra.attnum = c.confkey[1]
+     WHERE c.contype = 'f' AND c.conrelid = c.confrelid AND cardinality(c.conkey) = 1
+       AND rel.relnamespace = current_schema()::regnamespace`);
+  return new Map(rows.map((row) => [row.table, row]));
+}
+
+/** Orders rows so each row's parent (same table) comes before it. */
+function parentsFirst(rows, fkIndex, keyIndex) {
+  const keys = new Set(rows.map((row) => row[keyIndex]));
+  const children = new Map();
+  const ordered = [];
+  for (const row of rows) {
+    const parent = row[fkIndex];
+    if (parent === null || parent === row[keyIndex] || !keys.has(parent)) ordered.push(row);
+    else {
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(row);
+    }
+  }
+  for (let i = 0; i < ordered.length; i += 1) ordered.push(...(children.get(ordered[i][keyIndex]) ?? []));
+  // Rows in a cycle are never reached; they go last so the foreign key check names them.
+  if (ordered.length < rows.length) {
+    const placed = new Set(ordered);
+    ordered.push(...rows.filter((row) => !placed.has(row)));
+  }
+  return ordered;
 }
 
 /** Orders table keys parents-first by the target's foreign keys, else dump order. */
@@ -223,19 +280,23 @@ async function loadOrder(client, keys) {
   return ordered;
 }
 
-async function insertCopyRows(client, item) {
+async function insertCopyRows(client, item, selfReference) {
   if (item.rows.length === 0) return;
-  const split = item.rows.map((line) => line.split('\t').map(decodeCopyField));
-  const width = item.width ?? split[0].length;
+  let split = item.rows.map((line) => line.split('\t').map(decodeCopyField));
+  const width = item.names?.length ?? split[0].length;
   if (split.some((row) => row.length !== width)) {
     throw new DumpImportError(`COPY data for ${item.table} has rows that do not match its ${width} columns`);
   }
+  const fkIndex = selfReference ? item.names?.indexOf(selfReference.column) ?? -1 : -1;
+  const keyIndex = selfReference ? item.names?.indexOf(selfReference.references) ?? -1 : -1;
+  if (fkIndex >= 0 && keyIndex >= 0) split = parentsFirst(split, fkIndex, keyIndex);
   const perInsert = Math.max(1, Math.min(MAX_ROWS_PER_INSERT, Math.floor(MAX_PARAMS / width)));
   for (let at = 0; at < split.length; at += perInsert) {
     const batch = split.slice(at, at + perInsert);
     const tuples = batch.map((_, r) => `(${Array.from({ length: width }, (__, c) => `$${r * width + c + 1}`).join(', ')})`);
     await client.query(
-      `INSERT INTO ${item.table} ${item.columns ?? ''} VALUES ${tuples.join(', ')}`,
+      // COPY writes GENERATED ALWAYS identity values as given; INSERT needs the override.
+      `INSERT INTO ${item.table} ${item.columns ?? ''} OVERRIDING SYSTEM VALUE VALUES ${tuples.join(', ')}`,
       batch.flat(),
     );
   }
@@ -259,10 +320,11 @@ export async function importDump(client, text) {
     }
   }
   let rows = 0;
+  const selfRefs = await selfReferences(client);
   for (const key of await loadOrder(client, [...byTable.keys()])) {
     for (const item of byTable.get(key)) {
       if (item.kind === 'copy') {
-        await insertCopyRows(client, item);
+        await insertCopyRows(client, item, selfRefs.get(key));
         rows += item.rows.length;
       } else {
         const result = await client.query(item.text);

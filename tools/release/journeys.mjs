@@ -555,7 +555,9 @@ async function renderTenantDump(client, tenantRef) {
     const values = rows.map((row) => `(${columns.map((column) => sqlLiteral(row[column])).join(', ')})`);
     statements.push(`INSERT INTO ${table} (${columns.join(', ')}) VALUES\n${values.join(',\n')};`);
   }
-  statements.push(`SELECT setval('evidence_seq_seq', (SELECT max(seq) FROM evidence));`);
+  // Literal values, as pg_dump writes them: the import accepts no other setval.
+  const { rows: [{ max }] } = await client.query('SELECT max(seq)::text AS max FROM evidence');
+  if (max !== null) statements.push(`SELECT setval('evidence_seq_seq', ${max}, true);`);
   return statements.join('\n');
 }
 

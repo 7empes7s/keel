@@ -76,7 +76,7 @@ function microsoftFake({ name = FIXTURE_UPN, now, restoreStatus = 200, restoredI
 }
 
 const liveArgv = (out) => ['capture', '--live', '--resource-type', 'user', '--object-id', OBJECT_ID,
-  '--confirm-disposable-fixture', OBJECT_ID, '--target-config', '/etc/keel/restorer-target.json',
+  '--confirm-disposable-fixture', OBJECT_ID, '--target-config', '/etc/keel/restorer.json',
   '--docs-retrieved-at', '2026-09-30', '--permission', 'User.ReadWrite.All', '--out', out];
 
 const quiet = { log() {}, error() {} };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-remediate.mjs
 //
-// node keel-remediate.mjs --drift-id <uuid> [--drift-id <uuid>...] --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer-target.json [--enforce]
+// node keel-remediate.mjs --drift-id <uuid> [--drift-id <uuid>...] --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce]
 //
 // Plan task 19: automatic remediation execution. A `remediate` job — whether minted by
 // an operator's approved remediate request (plan task 15) or by policy automation

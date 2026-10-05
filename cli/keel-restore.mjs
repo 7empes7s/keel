@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-restore.mjs
 //
-// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer-target.json [--enforce] [--accept-degradation]
+// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
 // node keel-restore.mjs --snapshot-id <id> --select <naturalKey> [--select <naturalKey>...] --collector-config ... --target-config ... [--enforce]
 //
 // --plan restores everything the plan covers; --snapshot-id + --select restores the

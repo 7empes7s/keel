@@ -34,7 +34,7 @@ not merged until it finishes.
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
-| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window) | Blocked: 121 exit 3 at `df4082a` (restore real, roster lag ~60-90 s); 120 passed (`claude/live-evidence-120` @ 12d3547) | #103 CI, then the operator's merge; then Q10 reruns 120 → 123 |
+| Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | #103 (roster settle window), merged as `5a7f58c` | Q10 queued for a rerun at `5a7f58c`; 120 @ 12d3547 (df4082a) superseded | Master CI and deploy at `5a7f58c`, then keel-operator reruns 120 → 123 |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | #96 (doc fixes + Global Administrator satisfies the PIM setup step) | Read setup run cbd974b9ef10… complete (Entra only, ffa05cd); Q27 done (operator id set) | Freeze, then #96 deploy, then a fresh restore setup run; then Q6. Collector SP still holds Intune Administrator (operator asked to remove) |
 | Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs) | Ledger change on master (b81a41d, 117 as accepted gap); #102 in review | Recapture and ledger verification wait on #84 and #85; no automerge until the chain finishes |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed) | CI running | Master freeze; `automerge` label held until #84 finishes |
@@ -64,9 +64,8 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Merge PR #103 (#84 chain).
-2. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
-3. Restorer least privilege (#93): D-93a and D-93b in the queue.
+1. Gate 116 (#85): after #96 deploys, run a fresh restore setup; remove Intune Administrator from the Collector.
+2. Restorer least privilege (#93): D-93a and D-93b in the queue.
 
 ## Infrastructure facts
 
@@ -167,3 +166,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-04 21:35: Q28 done; #90 dry run reviewed. Q29 (enable prune schedule) added on hold.
 - 2026-10-04 21:45: PR #83 merged by the operator as `df4082a`. Q10 told to rerun 120 → 123 at that build once deployed. Master stays frozen until the chain finishes.
 - 2026-10-04 22:35: Q10 at `df4082a`: 120 passed; 121 exit 3 (owner-link fix worked, but the roster lagged ~60-90 s past the tool's window). PR #103 widens the window to ~3 min. Freeze continues.
+- 2026-10-05 02:00: #103 merged as `5a7f58c`. Q10 rerun at that build once master CI is green and it deploys. Freeze continues.

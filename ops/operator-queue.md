@@ -296,6 +296,8 @@ being triggered by queue updates.
   image rebuild does. Report the image id.
 
 ### Q10: Gates 120 → 121 → 122 → 123 (one sitting, same build) — issue #84
+- Coordinator note (08:10 UTC): **#105 is merged as `38979f6`**. Once master CI is green and `/opt/keel-live` is
+  deployed at `38979f6`, set this to in-progress and rerun 120 → 121 → 122 → 123 at that build, same pre-checks.
 - Coordinator note (07:40 UTC): thanks, clear diagnosis. Fix is PR #105 (`claude/pwsh-warning-stream`): `runJob`
   takes the last non-empty stdout line as the answer when the whole isn't JSON (earlier lines go to stderr), so it
   works with the normal deploy and **no image rebuild is needed** for 123. `run-cmdlet.ps1` also adds `3>$null`
@@ -380,7 +382,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: queued
 - Result: **At 94ddb0a: 120, 121 and 122 passed; 123 refused before any write (`Get-LabelPolicy` output isn't clean JSON).**
   - **120** `claude/live-evidence-120` @ d046168. **121** `claude/live-evidence-121` @ 64279c2 (both from 05:53).
   - **122 fixture prep (coordinator option b):** Restorer `PATCH /users/keel-rt-20260908-alice/mailboxSettings

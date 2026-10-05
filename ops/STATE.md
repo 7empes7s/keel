@@ -189,3 +189,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 13:59: Merge gate merges nothing: its automerge listing gets HTTP 403 (no `issues: read` in merge-gate.yml) and still reports success. Fix PR to come from the #85 thread; until then Marouane merges by hand. #116 (reconstruct imports real pg_dump) green, awaiting review + merge.
 - 2026-10-05 14:13: #89: the schedules installer (Q24 step 3) disables keel-offsite.timer; fixed in #112 (awaiting CI + Marouane's merge). Q37 re-enables the timer after Q24.
 - 2026-10-05 14:22: Q24 done (#91): worker and scheduler live, health ok; tier1 hourly. Q37 re-enabled keel-offsite.timer (next 2026-10-06 05:00). ab074dc deployed; worker still on b9e5f6b until restarted. Q35/Q36 wait for #117.
+- 2026-10-05 14:30: #117, #113 (Teams pin) and #112 (offsite installer) merged. deploy.sh now restarts keel-worker (vps-deployer, Marouane 14:17). **Master frozen** for Q35 (120→123) + Q36 (gate 116 drill) at 76ee9b5.

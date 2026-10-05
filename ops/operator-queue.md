@@ -1395,8 +1395,8 @@ item that needs it stays untouched.
   **Settings** values, plus which of the 10 LABEL_ACTION_FIELDS names appear as top-level properties, into the
   Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).
 
-### Q35: Rerun gates 120 → 121 → 122 → 123 at PR #111's build (LabelActions, #109) — issue #84
-- Status: hold (coordinator flips to queued once #111 is merged and `/opt/keel-live` is deployed at its merge commit)
+### Q35: Rerun gates 120 → 121 → 122 → 123 at the build after #111 and #116 (LabelActions, #109) — issue #84
+- Status: hold (coordinator flips to queued, naming the build: master once #111 (b9e5f6b) and #116 are both deployed)
 - Result:
 - Needs: PR #111 merged and deployed; **Q24 finished first** (stale jobs cancelled, worker installed, its run-now
   collections done), so no collection starts mid-chain.
@@ -1404,3 +1404,16 @@ item that needs it stays untouched.
   `KEEL-RT-<date>-label3` for 123. Expect gate 123's `notQualifiedFields.label` to be **empty**: the ten protection fields
   now come from LabelActions. If any are still listed, stop and report the 123 capture's label fieldCoverage.
   Commit each gate to `claude/live-evidence-<gate>` as before. Poll every 5 minutes while queued or running.
+
+### Q36: Gate 116 drill rerun (Q6) at the same build as Q35 — issue #85
+- Status: hold (coordinator flips to queued with the build once #116 is deployed; runs after Q24, before or after Q35 at the same build)
+- Result:
+- Needs: PR #116 (reconstruct imports real pg_dump: COPY blocks, \restrict/\unrestrict, FK-ordered load) merged and deployed.
+- Do:
+  1. Build a fresh recovery set (backup dump + manifest) at the deployed build, as in Q32.
+  2. Rerun Q6 with `/root/keel-q6-116/onboarding.json`: reconstruct.mjs into a disposable DB (never KEEL_DB_URL),
+     build-manifest, offline plan, the live bounded drill (**one `keel-rehearsal-*` group only**), capture-drill with
+     `--build` = the deployed build, `verify --require-live` (expect exit 0). Push the evidence to `claude/live-evidence-116`.
+  3. Report the run ids and the evidence commit in Result.
+- Hard rules as usual: no tenant-wide settings, no grants, no secrets printed.
+

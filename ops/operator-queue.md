@@ -402,29 +402,28 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At 4d8c1ec (PR #107): 120, 121 and 122 passed; 123 captured but did NOT verify (label field list doesn't match live Get-Label).**
-  Build 4d8c1ec = master = `/opt/keel-live` (clean, deployed 11:19 UTC); unchanged through the chain.
-  - **120** @ **ae3f40b**; **121** @ **30a1e36**; **122** @ **0bd6744** (branches `claude/live-evidence-12{0,1,2}`). Each
-    verify --require-live --build 4d8c1ec is ok (exit 0) with the others beside it; they supersede earlier records.
-    - 121: the record notes one intermediate "removing the fixture user's group owner link failed (HTTP 400)", but
-      the restore verified, and my re-checks 11:30 → 11:33 (5×) show roster, owners and members all 0.
-    - 122: alice retention now **18.00:00:00** (D-122d); timeZone restored to UTC; client access restored.
-  - **123 OneDrive/Purview: capture exit 1** (captured, verify failed). Writes happened and were read back:
-    `Set-Label -Comment` on KEEL-RT-20261005-label (restored), and `Set-LabelPolicy -AddLabels` (the fixture label
-    is **now published** by KEEL-RT-20261005-policy, still only to keel-rt-20260908-alice; one-way by design).
-    - **Verify failures:** "supported field not observed live: label.EncryptionEnabled / EncryptionProtectionType /
-      EncryptionOfflineAccessDays / ApplyContentMarkingHeaderEnabled / ApplyContentMarkingFooterEnabled /
-      ApplyWaterMarkingEnabled / SiteAndGroupProtectionEnabled / SiteAndGroupProtectionPrivacy /
-      SiteAndGroupProtectionAllowAccessToGuestUsers / SiteExternalSharingControlType".
-    - **Cause (read-only check through the job path):** `Get-Label` output (ExchangeOnlineManagement 3.10.1) has
-      **none** of these as top-level properties on **any** of the tenant's 15 labels. Label settings come back in
-      `LabelActions` (empty here) and `Settings` (`[key, value]` strings). The tool's supported-field list
-      assumes properties this module doesn't return.
-    - **Coordinator:** map those fields from `LabelActions`/`Settings` (or drop them from the required
-      observed-live set when absent everywhere), then rerun 120 → 123 at the new build.
-    - **Rerun needs a fresh fixture label** (D-123d): KEEL-RT-20261005-label is now published. I'll create a new
-      `KEEL-RT-<date>-label` (unpublished) just before the next 123 capture. The anchor and policy stay.
+- Status: done
+- Result: **Done: all four gates verified at one build, 248b12c (PR #108).** `/opt/keel-live` = master = 248b12c (clean,
+  deployed 12:36 UTC), unchanged throughout. Grants unchanged; all 25 doc URLs 200; carla absent before 121.
+  | Gate | Branch @ commit | Capture | verify --require-live --build 248b12c (all four records side by side) |
+  |---|---|---|---|
+  | 120 SharePoint | `claude/live-evidence-120` @ **60683a5** | exit 0 | ok, exit 0 |
+  | 121 Teams | `claude/live-evidence-121` @ **211a372** | exit 0 | ok, exit 0 |
+  | 122 Exchange | `claude/live-evidence-122` @ **da8a341** | exit 0 | ok, exit 0 |
+  | 123 OneDrive/Purview | `claude/live-evidence-123` @ **eeac328** (new) | exit 0 | ok, exit 0 |
+  - Each branch holds only its gate's two files; they supersede all earlier records on 120–122. Each record verifies
+    only with the earlier gates' records beside it, so **merge the four together**. The branches were cut from
+    different master commits (124fbc6, 2b2c338, 94ddb0a, 248b12c); only the evidence files differ.
+  - Evidence secret-scanned (HMAC key, JWT, PEM, bearer, DB URL): clean.
+  - **Tenant state after the chain:**
+    - SharePoint `isResharingByExternalUsersEnabled` back to false ("isResharingByExternalUsersEnabled": false).
+    - Team 9263e1d4: carla absent from roster, owners and members (5 checks 12:37–12:40). The 121 record notes one
+      intermediate "member link removal failed (HTTP 400)", but the restore verified.
+    - alice mailbox: timeZone **UTC**, PopEnabled restored, retention **19.00:00:00** (D-122d).
+    - Purview: `KEEL-RT-20261005-label2` (created 12:30 for this run, D-123d) is now published by
+      `KEEL-RT-20261005-policy` (scoped to alice only) with its Comment restored. Fixtures KEEL-RT-20261005-anchor,
+      -label, -label2 and -policy remain.
+  - Earlier attempts and their hand cleanups are in the vault daily log (2026-10-04/05).
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

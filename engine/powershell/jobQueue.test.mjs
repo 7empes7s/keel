@@ -133,6 +133,24 @@ async function run() {
     );
   }
 
+  // 4b. Warning lines pwsh prints before the answer (ANSI-coloured) don't hide it: the
+  //     last line is the answer and the warnings land in stderr. Noise after the answer,
+  //     or no JSON line at all, is still BAD_JSON.
+  {
+    const warning = '\u001b[33;1mWARNING: Force Validate not set\u001b[0m\n';
+    const answer = JSON.stringify({ ok: true, output: [{ Name: 'KEEL-RT-policy' }] });
+    const spawnFn = () => makeFakeChild({ stdoutChunks: [warning, warning, `${answer}\n`], exitCode: 0 });
+    const res = await runJob({ mode: 'probe' }, { spawnFn });
+    assert.deepEqual(res.result, JSON.parse(answer));
+    assert.match(res.stderr, /WARNING: Force Validate not set\nWARNING: Force Validate not set\n$/);
+    assert.doesNotMatch(res.stderr, /\u001b/);
+
+    for (const stdout of [`${answer}\nWARNING: after\n`, 'WARNING: one\nWARNING: two\n']) {
+      const bad = () => makeFakeChild({ stdoutChunks: [stdout], exitCode: 0 });
+      await assert.rejects(() => runJob({ mode: 'probe' }, { spawnFn: bad }), (err) => err instanceof JobQueueError && err.code === 'BAD_JSON');
+    }
+  }
+
   // 5. A spawn failure (e.g. docker not installed) surfaces as SPAWN_ERROR,
   //    not an unhandled rejection or a hang.
   {

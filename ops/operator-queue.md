@@ -1043,7 +1043,7 @@ item that needs it stays untouched.
 ### Q26: #93 Restorer grants inventory (read-only)
 - Issue #93, asked by the "Restorer least-privilege review" thread (20:34 UTC). **On hold: don't start**
   until the coordinator changes Status to queued (after the 120 → 123 chain).
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Result:
 - Needs: Q10 finished.
 - Do: list every application permission the Restorer app (appId 12f8942f…) holds, on every resource (Graph,

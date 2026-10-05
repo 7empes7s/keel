@@ -373,32 +373,34 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: in-progress
-- Result: **At 94ddb0a (PR #104): 120 and 121 passed; 122 stopped (alice's mailbox has no timeZone).**
-  Build 94ddb0a = master = `/opt/keel-live` (clean, deployed 05:53 UTC). Grants unchanged; all doc URLs 200;
-  carla absent from the roster, owners and members before 121.
-  - **120 SharePoint: passed.** `claude/live-evidence-120` @ **d046168**, verify ok, exit 0.
-  - **121 Teams: passed.** `claude/live-evidence-121` @ **64279c2**, which supersedes the void 2b2c338 record
-    9ec0e2f. Capture exit 0; verify (with 120 beside it) ok, exit 0; restoredToOriginal true.
-    - My independent re-checks 05:54 → 05:57 (5×): roster, owners and members all 0. No residual this time.
-    - As before, verify on the 121 branch alone needs the 120 record beside it; merge them together.
-  - **122 Exchange: capture exit 1 (not committed; files kept locally).**
-    - `exchange.mailbox-settings.update` refused: **"timeZone was not read; nothing was written"**. Graph
-      `GET /users/keel-rt-20260908-alice/mailboxSettings` is 200, but `timeZone`, `dateFormat` and
-      `timeFormat` are **null** (her mailbox regional settings were never initialised; nobody has signed in
-      to Outlook as her).
-    - The other legs worked: `exchange.client-access.update` (PopEnabled toggled, read back, **restored**)
-      and `exchange.mailbox-retention.update` (14 → **15** days, read back; D-122d).
-    - Re-read afterwards: PopEnabled True (original), ImapEnabled True, LitigationHold False,
-      SingleItemRecovery True, RetainDeletedItemsFor 15.00:00:00. No other change.
-    - **Coordinator or operator decision needed**, either:
-      (a) tool fix: when `timeZone` is null, toggle to a value and restore it to null/unset, if Graph allows
-          clearing it; or
-      (b) one-time fixture prep: set alice's mailbox `timeZone` (e.g. "UTC"), a write to the keel-rt fixture
-          mailbox's settings not covered by any current decision; or
-      (c) pick another fixture mailbox that has regional settings.
-    - Each 122 retry adds another retention day (now 15/30).
-  - 123 not run.
+- Status: blocked
+- Result: **At 94ddb0a: 120, 121 and 122 passed; 123 refused before any write (`Get-LabelPolicy` output isn't clean JSON).**
+  - **120** `claude/live-evidence-120` @ d046168. **121** `claude/live-evidence-121` @ 64279c2 (both from 05:53).
+  - **122 fixture prep (coordinator option b):** Restorer `PATCH /users/keel-rt-20260908-alice/mailboxSettings
+    {"timeZone":"UTC"}` returned 200. Before: timeZone/dateFormat/timeFormat = null/null/null. After:
+    **"UTC"/""/""**. No other mailbox or setting touched.
+  - **122 Exchange: passed.** `claude/live-evidence-122` @ **897f412** (from origin/master 94ddb0a). Capture exit
+    0; `verify --require-live --build 94ddb0a` (with 120 and 121 beside it): ok, exit 0.
+    - Mailbox settings and client access toggled, read back and restored; retention **15 → 16 days** (D-122d);
+      org config untouched (D-122c).
+    - Re-read: timeZone UTC, PopEnabled True, no holds, RetainDeletedItemsFor 16.00:00:00.
+  - **123 fixtures (D-123d, Restorer via Connect-IPPSSession):** labels **`KEEL-RT-20261005-anchor`** (guid
+    aa0f3a5c-0ed5-45c7-8277-c055f91c7135) and **`KEEL-RT-20261005-label`** (guid
+    89801085-049c-450c-b603-9e99c1d987eb). Policy **`KEEL-RT-20261005-policy`** publishes only the anchor, with
+    ExchangeLocation = keel-rt-20260908-alice only. The fixture label is **not** in the policy. They're left in
+    place for the rerun.
+  - **123 OneDrive/Purview: capture exit 1, "a read failed; nothing was written".** No tenant write.
+    - Reads: Get-PnPTenantSite on alice's OneDrive OK; Get-Label OK; **Get-LabelPolicy failed `BAD_JSON`**.
+      (Get-PnPTenantSite on `keel-rt-absent-*` erroring is the tool's own negative probe.)
+    - **Root cause (reproduced read-only through the image's `run-job.sh` stdin path):** for Get-LabelPolicy the
+      container's stdout is **3 lines**: `WARNING: Force Validate not set` ×2 (PowerShell warning stream,
+      ANSI-coloured), then the JSON envelope. `engine/powershell/jobQueue.mjs:134` does `JSON.parse(stdout)`
+      and fails. Get-Label emits no warning, so it parses. Calling `run-cmdlet.ps1` directly gives 1 clean
+      line.
+    - **Coordinator:** fix in `ops/powershell/run-cmdlet.ps1` (e.g. `$WarningPreference='SilentlyContinue'`,
+      or `3>$null` on the cmdlet call), or `run-job.sh`, or parse the last JSON line in `jobQueue.mjs`. Then
+      rebuild the `keel-powershell` image (deploy doesn't do it; Q12/Q9). Since it changes code, the build
+      moves and **120 → 123 must be re-captured at the new build** (alice retention then 17/30).
 - Needs:
   - Q8 done;
   - Q9 done (or not needed);

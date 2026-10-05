@@ -359,7 +359,7 @@ being triggered by queue updates.
   `tenantIdSource: collector-token`). The CLI reads `tid` from `KEEL_TEAMS_COLLECTOR_TOKEN` and
   `KEEL_TEAMS_RESTORER_TOKEN` itself; no new flag. When #77 is merged and `/opt/keel-live` is deployed at
   its merge commit, rerun 120 → 121 → 122 → 123 at that build (120 recaptured).
-- Status: blocked
+- Status: in-progress
 - Result: **At 6fee591 (all PRs incl. #103 merged): 120 passed; 121 exit 3. The owner link appears late; cleaned by hand.**
   Build 6fee591 = master = `/opt/keel-live` (clean, deployed 02:11 UTC). Grants unchanged; all 25 doc URLs
   return 200. Before 121, carla was absent from the roster, group owners and group members.

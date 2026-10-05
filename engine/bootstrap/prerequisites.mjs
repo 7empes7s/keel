@@ -63,6 +63,18 @@ export const BOOTSTRAP_ROLE_TEMPLATES = Object.freeze({
   cloudApplicationAdministrator: '158c047a-c907-4556-b7ef-446551a6b5f7',
 });
 
+// A privileged operator role is also held by an operator with a role that
+// includes all of its permissions: Global Administrator can do everything
+// Privileged Role Administrator can, so asking for both would be redundant.
+export const ROLES_INCLUDED_BY = Object.freeze({
+  [BOOTSTRAP_ROLE_TEMPLATES.privilegedRoleAdministrator]: Object.freeze([BOOTSTRAP_ROLE_TEMPLATES.globalAdministrator]),
+});
+
+/** Template ids that satisfy a required operator role: the role itself and any role that includes it. */
+export function rolesSatisfying(templateId) {
+  return [templateId, ...(ROLES_INCLUDED_BY[templateId] ?? [])];
+}
+
 // Grants a least-privilege onboarding plan may NEVER request, regardless of
 // which workload asks: content-access and whole-directory write grants are
 // outside KEEL's configuration-only scope (plan header §1: no file/message

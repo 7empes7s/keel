@@ -32,7 +32,7 @@ import { assertTenantRef } from '../store/tenantRef.mjs';
 import { GraphReader } from '../../tools/tenant-probe/graph.mjs';
 import { assertTokenFree, decodeRoles, getToken as defaultGetToken } from '../../tools/tenant-probe/auth.mjs';
 import { planBootstrap } from './plan.mjs';
-import { GRAPH_RESOURCE_APP_ID, registeredWorkloads } from './prerequisites.mjs';
+import { GRAPH_RESOURCE_APP_ID, registeredWorkloads, rolesSatisfying } from './prerequisites.mjs';
 
 export const SETUP_HOST_PROJECTION = 'identity-v1';
 
@@ -321,9 +321,10 @@ export function createGraphSetupHost({
           result.status = step.status === 'satisfied' ? 'satisfied' : 'absent';
           break;
         case 'pim-activation':
-          // Active authority only: eligibility is not activation (task-75).
+          // Active authority only: eligibility is not activation (task-75). A
+          // role that includes the required one (Global Administrator) counts.
           result.status = operatorPrincipalId !== null && snapshot.roleAssignments.some((assignment) =>
-            assignment.principalId === operatorPrincipalId && assignment.roleDefinitionId === step.templateId) ? 'satisfied' : 'absent';
+            assignment.principalId === operatorPrincipalId && rolesSatisfying(step.templateId).includes(assignment.roleDefinitionId)) ? 'satisfied' : 'absent';
           break;
         default:
           result.status = step.status === 'satisfied' ? 'satisfied' : 'absent';

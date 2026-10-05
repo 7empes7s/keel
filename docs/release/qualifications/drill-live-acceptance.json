@@ -1,6 +1,96 @@
 {
   "contractVersion": 1,
   "gate": "drill-live-acceptance",
-  "status": "pending",
-  "note": "Placeholder. No live bounded drill has been captured. Replace with the signed record written by `node tools/release/qualification.mjs capture-drill` on the release runner (see docs/roadmap/drill-live-acceptance.md, Operator steps). This file fails --require-live until then."
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "04d213d074f54b34a94509352ac85d1598b6d8bc",
+  "operation": "recovery-drill.bounded-same-tenant",
+  "credentialMode": "collector-restorer-separate",
+  "observedAt": "2026-10-05T16:31:03.947Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "scope": "bounded-same-tenant",
+    "prerequisites": {
+      "drillHarness": {
+        "task": "task-72",
+        "manifestVersion": 1,
+        "manifestKind": "bounded-same-tenant-drill"
+      },
+      "onboarding": {
+        "task": "task-76",
+        "readSetup": "complete",
+        "restoreSetup": "complete",
+        "readSetupRunId": "cbd974b9ef106fda5b2d31467b7d07b36de6e092eb16b5a76892ec5b34dda144",
+        "restoreSetupRunId": "174d8db69f61c81cb76c54c1a5708a09d04a70754e5911a7207316dcb35d3d74"
+      }
+    },
+    "testObject": {
+      "resourceType": "group",
+      "naturalKey": "group:keel-rehearsal-2026-10-05T16-29-47-942Z"
+    },
+    "drillRecord": {
+      "mode": "live",
+      "error": null,
+      "scope": "bounded-same-tenant",
+      "bounds": {
+        "maxWrites": 30,
+        "maxElapsedMs": 900000
+      },
+      "writes": 10,
+      "cleanup": {
+        "status": "complete",
+        "residuals": [],
+        "verifiedAbsent": [
+          {
+            "objectId": "4f4f42c0-9032-4c6d-9fce-7dbaec6772cc",
+            "naturalKey": "group:keel-rehearsal-2026-10-05T16-29-47-942Z"
+          }
+        ]
+      },
+      "objects": [
+        "group:keel-rehearsal-2026-10-05T16-29-47-942Z"
+      ],
+      "outcome": "passed",
+      "elapsedMs": 63471,
+      "startedAt": "2026-10-05T16:29:48.612Z",
+      "tenantRef": "sha256:f7b3959300856957",
+      "finishedAt": "2026-10-05T16:30:52.083Z",
+      "elapsedSource": "observed-clock",
+      "createdObjects": [
+        {
+          "objectId": "4f4f42c0-9032-4c6d-9fce-7dbaec6772cc",
+          "naturalKey": "group:keel-rehearsal-2026-10-05T16-29-47-942Z"
+        }
+      ],
+      "manifestVersion": 1,
+      "countsAsRecoveryDrill": true
+    },
+    "reconstruction": {
+      "task": "task-68",
+      "ok": true,
+      "stage": "recovered",
+      "readOnly": true,
+      "writersDisabled": true,
+      "tenantRef": "sha256:f7b3959300856957",
+      "buildRevision": "04d213d074f54b34a94509352ac85d1598b6d8bc",
+      "checkpoint": {
+        "headSeq": 496,
+        "headHash": "d5909bd0722217c7a760f2390730a4f773c9f0d8aa817b9fdd5ba414ad6b7c85",
+        "recordCount": 496
+      },
+      "recoveryComplete": true,
+      "incomplete": [],
+      "completedAt": "2026-10-05T16:29:32.858Z"
+    }
+  },
+  "proof": {
+    "artifact": {
+      "path": "drill-live-acceptance.capture.json",
+      "sha256": "f7654fb09a804e91f12ee27015e176399e600609e7112c27a2bcd564ee667526"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "89064ed98f5b5eef10b1f3cfeb04d03d6bb7a7c127fe259f60fa5066c81588f6"
+    }
+  }
 }

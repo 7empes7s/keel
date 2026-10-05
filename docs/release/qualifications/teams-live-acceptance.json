@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "teams-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "248b12c6cd3c8e8c06dfb3f44adfcce2c7d8f28b",
+  "build": "76ee9b510fe8ada4a34107d61540de5befbbc56e",
   "operation": "teams.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-05T12:37:19.484Z",
+  "observedAt": "2026-10-05T14:42:39.638Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "sharePointQualification": {
       "gate": "sharepoint-live-acceptance",
       "evidence": "sharepoint-live-acceptance.json",
-      "captureLogSha256": "cd2ee6ddb1600a069ebf1d87cd1b92e3bf131f4716cdae3b2ef4258e284c8af6"
+      "captureLogSha256": "850e2bc9d02e154f36dc27b1f00f1633809e17e95309728f716e503604809a15"
     },
     "directoryTenantId": "73b6beef-9d40-4ea6-8ad6-2da6b4818f29",
     "fixtureTeam": {
@@ -62,7 +62,7 @@
       {
         "operationId": "teams.team-discovery",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T12:36:42.633Z",
+        "capturedAt": "2026-10-05T14:41:57.679Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -71,7 +71,7 @@
       {
         "operationId": "teams.settings",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T12:36:42.902Z",
+        "capturedAt": "2026-10-05T14:41:58.233Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -80,7 +80,7 @@
       {
         "operationId": "teams.membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T12:36:43.347Z",
+        "capturedAt": "2026-10-05T14:41:58.537Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -89,7 +89,7 @@
       {
         "operationId": "teams.group-membership",
         "version": "v1.0",
-        "capturedAt": "2026-10-05T12:36:43.441Z",
+        "capturedAt": "2026-10-05T14:41:58.659Z",
         "ok": true,
         "synthetic": false,
         "pages": 1,
@@ -115,7 +115,7 @@
       "restoredToOriginal": true,
       "preFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
       "finalFingerprint": "436d0427d87004ff2ef4c282a6e2d29aab15449845fd4d749b1a7bb36082b13f",
-      "capturedAt": "2026-10-05T12:36:45.028Z"
+      "capturedAt": "2026-10-05T14:42:00.651Z"
     },
     "membershipWrites": {
       "captures": [
@@ -125,7 +125,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T12:36:46.667Z"
+          "capturedAt": "2026-10-05T14:42:02.426Z"
         },
         {
           "operationId": "teams.membership.update",
@@ -133,7 +133,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T12:36:50.901Z"
+          "capturedAt": "2026-10-05T14:42:10.856Z"
         },
         {
           "operationId": "teams.membership.remove",
@@ -141,7 +141,7 @@
           "synthetic": false,
           "ok": true,
           "readBackVerified": true,
-          "capturedAt": "2026-10-05T12:36:52.317Z"
+          "capturedAt": "2026-10-05T14:42:12.282Z"
         }
       ],
       "restoredToOriginal": true,
@@ -371,47 +371,47 @@
     "documentation": [
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/teams-list",
-        "retrievedAt": "2026-10-05T12:36:41.776Z"
+        "retrievedAt": "2026-10-05T14:41:56.838Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-get",
-        "retrievedAt": "2026-10-05T12:36:41.826Z"
+        "retrievedAt": "2026-10-05T14:41:56.876Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-list-members",
-        "retrievedAt": "2026-10-05T12:36:41.873Z"
+        "retrievedAt": "2026-10-05T14:41:56.913Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/group-list-members",
-        "retrievedAt": "2026-10-05T12:36:41.909Z"
+        "retrievedAt": "2026-10-05T14:41:56.952Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T12:36:41.921Z"
+        "retrievedAt": "2026-10-05T14:41:56.971Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-post-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T12:36:41.943Z"
+        "retrievedAt": "2026-10-05T14:41:56.993Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-update-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T12:36:41.964Z"
+        "retrievedAt": "2026-10-05T14:41:57.017Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/graph/api/team-delete-members?view=graph-rest-1.0",
-        "retrievedAt": "2026-10-05T12:36:41.989Z"
+        "retrievedAt": "2026-10-05T14:41:57.038Z"
       }
     ],
-    "captureLogSha256": "d5f241446298564d9626d5f689e01bd0b98037fa0dff6ba7f632ed2cc8d33649"
+    "captureLogSha256": "09b786094d5fa091c618f0eea5284aa3a50e6423c88a0e8f02fbce5c2e58eaab"
   },
   "proof": {
     "artifact": {
       "path": "teams-live-acceptance.capture.json",
-      "sha256": "d5f241446298564d9626d5f689e01bd0b98037fa0dff6ba7f632ed2cc8d33649"
+      "sha256": "09b786094d5fa091c618f0eea5284aa3a50e6423c88a0e8f02fbce5c2e58eaab"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "b5333348354476449650a86d180dfa3223034af01eaccd588fa209fbe7c96bed"
+      "signature": "4977bf03d83e704c6c25337947c55b7b38218fc255154bde2a612607cae7593d"
     }
   }
 }

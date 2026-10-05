@@ -1185,7 +1185,7 @@ item that needs it stays untouched.
      (snapshot ids are fine; nothing else).
 
 ### Q30: Remove the Q19 Restorer config override after #98 deploys — issue #92
-- Status: queued (coordinator 12:55 UTC: Q10 done)
+- Status: in-progress
 - Result:
 - Needs: Q10 finished; `/opt/keel-live` deployed at or after `76e503e` (#98: portal and worker now default to
   `/etc/keel/restorer.json`).

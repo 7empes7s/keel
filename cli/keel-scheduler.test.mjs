@@ -45,7 +45,7 @@ try {
     assert.deepEqual(firings, ['2026-09-15T00:00:00.000Z', '2026-09-15T00:05:00.000Z', '2026-09-15T00:10:00.000Z']);
     assert.match(timer, /^Unit=keel-scheduler\.service$/m);
     const service = await readFile(new URL('../ops/keel-scheduler.service', import.meta.url), 'utf8');
-    assert.match(service, /^ExecStart=\/usr\/bin\/node \/opt\/keel\/cli\/keel-scheduler\.mjs$/m);
+    assert.match(service, /^ExecStart=\/usr\/bin\/node \/opt\/keel-live\/cli\/keel-scheduler\.mjs$/m);
   });
 
   await test('scheduler identity has exactly two capabilities; disabled identity is refused', async () => {

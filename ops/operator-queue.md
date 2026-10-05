@@ -1185,7 +1185,8 @@ item that needs it stays untouched.
   09-08 to 09-14, none cited by gate evidence). **On hold: don't start** until the coordinator changes Status
   to queued.
 - Coordinator note (15:08 UTC): Marouane chose to keep prune off until the gate 116 drill (Q36) passes. Stays **hold**.
-- Status: hold
+- Coordinator note (16:35 UTC): gate 116 passed (Q36, 04d213d), so per Marouane's 15:08 choice this is released. Run it as written (dry run first; stop and report if the count is far above expectation).
+- Status: queued
 - Result:
 - Needs: Q10 finished; #97 and #99 merged and deployed; Q24 done with its health check passing.
 - Do, as root from the deployed tree with `/etc/keel/db.env` sourced:
@@ -1469,6 +1470,7 @@ item that needs it stays untouched.
   capture-drill (both `--db-url "$DRILL_URL"`), `verify --require-live` (exit 0), evidence to `claude/live-evidence-116`.
   If a deploy lands mid-run, stop and restart from the recovery set at the new build.
 - Coordinator note (16:16 UTC, #8): **#125 is merged as `04d213d`** (on top of #124 `e3d9563` and #120 `3f31f85`). Run note #7 at `04d213d` once `/opt/keel-live` is deployed there. Master is frozen until Q36 finishes.
+- Coordinator note (16:35 UTC): thanks, clean run. Evidence goes to the Gate 116 thread (#85) for review and its PR. The leftover disposable DBs (`keel_drill_q36`, `keel_recovery_q6`) can stay until the next cleanup pass.
 - Status: done
 - Result: **Done. Gate 116 (drill-live-acceptance) is live-qualified at `04d213d`: evidence `claude/live-evidence-116` @ `3bb5e20`
   (`verify --require-live`: `{"ok":true,"failures":[]}`, exit 0).** The build stayed 04d213d for the whole run (checked

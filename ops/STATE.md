@@ -29,8 +29,8 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 One GitHub issue per task (label `task`), one project thread per issue, one branch and PR per
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
-**Master is unfrozen (2026-10-05 15:00 UTC).** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
-fields qualified (#109); evidence in PR #121. Gate 116 (Q36): restore passes since #122; the drill's rollback fails on an applyEngine bug (fix from #85), then reruns at that fix's build.
+**Master is unfrozen (2026-10-05 16:35 UTC).** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
+fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213d` (Q36; evidence `claude/live-evidence-116` @ 3bb5e20, PR from #85).
 
 | Task | Issue | Thread | PR | State | Blocker |
 |---|---|---|---|---|---|
@@ -194,3 +194,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 15:16: #121 merged (`fcd9610`, 120-123 evidence at 76ee9b5). #122 merged (`0cbf9f7`, reconstruction runs runtime migrations); Q36 table pre-check clean. Q36 queued at fcd9610; **master frozen** until the gate 116 drill finishes. Q29 prune held until gate 116 passes (Marouane 15:08).
 - 2026-10-05 15:56: Q36 at fcd9610: reconstruction passed (#122); drill on a fresh keel_drill_q36 DB failed at rollback ("residual drift after update", empty diff): applyEngine bug, fix owned by #85. Tenant clean. **Master unfrozen**; Q36 reruns at the fix's build.
 - 2026-10-05 16:16: #124, #120 and #125 (drill rollback fix) merged; master `04d213d`. Q36 queued at 04d213d (every step again). **Master frozen** until the gate 116 drill finishes.
+- 2026-10-05 16:35: **Q36 passed: gate 116 live-qualified at 04d213d** (drill passed, rollback applied, cleanup verified; evidence 3bb5e20). Sent to #85 for review/PR. **Master unfrozen.** Q29 (prune) released to queued per Marouane. keel-powershell rebuild can go (Marouane's go to vps-deployer).

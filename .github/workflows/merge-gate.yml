@@ -35,6 +35,19 @@ permissions:
 jobs:
   gate:
     name: Merge gate
+    # Run only when the event can make a PR mergeable, so idle events cost no runner minutes
+    # (a skipped job is free): a successful Portal run, a review or PR event on a PR labelled
+    # `automerge` (for `labeled`, only that label), or a manual dispatch. A failed Portal run
+    # can't unblock anything. Successful master runs still trigger it: they retry a PR that
+    # was skipped as "not mergeable yet" right after an earlier merge in the same pass.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'pull_request' &&
+        contains(github.event.pull_request.labels.*.name, 'automerge') &&
+        (github.event.action != 'labeled' || github.event.label.name == 'automerge')) ||
+      (github.event_name == 'pull_request_review' &&
+        contains(github.event.pull_request.labels.*.name, 'automerge'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

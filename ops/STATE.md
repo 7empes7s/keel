@@ -180,3 +180,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-05 11:12: #107 merged as `4d8c1ec`; Q10 queued to rerun at that build. Freeze continues.
 - 2026-10-05 12:20: at `4d8c1ec` 120-122 passed; 123 failed verify on label fields Get-Label doesn't return. PR #108 records them as not qualified. Freeze continues.
 - 2026-10-05 12:28: #108 merged as `248b12c`; Q10 queued to rerun at that build. Freeze continues.
+- 2026-10-05 12:45: Marouane chose that KEEL reads LabelActions (issue #109). Q34 (protected fixture label, read-only dump) on hold until Q10 finishes. The 248b12c rerun continues.

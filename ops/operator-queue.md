@@ -1202,3 +1202,17 @@ item that needs it stays untouched.
      Restorer can't delete it, report the error and stop. Don't grant anything to anyone.
   4. Then the coordinator queues Q32.
 
+
+### Q34: Protected fixture label for LabelActions — issue #109
+- Status: hold
+- Needs: Q10 finished (don't add a label while the chain runs; 123 counts tenant labels).
+- Ask (Marouane chose 12:42 UTC that KEEL reads LabelActions): with the Restorer via Connect-IPPSSession, create
+  **one** label `KEEL-RT-<date>-protected`, unpublished (in **no** label policy), with:
+  - content marking header and footer (text "KEEL-RT fixture"), and a watermark (same text);
+  - encryption with user-defined permissions or the simplest option the tenant allows (no template that applies to
+    real users or groups; if encryption needs anything beyond the label itself, skip it and say why);
+  - site and group protection: privacy Private, guest access off, external sharing to existing guests only (skip if
+    the tenant hasn't enabled labels for groups and sites, and say so).
+- Then, read-only: `Get-Label -Identity <that label> | ConvertTo-Json -Depth 10` and paste the **LabelActions** and
+  **Settings** values, plus which of the 10 LABEL_ACTION_FIELDS names appear as top-level properties, into the
+  Result. Nothing else is touched. No secrets (the output holds none; redact any GUID of a real user if one appears).

@@ -151,7 +151,8 @@ function teamsRequestProblems(requests, { teamId, member }) {
     const [pathOnly] = request.path.split('?');
     const groupReads = [`/groups/${teamId}/members`, `/groups/${teamId}/owners`];
     const ownerLink = member?.userId ? `/groups/${teamId}/owners/${member.userId}/$ref` : null;
-    if (pathOnly !== '/teams' && !pathOnly.startsWith(team) && !groupReads.includes(pathOnly) && pathOnly !== ownerLink) {
+    const memberLink = member?.userId ? `/groups/${teamId}/members/${member.userId}/$ref` : null;
+    if (pathOnly !== '/teams' && !pathOnly.startsWith(team) && !groupReads.includes(pathOnly) && pathOnly !== ownerLink && pathOnly !== memberLink) {
       failures.push(`${label}: addresses a team, group or user other than the KEEL-RT fixture`);
       continue;
     }
@@ -163,9 +164,9 @@ function teamsRequestProblems(requests, { teamId, member }) {
       }
       continue;
     }
-    // Removing the fixture user's own group owner link is clean-up, not a qualified write.
-    if (request.method === 'DELETE' && pathOnly === ownerLink) {
-      if (request.credential !== 'restorer') failures.push(`${label}: only the restorer removes the fixture user's owner link`);
+    // Removing the fixture user's own group owner or member link is clean-up, not a qualified write.
+    if (request.method === 'DELETE' && (pathOnly === ownerLink || pathOnly === memberLink)) {
+      if (request.credential !== 'restorer') failures.push(`${label}: only the restorer removes the fixture user's group links`);
       continue;
     }
     const writeId = teamsWriteFor({ ...request, path: pathOnly }, teamId);

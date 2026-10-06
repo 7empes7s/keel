@@ -73,3 +73,29 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 - **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. Do not expose 8093 beyond loopback.
 - **Done when:** the local check passes and `systemctl is-active civic-commons` is `active`. Comment the output on the
   demo2.0 issue from the entry above (reopen it if closed, then close it again).
+
+## 2026-10-06: switch the cracia Companion to a free-tier open-weight model
+
+- **Status:** blocked until both are true: (1) app-deploy@civic has made a release that includes 7empes7s/demo2.0#40
+  (`grep -q LLM_BASE_URL /opt/civic/current/ops/deploy/companion.env.example`), and (2) Marouane has handed you a
+  Groq API key directly on Mulinux. The key never goes in git, an issue, a log or a chat.
+- **Asked by:** Marouane, 2026-10-06 ("The AI is mostly going to be local at some point … let's choose a free tier and
+  go with it for now"; "I don't think anyone would be crazy to rely on APIs of a model they have 0 control over").
+- **Repo:** `7empes7s/demo2.0`, `main`. Background: `modules/companion/README.md` ("Choosing a model") and
+  `ops/deploy/README.md`.
+- **Steps:**
+  1. In `/etc/civic/companion.env` (keep mode 600, owner as now) add:
+     `LLM_BASE_URL=https://api.groq.com/openai/v1`, `LLM_MODEL=llama-3.3-70b-versatile` (if Groq no longer lists it,
+     pick another open-weight model from `curl -s -H "Authorization: Bearer $LLM_API_KEY" https://api.groq.com/openai/v1/models`,
+     preferring `qwen/qwen3-32b`), and `LLM_API_KEY=<the key from Marouane>`. Do not add `ANTHROPIC_API_KEY`.
+     The URL must have no `user:pass@`, query or fragment, or the service refuses to start.
+  2. `systemctl restart civic-companion`, then `journalctl -u civic-companion -n 20`: expect
+     `companion model: openai <model> at https://api.groq.com` and no key anywhere in the output.
+- **Check:** `curl -s 127.0.0.1:8788/healthz` shows `"companion":true` and `"model":{"kind":"openai","name":"<model>"}`.
+  Then one real answer: `ID=$(curl -s 127.0.0.1:8788/data/snapshot.json | jq -r '.items[0].id')`, then
+  `curl -s -X POST 127.0.0.1:8788/api/explain -H 'content-type: application/json' -d "{\"item_id\":\"$ID\",\"lang\":\"fr\"}"`
+  returns 200 with sentences that cite sources. A 502 means the model answered but not in the expected shape: try the
+  other model above once, then mark `blocked` with the journal lines (key removed).
+- **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. No model runs on Mulinux itself.
+- **Done when:** both checks pass. Comment the healthz output (it has no key) on a new demo2.0 issue titled
+  "Companion on a free-tier open-weight model" and close it.

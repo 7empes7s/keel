@@ -57,7 +57,9 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 
 ## 2026-10-06: add the Commons argument library to cracia
 
-- **Status:** open. Do this after the claim checker / Ideas entry above, and only once app-deploy@civic has made a
+- **Status:** done (keel-operator, 2026-10-06 03:33 UTC). `curl -s 127.0.0.1:8093/healthz` →
+  `{"ok": true, "arguments": 14, "matters": 2}`; `civic-commons` active, loopback only; `COMMONS_URL` added.
+  Evidence: https://github.com/7empes7s/demo2.0/issues/25 (re-closed). Original start condition: Do this after the claim checker / Ideas entry above, and only once app-deploy@civic has made a
   release that includes 7empes7s/demo2.0#24 live (`ls /opt/civic/current/ops/deploy/civic-commons.service` exists).
 - **Asked by:** Marouane, 2026-10-05 ("Commit everything to github and move along the plan don't stop").
 - **Repo:** `7empes7s/demo2.0`, `main`. Steps are in `ops/deploy/README.md` (Commons rows).

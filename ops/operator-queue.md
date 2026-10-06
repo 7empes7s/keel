@@ -68,7 +68,8 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
   2. In `/etc/civic/companion.env` add `COMMONS_URL=http://127.0.0.1:8093`. Keep `PORT=8788`. Do not add Commons to
      `HEALTH_URLS` (optional service).
   3. `systemctl enable --now civic-commons && systemctl restart civic-companion`.
-- **Check:** `curl -s 127.0.0.1:8093/healthz` → `{"ok": true, "arguments": 14, "matters": 2}`.
+- **Check:** `curl -s 127.0.0.1:8093/healthz` → `{"ok": true, "arguments": 14, "matters": 2}`. Retry for up to
+  60 s: the first start installs numpy (`journalctl -u civic-commons -f`).
 - **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. Do not expose 8093 beyond loopback.
 - **Done when:** the local check passes and `systemctl is-active civic-commons` is `active`. Comment the output on the
-  same demo2.0 issue as the entry above.
+  demo2.0 issue from the entry above (reopen it if closed, then close it again).

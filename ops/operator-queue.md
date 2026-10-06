@@ -29,7 +29,10 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 
 ## 2026-10-06: add the claim checker and the read-only Ideas list to cracia
 
-- **Status:** open. Start only after 7empes7s/demo2.0#23 is merged (it switches `civic-agora.service` to `--read-only`;
+- **Status:** done (keel-operator, 2026-10-06 03:15 UTC). Public `/healthz` →
+  `{"ok":true,"items":18,"companion":false,"provenance":true,"agora":true}`; `/api/ideas` →
+  `{"charter_version":"0.1.0","ideas":[]}`; Agora `identity: "none"` (read-only), 8090/8091 loopback only.
+  Evidence: https://github.com/7empes7s/demo2.0/issues/25 (closed). Original start condition: Start only after 7empes7s/demo2.0#23 is merged (it switches `civic-agora.service` to `--read-only`;
   the unit on `main` before that still expects a key file) and app-deploy@civic has made a release at or after its merge
   commit live (`curl -s 127.0.0.1:8788/healthz` shows an `"agora"` key).
 - **Asked by:** Marouane, 2026-10-05 ("Commit everything to github and move along the plan don't stop").

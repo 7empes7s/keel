@@ -73,3 +73,41 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 - **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. Do not expose 8093 beyond loopback.
 - **Done when:** the local check passes and `systemctl is-active civic-commons` is `active`. Comment the output on the
   demo2.0 issue from the entry above (reopen it if closed, then close it again).
+
+## 2026-10-06: switch the cracia Companion to a free-tier open-weight model
+
+- **Status:** open. Start only after both are true: (1) app-deploy@civic has made a release that includes
+  7empes7s/demo2.0#40 (`grep -q LLM_BASE_URL /opt/civic/current/ops/deploy/companion.env.example`), and (2) Marouane
+  has handed you a Groq API key directly on Mulinux. The key never goes in git, an issue, a log, shell history or a chat.
+- **Asked by:** Marouane, 2026-10-06 ("The AI is mostly going to be local at some point … let's choose a free tier and
+  go with it for now"; "I don't think anyone would be crazy to rely on APIs of a model they have 0 control over").
+- **Repo:** `7empes7s/demo2.0`, `main`. Background: `modules/companion/README.md` ("Choosing a model") and
+  `ops/deploy/README.md`.
+- **Steps:**
+  1. Back up the env file: `cp -p /etc/civic/companion.env /etc/civic/companion.env.bak`.
+  2. In `/etc/civic/companion.env` (keep mode 600 and owner) add `LLM_BASE_URL=https://api.groq.com/openai/v1`,
+     `LLM_MODEL=llama-3.3-70b-versatile` and `LLM_API_KEY=<the key from Marouane>`, typed in an editor, never on a
+     command line. Leave any existing `ANTHROPIC_API_KEY` or `COMPANION_MODEL` lines alone: `LLM_BASE_URL` wins.
+     The URL must have no `user:pass@`, query or fragment, or the service refuses to start.
+  3. Check Groq still lists the model, reading the key from the file so it never reaches the shell or `ps`:
+     `sed -n 's/^LLM_API_KEY=/Authorization: Bearer /p' /etc/civic/companion.env | curl -s -H @- https://api.groq.com/openai/v1/models | jq -r '.data[].id'`.
+     If `llama-3.3-70b-versatile` is missing, set `LLM_MODEL` to `qwen/qwen3-32b`, or another open-weight model from
+     the list.
+  4. `systemctl restart civic-companion`, then `systemctl is-active civic-companion` and
+     `journalctl -u civic-companion -n 20`. Expect `active` and `companion model: openai <model> at https://api.groq.com`,
+     with no key anywhere. If it is not `active`, restore the backup
+     (`cp -p /etc/civic/companion.env.bak /etc/civic/companion.env && systemctl restart civic-companion`) and mark this
+     entry `blocked` with the journal lines.
+- **Check:**
+  1. `curl -s 127.0.0.1:8788/healthz` shows `"companion":true` and `"model":{"kind":"openai","name":"<model>"}`.
+  2. One real answer. Run `ID=$(curl -s 127.0.0.1:8788/data/snapshot.json | jq -r '.items[0].id')`, then
+     `curl -s -o /tmp/explain.json -w '%{http_code}\n' -X POST 127.0.0.1:8788/api/explain -H 'content-type: application/json' -d "{\"item_id\":\"$ID\",\"lang\":\"fr\"}"`.
+     It must print `200`, and `jq '[.sections[].sentences[] | select(.sources | length > 0)] | length' /tmp/explain.json`
+     must be above 0 (sentences that cite a source).
+  3. On a `502`, read the body. `the model gave an answer that could not be read` means a shape failure: try the other
+     model once. `the model did not answer` means the call failed: the `model:` line in the journal names the cause
+     (a 401 is the key, a 404 the model name, a 429 or 413 a free-tier limit). Fix that cause, or mark `blocked` with
+     the journal line.
+- **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. No model runs on Mulinux itself.
+- **Done when:** both checks pass. Delete `/etc/civic/companion.env.bak`. Comment the healthz output (it has no key) on
+  a new demo2.0 issue titled "Companion on a free-tier open-weight model" and close it.

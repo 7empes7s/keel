@@ -54,3 +54,22 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 - **Done when:** `curl -fsS https://cracia.techinsiderbytes.com/healthz` shows `"provenance":true` and `"agora":true`,
   and `curl -fsS 'https://cracia.techinsiderbytes.com/api/ideas'` returns `{"charter_version":...,"ideas":[]}`.
   Comment the output on a new demo2.0 issue titled "Deploy claim checker and Ideas list" and close it.
+
+## 2026-10-06: add the Commons argument library to cracia
+
+- **Status:** open. Do this after the claim checker / Ideas entry above, and only once app-deploy@civic has made a
+  release that includes 7empes7s/demo2.0#24 live (`ls /opt/civic/current/ops/deploy/civic-commons.service` exists).
+- **Asked by:** Marouane, 2026-10-05 ("Commit everything to github and move along the plan don't stop").
+- **Repo:** `7empes7s/demo2.0`, `main`. Steps are in `ops/deploy/README.md` (Commons rows).
+- **Steps:**
+  1. Copy `/opt/civic/current/ops/deploy/civic-commons.service` to `/etc/systemd/system/` and run
+     `systemctl daemon-reload`. It serves the shipped seed library on 127.0.0.1:8093, read-only. No drop-in is needed
+     (uv only, in `/usr/local/bin`).
+  2. In `/etc/civic/companion.env` add `COMMONS_URL=http://127.0.0.1:8093`. Keep `PORT=8788`. Do not add Commons to
+     `HEALTH_URLS` (optional service).
+  3. `systemctl enable --now civic-commons && systemctl restart civic-companion`.
+- **Check:** `curl -s 127.0.0.1:8093/healthz` → `{"ok": true, "arguments": 14, "matters": 2}`. Retry for up to
+  60 s: the first start installs numpy (`journalctl -u civic-commons -f`).
+- **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. Do not expose 8093 beyond loopback.
+- **Done when:** the local check passes and `systemctl is-active civic-commons` is `active`. Comment the output on the
+  demo2.0 issue from the entry above (reopen it if closed, then close it again).

@@ -59,6 +59,7 @@ import {
   CLIENT_ACCESS_FIELDS, COMPLIANCE_HOLD_FIELDS, EXCHANGE_MODULE, MAILBOX_SETTING_FIELDS, ORGANIZATION_FIELDS, RETENTION_FIELDS,
   assertExchangeCmdlet, assertExchangeRequest, exchangeCmdlet, structuredFailure,
 } from '../../engine/collect/workloads/exchange.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import {
   EXCHANGE_CAS_TOGGLE, EXCHANGE_FIXTURE_PREFIX, EXCHANGE_HOLD_WRITE_FIELDS, EXCHANGE_LIVE_CAS_WRITE, EXCHANGE_LIVE_CREDENTIAL_MODE,
@@ -159,7 +160,7 @@ const present = (body, fields) => (body && typeof body === 'object' ? fields.fil
  * Runs a capture. `collector` and `restorer` are each `{ transport, powershell }`:
  * a Graph transport `(url, init?) => { status, headers, body }` and the runCmdlet
  * options for that identity's tenant config. Returns the unsigned record and the
- * raw capture log; it never signs and never writes files.
+ * capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureExchangeAcceptance({
   collector, restorer, directoryTenantId, fixtureMailbox, probeIdentity = null, tenantRef, build, credentials, grants, moduleVersion,
@@ -353,7 +354,7 @@ export async function captureExchangeAcceptance({
   };
   const needsManualRevert = (log.values.settingsWritten === true && writes.mailboxSettings.restoredToOriginal !== true)
     || (log.values.clientAccessWritten === true && writes.clientAccess.restoredToOriginal !== true);
-  return { record, captureLog, needsManualRevert };
+  return { ...pseudonymizeCapture({ record, log }), needsManualRevert };
 }
 
 async function exchangeSettingsRoundTrip({ graph, identity, capture, log, timing, readSettings }) {

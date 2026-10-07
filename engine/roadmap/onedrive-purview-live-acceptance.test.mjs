@@ -42,8 +42,9 @@ import {
   onedrivePurviewRequiredGrants,
 } from '../../tools/qualification/onedrivePurviewAcceptance.mjs';
 import {
-  captureOneDrivePurviewAcceptance, ledgerEvidenceFromOneDrivePurviewAcceptance, main as onedrivePurviewMain, writeOneDrivePurviewAcceptanceFiles,
+  captureOneDrivePurviewAcceptance, ledgerEvidenceFromOneDrivePurviewAcceptance, main as onedrivePurviewMain, onedrivePurviewLiveTenantHost, writeOneDrivePurviewAcceptanceFiles,
 } from '../../tools/qualification/onedrivePurviewLive.mjs';
+import { pseudonymizer } from '../../tools/qualification/pseudonymize.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -472,6 +473,7 @@ test('an altered signature or capture-log digest fails', async () => {
 
 test('wrong tenant, build or operation fails, even when re-signed by the trusted runner', async () => {
   const { evidence } = await capturedFiles();
+  const myHost = pseudonymizer(evidence.tenantRef).text('contoso-my.sharepoint.com').replaceAll('.', '\\.');
   assert.match(verifyIn(evidence, { tenantRef: tenantRefFor('another-tenant') }).failures.join('\n'), /cross-tenant/);
   assert.match(verifyIn(evidence, { build: 'another-build' }).failures.join('\n'), /OneDrive\/Purview build mismatch/);
   assert.match(verifyIn(evidence, { tenantRef: null }).failures.join('\n'), /expected tenant\/build/);
@@ -489,7 +491,7 @@ test('wrong tenant, build or operation fails, even when re-signed by the trusted
     [(e) => { e.subject.credentials.restorer = e.subject.credentials.collector; return e; }, /separate credentials/],
     [(e) => { e.subject.directoryTenantId = OTHER_TENANT; return e; }, /another directory tenant than its Exchange prerequisite/],
     [(e) => { e.subject.fixtureSite.url = OTHER_SITE; return e; }, /not a keel-rt-\* personal site/],
-    [(e) => { e.subject.fixtureSite.url = 'https://fabrikam-my.sharepoint.com/personal/keel-rt-20260908-alice_contoso_test'; return e; }, /not a keel-rt-\* personal site on contoso-my.sharepoint.com/],
+    [(e) => { e.subject.fixtureSite.url = 'https://fabrikam-my.sharepoint.com/personal/keel-rt-20260908-alice_contoso_test'; return e; }, new RegExp(`not a keel-rt-\\* personal site on ${myHost}`)],
     [(e) => { e.subject.fixtureSite.template = 'GROUP#0'; return e; }, /did not answer as a OneDrive personal site/],
     [(e) => { e.subject.fixtureLabel.name = 'Confidential'; return e; }, /fixture label is not a keel-rt-\* label/],
     [(e) => { e.subject.fixturePolicy.name = 'Global label policy'; return e; }, /fixture policy is not a keel-rt-\* policy/],
@@ -681,6 +683,8 @@ test('fixture evidence is never elevated to live-qualified, and only a verified 
 
 test('a content call, another site, label or policy, a collector write, a protection change, an unpublish or a locked write fails', async () => {
   const { evidence } = await capturedFiles();
+  // The record carries pseudonymized ids and hosts, so an injected request names them the same way.
+  const { walk } = pseudonymizer(evidence.tenantRef);
   const cmd = (credential, module, cmdlet, parameters, outcome = 'ok') => ({ credential, transport: 'powershell-cmdlet-job', module, cmdlet, parameters, outcome });
   const pnp = 'PnP.PowerShell';
   const exo = 'ExchangeOnlineManagement';
@@ -705,7 +709,7 @@ test('a content call, another site, label or policy, a collector write, a protec
     [{ credential: 'restorer', transport: 'script', module: exo, cmdlet: 'Get-Label', parameters: {} }, /not the bounded cmdlet transport/],
     [{ credential: 'restorer', transport: 'powershell-cmdlet-job', module: exo, cmdlet: 'Get-Label', parameters: '-Identity x' }, /parameters not recorded as data/],
   ]) {
-    assert.match(verifyIn(resign(evidence, (e) => { e.subject.requests.push(request); return e; })).failures.join('\n'), pattern, JSON.stringify(request));
+    assert.match(verifyIn(resign(evidence, (e) => { e.subject.requests.push(walk(request)); return e; })).failures.join('\n'), pattern, JSON.stringify(request));
   }
   for (const [change, pattern] of [
     [(e) => { e.subject.fixtureLabel.lock = 'locked'; return e; }, /write was sent to an object that reports a preservation lock/],
@@ -747,6 +751,17 @@ test('the capture tool is offline by default, refuses non-fixtures and unsafe st
   await assert.rejects(capture(purviewFake(), { modules: { ...MODULES, 'PnP.PowerShell': 'latest' } }), /pnp-module-version/);
   await assert.rejects(capture(purviewFake(), { probeSite: SITE }), /another keel-rt-\* OneDrive/);
   await assert.rejects(capture(purviewFake(), { tenantHost: 'fabrikam.sharepoint.com' }), /must be on fabrikam-my.sharepoint.com/);
+
+  // The chain names the tenant host pseudonymized: the CLI captures against the real host from
+  // --fixture-site only when it is that host (or, in an older record, the host itself).
+  const pseudoHost = pseudonymizer(tenantRef).text(SP_HOST);
+  assert.notEqual(pseudoHost, SP_HOST);
+  assert.equal(onedrivePurviewLiveTenantHost(SITE, pseudoHost, tenantRef), SP_HOST);
+  assert.equal(onedrivePurviewLiveTenantHost(SITE, SP_HOST, tenantRef), SP_HOST);
+  const otherTenant = pseudonymizer(tenantRef).text('fabrikam.sharepoint.com');
+  assert.equal(onedrivePurviewLiveTenantHost(SITE, otherTenant, tenantRef), otherTenant);
+  await assert.rejects(capture(purviewFake(), { tenantHost: otherTenant }), /must be on t[0-9a-f]{11}-my.sharepoint.com/);
+  assert.equal(onedrivePurviewLiveTenantHost('not a url', pseudoHost, tenantRef), pseudoHost);
 
   // The CLI refuses before any cmdlet when the Exchange record does not verify.
   const pendingExchange = join(dir, 'pending-exchange.json');

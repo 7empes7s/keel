@@ -64,6 +64,7 @@ import {
   LABEL_ACTION_FIELDS, POLICY_FIELDS, PURVIEW_MODULE, definitionFingerprint, labelKey, purviewCmdlet, readPurview,
 } from '../../engine/collect/workloads/purview.mjs';
 import { planPurviewRestore } from '../../engine/restore/workloads/purview.mjs';
+import { pseudonymizeCapture, pseudonymizer } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { EXCHANGE_LIVE_GATE } from './exchangeAcceptance.mjs';
 import {
@@ -149,8 +150,8 @@ const observedFields = (entry) => Object.entries(entry?.fieldCoverage ?? {}).fil
 /**
  * Runs a capture. `collector` and `restorer` are each `{ powershell }`: the runCmdlet
  * options for that identity's tenant config. `tenantHost` is the SharePoint tenant host
- * the verified prerequisite chain names. Returns the unsigned record and the raw
- * capture log; it never signs and never writes files.
+ * the verified prerequisite chain names. Returns the unsigned record and the
+ * capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureOneDrivePurviewAcceptance({
   collector, restorer, directoryTenantId, tenantHost, fixtureSite, fixtureLabel, fixturePolicy, probeSite = null, tenantRef, build, credentials, grants,
@@ -362,7 +363,7 @@ export async function captureOneDrivePurviewAcceptance({
     },
   };
   const needsManualRevert = log.values.labelWritten === true && writes.label.restoredToOriginal !== true;
-  return { record, captureLog, needsManualRevert };
+  return { ...pseudonymizeCapture({ record, log }), needsManualRevert };
 }
 
 async function onedrivePurviewLabelRoundTrip({ write, read, label, capture, log, timing, marker }) {
@@ -473,6 +474,23 @@ export function ledgerEvidenceFromOneDrivePurviewAcceptance(evidence, options = 
   };
 }
 
+/**
+ * The real SharePoint tenant host to capture against. Committed records name the host
+ * pseudonymized, so it is taken from --fixture-site and accepted only when it is the host
+ * the verified chain names, raw (an older record) or as its pseudonym. Otherwise the chain's
+ * host is returned and the capture refuses the fixture site as on another tenant.
+ */
+export function onedrivePurviewLiveTenantHost(fixtureSite, chainHost, tenantRef) {
+  let candidate = null;
+  try {
+    const match = /^([a-z0-9]+)-my\.sharepoint\.com$/i.exec(new URL(fixtureSite).hostname);
+    if (match) candidate = `${match[1].toLowerCase()}.sharepoint.com`;
+  } catch { /* not a URL: the capture's own fixture check reports it */ }
+  if (!candidate || typeof chainHost !== 'string' || !tenantRef) return chainHost;
+  const chain = chainHost.toLowerCase();
+  return chain === candidate || chain === pseudonymizer(tenantRef).text(candidate) ? candidate : chainHost;
+}
+
 /** The SharePoint tenant host the verified Exchange -> Teams -> SharePoint chain names. */
 export function onedrivePurviewChainHost(exchange, dir, readFile = (path) => readFileSync(path, 'utf8')) {
   try {
@@ -544,7 +562,7 @@ export async function main(argv = process.argv.slice(2), {
     collector: { powershell: powershellFor(options.collectorConfig, options.image) },
     restorer: { powershell: powershellFor(options.restorerConfig, options.image) },
     directoryTenantId: options.directoryTenantId,
-    tenantHost: onedrivePurviewChainHost(exchange, dirname(exchangePath), readFile),
+    tenantHost: onedrivePurviewLiveTenantHost(options.fixtureSite, onedrivePurviewChainHost(exchange, dirname(exchangePath), readFile), options.tenantRef),
     fixtureSite: options.fixtureSite,
     fixtureLabel: options.fixtureLabel,
     fixturePolicy: options.fixturePolicy,

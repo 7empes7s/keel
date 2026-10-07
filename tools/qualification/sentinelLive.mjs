@@ -51,6 +51,7 @@ import {
   createSentinelAdapter, sentinelSetupPrerequisites,
 } from '../../engine/telemetry/adapters/sentinel.mjs';
 import { defineEvent } from '../../engine/telemetry/events.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import {
   SENTINEL_DEDUP_KEY, SENTINEL_LIVE_CREDENTIAL_MODE, SENTINEL_LIVE_GATE, SENTINEL_LIVE_OPERATION, SENTINEL_LIVE_PREREQUISITES,
@@ -142,7 +143,7 @@ function tableRows(body) {
  * Runs a capture. `ingestFetch` is the fetch the production adapter uses for the
  * ingestion endpoint; `senderToken` returns the sender's token; `query(kql)` sends one
  * read-only query and returns `{ status, body }`. Returns the unsigned record and the
- * raw capture log; it never signs and never writes files.
+ * capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureSentinelAcceptance({
   ingestFetch, senderToken, query, tenantRef, build, destinationId, workspace, credentials, roles,
@@ -259,7 +260,7 @@ export async function captureSentinelAcceptance({
       captureLogSha256: sha256Hex(captureLog),
     },
   };
-  return { record, captureLog };
+  return pseudonymizeCapture({ record, log });
 }
 
 /**

@@ -152,7 +152,8 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
       }
       if (method === 'POST') {
         const userId = /users\('([^']+)'\)/.exec(init.body['user@odata.bind'])[1];
-        const member = { id: `MjA-new-${next++}`, userId, tenantId: TENANT, roles: init.body.roles, displayName: 'Fixture' };
+        // Like Graph's: base64 of text holding the tenant, team and user ids.
+        const member = { id: Buffer.from(`${next++}##${TENANT}##${TEAM}##${userId}`).toString('base64'), userId, tenantId: TENANT, roles: init.body.roles, displayName: 'Fixture' };
         members.push(member);
         return { status: 201, headers: {}, body: member };
       }
@@ -238,6 +239,9 @@ test('a valid independently captured record verifies, and the capture touched on
     const text = readFileSync(file, 'utf8').toLowerCase();
     for (const id of [TENANT, TEAM, OWNER, FIXTURE_USER]) assert.ok(!text.includes(id), `${id} leaked into ${file}`);
   }
+  const membership = Buffer.from(record.subject.fixtureMember.membershipId, 'base64').toString();
+  assert.match(membership, /##/);
+  for (const id of [TENANT, TEAM, FIXTURE_USER]) assert.ok(!membership.includes(id), `${id} leaked inside the membership id`);
 
   assert.deepEqual(record.subject.reads.map((read) => [read.operationId, read.ok]), TEAMS_LIVE_READS.map((id) => [id, true]));
   assert.equal(record.subject.reads.find((read) => read.operationId === 'teams.team-discovery').pages, 2, 'discovery followed nextLink');

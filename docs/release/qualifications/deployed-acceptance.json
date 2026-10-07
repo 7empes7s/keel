@@ -2,15 +2,15 @@
   "contractVersion": 1,
   "gate": "deployed-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "33ad2a9d4cd79e1f0c0b1c2f7e22bc57e18f7a7f",
+  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
   "operation": "deployed-acceptance.read-probe",
   "credentialMode": "operator-session",
-  "observedAt": "2026-10-04T08:06:33.397Z",
+  "observedAt": "2026-10-07T11:05:22.891Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
     "deployment": {
-      "revision": "33ad2a9d4cd79e1f0c0b1c2f7e22bc57e18f7a7f",
+      "revision": "fb1493ea6a54d48fca03429409a35991a6386871",
       "dirty": false
     },
     "probes": [
@@ -27,12 +27,12 @@
             "types"
           ],
           "errorCode": null,
-          "bodySha256": "8d82948e74b5749f846ddcde8c63f1c90599ca1f4c3907b13126459428d594cc",
-          "observedAt": "2026-10-04T08:06:33.019Z"
+          "bodySha256": "1ca7d8920b859071cf383d0760a1b7be4db725fa05d111a72594d14d07142c03",
+          "observedAt": "2026-10-07T11:05:22.249Z"
         },
         "unauthenticated": {
           "httpStatus": 302,
-          "observedAt": "2026-10-04T08:06:33.039Z"
+          "observedAt": "2026-10-07T11:05:22.273Z"
         }
       },
       {
@@ -46,12 +46,12 @@
             "jobs"
           ],
           "errorCode": null,
-          "bodySha256": "e9a18e451cfa61c89dfbe96127d6f33c983a34de8ce3abd5adbe0f7adf92781b",
-          "observedAt": "2026-10-04T08:06:33.173Z"
+          "bodySha256": "b9d3d56824f5f074cdea5781ae38744747c4aa1a6c2dcf2ee18368f6d3045fe8",
+          "observedAt": "2026-10-07T11:05:22.491Z"
         },
         "unauthenticated": {
           "httpStatus": 302,
-          "observedAt": "2026-10-04T08:06:33.193Z"
+          "observedAt": "2026-10-07T11:05:22.514Z"
         }
       },
       {
@@ -67,12 +67,12 @@
             "schedules"
           ],
           "errorCode": null,
-          "bodySha256": "5691db8e6ffe663026b6cdada762e1523f471610320eb4c761ea962bbe2b831c",
-          "observedAt": "2026-10-04T08:06:33.273Z"
+          "bodySha256": "e518209649819ed1aca6b150d06043a02e5741734fdcc643642dafa787bd8da2",
+          "observedAt": "2026-10-07T11:05:22.767Z"
         },
         "unauthenticated": {
           "httpStatus": 302,
-          "observedAt": "2026-10-04T08:06:33.296Z"
+          "observedAt": "2026-10-07T11:05:22.789Z"
         }
       },
       {
@@ -86,11 +86,11 @@
           ],
           "errorCode": "not_found",
           "bodySha256": "d2dfdc9511fbeaa0701d1f8730f4989313b062ca1b61a2bd8bed8f4f5d654b5d",
-          "observedAt": "2026-10-04T08:06:33.376Z"
+          "observedAt": "2026-10-07T11:05:22.869Z"
         },
         "unauthenticated": {
           "httpStatus": 302,
-          "observedAt": "2026-10-04T08:06:33.397Z"
+          "observedAt": "2026-10-07T11:05:22.891Z"
         }
       }
     ]
@@ -98,11 +98,11 @@
   "proof": {
     "artifact": {
       "path": "deployed-acceptance.capture.json",
-      "sha256": "cd1acc4b40c24f1c7b178afbd90a5da53892bfb92bd179d79cffc15e33e13486"
+      "sha256": "22218dad6feb459cc1a5736083854f7b925a30198601a878e1f9e5b062a97119"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "c12a1c8f23f5b85ee7c6e606038a87b3b6a1bc7709bde8ce8e161bc3f06437fc"
+      "signature": "145f0e8ab781ea00729e245f9d183e90b918632e46e2c35092befa724754dc9c"
     }
   }
 }

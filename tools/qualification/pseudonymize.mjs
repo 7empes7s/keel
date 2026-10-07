@@ -14,7 +14,14 @@ import { createHash } from 'node:crypto';
 
 // No word boundaries: ids also appear after URL escapes such as `%2C`.
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const TENANT_HOST = /(?<![a-z0-9-])([a-z0-9]+)(?=(?:-my|-admin)?\.(?:sharepoint\.com|onmicrosoft\.com)\b)/gi;
+// A prefix starts after a non-label character or right after a %XX escape (`a%40contoso…`),
+// never inside the escape itself.
+const TENANT_HOST = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9%-]|%[0-9a-f]))([a-z0-9]+)(?=(?:-my|-admin)?\.(?:sharepoint\.com|onmicrosoft\.com)\b)/gi;
+
+// Opaque ids that are base64 of text holding GUIDs, such as a Teams membership id
+// (`0##<tenant>##<team>##<user>`).
+// No `/` in the alphabet: such ids sit inside URL paths, and the capture refuses ids holding one.
+const BASE64_TOKEN = /[A-Za-z0-9+_=-]{40,}/g;
 
 const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -27,7 +34,20 @@ export function pseudonymizer(tenantRef) {
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-8${h.slice(13, 16)}-${((parseInt(h[16], 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
   };
   const host = (value) => `t${digest('host', value).slice(0, 11)}`;
-  const text = (value) => value.replace(GUID, guid).replace(TENANT_HOST, host);
+  const plain = (value) => value.replace(GUID, guid).replace(TENANT_HOST, host);
+  const encoded = (token) => {
+    const url = /[-_]/.test(token);
+    const decoded = Buffer.from(token, url ? 'base64url' : 'base64');
+    const reencode = (buffer) => {
+      const out = buffer.toString(url ? 'base64url' : 'base64');
+      return token.endsWith('=') || url ? out : out.replace(/=+$/, '');
+    };
+    // Only a canonical encoding of printable text that holds a GUID is rewritten.
+    const inner = decoded.toString('latin1');
+    if (reencode(decoded) !== token || !/^[\x20-\x7e]+$/.test(inner) || !inner.match(GUID)) return token;
+    return reencode(Buffer.from(plain(inner), 'latin1'));
+  };
+  const text = (value) => plain(value.replace(BASE64_TOKEN, encoded));
   const walk = (value) => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);

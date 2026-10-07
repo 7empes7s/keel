@@ -1542,3 +1542,39 @@ item that needs it stays untouched.
   2. `DROP DATABASE` each listed name, one at a time. Only names matching those two patterns. Never the live
      database, `keel_test`, or anything else.
   3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
+
+### Q39: Gate 124 recapture: every live gate at one frozen build, then the release ledger — issue #86
+- Drafted by the "Gate 124 release ledger" thread (#86). **On hold: don't start** until the coordinator changes
+  Status to queued (after the keel-powershell rebuild settles and Marouane decides on the objective gaps).
+- Status: hold
+- Result:
+- Needs: the keel-powershell rebuild finished and deployed. The build **B** is whatever
+  `/opt/keel-live` is at once the rebuild has settled (`git -C /opt/keel-live rev-parse HEAD`). Report B before starting.
+- **Master freeze**: no merge to master from the first capture until the ledger runs. Restart
+  `keel-worker` at B before starting and report its start time. No collection may run mid-chain (same as Q35).
+- Why: every gate is qualified today, but at six different builds (113/115 `33ad2a9`, 114 `df0de36`,
+  116 `04d213d`, 118 `87e366e`, 119 `efeb7af`, 120-123 `76ee9b5`). The ledger verifies every record against one
+  `--build`, so all of them must be recaptured at B. 117 is descoped (accepted gap), so nothing is needed for it.
+- Do, in this order, each exactly as its last successful run (same fixtures, decisions and guardrails;
+  steps in `docs/roadmap/operator-gates.md`), with `--build B`:
+  1. 113 deployed-acceptance (no tenant writes).
+  2. 114 storage-live-acceptance from the `/mnt/keel-copy` copy (no tenant writes).
+  3. 115 native-live-acceptance (one disposable `KEEL-RT-native-recovery-group`).
+  4. 116 drill-live-acceptance, as Q36 (reconstruction and onboarding results at B).
+  5. 118 servicenow-live-acceptance (non-production instance only).
+  6. 119 nist-benchmark-acceptance: **skip and report.** There is no runnable capture for it on master: the
+     `efeb7af` record (observed 2026-09-27) arrived through #50 with no capture artifact, and
+     `qualification.mjs` has no NIST capture command. Never improvise one. The #86 thread owns building it.
+  7. 120 → 121 → 122 → 123 as Q35 (a fresh unpublished `KEEL-RT-<date>-label<n>` for 123).
+- After each capture, run `qualification.mjs verify --require-live --gate <gate> --build B --tenant <ref>` and
+  record the exit code. A refusal or failure is a result: report it and stop the chain. Never edit a record by hand.
+- Commit each gate to `claude/live-evidence-124-<gate>`. **The repo is public**: run the committed-evidence
+  check (`engine/test/committedEvidence.mjs` rule) and a secret scan on every file before committing; no
+  credential material, tokens, or anything beyond what the current committed records already contain.
+- Then at B, from `/opt/keel`:
+  - `node tools/release/journeys.mjs run --db-url <isolated test URL> --out /tmp/journeys-B.json` (never `KEEL_DB_URL`).
+  - `KEEL_QUALIFICATION_HMAC_KEY=... node tools/release/qualification.mjs ledger --fixture /tmp/journeys-B.json --tenant <ref> --build B --qualifications <dir holding the eleven new records> --out /tmp/ledger-B.json`
+  - Report `readiness.label`, every line of `readiness.reasons` and `readiness.acceptedGaps`, and each `live[].status`.
+    Expected: every gate `live-qualified`, 117 listed as an accepted gap, and the label still `pending` only
+    because of the objective gaps (D1-D10, G1-G8), unless that decision has been made by then.
+- Poll every 5 minutes while queued or running.

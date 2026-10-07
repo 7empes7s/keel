@@ -1550,8 +1550,8 @@ item that needs it stays untouched.
   report B first. **Master is frozen from now until the ledger runs.** For 123 follow
   docs/roadmap/onedrive-purview-live-acceptance.md step 7 at B (`--fixture-site <OneDrive URL>` is required and checked
   against the chain's host or its pseudonym). Recapture 120 → 123 together in this run. Released by the #84 thread.
-- Status: queued
-- Result:
+- Status: in-progress
+- Result: **In progress.** B = `fb1493ea6a54d48fca03429409a35991a6386871` (/opt/keel-live HEAD, clean). Pre-check and worker restart next.
 - Needs: #137 (119 capture, merged 09:57) and #140 (follow-up to #139, merged 10:12: pseudonymizes the raw
   tenant GUID, client ids, object ids and Teams membership ids in the 120→123 capture tools and validators) both
   merged and deployed. The

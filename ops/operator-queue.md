@@ -1678,7 +1678,7 @@ item that needs it stays untouched.
   3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
 
 ### Q41: Remove the Q39 recovery set — issues #84, #86
-- Status: queued
+- Status: in-progress
 - Why: the gate 124 evidence is merged (#142, master `7a9dc08`, #86 closed), so the Q39 recovery set is no longer needed.
 - Do:
   1. Remove `/opt/keel-recovery-sets/2026-10-07-q39` and its copy `/mnt/keel-copy/2026-10-07-q39`. Remove only those two

@@ -1551,7 +1551,27 @@ item that needs it stays untouched.
   docs/roadmap/onedrive-purview-live-acceptance.md step 7 at B (`--fixture-site <OneDrive URL>` is required and checked
   against the chain's host or its pseudonym). Recapture 120 → 123 together in this run. Released by the #84 thread.
 - Status: in-progress
-- Result: **In progress.** B = `fb1493ea6a54d48fca03429409a35991a6386871` (/opt/keel-live HEAD, clean). Pre-check and worker restart next.
+- Result: **In progress at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean). 113–119 done; 120→123 running.
+  - keel-worker restarted at B: **2026-10-07 10:48:53 UTC**.
+  - NIST pre-check (`node --test roadmap/nist-benchmark-acceptance.test.mjs`): **7/7 pass, 0 skipped**. The file at B
+    defines exactly 7 tests, not 8 as the entry says.
+  - **No collection mid-chain:** the hourly collect row (`021c5ced…`) ran at 11:00:07–11:00:16 and was next due at 12:00.
+    No KEEL CLI pauses one row, so I **stopped `keel-scheduler.timer`** (still enabled) at 11:01 for the chain. I'll
+    restart it before the ledger.
+  - One fresh recovery set at B for 114 and 116: `/opt/keel-recovery-sets/2026-10-07-q39` (dump sha256 3415e2c8…,
+    manifest 52595909…, evidence head 4656:267fbacd…:4656, stable).
+  - 113 deployed-acceptance: verify ok, exit 0 → `claude/live-evidence-124-113` @ 321a0b3. (Access login renewed with the operator.)
+  - 114 storage-live-acceptance: copy `/mnt/keel-copy/2026-10-07-q39` (dev 2064 vs 2049, digests match), captured as
+    keel-recovery, checkpoint 4656: verify ok, exit 0 → `-124-114` @ 018c708.
+  - 115 native-live-acceptance: `KEEL-RT-native-recovery-group` deleted and restored once; active again, not in deleted
+    items, 0 members: verify ok, exit 0 → `-124-115` @ e7d9b84.
+  - 116 drill-live-acceptance: reconstruction into fresh `keel_recovery_q39` (4656 records, chain ok); fresh drill DB
+    `keel_drill_q39`; drill `group:keel-rehearsal-2026-10-07T11-06-54-685Z` passed, 9 writes, cleanup complete:
+    verify ok, exit 0 → `-124-116` @ 44846fb.
+  - 118 servicenow-live-acceptance (dev426571): verify ok, exit 0 → `-124-118` @ c43936c.
+  - 119 nist-benchmark-acceptance (principal marouanedefili@…, read-only): verify ok, exit 0 → `-124-119` @ b13ca2a.
+  - The committed-evidence tests for 113/114/115/116/118 pass. 116/118 ran on a throwaway `keel_test_q39`; keel_test was
+    untouched. The secret and raw-id scan of every file is clean.
 - Needs: #137 (119 capture, merged 09:57) and #140 (follow-up to #139, merged 10:12: pseudonymizes the raw
   tenant GUID, client ids, object ids and Teams membership ids in the 120→123 capture tools and validators) both
   merged and deployed. The

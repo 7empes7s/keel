@@ -34,6 +34,7 @@ import {
   TEAMS_TOGGLE_GROUP, TEAMS_TOGGLE_PROPERTY, captureTeamsAcceptance, ledgerEvidenceFromTeamsAcceptance, main as teamsMain, tokenTenantId,
   writeTeamsAcceptanceFiles,
 } from '../../tools/qualification/teamsLive.mjs';
+import { pseudonymizer } from '../../tools/qualification/pseudonymize.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -230,8 +231,13 @@ const resign = (evidence, change) => signEvidence(change(structuredClone(evidenc
 
 test('a valid independently captured record verifies, and the capture touched only the KEEL-RT team and fixture user', async () => {
   const graph = teamsGraph();
-  const { evidence, outPath, record } = await capturedFiles(graph);
+  const { evidence, outPath, logPath, record } = await capturedFiles(graph);
   assert.deepEqual(verifyEvidenceFile(outPath, options()), { ok: true, failures: [] });
+  // The repository is public: no tenant, team or user id reaches the committed files.
+  for (const file of [outPath, logPath]) {
+    const text = readFileSync(file, 'utf8').toLowerCase();
+    for (const id of [TENANT, TEAM, OWNER, FIXTURE_USER]) assert.ok(!text.includes(id), `${id} leaked into ${file}`);
+  }
 
   assert.deepEqual(record.subject.reads.map((read) => [read.operationId, read.ok]), TEAMS_LIVE_READS.map((id) => [id, true]));
   assert.equal(record.subject.reads.find((read) => read.operationId === 'teams.team-discovery').pages, 2, 'discovery followed nextLink');
@@ -440,6 +446,8 @@ test('fixture evidence is never elevated to live-qualified, and only a verified 
 test('a content call, another team or user, a write by the collector or credential material in the record fails', async () => {
   const { evidence, record } = await capturedFiles();
   const membershipId = record.subject.fixtureMember.membershipId;
+  // The record carries pseudonymized ids, so an injected request names them the same way.
+  const { walk } = pseudonymizer(record.tenantRef);
   for (const [request, pattern] of [
     [{ credential: 'collector', method: 'GET', version: 'v1.0', path: `/teams/${TEAM}/channels`, status: 200 }, /content call/],
     [{ credential: 'collector', method: 'GET', version: 'v1.0', path: `/chats`, status: 200 }, /content call/],
@@ -454,10 +462,10 @@ test('a content call, another team or user, a write by the collector or credenti
     [{ credential: 'restorer', method: 'DELETE', version: 'v1.0', path: `/teams/${TEAM}/members/MjA-owner`, status: 204 }, /membership other than the fixture user's/],
     [{ credential: 'restorer', method: 'DELETE', version: 'v1.0', path: `/teams/${TEAM}/members/${membershipId}`, status: 204 }, /exactly 1 teams.membership.remove/],
   ]) {
-    assert.match(verifyIn(resign(evidence, (e) => { e.subject.requests.push(request); return e; })).failures.join('\n'), pattern, JSON.stringify(request));
+    assert.match(verifyIn(resign(evidence, (e) => { e.subject.requests.push(walk(request)); return e; })).failures.join('\n'), pattern, JSON.stringify(request));
   }
   // A throttled (not applied) write that Retry-After resent is not an extra write.
-  const throttled = resign(evidence, (e) => { e.subject.requests.push({ credential: 'restorer', method: 'PATCH', version: 'v1.0', path: `/teams/${TEAM}`, status: 429 }); return e; });
+  const throttled = resign(evidence, (e) => { e.subject.requests.push(walk({ credential: 'restorer', method: 'PATCH', version: 'v1.0', path: `/teams/${TEAM}`, status: 429 })); return e; });
   assert.deepEqual(verifyIn(throttled).failures, []);
   const leaked = resign(evidence, (e) => { e.subject.credentials.accessToken = 'x'; return e; });
   assert.match(verifyIn(leaked).failures.join('\n'), /credential material/);
@@ -533,7 +541,7 @@ test('when Graph omits the team\'s tenantId, the collector token\'s tenant prove
   const silent = teamsGraph({ teamTenant: null });
   const proven = await capturedFiles(silent, { credentialTenants: { collector: TENANT, restorer: TENANT } });
   assert.deepEqual(verifyEvidenceFile(proven.outPath, options()), { ok: true, failures: [] });
-  assert.equal(proven.record.subject.fixtureTeam.tenantId, TENANT);
+  assert.equal(proven.record.subject.fixtureTeam.tenantId, pseudonymizer(proven.record.tenantRef).guid(TENANT));
   assert.equal(proven.record.subject.fixtureTeam.tenantIdSource, 'collector-token');
 
   // A tenantId Graph does report is used as reported.

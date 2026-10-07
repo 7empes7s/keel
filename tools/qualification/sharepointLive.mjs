@@ -46,6 +46,7 @@ import { readGraphConfiguration } from '../../engine/collect/workloadContract.mj
 import { siteInScope } from '../../engine/collect/workloads/sharepoint.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../engine/coverage/qualification.mjs';
 import { liveSettingsFingerprint } from '../../engine/restore/workloads/sharepoint.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import {
   FIXTURE_SITE_PREFIX, SHAREPOINT_LIVE_CREDENTIAL_MODE, SHAREPOINT_LIVE_GATE, SHAREPOINT_LIVE_OPERATION,
@@ -93,7 +94,7 @@ export function capturePlan({ tenantHost, fixtureSiteUrl }) {
 /**
  * Runs a capture against two injected transports (collector, restorer), each
  * `(url, init?) => { status, headers, body }`. Returns the unsigned record and the
- * raw capture log; it never signs and never writes files.
+ * capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureSharePointAcceptance({
   collector, restorer, tenantHost, fixtureSiteUrl, tenantRef, build, credentials, grants, documentation = [],
@@ -178,7 +179,8 @@ export async function captureSharePointAcceptance({
       captureLogSha256: sha256Hex(captureLog),
     },
   };
-  return { record, captureLog, needsManualRevert: log.values.wrote === true && writeCapture.restoredToOriginal !== true };
+  const needsManualRevert = log.values.wrote === true && writeCapture.restoredToOriginal !== true;
+  return { ...pseudonymizeCapture({ record, log }), needsManualRevert };
 }
 
 async function readSettings(transport, sleep) {

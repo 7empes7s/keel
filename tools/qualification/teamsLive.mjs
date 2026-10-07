@@ -58,6 +58,7 @@ import { readGraphConfiguration } from '../../engine/collect/workloadContract.mj
 import { TEAM_SETTING_FIELDS, assertTeamsRequest, normalizeMember } from '../../engine/collect/workloads/teams.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../engine/coverage/qualification.mjs';
 import { membersFingerprint, teamSettingsFingerprint } from '../../engine/restore/workloads/teams.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { SHAREPOINT_LIVE_GATE } from './sharepointAcceptance.mjs';
 import {
@@ -118,7 +119,7 @@ export function teamsCapturePlan({ fixtureTeamId, fixtureMemberUserId }) {
 /**
  * Runs a capture against two injected transports (collector, restorer), each
  * `(url, init?) => { status, headers, body }`. Returns the unsigned record and the
- * raw capture log; it never signs and never writes files.
+ * capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureTeamsAcceptance({
   collector, restorer, directoryTenantId, fixtureTeamId, fixtureMemberUserId, tenantRef, build, credentials, grants,
@@ -281,7 +282,7 @@ export async function captureTeamsAcceptance({
   };
   const needsManualRevert = (log.values.settingsWritten === true && settingsWrite.restoredToOriginal !== true)
     || (log.values.memberAdded === true && membership.restoredToOriginal !== true);
-  return { record, captureLog, needsManualRevert };
+  return { ...pseudonymizeCapture({ record, log }), needsManualRevert };
 }
 
 /** Sends one write; a throttled (429/503) write was not applied and is resent after Retry-After. */

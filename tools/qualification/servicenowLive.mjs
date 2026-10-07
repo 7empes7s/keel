@@ -62,6 +62,7 @@ import {
 import { mapExternalIdentity, mirrorApprovalRequest, reconcileRecord } from '../../engine/itsm/bridge.mjs';
 import { drainItsmOutbox } from '../../engine/itsm/outbox.mjs';
 import { rejectRequest, requestApproval } from '../../engine/govern/approvals.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import {
   SERVICENOW_LIVE_CREDENTIAL_MODE, SERVICENOW_LIVE_GATE, SERVICENOW_LIVE_OPERATION, SERVICENOW_LIVE_PREREQUISITES,
@@ -249,7 +250,7 @@ export async function prepareServiceNowQualification(client, { tenantRef, runId,
 /**
  * Runs a capture. `client` is the KEEL qualification database (schema applied);
  * `fetchImpl` reaches the instance; `resolveSecret` resolves env: references. Returns
- * the unsigned record and the raw capture log; it never signs and never writes files.
+ * the unsigned record and the capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureServiceNowAcceptance({
   client, fetchImpl = globalThis.fetch, resolveSecret = defaultResolveSecret, tenantRef, build, config, testUsers,
@@ -442,7 +443,7 @@ export async function captureServiceNowAcceptance({
       captureLogSha256: sha256Hex(captureLog),
     },
   };
-  return { record, captureLog };
+  return pseudonymizeCapture({ record, log });
 }
 
 /**

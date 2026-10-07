@@ -93,7 +93,7 @@ before(async () => {
 });
 
 // ---- The Teams fake: two teams (one KEEL-RT), an owner, a fixture user to add and remove.
-function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0, ownerLinkDelayReads = 0, memberLinkPersists = false } = {}) {
+function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, failRemove = false, failRevert = false, startWithFixtureUser = false, teamName = 'KEEL-RT-20261003', teamTenant = TENANT, leaveOwnerLink = false, failOwnerUnlink = false, fixtureOwnerBefore = false, rosterLagReads = 0, ownerLinkDelayReads = 0, memberLinkPersists = false, summaryDrift = false } = {}) {
   const team = {
     '@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#teams/$entity',
     id: TEAM, displayName: teamName, description: 'KEEL rehearsal team', visibility: 'private', isArchived: false, tenantId: teamTenant,
@@ -136,7 +136,11 @@ function teamsGraph({ ignoreSettingsWrites = false, ignoreRoleWrites = false, fa
         : { status: 200, headers: {}, body: { value: [{ id: TEAM, displayName: teamName }], '@odata.nextLink': `${url}?$skiptoken=p2` } };
     }
     if (path === `/v1.0/teams/${TEAM}`) {
-      if (method === 'GET') return { status: 200, headers: {}, body: structuredClone(team) };
+      if (method === 'GET') {
+        // With summaryDrift, the lazily updated member counts change on every read (seen live on 2026-10-07).
+        if (summaryDrift) team.summary = { ownersCount: 1, membersCount: (team.summary?.membersCount ?? 0) + 1, guestsCount: 0 };
+        return { status: 200, headers: {}, body: structuredClone(team) };
+      }
       if (method === 'PATCH') {
         settingsPatches += 1;
         if (failRevert && settingsPatches === 2) return { status: 500, headers: {}, body: null };
@@ -678,3 +682,13 @@ test('a group owner link that appears after the removal is deleted when seen, an
   assert.deepEqual(verifyEvidenceFile(first.outPath, options()), { ok: true, failures: [] });
 });
 
+
+test('team fields outside the settings groups that change between reads never fail the settings round trip, and are named in the log', async () => {
+  const drifting = teamsGraph({ summaryDrift: true });
+  const result = await capturedFiles(drifting, { restoreReadDelayMs: 0, settleDelayMs: 0 });
+  const { settingsWrite } = result.record.subject;
+  assert.equal(settingsWrite.restoredToOriginal, true);
+  assert.equal(settingsWrite.preFingerprint, settingsWrite.finalFingerprint);
+  assert.deepEqual(JSON.parse(readFileSync(result.logPath, 'utf8')).values.teamKeysChanged, ['summary']);
+  assert.deepEqual(verifyEvidenceFile(result.outPath, options()), { ok: true, failures: [] });
+});

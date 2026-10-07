@@ -343,12 +343,24 @@ async function teamsReadUntil(readOnce, matches, { sleep, attempts, delayMs }) {
   return { body, matched: false };
 }
 
+// What the settings round trip compares: the writable settings groups and isArchived. The rest of
+// the team body (e.g. `summary`, whose member counts Graph updates lazily) can change between two
+// reads without any settings change, as it did live on 2026-10-07 (Q39).
+const TEAMS_COMPARED_FIELDS = Object.freeze([...TEAM_SETTING_FIELDS, 'isArchived']);
+const teamsComparedSettings = (team) => Object.fromEntries(TEAMS_COMPARED_FIELDS.map((field) => [field, team?.[field] ?? null]));
+const teamsSettingsFingerprint = (team) => teamSettingsFingerprint(teamsComparedSettings(team));
+/** Names (never values) of the top-level team fields that differ between two reads. */
+const teamsChangedKeys = (before, after) => [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])]
+  .filter((key) => !key.startsWith('@odata'))
+  .filter((key) => teamSettingsFingerprint({ value: before?.[key] ?? null }) !== teamSettingsFingerprint({ value: after?.[key] ?? null }))
+  .sort();
+
 async function teamsToggleAndRestore({ transport, teamId, capture, log, timing }) {
   const url = `${GRAPH}/${VERSION}/teams/${teamId}`;
   const readTeam = () => teamsReadTeam(transport, teamId, timing.sleep);
   try {
     const before = await readTeam();
-    capture.preFingerprint = teamSettingsFingerprint(before);
+    capture.preFingerprint = teamsSettingsFingerprint(before);
     const group = before[TEAMS_TOGGLE_GROUP];
     const original = group?.[TEAMS_TOGGLE_PROPERTY];
     log.values.originalToggle = original;
@@ -364,7 +376,8 @@ async function teamsToggleAndRestore({ transport, teamId, capture, log, timing }
       ? await teamsReadUntil(readTeam, (body) => body?.[TEAMS_TOGGLE_GROUP]?.[TEAMS_TOGGLE_PROPERTY] === original, timing)
       : { body: await readTeam(), matched: false };
     capture.restoredToOriginal = ok(reverted) && restored.matched;
-    capture.finalFingerprint = teamSettingsFingerprint(restored.body);
+    capture.finalFingerprint = teamsSettingsFingerprint(restored.body);
+    log.values.teamKeysChanged = teamsChangedKeys(before, restored.body);
     capture.ok = ok(reverted);
     if (!ok(reverted)) capture.error = `PUTTING THE SETTING BACK FAILED (HTTP ${reverted.status}): set ${TEAMS_TOGGLE_GROUP}.${TEAMS_TOGGLE_PROPERTY} to ${original} on the fixture team by hand`;
   } catch (error) {

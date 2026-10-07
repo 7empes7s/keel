@@ -1548,7 +1548,7 @@ item that needs it stays untouched.
   Status to queued (once both prerequisites below are deployed).
 - Status: hold
 - Result:
-- Needs: #137 (119 capture) and the Public repo exposure check PR (pseudonymizes the raw tenant GUID,
+- Needs: #137 (119 capture, merged 09:57) and #139 (closes #138; pseudonymizes the raw tenant GUID,
   client ids and object ids in the 120→123 capture tools and validators) both merged and deployed. The
   keel-powershell rebuild is done (13df115, 2026-10-07 09:55).
 - The build **B** is whatever `/opt/keel-live` is at when this starts (`git -C /opt/keel-live rev-parse HEAD`).
@@ -1572,6 +1572,8 @@ item that needs it stays untouched.
      It reads only principal and role-grant rows and calls no tenant API. The principal needs `configuration`. The
      pinned catalog must be at `/var/lib/keel/reference-data/nist-sp800-53-rev5.2.0-catalog.json`.
   7. 120 → 121 → 122 → 123 as Q35 (a fresh unpublished `KEEL-RT-<date>-label<n>` for 123).
+     Pseudonyms are keyed on tenantRef, so 120 → 123 must all be recaptured in this same run. After #139, the 123
+     capture also takes the real site host via `--fixture-site` (the exact flags are in #139's docs).
 - After each capture, run `qualification.mjs verify --require-live --gate <gate> --build B --tenant <ref>` and
   record the exit code. A refusal or failure is a result: report it and stop the chain. Never edit a record by hand.
 - Commit each gate to `claude/live-evidence-124-<gate>`. **The repo is public**: run the committed-evidence

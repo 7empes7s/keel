@@ -114,7 +114,11 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 
 ## 2026-10-07: add Desk (feedback, ideas, votes, procedures) and the staff portals to cracia
 
-- **Status:** open. Do step 1 now. Do steps 2 to 6 only after 7empes7s/demo2.0#46 is merged and app-deploy@civic has
+- **Status:** done (keel-operator, 2026-10-07 09:12 UTC). Desk `/healthz` ok (5 procedures, 1 staff); Companion
+  `"desk":true`; `/portal/` 200 locally and publicly; procedures 5; admin sign-in 200. The live `ff8c05e` release was
+  built before the step 1 `BUILD_CMD` change, so the portal was built once in place; later releases build it.
+  `LLM_API_KEY` empty (no Groq key yet). Admin password is in `/etc/civic/desk-admin.initial` for Marouane.
+  Evidence: https://github.com/7empes7s/demo2.0/issues/48 (closed). Original start condition: Do step 1 now. Do steps 2 to 6 only after 7empes7s/demo2.0#46 is merged and app-deploy@civic has
   made a release at or after its merge commit live:
   `grep -q 'env node' /opt/civic/current/ops/deploy/civic-desk.service && test -f /opt/civic/current/apps/portal/dist/index.html`.
 - **Asked by:** Marouane, 2026-10-06 ("I want a full app … has an admin/operator/audit/end-user portals … keep it at

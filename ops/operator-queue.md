@@ -1661,3 +1661,15 @@ item that needs it stays untouched.
     Expected: every gate `live-qualified`, 117 listed as an accepted gap, and the label still `pending` only
     because of the objective gaps (D1-D10, G1-G8), unless that decision has been made by then.
 - Poll every 5 minutes while queued or running.
+
+### Q40: Drop the Q39 throwaway databases — issues #84, #86
+- Status: queued
+- Why: Q39 (gate 124 recapture) is done, and its evidence lives in the `claude/live-evidence-124-*` records. It left four
+  disposable databases on the host: `keel_recovery_q39`, `keel_drill_q39`, `keel_test_q39`, `keel_journeys_q39`.
+  None of them is needed any more.
+- Do, as root with `/etc/keel/db.env` sourced, the same way as Q38:
+  1. List them: `SELECT datname FROM pg_database WHERE datname IN ('keel_recovery_q39','keel_drill_q39','keel_test_q39','keel_journeys_q39');`
+  2. `DROP DATABASE` each listed name, one at a time. Drop only those four names. Never touch the live database,
+     `keel_test`, `keel_servicenow_qualification`, or anything else.
+  3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
+- Keep `/opt/keel-recovery-sets/2026-10-07-q39` and `/root/keel-q39/` until the gate 124 evidence PR is merged.

@@ -111,3 +111,51 @@ Work for the keel-operator on Mulinux. One entry per task, newest last. Mark an 
 - **Does not touch:** Keel, `/opt/keel*`, any M365 tenant. No model runs on Mulinux itself.
 - **Done when:** both checks pass. Delete `/etc/civic/companion.env.bak`. Comment the healthz output (it has no key) on
   a new demo2.0 issue titled "Companion on a free-tier open-weight model" and close it.
+
+## 2026-10-07: add Desk (feedback, ideas, votes, procedures) and the staff portals to cracia
+
+- **Status:** open. Do step 1 now. Do steps 2 to 6 only after 7empes7s/demo2.0#46 is merged and app-deploy@civic has
+  made a release at or after its merge commit live:
+  `grep -q 'env node' /opt/civic/current/ops/deploy/civic-desk.service && test -f /opt/civic/current/apps/portal/dist/index.html`.
+- **Asked by:** Marouane, 2026-10-06 ("I want a full app … has an admin/operator/audit/end-user portals … keep it at
+  feedback/suggestions/votes/official procedures' follow-up").
+- **Repo:** `7empes7s/demo2.0`, `main`. Background: `docs/product/desk.md`, `modules/desk/README.md`,
+  `ops/deploy/README.md` (Desk rows and "Mulinux notes").
+- **Shape:** one new unit `civic-desk.service` on 127.0.0.1:8094 (Node 22, SQLite in `/var/lib/civic-desk/desk.db`,
+  append-only hash-chained log), `PartOf=civic-companion`. The Companion forwards `/api/desk/*` to it and serves the
+  staff portals at `/portal/`. No new port leaves loopback, no Caddy or tunnel change.
+- **Steps:**
+  1. Back up `/etc/civic/deploy.env` (`cp -p` to `.bak`), then append ` -w @democracy2/portal` to the end of the
+     `npm run build -w @democracy2/citizen` part of `BUILD_CMD`, so the next release also builds `apps/portal/dist`.
+     Keep the Node 22 `PATH` line. The portal workspace is already on `main` (demo2.0#44), so this is safe before #46.
+  2. Copy `/opt/civic/current/ops/deploy/civic-desk.service` to `/etc/systemd/system/`, then give it the same Node 22
+     drop-in as the Companion: `mkdir -p /etc/systemd/system/civic-desk.service.d && cp -p
+     /etc/systemd/system/civic-companion.service.d/node22.conf /etc/systemd/system/civic-desk.service.d/`. Desk needs
+     Node 22 (`node:sqlite`); the system Node cannot run it.
+  3. Create `/etc/civic/desk.env` from `/opt/civic/current/ops/deploy/desk.env.example` with
+     `install -m 600 -o root -g root`. Generate the first admin password into a root-only file,
+     `(umask 077; openssl rand -base64 24 > /etc/civic/desk-admin.initial)`, and put the same value in
+     `DESK_BOOTSTRAP_PASSWORD` with an editor, never on a command line. For the model, copy the three `LLM_*` lines
+     from `/etc/civic/companion.env` over the example's (an editor again). If the Companion has no key yet (the
+     free-tier entry above is still open), leave `LLM_API_KEY` empty: Desk runs, and its three helpers answer
+     "no model" until then.
+  4. In `/etc/civic/companion.env` add `DESK_URL=http://127.0.0.1:8094` and
+     `PORTAL_DIR=/opt/civic/current/apps/portal/dist`. Keep `PORT=8788`. Do not add Desk to `HEALTH_URLS`: it is
+     optional, and `/healthz` reports it as `"desk": true|false`.
+  5. `systemctl daemon-reload && systemctl enable --now civic-desk && systemctl restart civic-companion`.
+  6. Back up `/var/lib/civic-desk/desk.db` with the other civic state if a backup exists for it; never edit the file.
+- **Check:**
+  1. `curl -s 127.0.0.1:8094/healthz` answers `{"ok":true,...}`, and `journalctl -u civic-desk -n 20` shows no error.
+  2. `curl -s 127.0.0.1:8788/healthz` shows `"desk":true` (wait 30 s after the restart first).
+  3. `curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:8788/portal/` prints `200`, and
+     `curl -s 127.0.0.1:8788/api/desk/procedures | jq '.procedures | length'` is above 0 (the Esch seed).
+  4. The admin can sign in, reading the password from the file so it never reaches the shell or `ps`:
+     `jq -Rn '{login:"admin",password:input}' < /etc/civic/desk-admin.initial | curl -s -o /dev/null -w '%{http_code}\n' -X POST 127.0.0.1:8788/api/desk/staff/login -H 'content-type: application/json' -d @-`
+     prints `200`.
+- **Do not:** expose 8094 beyond loopback, edit or delete `desk.db`, or put the admin password or a model key in git,
+  an issue, a log or a chat. Marouane reads `/etc/civic/desk-admin.initial` on Mulinux, signs in at `/portal/`,
+  changes the password, then the file is deleted and `DESK_BOOTSTRAP_PASSWORD` blanked.
+- **Does not touch:** Keel, `/opt/keel*`, any M365 tenant.
+- **Done when:** the four checks pass and `https://cracia.techinsiderbytes.com/portal/` answers 200. Delete
+  `/etc/civic/deploy.env.bak`. Comment the healthz output (no secrets) on a new demo2.0 issue titled
+  "Deploy Desk and the staff portals" and close it.

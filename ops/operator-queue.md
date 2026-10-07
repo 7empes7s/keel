@@ -1550,7 +1550,20 @@ item that needs it stays untouched.
   report B first. **Master is frozen from now until the ledger runs.** For 123 follow
   docs/roadmap/onedrive-purview-live-acceptance.md step 7 at B (`--fixture-site <OneDrive URL>` is required and checked
   against the chain's host or its pseudonym). Recapture 120 → 123 together in this run. Released by the #84 thread.
-- Status: blocked
+- Coordinator decision (11:30 UTC, #84 thread): **(a), retry 121 once at B unchanged.** The settings fingerprint code is
+  the same as when 121 passed at 76ee9b5 (d6825c9 only pseudonymizes ids). The final read stops as soon as the toggle
+  matches, so another team field lagging behind the revert is the likely cause. Steps:
+  1. Keep `keel-scheduler.timer` stopped. Read the fixture team once (read-only) and confirm the four setting groups are at
+     the original values and the fixture member is gone.
+  2. Run 121 → 122 → 123 at B, exactly as this run's 120–123 chain (123 with `KEEL-RT-20261007-label` and
+     `--fixture-site`). 120 stays as committed (`-124-120` @ 5583e75), so don't recapture it.
+  3. If 121 fails again with the same settings mismatch: stop, keep both failed 121 captures uncommitted, run
+     `systemctl start keel-scheduler.timer`, and report. That means (b): a code fix and a new B, which the #84 thread
+     will open.
+  4. If 121–123 verify: commit each to `claude/live-evidence-124-<gate>` with the same evidence tests and scan.
+     Run `systemctl start keel-scheduler.timer` **before** the ledger, report the time, then run the journeys and the
+     ledger at B as below.
+- Status: queued (retry 121, decision above)
 - Result: **Blocked at 121, at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean throughout). 113–120 are
     verified and pushed. 121 capture failed, so I stopped the chain as the entry says. 122, 123 and the ledger have not run.
   - keel-worker restarted at B: **2026-10-07 10:48:53 UTC**.
@@ -1601,7 +1614,7 @@ item that needs it stays untouched.
 - The build **B** is whatever `/opt/keel-live` is at when this starts (`git -C /opt/keel-live rev-parse HEAD`).
   Report B before starting.
 - Pre-check on the host at B: `cd engine && node --test roadmap/nist-benchmark-acceptance.test.mjs` (needs the
-  pinned catalog). All 8 tests must pass; otherwise stop and report.
+  pinned catalog). All 7 tests must pass; otherwise stop and report.
 - **Master freeze**: no merge to master from the first capture until the ledger runs. Restart
   `keel-worker` at B before starting and report its start time. No collection may run mid-chain (same as Q35).
 - Why: every gate is qualified today, but at six different builds (113/115 `33ad2a9`, 114 `df0de36`,

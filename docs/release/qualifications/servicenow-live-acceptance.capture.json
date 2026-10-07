@@ -1,8 +1,8 @@
 {
-  "runId": "keel-rt-servicenow-cde7a673-85a8-42f9-b352-f00814a53fe3",
+  "runId": "keel-rt-servicenow-fb176706-b19c-8d19-8358-ef5c8df28468",
   "calls": [
     {
-      "at": "2026-10-04T12:24:32.406Z",
+      "at": "2026-10-07T11:08:30.036Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
@@ -14,7 +14,7 @@
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:34.106Z",
+      "at": "2026-10-07T11:08:32.211Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
@@ -28,14 +28,14 @@
       "status": 201
     },
     {
-      "at": "2026-10-04T12:24:35.248Z",
+      "at": "2026-10-07T11:08:33.645Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [
         "u_keel_request",
         "u_plan_hash",
@@ -44,33 +44,33 @@
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:36.303Z",
+      "at": "2026-10-07T11:08:34.244Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "GET",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:37.744Z",
+      "at": "2026-10-07T11:08:35.958Z",
       "host": "dev426571.service-now.com",
       "actor": "keel-rt-sn-one",
       "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
       "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [
         "u_state"
       ],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:38.422Z",
+      "at": "2026-10-07T11:08:36.727Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
@@ -82,337 +82,45 @@
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:39.246Z",
+      "at": "2026-10-07T11:08:37.342Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "GET",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:40.195Z",
+      "at": "2026-10-07T11:08:38.138Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "GET",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:41.355Z",
+      "at": "2026-10-07T11:08:38.828Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
       "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
       "fields": [
         "u_keel_decision"
       ],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:24:42.017Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/3dff77982fbfc390ef154c707fa4e334",
-      "table": "u_keel_change",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:43.024Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "POST",
-      "path": "/api/now/table/u_keel_change",
-      "table": "u_keel_change",
-      "sysId": null,
-      "fields": [
-        "u_title"
-      ],
-      "status": 201
-    },
-    {
-      "at": "2026-10-04T12:24:44.360Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [
-        "u_keel_request",
-        "u_plan_hash",
-        "u_plan_rev"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:45.190Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:46.155Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel-rt-sn-one",
-      "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [
-        "u_state"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:46.827Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_callback_relay",
-      "table": "u_keel_callback_relay",
-      "sysId": null,
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:47.653Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:48.388Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:49.121Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:50.230Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [
-        "u_keel_decision"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:50.885Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/cc0088a82fbfc390ef154c707fa4e31e",
-      "table": "u_keel_change",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:52.205Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "POST",
-      "path": "/api/now/table/u_keel_change",
-      "table": "u_keel_change",
-      "sysId": null,
-      "fields": [
-        "u_title"
-      ],
-      "status": 201
-    },
-    {
-      "at": "2026-10-04T12:24:53.462Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [
-        "u_keel_request",
-        "u_plan_hash",
-        "u_plan_rev"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:54.029Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:55.002Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [
-        "u_keel_decision"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:56.416Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel-rt-sn-one",
-      "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [
-        "u_state"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:56.870Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_callback_relay",
-      "table": "u_keel_callback_relay",
-      "sysId": null,
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:57.792Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:58.777Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [
-        "u_keel_decision"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:24:59.736Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "GET",
-      "path": "/api/now/table/u_keel_change/0e00c8a82fbfc390ef154c707fa4e394",
-      "table": "u_keel_change",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "fields": [],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:25:01.154Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "POST",
-      "path": "/api/now/table/u_keel_change",
-      "table": "u_keel_change",
-      "sysId": null,
-      "fields": [
-        "u_title"
-      ],
-      "status": 201
-    },
-    {
-      "at": "2026-10-04T12:25:02.307Z",
-      "host": "dev426571.service-now.com",
-      "actor": "keel",
-      "credentialRef": "env:KEEL_SN_TOKEN",
-      "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/90100ca82fbfc390ef154c707fa4e346",
-      "table": "u_keel_change",
-      "sysId": "90100ca82fbfc390ef154c707fa4e346",
-      "fields": [
-        "u_keel_request",
-        "u_plan_hash",
-        "u_plan_rev"
-      ],
-      "status": 200
-    },
-    {
-      "at": "2026-10-04T12:25:02.766Z",
+      "at": "2026-10-07T11:08:39.700Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
@@ -424,21 +132,325 @@
       "status": 200
     },
     {
-      "at": "2026-10-04T12:25:04.402Z",
+      "at": "2026-10-07T11:08:40.518Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/c55b0b9d2fb78b90ef154c707fa4e328",
+      "table": "u_keel_change",
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:41.677Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "POST",
+      "path": "/api/now/table/u_keel_change",
+      "table": "u_keel_change",
+      "sysId": null,
+      "fields": [
+        "u_title"
+      ],
+      "status": 201
+    },
+    {
+      "at": "2026-10-07T11:08:42.618Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [
+        "u_keel_request",
+        "u_plan_hash",
+        "u_plan_rev"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:42.832Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:44.006Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel-rt-sn-one",
+      "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [
+        "u_state"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:44.828Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_callback_relay",
+      "table": "u_keel_callback_relay",
+      "sysId": null,
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:45.574Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:46.491Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:47.158Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:47.527Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [
+        "u_keel_decision"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:48.025Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/ab5b0b192ff78b90ef154c707fa4e3b2",
+      "table": "u_keel_change",
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:49.011Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "POST",
+      "path": "/api/now/table/u_keel_change",
+      "table": "u_keel_change",
+      "sysId": null,
+      "fields": [
+        "u_title"
+      ],
+      "status": 201
+    },
+    {
+      "at": "2026-10-07T11:08:49.969Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [
+        "u_keel_request",
+        "u_plan_hash",
+        "u_plan_rev"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:50.590Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:51.669Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [
+        "u_keel_decision"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:52.365Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel-rt-sn-one",
+      "credentialRef": "env:KEEL_SN_TEST_USER_ONE",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [
+        "u_state"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:53.010Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_callback_relay",
+      "table": "u_keel_callback_relay",
+      "sysId": null,
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:53.776Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:54.423Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [
+        "u_keel_decision"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:55.025Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/516b0b192ff78b90ef154c707fa4e302",
+      "table": "u_keel_change",
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:55.960Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "POST",
+      "path": "/api/now/table/u_keel_change",
+      "table": "u_keel_change",
+      "sysId": null,
+      "fields": [
+        "u_title"
+      ],
+      "status": 201
+    },
+    {
+      "at": "2026-10-07T11:08:56.902Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "PATCH",
+      "path": "/api/now/table/u_keel_change/c36b4b192ff78b90ef154c707fa4e35e",
+      "table": "u_keel_change",
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
+      "fields": [
+        "u_keel_request",
+        "u_plan_hash",
+        "u_plan_rev"
+      ],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:57.676Z",
+      "host": "dev426571.service-now.com",
+      "actor": "keel",
+      "credentialRef": "env:KEEL_SN_TOKEN",
+      "method": "GET",
+      "path": "/api/now/table/u_keel_change/c36b4b192ff78b90ef154c707fa4e35e",
+      "table": "u_keel_change",
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
+      "fields": [],
+      "status": 200
+    },
+    {
+      "at": "2026-10-07T11:08:58.418Z",
       "host": "dev426571.service-now.com",
       "actor": "keel-rt-sn-two",
       "credentialRef": "env:KEEL_SN_TEST_USER_TWO",
       "method": "PATCH",
-      "path": "/api/now/table/u_keel_change/90100ca82fbfc390ef154c707fa4e346",
+      "path": "/api/now/table/u_keel_change/c36b4b192ff78b90ef154c707fa4e35e",
       "table": "u_keel_change",
-      "sysId": "90100ca82fbfc390ef154c707fa4e346",
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
       "fields": [
         "u_state"
       ],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:25:05.359Z",
+      "at": "2026-10-07T11:08:59.361Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
@@ -450,65 +462,65 @@
       "status": 200
     },
     {
-      "at": "2026-10-04T12:25:06.233Z",
+      "at": "2026-10-07T11:08:59.848Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "GET",
-      "path": "/api/now/table/u_keel_change/90100ca82fbfc390ef154c707fa4e346",
+      "path": "/api/now/table/u_keel_change/c36b4b192ff78b90ef154c707fa4e35e",
       "table": "u_keel_change",
-      "sysId": "90100ca82fbfc390ef154c707fa4e346",
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
       "fields": [],
       "status": 200
     },
     {
-      "at": "2026-10-04T12:25:06.898Z",
+      "at": "2026-10-07T11:09:00.550Z",
       "host": "dev426571.service-now.com",
       "actor": "keel",
       "credentialRef": "env:KEEL_SN_TOKEN",
       "method": "GET",
-      "path": "/api/now/table/u_keel_change/90100ca82fbfc390ef154c707fa4e346",
+      "path": "/api/now/table/u_keel_change/c36b4b192ff78b90ef154c707fa4e35e",
       "table": "u_keel_change",
-      "sysId": "90100ca82fbfc390ef154c707fa4e346",
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
       "fields": [],
       "status": 200
     }
   ],
   "callbacks": [
     {
-      "at": "2026-10-04T12:24:38.423Z",
+      "at": "2026-10-07T11:08:36.728Z",
       "scenario": "callback-duplicate",
       "delivery": "first",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
-      "bodySha256": "8c144aaa525a0a011748494e5825ac8efae4e89558b940fe60f2da2d9a629884"
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
+      "bodySha256": "606ba543f217a8e8168257182202caf4faafbd877fc01c03170ac230121631f2"
     },
     {
-      "at": "2026-10-04T12:24:39.265Z",
+      "at": "2026-10-07T11:08:37.362Z",
       "scenario": "callback-duplicate",
       "delivery": "redelivered",
-      "sysId": "3dff77982fbfc390ef154c707fa4e334",
-      "bodySha256": "8c144aaa525a0a011748494e5825ac8efae4e89558b940fe60f2da2d9a629884"
+      "sysId": "c55b0b9d2fb78b90ef154c707fa4e328",
+      "bodySha256": "606ba543f217a8e8168257182202caf4faafbd877fc01c03170ac230121631f2"
     },
     {
-      "at": "2026-10-04T12:24:48.390Z",
+      "at": "2026-10-07T11:08:46.494Z",
       "scenario": "lost-callback",
       "delivery": "late",
-      "sysId": "cc0088a82fbfc390ef154c707fa4e31e",
-      "bodySha256": "f502c3d1792d2180673ec552986105635ea65f0cf41c33accc83d12335722fba"
+      "sysId": "ab5b0b192ff78b90ef154c707fa4e3b2",
+      "bodySha256": "2a37f68e9f414d64eac74be25ab06d4fc01cc5174add09d208a25aaa71dc74a5"
     },
     {
-      "at": "2026-10-04T12:24:56.870Z",
+      "at": "2026-10-07T11:08:53.010Z",
       "scenario": "conflict",
       "delivery": "first",
-      "sysId": "0e00c8a82fbfc390ef154c707fa4e394",
-      "bodySha256": "a091a045557fb4964b9973471b78ca5d79fbeda5c1bd50817dd0bdae500f5e08"
+      "sysId": "516b0b192ff78b90ef154c707fa4e302",
+      "bodySha256": "5b1ca824d1d0e2b600ea2e13e27b83be4351686989c7b0ffb28c9def4f715cbc"
     },
     {
-      "at": "2026-10-04T12:25:05.359Z",
+      "at": "2026-10-07T11:08:59.361Z",
       "scenario": "revoked-approver",
       "delivery": "first",
-      "sysId": "90100ca82fbfc390ef154c707fa4e346",
-      "bodySha256": "35d43eaf6410ea15b15cfac389da1e462ef206a6563628af14029b5303892921"
+      "sysId": "c36b4b192ff78b90ef154c707fa4e35e",
+      "bodySha256": "921b2d7f48a285b29e8aa36348afc53623a225047d9ce2ef50880abff28b86c0"
     }
   ]
 }

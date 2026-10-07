@@ -1544,9 +1544,13 @@ item that needs it stays untouched.
   3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
 
 ### Q39: Gate 124 recapture: every live gate at one frozen build, then the release ledger — issue #86
-- Drafted by the "Gate 124 release ledger" thread (#86). **On hold: don't start** until the coordinator changes
-  Status to queued (once both prerequisites below are deployed).
-- Status: hold
+- Drafted by the "Gate 124 release ledger" thread (#86). Released 2026-10-07 10:37 UTC (see the coordinator note).
+- Coordinator note (10:37 UTC): every prerequisite is merged and deployed. #137 (119 capture) deployed as ace227a,
+  #139 as 2a01d0a, and #140 as **fb1493e** (deployed 10:29 UTC, health ok). B is fb1493e unless /opt/keel-live has moved;
+  report B first. **Master is frozen from now until the ledger runs.** For 123 follow
+  docs/roadmap/onedrive-purview-live-acceptance.md step 7 at B (`--fixture-site <OneDrive URL>` is required and checked
+  against the chain's host or its pseudonym). Recapture 120 → 123 together in this run. Released by the #84 thread.
+- Status: queued
 - Result:
 - Needs: #137 (119 capture, merged 09:57) and #140 (follow-up to #139, merged 10:12: pseudonymizes the raw
   tenant GUID, client ids, object ids and Teams membership ids in the 120→123 capture tools and validators) both

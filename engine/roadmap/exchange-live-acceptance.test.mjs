@@ -38,6 +38,7 @@ import {
 import {
   captureExchangeAcceptance, ledgerEvidenceFromExchangeAcceptance, main as exchangeMain, writeExchangeAcceptanceFiles,
 } from '../../tools/qualification/exchangeLive.mjs';
+import { pseudonymizer } from '../../tools/qualification/pseudonymize.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -658,7 +659,7 @@ test('when Exchange reports an empty organization tenant id, the collector token
   // Live Get-OrganizationConfig can return an empty ExternalDirectoryOrganizationId: the collector token's tenant stands in.
   const proven = await capturedFiles(exchangeFake({ orgTenant: '' }), { credentialTenants: { collector: TENANT, restorer: TENANT } });
   assert.deepEqual(verifyEvidenceFile(proven.outPath, options()), { ok: true, failures: [] });
-  assert.equal(proven.record.subject.organization.externalDirectoryOrganizationId, TENANT);
+  assert.equal(proven.record.subject.organization.externalDirectoryOrganizationId, pseudonymizer(proven.record.tenantRef).guid(TENANT));
   assert.equal(proven.record.subject.organization.tenantIdSource, 'collector-token');
 
   // A reported id is used as reported, and a reported foreign id still wins over the token.

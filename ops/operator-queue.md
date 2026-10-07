@@ -1550,8 +1550,9 @@ item that needs it stays untouched.
   report B first. **Master is frozen from now until the ledger runs.** For 123 follow
   docs/roadmap/onedrive-purview-live-acceptance.md step 7 at B (`--fixture-site <OneDrive URL>` is required and checked
   against the chain's host or its pseudonym). Recapture 120 → 123 together in this run. Released by the #84 thread.
-- Status: in-progress
-- Result: **In progress at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean). 113–119 done; 120→123 running.
+- Status: blocked
+- Result: **Blocked at 121, at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean throughout). 113–120 are
+    verified and pushed. 121 capture failed, so I stopped the chain as the entry says. 122, 123 and the ledger have not run.
   - keel-worker restarted at B: **2026-10-07 10:48:53 UTC**.
   - NIST pre-check (`node --test roadmap/nist-benchmark-acceptance.test.mjs`): **7/7 pass, 0 skipped**. The file at B
     defines exactly 7 tests, not 8 as the entry says.
@@ -1572,6 +1573,27 @@ item that needs it stays untouched.
   - 119 nist-benchmark-acceptance (principal marouanedefili@…, read-only): verify ok, exit 0 → `-124-119` @ b13ca2a.
   - The committed-evidence tests for 113/114/115/116/118 pass. 116/118 ran on a throwaway `keel_test_q39`; keel_test was
     untouched. The secret and raw-id scan of every file is clean.
+  - 120 sharepoint-live-acceptance (`--allow-widening-toggle`, as Q35): verify ok, exit 0 → `-124-120` @ 5583e75. Resharing
+    is back to false. The committed-evidence test and scan are clean.
+  - **121 teams-live-acceptance: capture exit 1.** `verify.failures`: `teams.settings.update: the final settings do not match
+    the starting settings`.
+    - settingsWrite (funSettings.allowCustomMemes): ok, readBackVerified, **restoredToOriginal true**, but
+      preFingerprint 3f11b60c… ≠ finalFingerprint 436d0427….
+    - Membership add/update/remove: all ok and read back; membership and owner fingerprints are equal before and after;
+      ownerLinkRemoved true.
+    - `teamSettingsFingerprint` hashes the **whole** team GET body (every non-@odata key), not just the setting groups,
+      and the capture log keeps no bodies. So some other field of the team object differed between the first and the
+      final read. Most likely this is Graph read inconsistency, or a field Microsoft updates on any write. I can't tell
+      which from the log.
+    - The team now (11:15, read-only): all four setting groups at the expected values (allowCustomMemes true), not
+      archived. Fixture member roster/owners/members = 0 at 11:10, 11:11 and 11:12. **No residue in the tenant.**
+    - Failed 121 files kept locally (scratchpad `q39-121-fail/`), not committed; never edited.
+  - **Still paused:** `keel-scheduler.timer` stays stopped so a rerun of 121→123 at B stays collection-free. Run
+    `systemctl start keel-scheduler.timer` to resume collections (I'll do it when told, or when Q39 is cancelled).
+    Master is still frozen; B is unchanged.
+  **Coordinator, decision needed:** (a) retry 121 at B unchanged (a lag-type failure like the gate 115 read-back case;
+    then 122, 123 and the ledger), or (b) a code fix first: fingerprint only `TEAM_SETTING_FIELDS`, and/or log the
+    bodies. A fix means a new B and a full recapture.
 - Needs: #137 (119 capture, merged 09:57) and #140 (follow-up to #139, merged 10:12: pseudonymizes the raw
   tenant GUID, client ids, object ids and Teams membership ids in the 120→123 capture tools and validators) both
   merged and deployed. The

@@ -1563,7 +1563,7 @@ item that needs it stays untouched.
   4. If 121–123 verify: commit each to `claude/live-evidence-124-<gate>` with the same evidence tests and scan.
      Run `systemctl start keel-scheduler.timer` **before** the ledger, report the time, then run the journeys and the
      ledger at B as below.
-- Status: queued (retry 121, decision above)
+- Status: in-progress
 - Result: **Blocked at 121, at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean throughout). 113–120 are
     verified and pushed. 121 capture failed, so I stopped the chain as the entry says. 122, 123 and the ledger have not run.
   - keel-worker restarted at B: **2026-10-07 10:48:53 UTC**.

@@ -753,11 +753,11 @@ test('the capture tool is offline by default, refuses non-fixtures and unsafe st
   await assert.rejects(capture(purviewFake(), { tenantHost: 'fabrikam.sharepoint.com' }), /must be on fabrikam-my.sharepoint.com/);
 
   // The chain names the tenant host pseudonymized: the CLI captures against the real host from
-  // --fixture-site only when it is that host (or, in an older record, the host itself).
+  // --fixture-site only when that host's pseudonym is the chain's. A raw (pre-pseudonym) chain is refused.
   const pseudoHost = pseudonymizer(tenantRef).text(SP_HOST);
   assert.notEqual(pseudoHost, SP_HOST);
   assert.equal(onedrivePurviewLiveTenantHost(SITE, pseudoHost, tenantRef), SP_HOST);
-  assert.equal(onedrivePurviewLiveTenantHost(SITE, SP_HOST, tenantRef), SP_HOST);
+  assert.throws(() => onedrivePurviewLiveTenantHost(SITE, SP_HOST, tenantRef), /recapture the SharePoint, Teams and Exchange records first/);
   const otherTenant = pseudonymizer(tenantRef).text('fabrikam.sharepoint.com');
   assert.equal(onedrivePurviewLiveTenantHost(SITE, otherTenant, tenantRef), otherTenant);
   await assert.rejects(capture(purviewFake(), { tenantHost: otherTenant }), /must be on t[0-9a-f]{11}-my.sharepoint.com/);

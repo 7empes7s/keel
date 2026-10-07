@@ -6,10 +6,10 @@
       "module": "PnP.PowerShell",
       "cmdlet": "Get-PnPTenantSite",
       "parameters": {
-        "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com"
+        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-20260908-alice_techinsiderbytes_com"
       },
       "outcome": "ok",
-      "at": "2026-10-05T14:47:44.947Z"
+      "at": "2026-10-07T11:34:28.976Z"
     },
     {
       "credential": "collector",
@@ -18,7 +18,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:48:13.395Z"
+      "at": "2026-10-07T11:34:50.432Z"
     },
     {
       "credential": "collector",
@@ -27,7 +27,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:48:13.395Z"
+      "at": "2026-10-07T11:34:50.432Z"
     },
     {
       "credential": "collector",
@@ -35,10 +35,10 @@
       "module": "PnP.PowerShell",
       "cmdlet": "Get-PnPTenantSite",
       "parameters": {
-        "Identity": "https://lxtj-my.sharepoint.com/personal/keel-rt-absent-f3c228a2805f"
+        "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-e1d58554f108"
       },
       "outcome": "failed",
-      "at": "2026-10-05T14:48:13.395Z",
+      "at": "2026-10-07T11:34:50.432Z",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "PnP.PowerShell.Commands.GetTenantSite"
@@ -51,7 +51,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:48:40.285Z"
+      "at": "2026-10-07T11:35:14.870Z"
     },
     {
       "credential": "restorer",
@@ -60,7 +60,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:48:40.285Z"
+      "at": "2026-10-07T11:35:14.870Z"
     },
     {
       "credential": "restorer",
@@ -68,11 +68,11 @@
       "module": "ExchangeOnlineManagement",
       "cmdlet": "Set-Label",
       "parameters": {
-        "Identity": "3106132e-891f-43b8-99f4-b07b6132acc3",
-        "Comment": "KEEL-RT qualification 2026-10-05T14:48:19.098Z"
+        "Identity": "33b2fc93-62d1-82bf-bf6b-75aa479ad847",
+        "Comment": "KEEL-RT qualification 2026-10-07T11:34:55.284Z"
       },
       "outcome": "ok",
-      "at": "2026-10-05T14:48:40.285Z"
+      "at": "2026-10-07T11:35:14.871Z"
     },
     {
       "credential": "restorer",
@@ -81,7 +81,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:49:08.643Z"
+      "at": "2026-10-07T11:35:58.904Z"
     },
     {
       "credential": "restorer",
@@ -90,7 +90,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:49:08.643Z"
+      "at": "2026-10-07T11:35:58.904Z"
     },
     {
       "credential": "restorer",
@@ -98,11 +98,11 @@
       "module": "ExchangeOnlineManagement",
       "cmdlet": "Set-Label",
       "parameters": {
-        "Identity": "3106132e-891f-43b8-99f4-b07b6132acc3",
+        "Identity": "33b2fc93-62d1-82bf-bf6b-75aa479ad847",
         "Comment": "KEEL gate 123 fixture"
       },
       "outcome": "ok",
-      "at": "2026-10-05T14:49:08.643Z"
+      "at": "2026-10-07T11:35:58.904Z"
     },
     {
       "credential": "restorer",
@@ -111,7 +111,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:49:50.226Z"
+      "at": "2026-10-07T11:36:27.490Z"
     },
     {
       "credential": "restorer",
@@ -120,7 +120,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:49:50.226Z"
+      "at": "2026-10-07T11:36:27.490Z"
     },
     {
       "credential": "restorer",
@@ -129,7 +129,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:50:07.411Z"
+      "at": "2026-10-07T11:36:44.416Z"
     },
     {
       "credential": "restorer",
@@ -138,7 +138,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:50:07.411Z"
+      "at": "2026-10-07T11:36:44.416Z"
     },
     {
       "credential": "restorer",
@@ -146,13 +146,13 @@
       "module": "ExchangeOnlineManagement",
       "cmdlet": "Set-LabelPolicy",
       "parameters": {
-        "Identity": "9581a855-3e69-447b-8219-9cb5a1979db1",
+        "Identity": "92ca8095-9cc5-8acf-8c45-04d71b7037ad",
         "AddLabels": [
-          "KEEL-RT-20261005-label3"
+          "KEEL-RT-20261007-label"
         ]
       },
       "outcome": "ok",
-      "at": "2026-10-05T14:50:07.411Z"
+      "at": "2026-10-07T11:36:44.416Z"
     },
     {
       "credential": "restorer",
@@ -161,7 +161,7 @@
       "cmdlet": "Get-Label",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:50:49.640Z"
+      "at": "2026-10-07T11:37:15.385Z"
     },
     {
       "credential": "restorer",
@@ -170,7 +170,7 @@
       "cmdlet": "Get-LabelPolicy",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-05T14:50:49.640Z"
+      "at": "2026-10-07T11:37:15.385Z"
     }
   ],
   "values": {

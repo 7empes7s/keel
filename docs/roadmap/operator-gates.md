@@ -253,7 +253,7 @@ The record is valid for 30 days and only for the build it names.
 
 | Task | Gate | State |
 |---|---|---|
-| 119 | `nist-benchmark-acceptance` | Live-qualified (`docs/release/qualifications/nist-benchmark-acceptance.json`) |
+| 119 | `nist-benchmark-acceptance` | Live-qualified (`docs/release/qualifications/nist-benchmark-acceptance.json`). Recapture at a new build with `tools/qualification/nistLive.mjs` ([steps](nist-benchmark-acceptance.md#operator-steps)) |
 | 126 | `scubagear-benchmark-acceptance` | Live-qualified (`scubagear-benchmark-acceptance.live.json`) |
 
 ## Not yet capturable (code not built, or waiting on another gate)

@@ -6,7 +6,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:22.095Z"
+      "at": "2026-10-07T11:09:29.152Z"
     },
     {
       "credential": "collector",
@@ -14,23 +14,23 @@
       "version": "v1.0",
       "path": "/sites/getAllSites",
       "status": 200,
-      "at": "2026-10-05T14:41:22.302Z"
+      "at": "2026-10-07T11:09:29.585Z"
     },
     {
       "credential": "collector",
       "method": "GET",
       "version": "v1.0",
-      "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab",
+      "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c",
       "status": 200,
-      "at": "2026-10-05T14:41:22.492Z"
+      "at": "2026-10-07T11:09:29.695Z"
     },
     {
       "credential": "collector",
       "method": "GET",
       "version": "v1.0",
-      "path": "/sites/lxtj.sharepoint.com%2Ccb253964-965b-42a8-b684-faaf83d1435d%2C4eb9a131-7455-4f9d-bd6c-b33562be5cab/permissions",
+      "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
       "status": 200,
-      "at": "2026-10-05T14:41:22.570Z"
+      "at": "2026-10-07T11:09:29.790Z"
     },
     {
       "credential": "restorer",
@@ -38,7 +38,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:22.640Z"
+      "at": "2026-10-07T11:09:29.899Z"
     },
     {
       "credential": "restorer",
@@ -46,7 +46,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:23.033Z"
+      "at": "2026-10-07T11:09:30.118Z"
     },
     {
       "credential": "restorer",
@@ -54,7 +54,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:23.110Z"
+      "at": "2026-10-07T11:09:30.446Z"
     },
     {
       "credential": "restorer",
@@ -62,7 +62,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:23.223Z"
+      "at": "2026-10-07T11:09:30.783Z"
     },
     {
       "credential": "restorer",
@@ -70,7 +70,7 @@
       "version": "v1.0",
       "path": "/admin/sharepoint/settings",
       "status": 200,
-      "at": "2026-10-05T14:41:23.303Z"
+      "at": "2026-10-07T11:09:31.077Z"
     }
   ],
   "values": {

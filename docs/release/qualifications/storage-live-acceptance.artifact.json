@@ -1,14 +1,14 @@
 {
   "gate": "storage-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "df0de3616841301bc0c596a4ba788996cc32ba1b",
+  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
   "operation": "storage.local-copy-recovery",
-  "capturedAt": "2026-10-04T10:40:28.669Z",
+  "capturedAt": "2026-10-07T11:05:36.636Z",
   "storage": {
     "provider": "local-disk",
     "retentionLock": "unsupported",
     "immutability": "unsupported",
-    "copyRootRef": "/mnt/keel-copy/2026-10-04",
+    "copyRootRef": "/mnt/keel-copy/2026-10-07-q39",
     "volumes": {
       "primary": {
         "device": "2049"
@@ -31,25 +31,25 @@
     "missingPrerequisites": []
   },
   "recovery": {
-    "manifestGeneratedAt": "2026-10-04T09:09:52.501Z",
+    "manifestGeneratedAt": "2026-10-07T11:01:08.441Z",
     "reads": [
       {
         "role": "manifest",
         "name": "recovery-manifest.json",
-        "sha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3",
-        "expectedSha256": "80231c6d5e5b9b7a197435fbccf6660c8339f2592bd25758b7188859bb7e35e3"
+        "sha256": "525959099130ce2c7010bb0581c58cf80ff706e459dff42805a4779ede9e6aaa",
+        "expectedSha256": "525959099130ce2c7010bb0581c58cf80ff706e459dff42805a4779ede9e6aaa"
       },
       {
         "role": "dump",
         "name": "keel-db.sql.gz",
-        "sha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1",
-        "expectedSha256": "429bdf53fb975a030e211a886ed08dd6957ebfc9c84adb6ed9c1d631f8698ef1"
+        "sha256": "3415e2c8ead69412fb593d2a13165720d4a537655223745ab176ce35934e0659",
+        "expectedSha256": "3415e2c8ead69412fb593d2a13165720d4a537655223745ab176ce35934e0659"
       },
       {
         "role": "export-manifest",
         "name": "config-export/manifest.json",
-        "sha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e",
-        "expectedSha256": "d0ad81cfb69661c8b4eff4b92aaecf247c3c907fd9825a1d0497a4b56d00227e"
+        "sha256": "5a02ac8ef9764c2f7d5b45340dc4bf1daeec344ba1b9790348eae38e16ab2f04",
+        "expectedSha256": "5a02ac8ef9764c2f7d5b45340dc4bf1daeec344ba1b9790348eae38e16ab2f04"
       }
     ],
     "manifestVerification": {
@@ -60,12 +60,12 @@
     },
     "listing": {
       "before": {
-        "count": 1058,
-        "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+        "count": 1073,
+        "sha256": "1e0f3d81cc9bdc528bddf5d81adfa9ca50ec72f4a5cfc27e4e65dfe2a2f7b00f"
       },
       "after": {
-        "count": 1058,
-        "sha256": "9011a24a0948865a7accd254bd4bb4b79730ff3ff16d71054011c428cde55d07"
+        "count": 1073,
+        "sha256": "1e0f3d81cc9bdc528bddf5d81adfa9ca50ec72f4a5cfc27e4e65dfe2a2f7b00f"
       }
     }
   }

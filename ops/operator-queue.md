@@ -1545,11 +1545,14 @@ item that needs it stays untouched.
 
 ### Q39: Gate 124 recapture: every live gate at one frozen build, then the release ledger — issue #86
 - Drafted by the "Gate 124 release ledger" thread (#86). **On hold: don't start** until the coordinator changes
-  Status to queued (after the keel-powershell rebuild settles and Marouane decides on the objective gaps).
+  Status to queued (once both prerequisites below are deployed).
 - Status: hold
 - Result:
-- Needs: the keel-powershell rebuild finished and deployed. The build **B** is whatever
-  `/opt/keel-live` is at once the rebuild has settled (`git -C /opt/keel-live rev-parse HEAD`). Report B before starting.
+- Needs: #137 (119 capture) and the Public repo exposure check PR (pseudonymizes the raw tenant GUID,
+  client ids and object ids in the 120→123 capture tools and validators) both merged and deployed. The
+  keel-powershell rebuild is done (13df115, 2026-10-07 09:55).
+- The build **B** is whatever `/opt/keel-live` is at when this starts (`git -C /opt/keel-live rev-parse HEAD`).
+  Report B before starting.
 - Pre-check on the host at B: `cd engine && node --test roadmap/nist-benchmark-acceptance.test.mjs` (needs the
   pinned catalog). All 8 tests must pass; otherwise stop and report.
 - **Master freeze**: no merge to master from the first capture until the ledger runs. Restart

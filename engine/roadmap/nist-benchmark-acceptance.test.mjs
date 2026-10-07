@@ -7,7 +7,7 @@ import { signEvidence, verifyEvidence, verifyEvidenceFile } from '../../tools/re
 import { tenantRefFor } from '../store/tenantRef.mjs';
 const tenantRef = tenantRefFor('nist-fixture');
 const now = new Date('2026-09-27T12:00:00Z');
-const context = { tenantRef, principal: { id: 'fixture' }, client: { async query() { return { rows: [{ role: 'admin' }, { role: 'viewer' }] }; } } };
+const context = { tenantRef, principal: { id: 'fixture' }, client: { async query() { return { rows: [{ role: 'admin', scope: '*' }, { role: 'viewer', scope: '*' }] }; } } };
 const options = { gate: 'nist-benchmark-acceptance', tenantRef, build: 'fixture-build', now, hmacKey: 'test-only', requireLive: true };
 function record() {
   const { pin } = loadNistProfile();
@@ -90,4 +90,18 @@ test('NIST fixture evidence cannot claim live qualification without the CLI requ
   assert.equal(verifyEvidence(signEvidence(record(), 'test-only', 'keel-fixture-runner'), offlineOptions).ok, false);
   assert.equal(verifyEvidence(signEvidence({ ...record(), synthetic: true, evidenceLevel: 'fixture-tested' },
     'test-only', 'keel-fixture-runner'), offlineOptions).ok, true);
+});
+
+test('nistLive capture runs the real seam and its record verifies only as the runner it was signed by', async () => {
+  const { captureNistAcceptance } = await import('../../tools/qualification/nistLive.mjs');
+  const live = await captureNistAcceptance({ ...context, build: options.build, now,
+    runner: { identity: 'keel-release-runner', key: 'test-only' } });
+  assert.equal(live.evidenceLevel, 'live-qualified');
+  assert.equal(verifyEvidence(live, options).ok, true);
+  const fixture = await captureNistAcceptance({ ...context, build: options.build, now,
+    runner: { identity: 'keel-fixture-runner', key: 'test-only' } });
+  assert.equal(fixture.synthetic, true);
+  assert.equal(verifyEvidence(fixture, options).ok, false, 'a fixture-runner capture never satisfies --require-live');
+  await assert.rejects(captureNistAcceptance({ ...context, client: { async query() { return { rows: [] }; } },
+    build: options.build, now, runner: { identity: 'keel-release-runner', key: 'test-only' } }), /forbidden/);
 });

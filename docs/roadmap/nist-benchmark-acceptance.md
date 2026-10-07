@@ -47,3 +47,21 @@ portal gate is introduced. Existing pack cache identity and legacy-cache refusal
 remain unchanged. Legacy release records missing the NIST identity/prerequisite
 fields fail closed and require new runner evidence. Authenticated callers receive
 results through the existing pack seam; evaluation stays fixture-tested.
+
+## Operator steps
+
+The capture (`tools/qualification/nistLive.mjs`, added for task 124's one-build recapture) runs on
+the host that holds the pinned catalog at the build being qualified. It only reads the KEEL database
+(principal and role grants) and calls no tenant API. The principal must hold `configuration`.
+
+```bash
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/nistLive.mjs capture --live \
+  --db-url "$KEEL_DB_URL" --principal-email <operator email> --tenant <tenant_ref> \
+  --build <rev> --out docs/release/qualifications/nist-benchmark-acceptance.json
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/release/qualification.mjs verify --require-live \
+  --gate nist-benchmark-acceptance --tenant <tenant_ref> --build <rev> \
+  --evidence docs/release/qualifications/nist-benchmark-acceptance.json
+```
+
+Without `--live` the record is signed as `keel-fixture-runner` and never satisfies `--require-live`.
+If any mapped control does not give pass, fail and unknown for its three scenarios, no record is written.

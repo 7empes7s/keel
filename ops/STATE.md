@@ -29,7 +29,7 @@ edits don't deploy), next to the work queue `ops/operator-queue.md`.
 One GitHub issue per task (label `task`), one project thread per issue, one branch and PR per
 issue with `Closes #N`. Tenant and host steps are still Q-items in `ops/operator-queue.md`; each
 Q-item names its issue. Plan: `/mnt/project-files/notes/keel-project-management-plan.md`.
-**Master is unfrozen (2026-10-05 16:35 UTC).** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
+**Master is FROZEN (2026-10-07 10:37 UTC) for the gate 124 recapture (Q39) at `fb1493e`; don't merge to master until the ledger runs.** Gates 120 → 123 all verified at `76ee9b5` (Q35), with gate 123's label
 fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213d` (Q36; evidence merged in PR #126 as `9e1f92f`, docs/release/qualifications/drill-live-acceptance.json; #85 closed).
 
 | Task | Issue | Thread | PR | State | Blocker |
@@ -37,7 +37,6 @@ fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | Evidence PR #121 merged (`fcd9610`); #127 (drill test) merged, live = `f6523ab` | **Chain passed at `76ee9b5`** (Q35), `notQualifiedFields.label` empty (#109 done) | Gate 124 recapture (Q39) |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | Evidence PR #126 merged (`9e1f92f`); #85 closed | **Live-qualified at `04d213d`** (Q36) | Done |
 | Task 124 release ledger | #86 | Gate 124 release ledger | #137, #139, #140 deployed (`fb1493e`) | **Q39 queued; master frozen** | keel-operator's recapture; Marouane's call on the objective gaps (D1-D10, G1-G8) for the ledger label |
-| Gate 124 release ledger | #86 | [Gate 124 release ledger](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ78W5MeDY3yc4Wg5ejWzEB4) | #102 (tests and docs), merged as `6fee591` | Merged; first checkbox done (ledger code b81a41d) | Recapture of every gate at one frozen build and ledger verification wait on #84 and #85 |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed), merged as `702b1ee` | Done (issue closed) | None. `adopt.sh` run twice still unverified against the real brain script (needs a brain-side session) |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed), merged as `c4e24ac` | Merged | None |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 merged as `c99a9f2`; docs PR #112 (automerge) | **Done** (Q31, 13:12): offsite ships to vol2 daily at 05:00 UTC; first copy byte-identical | #112 merge (waits on Actions billing) |

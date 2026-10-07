@@ -1676,6 +1676,12 @@ item that needs it stays untouched.
   2. `DROP DATABASE` each listed name, one at a time. Drop only those four names. Never touch the live database,
      `keel_test`, `keel_servicenow_qualification`, or anything else.
   3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
-  4. The gate 124 evidence is merged (#142, master `7a9dc08`), so also remove the Q39 recovery set
-     `/opt/keel-recovery-sets/2026-10-07-q39` and its copy `/mnt/keel-copy/2026-10-07-q39`. Remove only those two
-     directories, list what's left in both parents, and report it. Keep `/root/keel-q39/` (the ledger copies).
+
+### Q41: Remove the Q39 recovery set — issues #84, #86
+- Status: queued
+- Why: the gate 124 evidence is merged (#142, master `7a9dc08`, #86 closed), so the Q39 recovery set is no longer needed.
+- Do:
+  1. Remove `/opt/keel-recovery-sets/2026-10-07-q39` and its copy `/mnt/keel-copy/2026-10-07-q39`. Remove only those two
+     directories.
+  2. List what's left in `/opt/keel-recovery-sets/` and `/mnt/keel-copy/`, and report it.
+  3. Keep `/root/keel-q39/` (the ledger copies).

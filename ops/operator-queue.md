@@ -1550,6 +1550,8 @@ item that needs it stays untouched.
 - Result:
 - Needs: the keel-powershell rebuild finished and deployed. The build **B** is whatever
   `/opt/keel-live` is at once the rebuild has settled (`git -C /opt/keel-live rev-parse HEAD`). Report B before starting.
+- Pre-check on the host at B: `cd engine && node --test roadmap/nist-benchmark-acceptance.test.mjs` (needs the
+  pinned catalog). All 8 tests must pass; otherwise stop and report.
 - **Master freeze**: no merge to master from the first capture until the ledger runs. Restart
   `keel-worker` at B before starting and report its start time. No collection may run mid-chain (same as Q35).
 - Why: every gate is qualified today, but at six different builds (113/115 `33ad2a9`, 114 `df0de36`,
@@ -1562,9 +1564,10 @@ item that needs it stays untouched.
   3. 115 native-live-acceptance (one disposable `KEEL-RT-native-recovery-group`).
   4. 116 drill-live-acceptance, as Q36 (reconstruction and onboarding results at B).
   5. 118 servicenow-live-acceptance (non-production instance only).
-  6. 119 nist-benchmark-acceptance: **skip and report.** There is no runnable capture for it on master: the
-     `efeb7af` record (observed 2026-09-27) arrived through #50 with no capture artifact, and
-     `qualification.mjs` has no NIST capture command. Never improvise one. The #86 thread owns building it.
+  6. 119 nist-benchmark-acceptance (needs #137 merged and deployed):
+     `KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/nistLive.mjs capture --live --db-url "$KEEL_DB_URL" --principal-email <operator email> --tenant <ref> --build B --out <dir>/nist-benchmark-acceptance.json`.
+     It reads only principal and role-grant rows and calls no tenant API. The principal needs `configuration`. The
+     pinned catalog must be at `/var/lib/keel/reference-data/nist-sp800-53-rev5.2.0-catalog.json`.
   7. 120 → 121 → 122 → 123 as Q35 (a fresh unpublished `KEEL-RT-<date>-label<n>` for 123).
 - After each capture, run `qualification.mjs verify --require-live --gate <gate> --build B --tenant <ref>` and
   record the exit code. A refusal or failure is a result: report it and stop the chain. Never edit a record by hand.

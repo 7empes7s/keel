@@ -1663,7 +1663,7 @@ item that needs it stays untouched.
 - Poll every 5 minutes while queued or running.
 
 ### Q40: Drop the Q39 throwaway databases — issues #84, #86
-- Status: queued
+- Status: in-progress
 - Why: Q39 (gate 124 recapture) is done, and its evidence lives in the `claude/live-evidence-124-*` records. It left four
   disposable databases on the host: `keel_recovery_q39`, `keel_drill_q39`, `keel_test_q39`, `keel_journeys_q39`.
   None of them is needed any more.

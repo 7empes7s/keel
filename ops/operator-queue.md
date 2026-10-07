@@ -1676,4 +1676,6 @@ item that needs it stays untouched.
   2. `DROP DATABASE` each listed name, one at a time. Drop only those four names. Never touch the live database,
      `keel_test`, `keel_servicenow_qualification`, or anything else.
   3. Rerun the query from step 1 (expect 0 rows) and report the names you dropped.
-- Keep `/opt/keel-recovery-sets/2026-10-07-q39` and `/root/keel-q39/` until the gate 124 evidence PR is merged.
+  4. The gate 124 evidence is merged (#142, master `7a9dc08`), so also remove the Q39 recovery set
+     `/opt/keel-recovery-sets/2026-10-07-q39` and its copy `/mnt/keel-copy/2026-10-07-q39`. Remove only those two
+     directories, list what's left in both parents, and report it. Keep `/root/keel-q39/` (the ledger copies).

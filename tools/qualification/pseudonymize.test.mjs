@@ -25,6 +25,18 @@ test('ids and tenant hosts become stable, well-formed pseudonyms that depend on 
   // Ids after a URL escape and outside SharePoint/onmicrosoft hosts.
   assert.equal(a.text(`/sites/contoso.sharepoint.com%2C${TENANT}`), `/sites/${host}.sharepoint.com%2C${a.guid(TENANT)}`);
   assert.equal(a.text('https://learn.microsoft.com/graph'), 'https://learn.microsoft.com/graph');
+  // A %XX escape before the host stays intact and maps like the unescaped form.
+  assert.equal(a.text('keel-rt-a%40contoso.onmicrosoft.com'), `keel-rt-a%40${host}.onmicrosoft.com`);
+  assert.equal(decodeURIComponent(a.text(encodeURIComponent('keel-rt-a@contoso.onmicrosoft.com'))), a.text('keel-rt-a@contoso.onmicrosoft.com'));
+  // An opaque base64 id holding GUIDs (a Teams membership id) is rewritten inside, in both alphabets.
+  const raw = `0##${TENANT}##${APP}`;
+  for (const encoding of ['base64', 'base64url']) {
+    const id = Buffer.from(raw).toString(encoding);
+    assert.equal(Buffer.from(a.text(id), encoding).toString(), `0##${a.guid(TENANT)}##${a.guid(APP)}`);
+    assert.equal(a.text(`/teams/x/members/${id}`), `/teams/x/members/${a.text(id)}`);
+  }
+  // Long tokens that are not such ids are left alone.
+  for (const token of ['a'.repeat(64), 'keel-rt-20260908-alice_techinsiderbytes_com-long-name']) assert.equal(a.text(token), token);
 });
 
 test('a capture loses every raw id, stays consistent with its log, and binds the log digest', () => {

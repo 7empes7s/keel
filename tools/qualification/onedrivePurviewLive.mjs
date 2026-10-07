@@ -476,9 +476,11 @@ export function ledgerEvidenceFromOneDrivePurviewAcceptance(evidence, options = 
 
 /**
  * The real SharePoint tenant host to capture against. Committed records name the host
- * pseudonymized, so it is taken from --fixture-site and accepted only when it is the host
- * the verified chain names, raw (an older record) or as its pseudonym. Otherwise the chain's
- * host is returned and the capture refuses the fixture site as on another tenant.
+ * pseudonymized, so it is taken from --fixture-site and accepted only when its pseudonym is
+ * the host the verified chain names. Otherwise the chain's host is returned and the capture
+ * refuses the fixture site as on another tenant. A chain that still names the raw host was
+ * captured before pseudonymization; a pseudonymized record would never verify against it,
+ * so this refuses before any cmdlet: the 120-123 chain is recaptured together.
  */
 export function onedrivePurviewLiveTenantHost(fixtureSite, chainHost, tenantRef) {
   let candidate = null;
@@ -488,7 +490,10 @@ export function onedrivePurviewLiveTenantHost(fixtureSite, chainHost, tenantRef)
   } catch { /* not a URL: the capture's own fixture check reports it */ }
   if (!candidate || typeof chainHost !== 'string' || !tenantRef) return chainHost;
   const chain = chainHost.toLowerCase();
-  return chain === candidate || chain === pseudonymizer(tenantRef).text(candidate) ? candidate : chainHost;
+  if (chain === candidate) {
+    throw new Error('the SharePoint prerequisite names its tenant host unpseudonymized: recapture the SharePoint, Teams and Exchange records first');
+  }
+  return chain === pseudonymizer(tenantRef).text(candidate) ? candidate : chainHost;
 }
 
 /** The SharePoint tenant host the verified Exchange -> Teams -> SharePoint chain names. */

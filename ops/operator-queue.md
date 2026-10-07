@@ -1563,9 +1563,9 @@ item that needs it stays untouched.
   4. If 121–123 verify: commit each to `claude/live-evidence-124-<gate>` with the same evidence tests and scan.
      Run `systemctl start keel-scheduler.timer` **before** the ledger, report the time, then run the journeys and the
      ledger at B as below.
-- Status: in-progress
-- Result: **Blocked at 121, at B = `fb1493ea6a54d48fca03429409a35991a6386871`** (/opt/keel-live HEAD, clean throughout). 113–120 are
-    verified and pushed. 121 capture failed, so I stopped the chain as the entry says. 122, 123 and the ledger have not run.
+- Status: done
+- Result: **Done. All ten live gates are live-qualified at B = `fb1493ea6a54d48fca03429409a35991a6386871`, and the ledger ran at B.**
+    /opt/keel-live stayed at B, clean, for the whole run. Master can unfreeze.
   - keel-worker restarted at B: **2026-10-07 10:48:53 UTC**.
   - NIST pre-check (`node --test roadmap/nist-benchmark-acceptance.test.mjs`): **7/7 pass, 0 skipped**. The file at B
     defines exactly 7 tests, not 8 as the entry says.
@@ -1588,7 +1588,7 @@ item that needs it stays untouched.
     untouched. The secret and raw-id scan of every file is clean.
   - 120 sharepoint-live-acceptance (`--allow-widening-toggle`, as Q35): verify ok, exit 0 → `-124-120` @ 5583e75. Resharing
     is back to false. The committed-evidence test and scan are clean.
-  - **121 teams-live-acceptance: capture exit 1.** `verify.failures`: `teams.settings.update: the final settings do not match
+  - **121 first attempt (11:08): capture exit 1.** `verify.failures`: `teams.settings.update: the final settings do not match
     the starting settings`.
     - settingsWrite (funSettings.allowCustomMemes): ok, readBackVerified, **restoredToOriginal true**, but
       preFingerprint 3f11b60c… ≠ finalFingerprint 436d0427….
@@ -1601,12 +1601,27 @@ item that needs it stays untouched.
     - The team now (11:15, read-only): all four setting groups at the expected values (allowCustomMemes true), not
       archived. Fixture member roster/owners/members = 0 at 11:10, 11:11 and 11:12. **No residue in the tenant.**
     - Failed 121 files kept locally (scratchpad `q39-121-fail/`), not committed; never edited.
-  - **Still paused:** `keel-scheduler.timer` stays stopped so a rerun of 121→123 at B stays collection-free. Run
-    `systemctl start keel-scheduler.timer` to resume collections (I'll do it when told, or when Q39 is cancelled).
-    Master is still frozen; B is unchanged.
-  **Coordinator, decision needed:** (a) retry 121 at B unchanged (a lag-type failure like the gate 115 read-back case;
-    then 122, 123 and the ledger), or (b) a code fix first: fingerprint only `TEAM_SETTING_FIELDS`, and/or log the
-    bodies. A fix means a new B and a full recapture.
+  - **121 retry (decision a, 11:27):** fixture team pre-read showed all four setting groups at their original values and
+    the member gone. Capture exit 0; **verify ok, exit 0** → `-124-121` @ 9b096b5. A non-fatal log line, "removing the
+    fixture user's group member link failed (HTTP 400)": the link was already gone. Roster, owners and members were all
+    0 at 11:29–11:32 (5×). The first failed capture stays local and uncommitted.
+  - 122 exchange-live-acceptance: verify ok, exit 0 → `-124-122` @ 026e505 (readBackVerified ×3, restoredToOriginal ×2).
+  - 123 onedrive-purview-live-acceptance, with fresh unpublished `KEEL-RT-20261007-label` (created 10:55, not in
+    `KEEL-RT-20261005-policy`) and `--fixture-site` alice's OneDrive: verify ok, exit 0 → `-124-123` @ b4500ce.
+  - The evidence tests for 121/122/123 pass (14/10/11) and the scans are clean.
+  - **`keel-scheduler.timer` restarted at 11:37:44 UTC**, before the ledger (stopped 11:01–11:37; it ran its tick at once).
+  - **Ledger at B**, run from the B worktree (same commit as /opt/keel; I didn't run git there):
+    - Journeys: `journeys.mjs run --db-url <fresh keel_journeys_q39>` → exit 0, 6 journeys.
+    - Ledger: `qualification.mjs ledger --fixture journeys-B.json --tenant sha256:f7b3959300856957 --build fb1493e…
+      --qualifications <the eleven new records>` → exit 0. Copies are in `/root/keel-q39/{ledger,journeys}-B.json`.
+    - **readiness.label: `pending`**. readiness.reasons, 17 lines: `objective D1 is gap`, D2, D3, D4, D5, D7, D8, D9, D10,
+      G1, G2, G3, G4, G5, G6, G7, G8 (each "objective X is gap"; D6 is not listed).
+    - **acceptedGaps**: "sentinel-live-acceptance (task-117) is pending, an accepted gap: descoped by operator decision
+      2026-10-04 12:36 UTC (D-117: no Sentinel test workspace); Sentinel export ships live-unqualified".
+    - **live[]**: deployed, storage, native, drill, servicenow, nist-benchmark, sharepoint, teams, exchange and
+      onedrive-purview are **live-qualified**; sentinel-live-acceptance is **pending**, the accepted gap. As expected.
+  - Leftover disposable DBs: keel_recovery_q39, keel_drill_q39, keel_test_q39, keel_journeys_q39 (drop with a Q38-style
+    item). Credentials: Collector, Restorer, Exchange/Purview app configs, ServiceNow dev; no global admin.
 - Needs: #137 (119 capture, merged 09:57) and #140 (follow-up to #139, merged 10:12: pseudonymizes the raw
   tenant GUID, client ids, object ids and Teams membership ids in the 120→123 capture tools and validators) both
   merged and deployed. The

@@ -1697,7 +1697,32 @@ item that needs it stays untouched.
 
 ### Q42: Copy the D1-D10 and G1-G8 release objective definitions into the repo — issue #86 follow-up
 - Drafted by the "Gate 124 release ledger" thread. Marouane chose "Supply definitions" on 2026-10-08 14:28 UTC. Released by the #84 thread.
-- Status: in-progress
+- Status: done
+- Result: **Done: `claude/release-objectives-source` @ e1896b4**, which adds only `docs/release/objectives-source.md`. No PR.
+  - Spec `/root/docs/superpowers/specs/2026-09-15-keel-roadmap-final-review.md` (212 lines, mtime 2026-09-15 09:22), sha256
+    **acdc51c7b4cc220d9fb88bcb0f90a0875cf71e06f961ef2f14e92d220126b3e1**.
+  - **The spec has no definition sections.** D1-D10 and G1-G8 appear only in its "Gap/decision" traceability table (spec lines
+    168-187): id, short title, and owner task numbers (sometimes with a qualifier such as "manual until proven"). There is no
+    longer definition or acceptance/"done when" text. Line 36 says the defining text is in "parent workstreams/G1-G8/D1-D10".
+    So I copied that table verbatim, and the file says so.
+  - **Objectives found: 18 of 18** (G1-G8, D1-D10), each once. None missing, none defined twice. (D6 and D3 are included
+    too, although the ledger doesn't list them as gaps.)
+  - **Step 1 grep** (`\b(D10|G8)\b` under /root/docs/superpowers/), every file that matches; I didn't pick one:
+    - `plans/2026-09-15-keel-roadmap-tasks.json`
+    - `plans/2026-09-15-keel-complete-roadmap.md`
+    - `specs/2026-09-15-keel-roadmap-final-review.md` (the one copied)
+    - `specs/2026-09-14-keel-ws2-codex-review.md`
+    - `specs/2026-09-14-keel-vision-codex-review.md`
+    - `specs/2026-09-14-keel-final-app-map.md`
+    - `specs/2026-09-14-keel-vision-merge-check.md`
+    - `specs/2026-09-14-keel-holistic-portal-vision.md`
+
+    The fuller definitions are probably in one of these, most likely the complete-roadmap plan or the holistic vision.
+    **Coordinator: name one if you want its definitions copied as well.**
+  - **Redactions: 0.** The copied lines hold no id, GUID, email, host, IP, credential, token, `/etc` path or tenant name. The
+    source path is already public in `docs/roadmap/COMPLETE-ROADMAP-PLAN.md`. The secret scan (HMAC key, JWT, PEM, Bearer, DB
+    URL, GUID, email, `/etc`, IP) is clean.
+  - Read only: no tenant calls, no service changes.
 - **Why:** the release ledger stays `pending` on 17 objectives (D1, D2, D4, D5, D7-D10, G1-G8; D3 has no live gate). Their text exists only in
   `/root/docs/superpowers/specs/2026-09-15-keel-roadmap-final-review.md` on Mulinux (see `docs/roadmap/COMPLETE-ROADMAP-PLAN.md:64`).
   Once the text is in the repo, the builder can map each objective to its owners, tests and gates in `tools/release/acceptanceLedger.mjs`.

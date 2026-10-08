@@ -65,7 +65,6 @@ raw capture's sha256, carry no credential material, and fail verification withou
 ## Waiting on the human operator
 
 1. Release label: whether to accept objectives D1-D10 (D6 is met) and G1-G8 as known gaps (the gate 124 ledger is `pending` only on these).
-2. PRs #131, #133 and #136 (cracia queue entries marked done) only need merging.
 
 ## Infrastructure facts
 

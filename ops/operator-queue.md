@@ -1694,3 +1694,27 @@ item that needs it stays untouched.
      directories.
   2. List what's left in `/opt/keel-recovery-sets/` and `/mnt/keel-copy/`, and report it.
   3. Keep `/root/keel-q39/` (the ledger copies).
+
+### Q42: Copy the D1-D10 and G1-G8 release objective definitions into the repo — issue #86 follow-up
+- Drafted by the "Gate 124 release ledger" thread. Marouane chose "Supply definitions" on 2026-10-08 14:28 UTC. Released by the #84 thread.
+- Status: queued
+- **Why:** the release ledger stays `pending` on 17 objectives (D1, D2, D4, D5, D7-D10, G1-G8; D3 has no live gate). Their text exists only in
+  `/root/docs/superpowers/specs/2026-09-15-keel-roadmap-final-review.md` on Mulinux (see `docs/roadmap/COMPLETE-ROADMAP-PLAN.md:64`).
+  Once the text is in the repo, the builder can map each objective to its owners, tests and gates in `tools/release/acceptanceLedger.mjs`.
+- **Read only.** No tenant calls and no service restarts. Nothing is written except one new file on a new branch.
+- **Do:**
+  1. In that spec, find the section(s) that define D1-D10 and G1-G8. If they're not there, run
+     `grep -rln -E '\b(D10|G8)\b' /root/docs/superpowers/` and report every file that matches. **Don't** pick one.
+  2. Copy each objective's id, title and full definition text **verbatim** into a new file at `docs/release/objectives-source.md`.
+     Include any acceptance or "done when" lines the spec gives for each one.
+     - Start the file with: the source path, the spec's own date, `sha256sum` of the spec file, and the time of the copy.
+     - Copy nothing else from the spec: no findings, decisions or other sections.
+  3. **The repo is public. Sanitize before committing:**
+     - Replace any tenant id, directory id, GUID, email address, hostname or IP that isn't already in the public repo with `<redacted>`.
+     - Remove any credential, token, path under `/etc`, or customer or tenant name.
+     - List every redaction at the end of the file as "line N: <kind> redacted". List only the kind, never the value.
+     - Run the same secret scan as Q39 on the file.
+  4. Commit only that file to `claude/release-objectives-source` and push it. Don't open a PR; the builder thread will.
+- **Report:** the branch and commit, the spec's sha256, the number of objectives found (expected 18: D1-D10 and G1-G8), any objective that's
+  missing or defined twice, and the redaction count.
+  - If the spec doesn't define all 18, still commit what it has and say which ids are missing.

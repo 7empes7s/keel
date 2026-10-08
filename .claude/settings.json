@@ -1,6 +1,13 @@
 {
   "permissions": {
-    "allow": ["mcp__claude-code-remote__update_trigger", "mcp__claude-code-remote__send_message"]
+    "allow": [
+      "mcp__claude-code-remote__update_trigger",
+      "mcp__claude-code-remote__send_message",
+      "Bash(gh api repos/7empes7s/keel/issues/*/labels*)",
+      "Bash(gh api -X PUT repos/7empes7s/keel/pulls/*/merge*)",
+      "mcp__github__issue_write",
+      "mcp__github__merge_pull_request"
+    ]
   },
   "hooks": {
     "SessionStart": [

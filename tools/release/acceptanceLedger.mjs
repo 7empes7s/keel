@@ -48,38 +48,73 @@ export const LIVE_ACCEPTANCE_GATES = Object.freeze([
   { task: 'task-123', gate: 'onedrive-purview-live-acceptance', title: 'OneDrive and Purview configuration' },
 ].map((entry) => Object.freeze(entry)));
 
-const DEFINITION_GAP = 'objective definition is not in this repository (the 2026-09-15 final review lives outside git); '
-  + 'it cannot be mapped to an owner, test or evidence until its text is supplied';
-
-function undefinedObjective(id) {
-  return { id, definition: null, owners: [], tests: [], evidence: [], gap: DEFINITION_GAP };
-}
+const OBJECTIVES_SOURCE = 'docs/release/objectives-source.md';
+const tasks = (...ids) => ids.map((id) => `task-${id}`);
+const roadmap = (...names) => names.map((name) => `engine/roadmap/${name}.test.mjs`);
+const NO_LIVE_GATE = 'no live gate is defined for it, so it is fixture-tested only';
 
 /**
- * D1-D10 and G1-G8. Only objectives whose meaning the repository itself records
- * are mapped; the rest are explicit qualification gaps, never guessed.
+ * D1-D10 and G1-G8, as the 2026-09-15 final review defines them: an id, a short
+ * title and the owner tasks that close it or explicitly qualify it (copied in
+ * OBJECTIVES_SOURCE). An objective is qualified only through its live gates. One
+ * with no live gate, or whose own qualification says it stays unproven, is an
+ * explicit gap that names why; it is never reported as qualified.
  */
 export const RELEASE_OBJECTIVES = Object.freeze([
-  undefinedObjective('D1'),
-  undefinedObjective('D2'),
-  {
-    id: 'D3', definition: 'Dynamic group impact is measured on real tenant sizing (docs/roadmap/dynamic-impact.md).',
-    owners: ['task-60'], tests: ['engine/roadmap/dynamic-impact.test.mjs'], evidence: [],
-    gap: 'D3 stays unmeasured until a non-synthetic sizing record exists; no live sizing gate is defined',
-  },
-  undefinedObjective('D4'),
-  undefinedObjective('D5'),
-  {
-    id: 'D6', definition: 'A ServiceNow workflow is proven live through the canonical KEEL decision (docs/roadmap/servicenow-live-acceptance.md).',
-    owners: ['task-96', 'task-97', 'task-118'],
-    tests: ['engine/roadmap/servicenow.test.mjs', 'engine/roadmap/servicenow-live-acceptance.test.mjs'],
-    evidence: ['servicenow-live-acceptance'], gap: null,
-  },
-  undefinedObjective('D7'),
-  undefinedObjective('D8'),
-  undefinedObjective('D9'),
-  undefinedObjective('D10'),
-  ...Array.from({ length: 8 }, (_, index) => undefinedObjective(`G${index + 1}`)),
+  { id: 'D1', definition: 'Actual deployment.', source: OBJECTIVES_SOURCE,
+    owners: tasks(45, 46, 113), tests: roadmap('foundation', 'portal-parity', 'deployed-acceptance'),
+    evidence: ['deployed-acceptance'], gap: null },
+  { id: 'D2', definition: 'Native CA credential support; manual until proven.', source: OBJECTIVES_SOURCE,
+    owners: tasks(64, 115), tests: roadmap('native-recovery', 'native-live-acceptance'),
+    evidence: ['native-live-acceptance'], gap: null },
+  { id: 'D3', definition: 'Dynamic group feasibility/cost; conservative unknown until measured (docs/roadmap/dynamic-impact.md).',
+    source: OBJECTIVES_SOURCE, owners: tasks(60), tests: roadmap('dynamic-impact'), evidence: [],
+    gap: 'D3 stays unmeasured until a non-synthetic sizing record exists; no live sizing gate is defined' },
+  { id: 'D4', definition: 'Workload qualification; explicit sequential gates.', source: OBJECTIVES_SOURCE,
+    owners: tasks(101, 102, 103, 104, 105, 106, 120, 121, 122, 123),
+    tests: roadmap('workload-contract', 'sharepoint-read', 'sharepoint-write', 'teams-config', 'exchange-config', 'onedrive-purview',
+      'sharepoint-live-acceptance', 'teams-live-acceptance', 'exchange-live-acceptance', 'onedrive-purview-live-acceptance'),
+    evidence: ['sharepoint-live-acceptance', 'teams-live-acceptance', 'exchange-live-acceptance', 'onedrive-purview-live-acceptance'],
+    gap: null },
+  { id: 'D5', definition: 'CIS distribution permission; synthetic/custom controls until rights exist (no CIS content ships).',
+    source: OBJECTIVES_SOURCE, owners: tasks(86, 119), tests: roadmap('nist-benchmark-acceptance'),
+    evidence: ['nist-benchmark-acceptance'], gap: null },
+  { id: 'D6', definition: 'ServiceNow workflow, proven live through the canonical KEEL decision (docs/roadmap/servicenow-live-acceptance.md).',
+    source: OBJECTIVES_SOURCE, owners: tasks(96, 97, 118), tests: roadmap('servicenow', 'servicenow-live-acceptance'),
+    evidence: ['servicenow-live-acceptance'], gap: null },
+  { id: 'D7', definition: 'Audit sizing/retention; optional bounded ingestion, not assumed free/full.', source: OBJECTIVES_SOURCE,
+    owners: tasks(88), tests: roadmap('audit-ingestion'), evidence: [],
+    gap: `D7: ${NO_LIVE_GATE}; audit volume and retention are not measured on a real tenant` },
+  { id: 'D8', definition: 'Independent immutable storage.', source: OBJECTIVES_SOURCE,
+    owners: tasks(69, 114), tests: roadmap('immutable-storage', 'storage-live-acceptance'), evidence: [],
+    gap: 'D8: gate 114 proves an independent recovery read, but retention lock and immutability are reported unqualified by operator decision 2026-09-30' },
+  { id: 'D9', definition: 'External evidence anchor.', source: OBJECTIVES_SOURCE,
+    owners: tasks(78, 114), tests: roadmap('evidence-anchors', 'storage-live-acceptance'), evidence: [],
+    gap: 'D9: checkpoint publication is fixture-tested only and disabled in production pending storage/key qualification (docs/roadmap/evidence-anchors.md)' },
+  { id: 'D10', definition: 'Observation non-atomicity: tiered observations are never presented as an atomic tenant-wide snapshot.',
+    source: OBJECTIVES_SOURCE, owners: tasks(45, 51, 54, 73, 112),
+    tests: roadmap('foundation', 'semantic-projection', 'coverage-ui', 'recovery-metrics', 'acceptance-harness'), evidence: [],
+    gap: `D10: ${NO_LIVE_GATE}` },
+  { id: 'G1', definition: 'Lineage.', source: OBJECTIVES_SOURCE,
+    owners: tasks(48, 50), tests: roadmap('lineage', 'symbol-context'), evidence: [], gap: `G1: ${NO_LIVE_GATE}` },
+  { id: 'G2', definition: 'Relationships.', source: OBJECTIVES_SOURCE, owners: tasks(57, 58, 59, 60, 61),
+    tests: roadmap('relationship-observations', 'privilege-relationships', 'impact-graph', 'dynamic-impact', 'relationship-restore'),
+    evidence: [], gap: `G2: ${NO_LIVE_GATE}` },
+  { id: 'G3', definition: 'Change intent.', source: OBJECTIVES_SOURCE,
+    owners: tasks(93, 96), tests: roadmap('change-intents', 'itsm-contract'), evidence: [], gap: `G3: ${NO_LIVE_GATE}` },
+  { id: 'G4', definition: 'Incident-qualified points.', source: OBJECTIVES_SOURCE,
+    owners: tasks(71), tests: roadmap('incident-recovery'), evidence: [], gap: `G4: ${NO_LIVE_GATE}` },
+  { id: 'G5', definition: 'Human identity completion.', source: OBJECTIVES_SOURCE,
+    owners: tasks(65), tests: roadmap('identity-completion'), evidence: [], gap: `G5: ${NO_LIVE_GATE}` },
+  { id: 'G6', definition: 'Native mechanism selection.', source: OBJECTIVES_SOURCE,
+    owners: tasks(64, 115), tests: roadmap('native-recovery', 'native-live-acceptance'),
+    evidence: ['native-live-acceptance'], gap: null },
+  { id: 'G7', definition: 'Irreversible configuration effects.', source: OBJECTIVES_SOURCE,
+    owners: tasks(66, 103, 104, 105, 106), tests: roadmap('content-effects'), evidence: [],
+    gap: `G7: ${NO_LIVE_GATE}; the workload gates prove restore round trips, not the irreversible-effect warnings` },
+  { id: 'G8', definition: 'Keel self-recovery.', source: OBJECTIVES_SOURCE,
+    owners: tasks(67, 68, 114, 116), tests: roadmap('keel-recovery', 'storage-contract', 'storage-live-acceptance', 'drill-live-acceptance'),
+    evidence: ['storage-live-acceptance', 'drill-live-acceptance'], gap: null },
 ].map((entry) => Object.freeze(entry)));
 
 /** Read the checked-in record of every live gate (null when no file exists). */

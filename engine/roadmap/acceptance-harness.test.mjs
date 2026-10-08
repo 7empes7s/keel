@@ -379,6 +379,37 @@ test('a descoped gate is reported as an accepted gap, never qualified, and still
   assert.deepEqual(buildReleaseLedger({ fixture: passingFixture(), live: qualified, hmacKey: null, objectiveGapsAllowed: true }).readiness.acceptedGaps, []);
 });
 
+test('each objective carries the owners the 2026-09-15 final review gives it, and only live gates qualify it', () => {
+  // Owner tasks per objective, parsed from the copied traceability table.
+  const source = readFileSync(new URL('../../docs/release/objectives-source.md', import.meta.url), 'utf8');
+  const expand = (cell) => cell.split(';')[0].split(',').flatMap((part) => {
+    const [from, to = from] = part.trim().split('-').map(Number);
+    return Array.from({ length: to - from + 1 }, (_, i) => `task-${from + i}`);
+  });
+  const table = new Map([...source.matchAll(/^\| ([DG]\d+) [^|]*\| ([^|]+) \|$/gm)].map(([, id, owners]) => [id, expand(owners)]));
+  assert.equal(table.size, 18);
+  for (const objective of RELEASE_OBJECTIVES) {
+    assert.ok(table.has(objective.id), `${objective.id} is in the source table`);
+    for (const owner of table.get(objective.id)) assert.ok(objective.owners.includes(owner), `${objective.id} owns ${owner}`);
+    assert.ok(objective.definition, `${objective.id} has a definition`);
+    assert.ok(objective.evidence.length > 0 ? objective.gap === null : typeof objective.gap === 'string', `${objective.id} is gated or an explicit gap`);
+    const gates = new Set(LIVE_ACCEPTANCE_GATES.map((gate) => gate.gate));
+    for (const gate of objective.evidence) assert.ok(gates.has(gate), `${objective.id}: ${gate} is a live gate`);
+  }
+
+  // With every live gate qualified, exactly the live-gated objectives qualify; the rest stay explicit gaps.
+  const qualified = LIVE_ACCEPTANCE_GATES.map((gate) => ({ gate: gate.gate, task: gate.task, status: 'live-qualified', failures: [] }));
+  const ledger = buildReleaseLedger({ fixture: passingFixture(), live: qualified, hmacKey: null });
+  const byStatus = (status) => ledger.objectives.filter((objective) => objective.status === status).map((objective) => objective.id);
+  assert.deepEqual(byStatus('qualified'), ['D1', 'D2', 'D4', 'D5', 'D6', 'G6', 'G8']);
+  assert.deepEqual(byStatus('gap'), ['D3', 'D7', 'D8', 'D9', 'D10', 'G1', 'G2', 'G3', 'G4', 'G5', 'G7']);
+  assert.equal(ledger.readiness.label, 'pending');
+  // One unqualified workload gate keeps D4 open.
+  const teamsPending = qualified.map((entry) => (entry.gate === 'teams-live-acceptance' ? { ...entry, status: 'pending' } : entry));
+  const d4 = buildReleaseLedger({ fixture: passingFixture(), live: teamsPending, hmacKey: null }).objectives.find((objective) => objective.id === 'D4');
+  assert.equal(d4.status, 'pending');
+});
+
 test('a pending or synthetic record never classifies as live-qualified; a signed live record verifies only with its key', () => {
   const dir = mkdtempSync(join(workdir, 'records-'));
   const pending = { gate: 'deployed-acceptance', status: 'pending', evidenceLevel: 'fixture-tested', synthetic: true };

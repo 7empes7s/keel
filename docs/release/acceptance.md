@@ -50,11 +50,9 @@ Without the runner key, tenant and build, a non-placeholder record is reported
 | 122 | `exchange-live-acceptance` | pending |
 | 123 | `onedrive-purview-live-acceptance` | missing on this branch; pending once task-123's placeholder is merged in |
 
-**Objectives:**
+**Objectives** (the definitions are in `docs/release/objectives-source.md`):
 
-- D6 is `pending` on task-118.
-- D3 is an explicit gap: no measured sizing.
-- D1, D2, D4, D5, D7-D10 and G1-G8 are explicit gaps. Their definitions are not in this
-  repository.
+- **Qualify when their live gates verify:** D1, D2, D4, D5, D6, G6 and G8.
+- **Explicit gaps:** D3, D7, D8, D9, D10, G1-G5 and G7. Each has no live gate, or its own qualification says it is unproven. The ledger names the reason for each one.
 
 How to capture each live gate is in `docs/roadmap/operator-gates.md`.

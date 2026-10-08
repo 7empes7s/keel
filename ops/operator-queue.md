@@ -186,7 +186,7 @@ being triggered by queue updates.
   - Which `KEEL_DB_TEST_URL` the drill would use. Never the production database.
 
 ### Q6: Gate 116 (drill-live-acceptance)
-- Status: blocked
+- Status: superseded (gate 116 passed via Q36 at 04d213d, #126; recaptured at fb1493e in Q39)
 - Result: Not started. Q5 found prerequisites missing: no completed setups or run ids, no recovery
   authenticator, no task-67 manifest. No drill was run and no `keel-rehearsal-*` group was created.
 - Needs: Q5 done with everything present
@@ -1278,7 +1278,7 @@ item that needs it stays untouched.
 ### Q32: Gate 116 onboarding result, then unblock Q6 — issue #85
 - Drafted by the "Gate 116 drill live acceptance" thread (02:00 UTC). **On hold: don't start** until the
   coordinator changes Status to queued (after Q10 and Q33 finish).
-- Status: blocked
+- Status: superseded (gate 116 passed via Q36 at 04d213d, #126; recaptured at fb1493e in Q39)
 - Result: **Step 1–2 partly done; Q6 blocked at the task-68 reconstruction (importer can't load a real pg_dump).** No drill
   was run; no `keel-rehearsal-*` group was created; nothing was written to the tenant.
   1. Deployed **248b12c** includes 36fc2b3 (#96). Setup runs (`bootstrap_plan`/`bootstrap_event`, read-only):

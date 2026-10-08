@@ -916,11 +916,13 @@ item that needs it stays untouched.
   SharePointTenantSettings.ReadWrite.All, TeamSettings.ReadWrite.All, TeamMember.ReadWrite.All,
   MailboxSettings.ReadWrite; Exchange.ManageAsApp; roles Exchange Administrator, Compliance Administrator,
   SharePoint Administrator. After applying, rerun gate 115 and the 120 → 123 chain as the regression check.
-  - Decision:
+  - Decision: no. Keep full permissions, and add any the tool needs to move along (Marouane, #84 thread, 2026-10-08
+    09:25 UTC). Scoping comes later, once the solution is complete: separate app registrations per workload or permission
+    level, created automatically at tenant onboarding.
 - D-93b (issue #93): keep RoleManagement.ReadWrite.Directory and Application.ReadWrite.All
   (role-assignment and application restore stay automated, but each grant lets the app escalate itself),
   or remove them and make both restores manual?
-  - Decision:
+  - Decision: keep both (Marouane, 2026-10-08 09:25 UTC, same decision as D-93a).
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch

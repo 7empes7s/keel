@@ -43,7 +43,7 @@ fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213
 | Prune timer review | #90 | [Prune timer review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZAoaKxKpgCH9bFBkK8S5L1g) | #99, merged as `b2b805e` | Merged; dry run reviewed (154 old tier1, none cited by evidence) | Q29 (enable prune schedule) on hold until Q10 and Q24 |
 | Install scheduler and backup tiers on host | #91 | [Scheduler and backup tiers on host](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ4gUNdfJyPJbfk8jRZCp3aX) | #97, merged as `aeff999` | **Done** (Q24, 14:15): stale jobs cancelled via #111; worker + scheduler installed; run-now tiers 1-3 succeeded; health ok | deploy.sh worker restart (Q24 step 4) with vps-deployer |
 | `restorer-target.json` default path | #92 | [Restorer config default path](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZY5AVuWPES3U92Knng5WyA2) | #98, merged as `76e503e` | Merged; portal and worker default to `/etc/keel/restorer.json` | Q30 (on hold until Q10): remove the Q19 override and confirm Setup still reads the Restorer config |
-| Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | #101 (review doc; `groupSetting` declares GroupSettings.ReadWrite.All), merged as `796f3a4` | Merged | Q26 inventory (on hold until Q10); operator decisions D-93a, D-93b |
+| Restorer least-privilege review | #93 | [Restorer least-privilege review](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZYGhJ3mTtztP3RYusGMSxb3) | #101 (review doc; `groupSetting` declares GroupSettings.ReadWrite.All), merged as `796f3a4` | Merged | Decided 2026-10-08: keep full Restorer permissions while developing; scope later with per-workload app registrations created at onboarding |
 
 ### Gate evidence
 
@@ -64,7 +64,8 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Restorer least privilege (#93): D-93a and D-93b in the queue.
+1. Release label: whether to accept objectives D1-D10 (D6 is met) and G1-G8 as known gaps (the gate 124 ledger is `pending` only on these).
+2. PRs #131, #133 and #136 (cracia queue entries marked done) only need merging.
 
 ## Infrastructure facts
 
@@ -73,8 +74,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 - Scheduled collection and the tier-1/2/3 backup services from `ops/` are **not installed** on the host
   (only `keel-portal`, `keel-deploy` and the status generator). The nightly DB dump comes from a
   separate host script. The deploy never rebuilds the PowerShell image (Q12 report).
-- The Restorer app holds ~52 write permissions plus 9 directory roles, far more than needed. A
-  least-privilege review is a suggested follow-up, not started.
+- The Restorer app holds ~52 write permissions plus 9 directory roles. **Kept on purpose** while developing and testing (Marouane, 2026-10-08): add permissions as needed; scope later with per-workload app registrations created at onboarding.
 - keel-operator hasn't been tested through a crash or reboot.
 - The nightly DB dump (`mimule-backup`, outside KEEL) overwrites its file in place: the 14:21 rerun on
   2026-10-04 replaced the 04:04 dump (Q23). No owning issue yet.

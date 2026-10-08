@@ -1697,7 +1697,7 @@ item that needs it stays untouched.
 
 ### Q42: Copy the D1-D10 and G1-G8 release objective definitions into the repo — issue #86 follow-up
 - Drafted by the "Gate 124 release ledger" thread. Marouane chose "Supply definitions" on 2026-10-08 14:28 UTC. Released by the #84 thread.
-- Status: queued
+- Status: in-progress
 - **Why:** the release ledger stays `pending` on 17 objectives (D1, D2, D4, D5, D7-D10, G1-G8; D3 has no live gate). Their text exists only in
   `/root/docs/superpowers/specs/2026-09-15-keel-roadmap-final-review.md` on Mulinux (see `docs/roadmap/COMPLETE-ROADMAP-PLAN.md:64`).
   Once the text is in the repo, the builder can map each objective to its owners, tests and gates in `tools/release/acceptanceLedger.mjs`.

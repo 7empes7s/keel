@@ -63,23 +63,35 @@ edited.
 - **`tools/release/qualification.mjs`**: one new subcommand,
   `ledger --fixture <journeys result> [--tenant] [--build] [--out] [--require-ready]`. It
   exits 0 for a report, and with `--require-ready` it exits 1 unless the ledger is ready.
-- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 19 boundary tests, added to the
+- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 20 boundary tests, added to the
   CI engine step in `.github/workflows/portal.yml`.
 
 ## Objectives D1-D10 and G1-G8
 
-Their definitions are in the 2026-09-15 final review
-(`/root/docs/superpowers/specs/...`), which is not in git. The repository records the
-meaning of only two:
+The 2026-09-15 final review defines each objective only by an id, a short title and its
+owner tasks. That table is copied verbatim into `docs/release/objectives-source.md`
+(operator queue Q42, 2026-10-08). `RELEASE_OBJECTIVES` maps each objective to those
+owners, their tests and any live gate. A test pins the owners to the copied table.
 
-- **D3**: dynamic group impact measured on real sizing. Owner task-60, test
-  `dynamic-impact.test.mjs`. It is an explicit gap: no live sizing record exists.
-- **D6**: ServiceNow workflow proven live. Owners tasks 96, 97 and 118, with its two
-  test suites and the `servicenow-live-acceptance` gate. It is `pending`.
+An objective is qualified only when all of its live gates are live-qualified:
 
-The other sixteen are listed as **explicit qualification gaps**
-("objective definition is not in this repository"). They were not guessed. Supplying the
-text lets each be mapped in `RELEASE_OBJECTIVES`.
+- **D1** actual deployment: `deployed-acceptance`.
+- **D2** native CA credential support: `native-live-acceptance`.
+- **D4** workload qualification: the SharePoint, Teams, Exchange and OneDrive/Purview gates.
+- **D5** CIS distribution permission: no CIS content ships, so the custom NIST pack qualifies it through `nist-benchmark-acceptance`.
+- **D6** ServiceNow workflow: `servicenow-live-acceptance`.
+- **G6** native mechanism selection: `native-live-acceptance`.
+- **G8** Keel self-recovery: `storage-live-acceptance` and `drill-live-acceptance`.
+
+The other eleven are **explicit gaps**. Each one names why it is a gap:
+
+- **D3**: no live sizing record exists.
+- **D7**: audit volume and retention are not measured on a real tenant.
+- **D8**: retention lock and immutability are unqualified, by operator decision 2026-09-30.
+- **D9**: checkpoint publication is fixture-tested only.
+- **D10, G1-G5 and G7**: no live gate is defined for them.
+
+These gaps keep readiness `pending`. Accepting them would take an operator decision.
 
 ## Tests run (2026-10-04, local PostgreSQL 16, isolated schemas)
 

@@ -29,7 +29,7 @@ const liveGroups = [
   { id: "lockout-id", displayName: "Lockout", mailNickname: "lockout" },
   { id: "ops-id", displayName: "Ops", mailNickname: "ops" },
 ];
-const deletedGroups = [{ id: "deleted-id", displayName: "Deleted", mailNickname: "deleted", deletedDateTime: "2026-09-08T00:00:00Z" }];
+const deletedGroups = [{ id: "deleted-id", displayName: "Deleted", mailNickname: "deleted", deletedDateTime: new Date(Date.now() - 86_400_000).toISOString() }]; // one day ago, inside the 30-day retention window
 const ca = { id: "ca-id", displayName: "Protect", conditions: { users: { excludeGroups: ["excluded-id"] } } };
 const assignment = { id: "role-id", principalId: "break-glass-id", roleDefinitionId: "62e90394-69f5-4237-9190-012177145e10", directoryScopeId: "/" };
 let collectorFailure = false;

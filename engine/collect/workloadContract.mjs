@@ -9,7 +9,8 @@
  *  - OneDrive site-level settings;
  *  - Purview label definitions and their publication;
  *  - Exchange organization-wide mail flow and protection settings (issue #153);
- *  - Teams organization-wide policies and configuration (issue #154).
+ *  - Teams organization-wide policies and configuration (issue #154);
+ *  - Purview retention and DLP policies and their rules (issue #157).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -38,7 +39,7 @@
 export const WORKLOAD_CONTRACT_VERSION = 1;
 export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
-  'exchange-mail-flow', 'teams-org-policies',
+  'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -254,6 +255,23 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     rbac: { permissions: [], roles: ['Teams Administrator'] },
     paging, throttle: 'module-managed', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/teams/${name.toLowerCase()}`),
+  })),
+  // Issue #157: Purview retention and DLP policies and their rules, in the Security &
+  // Compliance session, read with no parameters. The DLP reads need a licence that
+  // includes Purview DLP; engine/collect/workloads/purviewRetentionDlp.mjs treats them
+  // as optional so a tenant without it still backs up its retention policies.
+  ...[
+    ['purview.retention-policies', 'Retention policies', 'Get-RetentionCompliancePolicy'],
+    ['purview.retention-rules', 'Retention rules', 'Get-RetentionComplianceRule'],
+    ['purview.dlp-policies', 'Data loss prevention (DLP) policies', 'Get-DlpCompliancePolicy'],
+    ['purview.dlp-rules', 'Data loss prevention (DLP) rules', 'Get-DlpComplianceRule'],
+  ].map(([id, resource, name]) => ({
+    id, workload: 'purview-retention-dlp', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
 ].map((descriptor) => Object.freeze(descriptor)));
 

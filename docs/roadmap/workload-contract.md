@@ -22,15 +22,18 @@ The descriptors cover 11 read operations across 5 workloads. Each records:
 | | `sharepoint.site-sharing` | `Get-PnPTenantSite` (PnP.PowerShell) | Sites.FullControl.All, SharePoint Administrator |
 | Teams settings and membership | `teams.settings` | `GET /teams/{team-id}` (v1.0) | TeamSettings.Read.All |
 | | `teams.membership` | `GET /teams/{team-id}/members` (v1.0, paged) | TeamMember.Read.All |
-| | `teams.meeting-policies` | `Get-CsTeamsMeetingPolicy` (MicrosoftTeams) | Teams Administrator |
 | Exchange mailbox settings | `exchange.mailbox-settings` | `GET /users/{user-id}/mailboxSettings` (v1.0) | MailboxSettings.Read |
 | | `exchange.client-access` | `Get-CASMailbox` (ExchangeOnlineManagement) | Exchange.ManageAsApp, Exchange Administrator |
 | OneDrive site-level settings | `onedrive.site-settings` | `Get-PnPTenantSite -IncludeOneDriveSites` | Sites.FullControl.All, SharePoint Administrator |
 | Purview labels | `purview.label-definitions` | `Get-Label` | Exchange.ManageAsApp, Compliance Administrator |
 | | `purview.label-publication` | `Get-LabelPolicy` | Exchange.ManageAsApp, Compliance Administrator |
+| Teams org-wide policies | `teams.meeting-policies` | `Get-CsTeamsMeetingPolicy` (MicrosoftTeams) | Teams Administrator |
 
 Later tasks added more reads. Issue #153 added a sixth workload, `exchange-mail-flow`,
 with eleven cmdlet reads: see [exchange-mail-flow-reads.md](exchange-mail-flow-reads.md).
+Issue #154 added a seventh, `teams-org-policies`, with nine MicrosoftTeams cmdlet reads,
+and moved `teams.meeting-policies` (first declared under Teams settings) into it: see
+[teams-org-policy-reads.md](teams-org-policy-reads.md).
 
 ### Scope validator
 

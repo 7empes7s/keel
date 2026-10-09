@@ -16,8 +16,9 @@
  *  - every automated claim is confirmed by the raw captured Graph exchanges in
  *    the proof artifact (its bytes are digest-checked by qualification.mjs);
  *  - a route that is not available records a manual handoff, never automated
- *    support. Conditional Access routes stay manual (operator decision): this
- *    gate refuses an automated Conditional Access claim outright;
+ *    support. Named locations stay manual (operator decision), and a
+ *    Conditional Access policy restore is fixture-tested only (task-152): this
+ *    gate refuses an automated claim for either outright;
  *  - the run is bounded (objects touched and elapsed time) and carries no
  *    credential material — references only.
  *
@@ -53,6 +54,9 @@ export const DIRECTORY_RESTORE_ROUTES = Object.freeze({
 export const DIRECTORY_RESTORE_ROUTE = 'directory-deleted-items';
 export const DIRECTORY_RESTORE_DOCS = 'https://learn.microsoft.com/en-us/graph/api/directory-deleteditems-restore?view=graph-rest-1.0';
 export const DIRECTORY_RESTORE_OPERATION = 'restore-soft-deleted';
+
+/** Roadmap task-152: restored by KEEL, but fixture-tested only; never live-qualified by this gate. */
+export const FIXTURE_ONLY_RESTORE_TYPES = Object.freeze(['conditionalAccessPolicy']);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SECRET_KEY = /secret|password|private.?key|token|assertion|credential.?value/i;
@@ -231,6 +235,10 @@ export function validateNativeLiveAcceptance(evidence, { tenantRef = null, build
     if (op?.outcome === 'automated') {
       if (NATIVE_RECOVERY_ROUTES[op.resourceType]) {
         failures.push(`${label}: Conditional Access recovery stays manual; an automated claim is refused`);
+        return;
+      }
+      if (FIXTURE_ONLY_RESTORE_TYPES.includes(op.resourceType)) {
+        failures.push(`${label}: Conditional Access policy restore is fixture-tested only; this gate never records it as live-qualified`);
         return;
       }
       const objectId = validateAutomated(op, label, { evidence, capture, observedAt, permissions }, failures);

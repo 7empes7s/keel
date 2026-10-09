@@ -17,6 +17,12 @@
 // plans the conflict-aware compensation of one promoted restore (roadmap task-70) as
 // a dry run; it is executed only by promoting that compensation artifact with
 // --artifact <id> --enforce, through the same approval as any restore.
+//
+// node keel-restore.mjs --enforce-conditional-access <restoreArtifactId> --policy <naturalKey> [--persist-artifact <id>] [--requested-by <who>]
+// plans turning on one Conditional Access policy that restore left report-only
+// while the backup had it enabled (roadmap task-152), as a dry run. It is executed
+// only by promoting that artifact with --artifact <id> --enforce after an approver
+// other than the requester approved it; the break-glass lockout gate runs at both.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -32,7 +38,12 @@ import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
-import { loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
+import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
+import { withProposedConditionalAccessPolicy } from '../engine/safety/lockoutGate.mjs';
+import {
+  ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, enforcementPendingFor, pendingEnforcementSteps,
+  planConditionalAccessEnforcement,
+} from '../engine/restore/conditionalAccessEnforcement.mjs';
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
@@ -52,7 +63,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
-import { emitCompletionItems } from '../engine/restore/completion.mjs';
+import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
@@ -168,6 +179,10 @@ export async function runRestore({
   // run, as a dry run. Never executes: the resulting compensation artifact is
   // promoted with artifactId, like any other dry run.
   compensateArtifactId,
+  // Roadmap task-152: plan turning on one Conditional Access policy a promoted
+  // restore left report-only: { restoreArtifactId, naturalKey }. A dry run only;
+  // the resulting artifact is promoted with artifactId after approval.
+  enforceConditionalAccess,
   // Roadmap task-55: the automation policies a remediation is executing under,
   // discovered server-side by cli/keel-remediate.mjs from the durable
   // auto_remediation_execution link table. Only identities travel here — the
@@ -216,6 +231,8 @@ export async function runRestore({
     listJournal: listJournalFn = listJournal,
     resolveIncidentRecovery: resolveIncidentRecoveryFn = resolveIncidentRecovery,
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
+    loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
+    loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
   } = dependencies;
 
   if (incidentId !== undefined) {
@@ -223,6 +240,19 @@ export async function runRestore({
     if (artifactId !== undefined) throw new Error('incidentId is supplied by the dry-run artifact on promotion, never by the caller');
     if (selection === undefined || planId !== undefined || reconciliationResources !== undefined || compensateArtifactId !== undefined) {
       throw new Error('incidentId requires the snapshotId/selection restore scope');
+    }
+  }
+  if (enforceConditionalAccess !== undefined) {
+    if (planId !== undefined || snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined
+      || artifactId !== undefined || automationPolicyIds !== undefined || compensateArtifactId !== undefined || incidentId !== undefined) {
+      throw new Error('enforceConditionalAccess is its own scope — one policy of one promoted restore');
+    }
+    if (typeof enforceConditionalAccess?.restoreArtifactId !== 'string' || !enforceConditionalAccess.restoreArtifactId
+      || typeof enforceConditionalAccess?.naturalKey !== 'string' || !enforceConditionalAccess.naturalKey) {
+      throw new Error('enforceConditionalAccess needs the restoreArtifactId and the policy naturalKey');
+    }
+    if (mode !== 'dry-run') {
+      throw new Error('turning a Conditional Access policy on is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
     }
   }
   if (compensateArtifactId !== undefined) {
@@ -247,14 +277,15 @@ export async function runRestore({
   }
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
-    if (compensateArtifactId === undefined && (planId !== undefined || snapshotId === undefined)) {
+    if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && (planId !== undefined || snapshotId === undefined)) {
       throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
     }
   }
   if (planId !== undefined && (snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined)) {
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
-  if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined) {
+  if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined
+    && enforceConditionalAccess === undefined) {
     throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, or compensateArtifactId');
   }
   if (selection !== undefined) {
@@ -297,11 +328,16 @@ export async function runRestore({
       getDryRunArtifactByIdFn, listJournalFn, getTokenFn, GraphReaderClass, GraphWriterClass, ThrottleGovernorClass,
       collectM1Fn, canonicalizeAllFn, applyWaveFn, assessDeletePlanFn, computePlanDigestFn,
       computeCurrentStateFingerprintFn, createDryRunArtifactFn, validateArtifactForExecutionFn,
-      assertContentEffectApprovalFn, classifyDryRunStatusFn,
+      assertContentEffectApprovalFn, classifyDryRunStatusFn, loadLockoutGateInputsFn, loadGroupMembershipFn,
     };
     if (compensateArtifactId !== undefined) {
       return await planCompensationRun({
         client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
+      });
+    }
+    if (enforceConditionalAccess !== undefined) {
+      return await planEnforcementRun({
+        client, request: enforceConditionalAccess, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
       });
     }
     let sourceSnapshot = snapshotId;
@@ -333,6 +369,12 @@ export async function runRestore({
       if (artifact.compensation) {
         return await executeCompensationRun({
           client, artifact, collectorConfig, targetConfig, readFile, logger, deps: compensationDeps,
+        });
+      }
+      // Task-152: turning a Conditional Access policy on is promoted here too.
+      if (artifact.conditionalAccessEnforcement) {
+        return await executeEnforcementRun({
+          client, artifact, collectorConfig, targetConfig, logger, deps: compensationDeps,
         });
       }
     }
@@ -833,15 +875,23 @@ export async function runRestore({
     // leaves owned completion items for what KEEL cannot write back (secrets,
     // certificates, consent, a new id's downstream integrations) and for service
     // validation. Keyed by the promoted artifact, so a retried run never duplicates them.
+    // Roadmap task-152: a Conditional Access policy the snapshot had turned on is
+    // written report-only. Each one is a pending step of this run (dry run and
+    // enforce alike) and, once enforced, an open enforcement completion item.
+    const pendingSteps = pendingEnforcementSteps(resources, results.applied);
+    for (const step of pendingSteps) logger.log(`pending step: ${step.naturalKey} left report-only; the backup had it turned on`);
+    if (pendingSteps.length > 0) results.pendingSteps = pendingSteps;
     let completionItems = [];
     if (mode === 'enforce' && artifact) {
       const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))
         .filter((resource) => resource?.recovery
-          && (resource.recovery.mechanism === 'recreate' || resource.recovery.mechanism === 'soft-delete-restore'))
+          && (resource.recovery.mechanism === 'recreate' || resource.recovery.mechanism === 'soft-delete-restore'
+            || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))
         .map((resource) => ({
           naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery.mechanism,
+          enforcementPending: enforcementPendingFor(resource),
         }));
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {
@@ -931,7 +981,7 @@ export async function runRestore({
 
     return {
       plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
-      completionItems, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
+      completionItems, pendingSteps, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };
@@ -1115,6 +1165,154 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
   return { mode: 'enforce', compensation: ctx.plan, results, artifactId: artifact.id };
 }
 
+// Roadmap task-152: turning on one Conditional Access policy a promoted restore
+// left report-only. Recomputed from the restore, its open enforcement item, the
+// snapshot and a FRESH read of the target every time — at the dry run and again at
+// promotion — so the digest and fingerprint bind exactly the policy approved.
+async function buildEnforcement({ client, forward, naturalKey, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, deps }) {
+  const pending = await findEnforcementItem(client, { tenantRef: forward.tenantRef, restoreRef: forward.id, naturalKey });
+  const { rows } = await client.query(
+    'SELECT payload FROM resource_version WHERE snapshot_id = $1 AND natural_key = $2',
+    [forward.snapshotId, naturalKey],
+  );
+  const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
+  const targetReader = new deps.GraphReaderClass(async () => collectorToken);
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const current = targetResources.find((resource) => resource.naturalKey === naturalKey && resource.resourceType === 'conditionalAccessPolicy');
+  const live = current ? { targetId: current.sourceId, payload: current.payload } : null;
+  let plan;
+  try {
+    plan = planConditionalAccessEnforcement({
+      restoreRef: forward.id, naturalKey, pendingItem: pending, snapshotPayload: rows[0]?.payload ?? null, live,
+    });
+  } catch (error) {
+    if (error instanceof EnforcementRefusal) throw new Error(`enforcement refused: ${error.message}`);
+    throw error;
+  }
+
+  // The break-glass lockout gate, with this policy turned on as the proposed
+  // change. Group membership is read for the policy as proposed, so a group it
+  // names that the collected policies do not is still resolved (or stays unknown).
+  let lockoutGate;
+  try {
+    const inputs = await deps.loadLockoutGateInputsFn(client, { tenantRef: forward.tenantRef });
+    const desired = { ...live.payload, state: ENFORCED };
+    inputs.groupMembers = await deps.loadGroupMembershipFn(client, forward.tenantRef,
+      withProposedConditionalAccessPolicy(inputs.inventory, { naturalKey, desired }));
+    lockoutGate = breakGlassLockoutGate(inputs);
+  } catch (error) {
+    lockoutGate = closedLockoutGate(`break-glass readiness could not be read: ${error.message}`);
+  }
+
+  const scopeKeys = [naturalKey];
+  const digest = deps.computePlanDigestFn({
+    snapshotId: forward.snapshotId,
+    selection: scopeKeys,
+    closureKeys: scopeKeys,
+    targetTenantId: targetConfig.tenantId,
+    collectorConfigPath,
+    targetConfigPath,
+    reconciliationResources: null,
+    waves: [scopeKeys],
+    patches: [],
+    conditionalAccessEnforcement: plan,
+  });
+  const fingerprint = deps.computeCurrentStateFingerprintFn(targetResources, scopeKeys);
+  const protectedPrincipalIds = targetResources
+    .filter((resource) => resource.resourceType === 'roleAssignment' && resource.naturalKey.includes('GlobalAdministrator'))
+    .map((resource) => resource.payload.principalId);
+  return { plan, live, lockoutGate, digest, fingerprint, scopeKeys, targetReader, protectedPrincipalIds, pending };
+}
+
+async function planEnforcementRun({ client, request, persistArtifactId, requestedBy, readFile, logger, deps }) {
+  const forward = await deps.getDryRunArtifactByIdFn(client, { id: request.restoreArtifactId });
+  if (!forward) throw new Error(`enforcement refused: restore artifact not found: ${request.restoreArtifactId}`);
+  const collectorConfig = JSON.parse(readFile(forward.collectorConfigPath, 'utf8'));
+  const targetConfig = JSON.parse(readFile(forward.targetConfigPath, 'utf8'));
+  assertSeparateRestorer(collectorConfig, targetConfig);
+  const ctx = await buildEnforcement({
+    client, forward, naturalKey: request.naturalKey, collectorConfig, targetConfig,
+    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, deps,
+  });
+  // Every gate is evaluated; nothing is written.
+  const dry = await applyConditionalAccessEnforcement(null, ctx.plan, { mode: 'dry-run', live: ctx.live, lockoutGate: ctx.lockoutGate });
+  const results = { ...dry, notRemediable: [] };
+  const status = deps.classifyDryRunStatusFn(results);
+  logger.log(`turn on ${ctx.plan.naturalKey}: ${status}${dry.skipped[0] ? ` — ${dry.skipped[0].reason}` : ''}`);
+
+  if (persistArtifactId !== undefined) {
+    await deps.createDryRunArtifactFn(client, {
+      id: persistArtifactId,
+      tenantRef: forward.tenantRef,
+      snapshotId: forward.snapshotId,
+      selection: ctx.scopeKeys,
+      closureKeys: ctx.scopeKeys,
+      targetTenantId: targetConfig.tenantId,
+      collectorConfigPath: forward.collectorConfigPath,
+      targetConfigPath: forward.targetConfigPath,
+      reconciliationResources: null,
+      waves: [ctx.scopeKeys],
+      patches: [],
+      guardRefusals: results.skipped,
+      results,
+      currentStateFingerprint: ctx.fingerprint,
+      digest: ctx.digest,
+      status,
+      requestedBy: requestedBy ?? 'keel-restore',
+      conditionalAccessEnforcement: ctx.plan,
+    });
+    logger.log(`persisted enforcement dry-run artifact ${persistArtifactId} (status: ${status})`);
+  }
+  return { mode: 'dry-run', conditionalAccessEnforcement: ctx.plan, results, status, artifactId: persistArtifactId ?? null };
+}
+
+/** The approval that promoted this artifact: approved, by someone other than the requester. */
+async function enforcementApproval(client, artifactId) {
+  const { rows } = await client.query(
+    `SELECT requested_by, decided_by, justification FROM approval_request
+      WHERE action = 'restore' AND status = 'approved' AND params->>'artifactId' = $1
+        AND decided_by IS NOT NULL AND decided_by <> requested_by
+      ORDER BY decided_at DESC LIMIT 1`,
+    [artifactId],
+  );
+  return rows[0] ? { approvedBy: rows[0].decided_by, reason: rows[0].justification ?? `approved restore ${artifactId}` } : null;
+}
+
+async function executeEnforcementRun({ client, artifact, collectorConfig, targetConfig, logger, deps }) {
+  const forward = await deps.getDryRunArtifactByIdFn(client, { id: artifact.conditionalAccessEnforcement.promotes });
+  if (!forward) throw new Error(`enforcement promotion refused: the restore ${artifact.conditionalAccessEnforcement.promotes} no longer exists`);
+  const ctx = await buildEnforcement({
+    client, forward, naturalKey: artifact.conditionalAccessEnforcement.naturalKey, collectorConfig, targetConfig,
+    collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath, deps,
+  });
+  // Exactly the forward promotion gate: a changed plan or policy refuses first.
+  const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
+  if (!validation.ok) throw new Error(`enforcement promotion refused: ${validation.reason}`);
+  const approval = await enforcementApproval(client, artifact.id);
+  if (!approval) throw new Error('enforcement promotion refused: turning a Conditional Access policy on needs an approved request from someone other than the requester');
+
+  const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);
+  const writer = new deps.GraphWriterClass(async () => restorerToken);
+  const result = await applyConditionalAccessEnforcement(writer, ctx.plan, {
+    mode: 'enforce',
+    live: ctx.live,
+    lockoutGate: ctx.lockoutGate,
+    approval,
+    signInPathGate: { reader: ctx.targetReader, protectedPrincipalIds: ctx.protectedPrincipalIds },
+    rollbackClient: client,
+    runId: `run-enforcement-${artifact.id}`,
+    restoreRef: artifact.id,
+  });
+  const results = { ...result, notRemediable: [] };
+  logger.log(`turn on ${ctx.plan.naturalKey}: applied ${results.applied.length}, skipped ${results.skipped.length}, failed ${results.failed.length}`);
+  if (results.skipped.length > 0) throw new Error(`enforcement promotion refused: ${results.skipped[0].reason}`);
+  if (results.failed.length > 0) throw new Error(`enforcement failed: ${results.failed[0].error}`);
+  const closed = await closeEnforcementItem(client, {
+    tenantRef: forward.tenantRef, itemId: ctx.pending.id, artifactId: artifact.id, approvedBy: approval.approvedBy,
+  });
+  return { mode: 'enforce', conditionalAccessEnforcement: ctx.plan, results, completionItem: closed.item, artifactId: artifact.id };
+}
+
 export async function main({
   argv = process.argv,
   readFile = readFileSync,
@@ -1128,6 +1326,8 @@ export async function main({
   const artifactId = arg('artifact', undefined, argv);
   const persistArtifactId = arg('persist-artifact', undefined, argv);
   const compensateArtifactId = arg('compensate', undefined, argv);
+  const enforceRestoreArtifactId = arg('enforce-conditional-access', undefined, argv);
+  const enforcePolicy = arg('policy', undefined, argv);
   const requestedBy = arg('requested-by', undefined, argv);
   const incidentId = arg('incident', undefined, argv);
   const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
@@ -1143,6 +1343,22 @@ export async function main({
     }
     return runRestore({
       compensateArtifactId, persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+    });
+  }
+
+  // Task-152: turning a Conditional Access policy on is planned from one promoted
+  // restore and one policy — never with --enforce, and never alongside another scope.
+  if (enforceRestoreArtifactId !== undefined) {
+    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--enforce-conditional-access is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    }
+    if (!enforcePolicy) throw new Error('--enforce-conditional-access requires --policy <naturalKey>');
+    if (mode === 'enforce') {
+      throw new Error('--enforce-conditional-access is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
+    }
+    return runRestore({
+      enforceConditionalAccess: { restoreArtifactId: enforceRestoreArtifactId, naturalKey: enforcePolicy },
+      persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
     });
   }
 

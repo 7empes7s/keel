@@ -124,9 +124,11 @@ test('a valid independently captured runner record verifies under --require-live
   const op = run.evidence.subject.operations.find((o) => o.outcome === 'automated');
   assert.equal(op.restoredObjectId, OBJECT_ID, 'object id result preserved');
   assert.equal(Date.parse(op.retentionDeadline) - Date.parse(op.deletedDateTime), 30 * 24 * 60 * 60 * 1000, 'retention deadline preserved');
-  // Unavailable routes are manual handoffs, never automated support.
+  // Unavailable routes are manual handoffs, never automated support. Roadmap
+  // task-152: Conditional Access policies are restored by KEEL (fixture-tested
+  // only), so they are no longer a native-route handoff.
   const manual = run.evidence.subject.operations.filter((o) => o.outcome === 'manual-handoff').map((o) => o.resourceType).sort();
-  assert.deepEqual(manual, ['conditionalAccessPolicy', 'namedLocation']);
+  assert.deepEqual(manual, ['namedLocation']);
   assert.doesNotMatch(readFileSync(run.file, 'utf8'), /BEGIN|accessToken|eyJ/);
 });
 
@@ -246,8 +248,14 @@ test('the record must show a preserved id, a deadline-bounded restore, a disposa
   failsWith(op((o) => { o.fixture.name = 'alice@contoso.com'; }), /not a disposable/);
   failsWith(op((o) => { o.outcome = 'failed'; }), /not a qualified recovery/);
   failsWith(resave(run, (r) => { r.subject.operations = r.subject.operations.filter((o) => o.outcome !== 'automated'); return r; }), /nothing is qualified/);
-  failsWith(resave(run, (r) => { r.subject.operations.find((o) => o.resourceType === 'conditionalAccessPolicy').outcome = 'automated'; return r; }),
+  failsWith(resave(run, (r) => { r.subject.operations.find((o) => o.resourceType === 'namedLocation').outcome = 'automated'; return r; }),
     /Conditional Access recovery stays manual/);
+  // Roadmap task-152: a Conditional Access policy restore is fixture-tested only;
+  // this live gate never accepts an automated claim for it.
+  failsWith(resave(run, (r) => {
+    r.subject.operations.push({ ...structuredClone(r.subject.operations[0]), resourceType: 'conditionalAccessPolicy', route: 'conditional-access-deleted-items' });
+    return r;
+  }), /Conditional Access policy restore is fixture-tested only/);
   failsWith(resave(run, (r) => { r.subject.bounds.elapsedMs = NATIVE_LIVE_MAX_ELAPSED_MS + 1; return r; }), /elapsed time/);
   failsWith(resave(run, (r) => { r.subject.bounds.maxObjects = 50; return r; }), /at most 3 objects/);
   failsWith(resave(run, (r) => { r.subject.credential.privateKey = '-----BEGIN PRIVATE KEY-----'; return r; }), /credential material refused/);

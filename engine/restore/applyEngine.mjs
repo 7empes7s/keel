@@ -4,6 +4,7 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
+import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
@@ -573,9 +574,13 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      // Roadmap task-152: a Conditional Access policy is restored from its own
+      // deleted-items container; directory objects from the directory one. A
+      // restored policy that comes back enabled is put back to report-only by the
+      // follow-up PATCH below (its desired state is always report-only here).
       const restoreResult = await retryOperation(() => writer.write(
         'v1.0',
-        `/directory/deletedItems/${deletedItemId}/restore`,
+        deletedItemRestorePath(resource.resourceType, deletedItemId),
         { method: 'POST', body: {} },
       ));
       if (!restoreResult.ok) {

@@ -104,8 +104,9 @@ test('every catalogue type sits in exactly one expansion batch with an explicit 
 });
 
 test('scopes are derived from registered operations only; no new family is fully restorable', () => {
-  // group is the only type with every object operation registered (before task-107).
-  assert.deepEqual(CATALOG.map(({ type }) => type).filter((type) => restoreScopeFor(type) === 'full'), ['group']);
+  // group was the only type with every object operation registered (before task-107).
+  // Task-152 registered Conditional Access restore-soft-deleted, completing its set.
+  assert.deepEqual(CATALOG.map(({ type }) => type).filter((type) => restoreScopeFor(type) === 'full'), ['group', 'conditionalAccessPolicy']);
   assert.equal(restoreScopeFor('application'), 'partial');
   assert.equal(restoreScopeFor('servicePrincipal'), 'partial');
   assert.equal(restoreScopeFor('administrativeUnit'), 'partial', 'task-109: update only');

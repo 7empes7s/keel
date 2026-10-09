@@ -36,8 +36,10 @@ reconciliation, and each resource carries it as `resource.recovery`.
   skipped before any write.
 
 **Native recovery routes.**
-- `NATIVE_RECOVERY_ROUTES` names routes such as recovering deleted Conditional
-  Access policies and named locations.
+- `NATIVE_RECOVERY_ROUTES` names routes such as recovering deleted named
+  locations. Deleted Conditional Access policies left this list in task-152:
+  they are now read from deleted items and soft-restored like a group (see
+  `conditional-access-enforce.md`).
 - None is credential-qualified, so a resource a native lookup reports as
   recoverable becomes a `manual` handoff, and a failed native lookup refuses.
 - Today no code path queries a native store. The selector accepts injected

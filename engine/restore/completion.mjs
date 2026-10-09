@@ -35,11 +35,11 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 
-export const COMPLETION_KINDS = Object.freeze(['credential', 'certificate', 'consent', 'integration', 'service-validation']);
+export const COMPLETION_KINDS = Object.freeze(['credential', 'certificate', 'consent', 'integration', 'service-validation', 'enforcement']);
 export const COMPLETION_EVIDENCE_TYPES = Object.freeze(['ticket', 'link', 'log-reference', 'attestation']);
 export const COMPLETION_EVIDENCE_KIND = 'recovery-completion';
 const EVIDENCE_FIELDS = new Set(['type', 'reference', 'note', 'observedAt']);
-const CONFIGURATION_KINDS = new Set(['credential', 'certificate', 'consent', 'integration']);
+const CONFIGURATION_KINDS = new Set(['credential', 'certificate', 'consent', 'integration', 'enforcement']);
 
 const item = (kind, requirement, description) => Object.freeze({ kind, requirement, description });
 
@@ -82,19 +82,38 @@ const DEFAULT_RULE = Object.freeze({
   validation: item('service-validation', 'serviceCheck', 'Confirm the services that depend on this object work'),
 });
 
-/** The completion items an applied recovery leaves open. Update/none/delete leave none. */
-export function completionItemsFor({ resourceType, mechanism }) {
+/**
+ * Roadmap task-152: a Conditional Access policy the snapshot had turned on is
+ * still in report-only mode after the restore. Turning it on is a separate,
+ * approved step behind the break-glass lockout gate; until then the tenant is
+ * not protected by it.
+ */
+export const CONDITIONAL_ACCESS_ENFORCEMENT_ITEM = item(
+  'enforcement',
+  'conditionalAccessEnabled',
+  'Restored in report-only mode, but the backup had this policy turned on. It does not protect anyone until it is turned on through the approved enforcement step, which first checks that every break-glass account can still sign in',
+);
+
+/**
+ * The completion items an applied recovery leaves open. Update/none/delete leave
+ * none, except the task-152 enforcement step: `enforcementPending` is true when
+ * a Conditional Access policy the snapshot had turned on was written report-only.
+ */
+export function completionItemsFor({ resourceType, mechanism, enforcementPending = false }) {
   const rule = COMPLETION_RULES[resourceType] ?? DEFAULT_RULE;
+  const enforcement = enforcementPending ? [CONDITIONAL_ACCESS_ENFORCEMENT_ITEM] : [];
   if (mechanism === 'recreate') {
     return [
       ...rule.recreate,
       item('integration', 'newObjectId', 'A new object id was assigned: update every external system that referenced the old id'),
+      ...enforcement,
       rule.validation,
     ];
   }
   if (mechanism === 'soft-delete-restore') {
-    return [...rule.restore, ...(COMPLETION_RULES[resourceType] ? [rule.validation] : [])];
+    return [...rule.restore, ...enforcement, ...(COMPLETION_RULES[resourceType] ? [rule.validation] : [])];
   }
+  if (mechanism === 'update-existing') return enforcement;
   return [];
 }
 
@@ -280,6 +299,11 @@ export async function completeItem(client, { tenantRef, itemId, actorId, evidenc
       await client.query('COMMIT');
       return { item: normalize(row), changed: false };
     }
+    // Task-152: a ticket cannot stand in for turning the policy on. Only the
+    // approved enforcement step closes this item (closeEnforcementItem).
+    if (row.kind === 'enforcement') {
+      throw new CompletionEvidenceError('this item closes only when the approved enforcement step turns the policy on');
+    }
     const entry = { ...linked, recordedBy: actorId, recordedAt: asDate(at).toISOString() };
     const { rows } = await client.query(
       `UPDATE recovery_completion_item
@@ -341,6 +365,65 @@ export async function reopenItem(client, { tenantRef, itemId, actorId, reason, a
       kind: COMPLETION_EVIDENCE_KIND,
       subject: { itemId: row.id, restoreRef: row.restore_ref, naturalKey: row.natural_key, kind: row.kind, requirement: row.requirement, transition: 'reopened', reason: reason.trim() },
       actor: actorId,
+    });
+    await client.query('COMMIT');
+    return { item: normalize(rows[0]), changed: true };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+/** Roadmap task-152: the enforcement item a restore left for one policy, or null. */
+export async function findEnforcementItem(client, { tenantRef, restoreRef, naturalKey }) {
+  const { rows } = await client.query(
+    `SELECT * FROM recovery_completion_item
+      WHERE tenant_ref = $1 AND restore_ref = $2 AND natural_key = $3 AND kind = 'enforcement'`,
+    [tenantRef, restoreRef, naturalKey],
+  );
+  return rows[0] ? normalize(rows[0]) : null;
+}
+
+/**
+ * Roadmap task-152: closes the enforcement item once KEEL itself turned the
+ * policy on through an approved, verified step. The evidence is a reference to
+ * that step's artifact; the approver is recorded with it. Idempotent.
+ */
+export async function closeEnforcementItem(client, { tenantRef, itemId, artifactId, approvedBy, at: requestedAt = undefined }) {
+  const linked = validateCompletionEvidence({
+    type: 'log-reference', reference: `conditional-access-enforcement:${artifactId}`, note: `approved by ${approvedBy}; turned on and read back`,
+  });
+  await client.query('BEGIN');
+  try {
+    const at = requestedAt ?? await databaseNow(client);
+    const row = await loadItem(client, { tenantRef, itemId });
+    if (row.kind !== 'enforcement') throw new Error(`completion item ${itemId} is not an enforcement step`);
+    if (row.state === 'verified') {
+      await client.query('COMMIT');
+      return { item: normalize(row), changed: false };
+    }
+    const actor = 'keel-restore';
+    const entry = { ...linked, recordedBy: actor, recordedAt: asDate(at).toISOString() };
+    const { rows } = await client.query(
+      `UPDATE recovery_completion_item
+          SET state = 'verified', evidence = evidence || $2::jsonb, closed_by = $3, closed_at = $4, updated_at = $4
+        WHERE id = $1
+        RETURNING *`,
+      [row.id, JSON.stringify([entry]), actor, at],
+    );
+    await client.query(
+      `INSERT INTO recovery_completion_event (item_id, tenant_ref, from_state, to_state, actor, evidence, at)
+       VALUES ($1,$2,$3,'verified',$4,$5,$6)`,
+      [row.id, tenantRef, row.state, actor, entry, at],
+    );
+    await appendEvidence(client, {
+      tenantRef,
+      kind: COMPLETION_EVIDENCE_KIND,
+      subject: {
+        itemId: row.id, restoreRef: row.restore_ref, naturalKey: row.natural_key, kind: row.kind,
+        requirement: row.requirement, transition: 'verified', evidenceType: linked.type, evidenceReference: linked.reference, approvedBy,
+      },
+      actor,
     });
     await client.query('COMMIT');
     return { item: normalize(rows[0]), changed: true };

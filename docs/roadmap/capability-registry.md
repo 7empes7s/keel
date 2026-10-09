@@ -64,6 +64,9 @@ qualification is claimed.
   - `group`: create, update, delete, restore-soft-deleted.
   - `roleAssignment`, `namedLocation`, `conditionalAccessPolicy`: create,
     update, delete (none are soft-deletable Graph directory objects).
+  - Task-152 later added `conditionalAccessPolicy` restore-soft-deleted, read
+    from the Conditional Access deleted-items store and fixture-tested only
+    (see `conditional-access-enforce.md`).
 
 ## Real evidence gaps this task closed
 

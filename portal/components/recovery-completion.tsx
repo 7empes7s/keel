@@ -13,7 +13,7 @@ export type CompletionState = "configuration-restored" | "service-validation-pen
 
 export interface CompletionItem {
   id: string;
-  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation";
+  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation" | "enforcement";
   requirement: string;
   description: string;
   owner: string | null;
@@ -86,9 +86,15 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                       {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
                     </small>
                   ) : null}
+                  {item.kind === "enforcement" && item.state === "pending" ? (
+                    <small className="completion-evidence completion-next-step">
+                      Next: ask for the enforcement step, which needs a second person to approve it. KEEL closes this item once the policy reads back as on.
+                    </small>
+                  ) : null}
                 </div>
                 {canComplete ? (
                   item.state === "pending" ? (
+                    item.kind === "enforcement" ? null : (
                     <form
                       className="completion-form"
                       onSubmit={(event) => {
@@ -126,6 +132,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         Record where the proof lives: never the secret or credential itself.
                       </small>
                     </form>
+                    )
                   ) : (
                     <button
                       aria-busy={busyItem === item.id || undefined}

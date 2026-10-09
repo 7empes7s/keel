@@ -32,7 +32,8 @@ const REGISTERED = Object.freeze({
   group: ['create', 'update', 'delete', 'restore-soft-deleted'],
   roleAssignment: ['create', 'update', 'delete'],
   namedLocation: ['create', 'update', 'delete'],
-  conditionalAccessPolicy: ['create', 'update', 'delete'],
+  // Roadmap task-152: deleted policies are restored from the Conditional Access deleted items.
+  conditionalAccessPolicy: ['create', 'update', 'delete', 'restore-soft-deleted'],
   // Roadmap task-107: the first application/service-principal subset.
   application: ['create', 'update', 'restore-soft-deleted'],
   servicePrincipal: ['create'],
@@ -134,8 +135,8 @@ test('every registered operation is fixture-tested with a named proof and correc
   }
 });
 
-test('roleAssignment/namedLocation/conditionalAccessPolicy are not soft-deletable: no restore-soft-deleted capability', () => {
-  for (const type of ['roleAssignment', 'namedLocation', 'conditionalAccessPolicy']) {
+test('roleAssignment/namedLocation are not soft-deletable: no restore-soft-deleted capability', () => {
+  for (const type of ['roleAssignment', 'namedLocation']) {
     const capability = capabilityFor(type, 'restore-soft-deleted');
     assert.equal(capability.claim, 'unsupported', `${type} restore-soft-deleted should be unsupported`);
     assert.equal(capability.proofRef, null);

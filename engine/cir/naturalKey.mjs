@@ -19,6 +19,10 @@ export const ID_KEY_TYPES = new Set([
   'deviceCategory', 'managedDevice', 'managedAppPolicy',
   'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'termsAndConditions',
   'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'contact',
+  // Issue #156. A branding localization's id is its language (for example
+  // fr-FR), the same in every tenant. A group expiration policy's id is the
+  // only identity it has: it carries no name.
+  'organizationalBrandingLocalization', 'groupLifecyclePolicy',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -28,6 +32,9 @@ export const ID_KEY_TYPES = new Set([
 export const CONSTANT_KEY_TYPES = new Set([
   'certificateBasedAuthConfiguration', 'adminConsentRequestPolicy',
   'identitySecurityDefaultsEnforcementPolicy', 'crossTenantAccessPolicyConfigurationDefault',
+  // Issue #156: the default company branding, device registration and
+  // authentication flows policies.
+  'organizationalBranding', 'deviceRegistrationPolicy', 'authenticationFlowsPolicy',
 ]);
 
 export function naturalKeyFor(type, obj, ctx) {

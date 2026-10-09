@@ -118,6 +118,13 @@ test('the policy family ledger lists every policy type; the remainder stays rese
 
   for (const family of ledger.families) {
     if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation', ...Object.keys(TENANT_POLICY_PATHS)].includes(family.resourceType)) continue;
+    // Issue #156: the device registration policy is manual by decision, not unresearched.
+    if (family.status === 'manual') {
+      assert.equal(qualificationFor(family.resourceType).decision, 'manual', family.resourceType);
+      assert.deepEqual(family.operations, [], `${family.resourceType} has no operation record`);
+      for (const operation of OPERATIONS) assert.equal(capabilityFor(family.resourceType, operation).claim, 'unsupported');
+      continue;
+    }
     assert.equal(family.status, 'research-needed', family.resourceType);
     assert.equal(family.restoreScope, 'none', family.resourceType);
     assert.deepEqual(family.operations, [], `${family.resourceType} has no operation record`);
@@ -343,7 +350,8 @@ test('the policy batch runner drives the subset through applyWave and prints the
   assert.deepEqual(strengthOps[1].writes, [`PATCH ${PATH}/fixture-existing`]);
   for (const op of report.operations) assert.equal(op.result, 'passed', `${op.resourceType} ${op.operation}: ${op.detail}`);
   assert.ok(report.refused.some((entry) => entry.resourceType === 'authenticationStrengthPolicy' && entry.operation === 'delete'));
-  assert.equal(report.policyLedger.families.length, 18);
+  // 18 before issue #156 added the authentication flows and device registration policies.
+  assert.equal(report.policyLedger.families.length, 20);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };

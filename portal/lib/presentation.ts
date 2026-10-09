@@ -95,6 +95,11 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   user: "user",
   authorizationPolicy: "authorization policy",
   crossTenantAccessPolicyPartner: "cross-tenant access partner",
+  organizationalBranding: "company branding",
+  organizationalBrandingLocalization: "company branding language",
+  groupLifecyclePolicy: "group expiration policy",
+  deviceRegistrationPolicy: "device registration settings",
+  authenticationFlowsPolicy: "self-service sign-up setting",
   retentionLabel: "retention label",
   deviceConfiguration: "device configuration",
 };

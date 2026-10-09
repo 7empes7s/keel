@@ -416,7 +416,7 @@ export async function applyWave(writer, governor, wave, {
 
     if (isTenantPolicyGoverned(resource.resourceType)) {
       const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
-        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
       });
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
@@ -857,7 +857,7 @@ export async function applyWave(writer, governor, wave, {
  * sign-in path gate does not count them as unexpected.
  */
 async function applyTenantPolicyWrite(writer, resource, verb, {
-  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
 }) {
   const { naturalKey } = resource;
   const entry = tenantPolicyRecordFor(resource.resourceType, verb);
@@ -875,11 +875,11 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   let methods;
   let readPath;
   try {
-    root = tenantPolicyRootWrite(entry, resource, desired);
+    root = tenantPolicyRootWrite(entry, resource, desired, { targetTenant });
     methods = entry.methodConfigurations ? methodConfigurationWrites(resource, desired) : [];
     readPath = verb === 'create'
-      ? tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource)
-      : tenantPolicyRoute(entry, resource);
+      ? tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource, { targetTenant })
+      : tenantPolicyRoute(entry, resource, { targetTenant });
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }

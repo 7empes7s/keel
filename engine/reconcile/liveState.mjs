@@ -15,13 +15,26 @@ export const SOFT_DELETABLE = new Set(['user', 'group', 'application']);
  * found". Without the callback it throws, exactly as before. */
 export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onDeletedLookupFailure }) {
   const index = new Map();
+  // Issue #156: company branding lives under /organization/{id}. The id is read
+  // from the target tenant once, only when such a type is planned.
+  let organizationId = null;
+  const resolveOrganizationId = async () => {
+    if (organizationId) return organizationId;
+    const [organization] = await list(reader, 'v1.0', '/organization');
+    if (typeof organization?.id !== 'string' || organization.id.length === 0) {
+      throw new Error('listing /organization returned no organization id');
+    }
+    organizationId = organization.id;
+    return organizationId;
+  };
 
   for (const resourceType of resourceTypes) {
     const entry = byType.get(resourceType);
     if (!entry) throw new Error(`resource type ${resourceType} not found in tenant-probe CATALOG`);
 
-    const path = entry.select ? `${entry.path}?$select=${entry.select}` : entry.path;
-    const live = await list(reader, entry.version, path);
+    const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path;
+    const path = entry.select ? `${basePath}?$select=${entry.select}` : basePath;
+    const live = await list(reader, entry.version, path, entry);
     for (const object of live) {
       index.set(naturalKeyFor(resourceType, object), {
         targetId: object.id,
@@ -61,8 +74,13 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
   return index;
 }
 
-async function list(reader, version, path) {
-  const { items, error } = await reader.collect(version, path);
+async function list(reader, version, path, entry = null) {
+  const { items, error } = entry?.acceptLanguage
+    ? await reader.collect(version, path, { acceptLanguage: entry.acceptLanguage })
+    : await reader.collect(version, path);
+  // Issue #156: a type Graph answers with 404 when it was never set up (company
+  // branding) is absent, the same observation the snapshot collector records.
+  if (error && entry?.absentWhenNotFound && error.status === 404) return [];
   if (error) throw new Error(`listing ${path} failed: ${error.error ?? error.status ?? error}`);
   return items;
 }

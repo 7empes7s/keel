@@ -390,6 +390,21 @@ registerAll('crossTenantAccessPolicyPartner', '/policies/crossTenantAccessPolicy
 recordFixtureProof('crossTenantAccessPolicyPartner', 'create', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 recordFixtureProof('crossTenantAccessPolicyPartner', 'update', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 
+// Issue #156: basic tenant settings, written through the same explicit records
+// (engine/restore/tenantPolicyOperations.mjs). Update only: Graph has no create
+// or delete for the default branding or the authentication flows policy, and
+// creating or deleting a branding localization or a group expiration policy is
+// not qualified. The device registration policy is never registered.
+for (const [resourceType, path] of [
+  ['organizationalBranding', '/organization/{org}/branding'],
+  ['organizationalBrandingLocalization', '/organization/{org}/branding/localizations'],
+  ['groupLifecyclePolicy', '/groupLifecyclePolicies'],
+  ['authenticationFlowsPolicy', '/policies/authenticationFlowsPolicy'],
+]) {
+  registerAll(resourceType, path, ['update']);
+  recordFixtureProof(resourceType, 'update', 'engine/roadmap/entra-basic-settings.test.mjs');
+}
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship

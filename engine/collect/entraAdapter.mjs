@@ -27,8 +27,17 @@ function graphNativeAdapter(type) {
     const startedAt = new Date();
     const result = await reader.collect(entry.version, path, {
       pageCap: entry.pageCap ?? Infinity,
+      ...(entry.acceptLanguage ? { acceptLanguage: entry.acceptLanguage } : {}),
     });
     const completedAt = new Date();
+    // Issue #156: a type Graph answers with 404 when the tenant never set it
+    // up (company branding) is an observed absence, not a failed read. Only a
+    // 404 on the first page counts; any other status is still a failure.
+    if (entry.absentWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) {
+      return {
+        entry, path, startedAt, completedAt, items: [], pages: 0, status: 404, capped: false, error: null,
+      };
+    }
     return {
       entry,
       path,

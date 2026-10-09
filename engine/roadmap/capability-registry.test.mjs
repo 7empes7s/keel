@@ -51,6 +51,11 @@ const REGISTERED = Object.freeze({
   adminConsentRequestPolicy: ['update'],
   // Roadmap task-150: users are updated and restored in place, never created.
   user: ['update', 'restore-soft-deleted'],
+  // Issue #156: basic tenant settings.
+  organizationalBranding: ['update'],
+  organizationalBrandingLocalization: ['update'],
+  groupLifecyclePolicy: ['update'],
+  authenticationFlowsPolicy: ['update'],
 });
 
 function governor() {
@@ -141,7 +146,7 @@ test('roleAssignment/namedLocation/conditionalAccessPolicy are not soft-deletabl
 // ---------------------------------------------------------------------------
 // Mutation check 1: qualify operation from pathFor alone.
 //
-// Every one of CATALOG's 54 types has a real Graph collection `path` — path
+// Every one of CATALOG's 59 types has a real Graph collection `path` — path
 // existence alone must never imply write capability. Every type outside the
 // four explicitly registered above must read 'unsupported' for all four
 // operations, even though a read path exists.

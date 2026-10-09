@@ -268,6 +268,19 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CASMailbox' -Block { Get-CASMailbox -ResultSize 1 }
         # Task 105: mailbox hold and retention settings (configuration only).
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-Mailbox' -Block { Get-Mailbox -ResultSize 1 }
+        # Issue #153: organization-wide mail flow and protection settings (configuration
+        # only). Get-TransportRule is probed above. The last two need Defender for
+        # Office 365; in an unlicensed tenant their rows fail with the cmdlet not found.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AcceptedDomain' -Block { Get-AcceptedDomain }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RemoteDomain' -Block { Get-RemoteDomain }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-InboundConnector' -Block { Get-InboundConnector }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OutboundConnector' -Block { Get-OutboundConnector }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-HostedContentFilterPolicy' -Block { Get-HostedContentFilterPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AntiPhishPolicy' -Block { Get-AntiPhishPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MalwareFilterPolicy' -Block { Get-MalwareFilterPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-DkimSigningConfig' -Block { Get-DkimSigningConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeLinksPolicy' -Block { Get-SafeLinksPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentPolicy' -Block { Get-SafeAttachmentPolicy }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

@@ -955,7 +955,7 @@ function main() {
   }
   if (command !== 'verify' || process.argv.includes('--help')) {
     console.error('usage: qualification.mjs verify --gate <gate> --evidence <file> [--tenant <ref>] [--require-live] [--max-age-hours N]\n'
-      + '       qualification.mjs ledger --fixture <journeys result> [--tenant <ref>] [--build <rev>] [--out <file>] [--require-ready]\n'
+      + '       qualification.mjs ledger --fixture <journeys result> [--tenant <ref>] [--build <rev>] [--out <file>] [--require-ready] [--accept-objective-gaps]\n'
       + '       qualification.mjs capture-drill --out <file> --reconstruction <file> --onboarding <file> (--drill-row <file> | --db-url <url> --tenant <ref>) [--build <rev>]');
     process.exit(command === 'verify' ? 0 : 2);
   }

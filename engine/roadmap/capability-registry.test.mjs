@@ -61,6 +61,10 @@ const REGISTERED = Object.freeze({
   roleDefinition: ['create', 'update'],
   roleEligibilitySchedule: ['create'],
   unifiedRoleManagementPolicy: ['update'],
+  // Issue #155: Intune compliance, device configuration and settings catalog.
+  deviceCompliancePolicy: ['create', 'update'],
+  deviceConfiguration: ['create', 'update'],
+  configurationPolicy: ['create', 'update'],
 });
 
 function governor() {

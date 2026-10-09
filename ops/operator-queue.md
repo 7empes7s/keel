@@ -923,6 +923,28 @@ item that needs it stays untouched.
   (role-assignment and application restore stay automated, but each grant lets the app escalate itself),
   or remove them and make both restores manual?
   - Decision: keep both (Marouane, 2026-10-08 09:25 UTC, same decision as D-93a).
+- D-148a (issue #148, Q43): may keel-operator run the lockout-sensitive steps on the test tenant? These are:
+  - drift the authorization policy's guest-invitation setting;
+  - turn off "MFA on activation" in the PIM settings of the fixture role `KEEL-RT-148-role`;
+  - switch one authentication method that no break-glass account uses;
+  - try security defaults;
+  - create, change, delete and restore a report-only Conditional Access policy scoped to one fixture group;
+  - for the enforcement step, turn that policy **on** for `keel-rt-20260908-carla` only.
+
+  KEEL restores each one behind the break-glass lockout gate. You stay signed in as a second Global Administrator
+  while these steps run.
+  - Decision:
+- D-148b (issue #148, Q43): may keel-operator drift these tenant-wide settings on the test tenant and let KEEL put them
+  back?
+  - the Group.Unified directory setting, including deleting it for the delete step (the restore cannot recreate it,
+    so it is recreated by hand from the values written down first);
+  - the cross-tenant access defaults and `allowedCloudEndpoints`;
+  - the admin consent request policy;
+  - a cross-tenant partner entry for a tenant you name;
+  - the company branding and one branding localization (sign-in page text; fr-FR is added if none exists);
+  - the group expiration policy (the lifetime is made longer, never shorter);
+  - the self-service sign-up switch for external users.
+  - Decision:
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
@@ -1743,3 +1765,45 @@ item that needs it stays untouched.
 - **Report:** the branch and commit, the spec's sha256, the number of objectives found (expected 18: D1-D10 and G1-G8), any objective that's
   missing or defined twice, and the redaction count.
   - If the spec doesn't define all 18, still commit what it has and say which ids are missing.
+
+### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
+- Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
+- Status: todo
+- Needs:
+  - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
+  - Decisions D-148a and D-148b filled in below. Without D-148a, skip every lockout-sensitive step. Without D-148b,
+    skip every tenant-wide setting step. Report skipped steps as blocked.
+  - Marouane is available to approve each restore in the portal. The operator can never approve its own.
+- Why: every registered Entra write (and the #155 Intune writes) is only fixture-tested. #148 is done when each one has
+  a real capture from the test tenant, promoted through `qualifyLiveEvidence`, and the ledger shows `live-qualified`.
+  An operation that fails live is demoted, with the reason recorded.
+- **Test tenant only.** `entraLive.mjs capture` refuses any tenant that is not the test tenant. Captures are
+  pseudonymized (#138); never paste an id into the Result.
+- Do, at the deployed build B (your own checkout, never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Generate the checklist: `node tools/qualification/live-gate-plan.mjs > ~/keel-148/plan-B.md`. Report its first
+     line (expected at the time of writing: 51 registered operations, 52 steps, including the four #156 updates; a later
+     build may list more).
+  2. Follow `docs/roadmap/live-gate-148.md` and the checklist, in its order. For each step: set up the fixture, run the
+     restore (dry run, Marouane's approval, `--enforce`), capture, promote, clean up.
+     - Steps that are not lockout-sensitive may share one snapshot and one restore that selects several fixtures (one
+       approval).
+     - Lockout-sensitive steps run last and one at a time, each only after its break-glass precondition holds.
+  3. A capture that exits 3 (the write failed): run the step's demote command and go on. Exit 4 (no such write): report
+     the step as blocked and go on. Any refusal: report it and go on. Never edit a record.
+  4. If a Conditional Access step says "may be ON", turn the policy off by hand at once, stop the run and report.
+  5. Do the checklist's "End of run" cleanup.
+  6. Commit every `*.json`, `*.capture.json` and `*.demotion.json` from the evidence directory under
+     `docs/release/qualifications/entra-live/` on `claude/live-evidence-148`, branched from `origin/master`. Secret scan
+     first (as Q39). Don't open a PR; the #148 thread will.
+  7. With the key set: `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the
+     `live evidence ...` lines.
+- Hard rules: the queue's rules apply. These are the only exceptions, and only as far as D-148a and D-148b allow:
+  the Conditional Access, authentication method, authorization policy, security defaults and PIM steps, and the
+  tenant-wide settings. Fixtures are `KEEL-RT-148-*` and the existing `keel-rt-20260908-carla`. Never touch the
+  break-glass, admin or Global Reader accounts.
+- **Report:**
+  - B and the checklist's first line.
+  - Per step: captured / promoted / failed (demoted, with the reason) / blocked (why).
+  - The evidence branch and commit.
+  - The `--live-evidence` output.
+  - Anything left in the tenant.

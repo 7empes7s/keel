@@ -42,13 +42,16 @@ Rules every record follows:
   from the snapshot payload. A PATCH carries only fields whose value differs
   from the live one; a PUT carries every writable field.
 - **Method configurations** are written one PATCH each, with the `@odata.type`
-  Graph requires restored from a fixed table. A method id outside the table, or
-  one missing from the live policy, is refused before any write.
+  Graph requires restored from a fixed table, and only the fields that method's
+  allowlist names (`state`, the targets, and its own settings). A method id
+  outside the table, or one missing from the live policy, is refused before any
+  write.
 - **Read-back.** After the writes the policy is read once; every written field
   and method configuration must match, comparing order- and null-insensitively.
 - **No remapping.** A reference rewritten to a different id (another tenant) is
-  refused as `unqualified-remapping`. The admin consent reviewer queries are
-  written as observed.
+  refused as `unqualified-remapping`. Admin consent reviewer queries are written
+  as observed, but every user or group they name by id is read first, and the
+  PUT is refused when one no longer exists.
 - **No create or delete of a singleton**, and no partner delete.
 
 ### The break-glass lockout gate (`engine/safety/lockoutGate.mjs`)
@@ -64,7 +67,17 @@ excluded from enforced Conditional Access, active Global Administrator,
 recently validated) and there must be at least two. For the authentication
 methods policy the **proposed** method configurations replace the collected
 ones first, so a restore that would switch off the method a break-glass account
-relies on is withheld. `unknown` evidence is never `ready`.
+relies on is withheld. A change to who may use FIDO2 or certificate sign-in is
+allowed only when the method stays open to every user with nobody excluded,
+because readiness reads a method's state, not its targets. `unknown` evidence
+is never `ready`.
+
+What the gate does not prove:
+
+- For the authorization policy and security defaults it checks that the
+  break-glass accounts are ready now; it does not model the proposed setting.
+- Its evidence is the newest collected snapshot, not a live read, and it does
+  not account for Conditional Access changes planned in the same run.
 
 `cli/keel-restore.mjs` loads the gate from the database only when such a write
 is planned (`lockoutGateFor`). If the readiness inputs cannot be read the gate

@@ -216,6 +216,30 @@ test('admin consent requests: a PUT carries every writable field and nothing els
   assert.deepEqual(Object.keys(graph.bodies[0].body).sort(), ['isEnabled', 'notifyReviewers', 'remindersEnabled', 'requestDurationInDays', 'reviewers']);
 });
 
+test('admin consent requests: a reviewer named by id must still exist before the PUT', async () => {
+  const reviewer = '3b2a1c0d-9e8f-4a7b-8c6d-5e4f3a2b1c0d';
+  const desired = { isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30, reviewers: [{ query: `/v1.0/groups/${reviewer}/transitiveMembers/microsoft.graph.user`, queryType: 'MicrosoftGraph', queryRoot: null }] };
+  let graph = recordingGraph();
+  let result = await run(graph, [plannedUpdate(graph, 'adminConsentRequestPolicy', '/policies/adminConsentRequestPolicy', desired, { ...desired, isEnabled: false })]);
+  assert.match(result.failed[0].error, new RegExp(`dependency: admin consent reviewer /groups/${reviewer} does not exist`));
+  assert.equal(graph.bodies.length, 0);
+
+  graph = recordingGraph();
+  graph.objects.set(`/groups/${reviewer}`, { id: reviewer });
+  result = await run(graph, [plannedUpdate(graph, 'adminConsentRequestPolicy', '/policies/adminConsentRequestPolicy', desired, { ...desired, isEnabled: false })]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+});
+
+test('authentication methods: a property outside the method allowlist is never sent', async () => {
+  const graph = recordingGraph();
+  const desired = { ...methods, authenticationMethodConfigurations: [{ ...methods.authenticationMethodConfigurations[0], isAttestationEnforced: false, serverOwnedCounter: 7 }] };
+  const result = await run(graph, [plannedUpdate(graph, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', desired, methods)], { lockoutGate: ALLOW });
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  assert.deepEqual(Object.keys(graph.bodies[0].body).sort(), ['@odata.type', 'includeTargets', 'isAttestationEnforced', 'state']);
+});
+
 test('partners: create and update are addressed by the partner tenantId', async () => {
   const tenantId = '9f1c0a7e-6b3d-4b8e-9d55-1c2b3a4d5e6f';
   const payload = { tenantId, isServiceProvider: false, inboundTrust: { isMfaAccepted: true } };
@@ -314,6 +338,20 @@ test('lockout gate: allows only while every break-glass account stays ready unde
   const unknown = { ...readyInventory, roleAssignment: { status: 'unavailable', resources: [], observedAt: null } };
   assert.equal(breakGlassLockoutGate({ accounts, inventory: unknown, now: NOW }).evaluate({ resourceType: 'authorizationPolicy', desired: {} }).allowed, false, 'unknown is never ready');
   assert.equal(closedLockoutGate('x').evaluate({}).allowed, false);
+
+  // Mutation: FIDO2 stays enabled but is narrowed to one group, or excludes some users.
+  const withFido2 = (change) => ({ ...methods, authenticationMethodConfigurations: methods.authenticationMethodConfigurations.map((config) => (config.id === 'Fido2' ? { ...config, ...change } : config)) });
+  for (const change of [
+    { includeTargets: [{ targetType: 'group', id: 'pilot-group', isRegistrationRequired: false }] },
+    { excludeTargets: [{ targetType: 'group', id: 'break-glass-group' }] },
+  ]) {
+    const narrowed = gate.evaluate({ resourceType: 'authenticationMethodsPolicy', desired: withFido2(change) });
+    assert.equal(narrowed.allowed, false, JSON.stringify(change));
+    assert.match(narrowed.reason, /changes who may use Fido2/);
+  }
+  // Re-scoping a method no break-glass account relies on is not a lockout question.
+  const smsScoped = { ...methods, authenticationMethodConfigurations: methods.authenticationMethodConfigurations.map((config) => (config.id === 'Sms' ? { ...config, includeTargets: [{ targetType: 'group', id: 'pilot-group' }] } : config)) };
+  assert.equal(gate.evaluate({ resourceType: 'authenticationMethodsPolicy', desired: smsScoped }).allowed, true);
 });
 
 test('the gate decides inside applyWave: a denied methods restore is skipped and nothing is sent', async () => {

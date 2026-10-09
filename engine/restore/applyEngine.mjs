@@ -22,7 +22,7 @@ import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  isTenantPolicyGoverned, methodConfigurationWrites, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
+  isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
   tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 
@@ -858,6 +858,15 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   const writes = [...methods, ...(root ? [root] : [])];
   if (writes.length === 0) return { applied: { naturalKey, targetId } };
   if (mode === 'dry-run') return { applied: { naturalKey, targetId } };
+
+  // A reviewer query names directory objects inside a string, out of reach of
+  // reference rewriting: each must still exist before the PUT replaces the policy.
+  for (const path of entry.resourceType === 'adminConsentRequestPolicy' ? reviewerQueryObjects(desired) : []) {
+    const found = await retryOperation(() => writer.read('v1.0', path));
+    if (found?.ok !== true) {
+      return { failed: { naturalKey, error: `dependency: admin consent reviewer ${path} ${isNotFound(found) ? 'does not exist in this tenant' : 'could not be read'}` } };
+    }
+  }
 
   const journal = await journalBeforeMutation(rollbackClient, {
     runId, restoreRef, resource, operation: verb, targetId,

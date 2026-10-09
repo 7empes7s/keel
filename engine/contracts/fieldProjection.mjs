@@ -164,6 +164,30 @@ registerFieldProjection('servicePrincipal', {
   sensitiveExport: ['passwordCredentials', 'keyCredentials'],
 });
 
+// Roadmap task-151: the admin role model. Only the fields named here can reach
+// a create or update body (engine/restore/adminRoleOperations.mjs narrows that
+// further to its own allowlists); anything Graph adds later is 'unknown'.
+registerFieldProjection('roleDefinition', {
+  knownFields: [
+    'id', 'displayName', 'description', 'isBuiltIn', 'isEnabled', 'resourceScopes', 'templateId', 'version',
+    'rolePermissions', 'inheritsPermissionsFrom',
+  ],
+});
+
+registerFieldProjection('roleEligibilitySchedule', {
+  knownFields: [
+    'id', 'principalId', 'roleDefinitionId', 'directoryScopeId', 'appScopeId', 'createdUsing', 'createdDateTime',
+    'modifiedDateTime', 'status', 'scheduleInfo', 'memberType',
+  ],
+});
+
+registerFieldProjection('unifiedRoleManagementPolicy', {
+  knownFields: [
+    'id', 'displayName', 'description', 'isOrganizationDefault', 'scopeId', 'scopeType', 'lastModifiedDateTime',
+    'lastModifiedBy', 'rules',
+  ],
+});
+
 function topLevelKey(path) {
   const dot = path.indexOf('.');
   return dot === -1 ? path : path.slice(0, dot);

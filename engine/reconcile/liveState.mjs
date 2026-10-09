@@ -1,5 +1,5 @@
 import { canonicalHash } from '../cir/canonicalHash.mjs';
-import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
@@ -20,7 +20,7 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
     const entry = byType.get(resourceType);
     if (!entry) throw new Error(`resource type ${resourceType} not found in tenant-probe CATALOG`);
 
-    const path = entry.select ? `${entry.path}?$select=${entry.select}` : entry.path;
+    const path = catalogReadPath(entry);
     const live = await list(reader, entry.version, path);
     for (const object of live) {
       index.set(naturalKeyFor(resourceType, object), {

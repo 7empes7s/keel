@@ -390,6 +390,24 @@ registerAll('crossTenantAccessPolicyPartner', '/policies/crossTenantAccessPolicy
 recordFixtureProof('crossTenantAccessPolicyPartner', 'create', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 recordFixtureProof('crossTenantAccessPolicyPartner', 'update', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 
+// Roadmap task-151: the admin role model (engine/restore/adminRoleOperations.mjs).
+// Custom roles are created and updated for the 'custom' subtype only: a built-in
+// role is immutable and skipped before any write. An eligibility is created
+// through a schedule request (its registered path), never updated or removed.
+// A PIM settings policy is only updated, rule by rule: Entra creates one per
+// role and it is never created or deleted. Role delete is not registered.
+for (const operation of ['create', 'update']) {
+  registerOperationCapability({
+    resourceType: 'roleDefinition', operation, subtype: 'custom',
+    path: '/roleManagement/directory/roleDefinitions', handler: HANDLER, idOutcome: idOutcomeFor(operation),
+  });
+  recordFixtureProof('roleDefinition', operation, 'engine/roadmap/admin-role-fidelity.test.mjs');
+}
+registerAll('roleEligibilitySchedule', '/roleManagement/directory/roleEligibilityScheduleRequests', ['create']);
+recordFixtureProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+registerAll('unifiedRoleManagementPolicy', '/policies/roleManagementPolicies', ['update']);
+recordFixtureProof('unifiedRoleManagementPolicy', 'update', 'engine/roadmap/admin-role-fidelity.test.mjs');
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship

@@ -48,12 +48,14 @@ export class GraphWriter {
     return path.startsWith('http') ? path : `${GRAPH[version]}${path}`;
   }
 
-  async write(version, path, { method, body }) {
+  // `headers` adds request headers (issue #156: company branding names its
+  // language with Accept-Language); it can never replace the two below.
+  async write(version, path, { method, body, headers = {} }) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
     const res = await fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...headers, Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const responseBody = await res.json().catch(() => null);
@@ -62,11 +64,11 @@ export class GraphWriter {
     return result;
   }
 
-  async read(version, path) {
+  async read(version, path, { headers = {} } = {}) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) throw new Error(`refused read from non-Graph host: ${url}`);
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${await this.getAccessToken()}` },
+      headers: { ...headers, Authorization: `Bearer ${await this.getAccessToken()}` },
     });
     const body = await res.json().catch(() => null);
     const result = { ok: res.ok, status: res.status, body };

@@ -15,8 +15,10 @@ export const SOFT_DELETABLE = new Set(['user', 'group', 'application']);
  * found". Without the callback it throws, exactly as before. */
 export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onDeletedLookupFailure }) {
   const index = new Map();
-  // Issue #156: company branding lives under /organization/{id}. The id is read
-  // from the target tenant once, only when such a type is planned.
+  // Issue #156: types under /organization/{id} (company branding and its
+  // languages, and the certificate-based authentication configuration) need
+  // the directory's id. It is read from the target tenant once, only when such
+  // a type is planned.
   let organizationId = null;
   const resolveOrganizationId = async () => {
     if (organizationId) return organizationId;

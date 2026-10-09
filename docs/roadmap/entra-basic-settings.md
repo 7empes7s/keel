@@ -29,8 +29,14 @@ Notes:
   overrides the header.
 - Only a 404 on company branding counts as "not set up". A 403 or any other
   error is still a failed read with unknown contents.
+- Branding is read under the organization id the backup itself read from
+  `/organization`, never under a configured value that may be a domain name.
+  When a run did not read the organization (a tier-scoped run), a 404 counts
+  as "not set up" only if the configured tenant is a directory id; otherwise
+  it is a failed read.
 - The reconciliation plan reads the target tenant's organization id once,
-  only when a branding type is in the plan.
+  only when a type under `/organization/{id}` is in the plan (branding, its
+  languages, or the certificate-based authentication configuration).
 - Branding images and the custom stylesheet are binary files. The backup holds
   their paths only. The CDN host list is Microsoft's and is left out of drift;
   a changed image path is reported as drift that KEEL cannot fix.
@@ -44,7 +50,7 @@ differ, and a read-back that must match.
 
 | Setting | Restore | Route | Writes | Permission |
 | --- | --- | --- | --- | --- |
-| Company branding (default) | update | `PATCH /organization/{tenant}/branding` | sign-in page text, links, colours, layout and text visibility | OrganizationalBranding.ReadWrite.All |
+| Company branding (default) | update | `PATCH /organization/{tenant}/branding`, sent with `Accept-Language: 0` (also on its read-back) | sign-in page text, links, colours, layout and text visibility | OrganizationalBranding.ReadWrite.All |
 | Company branding languages | update | `PATCH /organization/{tenant}/branding/localizations/{language}` | the same fields, per language | OrganizationalBranding.ReadWrite.All |
 | Group expiration | update, guarded | `PATCH /groupLifecyclePolicies/{id}` | lifetime in days, which groups are covered, notification emails | Directory.ReadWrite.All |
 | Self-service sign-up | update | `PATCH /policies/authenticationFlowsPolicy` | `selfServiceSignUp` | Policy.ReadWrite.AuthenticationFlows |
@@ -56,9 +62,13 @@ is verified as granted to the KEEL Restorer.
 ### Safety rules
 
 - **Group expiration can delete groups.** A restore may only make expiry less
-  aggressive: a longer lifetime, or fewer groups covered (`All` → `Selected` →
-  `None`). A shorter lifetime, wider coverage, or an unknown value is skipped
-  with a `manual:` reason and nothing is sent.
+  aggressive: a longer lifetime, fewer groups covered (`All` → `Selected` →
+  `None`), and no renewal notice address removed (groups without an owner
+  send their renewal notice only to those addresses; adding one is fine,
+  compared without case and split on `;`). A shorter lifetime, wider
+  coverage, a removed address, an unknown value, or a lifetime that is not a
+  positive number on either side is skipped with a `manual:` reason and
+  nothing is sent.
 - **Device registration is never written.** These settings decide who may
   register and join devices, who becomes a local admin on joined devices, and
   whether joining needs MFA. A wrong write could block admins from joining
@@ -69,6 +79,8 @@ is verified as granted to the KEEL Restorer.
 
 ## What is not restored
 
+- Branding content customization (`contentCustomization`): it nests
+  uploaded-file paths beside its text, so it is backed up but never written.
 - Branding images (banner logo, square logos, header logo, background image,
   favicon) and the custom stylesheet. They are binary uploads with their own
   routes; set them by hand from the backed-up paths.
@@ -90,11 +102,12 @@ declarations to confirm before any live qualification:
 - That `GET /organization/{id}/branding` needs `Accept-Language: 0` for the
   default branding and answers 404 when none is set up, and whether the
   localizations list answers 404 or an empty list in that case.
-- Whether `PATCH /organization/{id}/branding` needs `Accept-Language: 0`. The
-  writer sends no `Accept-Language` header on writes or read-backs; if Graph
-  then answers with another language, the read-back fails closed.
-- The exact v1.0 field list of branding (for example `contentCustomization`
-  and `headerBackgroundColor`), and the permission names above.
+- That `Accept-Language: 0` on `PATCH /organization/{id}/branding` and its
+  read-back addresses the default branding. If Graph answers with another
+  language, the read-back does not match and the restore fails closed.
+  Branding language PATCHes and read-backs send no `Accept-Language`.
+- The exact v1.0 field list of branding (for example `headerBackgroundColor`),
+  and the permission names above.
 - That a tenant has at most one group expiration policy, and how Graph treats
   groups older than a shortened lifetime.
 - Whether Graph v1.0 documents an update for the device registration policy.

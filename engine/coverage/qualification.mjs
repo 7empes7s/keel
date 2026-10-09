@@ -57,7 +57,7 @@ export const TYPE_DECISIONS = Object.freeze({
   // Issue #156: basic tenant settings.
   organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; logos, background images, favicon and custom stylesheet are binary uploads and are never written'),
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; images are never written, and adding or removing a language is by hand'),
-  groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime or wider scope could delete groups and is left to a person'),
+  groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
@@ -665,7 +665,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   organizationalBrandingLocalization: subset('administrative-configuration', 'PATCH /organization/{id}/branding/localizations/{locale}', 'OrganizationalBranding.ReadWrite.All',
     'update of an existing language\'s text, colours and layout is fixture-tested; adding or removing a language and every image are by hand'),
   groupLifecyclePolicy: subset('administrative-configuration', 'PATCH /groupLifecyclePolicies/{id}', 'Directory.ReadWrite.All',
-    'update is fixture-tested and runs only when it makes expiry less aggressive (a longer lifetime or fewer groups covered); create, delete and the list of selected groups are by hand'),
+    'update is fixture-tested and runs only when it makes expiry less aggressive (a longer lifetime, fewer groups covered, no renewal notice address removed); create, delete and the list of selected groups are by hand'),
   // ---- device management (outside the Entra batches)
   deviceConfiguration: research('device-management', 'POST /deviceManagement/deviceConfigurations', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; no Intune restore workstream is scheduled'),
   deviceCompliancePolicy: research('device-management', 'POST /deviceManagement/deviceCompliancePolicies', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; scheduled actions are required on create'),
@@ -796,6 +796,7 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   // Issue #156.
   organizationalBranding: Object.freeze([
     lost('configuration', 'logos, background image, favicon, custom stylesheet', 'binary uploads with their own routes; only their file paths are backed up, and a change is reported not remediable'),
+    lost('configuration', 'content customization', 'it nests uploaded-file paths beside its text, so it is backed up but never written'),
     lost('configuration', 'missing branding', 'a tenant with no branding gets none from KEEL; it is set up by hand'),
   ]),
   organizationalBrandingLocalization: Object.freeze([
@@ -803,7 +804,7 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
     lost('configuration', 'added or removed languages', 'create and delete are not qualified; a missing language is added by hand'),
   ]),
   groupLifecyclePolicy: Object.freeze([
-    lost('configuration', 'shorter lifetime or wider scope', 'could expire and delete groups, so the restore is refused and left to a person'),
+    lost('configuration', 'shorter lifetime, wider scope or fewer notice addresses', 'could expire and delete groups, so the restore is refused and left to a person'),
     lost('relationship', 'selected groups', 'which groups a Selected policy covers is changed through addGroup and removeGroup, which are not written'),
     lost('configuration', 'missing policy', 'create and delete are not qualified; a missing policy is recreated by hand'),
   ]),

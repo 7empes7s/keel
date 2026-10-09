@@ -25,6 +25,10 @@ import {
   isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
   tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
+import {
+  assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
+  userPostStateRefusal, userReadPath,
+} from './userOperations.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -487,6 +491,19 @@ export async function applyWave(writer, governor, wave, {
     });
     if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
 
+    // Roadmap task-150: a user is written only through its reviewed attribute
+    // allowlist, plus add-only licence assignment.
+    if (isUserGoverned(resource.resourceType)) {
+      const outcome = await applyUserWrite(writer, resource, effectiveVerb, {
+        mode, retryOperation, rollbackClient, runId, restoreRef,
+        targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey),
+      });
+      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.skipped) skipped.push(outcome.skipped);
+      if (outcome.failed) failed.push(outcome.failed);
+      continue;
+    }
+
     if (resource.verb === 'restore-soft-deleted') {
       const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
       const deletedItemId = resource.deletedItemId ?? resource.live?.deletedItemId;
@@ -656,6 +673,18 @@ export async function applyWave(writer, governor, wave, {
         await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
         failed.push(graphFailure(resource.naturalKey, writeResult));
         continue;
+      }
+      // Roadmap task-150: a group's own licences are restored add-only.
+      if (resource.resourceType === 'group') {
+        const licenceFailure = await restoreLicences(writer, {
+          collection: 'groups', resourceType: 'group', targetId, desired, live: resource.live?.payload ?? null,
+          readPath: groupLicenceReadPath(targetId), retryOperation,
+        });
+        if (licenceFailure) {
+          await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `updated; licences ${licenceFailure.error}` });
+          failed.push({ naturalKey: resource.naturalKey, ...licenceFailure });
+          continue;
+        }
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
@@ -901,6 +930,132 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     applied: { naturalKey, targetId: targetId ?? live?.id ?? null },
     signInPathSection: entry.signInPathSection,
   };
+}
+
+/**
+ * Roadmap task-150: assigns the licences the snapshot held directly and the
+ * live object lacks, add-only, then reads them back. Returns null on success
+ * (or nothing to do), else { error } (and Graph's status when it has one).
+ */
+async function restoreLicences(writer, { collection, resourceType, targetId, desired, live, readPath, retryOperation }) {
+  // A caller without a live read (a rollback, a rehearsal) gets a fresh one, so a
+  // licence the object already holds is never re-sent.
+  let current = live;
+  // A snapshot that holds no licence has nothing to add, so nothing is read.
+  if (licencePlan(desired, null, { resourceType }).add.length === 0) return null;
+  if (!current) {
+    const read = await retryOperation(() => writer.read('v1.0', readPath));
+    if (read?.ok !== true) return { error: 'licences could not be read before assignment', status: read?.status };
+    current = read.body;
+  }
+  const { add } = licencePlan(desired, current, { resourceType });
+  if (add.length === 0) return null;
+  const path = `/${collection}/${encodeURIComponent(targetId)}/assignLicense`;
+  const result = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: assignLicenseBody(add) }));
+  if (!result.ok) return { error: `assignLicense failed: ${outcomeDetail(result)}`, status: result.status };
+  const written = { licences: add, resourceType };
+  const reRead = await readAfterWrite(writer, 'v1.0', readPath,
+    (r) => isNotFound(r) || (r?.ok === true && userPostStateRefusal({}, r.body, written) !== null), { retryOperation });
+  if (reRead?.ok === false) return { error: 'licences could not be re-read', status: reRead.status };
+  const refusal = userPostStateRefusal({}, reRead?.body ?? reRead, written);
+  return refusal ? { error: refusal } : null;
+}
+
+/**
+ * Roadmap task-150: update or restore-soft-deleted of a user through its
+ * attribute allowlist (userOperations.mjs), then add-only licences. A deleted
+ * user is restored with the same id first.
+ */
+async function applyUserWrite(writer, resource, verb, {
+  mode, retryOperation, rollbackClient, runId, restoreRef, targetId,
+}) {
+  const { naturalKey } = resource;
+  if (!targetId) return { failed: { naturalKey, error: `${verb} has no targetId` } };
+  const deletedItemId = resource.deletedItemId ?? resource.live?.deletedItemId;
+  if (verb === 'restore-soft-deleted' && !deletedItemId) return { failed: { naturalKey, error: 'restore has no deletedItemId' } };
+
+  // No allowlisted attribute holds a reference, and a licence names Microsoft's
+  // global sku and plan ids, so nothing here is rewritten. (A group a licence
+  // was inherited from is read, never written.)
+  const desired = resource.payload ?? {};
+  const before = resource.live?.payload ?? null;
+  // The generic sync guard reads only the live object; a deleted item may not
+  // carry the flag, so the snapshot's evidence counts too.
+  if (isSyncedUser(desired, before)) {
+    return { skipped: { naturalKey, reason: 'source of authority is on-premises Active Directory (onPremisesSyncEnabled or onPremisesImmutableId) — cloud-side restore is refused' } };
+  }
+  const plannedFields = changedUserFields(desired, before);
+  const plannedLicences = licencePlan(desired, before).add;
+  const manual = manualUserFields(desired, before);
+  const changes = { fields: plannedFields, addLicences: plannedLicences.map((licence) => licence.skuId), manual };
+  if (verb === 'update' && plannedFields.length === 0 && plannedLicences.length === 0) return { applied: { naturalKey, targetId, changes } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes } };
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+
+  const readPath = userReadPath(targetId);
+  let current = before;
+  if (verb === 'restore-soft-deleted') {
+    const restored = await retryOperation(() => writer.write('v1.0', `/directory/deletedItems/${deletedItemId}/restore`, { method: 'POST', body: {} }));
+    if (!restored.ok) {
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(restored), { detail: outcomeDetail(restored) });
+      return { failed: graphFailure(naturalKey, restored) };
+    }
+    if (restored.body?.id !== targetId) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { postState: restored.body ?? null, detail: 'restore returned a different objectId' });
+      return { failed: { naturalKey, error: 'restore returned a different objectId — references would be broken' } };
+    }
+    const reRead = await readAfterWrite(writer, 'v1.0', readPath, isNotFound, { retryOperation });
+    if (reRead?.ok === false) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'restored user could not be re-read' });
+      return { failed: graphFailure(naturalKey, reRead) };
+    }
+    current = reRead?.body ?? reRead;
+    if (isSyncedUser(current)) {
+      await noteOutcome(rollbackClient, journal, 'succeeded', { postState: current, detail: 'restored; synced from on-premises, so nothing further is written' });
+      return { failed: { naturalKey, error: 'restored, but the user is synced from on-premises AD: its attributes and licences are not written from the cloud' } };
+    }
+  }
+
+  const fields = changedUserFields(desired, current);
+  if (fields.length > 0) {
+    const body = Object.fromEntries(fields.map((field) => [field, desired[field] ?? null]));
+    const result = await retryOperation(() => writer.write('v1.0', `/users/${encodeURIComponent(targetId)}`, { method: 'PATCH', body }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, verb === 'update' ? classifyWriteOutcome(result) : 'uncertain', {
+        detail: verb === 'update' ? outcomeDetail(result) : `restored; attribute update ${outcomeDetail(result)}`,
+      });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+  }
+  const licences = licencePlan(desired, current).add;
+  if (licences.length > 0) {
+    // Licences need a usage location; the PATCH above has already set it when the snapshot holds one.
+    const result = await retryOperation(() => writer.write('v1.0', `/users/${encodeURIComponent(targetId)}/assignLicense`, { method: 'POST', body: assignLicenseBody(licences) }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `attributes written; assignLicense ${outcomeDetail(result)}` });
+      return { failed: { ...graphFailure(naturalKey, result), error: `assignLicense failed: ${outcomeDetail(result)}` } };
+    }
+  }
+
+  const written = { fields, licences };
+  const reRead = await readAfterWrite(writer, 'v1.0', readPath,
+    (r) => isNotFound(r) || (r?.ok === true && userPostStateRefusal(desired, r.body, written) !== null), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const live = reRead?.body ?? reRead;
+  const postStateRefusal = userPostStateRefusal(desired, live, written);
+  if (postStateRefusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'user post-state did not verify' });
+    return { failed: { naturalKey, error: postStateRefusal } };
+  }
+  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
+  return { applied: { naturalKey, targetId, changes: { fields, addLicences: licences.map((licence) => licence.skuId), manual: manualUserFields(desired, current) } } };
 }
 
 /** The collector projects group/user through a $select; the verify re-read has none, so Graph

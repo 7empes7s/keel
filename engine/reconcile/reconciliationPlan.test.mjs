@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { buildReconciliationPlan } from './reconciliationPlan.mjs';
 import { planDeletionWaves } from '../restore/wavePlanner.mjs';
 
-const groupPath = '/groups?$select=id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime';
+const groupPath = '/groups?$select=id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses';
 const deletedGroupPath = '/directory/deletedItems/microsoft.graph.group';
 const roleAssignmentPath = '/roleManagement/directory/roleAssignments';
 

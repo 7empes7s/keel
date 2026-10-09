@@ -389,7 +389,7 @@ test('structured outcomes persist, report and never shadow older evidence', asyn
   assert.equal(group.itemCount, 2);
   assert.equal(group.detail.graphCode, 'Error_InternalServer', 'mutation pin (1): code survives to the report');
   assert.equal(group.detail.httpStatus, 500);
-  assert.equal(group.detail.endpoint, '/groups?$select=id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime');
+  assert.equal(group.detail.endpoint, '/groups?$select=id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses');
   assert.equal(group.detail.apiVersion, 'v1.0');
   assert.equal(group.detail.pagesCompleted, 1);
   assert.ok(group.detail.startedAt && group.detail.completedAt, 'observation timestamps reach the report');

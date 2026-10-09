@@ -49,6 +49,8 @@ const REGISTERED = Object.freeze({
   crossTenantAccessPolicyConfigurationDefault: ['update'],
   crossTenantAccessPolicyPartner: ['create', 'update'],
   adminConsentRequestPolicy: ['update'],
+  // Roadmap task-150: users are updated and restored in place, never created.
+  user: ['update', 'restore-soft-deleted'],
 });
 
 function governor() {
@@ -175,7 +177,9 @@ test('mutation pin: descriptor.remappable never gates a capability claim', () =>
     idOutcome: 'preserved',
   });
   assert.equal(capabilityFor('test-remap-independent-widget', 'update').claim, 'declared');
-  assert.equal(capabilityFor('user', 'update').claim, 'unsupported', 'user has no registered write path');
+  // user is remappable: false yet registered (task-150): its claims follow registration alone.
+  assert.equal(capabilityFor('user', 'update').claim, 'fixture-tested', 'registration, not remappable, decides the claim');
+  assert.equal(capabilityFor('user', 'create').claim, 'unsupported', 'an unregistered user operation stays unsupported');
 });
 
 // ---------------------------------------------------------------------------
@@ -523,7 +527,8 @@ test('buildCoverageReport surfaces evidence-backed writeCapability per type, ind
     const user = byType.get('user');
     assert.equal(user.remappable, false, 'remappable stays a separate, pre-existing field');
     for (const operation of OPERATIONS) {
-      assert.equal(user.writeCapability.operations[operation].claim, 'unsupported', 'user has no registered write path — remappable is not consulted');
+      const expected = REGISTERED.user.includes(operation) ? 'fixture-tested' : 'unsupported';
+      assert.equal(user.writeCapability.operations[operation].claim, expected, `user ${operation} follows registration — remappable is not consulted`);
     }
 
     // A not-covered catalogue entry (no descriptor) still carries a

@@ -709,7 +709,6 @@ export async function getRestoreResources(
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
-         AND rv.resource_type <> 'user'
        ORDER BY rv.natural_key`,
       [snapshotId, ref],
     );

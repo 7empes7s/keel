@@ -179,6 +179,60 @@ export const METHOD_CONFIGURATION_TYPES = Object.freeze({
 
 const METHOD_CONFIGURATIONS = '/policies/authenticationMethodsPolicy/authenticationMethodConfigurations';
 
+const METHOD_COMMON_FIELDS = Object.freeze(['state', 'includeTargets', 'excludeTargets']);
+
+/**
+ * The fields a method configuration PATCH may carry, per method id. Anything
+ * else in the snapshot (a server-owned or newer property) is never sent and
+ * never compared.
+ */
+export const METHOD_CONFIGURATION_FIELDS = Object.freeze(Object.fromEntries(Object.entries({
+  email: ['allowExternalIdToUseEmailOtp'],
+  fido2: ['isAttestationEnforced', 'isSelfServiceRegistrationAllowed', 'keyRestrictions'],
+  hardwareoath: [],
+  microsoftauthenticator: ['featureSettings', 'isSoftwareOathEnabled'],
+  sms: [],
+  softwareoath: [],
+  temporaryaccesspass: ['defaultLength', 'defaultLifetimeInMinutes', 'isUsableOnce', 'maximumLifetimeInMinutes', 'minimumLifetimeInMinutes'],
+  voice: ['isOfficePhoneAllowed'],
+  x509certificate: ['authenticationModeConfiguration', 'certificateUserBindings'],
+}).map(([id, fields]) => [id, Object.freeze([...METHOD_COMMON_FIELDS, ...fields])])));
+
+/** The allowlisted part of one method configuration, without annotations. */
+function methodFields(config) {
+  const allowed = METHOD_CONFIGURATION_FIELDS[String(config?.id ?? '').toLowerCase()] ?? [];
+  const clean = withoutAnnotations(config ?? {});
+  return Object.fromEntries(allowed.filter((field) => Object.hasOwn(clean, field)).map((field) => [field, clean[field]]));
+}
+
+/** Only the fields the snapshot holds are compared, so a field it never captured is not drift. */
+function sameMethod(desired, live) {
+  const want = methodFields(desired);
+  const got = methodFields(live);
+  return Object.keys(want).every((field) => sameValue(want[field], got[field]));
+}
+
+const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const DIRECTORY_PATH = /\/(users|groups|directoryObjects)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+
+/**
+ * The directory objects an admin consent reviewer query names by id. Those ids
+ * sit inside a query string, where reference rewriting cannot see them, so
+ * applyWave reads each one before the PUT and refuses when it is gone.
+ */
+export function reviewerQueryObjects(desired) {
+  const found = new Map();
+  for (const reviewer of desired?.reviewers ?? []) {
+    for (const text of [reviewer?.query, reviewer?.queryRoot]) {
+      if (typeof text !== 'string' || !GUID.test(text)) continue;
+      for (const [, collection, id] of text.matchAll(DIRECTORY_PATH)) {
+        found.set(id.toLowerCase(), `/${collection}/${id}`);
+      }
+    }
+  }
+  return [...found.values()];
+}
+
 export function isTenantPolicyGoverned(resourceType) {
   return GOVERNED_TYPES.has(resourceType);
 }
@@ -309,29 +363,23 @@ export function tenantPolicyRootWrite(entry, resource, desired) {
 
 /**
  * One PATCH per authentication method whose configuration differs from the
- * live one. The body is the snapshot configuration without its id or any
- * annotation, plus the @odata.type Graph requires.
+ * live one. The body is the method's allowlisted fields from the snapshot,
+ * plus the @odata.type Graph requires.
  */
 export function methodConfigurationWrites(resource, desired) {
   const live = resource.live?.payload?.authenticationMethodConfigurations ?? [];
   const writes = [];
   for (const config of desired.authenticationMethodConfigurations ?? []) {
     const current = live.find((entry) => String(entry?.id ?? '').toLowerCase() === config.id.toLowerCase());
-    const { id, ...rest } = withoutAnnotations(config);
-    if (current && sameValue(rest, withoutId(current))) continue;
+    if (current && sameMethod(config, current)) continue;
     writes.push({
       method: 'PATCH',
-      path: `${METHOD_CONFIGURATIONS}/${encodeURIComponent(id)}`,
-      body: { '@odata.type': METHOD_CONFIGURATION_TYPES[id.toLowerCase()], ...rest },
-      methodId: id,
+      path: `${METHOD_CONFIGURATIONS}/${encodeURIComponent(config.id)}`,
+      body: { '@odata.type': METHOD_CONFIGURATION_TYPES[config.id.toLowerCase()], ...methodFields(config) },
+      methodId: config.id,
     });
   }
   return writes;
-}
-
-function withoutId(value) {
-  const { id: _id, ...rest } = withoutAnnotations(value ?? {});
-  return rest;
 }
 
 /**
@@ -343,7 +391,7 @@ export function tenantPolicyPostStateRefusal(entry, desired, live, { fields = []
   for (const id of methods) {
     const want = (desired.authenticationMethodConfigurations ?? []).find((config) => config.id.toLowerCase() === id.toLowerCase());
     const got = (live?.authenticationMethodConfigurations ?? []).find((config) => String(config?.id ?? '').toLowerCase() === id.toLowerCase());
-    if (!got || !sameValue(withoutId(want), withoutId(got))) wrong.push(`authenticationMethodConfigurations[${id}]`);
+    if (!got || !sameMethod(want, got)) wrong.push(`authenticationMethodConfigurations[${id}]`);
   }
   return wrong.length > 0 ? `post-state: ${wrong.join(', ')} did not read back as written` : null;
 }

@@ -69,8 +69,22 @@ export const TEST_TENANT_REFS = Object.freeze(['sha256:f7b3959300856957']);
 const LIVE_RUNNER = 'keel-release-runner';
 const FIXTURE_RUNNER = 'keel-fixture-runner';
 const RUNNERS = Object.freeze({ [LIVE_RUNNER]: { synthetic: false }, [FIXTURE_RUNNER]: { synthetic: true } });
-const DISPOSABLE = /(?:^|[^A-Za-z0-9])(?:KEEL-RT-|keel-rehearsal-)/i;
+// Anchored: a fixture's own name starts with the prefix.
+const DISPOSABLE = /^(?:KEEL-RT-|keel-rehearsal-)/i;
 const NAME_FIELDS = Object.freeze(['displayName', 'name', 'mailNickname', 'userPrincipalName']);
+
+/**
+ * Whether a journal entry's 'succeeded' outcome means the write was verified by
+ * its read-back. applyEngine also records 'succeeded' for writes it stopped
+ * short of verifying, with a detail saying so (a synced user that is restored
+ * but not written, a "not-remediable residual"). Only these details mean
+ * verified: none, a converged read-back, and a delete that reads back absent
+ * or soft-deleted.
+ */
+export function verifiedOutcome(outcome, detail) {
+  if (outcome !== 'succeeded') return false;
+  return detail === null || detail === undefined || detail === 'absent' || detail === 'soft-deleted' || /^converged\b/.test(String(detail));
+}
 const SECRET_PATTERNS = Object.freeze([
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
@@ -98,10 +112,56 @@ function journalIdentity(entry, { enforcement }) {
 
 const matchesFixture = (entry, fixture) => entry.naturalKey === fixture || String(entry.naturalKey).startsWith(`edge:${fixture}|`);
 
-function looksDisposable(entry) {
-  if (DISPOSABLE.test(String(entry.naturalKey ?? ''))) return true;
-  return [entry.intendedState, entry.priorState, entry.postState].some((state) => state && typeof state === 'object'
-    && NAME_FIELDS.some((field) => typeof state[field] === 'string' && DISPOSABLE.test(state[field])));
+const namesOf = (state) => (state && typeof state === 'object'
+  ? NAME_FIELDS.map((field) => state[field]).filter((value) => typeof value === 'string')
+  : []);
+
+/**
+ * The fixture's own name: its natural key (an edge's parent key), or a name in
+ * its prior state. A create has no prior state, so the snapshot's own copy of
+ * the object stands in for it. Never the intended or post-write state.
+ */
+function looksDisposable(entry, snapshotPayload) {
+  const key = String(entry.naturalKey ?? '');
+  const own = key.startsWith('edge:') ? key.slice(5).split('|')[0] : key;
+  if (DISPOSABLE.test(own)) return true;
+  return namesOf(entry.priorState ?? snapshotPayload ?? null).some((name) => DISPOSABLE.test(name));
+}
+
+const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
+
+/**
+ * For an object with no name of its own (a role assignment or eligibility), the
+ * names of what it points at, read from the restore's snapshot: the principal
+ * must be a fixture, the role must be the fixture role (never a built-in
+ * privileged role), and a scope, if any, must be a fixture.
+ */
+export function byReferenceProblems({ versions, references, naturalKey }) {
+  const own = versions.find((version) => version.natural_key === naturalKey);
+  if (!own) return [`the snapshot has no object ${naturalKey}`];
+  const nameOf = (symbol) => {
+    const text = String(symbol ?? '');
+    const key = text.slice(text.indexOf(':') + 1);
+    const target = versions.find((version) => version.natural_key === key);
+    return target ? (namesOf(target.payload)[0] ?? key) : key;
+  };
+  const refs = references.filter((ref) => ref.from_version === own.id);
+  const find = (pattern) => refs.find((ref) => pattern.test(String(ref.field_path)));
+  const problems = [];
+  const principal = find(/principal/i);
+  const role = find(/roleDefinition/i);
+  const scope = find(/directoryScope/i);
+  if (!principal) problems.push('no principal reference');
+  else if (!DISPOSABLE.test(nameOf(principal.to_symbol))) problems.push('the principal is not a KEEL-RT fixture');
+  if (!role) problems.push('no role reference');
+  else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol))) problems.push('the role is not the fixture role');
+  if (scope && !DISPOSABLE.test(nameOf(scope.to_symbol))) problems.push('the scope is not a KEEL-RT fixture');
+  return problems;
+}
+
+async function snapshotRows(client, snapshotId) {
+  const { getReferences, getResourceVersions } = await import('../../engine/store/db.mjs');
+  return { versions: await getResourceVersions(client, { snapshotId }), references: await getReferences(client, { snapshotId }) };
 }
 
 /** Refuses unless the tenant reference is a test tenant. */
@@ -131,13 +191,15 @@ function policyFields(resourceType, operation) {
 /**
  * Builds the signed record and the pseudonymized capture log from one restore.
  * `client` is a KEEL database client (only read). Returns { status, record, captureLog }:
- * status 'captured' (the write succeeded and read back), 'failed' (a demotion
- * candidate) or 'not-exercised' (the restore made no such write; report as blocked).
+ * status 'captured' (the write succeeded and its read-back verified), 'failed'
+ * (a demotion candidate), 'unverified' (recorded as done but not verified; report
+ * as blocked, never promoted), 'pending' (no outcome recorded; blocked) or
+ * 'not-exercised' (the restore made no such write; blocked).
  */
 export async function captureLive({
   client, restoreRef, resourceType, operation, fixture, targetConfig, build, hmacKey,
   allowTenantSetting = false, allowByReference = false, testTenantRefs = TEST_TENANT_REFS,
-  getArtifact = getDryRunArtifactById, getJournal = listJournal,
+  getArtifact = getDryRunArtifactById, getJournal = listJournal, getSnapshot = snapshotRows,
 }) {
   for (const [name, value] of Object.entries({ restoreRef, resourceType, operation, fixture, build })) {
     if (typeof value !== 'string' || value.length === 0) throw new LiveGateRefusal(`--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} is required`);
@@ -157,6 +219,11 @@ export async function captureLive({
   const artifact = await getArtifact(client, { id: restoreRef });
   if (!artifact) throw new LiveGateRefusal(`no restore artifact ${restoreRef}`);
   if (artifact.tenantRef !== tenantRef) throw new LiveGateRefusal('refusing: the restore artifact belongs to a different tenant');
+  // The tenant the restore actually wrote to, not only the one it was filed under.
+  if (typeof artifact.targetTenantId !== 'string' || artifact.targetTenantId.length === 0
+    || !testTenantRefs.includes(tenantRefFor(artifact.targetTenantId))) {
+    throw new LiveGateRefusal('refusing: the restore wrote to a tenant that is not the test tenant');
+  }
   if (enforcement !== Boolean(artifact.conditionalAccessEnforcement)) {
     throw new LiveGateRefusal(enforcement ? 'that artifact is not a Conditional Access enforcement step' : 'that artifact is an enforcement step; capture it with --operation ' + ENFORCEMENT_STEP);
   }
@@ -173,20 +240,38 @@ export async function captureLive({
   }
   const entry = entries[entries.length - 1];
 
-  if (!looksDisposable(entry)) {
-    if (guidance.kind === 'tenant-setting' && !allowTenantSetting) {
-      throw new LiveGateRefusal(`${resourceType} is a tenant-wide setting: pass --allow-tenant-setting once decision D-148b allows it`);
+  if (entry.outcome === 'pending' || !entry.outcome) {
+    return { status: 'pending', record: null, captureLog: null, reason: `the ${resourceType} ${operation} write for ${fixture} has no recorded outcome (pending)` };
+  }
+
+  let snapshot = null;
+  const loadSnapshot = async () => {
+    snapshot ??= await getSnapshot(client, artifact.snapshotId);
+    return snapshot;
+  };
+  if (guidance.kind === 'by-reference') {
+    if (!allowByReference) {
+      throw new LiveGateRefusal(`${resourceType} has no name of its own: pass --allow-by-reference; the capture then checks that its principal and role are fixtures`);
     }
-    if (guidance.kind === 'by-reference' && !allowByReference) {
-      throw new LiveGateRefusal(`${resourceType} has no name of its own: confirm its principal and role are KEEL-RT fixtures and pass --allow-by-reference`);
-    }
-    if (guidance.kind === 'named-object') {
-      throw new LiveGateRefusal(`refusing: ${fixture} is not a disposable KEEL-RT-* or keel-rehearsal-* fixture`);
+    const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey });
+    if (problems.length > 0) throw new LiveGateRefusal(`refusing ${resourceType} ${fixture}: ${problems.join('; ')}`);
+  } else {
+    const snapshotPayload = entry.priorState ? null
+      : (await loadSnapshot()).versions.find((version) => version.natural_key === entry.naturalKey)?.payload ?? null;
+    if (!looksDisposable(entry, snapshotPayload)) {
+      if (guidance.kind !== 'tenant-setting') {
+        throw new LiveGateRefusal(`refusing: ${fixture} is not a disposable KEEL-RT-* or keel-rehearsal-* fixture`);
+      }
+      if (!allowTenantSetting) {
+        throw new LiveGateRefusal(`${resourceType} is a tenant-wide setting: pass --allow-tenant-setting once decision D-148b allows it`);
+      }
     }
   }
 
   const { walk } = pseudonymizer(tenantRef);
-  const ok = entry.outcome === 'succeeded';
+  const ok = verifiedOutcome(entry.outcome, entry.outcomeDetail);
+  // 'succeeded' without a verified read-back is not a failed write: report it, never promote it.
+  const status = ok ? 'captured' : entry.outcome === 'succeeded' ? 'unverified' : 'failed';
   const log = walk({
     restoreRef,
     entry: {
@@ -211,7 +296,7 @@ export async function captureLive({
     fieldProjectionContractVersion: FIELD_PROJECTION_CONTRACT_VERSION,
     build,
     synthetic: false,
-    evidenceLevel: ok ? 'live-qualified' : 'failed',
+    evidenceLevel: ok ? 'live-qualified' : status,
     ok,
     outcome: entry.outcome,
     outcomeDetail: log.entry.outcomeDetail ?? null,
@@ -225,7 +310,7 @@ export async function captureLive({
   };
   const record = signEvidence(unsigned, hmacKey, LIVE_RUNNER);
   assertSafeText(JSON.stringify(record), { rawTenantId, label: 'the record' });
-  return { status: ok ? 'captured' : 'failed', record, captureLog };
+  return { status, record, captureLog };
 }
 
 /**
@@ -286,7 +371,9 @@ export function promoteRecord(record, {
   if (!runner.ok) failures.push(runner.reason);
   else if (runner.synthetic) failures.push('signed by the fixture runner: synthetic evidence is never live qualification');
   if (record?.synthetic !== false) failures.push('synthetic evidence (a fixture run) is never live qualification');
-  if (record?.ok !== true || record?.outcome !== 'succeeded' || record?.readBackVerified !== true) failures.push('the write did not succeed and read back; demote instead');
+  if (record?.ok !== true || record?.readBackVerified !== true || !verifiedOutcome(record?.outcome, record?.outcomeDetail)) {
+    failures.push('the write was not verified by its read-back, so it cannot be promoted');
+  }
   if (captureLog !== null && sha256(captureLog) !== record?.captureSha256) failures.push('the capture log does not match the record\'s captureSha256');
   if (failures.length > 0) return refuse();
 
@@ -362,6 +449,21 @@ function arg(argv, name) {
   return index > -1 ? argv[index + 1] : undefined;
 }
 
+/** Reads a JSON file; an error never echoes the parser's text, which can quote the file. */
+function readJson(readFile, path, label) {
+  let text;
+  try {
+    text = readFile(path, 'utf8');
+  } catch {
+    throw new LiveGateRefusal(`${label} could not be read`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new LiveGateRefusal(`${label} is not valid JSON`);
+  }
+}
+
 function writeOutputs(out, stem, { record, captureLog }) {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${stem}.capture.json`), captureLog);
@@ -393,11 +495,16 @@ export async function main({ argv = process.argv.slice(2), out = console, env = 
       try {
         const result = await captureLive({
           client, restoreRef: arg(argv, 'restore-ref'), resourceType, operation, fixture: arg(argv, 'fixture'),
-          targetConfig: JSON.parse(readFile(configPath, 'utf8')), build: arg(argv, 'build'), hmacKey,
+          targetConfig: readJson(readFile, configPath, 'the target config'), build: arg(argv, 'build'), hmacKey,
           allowTenantSetting: argv.includes('--allow-tenant-setting'), allowByReference: argv.includes('--allow-by-reference'),
         });
-        if (result.status === 'not-exercised') {
-          out.error(`not exercised: ${result.reason}. Report this step as blocked; nothing was written.`);
+        if (result.status === 'not-exercised' || result.status === 'pending') {
+          out.error(`${result.status}: ${result.reason}. Report this step as blocked (not failed, do not demote); nothing was written.`);
+          return 4;
+        }
+        if (result.status === 'unverified') {
+          writeOutputs(outDir, stem, result);
+          out.error(`unverified: the write is recorded as done but its read-back was not verified (${result.record.outcomeDetail}). Report this step as blocked with that detail; it cannot be promoted.`);
           return 4;
         }
         writeOutputs(outDir, stem, result);
@@ -414,7 +521,7 @@ export async function main({ argv = process.argv.slice(2), out = console, env = 
     if (command === 'promote') {
       const evidencePath = arg(argv, 'evidence');
       if (!evidencePath) throw new LiveGateRefusal('--evidence is required');
-      const record = JSON.parse(readFile(evidencePath, 'utf8'));
+      const record = readJson(readFile, evidencePath, 'the evidence record');
       const capturePath = join(dirname(evidencePath), basename(evidencePath).replace(/\.json$/, '.capture.json'));
       const captureLog = existsSync(capturePath) ? readFile(capturePath, 'utf8') : '';
       const result = promoteRecord(record, { hmacKey, captureLog, tenantRef: arg(argv, 'tenant') ?? TEST_TENANT_REFS[0] });

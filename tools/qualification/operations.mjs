@@ -11,6 +11,8 @@
  *   node tools/qualification/operations.mjs --batch policy  # task-108: also prints the policy family ledger
  *   node tools/qualification/operations.mjs --batch administrative-configuration  # task-109: also prints what cannot be recovered
  *                                                       # task-107: run one expansion batch and print its evidence report
+ *   node tools/qualification/operations.mjs --live-evidence docs/release/qualifications/entra-live
+ *                                                       # issue #148: apply committed Entra live records first
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
  * group, named location, role assignment and conditional access operation
@@ -548,7 +550,19 @@ function table(ledger) {
   return lines.join('\n');
 }
 
-export async function main({ argv = process.argv.slice(2), out = console } = {}) {
+export async function main({ argv = process.argv.slice(2), out = console, env = process.env } = {}) {
+  // Issue #148: --live-evidence DIR applies the committed Entra live records
+  // (signed, test tenant only) through qualifyLiveEvidence before the ledger is
+  // built. Without KEEL_QUALIFICATION_HMAC_KEY nothing verifies, so nothing flips.
+  const liveIndex = argv.indexOf('--live-evidence');
+  if (liveIndex !== -1) {
+    const { applyCommittedEvidence } = await import('./entraLive.mjs');
+    const results = applyCommittedEvidence({ dir: argv[liveIndex + 1], hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY || null });
+    for (const result of results) {
+      if (result.promoted) out.error(`live evidence ${result.file}: ${result.before} -> ${result.after}`);
+      else out.error(`live evidence ${result.file}: not applied (${result.failures.join('; ')})`);
+    }
+  }
   let ledger;
   try {
     ledger = buildOperationLedger();

@@ -94,6 +94,19 @@ function Out-Failure {
     Out-Envelope -Envelope @{ ok = $false; error = @{ message = $Message; category = $Category; errorId = $ErrorId } } -Code 1
 }
 
+# The certificate re-imported through PKCS12, exactly as probe-workloads.ps1
+# (Get-KeelCertificate) builds it: CreateFromPemFile's ephemeral key does not survive
+# every .NET crypto provider on Linux. Used by the Teams session, whose live proof
+# comes from the probe, so the collector signs in the same way. Nothing is written to disk.
+function ConvertTo-KeelPkcs12Certificate {
+    param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Raw)
+    $password = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+    $bytes = $Raw.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12, $password)
+    $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable -bor `
+        [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes, $password, $flags)
+}
+
 try {
     $job = $env:KEEL_JOB_JSON | ConvertFrom-Json -AsHashtable
 } catch {
@@ -129,9 +142,11 @@ try {
         $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
         Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
     } elseif ($session -eq 'teams') {
-        # Same app-only connection as the probe (probe-workloads.ps1, Teams block).
+        # Same app-only connection as the probe (probe-workloads.ps1, Teams block),
+        # including its PKCS12 round trip of the certificate.
         Import-Module MicrosoftTeams -ErrorAction Stop | Out-Null
-        Connect-MicrosoftTeams -Certificate $cert -ApplicationId $config.clientId -TenantId $config.tenantId | Out-Null
+        $teamsCert = ConvertTo-KeelPkcs12Certificate -Raw $cert
+        Connect-MicrosoftTeams -Certificate $teamsCert -ApplicationId $config.clientId -TenantId $config.tenantId | Out-Null
     } else {
         Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
         if ($session -eq 'ipps') {

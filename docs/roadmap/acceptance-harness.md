@@ -63,7 +63,7 @@ edited.
 - **`tools/release/qualification.mjs`**: one new subcommand,
   `ledger --fixture <journeys result> [--tenant] [--build] [--out] [--require-ready]`. It
   exits 0 for a report, and with `--require-ready` it exits 1 unless the ledger is ready.
-- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 20 boundary tests, added to the
+- **`engine/roadmap/acceptance-harness.test.mjs`** (new). 21 boundary tests, added to the
   CI engine step in `.github/workflows/portal.yml`.
 
 ## Objectives D1-D10 and G1-G8
@@ -91,7 +91,14 @@ The other eleven are **explicit gaps**. Each one names why it is a gap:
 - **D9**: checkpoint publication is fixture-tested only.
 - **D10, G1-G5 and G7**: no live gate is defined for them.
 
-These gaps keep readiness `pending`. Accepting them would take an operator decision.
+These gaps keep readiness `pending` unless the ledger run passes `--accept-objective-gaps`.
+Marouane accepted all eleven by operator decision on 2026-10-09 at 09:05 UTC. With the flag:
+
+- Each gap is listed in `readiness.acceptedObjectiveGaps` with its reason, and it is never counted as qualified.
+- `readiness.objectiveGapsAccepted` records that the run used the flag.
+- A live-gated objective whose gate is pending or failed still holds or blocks readiness.
+
+When a gap later gets a live gate that passes, the objective qualifies and leaves the list.
 
 ## Tests run (2026-10-04, local PostgreSQL 16, isolated schemas)
 

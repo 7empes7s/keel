@@ -11,8 +11,9 @@ journey proves and what it does not.
 node tools/release/journeys.mjs run --db-url "$KEEL_DB_TEST_URL" --out journeys.json --build "$(git rev-parse HEAD)"
 # 2. Ledger over the checked-in live records in docs/release/qualifications/
 KEEL_QUALIFICATION_HMAC_KEY=... node tools/release/qualification.mjs ledger \
-  --fixture journeys.json --tenant <tenant ref> --build <capture commit> --out ledger.json
-# Add --require-ready to exit nonzero unless the ledger is ready.
+  --fixture journeys.json --tenant <tenant ref> --build <capture commit> --accept-objective-gaps --out ledger.json
+# Add --require-ready to exit nonzero unless the ledger is ready. --accept-objective-gaps applies the
+# 2026-10-09 operator decision: the eleven objective gaps are listed, not held as pending.
 ```
 
 Without the runner key, tenant and build, a non-placeholder record is reported
@@ -53,6 +54,6 @@ Without the runner key, tenant and build, a non-placeholder record is reported
 **Objectives** (the definitions are in `docs/release/objectives-source.md`):
 
 - **Qualify when their live gates verify:** D1, D2, D4, D5, D6, G6 and G8.
-- **Explicit gaps:** D3, D7, D8, D9, D10, G1-G5 and G7. Each has no live gate, or its own qualification says it is unproven. The ledger names the reason for each one.
+- **Explicit gaps:** D3, D7, D8, D9, D10, G1-G5 and G7. Each has no live gate, or its own qualification says it is unproven. The ledger names the reason for each one. They were accepted by operator decision on 2026-10-09, so the release ledger runs with `--accept-objective-gaps`, which lists them in `readiness.acceptedObjectiveGaps`.
 
 How to capture each live gate is in `docs/roadmap/operator-gates.md`.

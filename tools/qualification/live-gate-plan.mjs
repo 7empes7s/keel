@@ -93,7 +93,7 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     note: 'Create runs after the application create step: delete the enterprise application only, keep the app registration.',
   },
   administrativeUnit: {
-    kind: 'named-object', fixture: `administrative unit ${FIXTURE_PREFIX}-unit with no members and no scoped roles`,
+    kind: 'named-object', fixture: `administrative unit ${FIXTURE_PREFIX}-unit with no members (the role steps later scope the fixture role to it)`,
     select: `${FIXTURE_PREFIX}-unit`, drift: 'change its description',
   },
   groupSetting: {
@@ -101,26 +101,36 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'Group.Unified', drift: 'flip EnableGroupCreation and put nothing else back by hand',
     note: 'Delete removes the tenant-wide setting and the restore cannot recreate it (create is not registered); only run delete if decision D-148b allows it, and have its values written down to recreate by hand.',
   },
+  // The catalogue rates the role and Conditional Access building blocks as able to
+  // lock the tenant out, so they stay lockout-sensitive: they run late, alone and
+  // after the break-glass check. Only an explicit `lockout: false` with a
+  // `lockoutReason` may lower that (none does today).
   roleDefinition: {
-    kind: 'named-object', fixture: `custom role ${FIXTURE_PREFIX}-role with one permission (microsoft.directory/users/password/update), assigned to nobody`,
-    select: `${FIXTURE_PREFIX}-role`, drift: 'remove its permission and add microsoft.directory/users/basic/update',
+    kind: 'named-object',
+    fixture: `custom role ${FIXTURE_PREFIX}-role with one harmless permission (microsoft.directory/groups/basic/update: group names and descriptions), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-role`, drift: 'change its description',
+    breakGlass: 'The fixture role holds no permission that affects sign-in, credentials or roles, and is never assigned to a break-glass account.',
     note: 'Needs an Entra ID P1 or P2 licence in the test tenant.',
   },
   roleAssignment: {
-    kind: 'by-reference', fixture: `${FIXTURE_PREFIX}-role assigned to keel-rt-20260908-carla at tenant scope`,
+    kind: 'by-reference', fixture: `${FIXTURE_PREFIX}-role assigned to keel-rt-20260908-carla, scoped to administrative unit ${FIXTURE_PREFIX}-unit (never tenant-wide)`,
     select: 'the assignment key KEEL shows for carla and the fixture role', drift: 'none: update is checked by re-running restore over an unchanged assignment and is captured only if KEEL writes',
+    breakGlass: 'Never a built-in privileged role and never a break-glass principal: only the fixture role and the fixture user. The capture checks both names in the snapshot.',
   },
   roleEligibilitySchedule: {
-    kind: 'by-reference', fixture: `a time-bound PIM eligibility for keel-rt-20260908-carla to ${FIXTURE_PREFIX}-role, ending in 30 days`,
+    kind: 'by-reference', fixture: `a time-bound PIM eligibility for keel-rt-20260908-carla to ${FIXTURE_PREFIX}-role, scoped to ${FIXTURE_PREFIX}-unit, ending in 30 days`,
     select: 'the eligibility id KEEL shows for carla and the fixture role',
+    breakGlass: 'Never a built-in privileged role and never a break-glass principal: only the fixture role and the fixture user. The capture checks both names in the snapshot.',
   },
   namedLocation: {
     kind: 'named-object', fixture: `IP named location ${FIXTURE_PREFIX}-location (203.0.113.0/24, not trusted), referenced by no policy`,
     select: `${FIXTURE_PREFIX}-location`, drift: 'add the range 198.51.100.0/24',
+    breakGlass: 'The fixture location is referenced by no Conditional Access policy, so no sign-in decision depends on it. Check that in the portal before the write.',
   },
   authenticationStrengthPolicy: {
     kind: 'named-object', fixture: `custom authentication strength ${FIXTURE_PREFIX}-strength (FIDO2 only), referenced by no policy`,
     select: `${FIXTURE_PREFIX}-strength`, drift: 'change its description',
+    breakGlass: 'The fixture strength is referenced by no Conditional Access policy, so no sign-in requires it. Check that in the portal before the write.',
   },
   crossTenantAccessPolicy: { kind: 'tenant-setting', fixture: 'the tenant cross-tenant access policy', select: 'crossTenantAccessPolicy', drift: 'none expected: allowedCloudEndpoints is usually empty; add one cloud only if decision D-148b allows it' },
   crossTenantAccessPolicyConfigurationDefault: {
@@ -223,7 +233,13 @@ function blastRadiusOf(resourceType) {
 export function guidanceFor(resourceType) {
   const reviewed = FIXTURE_GUIDANCE[resourceType];
   if (reviewed) {
-    const lockout = reviewed.lockout === true || TENANT_POLICY_LOCKOUT.has(resourceType);
+    // The catalogue's tenant-lockout rating (and a lockout-gated tenant policy)
+    // is never dropped silently: only `lockout: false` with a stated reason lowers it.
+    const rated = TENANT_POLICY_LOCKOUT.has(resourceType) || blastRadiusOf(resourceType) === 'tenant-lockout';
+    if (reviewed.lockout === false && rated && !(typeof reviewed.lockoutReason === 'string' && reviewed.lockoutReason.length > 0)) {
+      throw new Error(`${resourceType}: lockout: false needs a lockoutReason, because the catalogue rates it tenant-lockout`);
+    }
+    const lockout = reviewed.lockout === false ? false : (reviewed.lockout === true || rated);
     return { ...reviewed, lockout, reviewed: true };
   }
   const singleton = SINGLETON_TYPES.has(resourceType);
@@ -466,6 +482,9 @@ export function renderMarkdown(plan) {
     if (!step.reviewedGuidance) lines.push('- **No reviewed guidance for this type yet.** Read its roadmap doc first.');
     lines.push(`- Test object: ${step.testObject}`);
     lines.push(`- Select: ${step.select}`);
+    lines.push(step.sharedRunAllowed
+      ? '- Shared run: allowed (may share one snapshot and one restore with other shared steps)'
+      : '- Shared run: no (runs alone, with its own snapshot and restore)');
     if (step.breakGlass) {
       lines.push('- Break-glass precondition:');
       for (const item of step.breakGlass) lines.push(`  - ${item}`);

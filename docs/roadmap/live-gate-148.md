@@ -31,14 +31,26 @@ Conditional Access policy back on. For each step the checklist gives:
 - the promote command;
 - the demote command for when the step fails.
 
-Order: directory objects and their relationships first, then roles, policies and Intune. The
-lockout-sensitive steps come last: authorization policy, PIM rules, authentication methods, security
-defaults, then Conditional Access. Each of those names its break-glass precondition.
+Order: directory objects and their relationships first, then tenant settings and Intune. The
+lockout-sensitive steps come last, each with its own break-glass precondition and never in a shared
+restore:
+
+1. Custom roles, role assignments and PIM eligibility, named locations and authentication strengths.
+   The catalogue rates these as able to lock the tenant out. A type can only be lowered from that with
+   an explicit `lockout: false` and a stated reason, and none is today.
+2. The authorization policy, PIM rules, authentication methods and security defaults.
+3. Conditional Access, last of all.
+
+The fixture role holds one harmless permission (group names and descriptions). It is assigned only to
+the fixture user, scoped to the `KEEL-RT-148-unit` administrative unit. Never use a built-in privileged
+role or a break-glass principal. For a role assignment or eligibility, the capture checks in the
+snapshot that the principal is a KEEL-RT fixture and the role is `KEEL-RT-148-role`.
 
 ## Before you start
 
 - **Test tenant only.** The capture tool works out the tenant from the Restorer config and refuses any
-  tenant that isn't the test tenant. It also refuses a restore that was run in another tenant. The test
+  tenant that isn't the test tenant. It also refuses a restore that was filed under, or wrote to,
+  another tenant. The test
   tenant is the one every committed live gate was captured in, and a test checks that this stays true.
 - **Pseudonymized.** Every id in a capture goes through `pseudonymize.mjs` (#138) before it is written.
   The tool refuses to write a file that still holds the raw tenant id or anything shaped like a
@@ -60,14 +72,22 @@ defaults, then Conditional Access. Each of those names its break-glass precondit
    This reads only what the restore wrote to KEEL's rollback journal (each write and whether its
    read-back matched). It never calls Graph. It writes a signed record and the pseudonymized journal
    entry that the record binds by sha256.
-   - Exit 0: captured.
+   - Exit 0: captured. The write succeeded and its read-back verified.
    - Exit 3: the write failed. Demote it (step 5).
-   - Exit 4: the restore made no such write. Report the step as blocked.
+   - Exit 4: blocked. Report it; do not demote. This covers three cases:
+     - the restore made no such write;
+     - the write has no recorded outcome yet (pending);
+     - the write is recorded as done but its read-back was not verified. For example, KEEL restored a
+       user that is synced from on-premises and wrote nothing further, or it left a "not-remediable
+       residual". The record is written for the report, but it can never be promoted.
 4. Promote: `entraLive.mjs promote --evidence OUT/T.O.json`. First it checks the signature, the test
-   tenant, the capture digest and that the write succeeded and read back. Then it calls
-   `qualifyLiveEvidence`, which runs its own checks (tenant, operation, projection contract,
-   freshness under 30 days, non-synthetic). For authentication strengths the policy family's own gate
-   runs first. A synthetic or fixture-signed record is always refused.
+   tenant, the capture digest and that the read-back verified. Then it calls `qualifyLiveEvidence`,
+   which runs its own checks (tenant, operation, projection contract, freshness, non-synthetic). For
+   authentication strengths the policy family's own gate runs first. A synthetic or fixture-signed
+   record is always refused.
+
+   **Live-qualified lasts 30 days from the capture.** After that the record is stale, the operation
+   reads fixture-tested again, and it needs a fresh capture.
 5. On failure: `entraLive.mjs demote --resource-type T --operation O --reason '...' --out OUT` writes
    a demotion record. A builder then removes the registration in `capabilities.mjs` and adds the
    reason to `TYPE_DECISIONS`. `engine/roadmap/entra-live-gate.test.mjs` fails until both are done.
@@ -86,13 +106,19 @@ defaults, then Conditional Access. Each of those names its break-glass precondit
 ## Decisions needed (asked once, in the queue entry)
 
 - **D-148a, lockout-sensitive steps.** May the operator:
+  - create and change the fixture custom role (one harmless permission), and assign it and make carla
+    eligible for it, scoped to the fixture administrative unit;
+  - create, change and delete a named location and a custom authentication strength that no policy
+    uses;
   - drift the authorization policy's guest-invitation setting;
   - turn off "MFA on activation" for the fixture role's PIM settings;
   - switch one authentication method the break-glass accounts don't use;
   - try security defaults;
   - create, change, delete and restore a report-only Conditional Access policy scoped to one fixture
     group;
-  - turn that policy **on** for carla only, for the enforcement step?
+  - turn that policy **on by hand**, for carla only, **before the snapshot** of the soft-delete restore
+    step, so that the backup has it on;
+  - let KEEL turn it **on** again, for carla only, in the enforcement step?
 
   Marouane stays signed in as a second Global Administrator for these.
 - **D-148b, tenant-wide settings.** May the operator drift and let KEEL restore:

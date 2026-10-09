@@ -16,10 +16,15 @@ import { buildOperationLedger } from '../coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../restore/conditionalAccessEnforcement.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
-  ENTRA_LIVE_KIND, LiveGateRefusal, TEST_TENANT_REFS, applyCommittedEvidence, captureLive, captureOffline,
-  demotionRecord, main as entraLiveMain, promoteRecord, unappliedDemotions,
+  ENTRA_LIVE_KIND, LiveGateRefusal, TEST_TENANT_REFS, applyCommittedEvidence, byReferenceProblems, captureLive, captureOffline,
+  demotionRecord, main as entraLiveMain, promoteRecord, unappliedDemotions, verifiedOutcome,
 } from '../../tools/qualification/entraLive.mjs';
-import { buildLiveGatePlan, guidanceFor, main as planMain } from '../../tools/qualification/live-gate-plan.mjs';
+import {
+  FIXTURE_GUIDANCE, buildLiveGatePlan, guidanceFor, main as planMain, renderMarkdown,
+} from '../../tools/qualification/live-gate-plan.mjs';
+
+// The three break-glass lines every lockout-sensitive step shares.
+const BREAK_GLASS_COMMON_COUNT = 3;
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 // A made-up directory id standing in for the test tenant; it names no real tenant.
@@ -50,7 +55,10 @@ function registeredWrites() {
 }
 
 /** A restore artifact and one journal entry, as keel-restore would have left them. */
-function fixtureRestore(step, { outcome = 'succeeded', tenantId = FIXTURE_TENANT_ID, naturalKey = null, displayName = null } = {}) {
+function fixtureRestore(step, {
+  outcome = 'succeeded', outcomeDetail = undefined, tenantId = FIXTURE_TENANT_ID, targetTenantId = tenantId, naturalKey = null, displayName = null,
+  principalName = 'keel-rt-20260908-carla@fixture.example', roleName = 'KEEL-RT-148-role',
+} = {}) {
   const restoreRef = '0f0e0d0c-0b0a-4908-8706-050403020100';
   const edge = step.resourceType.includes('#');
   const family = edge ? step.resourceType.split('#')[1] : null;
@@ -71,16 +79,32 @@ function fixtureRestore(step, { outcome = 'succeeded', tenantId = FIXTURE_TENANT
     intendedState: edge ? null : { ...(name ? { displayName: name } : {}), description: 'after' },
     postState: edge ? null : { id: targetId, ...(name ? { displayName: name } : {}), description: 'after' },
     outcome,
-    outcomeDetail: outcome === 'succeeded' ? null : 'status 400',
+    outcomeDetail: outcomeDetail !== undefined ? outcomeDetail : outcome === 'succeeded' ? null : 'status 400',
     recordedAt: new Date(NOW.getTime() - 60_000),
   };
+  // The restore's snapshot: the object itself, plus (for an object that only
+  // points at others) the principal and role it references.
+  const snapshotId = 'snapshot-fixture';
+  const versions = [
+    { id: 'v-own', natural_key: entry.naturalKey, resource_type: entry.resourceType, payload: edge ? null : entry.priorState },
+    { id: 'v-user', natural_key: 'principal-key', resource_type: 'user', payload: { userPrincipalName: principalName } },
+    { id: 'v-role', natural_key: 'role-key', resource_type: 'roleDefinition', payload: { displayName: roleName } },
+  ];
+  const references = [
+    { from_version: 'v-own', field_path: 'principalId', to_symbol: 'user:principal-key' },
+    { from_version: 'v-own', field_path: 'roleDefinitionId', to_symbol: 'roleDefinition:role-key' },
+  ];
   return {
     key,
     restoreRef,
     getArtifact: async (_client, { id }) => (id === restoreRef
-      ? { id, tenantRef: tenantRefFor(tenantId), conditionalAccessEnforcement: step.operation === ENFORCEMENT_STEP ? { naturalKey: key } : null }
+      ? {
+        id, tenantRef: tenantRefFor(tenantId), targetTenantId, snapshotId,
+        conditionalAccessEnforcement: step.operation === ENFORCEMENT_STEP ? { naturalKey: key } : null,
+      }
       : null),
     getJournal: async (_client, { restoreRef: ref }) => (ref === restoreRef ? [entry] : []),
+    getSnapshot: async (_client, id) => (id === snapshotId ? { versions, references } : { versions: [], references: [] }),
   };
 }
 
@@ -89,8 +113,8 @@ async function capture(step, options = {}) {
   return captureLive({
     client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: restore.key,
     targetConfig: { tenantId: options.configTenantId ?? FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY,
-    allowTenantSetting: step.fixtureKind === 'tenant-setting', allowByReference: step.fixtureKind === 'by-reference',
-    testTenantRefs: options.testTenantRefs ?? TEST_REFS, getArtifact: restore.getArtifact, getJournal: restore.getJournal,
+    allowTenantSetting: step.fixtureKind === 'tenant-setting', allowByReference: options.allowByReference ?? step.fixtureKind === 'by-reference',
+    testTenantRefs: options.testTenantRefs ?? TEST_REFS, getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
   });
 }
 
@@ -143,6 +167,24 @@ test('lockout-sensitive operations run last, and each names its break-glass prec
   assert.ok(index('group:create') < index('deviceCompliancePolicy:create'), 'the fixture group exists before policies are assigned to it');
   assert.ok(index('roleDefinition:create') < index('roleAssignment:create'), 'the custom role exists before it is assigned');
   for (const step of steps.filter((candidate) => !candidate.lockoutSensitive)) assert.equal(step.breakGlass, null);
+
+  // The catalogue's tenant-lockout rating is never dropped silently.
+  for (const type of ['roleDefinition', 'roleAssignment', 'roleEligibilitySchedule', 'namedLocation', 'authenticationStrengthPolicy']) {
+    for (const step of steps.filter((candidate) => candidate.resourceType === type)) {
+      assert.equal(step.lockoutSensitive, true, `${step.id} stays lockout-sensitive`);
+      assert.equal(step.sharedRunAllowed, false, `${step.id} runs alone`);
+      assert.ok(step.breakGlass.length > BREAK_GLASS_COMMON_COUNT, `${step.id} names its own precondition`);
+    }
+  }
+  for (const step of steps.filter((candidate) => candidate.blastRadius === 'tenant-lockout' && !candidate.lockoutSensitive)) {
+    assert.ok(FIXTURE_GUIDANCE[step.resourceType]?.lockout === false && FIXTURE_GUIDANCE[step.resourceType].lockoutReason,
+      `${step.id}: a tenant-lockout type may only be downgraded explicitly, with a reason`);
+  }
+  for (const id of ['roleAssignment:create', 'roleEligibilitySchedule:create']) {
+    assert.match(steps.find((step) => step.id === id).breakGlass.join(' '), /never a built-in privileged role and never a break-glass principal/i);
+  }
+  assert.doesNotMatch(FIXTURE_GUIDANCE.roleDefinition.fixture, /password/, 'the fixture role holds no credential permission');
+  assert.match(renderMarkdown(buildLiveGatePlan()), /- Shared run: no \(runs alone/);
 });
 
 test('an unreviewed type gets a full step; one that can lock people out is treated as lockout-sensitive', () => {
@@ -166,8 +208,10 @@ test('one simulated capture per family promotes through qualifyLiveEvidence and 
   }
   // The policy family's own gate (subtype and projection digest) runs first for strengths.
   picked.set('policy-subtype', steps.find((step) => step.id === 'authenticationStrengthPolicy:create'));
+  // An object with no name of its own: its principal and role are checked in the snapshot.
+  picked.set('by-reference', steps.find((step) => step.id === 'roleAssignment:create'));
   assert.deepEqual([...picked.keys()].sort(), [
-    'administrative-configuration', 'device-management', 'identity-application', 'lockout-sensitive', 'policy', 'policy-subtype', 'relationship',
+    'administrative-configuration', 'by-reference', 'device-management', 'identity-application', 'lockout-sensitive', 'policy', 'policy-subtype', 'relationship',
   ]);
 
   for (const [family, step] of picked) {
@@ -249,17 +293,90 @@ test('a non-fixture object, an unconfirmed tenant setting and a missing write ar
   await assert.rejects(captureLive({
     client: {}, restoreRef: restore.restoreRef, resourceType: setting.resourceType, operation: 'update', fixture: restore.key,
     targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
-    getArtifact: restore.getArtifact, getJournal: restore.getJournal,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
   }), /--allow-tenant-setting/);
 
   const missing = await captureLive({
     client: {}, restoreRef: restore.restoreRef, resourceType: setting.resourceType, operation: 'update', fixture: 'some-other-key',
     targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
-    getArtifact: restore.getArtifact, getJournal: restore.getJournal, allowTenantSetting: true,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot, allowTenantSetting: true,
   });
   assert.equal(missing.status, 'not-exercised');
 
   await assert.rejects(capture({ ...group, resourceType: 'domain', operation: 'update' }), /not a registered write/);
+});
+
+test('a write recorded as succeeded but not verified by its read-back is never promoted', async () => {
+  const { steps } = buildLiveGatePlan();
+  // A synced user: applyEngine restores it and writes nothing further, but still journals 'succeeded'.
+  const user = steps.find((step) => step.id === 'user:restore-soft-deleted');
+  const synced = await capture(user, { naturalKey: 'keel-rt-20260908-carla@fixture.example', outcomeDetail: 'restored; synced from on-premises, so nothing further is written' });
+  assert.equal(synced.status, 'unverified');
+  assert.equal(synced.record.ok, false);
+  assert.equal(synced.record.readBackVerified, false);
+  assert.equal(promote(synced).promoted, false);
+  assert.equal(capabilityFor('user', 'restore-soft-deleted').claim, 'fixture-tested');
+
+  const group = steps.find((step) => step.id === 'group:update');
+  const residual = await capture(group, { outcomeDetail: 'not-remediable residual' });
+  assert.equal(residual.status, 'unverified');
+  // Hand-setting ok/readBackVerified breaks the signature; and even a signed record with that detail is refused.
+  assert.match(promote(residual).failures.join(), /not verified/);
+
+  const converged = await capture(group, { outcomeDetail: 'converged: only empty values differ' });
+  assert.equal(converged.status, 'captured');
+  assert.equal(verifiedOutcome('succeeded', 'absent'), true);
+  assert.equal(verifiedOutcome('succeeded', 'soft-deleted'), true);
+  assert.equal(verifiedOutcome('succeeded', 'anything else'), false);
+  assert.equal(verifiedOutcome('uncertain', null), false);
+
+  // A write with no recorded outcome is blocked, not a failure to demote.
+  const pending = await capture(group, { outcome: 'pending', outcomeDetail: null });
+  assert.equal(pending.status, 'pending');
+  assert.equal(pending.record, null);
+});
+
+test('the restore must have written to the test tenant, and a by-reference object must point only at fixtures', async () => {
+  const { steps } = buildLiveGatePlan();
+  const group = steps.find((step) => step.id === 'group:update');
+  await assert.rejects(capture(group, { targetTenantId: OTHER_TENANT_ID }), /wrote to a tenant that is not the test tenant/);
+  await assert.rejects(capture(group, { targetTenantId: '' }), /wrote to a tenant that is not the test tenant/);
+
+  const assignment = steps.find((step) => step.id === 'roleAssignment:create');
+  await assert.rejects(capture(assignment, { allowByReference: false }), /--allow-by-reference/);
+  await assert.rejects(capture(assignment, { principalName: 'breakglass-one@fixture.example' }), /principal is not a KEEL-RT fixture/);
+  await assert.rejects(capture(assignment, { roleName: 'Global Administrator' }), /role is not the fixture role/);
+  await assert.rejects(capture(assignment, { roleName: 'KEEL-RT-other-role' }), /role is not the fixture role/);
+  assert.equal((await capture(assignment)).status, 'captured');
+  assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x' }), ['the snapshot has no object x']);
+});
+
+test('a fixture name is checked anchored, on its own key or prior state only', async () => {
+  const group = buildLiveGatePlan().steps.find((step) => step.id === 'group:update');
+  // The prefix must start the name, not appear inside it.
+  await assert.rejects(capture(group, { naturalKey: 'prod-KEEL-RT-148-group', displayName: 'prod-KEEL-RT-148-group' }), /not a disposable/);
+  // A KEEL-RT name only in the intended or post-write state is not enough.
+  const restore = fixtureRestore(group, { naturalKey: 'finance-team', displayName: 'Finance team' });
+  const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  journal[0].intendedState = { displayName: 'KEEL-RT-148-group' };
+  journal[0].postState = { displayName: 'KEEL-RT-148-group' };
+  await assert.rejects(captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: 'group', operation: 'update', fixture: 'finance-team',
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: async () => journal, getSnapshot: restore.getSnapshot,
+  }), /not a disposable/);
+});
+
+test('a target config that is not valid JSON is refused without echoing it', async () => {
+  const errors = [];
+  const code = await entraLiveMain({
+    argv: ['capture', '--restore-ref', 'r', '--resource-type', 'group', '--operation', 'create', '--fixture', 'KEEL-RT-148-group',
+      '--target-config', '/fixture.json', '--build', BUILD, '--out', mkdtempSync(join(tmpdir(), 'entra-out-')), '--db-url', 'postgres://fixture'],
+    out: { log: () => {}, error: (line) => errors.push(line) }, env: { KEEL_QUALIFICATION_HMAC_KEY: HMAC_KEY },
+    connectFn: async () => ({ end: async () => {} }), readFile: () => '{"clientSecret": "fixture-secret-value", broken',
+  });
+  assert.equal(code, 1);
+  assert.equal(errors.join('\n'), 'the target config is not valid JSON');
 });
 
 test('a failed live write is never promoted, and its demotion must be applied in code', async () => {

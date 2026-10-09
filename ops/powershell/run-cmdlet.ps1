@@ -96,7 +96,10 @@ $AllowedPnP = @{
 
 function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 8 -Compress))
+    # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
+    # sensitive information type groups, say) to type-name strings. Shallower answers
+    # serialize the same at either depth.
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 16 -Compress))
     exit $Code
 }
 

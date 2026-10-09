@@ -315,8 +315,12 @@ export async function readMailFlow({ powershell = {}, families = FAMILY_NAMES, s
     return [family, { status, objects: read.resources.length }];
   }));
   let outcome;
-  // Nothing was read at all: every family failed or was unavailable.
-  if (families.length > 0 && failures.length > 0 && failures.length + unavailable.length === families.length) outcome = 'failed';
+  // Nothing usable was read: no object was kept, and every family failed, was
+  // unavailable, or answered only objects with no identity KEEL trusts (at least one
+  // failed or answered such objects; all-unavailable is not a failure of the read).
+  if (families.length > 0 && resources.length === 0
+    && reads.every((read) => read.failure || read.unavailable || read.unidentified > 0)
+    && reads.some((read) => read.failure || read.unidentified > 0)) outcome = 'failed';
   // A Defender family runs only once its own read is live-qualified, so the cmdlet
   // was proven present in this tenant: "not available" later means a lapsed licence
   // or a removed role, and those policies are no longer backed up. That is a gap,

@@ -22,8 +22,12 @@
  *    and custom patterns in a DLP rule are configuration and are kept; a value shaped
  *    like a credential is redacted by the shared redactor and never stored.
  *  - Rules keep their parent. Each rule records the Guid of the policy it belongs to
- *    (`parentPolicy`). A rule without a valid parent reference is kept but makes the
- *    run partial, because a later restore could not place it.
+ *    (`parentPolicy`) and whether that policy was read in this run (`parentStatus`,
+ *    see checkParents). A rule with no parent reference, or naming a policy its own
+ *    policy family does not have, is kept but makes the run partial, because a later
+ *    restore could not place it.
+ *  - Duplicates are checked. A Guid answered twice keeps the first copy; a second
+ *    copy that disagrees is recorded under `conflicts` and makes the run partial.
  *  - Locks are observed. A policy or rule that reports a preservation lock
  *    (`RestrictiveRetention` and the other LOCK_MARKERS) is recorded `locked`; one that
  *    reports none is `not-reported`, which is not proof of no lock.
@@ -79,7 +83,7 @@ export const FAMILIES = Object.freeze({
     ]),
   }),
   retentionRule: Object.freeze({
-    operation: 'purview.retention-rules', cmdlet: 'Get-RetentionComplianceRule', prefix: 'retention-rule', rule: true,
+    operation: 'purview.retention-rules', cmdlet: 'Get-RetentionComplianceRule', prefix: 'retention-rule', rule: true, policyFamily: 'retentionPolicy',
     fields: Object.freeze([
       'Name', 'Policy', 'Comment', 'Disabled', 'Mode', 'Workload', 'RetentionDuration', 'RetentionDurationDisplayHint',
       'RetentionComplianceAction', 'ExpirationDateOption', 'ApplyComplianceTag', 'PublishComplianceTag', 'ContentMatchQuery',
@@ -93,7 +97,7 @@ export const FAMILIES = Object.freeze({
     ]),
   }),
   dlpRule: Object.freeze({
-    operation: 'purview.dlp-rules', cmdlet: 'Get-DlpComplianceRule', prefix: 'dlp-rule', rule: true, license: DLP_LICENCE,
+    operation: 'purview.dlp-rules', cmdlet: 'Get-DlpComplianceRule', prefix: 'dlp-rule', rule: true, policyFamily: 'dlpPolicy', license: DLP_LICENCE,
     // GenerateIncidentReport and IncidentReportContent say who receives an incident
     // report and what it contains. They are configuration; no incident is read.
     fields: Object.freeze([
@@ -128,6 +132,9 @@ export const RETENTION_DLP_DESCRIPTOR = Object.freeze({
 export const RETENTION_DLP_CMDLET_PARAMETERS = Object.freeze(Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, Object.freeze([])])));
 export const RETENTION_DLP_CMDLETS = new Set(Object.keys(RETENTION_DLP_CMDLET_PARAMETERS));
 // Never run: they read matches, incidents, alerts, searches or holds on content.
+// This list is documentation and a test fixture. What actually blocks them is the
+// allowlist: RETENTION_DLP_CMDLET_PARAMETERS here and $AllowedPurviewRetentionDlp in
+// the container, which admit only the four reads above.
 export const RETENTION_DLP_EXCLUDED_CMDLETS = Object.freeze([
   'Get-DlpDetailReport', 'Get-DlpIncidentDetailReport', 'Get-DlpDetectionsReport', 'Get-DlpSiDetectionsReport',
   'Get-ComplianceSearch', 'Get-ComplianceSearchAction', 'Get-CaseHoldPolicy', 'Get-ProtectionAlert',
@@ -156,6 +163,10 @@ export async function retentionDlpCmdlet({ cmdlet, parameters = {} }, powershell
   const { tenantConfigPath = null, ...options } = powershell;
   return runCmdlet({ module: RETENTION_DLP_MODULE, cmdlet, parameters, tenantConfigPath }, { ...options, allowedCmdlets: RETENTION_DLP_CMDLETS });
 }
+
+const canonical = (value) => JSON.stringify(value ?? null, (_key, inner) => (inner && typeof inner === 'object' && !Array.isArray(inner)
+  ? Object.fromEntries(Object.keys(inner).sort().map((key) => [key, inner[key]]))
+  : inner));
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const guidOf = (value) => {
@@ -204,7 +215,7 @@ function observeObject(family, body) {
 /** Reads one family. Returns its resources and, when the read did not succeed, why. */
 async function readFamily(family, { powershell, maxObjects }) {
   const { cmdlet, operation, license, rule } = FAMILIES[family];
-  const empty = { resources: [], capped: false, unidentified: 0, unparented: 0 };
+  const empty = { resources: [], capped: false, unidentified: 0, conflicts: [] };
   let output;
   try {
     ({ output } = await retentionDlpCmdlet({ cmdlet }, powershell));
@@ -218,24 +229,64 @@ async function readFamily(family, { powershell, maxObjects }) {
     return { ...empty, failure: { family, operation, ...structuredFailure(error) }, unavailable: null };
   }
   const resources = [];
-  const seen = new Set();
+  const kept = new Map();
+  const conflicts = [];
   let unidentified = 0;
-  let unparented = 0;
   let capped = false;
   for (const body of output) {
     const identity = body && typeof body === 'object' ? objectIdentity(body) : null;
     if (!identity) { unidentified += 1; continue; }
-    if (seen.has(identity)) continue;
-    if (resources.length >= maxObjects) { capped = true; continue; }
-    seen.add(identity);
-    const resource = { resourceKey: retentionDlpKey(family, identity), kind: family, identity, lock: lockState(body), ...observeObject(family, body) };
-    if (rule) {
-      resource.parentPolicy = parentPolicyOf(body);
-      if (!resource.parentPolicy) unparented += 1;
+    if (kept.has(identity)) {
+      // The same Guid answered twice. The first copy is kept; a second copy that
+      // disagrees on a declared field is recorded as a conflict and makes the run
+      // partial, because KEEL cannot tell which copy is current.
+      const first = kept.get(identity);
+      if (first) {
+        const other = observeObject(family, body);
+        const fields = Object.keys(first.fieldCoverage).filter((field) => canonical(first.fields[field]) !== canonical(other.fields[field]));
+        if (fields.length) conflicts.push({ resourceKey: first.resourceKey, fields });
+      }
+      continue;
     }
+    if (resources.length >= maxObjects) { capped = true; kept.set(identity, null); continue; }
+    const resource = { resourceKey: retentionDlpKey(family, identity), kind: family, identity, lock: lockState(body), ...observeObject(family, body) };
+    if (rule) resource.parentPolicy = parentPolicyOf(body);
+    kept.set(identity, resource);
     resources.push(resource);
   }
-  return { resources, failure: null, capped, unidentified, unparented, unavailable: null };
+  return { resources, failure: null, capped, unidentified, conflicts, unavailable: null };
+}
+
+/**
+ * Sets each rule's `parentStatus` and returns how many rules have no usable parent:
+ *  - `none`: the rule names no valid policy Guid;
+ *  - `missing`: its own family's policies were read in full and none has that Guid
+ *    (a retention rule naming a DLP policy is missing too);
+ *  - `found`: the policy was read in this run;
+ *  - `unchecked`: the policy family was not read in full (skipped, failed, not
+ *    licensed, capped or with unidentified answers), so absence proves nothing.
+ * `none` and `missing` count as unparented.
+ */
+function checkParents(families, reads) {
+  const complete = new Map();
+  families.forEach((family, index) => {
+    const read = reads[index];
+    if (FAMILIES[family].rule || read.failure || read.unavailable || read.capped || read.unidentified > 0) return;
+    complete.set(family, new Set(read.resources.map((resource) => resource.identity)));
+  });
+  let unparented = 0;
+  families.forEach((family, index) => {
+    const { rule, policyFamily } = FAMILIES[family];
+    if (!rule) return;
+    for (const resource of reads[index].resources) {
+      const policies = complete.get(policyFamily);
+      if (!resource.parentPolicy) resource.parentStatus = 'none';
+      else if (!policies) resource.parentStatus = 'unchecked';
+      else resource.parentStatus = policies.has(resource.parentPolicy) ? 'found' : 'missing';
+      if (resource.parentStatus === 'none' || resource.parentStatus === 'missing') unparented += 1;
+    }
+  });
+  return unparented;
 }
 
 /**
@@ -253,7 +304,8 @@ export async function readRetentionDlp({ powershell = {}, families = FAMILY_NAME
   const unavailable = reads.map((read) => read.unavailable).filter(Boolean);
   const capped = reads.some((read) => read.capped);
   const unidentified = reads.reduce((sum, read) => sum + read.unidentified, 0);
-  const unparented = reads.reduce((sum, read) => sum + read.unparented, 0);
+  const conflicts = reads.flatMap((read) => read.conflicts);
+  const unparented = checkParents(families, reads);
   const statuses = resources.flatMap((entry) => Object.values(entry.fieldCoverage).map((coverage) => coverage.status));
   const fieldCounts = statuses.reduce((counts, status) => ({ ...counts, [status]: (counts[status] ?? 0) + 1 }), {});
   const perFamily = Object.fromEntries(families.map((family, index) => {
@@ -262,12 +314,16 @@ export async function readRetentionDlp({ powershell = {}, families = FAMILY_NAME
     return [family, { status, objects: read.resources.length }];
   }));
   let outcome;
-  // Nothing was read at all: every family failed or was unavailable.
-  if (families.length > 0 && failures.length > 0 && failures.length + unavailable.length === families.length) outcome = 'failed';
+  // Nothing usable was read: no object was kept, and every family failed, was
+  // unavailable, or answered only objects with no identity KEEL trusts (at least one
+  // failed or answered such objects; all-unavailable is not a failure of the read).
+  if (families.length > 0 && resources.length === 0
+    && reads.every((read) => read.failure || read.unavailable || read.unidentified > 0)
+    && reads.some((read) => read.failure || read.unidentified > 0)) outcome = 'failed';
   // A DLP family runs only once its own read is live-qualified, so "not available"
   // later means a lapsed licence or a removed role: those policies are no longer
   // backed up. That is a gap, like a skipped or failed family.
-  else if (failures.length || unavailable.length || skipped.length || capped || unidentified || unparented
+  else if (failures.length || unavailable.length || skipped.length || capped || unidentified || unparented || conflicts.length
     || statuses.some((status) => status !== 'observed')) outcome = 'partial';
   else if (resources.length === 0) outcome = 'complete-empty';
   else outcome = 'complete';
@@ -276,7 +332,7 @@ export async function readRetentionDlp({ powershell = {}, families = FAMILY_NAME
     outcome,
     observedFrom,
     observedTo: now().toISOString(),
-    discovery: { families: perFamily, objects: resources.length, capped, unidentified, unparented, maxObjects, contentRead: false },
+    discovery: { families: perFamily, objects: resources.length, capped, unidentified, unparented, conflicts, maxObjects, contentRead: false },
     resources,
     failures,
     unavailable,
@@ -325,7 +381,7 @@ export async function recordRetentionDlpRun(client, { tenantRef, result }) {
     );
     for (const resource of result.resources ?? []) {
       const meta = { identity: resource.identity, kind: resource.kind, lock: resource.lock };
-      if ('parentPolicy' in resource) meta.parentPolicy = resource.parentPolicy;
+      if ('parentPolicy' in resource) Object.assign(meta, { parentPolicy: resource.parentPolicy, parentStatus: resource.parentStatus });
       await client.query(
         `INSERT INTO workload_observation (collection_id, resource_key, fields, field_coverage)
          VALUES ($1,$2,$3,$4) ON CONFLICT (collection_id, resource_key) DO NOTHING`,

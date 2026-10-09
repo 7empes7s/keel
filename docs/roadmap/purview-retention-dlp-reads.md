@@ -39,8 +39,22 @@ valid Guid is not guessed at: it is counted as `unidentified`, and the run is `p
 
 **Rules keep their parent.** Each rule names its policy in `Policy` (the policy's Guid).
 It is stored as `parentPolicy` on the observation. DLP rules also keep
-`ParentPolicyName`. A rule with no valid parent reference is still stored, but it is
-counted as `unparented` and the run is `partial`, because a restore could not place it.
+`ParentPolicyName`. After every family is read, each rule gets a `parentStatus`:
+- `found`: its policy was read in this run;
+- `missing`: its own policy family (retention policies for a retention rule, DLP
+  policies for a DLP rule) was read in full and has no policy with that Guid. A
+  retention rule that names a DLP policy is `missing` too;
+- `none`: the rule names no valid policy Guid;
+- `unchecked`: the policy family was skipped, failed, not licensed, capped or had
+  answers with no Guid, so a missing parent proves nothing.
+
+A rule that is `missing` or `none` is still stored, but it is counted as `unparented`
+and the run is `partial`, because a restore could not place it.
+
+**Duplicates.** When the same Guid is answered twice, the first copy is kept. If the
+second copy differs on a declared field, the run records a conflict
+(`discovery.conflicts`, with the fields that differ) and is `partial`, because KEEL
+cannot tell which copy is current.
 
 **Fields.** Each family keeps a declared list of fields (`FAMILIES` in
 `engine/collect/workloads/purviewRetentionDlp.mjs`), and everything else is dropped
@@ -80,7 +94,9 @@ reports nothing is `not-reported`, which is not proof that it has no lock.
   allows exactly these four cmdlets, with no parameters, in the Security & Compliance
   session (`$AllowedPurviewRetentionDlp`). A test checks that both lists match.
 - A family that fails is `failed` or `denied`, with the structured error. A successful
-  empty answer is a family with no objects. A run where nothing could be read is `failed`.
+  empty answer is a family with no objects. A run that kept no object is `failed` when
+  every family failed, was not licensed, or answered only objects with no Guid (and at
+  least one did not just say not licensed).
 - **Not licensed is labelled, and it is a gap.** DLP needs a licence that includes
   Microsoft Purview Data Loss Prevention. Without it, or when the app's role no longer
   includes the cmdlet, the session does not expose it (`CommandNotFoundException`), and
@@ -105,17 +121,21 @@ reports nothing is `not-reported`, which is not proof that it has no lock.
 
 ## Proof
 
-`engine/roadmap/purview-retention-dlp.test.mjs` (4 tests) runs against the isolated test
+`engine/roadmap/purview-retention-dlp.test.mjs` (7 tests) runs against the isolated test
 database and a fake container behind the real job spawn path. It checks:
 - the declarations, the probe, both allowlists, and that the label workload is unchanged;
 - that fixture proof never enables a read;
-- identities, parent references, locks, field filtering and redaction;
+- identities, parent references and their lookup, duplicates, the object cap, locks,
+  field filtering and redaction;
 - the not-licensed, denied, crashed and empty cases;
-- activation, persistence and the coverage entry.
+- activation (including DLP rules enabled while DLP policies are not), persistence and
+  the coverage entry.
 
 Mutation checks, each run once and caught by the test: keying by name instead of Guid,
-not counting rules with no parent, counting a not-licensed family as complete or as a
-failure, and running a DLP read whose own row is not enabled.
+not counting rules with no parent, accepting any Guid-shaped parent without looking it
+up, checking parents against a capped policy family, ignoring a conflicting duplicate,
+reporting a run with no usable object as partial, counting a not-licensed family as
+complete or as a failure, and running a DLP read whose own row is not enabled.
 
 The read-only probe (`ops/powershell/probe-workloads.ps1`) runs all four cmdlets in its
 `scc` block. The two policy reads were already there; the two rule reads are new.

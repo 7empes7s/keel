@@ -120,9 +120,15 @@ export const CATALOG = [
 
   // ---------------------------------------------------------------- Intune
   { type: 'deviceConfiguration', path: '/deviceManagement/deviceConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // Issue #155: Graph needs a compliance policy's actions for noncompliance to
+  // create it, and lists them only when expanded.
   { type: 'deviceCompliancePolicy', path: '/deviceManagement/deviceCompliancePolicies', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
+    query: '$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)',
     note: 'Compliance feeds CA. A wrong compliance policy locks users out indirectly.' },
+  // Issue #155: a settings catalog policy's settings are a separate collection,
+  // listed only when expanded; without them the backup holds only the name.
   { type: 'configurationPolicy', path: '/deviceManagement/configurationPolicies', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
+    query: '$expand=settings',
     note: 'Settings catalog. Beta-only; a fidelity risk the spec flags.' },
   { type: 'deviceEnrollmentConfiguration', path: '/deviceManagement/deviceEnrollmentConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'deviceManagementRoleDefinition', path: '/deviceManagement/roleDefinitions', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting' },

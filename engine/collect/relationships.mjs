@@ -132,15 +132,46 @@ export const RELATIONSHIP_FAMILIES = Object.freeze({
 
 /**
  * Intune assignments are ONE family routed by parent type: only these parent
- * types have a registered, pinned endpoint. Any other Intune type (enrollment
- * configurations, intents, autopilot profiles, ...) yields an `unsupported`
- * observation and is never read through a guessed generic endpoint.
+ * types have a registered, pinned endpoint. A type with no assignments
+ * collection (device categories) or with a different shape (Intune role
+ * definitions, whose role assignments name members and scopes, not targets)
+ * yields an `unsupported` observation and is never read through a guessed
+ * generic endpoint.
+ *
+ * Issue #155: every Intune policy type with an `/assignments` collection is
+ * routed. App protection policies are listed together under
+ * /deviceAppManagement/managedAppPolicies, but each subtype keeps its
+ * assignments under its own collection, so `managedAppPolicy` routes by the
+ * parent's @odata.type (`bySubtype`). A subtype without an entry (the
+ * tenant-wide default protection, which has no assignments) is unsupported.
+ * Routes follow the Graph v1.0 and beta references as declared; they are
+ * fixture-tested, not live-qualified (docs/roadmap/intune-restore.md).
  */
+const DEVICE_CONFIG = Object.freeze(['DeviceManagementConfiguration.Read.All']);
+const SERVICE_CONFIG = Object.freeze(['DeviceManagementServiceConfig.Read.All']);
+const APPS = Object.freeze(['DeviceManagementApps.Read.All']);
 const ASSIGNMENT_ROUTES = Object.freeze({
-  deviceConfiguration: { version: 'v1.0', base: '/deviceManagement/deviceConfigurations', requires: ['DeviceManagementConfiguration.Read.All'] },
-  deviceCompliancePolicy: { version: 'v1.0', base: '/deviceManagement/deviceCompliancePolicies', requires: ['DeviceManagementConfiguration.Read.All'] },
-  configurationPolicy: { version: 'beta', base: '/deviceManagement/configurationPolicies', requires: ['DeviceManagementConfiguration.Read.All'] },
-  mobileApp: { version: 'v1.0', base: '/deviceAppManagement/mobileApps', requires: ['DeviceManagementApps.Read.All'] },
+  deviceConfiguration: { version: 'v1.0', base: '/deviceManagement/deviceConfigurations', requires: DEVICE_CONFIG },
+  deviceCompliancePolicy: { version: 'v1.0', base: '/deviceManagement/deviceCompliancePolicies', requires: DEVICE_CONFIG },
+  configurationPolicy: { version: 'beta', base: '/deviceManagement/configurationPolicies', requires: DEVICE_CONFIG },
+  mobileApp: { version: 'v1.0', base: '/deviceAppManagement/mobileApps', requires: APPS },
+  deviceEnrollmentConfiguration: { version: 'v1.0', base: '/deviceManagement/deviceEnrollmentConfigurations', requires: SERVICE_CONFIG },
+  windowsAutopilotDeploymentProfile: { version: 'beta', base: '/deviceManagement/windowsAutopilotDeploymentProfiles', requires: SERVICE_CONFIG },
+  termsAndConditions: { version: 'beta', base: '/deviceManagement/termsAndConditions', requires: SERVICE_CONFIG },
+  deviceManagementIntent: { version: 'beta', base: '/deviceManagement/intents', requires: DEVICE_CONFIG },
+  targetedManagedAppConfiguration: { version: 'v1.0', base: '/deviceAppManagement/targetedManagedAppConfigurations', requires: APPS },
+  mobileAppConfiguration: { version: 'v1.0', base: '/deviceAppManagement/mobileAppConfigurations', requires: APPS },
+  managedAppPolicy: {
+    version: 'v1.0',
+    requires: APPS,
+    bySubtype: Object.freeze({
+      iosManagedAppProtection: '/deviceAppManagement/iosManagedAppProtections',
+      androidManagedAppProtection: '/deviceAppManagement/androidManagedAppProtections',
+      windowsInformationProtectionPolicy: '/deviceAppManagement/windowsInformationProtectionPolicies',
+      mdmWindowsInformationProtectionPolicy: '/deviceAppManagement/mdmWindowsInformationProtectionPolicies',
+      targetedManagedAppConfiguration: '/deviceAppManagement/targetedManagedAppConfigurations',
+    }),
+  },
 });
 
 export const ASSIGNMENT_PARENT_TYPES = Object.freeze(Object.keys(ASSIGNMENT_ROUTES));
@@ -149,13 +180,26 @@ const ASSIGNMENT_FAMILY = Object.freeze({
   family: 'assignment', edgeType: 'assignment', direction: 'direct', project: assignmentProject, source: DOCS,
 });
 
+/** One Intune assignment as an edge; the restore writer compares live assignments with it. */
+export function projectAssignment(item) {
+  return assignmentProject(item);
+}
+
+/** The assignments collection of a parent, or null when none is registered. */
+function assignmentBase(route, subtype) {
+  if (!route) return null;
+  if (!route.bySubtype) return route.base;
+  return route.bySubtype[stripGraph(subtype)] ?? null;
+}
+
 /** The concrete read spec for (family, parent type): a spec, 'unsupported', or null (not applicable). */
-function resolveSpec(familyName, parentType) {
+function resolveSpec(familyName, parentType, subtype = null) {
   if (familyName === 'assignment') {
     const route = ASSIGNMENT_ROUTES[parentType];
-    if (!route) return 'unsupported';
+    const base = assignmentBase(route, subtype);
+    if (!base) return 'unsupported';
     return { ...ASSIGNMENT_FAMILY, parentType, version: route.version, requires: route.requires,
-      pathFor: (id) => `${route.base}/${encodeURIComponent(id)}/assignments` };
+      pathFor: (id) => `${base}/${encodeURIComponent(id)}/assignments` };
   }
   const spec = RELATIONSHIP_FAMILIES[familyName];
   if (!spec) throw new Error(`unknown relationship family ${familyName}`);
@@ -239,7 +283,8 @@ export async function collectRelationships(reader, { tenantRef, parents, familie
     if (!parentSourceId) continue;
     const parentType = parent.type ?? 'group';
     for (const name of families) {
-      const spec = resolveSpec(name, parentType);
+      // An app protection policy's assignments live under its subtype's collection.
+      const spec = resolveSpec(name, parentType, parent.subtype ?? null);
       if (spec === null) continue; // family does not apply to this parent type
       const base = {
         tenantRef, parentType, parentSourceId, parentNaturalKey: parent.naturalKey ?? null,
@@ -251,7 +296,8 @@ export async function collectRelationships(reader, { tenantRef, parents, familie
         observations.push({
           ...base, family: name, edgeType: ASSIGNMENT_FAMILY.edgeType, direction: 'direct', endpoint: null, apiVersion: null,
           startedAt: at, completedAt: at, outcome: 'unsupported', targets: [], itemCount: null, pagesCompleted: null,
-          httpStatus: null, graphCode: null, error: `no registered ${name} endpoint for ${parentType}`,
+          httpStatus: null, graphCode: null,
+          error: `no registered ${name} endpoint for ${parentType}${parent.subtype ? ` (${stripGraph(parent.subtype)})` : ''}`,
         });
         continue;
       }
@@ -403,7 +449,8 @@ export async function loadSnapshotRelationships(client, { snapshotId, families =
   const { rows } = await client.query(
     `SELECT s.id, s.parent_type, s.parent_source_id, s.parent_natural_key, s.family, s.outcome,
             COALESCE((SELECT jsonb_agg(jsonb_build_object('edgeKey', e.edge_key, 'targetId', e.target_source_id,
-                                                          'targetType', e.target_type, 'targetNaturalKey', e.target_natural_key)
+                                                          'targetType', e.target_type, 'targetNaturalKey', e.target_natural_key,
+                                                          'attributes', e.attributes)
                                        ORDER BY e.edge_key)
                         FROM relationship_edge e WHERE e.set_id = s.id AND e.tenant_ref = s.tenant_ref), '[]'::jsonb) AS targets
        FROM relationship_edge_set s

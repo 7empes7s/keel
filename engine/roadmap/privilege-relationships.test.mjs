@@ -115,7 +115,15 @@ test('every family pins endpoint, version and the credential it needs; Intune se
   assert.equal(byPath.get(paths.compliance), 'v1.0');
   assert.equal(byPath.get(paths.settingsCatalog), 'beta');
   assert.equal(byPath.get(paths.app), 'v1.0');
-  assert.equal(calls.length, 4, 'exactly the four registered assignment endpoints are read');
+  // Issue #155: every Intune policy type with an /assignments collection is read.
+  assert.equal(byPath.get(`/deviceManagement/deviceEnrollmentConfigurations/${POLICY}/assignments`), 'v1.0');
+  assert.equal(byPath.get(`/deviceManagement/windowsAutopilotDeploymentProfiles/${POLICY}/assignments`), 'beta');
+  assert.equal(byPath.get(`/deviceManagement/termsAndConditions/${POLICY}/assignments`), 'beta');
+  assert.equal(byPath.get(`/deviceManagement/intents/${POLICY}/assignments`), 'beta');
+  assert.equal(byPath.get(`/deviceAppManagement/targetedManagedAppConfigurations/${POLICY}/assignments`), 'v1.0');
+  assert.equal(byPath.get(`/deviceAppManagement/mobileAppConfigurations/${POLICY}/assignments`), 'v1.0');
+  // An app protection policy with no subtype names no collection, so nothing is read for it.
+  assert.equal(calls.length, ASSIGNMENT_PARENT_TYPES.length - 1, 'exactly the registered assignment endpoints are read');
 });
 
 test('a family only reads parents of its own type', async () => {
@@ -287,13 +295,15 @@ test('an unsupported Intune subtype is never read and never complete', async (t)
   const calls = [];
   const obs = await collectRelationships(fakeReader({}, calls), {
     tenantRef, families: ['assignment'],
-    parents: [{ type: 'deviceEnrollmentConfiguration', sourceId: POLICY }],
+    // Issue #155: enrollment configurations are read now; Intune role
+    // definitions have role assignments of another shape and stay unsupported.
+    parents: [{ type: 'deviceManagementRoleDefinition', sourceId: POLICY }],
   });
   assert.equal(calls.length, 0, 'no generic endpoint is guessed');
   assert.equal(obs[0].outcome, 'unsupported');
   assert.equal(obs[0].itemCount, null);
   const state = await persist(client, tenantRef, obs);
-  const entry = state.entries.get(`deviceEnrollmentConfiguration:${POLICY}|assignment`);
+  const entry = state.entries.get(`deviceManagementRoleDefinition:${POLICY}|assignment`);
   assert.equal(entry.state, 'unknown');
   assert.equal(entry.targets, null);
   const { drift, unverified } = diffRelationships(state, state);
@@ -308,7 +318,7 @@ function tenantReader(routes) {
     async collect(version, path) {
       if (path === '/applications') return ok([{ id: APP, displayName: 'CRM', appId: 'app-1' }]);
       if (path.startsWith('/servicePrincipals?')) return ok([{ id: SP, appId: 'app-1', displayName: 'CRM' }]);
-      if (path.startsWith('/deviceManagement/deviceEnrollmentConfigurations')) return ok([{ id: POLICY, displayName: 'Enroll', '@odata.type': '#microsoft.graph.deviceEnrollmentLimitConfiguration' }]);
+      if (path === '/deviceManagement/roleDefinitions') return ok([{ id: POLICY, displayName: 'Help desk', isBuiltIn: false }]);
       const route = routes[path];
       if (route !== undefined) return Array.isArray(route) ? ok(route) : route;
       return ok([]);
@@ -341,13 +351,13 @@ test('the report never claims relationships for an unsupported subtype', async (
   const tenantRef = 'sha256:unsup-report';
   const result = await collectSnapshot(client, {
     reader: tenantReader({}), tenantRef, tenantId: 'tid',
-    relationships: { families: ['assignment'], parentTypes: ['deviceEnrollmentConfiguration'] },
+    relationships: { families: ['assignment'], parentTypes: ['deviceManagementRoleDefinition'] },
   });
   assert.equal(result.relationships.unsupported, 1);
   const report = await buildCoverageReport(client, { tenantRef, catalog: CATALOG, descriptors: DESCRIPTORS });
-  const enrollment = report.types.find((x) => x.type === 'deviceEnrollmentConfiguration');
-  assert.equal(enrollment.relationshipCompleteness, 'unknown');
-  assert.deepEqual(enrollment.relationships.families.assignment, { current: 0, stale: 0, unknown: 0, unsupported: 1 });
+  const roles = report.types.find((x) => x.type === 'deviceManagementRoleDefinition');
+  assert.equal(roles.relationshipCompleteness, 'unknown');
+  assert.deepEqual(roles.relationships.families.assignment, { current: 0, stale: 0, unknown: 0, unsupported: 1 });
 });
 
 test('wrong-tenant observations are still rejected for the new families', async (t) => {

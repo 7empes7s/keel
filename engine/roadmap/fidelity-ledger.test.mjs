@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 37, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×4 (restore, task-152), application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151)');
+  assert.equal(supported.length, 43, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×4 (restore, task-152), application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151), Intune compliance, configuration and settings catalog create and update (issue #155)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -185,14 +185,15 @@ test('mutation check: proof for a different operation is never accepted', () => 
 
 test('relabelling a type cannot forge a capability or live evidence', () => {
   assert.throws(
-    () => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, deviceConfiguration: { decision: 'automated', reason: 'trust me' } } }),
-    /deviceConfiguration is marked automated but has no registered write capability/,
+    // Issue #155 registered deviceConfiguration; a device category stays manual.
+    () => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, deviceCategory: { decision: 'automated', reason: 'trust me' } } }),
+    /deviceCategory is marked automated but has no registered write capability/,
   );
   assert.throws(
     () => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, group: { decision: 'unknown', reason: 'hide it' } } }),
     /group has a registered write capability but is marked unknown/,
   );
-  assert.equal(capabilityFor('deviceConfiguration', 'update').claim, 'unsupported');
+  assert.equal(capabilityFor('deviceCategory', 'update').claim, 'unsupported');
   const ledger = buildOperationLedger();
   assert.ok(ledger.types.flatMap((row) => row.operations).every((op) => op.live.result === 'none'));
 });
@@ -200,7 +201,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 37);
+  assert.equal(results.length, 43);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);

@@ -80,6 +80,18 @@ SERVER_OWNED.set('user', new Set([
 
 SERVER_OWNED.set('conditionalAccessPolicy', new Set(['templateId']));
 
+// Issue #155: Intune sets these itself (a version counter, whether scope tags
+// apply, computed summaries) and the ids of a policy's child elements (its
+// actions for noncompliance and its settings), which are new on every create.
+// None is written; engine/restore/intuneOperations.mjs strips them from bodies.
+SERVER_OWNED.set('deviceConfiguration', new Set(['version', 'supportsScopeTags']));
+SERVER_OWNED.set('deviceCompliancePolicy', new Set([
+  'version', 'scheduledActionsForRule.id', 'scheduledActionsForRule.scheduledActionConfigurations.id',
+]));
+SERVER_OWNED.set('configurationPolicy', new Set([
+  'creationSource', 'isAssigned', 'priorityMetaData', 'settingCount', 'settings.id',
+]));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

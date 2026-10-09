@@ -39,14 +39,23 @@ export async function snapshotSignInPath(reader, { protectedPrincipalIds }) {
   };
 }
 
-/** A difference is a hard failure. There is intentionally no override. */
-export function compareSignInPaths(before, after) {
+/**
+ * A difference is a hard failure. There is intentionally no override.
+ *
+ * Roadmap task-149: `intendedSections` names sections this run changed ON
+ * PURPOSE through a tenant policy write that read back exactly as written
+ * (authenticationMethodsPolicy, securityDefaults). Only those sections are
+ * left out; any change anywhere else still fails.
+ */
+export function compareSignInPaths(before, after, { intendedSections = [] } = {}) {
   if (isDeepStrictEqual(before, after)) return { allowed: true };
 
+  const intended = new Set(intendedSections);
   const changed = [...new Set([
     ...Object.keys(before ?? {}),
     ...Object.keys(after ?? {}),
-  ])].filter((section) => !isDeepStrictEqual(before?.[section], after?.[section]));
+  ])].filter((section) => !intended.has(section) && !isDeepStrictEqual(before?.[section], after?.[section]));
+  if (changed.length === 0) return { allowed: true, intended: [...intended] };
   return {
     allowed: false,
     reason: `sign-in path changed: ${changed.join(', ')}`,

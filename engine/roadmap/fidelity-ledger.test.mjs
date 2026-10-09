@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 22, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109)');
+  assert.equal(supported.length, 30, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -165,7 +165,7 @@ test('a conditional access update rewrites a reference to the target id and veri
 
 test('mutation check: proof for a different operation is never accepted', () => {
   assert.throws(() => recordRemappingProof('group', 'delete', 'x'), /writes no references/);
-  assert.throws(() => recordRemappingProof('authorizationPolicy', 'update', 'x'), /requires a registered write capability/);
+  assert.throws(() => recordRemappingProof('permissionGrantPolicy', 'update', 'x'), /requires a registered write capability/);
 
   // Live evidence for another operation (or a relabelled one) cannot qualify this one.
   const now = new Date('2026-10-03T00:00:00Z');
@@ -198,7 +198,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 22);
+  assert.equal(results.length, 30);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);
@@ -208,11 +208,11 @@ test('the CLI checks completeness and prints the ledger', async () => {
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(line) };
   assert.equal(await operationsMain({ argv: ['--check'], out }), 0);
-  assert.match(lines[0], /^52 catalogue types, each with an explicit decision and an expansion batch$/);
+  assert.match(lines[0], /^54 catalogue types, each with an explicit decision and an expansion batch$/);
   lines.length = 0;
   assert.equal(await operationsMain({ argv: ['--json'], out }), 0);
   const parsed = JSON.parse(lines[0]);
-  assert.equal(parsed.types.length, 52);
+  assert.equal(parsed.types.length, 54);
   assert.equal(parsed.fixtureHarness, undefined, 'the harness only runs when asked');
 });
 

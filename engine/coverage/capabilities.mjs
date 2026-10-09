@@ -360,6 +360,28 @@ registerAll('groupSetting', '/groupSettings', ['update', 'delete']);
 recordFixtureProof('groupSetting', 'update', 'engine/roadmap/administrative-fidelity.test.mjs');
 recordFixtureProof('groupSetting', 'delete', 'engine/roadmap/administrative-fidelity.test.mjs');
 
+// Roadmap task-149: the tenant-wide Entra security policies. Explicit records
+// (engine/restore/tenantPolicyOperations.mjs) bind each to its route, method and
+// writable fields. Singletons register their own route; a partner registers the
+// partners collection. Only update (and partner create) is registered: a
+// singleton is never created or deleted, and a partner delete is not qualified.
+// The authentication methods policy, security defaults and the authorization
+// policy are written only behind the break-glass lockout gate.
+for (const [resourceType, path] of [
+  ['authorizationPolicy', '/policies/authorizationPolicy'],
+  ['authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy'],
+  ['identitySecurityDefaultsEnforcementPolicy', '/policies/identitySecurityDefaultsEnforcementPolicy'],
+  ['crossTenantAccessPolicy', '/policies/crossTenantAccessPolicy'],
+  ['crossTenantAccessPolicyConfigurationDefault', '/policies/crossTenantAccessPolicy/default'],
+  ['adminConsentRequestPolicy', '/policies/adminConsentRequestPolicy'],
+]) {
+  registerAll(resourceType, path, ['update']);
+  recordFixtureProof(resourceType, 'update', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
+}
+registerAll('crossTenantAccessPolicyPartner', '/policies/crossTenantAccessPolicy/partners', ['create', 'update']);
+recordFixtureProof('crossTenantAccessPolicyPartner', 'create', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
+recordFixtureProof('crossTenantAccessPolicyPartner', 'update', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship

@@ -21,8 +21,20 @@ export const ID_KEY_TYPES = new Set([
   'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'contact',
 ]);
 
+// Tenant singletons: exactly one object per tenant, so the type name is the
+// key. Keyed here, not only in canonicalize.mjs's keyFor(), so a live object
+// read by the reconciliation plan (which calls naturalKeyFor directly) gets
+// the same key as its snapshot (roadmap task-149).
+export const CONSTANT_KEY_TYPES = new Set([
+  'certificateBasedAuthConfiguration', 'adminConsentRequestPolicy',
+  'identitySecurityDefaultsEnforcementPolicy', 'crossTenantAccessPolicyConfigurationDefault',
+]);
+
 export function naturalKeyFor(type, obj, ctx) {
-  if (type === 'certificateBasedAuthConfiguration') return 'certificateBasedAuthConfiguration';
+  if (CONSTANT_KEY_TYPES.has(type)) return type;
+  // A partner has no id or name: Graph identifies it by the partner's tenantId
+  // (see canonicalize.mjs's keyFor()).
+  if (type === 'crossTenantAccessPolicyPartner' && typeof obj?.tenantId === 'string') return obj.tenantId;
   if (ID_KEY_TYPES.has(type)) {
     if (typeof obj.id !== 'string' || obj.id.length === 0) throw new Error(`missing id for ${type}`);
     return obj.id;

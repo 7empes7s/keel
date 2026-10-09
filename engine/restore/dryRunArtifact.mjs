@@ -117,7 +117,9 @@ export function computePlanDigest({
     // checks. Null for every other restore, which keeps their digest.
     ...(incidentRecovery ? { incidentRecovery } : {}),
     // Task-152: turning on a Conditional Access policy binds the restore it
-    // follows, the policy, its live state and the gate verdict. Null otherwise.
+    // follows, the policy, its target id, its from/to state and its body hash.
+    // The gates are not in the digest: they are evaluated again at execution.
+    // Null otherwise.
     ...(conditionalAccessEnforcement ? { conditionalAccessEnforcement } : {}),
   }));
 }

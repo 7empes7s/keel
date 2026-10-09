@@ -132,6 +132,11 @@ export function selectRecoveryMechanism(resource, { deletedLookup = 'not-applica
     return decision(resource, 'delete', { ...proven, idOutcome: 'terminal', retainedId: resource.live?.targetId ?? resource.targetId ?? null });
   }
   if (verb === 'restore-soft-deleted') {
+    if (resource.live?.ambiguous) {
+      return decision(resource, 'refused', {
+        reason: `ambiguous: ${resource.live.candidates?.length ?? 'several'} deleted objects share this name, so KEEL cannot tell which one the backup holds — restore refused and nothing is recreated`,
+      });
+    }
     const deadline = softDeleteDeadline(resource.live?.payload);
     if (!deadline) {
       return decision(resource, 'refused', { reason: 'soft-delete retention deadline is unprovable (no deletedDateTime) — restore refused, and the object is never recreated beside its deleted original' });

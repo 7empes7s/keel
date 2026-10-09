@@ -23,6 +23,9 @@ export const DELETED_ITEM_ROUTES = Object.freeze({
 
 export const SOFT_DELETABLE = new Set(Object.keys(DELETED_ITEM_ROUTES));
 
+// Types whose deleted items are matched by a name that need not be unique.
+const AMBIGUITY_REFUSED = new Set(['conditionalAccessPolicy']);
+
 /** The restore route for a deleted item of this type (directory deleted items by default). */
 export function deletedItemRestorePath(resourceType, deletedItemId) {
   const route = DELETED_ITEM_ROUTES[resourceType];
@@ -68,7 +71,15 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
     }
     for (const object of deleted) {
       const naturalKey = naturalKeyFor(resourceType, object);
-      if (index.get(naturalKey)?.state === 'present') continue;
+      const known = index.get(naturalKey);
+      if (known?.state === 'present') continue;
+      // Task-152: deleted Conditional Access policies are keyed by display name,
+      // so two with one name cannot be told apart. Neither is chosen: the entry
+      // is marked ambiguous and its restore is refused.
+      if (known?.state === 'soft-deleted' && AMBIGUITY_REFUSED.has(resourceType)) {
+        index.set(naturalKey, { ...known, ambiguous: true, candidates: [...(known.candidates ?? [known.deletedItemId]), object.id] });
+        continue;
+      }
       index.set(naturalKey, {
         targetId: object.id,
         payloadHash: canonicalHash(object, resourceType),

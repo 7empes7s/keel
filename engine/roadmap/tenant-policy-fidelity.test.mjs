@@ -33,6 +33,9 @@ const governor = { async acquire() {}, observeRetryAfter() {} };
 const ALLOW = Object.freeze({ evaluate: () => ({ allowed: true, reason: 'test' }) });
 const DENY = Object.freeze({ evaluate: () => ({ allowed: false, reason: 'test says no' }) });
 const PROOF = 'engine/roadmap/tenant-policy-fidelity.test.mjs';
+// Issue #156 added the basic tenant settings to the same records; their proof is its own file.
+const BASIC_SETTINGS_PROOF = 'engine/roadmap/entra-basic-settings.test.mjs';
+const BASIC_SETTINGS = new Set(['organizationalBranding', 'organizationalBrandingLocalization', 'groupLifecyclePolicy', 'authenticationFlowsPolicy']);
 
 /** fakeGraph plus the method, path and body of every write. */
 function recordingGraph({ readOverride = null } = {}) {
@@ -95,7 +98,7 @@ test('every record is a fixture-tested registration; no singleton is created or 
   for (const record of TENANT_POLICY_RECORDS) {
     const capability = capabilityFor(record.resourceType, record.operation);
     assert.equal(capability.claim, 'fixture-tested', `${record.resourceType} ${record.operation}`);
-    assert.equal(capability.proofRef, PROOF);
+    assert.equal(capability.proofRef, BASIC_SETTINGS.has(record.resourceType) ? BASIC_SETTINGS_PROOF : PROOF);
     assert.equal(qualificationFor(record.resourceType).decision, 'automated');
   }
   for (const type of ['authorizationPolicy', 'authenticationMethodsPolicy', 'identitySecurityDefaultsEnforcementPolicy',

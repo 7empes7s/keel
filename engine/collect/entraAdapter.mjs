@@ -6,6 +6,7 @@ import { register, get } from './registry.mjs';
 export const M1_TYPES = DESCRIPTORS.map((d) => d.type);
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
+const DIRECTORY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The graph-native adapter: serves a descriptor's type by reading the
 // tenant-probe CATALOG entry for that type. Read-side only for now — apply /
@@ -16,19 +17,33 @@ function graphNativeAdapter(type) {
   // observation window and pagination state even when the enumeration fails
   // partway. Only precondition violations (unknown type, missing tenantId)
   // throw here; Graph failures are reported, never hidden.
-  async function collectRaw(reader, { tenantId } = {}) {
+  async function collectRaw(reader, { tenantId, organizationId } = {}) {
     const entry = byType.get(type);
     if (!entry) throw new Error(`M1 type ${type} not found in tenant-probe CATALOG`);
-    if (entry.needsOrgId && !tenantId) throw new Error(`collecting ${type} failed: tenantId required`);
-    const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(tenantId)) : entry.path;
+    // Issue #156: the organization id read in this run wins over the configured
+    // tenant id, which may be a domain name rather than the directory's id.
+    const orgId = organizationId ?? tenantId;
+    if (entry.needsOrgId && !orgId) throw new Error(`collecting ${type} failed: tenantId required`);
+    const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(orgId)) : entry.path;
     // Do not append $top: directoryRoleTemplates rejects it. The reader
     // follows Graph's nextLink verbatim and handles singleton responses too.
     const path = catalogReadPath(entry, basePath);
     const startedAt = new Date();
     const result = await reader.collect(entry.version, path, {
       pageCap: entry.pageCap ?? Infinity,
+      ...(entry.acceptLanguage ? { acceptLanguage: entry.acceptLanguage } : {}),
     });
     const completedAt = new Date();
+    // Issue #156: a type Graph answers with 404 when the tenant never set it
+    // up (company branding) is an observed absence, not a failed read. Only a
+    // 404 on the first page counts; any other status is still a failure. The
+    // path must name the directory by its id: a 404 under a domain name or a
+    // wrong value says nothing about the setting, so it stays a failure.
+    if (entry.absentWhenNotFound && result?.error?.status === 404 && !(result.pages > 0) && (!entry.needsOrgId || DIRECTORY_ID.test(orgId))) {
+      return {
+        entry, path, startedAt, completedAt, items: [], pages: 0, status: 404, capped: false, error: null,
+      };
+    }
     return {
       entry,
       path,
@@ -65,7 +80,10 @@ export async function collectM1(reader, scope = {}) {
     const { adapter } = get(type);
     const items = await adapter.collect(reader, context);
     collected.push([type, items]);
-    if (type === 'organization') context.tenantId ??= items[0]?.id;
+    if (type === 'organization') {
+      context.tenantId ??= items[0]?.id;
+      context.organizationId = items[0]?.id ?? context.organizationId;
+    }
   }
   return collected;
 }
@@ -186,7 +204,10 @@ export async function collectWithOutcomes(reader, scope = {}) {
       coverageDigest[type] = { ...outcomeEntry(raw), ...requestCounts(before, reader) };
       if (raw.error === null && !raw.capped && Array.isArray(raw.items)) {
         collected.push([type, raw.items]);
-        if (type === 'organization') context.tenantId ??= raw.items[0]?.id;
+        if (type === 'organization') {
+          context.tenantId ??= raw.items[0]?.id;
+          context.organizationId = raw.items[0]?.id ?? context.organizationId;
+        }
       }
     } catch (error) {
       coverageDigest[type] = {

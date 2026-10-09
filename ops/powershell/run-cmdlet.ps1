@@ -17,9 +17,9 @@
     { ok: false, error: { message, category, errorId } }       exit 1
   A cmdlet error is never reported as an empty success.
 
-  Fixture-tested only through engine/roadmap/exchange-config.test.mjs and
-  engine/roadmap/onedrive-purview.test.mjs (which play this contract); it has not
-  been run against a tenant.
+  Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
+  engine/roadmap/onedrive-purview.test.mjs and engine/roadmap/exchange-mail-flow.test.mjs
+  (which play this contract); it has not been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -44,6 +44,22 @@ $AllowedPurview = @{
     'Get-LabelPolicy' = @()
     'Set-Label'       = @('Identity', 'DisplayName', 'Tooltip', 'Comment')
     'Set-LabelPolicy' = @('Identity', 'AddLabels')
+}
+
+# Issue #153: organization-wide mail flow and protection settings, read in the
+# Exchange Online session with no parameters. Reads only: no Set-, New- or Remove-.
+$AllowedMailFlow = @{
+    'Get-AcceptedDomain'            = @()
+    'Get-RemoteDomain'              = @()
+    'Get-TransportRule'             = @()
+    'Get-InboundConnector'          = @()
+    'Get-OutboundConnector'         = @()
+    'Get-HostedContentFilterPolicy' = @()
+    'Get-AntiPhishPolicy'           = @()
+    'Get-MalwareFilterPolicy'       = @()
+    'Get-DkimSigningConfig'         = @()
+    'Get-SafeLinksPolicy'           = @()
+    'Get-SafeAttachmentPolicy'      = @()
 }
 
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
@@ -73,6 +89,7 @@ $name = [string]$job['cmdlet']
 $module = [string]$job['module']
 # Each cmdlet belongs to exactly one session, and the job's module must match it.
 if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
+elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }

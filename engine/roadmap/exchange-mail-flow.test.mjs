@@ -6,10 +6,11 @@
 //  - no write capability exists for the workload;
 //  - each object is one observation under a stable identity, with declared fields only
 //    and nothing credential-shaped stored;
-//  - an unlicensed Safe Links / Safe Attachments read is an observation, not a failure.
+//  - a Safe Links / Safe Attachments read that stops being available is labelled
+//    not-licensed and makes the run partial: its policies are no longer backed up.
 // Mutation checks:
 //  - key transport rules by name instead of Guid (the rename test fails);
-//  - count a not-licensed family as a failure (the outcome test fails);
+//  - count a not-licensed family as a failure, or as complete (the outcome test fails);
 //  - run a Defender read whose own row is not enabled (the activation test fails).
 //
 // Everything runs against the isolated test database and a fake PowerShell container
@@ -241,6 +242,11 @@ test('every object is one observation under a stable identity, with declared fie
         { ...SAMPLE['Get-TransportRule'][0] },
         { ...SAMPLE['Get-TransportRule'][0], Guid: guid(13), Name: 'Tag partner mail', SetHeaderName: 'X-Partner-Auth', SetHeaderValue: 'Bearer abcdefghijklmnopqrstuvwxyz' },
         { ...SAMPLE['Get-TransportRule'][0], Guid: 'not-a-guid', Name: 'Unidentified' },
+        // An opaque key no shape check would catch, under a credential-named header.
+        {
+          ...SAMPLE['Get-TransportRule'][0], Guid: guid(14), Name: 'Relay key', SetHeaderName: 'X-Api-Key',
+          SetHeaderValue: 's3cr3t-partner-key-9f8a7b6c5d', Description: "If the message... Set the message header 'X-Api-Key' with the value 's3cr3t-partner-key-9f8a7b6c5d'",
+        },
       ],
     },
   });
@@ -253,7 +259,7 @@ test('every object is one observation under a stable identity, with declared fie
   const keys = result.resources.map((resource) => resource.resourceKey);
   assert.deepEqual(keys, [
     'accepted-domain:contoso.test', 'accepted-domain:contoso.onmicrosoft.com', 'remote-domain:*',
-    `transport-rule:${guid(4)}`, `transport-rule:${guid(13)}`,
+    `transport-rule:${guid(4)}`, `transport-rule:${guid(13)}`, `transport-rule:${guid(14)}`,
     `inbound-connector:${guid(5)}`, `outbound-connector:${guid(6)}`, `anti-spam-policy:${guid(7)}`, `anti-phish-policy:${guid(8)}`,
     `anti-malware-policy:${guid(9)}`, 'dkim:contoso.test', `safe-links-policy:${guid(11)}`, `safe-attachment-policy:${guid(12)}`,
   ]);
@@ -274,6 +280,10 @@ test('every object is one observation under a stable identity, with declared fie
   const tagged = result.resources.find((resource) => resource.resourceKey === `transport-rule:${guid(13)}`);
   assert.equal(tagged.fieldCoverage.SetHeaderValue.status, 'redacted');
   assert.ok(!stored.includes('abcdefghijklmnopqrstuvwxyz'));
+  const relay = result.resources.find((resource) => resource.resourceKey === `transport-rule:${guid(14)}`);
+  assert.equal(relay.fieldCoverage.SetHeaderValue.status, 'redacted');
+  assert.equal(relay.fieldCoverage.Description.status, 'redacted');
+  assert.ok(!stored.includes('s3cr3t-partner-key'), 'an opaque key under a credential-named header is never stored');
   // Nothing left that the shared redactor would catch.
   const redaction = { redactedFields: 0, seen: new WeakSet() };
   redactPayload(result.resources.map((resource) => resource.fields), redaction);
@@ -294,15 +304,22 @@ test('every object is one observation under a stable identity, with declared fie
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));
 });
 
-test('an unlicensed Defender family is an observation; other failures are structured gaps', async () => {
+test('a Defender family that is no longer available is labelled, and is a gap; other failures are structured gaps', async () => {
   const unlicensed = fakeExchange({ answers: { 'Get-SafeLinksPolicy': { error: NOT_FOUND('Get-SafeLinksPolicy') }, 'Get-SafeAttachmentPolicy': { error: NOT_FOUND('Get-SafeAttachmentPolicy') } } });
   const result = await readMailFlow({ powershell: unlicensed.powershell, now: () => NOW });
-  assert.equal(result.outcome, 'complete', 'a tenant without Defender for Office 365 has nothing more to back up');
+  assert.equal(result.outcome, 'partial', 'a qualified Defender read that stops working means those policies are no longer backed up');
   assert.deepEqual(result.failures, []);
   assert.deepEqual(result.unavailable.map((item) => [item.family, item.status]), [['safeLinksPolicy', 'not-licensed'], ['safeAttachmentPolicy', 'not-licensed']]);
   assert.match(result.unavailable[0].reason, /Microsoft Defender for Office 365 is not licensed/);
   assert.equal(result.unavailable[0].error.errorId, 'CommandNotFoundException');
   assert.equal(result.discovery.families.safeLinksPolicy.status, 'not-licensed');
+
+  // Nothing read at all is a failure, even when some families say not-licensed.
+  const nothing = Object.fromEntries(FAMILY_NAMES.map((family) => {
+    const { cmdlet } = FAMILIES[family];
+    return [cmdlet, { error: NOT_FOUND(cmdlet) }];
+  }));
+  assert.equal((await readMailFlow({ powershell: fakeExchange({ answers: nothing }).powershell })).outcome, 'failed');
 
   // A core cmdlet that is not found is a failure, not a licence question.
   const missingCore = await readMailFlow({ powershell: fakeExchange({ answers: { 'Get-TransportRule': { error: NOT_FOUND('Get-TransportRule') } } }).powershell });

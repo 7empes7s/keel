@@ -31,6 +31,9 @@ The descriptors cover 11 read operations across 5 workloads. Each records:
 
 Later tasks added more reads. Issue #153 added a sixth workload, `exchange-mail-flow`,
 with eleven cmdlet reads: see [exchange-mail-flow-reads.md](exchange-mail-flow-reads.md).
+Issue #154 added a seventh, `teams-org-policies`, with nine MicrosoftTeams cmdlet reads,
+and moved `teams.meeting-policies` (above) into it: see
+[teams-org-policy-reads.md](teams-org-policy-reads.md).
 
 ### Scope validator
 

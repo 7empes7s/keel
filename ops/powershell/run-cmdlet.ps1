@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   KEEL PowerShell plane: run ONE allowlisted Exchange Online, Security & Compliance
-  (Purview) or PnP cmdlet (roadmap tasks 105 and 106).
+  (Purview), PnP or Microsoft Teams cmdlet (roadmap tasks 105 and 106, issue #154).
 
 .DESCRIPTION
   Reads the job descriptor from $env:KEEL_JOB_JSON:
@@ -18,8 +18,9 @@
   A cmdlet error is never reported as an empty success.
 
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
-  engine/roadmap/onedrive-purview.test.mjs and engine/roadmap/exchange-mail-flow.test.mjs
-  (which play this contract); it has not been run against a tenant.
+  engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs
+  and engine/roadmap/teams-org-policies.test.mjs (which play this contract); it has not
+  been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -62,6 +63,20 @@ $AllowedMailFlow = @{
     'Get-SafeAttachmentPolicy'      = @()
 }
 
+# Issue #154: Teams org-wide policies and tenant configuration, read in the
+# MicrosoftTeams session with no parameters. Reads only: no Set-, New-, Grant- or Remove-.
+$AllowedTeamsPolicy = @{
+    'Get-CsTeamsMeetingPolicy'               = @()
+    'Get-CsTeamsMessagingPolicy'             = @()
+    'Get-CsTeamsAppSetupPolicy'              = @()
+    'Get-CsTeamsAppPermissionPolicy'         = @()
+    'Get-CsTenantFederationConfiguration'    = @()
+    'Get-CsTeamsClientConfiguration'         = @()
+    'Get-CsTeamsGuestMeetingConfiguration'   = @()
+    'Get-CsTeamsGuestMessagingConfiguration' = @()
+    'Get-CsTeamsGuestCallingConfiguration'   = @()
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -92,6 +107,7 @@ if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
+elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
 $params = @{}
 if ($null -ne $job['parameters']) {
@@ -112,6 +128,10 @@ try {
         Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
         $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
         Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
+    } elseif ($session -eq 'teams') {
+        # Same app-only connection as the probe (probe-workloads.ps1, Teams block).
+        Import-Module MicrosoftTeams -ErrorAction Stop | Out-Null
+        Connect-MicrosoftTeams -Certificate $cert -ApplicationId $config.clientId -TenantId $config.tenantId | Out-Null
     } else {
         Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
         if ($session -eq 'ipps') {
@@ -134,5 +154,6 @@ try {
     Out-Failure -Message $record.Exception.Message -Category ([string]$record.CategoryInfo.Category) -ErrorId ([string]$record.FullyQualifiedErrorId)
 } finally {
     if ($session -eq 'pnp') { try { Disconnect-PnPOnline -ErrorAction SilentlyContinue | Out-Null } catch {} }
+    elseif ($session -eq 'teams') { try { Disconnect-MicrosoftTeams -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
     else { try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
 }

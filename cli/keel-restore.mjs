@@ -51,7 +51,8 @@ import { collectRelationships, loadSnapshotRelationships } from '../engine/colle
 import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
-import { planMechanism } from '../engine/restore/recoveryMechanism.mjs';
+import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recoveryMechanism.mjs';
+import { attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
 import { emitCompletionItems } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
@@ -448,6 +449,33 @@ export async function runRestore({
     };
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
     resources = reconciliation.resources;
+    // Issue #155: an Intune policy carries the assignments its backup observed, so
+    // applyWave writes them through /assign; a policy whose only change is its
+    // assignments is planned as an update. Selection scope only, like group edges.
+    if (selection !== undefined && reconciliationResources === undefined) {
+      const intuneParents = resources.filter((resource) => isIntuneGoverned(resource.resourceType) && resource.verb !== 'delete');
+      if (intuneParents.length > 0) {
+        const desiredAssignments = await loadSnapshotRelationshipsFn(client, {
+          snapshotId: sourceSnapshot, families: ['assignment'], parentNaturalKeys: intuneParents.map((resource) => resource.naturalKey),
+        });
+        const livePolicies = intuneParents.filter((resource) => resource.verb === 'noop' && resource.live?.state === 'present'
+          && desiredAssignments.has(`${resource.naturalKey}|assignment`));
+        const liveAssignments = livePolicies.length === 0 ? [] : await collectRelationshipsFn(targetReader, {
+          tenantRef: collectorConfig.tenantId,
+          parents: livePolicies.map((resource) => ({
+            type: resource.resourceType, sourceId: resource.live.targetId, naturalKey: resource.naturalKey,
+            subtype: resource.live.payload?.['@odata.type'] ?? null,
+          })),
+          families: ['assignment'],
+        });
+        resources = attachIntuneAssignments(resources, {
+          desired: desiredAssignments,
+          live: new Map(liveAssignments.map((obs) => [`${obs.parentNaturalKey}|${obs.family}`, obs])),
+          resolve: (naturalKey) => existingTargetIds.get(naturalKey) ?? null,
+          recoveryFor: (resource) => selectRecoveryMechanism(resource),
+        });
+      }
+    }
     // Roadmap task-149: a lockout-sensitive tenant policy (authentication methods,
     // security defaults, authorization policy) is written only when the target's
     // break-glass accounts stay ready under the proposed policy. Loaded only when

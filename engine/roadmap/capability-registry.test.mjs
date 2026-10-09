@@ -51,6 +51,10 @@ const REGISTERED = Object.freeze({
   adminConsentRequestPolicy: ['update'],
   // Roadmap task-150: users are updated and restored in place, never created.
   user: ['update', 'restore-soft-deleted'],
+  // Issue #155: Intune compliance, device configuration and settings catalog.
+  deviceCompliancePolicy: ['create', 'update'],
+  deviceConfiguration: ['create', 'update'],
+  configurationPolicy: ['create', 'update'],
 });
 
 function governor() {

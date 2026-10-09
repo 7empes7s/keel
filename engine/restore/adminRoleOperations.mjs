@@ -9,14 +9,17 @@
  *  - PIM eligible assignments (roleEligibilitySchedule): create only, through
  *    a schedule request with action 'adminAssign' and a justification. The
  *    snapshot's expiry is kept (an "after duration" expiry becomes the same
- *    end date), and an expired schedule is never restored. An eligibility a
+ *    end date), a future start is kept, an expired schedule is never restored,
+ *    and only directory-wide (scope "/") eligibility is written. An eligibility a
  *    principal holds through a group is not written; the group's own
  *    eligibility is. Removal and update are not registered.
  *  - PIM role settings (unifiedRoleManagementPolicy): update of the reviewed
  *    rules only, one PATCH per changed rule: expiration, enablement (MFA,
  *    justification, ticket on activation) and approval. A change that would
- *    weaken protection is reported as a manual step and never written, and an
- *    approval rule is written only when every approver it names still exists.
+ *    weaken protection (approval stages are compared one by one) is withheld,
+ *    never written, and reported as not remediable; an approval rule is
+ *    written only when every stage names an approver and every approver it
+ *    names still exists. A rule is sent with the live rule's target.
  *    Notification and authentication-context rules are reported, not written.
  *
  * Each operation is an explicit record with its route, method, permission and
@@ -241,6 +244,9 @@ export function adminRoleWriteRefusal(resource, verb, { now = new Date() } = {})
     if (desired.appScopeId && desired.appScopeId !== '/') {
       return refusal('failed', 'unsupported: an eligibility scoped to an application (appScopeId) is not restored');
     }
+    if ((desired.directoryScopeId ?? '/') !== '/') {
+      return refusal('failed', `unsupported: an eligibility scoped to ${desired.directoryScopeId} is not restored; only directory-wide (scope "/") eligibility is qualified, and a scope id is never rewritten`);
+    }
     const end = scheduleEnd(desired.scheduleInfo);
     if (end.error) return refusal('failed', `the eligibility schedule cannot be kept: ${end.error}`);
     if (end.end && end.end.getTime() <= now.getTime()) {
@@ -326,11 +332,21 @@ export function roleDefinitionPostStateRefusal(desired, live, fields) {
   return wrong.length > 0 ? `post-state: ${wrong.join(', ')} did not read back as written` : null;
 }
 
-/** The schedule a request asks for: the snapshot's end date, starting now. */
+/** The schedule a request asks for: the snapshot's end date. */
 function requestedExpiration(scheduleInfo) {
   const end = scheduleEnd(scheduleInfo);
   if (end.error) throw new Error(`the eligibility schedule cannot be kept: ${end.error}`);
   return end.end ? { type: 'afterDateTime', endDateTime: end.end.toISOString() } : { type: 'noExpiration' };
+}
+
+/**
+ * When a restored eligibility starts: now, or the snapshot's own start when
+ * that is still in the future, so a future-dated eligibility is never granted
+ * early.
+ */
+function requestedStart(scheduleInfo, now) {
+  const start = Date.parse(scheduleInfo?.startDateTime ?? '');
+  return Number.isNaN(start) || start <= now.getTime() ? now : new Date(start);
 }
 
 /** The roleEligibilityScheduleRequests body for one snapshot eligibility. */
@@ -341,7 +357,7 @@ export function eligibilityRequestBody(desired, { now = new Date() } = {}) {
     principalId: desired.principalId,
     roleDefinitionId: desired.roleDefinitionId,
     directoryScopeId: desired.directoryScopeId ?? '/',
-    scheduleInfo: { startDateTime: now.toISOString(), expiration: requestedExpiration(desired.scheduleInfo) },
+    scheduleInfo: { startDateTime: requestedStart(desired.scheduleInfo, now).toISOString(), expiration: requestedExpiration(desired.scheduleInfo) },
   };
 }
 
@@ -415,10 +431,34 @@ export function ruleWeakening(kind, want, have) {
   for (const flag of ['isApprovalRequired', 'isApprovalRequiredForExtension', 'isRequestorJustificationRequired']) {
     if (hs[flag] === true && ws[flag] !== true) return `it would turn off ${flag}`;
   }
-  if (ws.isApprovalRequired === true && hs.isApprovalRequired === true && (ws.approvalStages ?? []).length < (hs.approvalStages ?? []).length) {
-    return 'it would remove an approval stage';
+  // Stages only protect anything while approval is required on the live side.
+  if (hs.isApprovalRequired !== true) return null;
+  const wantStages = ws.approvalStages ?? [];
+  const haveStages = hs.approvalStages ?? [];
+  if (wantStages.length < haveStages.length) return 'it would remove an approval stage';
+  // Adding stages is stronger; any other mode change is not known to be.
+  if (wantStages.length === haveStages.length && ws.approvalMode !== hs.approvalMode && hs.approvalMode !== 'NoApproval') {
+    return `it would change the approval mode from ${hs.approvalMode ?? 'unset'} to ${ws.approvalMode ?? 'unset'}`;
+  }
+  for (const [index, had] of haveStages.entries()) {
+    const wanted = wantStages[index] ?? {};
+    const stage = `approval stage ${index + 1}`;
+    for (const flag of ['isApproverJustificationRequired', 'isEscalationEnabled']) {
+      if (had?.[flag] === true && wanted?.[flag] !== true) return `it would turn off ${flag} in ${stage}`;
+    }
+    for (const list of ['primaryApprovers', 'escalationApprovers']) {
+      const kept = new Set((wanted?.[list] ?? []).map(approverKey));
+      const removed = (had?.[list] ?? []).map(approverKey).filter((key) => !kept.has(key));
+      if (removed.length > 0) return `it would remove ${list} ${removed.join(', ')} from ${stage}`;
+    }
   }
   return null;
+}
+
+/** One approver, by its kind and id (a user, a group, a manager level). */
+function approverKey(approver) {
+  const id = approver?.userId ?? approver?.groupId ?? approver?.managerLevel ?? approver?.id ?? '';
+  return `${approver?.['@odata.type'] ?? 'approver'}:${String(id).toLowerCase()}`;
 }
 
 /** The users and groups an approval rule names: [{ collection, id }]. */
@@ -436,7 +476,8 @@ export function ruleApprovers(rule) {
 function approvalWithoutApprovers(rule) {
   const setting = rule?.setting ?? {};
   if (setting.isApprovalRequired !== true) return false;
-  return !(setting.approvalStages ?? []).some((stage) => (stage?.primaryApprovers ?? []).length > 0);
+  const stages = setting.approvalStages ?? [];
+  return stages.length === 0 || !stages.every((stage) => (stage?.primaryApprovers ?? []).length > 0);
 }
 
 /**
@@ -444,7 +485,9 @@ function approvalWithoutApprovers(rule) {
  *  - writes:   [{ ruleId, kind, path, body, fields }] — reviewed rules that differ
  *  - withheld: [{ ruleId, reason }] — reviewed rules whose change would weaken protection
  *  - manual:   [ruleId] — other rules that differ, or a rule the live policy lacks
- * Throws when an approval rule would require approval with no approver.
+ * Throws when an approval rule would require approval with a stage that has no
+ * approver. A rule is sent with the live rule's target: a rule id's target is
+ * fixed by Entra, so the snapshot's copy is never written over it.
  */
 export function policyRuleWrites(policyId, desired, live) {
   const liveRules = new Map((live?.rules ?? []).map((rule) => [rule?.id, rule]));
@@ -473,7 +516,7 @@ export function policyRuleWrites(policyId, desired, live) {
       body: {
         '@odata.type': PIM_RULE_KINDS[kind].odataType,
         id: rule.id,
-        ...(rule.target ? { target: withoutAnnotations(rule.target) } : {}),
+        ...(current.target ? { target: withoutAnnotations(current.target) } : {}),
         ...ruleFields(kind, rule),
       },
       fields: PIM_RULE_KINDS[kind].fields.filter((field) => Object.hasOwn(rule, field)),
@@ -511,7 +554,8 @@ export function writtenReferences(resource) {
   if (resource.resourceType === 'unifiedRoleManagementPolicy') {
     const reviewed = new Set((resource.payload?.rules ?? []).map((rule, index) => (ruleKind(rule) ? index : null)).filter((index) => index !== null));
     return references.filter((ref) => {
-      const match = /^rules\[(\d+)\]\./.exec(ref.field);
+      // The live target is sent, never the snapshot's, so its references are not.
+      const match = /^rules\[(\d+)\]\.(?!target(?:[.[]|$))/.exec(ref.field);
       return match !== null && reviewed.has(Number(match[1]));
     });
   }
@@ -537,6 +581,7 @@ export function buildAdminRoleLedger() {
       'role delete, eligibility removal and eligibility update are not registered',
       'an eligibility held through a group is restored on the group, not per member',
       'an expired eligibility is not restored',
+      'an eligibility scoped below the directory (directoryScopeId other than "/") is not restored',
       'a PIM rule change that weakens protection is reported, never written',
       'notification and authentication-context rules are reported, never written',
     ]),

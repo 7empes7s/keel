@@ -329,6 +329,24 @@ test('an after-duration eligibility keeps the same end date; a permanent one sta
   assert.deepEqual(permanent.bodies[0].body.scheduleInfo.expiration, { type: 'noExpiration' });
 });
 
+test('mutation: a future-dated eligibility starts on its own start date, never early', async () => {
+  const graph = recordingGraph();
+  const future = { ...eligibility, scheduleInfo: { startDateTime: '2026-12-01T00:00:00Z', expiration: { type: 'afterDuration', duration: 'P30D' } } };
+  const result = await run(graph, [eligibilityCreate(future)]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies[0].body.scheduleInfo, {
+    startDateTime: '2026-12-01T00:00:00.000Z', expiration: { type: 'afterDateTime', endDateTime: '2026-12-31T00:00:00.000Z' },
+  });
+});
+
+test('mutation: an eligibility scoped below the directory is refused, never sent with an unrewritten scope', async () => {
+  const graph = recordingGraph();
+  const result = await run(graph, [eligibilityCreate({ ...eligibility, directoryScopeId: '/administrativeUnits/au-1' })]);
+  assert.match(result.failed[0].error, /unsupported: an eligibility scoped to \/administrativeUnits\/au-1 is not restored; only directory-wide/);
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(graph.reads.length, 0);
+});
+
 test('mutation: an expired eligibility is not restored, and an unreadable schedule is refused', async () => {
   const graph = recordingGraph();
   let result = await run(graph, [eligibilityCreate({ ...eligibility, scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2026-10-08T00:00:00Z' } } })]);
@@ -428,6 +446,18 @@ test('PIM settings: only the changed reviewed rules are PATCHed, each with its t
     rules: ['Enablement_EndUser_Assignment'], withheld: [], manual: ['Notification_Admin_EndUser_Assignment'],
   });
   assert.deepEqual(graph.objects.get(`/policies/roleManagementPolicies/${POLICY_ID}`).rules[0].enabledRules, ['MultiFactorAuthentication', 'Justification']);
+  // The notification rule left as it is shows as a gap next to what was applied.
+  assert.equal(result.notRemediable.length, 1);
+  assert.equal(result.notRemediable[0].status, 'not-remediable');
+  assert.deepEqual(result.notRemediable[0].manual, ['Notification_Admin_EndUser_Assignment']);
+});
+
+test('a rule is sent with the live rule target, never the snapshot copy', async () => {
+  const graph = recordingGraph();
+  const desired = policy([{ ...enablement(['MultiFactorAuthentication']), target: target('Admin', 'Eligibility') }]);
+  const result = await run(graph, [plannedPolicyUpdate(graph, desired, policy([enablement([])]))]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies[0].body.target, target('EndUser', 'Assignment'));
 });
 
 test('mutation: a rule change that weakens protection is withheld and reported, never written', async () => {
@@ -437,10 +467,20 @@ test('mutation: a rule change that weakens protection is withheld and reported, 
   const live = policy([enablement(['MultiFactorAuthentication', 'Justification']), expiration(true, 'PT8H'), approval(true)]);
   const result = await run(graph, [plannedPolicyUpdate(graph, weaker, live)]);
   assert.equal(graph.bodies.length, 0);
-  assert.deepEqual(result.applied[0].changes.withheld.map((entry) => entry.ruleId), [
+  // Every differing rule withheld: the run shows the gap, never a clean success.
+  assert.deepEqual(result.applied, []);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.notRemediable.length, 1);
+  assert.equal(result.notRemediable[0].naturalKey, `unifiedRoleManagementPolicy:${POLICY_ID}`);
+  assert.equal(result.notRemediable[0].status, 'not-remediable');
+  assert.deepEqual(result.notRemediable[0].withheld.map((entry) => entry.ruleId), [
     'Enablement_EndUser_Assignment', 'Expiration_EndUser_Assignment', 'Approval_EndUser_Assignment',
   ]);
-  assert.match(result.applied[0].changes.withheld[0].reason, /stop requiring MultiFactorAuthentication/);
+  assert.match(result.notRemediable[0].withheld[0].reason, /stop requiring MultiFactorAuthentication/);
+  // The dry run reports the same gap.
+  const dry = await run(recordingGraph(), [plannedPolicyUpdate(recordingGraph(), weaker, live)], { mode: 'dry-run' });
+  assert.deepEqual(dry.applied, []);
+  assert.equal(dry.notRemediable[0].withheld.length, 3);
 
   // Mixed: a longer maximum is withheld while MFA is put back.
   const mixed = recordingGraph();
@@ -449,6 +489,58 @@ test('mutation: a rule change that weakens protection is withheld and reported, 
   const outcome = await run(mixed, [plannedPolicyUpdate(mixed, desired, current)]);
   assert.deepEqual(mixed.bodies.map((write) => write.body.id), ['Enablement_EndUser_Assignment']);
   assert.match(outcome.applied[0].changes.withheld[0].reason, /raise the maximum duration from PT8H to PT10H/);
+  assert.deepEqual(outcome.notRemediable[0].withheld.map((entry) => entry.ruleId), ['Expiration_EndUser_Assignment']);
+});
+
+const OTHER_APPROVER = '1b2c3d4e-5f6a-4b7c-8d9e-0f1a2b3c4d5e';
+const user = (userId) => ({ '@odata.type': '#microsoft.graph.singleUser', userId });
+const stage = (overrides = {}) => ({
+  approvalStageTimeOutInDays: 1, isApproverJustificationRequired: true, escalationTimeInMinutes: 0, isEscalationEnabled: false,
+  primaryApprovers: [user(APPROVER)], escalationApprovers: [], ...overrides,
+});
+const approvalWith = (approvalMode, approvalStages) => ({ ...approval(true), setting: { ...approval(true).setting, approvalMode, approvalStages } });
+
+test('mutation: approval stages are compared one by one; a weaker stage is withheld', () => {
+  const have = approvalWith('Serial', [stage({ isEscalationEnabled: true, escalationApprovers: [user(OTHER_APPROVER)] }), stage()]);
+  const weaker = [
+    [approvalWith('Serial', [stage({ isEscalationEnabled: true, escalationApprovers: [user(OTHER_APPROVER)] }), stage({ isApproverJustificationRequired: false })]),
+      /turn off isApproverJustificationRequired in approval stage 2/],
+    [approvalWith('Serial', [stage({ isEscalationEnabled: false, escalationApprovers: [user(OTHER_APPROVER)] }), stage()]),
+      /turn off isEscalationEnabled in approval stage 1/],
+    [approvalWith('Serial', [stage({ isEscalationEnabled: true, escalationApprovers: [] }), stage()]),
+      /remove escalationApprovers .*1b2c3d4e.* from approval stage 1/],
+    [approvalWith('Serial', [stage({ isEscalationEnabled: true, escalationApprovers: [user(OTHER_APPROVER)] }), stage({ primaryApprovers: [user(OTHER_APPROVER)] })]),
+      /remove primaryApprovers .*9a8b7c6d.* from approval stage 2/],
+    [approvalWith('Parallel', [stage({ isEscalationEnabled: true, escalationApprovers: [user(OTHER_APPROVER)] }), stage()]),
+      /change the approval mode from Serial to Parallel/],
+  ];
+  for (const [want, reason] of weaker) assert.match(ruleWeakening('approval', want, have), reason);
+
+  // Strictly stronger: an added approver, a flag turned on, an extra stage with a new mode.
+  const single = approvalWith('SingleStage', [stage()]);
+  assert.equal(ruleWeakening('approval', approvalWith('SingleStage', [stage({ primaryApprovers: [user(APPROVER), user(OTHER_APPROVER)] })]), single), null);
+  assert.equal(ruleWeakening('approval', approvalWith('SingleStage', [stage({ isEscalationEnabled: true, escalationApprovers: [user(OTHER_APPROVER)] })]), single), null);
+  assert.equal(ruleWeakening('approval', approvalWith('Serial', [stage(), stage({ primaryApprovers: [user(OTHER_APPROVER)] })]), single), null);
+});
+
+test('mutation: a stage weakening is withheld through applyWave and never written', async () => {
+  const graph = recordingGraph();
+  graph.objects.set(`/users/${APPROVER}`, { id: APPROVER });
+  graph.objects.set(`/users/${OTHER_APPROVER}`, { id: OTHER_APPROVER });
+  const live = policy([approvalWith('SingleStage', [stage({ primaryApprovers: [user(APPROVER), user(OTHER_APPROVER)] })])]);
+  const result = await run(graph, [plannedPolicyUpdate(graph, policy([approvalWith('SingleStage', [stage()])]), live)]);
+  assert.equal(graph.bodies.length, 0);
+  assert.deepEqual(result.applied, []);
+  assert.match(result.notRemediable[0].withheld[0].reason, /remove primaryApprovers .*1b2c3d4e.* from approval stage 1/);
+});
+
+test('mutation: approval with any stage that names no approver is refused', async () => {
+  const graph = recordingGraph();
+  graph.objects.set(`/users/${APPROVER}`, { id: APPROVER });
+  const desired = policy([approvalWith('Serial', [stage(), stage({ primaryApprovers: [] })])]);
+  const result = await run(graph, [plannedPolicyUpdate(graph, desired, policy([approval(false)]))]);
+  assert.match(result.failed[0].error, /approval would be required with no approver/);
+  assert.equal(graph.bodies.length, 0);
 });
 
 test('mutation: approval is written only when every approver still exists', async () => {

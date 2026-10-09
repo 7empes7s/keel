@@ -447,6 +447,7 @@ export async function applyWave(writer, governor, wave, {
       });
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
+      if (outcome.notRemediable) notRemediable.push(outcome.notRemediable);
       continue;
     }
 
@@ -1108,7 +1109,20 @@ async function applyRolePolicyUpdate(writer, resource, desired, {
     return { failed: { naturalKey, error: `refused: ${err.message}` } };
   }
   const changes = { rules: plan.writes.map((write) => write.ruleId), withheld: plan.withheld, manual: plan.manual };
-  if (plan.writes.length === 0 || mode === 'dry-run') return { applied: { naturalKey, targetId: policyId, changes } };
+  // A rule left as it is (withheld or manual) is a gap the run must show: it is
+  // reported as not remediable next to whatever was applied, never as a clean
+  // success.
+  const gap = plan.withheld.length > 0 || plan.manual.length > 0
+    ? {
+      naturalKey, status: 'not-remediable', targetId: policyId, withheld: plan.withheld, manual: plan.manual,
+      reason: `${plan.withheld.length + plan.manual.length} PIM rule(s) left for a person to change`,
+    }
+    : null;
+  const outcome = (result) => (gap ? { ...result, notRemediable: gap } : result);
+  if (mode === 'dry-run' || plan.writes.length === 0) {
+    // Nothing to write and nothing left over: the policy already matches.
+    return outcome(plan.writes.length > 0 || !gap ? { applied: { naturalKey, targetId: policyId, changes } } : {});
+  }
 
   // An approval rule naming an approver who is gone would block activation.
   for (const write of plan.writes.filter((candidate) => candidate.kind === 'approval')) {
@@ -1148,7 +1162,7 @@ async function applyRolePolicyUpdate(writer, resource, desired, {
     return { failed: { naturalKey, error: refusal } };
   }
   await noteOutcome(rollbackClient, journal, 'succeeded', { postState: after });
-  return { applied: { naturalKey, targetId: policyId, changes } };
+  return outcome({ applied: { naturalKey, targetId: policyId, changes } });
 }
 
 /**

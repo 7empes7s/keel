@@ -47,9 +47,15 @@ permissions is verified as granted to the KEEL Restorer.
   is read and compared; a different role there is a conflict, not an overwrite.
 - **Eligibility is requested, never forced.** A schedule request with
   `adminAssign` and the justification "Restored by KEEL from a backup snapshot".
-  The snapshot's end date is kept (an "after duration" expiry becomes the same
-  end date; a permanent one stays permanent). An expired eligibility is skipped.
+  It starts now, or on the snapshot's own start date when that is still in the
+  future, so a future-dated eligibility is never granted early. The snapshot's
+  end date is kept (an "after duration" expiry becomes the same end date; a
+  permanent one stays permanent). An expired eligibility is skipped.
   An unreadable schedule, an app scope or a missing principal or role fails.
+- **Directory-wide eligibility only.** An eligibility scoped below the directory
+  (an administrative unit or any `directoryScopeId` other than `/`) is refused
+  with a clear reason: scoped eligibility is not qualified, and the scope id is
+  never rewritten.
 - **No duplicate requests.** Before requesting, the target is searched by
   principal, role and directory scope. A match is reported as applied with no
   write. A failed search is never read as "absent": nothing is requested.
@@ -61,20 +67,36 @@ permissions is verified as granted to the KEEL Restorer.
   expiration (eligible and active admin assignment, end-user activation),
   enablement (MFA, justification, ticket on activation, and the same rule for
   admin assignments) and end-user approval. A change that would weaken
-  protection (expiry no longer required, a longer or uncomparable duration, a
-  dropped enablement rule, approval switched off, fewer approval stages) is
-  shown as a manual step and never written.
+  protection is withheld and never written:
+  - expiry no longer required, or a longer or uncomparable maximum duration;
+  - a dropped enablement rule;
+  - approval, approval for extension or requester justification switched off;
+  - fewer approval stages;
+  - a different approval mode with the same number of stages;
+  - in any stage: approver justification or escalation switched off, or a
+    primary or escalation approver removed.
+  Only a strictly stronger change is written: more stages, added approvers, a
+  flag switched on.
+- **A withheld or manual rule shows as a gap.** The policy is reported in the
+  run's `notRemediable` list (status `not-remediable`, with the withheld rules
+  and their reasons, and the manual rules), next to whatever rules were applied.
+  When every differing rule is withheld, nothing is reported as applied. The dry
+  run reports the same gap.
 - **Approvers must exist.** Each user or group named as an approver is read in
-  the target before anything is written. Approval required with no approver is
-  refused. Notification and authentication-context rules are reported as
-  manual.
+  the target before anything is written. Approval required with any stage that
+  names no approver is refused. Notification and authentication-context rules
+  are reported as manual.
+- **Each rule is sent with the live rule's target.** A rule id's target is fixed
+  by Entra, so the snapshot's copy is never written over it and references
+  inside it are never resolved.
 - **Only the policy for the whole directory** (`scopeId '/'`, scopeType
   `DirectoryRole`) is written, on both the snapshot and the live side.
 - **Reference rewriting is limited to what is sent.** For eligibility, only
-  the principal and role ids; for a policy, only ids inside the reviewed rules.
-  A server field such as `lastModifiedBy` is never resolved and never blocks.
-  A group or custom role recreated in the same run is remapped for eligibility
-  (remapping proof recorded for eligibility create only).
+  the principal and role ids; for a policy, only ids inside the reviewed rules
+  (outside their targets). A server field such as `lastModifiedBy` is never
+  resolved and never blocks. A group or custom role recreated in the same run
+  is remapped for eligibility (remapping proof recorded for eligibility create
+  only).
 - **Dry run makes no reads.** It reports the field and action changes for a role,
   the request for an eligibility, and the rules that would be written, withheld
   or left manual for a policy.

@@ -7,7 +7,8 @@
  *  - Teams settings and membership;
  *  - Exchange mailbox settings;
  *  - OneDrive site-level settings;
- *  - Purview label definitions and their publication.
+ *  - Purview label definitions and their publication;
+ *  - Exchange organization-wide mail flow and protection settings (issue #153).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -36,6 +37,7 @@
 export const WORKLOAD_CONTRACT_VERSION = 1;
 export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
+  'exchange-mail-flow',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -211,6 +213,30 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'none', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc('/en-us/powershell/module/exchange/get-labelpolicy'),
   },
+  // Issue #153: the organization's mail flow and protection settings. Each is a
+  // whole-tenant list of configuration objects, read with no parameters. The last
+  // two need Microsoft Defender for Office 365; engine/collect/workloads/mailFlow.mjs
+  // treats them as optional so an unlicensed tenant still backs up the rest.
+  ...[
+    ['mailflow.accepted-domains', 'Accepted domains', 'Get-AcceptedDomain'],
+    ['mailflow.remote-domains', 'Remote domains', 'Get-RemoteDomain'],
+    ['mailflow.transport-rules', 'Mail flow (transport) rules', 'Get-TransportRule'],
+    ['mailflow.inbound-connectors', 'Inbound connectors', 'Get-InboundConnector'],
+    ['mailflow.outbound-connectors', 'Outbound connectors', 'Get-OutboundConnector'],
+    ['mailflow.anti-spam-policies', 'Anti-spam (hosted content filter) policies', 'Get-HostedContentFilterPolicy'],
+    ['mailflow.anti-phish-policies', 'Anti-phishing policies', 'Get-AntiPhishPolicy'],
+    ['mailflow.anti-malware-policies', 'Anti-malware policies', 'Get-MalwareFilterPolicy'],
+    ['mailflow.dkim-signing', 'DKIM signing configuration', 'Get-DkimSigningConfig'],
+    ['mailflow.safe-links-policies', 'Safe Links policies', 'Get-SafeLinksPolicy'],
+    ['mailflow.safe-attachment-policies', 'Safe Attachments policies', 'Get-SafeAttachmentPolicy'],
+  ].map(([id, resource, name]) => ({
+    id, workload: 'exchange-mail-flow', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
 ].map((descriptor) => Object.freeze(descriptor)));
 
 function graphSegments(endpoint) {

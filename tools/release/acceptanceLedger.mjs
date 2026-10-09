@@ -49,6 +49,12 @@ export const LIVE_ACCEPTANCE_GATES = Object.freeze([
 ].map((entry) => Object.freeze(entry)));
 
 const OBJECTIVES_SOURCE = 'docs/release/objectives-source.md';
+/**
+ * Objective gaps hold readiness unless the ledger run passes --accept-objective-gaps.
+ * Accepted gaps are listed by name and reason, never counted as qualified, and a
+ * failed or pending live gate still holds or blocks its objective.
+ */
+export const OBJECTIVE_GAPS_DECISION = 'accepted by operator decision 2026-10-09 09:05 UTC';
 const tasks = (...ids) => ids.map((id) => `task-${id}`);
 const roadmap = (...names) => names.map((name) => `engine/roadmap/${name}.test.mjs`);
 const NO_LIVE_GATE = 'no live gate is defined for it, so it is fixture-tested only';
@@ -218,6 +224,7 @@ export function buildReleaseLedger({
 
   const liveByGate = new Map(liveRows.map((row) => [row.gate, row]));
   const objectives = RELEASE_OBJECTIVES.map((objective) => ({ ...objective, status: objectiveStatus(objective, liveByGate) }));
+  const acceptedObjectiveGaps = [];
   for (const objective of objectives) {
     if (objective.status === 'qualified') continue;
     if (objective.status === 'failed') {
@@ -226,6 +233,8 @@ export function buildReleaseLedger({
     } else if (objective.status === 'pending' || !objectiveGapsAllowed) {
       pending = true;
       reasons.push(`objective ${objective.id} is ${objective.status}`);
+    } else {
+      acceptedObjectiveGaps.push(`objective ${objective.id} is a gap, ${OBJECTIVE_GAPS_DECISION}: ${objective.gap}`);
     }
   }
 
@@ -234,7 +243,7 @@ export function buildReleaseLedger({
     contractVersion: LEDGER_CONTRACT_VERSION,
     generatedAt: now.toISOString(),
     build,
-    readiness: { label, reasons, acceptedGaps },
+    readiness: { label, reasons, acceptedGaps, acceptedObjectiveGaps, objectiveGapsAccepted: objectiveGapsAllowed },
     fixture: fixtureValid
       ? { evidenceLevel: 'fixture-tested', synthetic: true, build: fixture.build ?? null, ranAt: fixture.ranAt ?? null,
         journeys: fixture.journeys }
@@ -262,6 +271,7 @@ export function runLedgerCommand(argv = process.argv, { env = process.env, logge
     hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null,
     tenantRef: arg(argv, 'tenant', env.KEEL_QUALIFICATION_TENANT_REF ?? null),
     build: arg(argv, 'build', env.KEEL_QUALIFICATION_BUILD ?? null),
+    objectiveGapsAllowed: argv.includes('--accept-objective-gaps'),
   });
   const out = arg(argv, 'out');
   if (out) writeFileSync(out, `${JSON.stringify(ledger, null, 2)}\n`);

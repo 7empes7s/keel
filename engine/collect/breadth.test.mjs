@@ -133,13 +133,13 @@ try {
     return { items: path === '/organization' ? [{ id: tenantId, displayName: 'Fixture' }] : [] };
   } };
   const all = await collectM1(reader);
-  assert.equal(all.length, 57);
+  assert.equal(all.length, 62);
   assert.ok(paths.includes(`/organization/${tenantId}/certificateBasedAuthConfiguration`));
   const before = paths.length;
   await assert.rejects(() => get('certificateBasedAuthConfiguration').adapter.collect(reader), /tenantId required/);
   assert.equal(paths.length, before, 'never send an unresolved organization placeholder');
   const empty = await collectWithOutcomes({ collect: async () => ({ items: [] }) }, { tenantId });
-  assert.equal(Object.keys(empty.coverageDigest).length, 57);
+  assert.equal(Object.keys(empty.coverageDigest).length, 62);
   for (const entry of Object.values(empty.coverageDigest)) {
     assert.equal(entry.outcome, 'complete-empty', 'a successful empty read is complete-empty, never a failure');
     assert.equal(entry.itemCount, 0);

@@ -141,10 +141,12 @@ async function readAfterWrite(writer, version, path, isStale, {
   attempts = 6,
   delayMs = 3000,
   retryOperation = (operation) => operation(),
+  // Issue #156: request headers for the read (company branding's language).
+  headers = null,
 } = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await retryOperation(() => writer.read(version, path));
+    result = await retryOperation(() => (headers ? writer.read(version, path, { headers }) : writer.read(version, path)));
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
@@ -463,7 +465,7 @@ export async function applyWave(writer, governor, wave, {
 
     if (isTenantPolicyGoverned(resource.resourceType)) {
       const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
-        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
       });
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
@@ -962,7 +964,7 @@ export async function applyWave(writer, governor, wave, {
  * sign-in path gate does not count them as unexpected.
  */
 async function applyTenantPolicyWrite(writer, resource, verb, {
-  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
 }) {
   const { naturalKey } = resource;
   const entry = tenantPolicyRecordFor(resource.resourceType, verb);
@@ -980,11 +982,11 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   let methods;
   let readPath;
   try {
-    root = tenantPolicyRootWrite(entry, resource, desired);
+    root = tenantPolicyRootWrite(entry, resource, desired, { targetTenant });
     methods = entry.methodConfigurations ? methodConfigurationWrites(resource, desired) : [];
     readPath = verb === 'create'
-      ? tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource)
-      : tenantPolicyRoute(entry, resource);
+      ? tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource, { targetTenant })
+      : tenantPolicyRoute(entry, resource, { targetTenant });
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }
@@ -1010,7 +1012,9 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 
   for (const write of writes) {
-    const result = await retryOperation(() => writer.write('v1.0', write.path, { method: write.method, body: write.body }));
+    const result = await retryOperation(() => writer.write('v1.0', write.path, {
+      method: write.method, body: write.body, ...(entry.requestHeaders ? { headers: entry.requestHeaders } : {}),
+    }));
     if (!result.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
       return { failed: graphFailure(naturalKey, result) };
@@ -1019,7 +1023,8 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
 
   const written = { fields: root?.fields ?? [], methods: methods.map((write) => write.methodId) };
   const reRead = await readAfterWrite(writer, 'v1.0', readPath,
-    (r) => isNotFound(r) || (r?.ok === true && tenantPolicyPostStateRefusal(entry, desired, r.body, written) !== null), { retryOperation });
+    (r) => isNotFound(r) || (r?.ok === true && tenantPolicyPostStateRefusal(entry, desired, r.body, written) !== null),
+    { retryOperation, headers: entry.requestHeaders ?? null });
   if (reRead?.ok === false) {
     await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };

@@ -1,5 +1,5 @@
 /**
- * Graph-native ResourceTypeDescriptors (spec §7.1) for all 57 catalogue types.
+ * Graph-native ResourceTypeDescriptors (spec §7.1) for all 62 catalogue types.
  * Registration is static; the adapter id is a declaration, never a fallback.
  * criticality / blastRadius come from CATALOG and fidelity from FIDELITY.
  *
@@ -66,6 +66,11 @@ const DETAILS = {
   // per tenant, so a constant key can never collide.
   identitySecurityDefaultsEnforcementPolicy: { naturalKeyStrategy: 'constant' },
   crossTenantAccessPolicyConfigurationDefault: { naturalKeyStrategy: 'constant' },
+  // Issue #156: three more tenant singletons (constant keys); a branding
+  // localization and the group expiration policy are keyed by id (ID_KEY_TYPES).
+  organizationalBranding: { naturalKeyStrategy: 'constant' },
+  deviceRegistrationPolicy: { naturalKeyStrategy: 'constant' },
+  authenticationFlowsPolicy: { naturalKeyStrategy: 'constant' },
   // Measured 2026-09-08, zero collisions and zero GUID-fallback for every
   // object of these types in the probe tenant (see the natural-key widening
   // report). All genuinely have a human-assigned displayName or name in
@@ -191,8 +196,19 @@ const WIDENED_2026_10_09_ROLES = [
   'roleAssignmentSchedule',
 ];
 
+// Issue #156: basic tenant settings that were never backed up. An empty list,
+// or a 404 for a tenant with no company branding, is a valid observation.
+const BASIC_SETTINGS_2026_10_09 = [
+  'organizationalBranding',
+  'organizationalBrandingLocalization',
+  'groupLifecyclePolicy',
+  'deviceRegistrationPolicy',
+  'authenticationFlowsPolicy',
+];
+
 export const DESCRIPTORS = [
   ...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES, ...WIDENED_2026_10_09, ...WIDENED_2026_10_09_ROLES,
+  ...BASIC_SETTINGS_2026_10_09,
 ].map(describe);
 
 // Retain the metadata export used by coverage consumers. Every type is now collected.

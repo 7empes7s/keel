@@ -30,7 +30,8 @@ import {
   JOURNEYS, UNVERIFIED_STATES, assessJourney, journeyFixtureRecord, runAllJourneys, runJourney,
 } from '../../tools/release/journeys.mjs';
 import {
-  LIVE_ACCEPTANCE_GATES, RELEASE_OBJECTIVES, buildReleaseLedger, classifyLiveRecord, loadLiveRecords,
+  LIVE_ACCEPTANCE_GATES, OBJECTIVE_GAPS_DECISION, RELEASE_OBJECTIVES, buildReleaseLedger, classifyLiveRecord, loadLiveRecords,
+  runLedgerCommand,
 } from '../../tools/release/acceptanceLedger.mjs';
 import { signEvidence } from '../../tools/release/qualification.mjs';
 
@@ -408,6 +409,41 @@ test('each objective carries the owners the 2026-09-15 final review gives it, an
   const teamsPending = qualified.map((entry) => (entry.gate === 'teams-live-acceptance' ? { ...entry, status: 'pending' } : entry));
   const d4 = buildReleaseLedger({ fixture: passingFixture(), live: teamsPending, hmacKey: null }).objectives.find((objective) => objective.id === 'D4');
   assert.equal(d4.status, 'pending');
+});
+
+test('accepted objective gaps are listed by name, never qualified, and only with the explicit flag', () => {
+  const qualified = LIVE_ACCEPTANCE_GATES.map((gate) => ({ gate: gate.gate, task: gate.task, status: 'live-qualified', failures: [] }));
+  const gapIds = RELEASE_OBJECTIVES.filter((objective) => objective.gap).map((objective) => objective.id);
+  assert.equal(gapIds.length, 11);
+  // Without the flag the gaps hold readiness.
+  const held = buildReleaseLedger({ fixture: passingFixture(), live: qualified, hmacKey: null });
+  assert.equal(held.readiness.label, 'pending');
+  assert.equal(held.readiness.objectiveGapsAccepted, false);
+  assert.deepEqual(held.readiness.acceptedObjectiveGaps, []);
+  // With it, readiness is ready and every gap is named with its reason and the decision.
+  const accepted = buildReleaseLedger({ fixture: passingFixture(), live: qualified, hmacKey: null, objectiveGapsAllowed: true });
+  assert.equal(accepted.readiness.label, 'ready');
+  assert.deepEqual(accepted.readiness.reasons, []);
+  assert.equal(accepted.readiness.objectiveGapsAccepted, true);
+  assert.equal(accepted.readiness.acceptedObjectiveGaps.length, 11);
+  assert.deepEqual(accepted.readiness.acceptedGaps, [], 'gate gaps and objective gaps are listed apart');
+  for (const id of gapIds) {
+    const line = accepted.readiness.acceptedObjectiveGaps.find((entry) => entry.startsWith(`objective ${id} is a gap`));
+    assert.ok(line, `${id} is listed as an accepted gap`);
+    assert.ok(line.includes(OBJECTIVE_GAPS_DECISION));
+  }
+  assert.ok(accepted.objectives.filter((objective) => objective.gap).every((objective) => objective.status === 'gap'));
+  // A live-gated objective whose gate is not qualified still holds or blocks, flag or not.
+  const teamsPending = qualified.map((entry) => (entry.gate === 'teams-live-acceptance' ? { ...entry, status: 'pending' } : entry));
+  assert.equal(buildReleaseLedger({ fixture: passingFixture(), live: teamsPending, hmacKey: null, objectiveGapsAllowed: true }).readiness.label, 'pending');
+  const teamsFailed = qualified.map((entry) => (entry.gate === 'teams-live-acceptance' ? { ...entry, status: 'failed' } : entry));
+  assert.equal(buildReleaseLedger({ fixture: passingFixture(), live: teamsFailed, hmacKey: null, objectiveGapsAllowed: true }).readiness.label, 'blocked');
+  // The CLI accepts the gaps only when the flag is passed.
+  const logs = [];
+  const logger = { log: (text) => logs.push(JSON.parse(text)) };
+  runLedgerCommand(['node', 'qualification.mjs', 'ledger'], { env: {}, logger });
+  runLedgerCommand(['node', 'qualification.mjs', 'ledger', '--accept-objective-gaps'], { env: {}, logger });
+  assert.deepEqual(logs.map((ledger) => ledger.readiness.objectiveGapsAccepted), [false, true]);
 });
 
 test('a pending or synthetic record never classifies as live-qualified; a signed live record verifies only with its key', () => {

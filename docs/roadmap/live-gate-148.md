@@ -16,11 +16,12 @@ node tools/qualification/live-gate-plan.mjs --summary               # one line p
 ```
 
 It reads the operation ledger at run time, so it always matches the build you run it at. A write that
-is registered later (for example branding and group expiry from #156) appears with no change to the
-generator. A type with no reviewed guidance still gets a full step. If its blast radius is "can lock
+is registered later appears with no change to the generator. That is how the four #156 updates got in:
+company branding, branding localization, group expiration and the self-service sign-up switch. The
+device registration policy is manual, so it is not listed. A type with no reviewed guidance still gets a full step. If its blast radius is "can lock
 the tenant out", it is treated as lockout-sensitive until someone reviews it.
 
-At `master` today it lists **47 registered operations in 48 steps**. The extra step turns a
+At `master` today it lists **51 registered operations in 52 steps**. The extra step turns a
 Conditional Access policy back on. For each step the checklist gives:
 
 - the disposable test object;
@@ -98,7 +99,10 @@ defaults, then Conditional Access. Each of those names its break-glass precondit
   - the Group.Unified directory setting (and delete it, for the delete step);
   - the cross-tenant access defaults;
   - the admin consent request policy;
-  - a cross-tenant partner entry for a tenant Marouane names?
+  - a cross-tenant partner entry for a tenant Marouane names;
+  - the company branding and one branding localization (sign-in page text);
+  - the group expiration policy (lifetime made longer, never shorter);
+  - the self-service sign-up switch for external users?
 
   Without D-148b those steps are reported as blocked and stay fixture-tested.
 

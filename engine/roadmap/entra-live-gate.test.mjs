@@ -105,6 +105,11 @@ test('the plan lists exactly the registered writes, each with every field the op
   assert.equal(plan.operationCount, ids.length);
   assert.equal(new Set(plan.steps.map((step) => step.id)).size, plan.steps.length, 'no step is listed twice');
   assert.equal(plan.stepCount, plan.operationCount + 1, 'plus the Conditional Access enforcement step');
+  // Issue #156's updates arrive through the ledger; device registration is manual and never listed.
+  for (const id of ['organizationalBranding:update', 'organizationalBrandingLocalization:update', 'groupLifecyclePolicy:update', 'authenticationFlowsPolicy:update']) {
+    assert.ok(ids.includes(id), `${id} is listed`);
+  }
+  assert.ok(!plan.steps.some((step) => step.resourceType === 'deviceRegistrationPolicy'), 'device registration is manual');
   for (const step of plan.steps) {
     assert.ok(step.testObject.length > 0, `${step.id}: test object`);
     assert.ok(step.commands.length >= 2, `${step.id}: commands`);

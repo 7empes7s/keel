@@ -53,6 +53,10 @@ const GLOBAL_CONSTANT_FIELDS = [
   /(^|\.)disabledPlans$/,
   /(^|\.)roleTemplateId$/,
   /(^|\.)templateId$/,
+  // Issue #155: a settings catalog setting built from a Microsoft template names
+  // that template's setting and value ids, the same in every tenant.
+  /(^|\.)settingInstanceTemplateId$/,
+  /(^|\.)settingValueTemplateId$/,
   // Permission ids are defined by the resource application, not the tenant:
   // the same id means the same permission in every tenant. (Ids published by
   // THIS tenant's apps resolve through the index before this rule is reached.)

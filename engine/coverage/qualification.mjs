@@ -39,7 +39,7 @@ export const LEDGER_CONTRACT_VERSION = 1;
 export const TYPE_DECISION_VALUES = Object.freeze(['automated', 'manual', 'unknown']);
 
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
-const automated = (resource, reason) => ({ decision: 'automated', docs: `${DOCS}/resources/${resource}?view=graph-rest-1.0`, reason });
+const automated = (resource, reason, { view = 'graph-rest-1.0' } = {}) => ({ decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason });
 const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra });
 const unknown = (extra = {}) => ({ decision: 'unknown', reason: 'not yet investigated for automated recovery', ...extra });
 
@@ -103,20 +103,22 @@ export const TYPE_DECISIONS = Object.freeze({
   accessReviewScheduleDefinition: unknown(),
   accessPackage: unknown(),
   connectedOrganization: unknown(),
-  deviceConfiguration: unknown(),
-  deviceCompliancePolicy: unknown(),
-  configurationPolicy: unknown(),
-  deviceEnrollmentConfiguration: unknown(),
-  deviceManagementRoleDefinition: unknown(),
-  deviceCategory: unknown(),
-  termsAndConditions: unknown(),
-  windowsAutopilotDeploymentProfile: unknown(),
-  deviceManagementIntent: unknown(),
+  // Issue #155: the first Intune restore subset. Every other Intune type is
+  // manual by decision, with its reason; none is left unknown.
+  deviceConfiguration: automated('intune-deviceconfig-deviceconfiguration', 'issue-155 subset: create and update with assignments; profiles that carry credentials or certificates (Wi-Fi, VPN, certificate, email) and any value Graph never returns stay manual'),
+  deviceCompliancePolicy: automated('intune-deviceconfig-devicecompliancepolicy', 'issue-155 subset: create (with its actions for noncompliance) and update with assignments; delete is not registered'),
+  configurationPolicy: automated('intune-deviceconfigv2-devicemanagementconfigurationpolicy', 'issue-155 subset: create and update of the whole policy and its settings, with assignments, through Graph beta (the settings catalog has no v1.0 API); secret settings stay manual', { view: 'graph-rest-beta' }),
+  deviceEnrollmentConfiguration: manual('the default enrollment restrictions exist in every tenant and cannot be created, and custom ones are ordered through a separate priority action KEEL does not write; restore by hand from the backup, which includes their assignments'),
+  deviceManagementRoleDefinition: manual('Intune admin roles decide who can manage devices: a change needs a privilege review, and their role assignments are not backed up'),
+  deviceCategory: manual('a category is only a name; devices are put in one at enrollment, which a restore cannot redo, so recreate it by hand'),
+  termsAndConditions: manual('acceptance by users cannot be recreated: a recreated policy asks every user to accept again'),
+  windowsAutopilotDeploymentProfile: manual('beta-only, and a profile applies to registered devices whose hardware records are not backed up; recreate it by hand from the backup, which includes its assignments'),
+  deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
   managedDevice: manual('device state, enrolled by the device, not configuration'),
-  mobileApp: unknown(),
-  managedAppPolicy: unknown(),
-  targetedManagedAppConfiguration: unknown(),
-  mobileAppConfiguration: unknown(),
+  mobileApp: manual('app packages are content, not configuration, and are not backed up'),
+  managedAppPolicy: manual('app protection policies have a separate write route per platform and a list of protected apps that is not backed up; recreate by hand from the backup, which includes their assignments'),
+  targetedManagedAppConfiguration: manual('the apps it targets are set through a separate action whose list is not backed up'),
+  mobileAppConfiguration: manual('it configures one specific app, and apps are not restored'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -682,20 +684,35 @@ export const EXPANSION_INVENTORY = Object.freeze({
   groupLifecyclePolicy: subset('administrative-configuration', 'PATCH /groupLifecyclePolicies/{id}', 'Directory.ReadWrite.All',
     'update is fixture-tested and runs only when it makes expiry less aggressive (a longer lifetime, fewer groups covered, no renewal notice address removed); create, delete and the list of selected groups are by hand'),
   // ---- device management (outside the Entra batches)
-  deviceConfiguration: research('device-management', 'POST /deviceManagement/deviceConfigurations', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; no Intune restore workstream is scheduled'),
-  deviceCompliancePolicy: research('device-management', 'POST /deviceManagement/deviceCompliancePolicies', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; scheduled actions are required on create'),
-  configurationPolicy: research('device-management', 'POST /deviceManagement/configurationPolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune settings catalog is beta-only'),
-  deviceEnrollmentConfiguration: research('device-management', 'POST /deviceManagement/deviceEnrollmentConfigurations', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; default configurations cannot be recreated'),
-  deviceManagementRoleDefinition: research('device-management', 'POST /deviceManagement/roleDefinitions', 'DeviceManagementRBAC.ReadWrite.All', 'Intune RBAC; privilege review needed'),
-  deviceCategory: research('device-management', 'POST /deviceManagement/deviceCategories', 'DeviceManagementManagedDevices.ReadWrite.All', 'Intune'),
-  termsAndConditions: research('device-management', 'POST /deviceManagement/termsAndConditions', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; acceptance history cannot be recreated'),
-  windowsAutopilotDeploymentProfile: research('device-management', 'POST /deviceManagement/windowsAutopilotDeploymentProfiles (beta)', 'DeviceManagementServiceConfig.ReadWrite.All', 'Intune; beta-only'),
-  deviceManagementIntent: research('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All', 'Intune; beta-only and deprecated by the settings catalog'),
+  // Issue #155: records, routes and the assignment writer live in
+  // engine/restore/intuneOperations.mjs. The other Intune types are manual by
+  // decision (TYPE_DECISIONS gives each reason); their assignments are backed up.
+  deviceConfiguration: subset('device-management', 'POST /deviceManagement/deviceConfigurations; PATCH /deviceManagement/deviceConfigurations/{id}; POST .../{id}/assign', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update with assignments are fixture-tested; credential and certificate profiles and any value Graph never returns stay manual; delete is refused'),
+  deviceCompliancePolicy: subset('device-management', 'POST /deviceManagement/deviceCompliancePolicies; PATCH .../{id}; POST .../{id}/scheduleActionsForRules; POST .../{id}/assign', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create (with its actions for noncompliance, which Graph requires) and update with assignments are fixture-tested; delete is refused'),
+  configurationPolicy: subset('device-management', 'POST /deviceManagement/configurationPolicies (beta); PUT .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update of the whole policy and its settings with assignments are fixture-tested through Graph beta, the only version with the settings catalog; secret settings stay manual; delete is refused'),
+  deviceEnrollmentConfiguration: byHand('device-management', 'POST /deviceManagement/deviceEnrollmentConfigurations', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'default enrollment restrictions cannot be created and priority is a separate action; restored by hand'),
+  deviceManagementRoleDefinition: byHand('device-management', 'POST /deviceManagement/roleDefinitions', 'DeviceManagementRBAC.ReadWrite.All',
+    'Intune admin roles need a privilege review; their role assignments are not backed up'),
+  deviceCategory: byHand('device-management', 'POST /deviceManagement/deviceCategories', 'DeviceManagementManagedDevices.ReadWrite.All',
+    'devices are put in a category at enrollment, which a restore cannot redo'),
+  termsAndConditions: byHand('device-management', 'POST /deviceManagement/termsAndConditions', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'user acceptance cannot be recreated'),
+  windowsAutopilotDeploymentProfile: byHand('device-management', 'POST /deviceManagement/windowsAutopilotDeploymentProfiles (beta)', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'beta-only; device hardware records are not backed up'),
+  deviceManagementIntent: byHand('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'beta-only, replaced by the settings catalog; intent settings are not backed up'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
-  mobileApp: research('device-management', 'POST /deviceAppManagement/mobileApps', 'DeviceManagementApps.ReadWrite.All', 'Intune; app binaries are content, not configuration'),
-  managedAppPolicy: research('device-management', 'POST /deviceAppManagement/managedAppPolicies', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
-  targetedManagedAppConfiguration: research('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
-  mobileAppConfiguration: research('device-management', 'POST /deviceAppManagement/mobileAppConfigurations', 'DeviceManagementApps.ReadWrite.All', 'Intune'),
+  mobileApp: byHand('device-management', 'POST /deviceAppManagement/mobileApps', 'DeviceManagementApps.ReadWrite.All', 'app packages are content, not configuration'),
+  managedAppPolicy: byHand('device-management', 'POST /deviceAppManagement/{platform}ManagedAppProtections', 'DeviceManagementApps.ReadWrite.All',
+    'one write route per platform; the protected apps list is not backed up'),
+  targetedManagedAppConfiguration: byHand('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations', 'DeviceManagementApps.ReadWrite.All',
+    'its targeted apps are a separate action whose list is not backed up'),
+  mobileAppConfiguration: byHand('device-management', 'POST /deviceAppManagement/mobileAppConfigurations', 'DeviceManagementApps.ReadWrite.All',
+    'it configures one specific app, and apps are not restored'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);

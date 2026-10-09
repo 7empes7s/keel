@@ -32,6 +32,11 @@ import {
   userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
 import {
+  ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
+  intunePostStateRefusal, intuneRecordFor, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
+  backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer,
+} from './intuneOperations.mjs';
+import {
   adminRoleWriteRefusal, eligibilityLookupPath, eligibilityPostStateRefusal, eligibilityRequestBody, isAdminRoleGoverned,
   matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
@@ -399,6 +404,16 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
+    // Issue #155: an Intune policy holding values Graph never returns is manual,
+    // and one whose backup cannot drive the write fails, before any Graph call.
+    const intuneRefusal = intuneWriteRefusal(resource, effectiveVerb);
+    if (intuneRefusal) {
+      (intuneRefusal.outcome === 'skipped' ? skipped : failed).push(intuneRefusal.outcome === 'skipped'
+        ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason }
+        : { naturalKey: resource.naturalKey, error: intuneRefusal.reason });
+      continue;
+    }
+
     // Roadmap task-151: a custom role, an eligibility or PIM settings write only
     // through their operation records; a built-in role, a group-inherited or
     // expired eligibility is skipped before any write.
@@ -435,6 +450,17 @@ export async function applyWave(writer, governor, wave, {
         });
         continue;
       }
+    }
+
+    // Issue #155: an Intune policy is written through its operation record, with
+    // its assignments through /assign.
+    if (isIntuneGoverned(resource.resourceType)) {
+      const outcome = await applyIntuneWrite(writer, resource, effectiveVerb, {
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, existingTargetIds,
+      });
+      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.failed) failed.push(outcome.failed);
+      continue;
     }
 
     if (isTenantPolicyGoverned(resource.resourceType)) {
@@ -1016,6 +1042,197 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   };
 }
 
+/** Reads a Graph list and every page after it (@odata.nextLink), as one { ok, status, body: { value } }. */
+async function readAllPages(writer, version, path, { maxPages = 50 } = {}) {
+  const value = [];
+  let next = path;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await writer.read(version, next);
+    if (result?.ok !== true) return result;
+    value.push(...(result.body?.value ?? []));
+    next = result.body?.['@odata.nextLink'];
+    if (typeof next !== 'string' || next.length === 0) return { ok: true, status: result.status, body: { value } };
+  }
+  return { ok: false, status: null, error: `more than ${maxPages} pages` };
+}
+
+/**
+ * Issue #155: create or update of one Intune policy through its operation
+ * record (intuneOperations.mjs), then its assignments through /assign.
+ *
+ * Order: references are rewritten and assignments planned first, so a group
+ * missing in the target refuses the policy before any write; assignment
+ * filters must exist; the journal is written; the policy is written (POST, or
+ * PATCH of the changed fields / PUT of the whole settings catalog policy); a
+ * compliance policy's changed actions go through scheduleActionsForRules; the
+ * policy is read back and every written field must match; then, when the
+ * backup's assignment read was complete and differs from live, /assign
+ * replaces the assignments and they are read back.
+ */
+async function applyIntuneWrite(writer, resource, verb, {
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, existingTargetIds,
+}) {
+  const { naturalKey, resourceType } = resource;
+  const entry = intuneRecordFor(resourceType);
+  let desired = resource.payload;
+  const beforeRewrite = desired;
+  try {
+    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey);
+  } catch (err) {
+    return { failed: { naturalKey, error: err.message } };
+  }
+  const remapRefusal = unqualifiedRemapping(resource, verb, beforeRewrite, desired);
+  if (remapRefusal) return { failed: { naturalKey, error: remapRefusal } };
+
+  // A group resolves exactly as a reference would (resolver.mjs): an object in the
+  // target with the same natural key, or one this run created.
+  // A group matched only through its history (lineage) is refused, not assigned.
+  const assignments = assignmentPlan(resource, (symbol) => {
+    const result = resolveSymbol(symbol, referenceContext);
+    if (!result.resolved || result.via === 'global-constant') return null;
+    return result.stale ? { stale: true } : result.targetId;
+  });
+  if (assignments.state === 'refused') return { failed: { naturalKey, error: assignments.reason } };
+
+  const before = resource.live?.payload ?? null;
+  let targetId = verb === 'update' ? (resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(naturalKey)) : null;
+  if (verb === 'update' && !targetId) return { failed: { naturalKey, error: 'update has no targetId' } };
+  const fields = verb === 'create' || !before
+    ? Object.keys(intuneWriteBody(resourceType, desired, verb)).filter((field) => field !== '@odata.type')
+    : changedIntuneFields(resourceType, desired, before, verb).filter((field) => field !== '@odata.type');
+  // A backup taken before actions were backed up leaves the live actions alone:
+  // an absent list is never sent as an empty one (that would remove them).
+  const actionsInBackup = backupHoldsActions(desired);
+  const actionsChanged = entry.scheduledActions && verb === 'update' && actionsInBackup && (!before || scheduledActionsDiffer(desired, before));
+  const changes = (assignmentsWritten = null) => ({
+    fields,
+    scheduledActions: entry.scheduledActions && verb === 'update' && !actionsInBackup
+      ? 'left as they are: the backup was taken before actions for noncompliance were backed up'
+      : actionsChanged,
+    assignments: assignments.state === 'ready'
+      ? (assignmentsWritten === null
+        ? assignmentChange(assignments, verb === 'create' ? 0 : (resource.liveAssignmentCount ?? null))
+        : assignmentsWritten ? 'written' : 'already as in the backup')
+      : assignments.reason,
+  });
+
+  // Assignment filters must exist in the target. Checked in a dry run too, so it
+  // refuses the same way; a preview (no writer) cannot read and skips it.
+  if (writer) {
+    for (const filterId of assignments.filters ?? []) {
+      const found = await retryOperation(() => writer.read('beta', ASSIGNMENT_FILTER_PATH(filterId)));
+      if (found?.ok !== true) {
+        return { failed: { naturalKey, error: `dependency: an assignment filter this policy uses ${isNotFound(found) ? 'does not exist in the target' : 'could not be read'}; nothing was written` } };
+      }
+    }
+  }
+
+  if (verb === 'create') {
+    const existingId = existingTargetIds.get(naturalKey);
+    if (existingId) {
+      if (mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: changes() } };
+      const found = await retryOperation(() => writer.read(entry.version, intuneReadPath(resourceType, existingId)));
+      if (found?.ok !== true) {
+        return { failed: { naturalKey, error: `conflict: a policy with this name exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
+      }
+      if (changedIntuneFields(resourceType, desired, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
+      return { failed: { naturalKey, error: 'conflict: a different policy with this name exists in the target — manual reconciliation required' } };
+    }
+  }
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes() } };
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+
+  let objectWritten = false;
+  if (verb === 'create') {
+    const body = intuneWriteBody(resourceType, desired, 'create');
+    const result = await retryOperation(() => writer.write(entry.version, entry.collection, { method: 'POST', body }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+    targetId = result.body?.id;
+    if (typeof targetId !== 'string' || targetId.length === 0) {
+      await noteOutcome(rollbackClient, journal, 'uncertain', { postState: result.body ?? null, detail: 'create returned no id' });
+      return { failed: { naturalKey, error: 'create returned no policy id' } };
+    }
+    objectWritten = true;
+  } else if (fields.length > 0) {
+    const whole = intuneWriteBody(resourceType, desired, 'update');
+    // PATCH sends the changed fields (and the kind Graph needs); PUT replaces the whole policy.
+    const body = entry.updateMethod === 'PUT' ? whole
+      : Object.fromEntries(Object.entries(whole).filter(([field]) => field === '@odata.type' || fields.includes(field)));
+    const result = await retryOperation(() => writer.write(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}`, { method: entry.updateMethod, body }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+    objectWritten = true;
+  }
+  if (actionsChanged) {
+    const result = await retryOperation(() => writer.write(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}/scheduleActionsForRules`, {
+      method: 'POST', body: { deviceComplianceScheduledActionForRules: scheduledActionsBody(desired.scheduledActionsForRule) },
+    }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, objectWritten ? 'uncertain' : classifyWriteOutcome(result), {
+        detail: objectWritten ? `settings written; actions for noncompliance ${outcomeDetail(result)}` : outcomeDetail(result),
+      });
+      return { failed: { ...graphFailure(naturalKey, result), error: `writing the actions for noncompliance failed: ${outcomeDetail(result)}` } };
+    }
+    objectWritten = true;
+  }
+
+  const written = { verb, fields };
+  const readPath = intuneReadPath(resourceType, targetId);
+  const reRead = await readAfterWrite(writer, entry.version, readPath,
+    (r) => isNotFound(r) || (r?.ok === true && intunePostStateRefusal(resourceType, desired, r.body, written) !== null), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: `${verb} could not be re-read` });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const live = reRead?.body ?? reRead;
+  const postStateRefusal = intunePostStateRefusal(resourceType, desired, live, written);
+  if (postStateRefusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: live, detail: 'Intune post-state did not verify' });
+    return { failed: { naturalKey, error: postStateRefusal } };
+  }
+
+  let assignmentsWritten = null;
+  if (assignments.state === 'ready') {
+    let current = new Set();
+    if (verb === 'update') {
+      const listed = await retryOperation(() => readAllPages(writer, entry.version, assignmentsReadPath(resourceType, targetId)));
+      if (listed?.ok !== true) {
+        await noteOutcome(rollbackClient, journal, objectWritten ? 'uncertain' : 'failed', { targetId, postState: live, detail: 'live assignments could not be read' });
+        return { failed: { naturalKey, error: `${objectWritten ? 'the policy was written, but its' : 'the policy\'s'} live assignments could not be read, so they were not changed` } };
+      }
+      current = liveAssignmentIdentities(listed.body?.value ?? []);
+    }
+    assignmentsWritten = !sameIdentities(assignments.identities, current);
+    if (assignmentsWritten) {
+      const request = assignRequest(resourceType, targetId, assignments);
+      const result = await retryOperation(() => writer.write(request.version, request.path, { method: 'POST', body: request.body }));
+      if (!result.ok) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: live, detail: `assign ${outcomeDetail(result)}` });
+        return { failed: { ...graphFailure(naturalKey, result), error: `${objectWritten ? 'the policy was written, but ' : ''}assigning it failed: ${outcomeDetail(result)}` } };
+      }
+      const pagedReader = { read: (version, path) => readAllPages(writer, version, path) };
+      const check = await readAfterWrite(pagedReader, entry.version, assignmentsReadPath(resourceType, targetId),
+        (r) => isNotFound(r) || (r?.ok === true && !sameIdentities(assignments.identities, liveAssignmentIdentities(r.body?.value ?? []))), { retryOperation });
+      if (check?.ok !== true || !sameIdentities(assignments.identities, liveAssignmentIdentities(check.body?.value ?? []))) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: live, detail: 'assignments did not verify' });
+        return { failed: { naturalKey, error: 'post-state: the assignments did not read back as written' } };
+      }
+    }
+  }
+
+  await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: live });
+  return { applied: { naturalKey, targetId, changes: changes(assignmentsWritten) } };
+}
+
 /**
  * Roadmap task-151: one admin role write (adminRoleOperations.mjs). Only the
  * references inside what is sent are rewritten; a rewrite to a different id
@@ -1501,7 +1718,8 @@ export async function applyPatches(writer, governor, patches, {
 
     // Roadmap task-108: a policy-governed type has no proven deferred-reference
     // patch (its records name whole-object writes only), so none is sent.
-    if (isPolicyGoverned(resourceType) || isAdministrativeGoverned(resourceType) || isTenantPolicyGoverned(resourceType)) {
+    if (isPolicyGoverned(resourceType) || isAdministrativeGoverned(resourceType) || isTenantPolicyGoverned(resourceType)
+      || isIntuneGoverned(resourceType)) {
       failed.push({ naturalKey: patch.naturalKey, reason: `unsupported operation: no proven deferred reference patch for ${resourceType}` });
       return { applied, failed };
     }

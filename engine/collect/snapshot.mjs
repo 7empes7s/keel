@@ -69,7 +69,11 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
     for (const extra of relationships?.parentTypes ?? []) parentTypes.add(extra);
     const parents = canonical
       .filter((resource) => parentTypes.has(resource.resourceType) && resource.sourceId)
-      .map((resource) => ({ type: resource.resourceType, sourceId: resource.sourceId, naturalKey: resource.naturalKey }));
+      // The subtype routes an app protection policy's assignments (issue #155).
+      .map((resource) => ({
+        type: resource.resourceType, sourceId: resource.sourceId, naturalKey: resource.naturalKey,
+        subtype: resource.payload?.['@odata.type'] ?? null,
+      }));
     const observations = await collectRelationships(reader, { tenantRef, parents, families });
     const targetContext = await loadSymbolContext(client, { tenantRef });
     await recordRelationships(client, { snapshotId, tenantRef, observations, context: targetContext });

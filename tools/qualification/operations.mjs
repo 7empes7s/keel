@@ -109,6 +109,34 @@ const FIXTURE_PAYLOADS = Object.freeze({
   organizationalBrandingLocalization: { id: 'fr-FR', signInPageText: 'Bienvenue chez Fixture', usernameHintText: 'nom@fixture.example' },
   groupLifecyclePolicy: { id: 'fixture-lifecycle', groupLifetimeInDays: 180, managedGroupTypes: 'Selected', alternateNotificationEmails: 'admins@fixture.example' },
   authenticationFlowsPolicy: { id: 'authenticationFlowsPolicy', displayName: 'Authentication flows policy', selfServiceSignUp: { isEnabled: false } },
+  // Issue #155: an Intune compliance policy (with the actions Graph needs on
+  // create), a device restriction profile and a settings catalog policy.
+  deviceCompliancePolicy: {
+    '@odata.type': '#microsoft.graph.windows10CompliancePolicy', displayName: 'Fixture compliance', description: 'Fixture',
+    passwordRequired: true, passwordMinimumLength: 12, bitLockerEnabled: true, roleScopeTagIds: ['0'], version: 3,
+    scheduledActionsForRule: [{
+      id: 'fixture-rule', ruleName: 'PasswordRequired',
+      scheduledActionConfigurations: [{ id: 'fixture-action', actionType: 'block', gracePeriodHours: 24, notificationTemplateId: '00000000-0000-0000-0000-000000000000', notificationMessageCCList: [] }],
+    }],
+  },
+  deviceConfiguration: {
+    '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', displayName: 'Fixture restrictions', description: 'Fixture',
+    passwordRequired: true, cameraBlocked: false, defenderRequireRealTimeMonitoring: true, roleScopeTagIds: ['0'], version: 2, supportsScopeTags: true,
+  },
+  configurationPolicy: {
+    name: 'Fixture settings catalog', description: 'Fixture', platforms: 'windows10', technologies: 'mdm', roleScopeTagIds: ['0'],
+    settingCount: 1, creationSource: null, isAssigned: false,
+    templateReference: { templateId: '', templateFamily: 'none', templateDisplayName: null, templateDisplayVersion: null },
+    settings: [{
+      id: '0',
+      settingInstance: {
+        '@odata.type': '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance',
+        settingDefinitionId: 'device_vendor_msft_policy_config_defender_allowrealtimemonitoring',
+        settingInstanceTemplateReference: null,
+        choiceSettingValue: { value: 'device_vendor_msft_policy_config_defender_allowrealtimemonitoring_1', settingValueTemplateReference: null, children: [] },
+      },
+    }],
+  },
   // Roadmap task-151: a custom role, a time-bound PIM eligibility and the PIM
   // settings of one role (MFA and justification on activation, 8-hour maximum).
   roleDefinition: {
@@ -160,6 +188,21 @@ const FIXTURE_DRIFT = Object.freeze({
   organizationalBrandingLocalization: () => ({ signInPageText: 'Defaced' }),
   groupLifecyclePolicy: () => ({ groupLifetimeInDays: 90 }),
   authenticationFlowsPolicy: () => ({ selfServiceSignUp: { isEnabled: true } }),
+  // Issue #155: a weakened password rule and grace period, a camera unblocked,
+  // and a settings catalog value switched off.
+  deviceCompliancePolicy: (payload) => ({
+    passwordMinimumLength: 4,
+    scheduledActionsForRule: payload.scheduledActionsForRule.map((rule) => ({
+      ...rule, scheduledActionConfigurations: rule.scheduledActionConfigurations.map((action) => ({ ...action, gracePeriodHours: 720 })),
+    })),
+  }),
+  deviceConfiguration: () => ({ cameraBlocked: true, version: 5 }),
+  configurationPolicy: (payload) => ({
+    settings: payload.settings.map((setting) => ({
+      ...setting,
+      settingInstance: { ...setting.settingInstance, choiceSettingValue: { ...setting.settingInstance.choiceSettingValue, value: 'device_vendor_msft_policy_config_defender_allowrealtimemonitoring_0' } },
+    })),
+  }),
   // Roadmap task-151: MFA on activation was turned off; the restore turns it back on.
   unifiedRoleManagementPolicy: (payload) => ({
     rules: payload.rules.map((rule) => (rule.id === 'Enablement_EndUser_Assignment' ? { ...rule, enabledRules: ['Justification'] } : rule)),
@@ -254,6 +297,25 @@ export function fakeGraph() {
         objects.set(target, updated);
         return { ok: true, status: 200, body: updated };
       }
+      // Issue #155: Intune. /assign replaces a policy's whole assignment list;
+      // scheduleActionsForRules replaces a compliance policy's actions; and a
+      // compliance policy cannot be created without its actions.
+      const assign = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assign$/.exec(path);
+      if (assign && method === 'POST') {
+        if (!objects.has(assign[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
+        const value = (body.assignments ?? []).map((entry, index) => ({ ...entry, id: `${assign[1].split('/').pop()}_${index}` }));
+        objects.set(`${assign[1]}/assignments`, { value });
+        return { ok: true, status: 200, body: { value } };
+      }
+      const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
+      if (actions && method === 'POST') {
+        if (!objects.has(actions[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
+        objects.set(actions[1], { ...objects.get(actions[1]), scheduledActionsForRule: body.deviceComplianceScheduledActionForRules });
+        return { ok: true, status: 204, body: null };
+      }
+      if (method === 'POST' && path === '/deviceManagement/deviceCompliancePolicies' && !(body.scheduledActionsForRule?.length > 0)) {
+        return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'scheduledActionsForRule is required' } } };
+      }
       // Roadmap task-151: an eligibility request creates its schedule (adminAssign
       // only, with a justification and an end date not in the past), and a PIM
       // rule is patched inside its policy.
@@ -311,6 +373,9 @@ export function fakeGraph() {
     async read(version, requested) {
       // A $select narrows nothing here: the fake returns the whole object.
       const path = requested.split('?')[0];
+      // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
+      const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
+      if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
       // Roadmap task-151: the eligibility collection answers a filter of
       // `field eq 'value'` terms joined by `and`.
       if (path === '/roleManagement/directory/roleEligibilitySchedules') {

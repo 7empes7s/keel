@@ -18,8 +18,9 @@
   A cmdlet error is never reported as an empty success.
 
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
-  engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs
-  and engine/roadmap/teams-org-policies.test.mjs (which play this contract); it has not
+  engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
+  engine/roadmap/teams-org-policies.test.mjs and
+  engine/roadmap/purview-retention-dlp.test.mjs (which play this contract); it has not
   been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
@@ -77,6 +78,16 @@ $AllowedTeamsPolicy = @{
     'Get-CsTeamsGuestCallingConfiguration'   = @()
 }
 
+# Issue #157: Purview retention and DLP policies and rules, read in the Security &
+# Compliance session with no parameters. Reads only: no Set-, New- or Remove-, and no
+# cmdlet that reads DLP matches, incidents or reports.
+$AllowedPurviewRetentionDlp = @{
+    'Get-RetentionCompliancePolicy' = @()
+    'Get-RetentionComplianceRule'   = @()
+    'Get-DlpCompliancePolicy'       = @()
+    'Get-DlpComplianceRule'         = @()
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -119,6 +130,7 @@ $module = [string]$job['module']
 if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
+elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }

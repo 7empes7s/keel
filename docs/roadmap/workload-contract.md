@@ -34,6 +34,8 @@ with eleven cmdlet reads: see [exchange-mail-flow-reads.md](exchange-mail-flow-r
 Issue #154 added a seventh, `teams-org-policies`, with nine MicrosoftTeams cmdlet reads,
 and moved `teams.meeting-policies` (first declared under Teams settings) into it: see
 [teams-org-policy-reads.md](teams-org-policy-reads.md).
+Issue #157 added an eighth, `purview-retention-dlp`, with four cmdlet reads (retention
+and DLP policies and rules): see [purview-retention-dlp-reads.md](purview-retention-dlp-reads.md).
 
 ### Scope validator
 

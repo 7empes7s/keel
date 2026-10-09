@@ -25,7 +25,7 @@ import { OPERATIONS, capabilityFor, graphPathFor, isSupportedClaim } from '../..
 import { EXPANSION_BATCHES, buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { buildPolicyFamilyLedger } from '../../engine/restore/policyOperations.mjs';
 import { buildAdministrativeFamilyLedger } from '../../engine/restore/administrativeOperations.mjs';
-import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
+import { TENANT_POLICY_RECORDS, tenantPolicyRecordFor, tenantPolicyRoute } from '../../engine/restore/tenantPolicyOperations.mjs';
 
 const TENANT_POLICY_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
@@ -99,6 +99,15 @@ const FIXTURE_PAYLOADS = Object.freeze({
     isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
     reviewers: [{ query: '/v1.0/users/fixture-reviewer', queryType: 'MicrosoftGraph', queryRoot: null }],
   },
+  // Issue #156: basic tenant settings. Image paths and the CDN list are
+  // collected but never written.
+  organizationalBranding: {
+    id: '0', signInPageText: 'Welcome to Fixture', usernameHintText: 'name@fixture.example', backgroundColor: '#1B2A4A',
+    cdnList: ['fixture-cdn.example'], bannerLogoRelativeUrl: 'fixture/banner.png',
+  },
+  organizationalBrandingLocalization: { id: 'fr-FR', signInPageText: 'Bienvenue chez Fixture', usernameHintText: 'nom@fixture.example' },
+  groupLifecyclePolicy: { id: 'fixture-lifecycle', groupLifetimeInDays: 180, managedGroupTypes: 'Selected', alternateNotificationEmails: 'admins@fixture.example' },
+  authenticationFlowsPolicy: { id: 'authenticationFlowsPolicy', displayName: 'Authentication flows policy', selfServiceSignUp: { isEnabled: false } },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
@@ -117,16 +126,24 @@ const FIXTURE_DRIFT = Object.freeze({
   crossTenantAccessPolicyConfigurationDefault: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
   crossTenantAccessPolicyPartner: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
   adminConsentRequestPolicy: () => ({ isEnabled: false }),
+  // Issue #156: the restore reverts defaced text, a shortened group lifetime
+  // (a longer one is restored; a shorter one would be refused) and an enabled
+  // self-service sign-up.
+  organizationalBranding: () => ({ signInPageText: 'Defaced' }),
+  organizationalBrandingLocalization: () => ({ signInPageText: 'Defaced' }),
+  groupLifecyclePolicy: () => ({ groupLifetimeInDays: 90 }),
+  authenticationFlowsPolicy: () => ({ selfServiceSignUp: { isEnabled: true } }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the
 // harness supplies one that allows, because it proves the writer, not the gate.
 const FIXTURE_LOCKOUT_GATE = Object.freeze({ evaluate: () => ({ allowed: true, reason: 'fixture harness' }) });
 
-/** Where the fake Graph holds a tenant policy object (singleton route, or the partner path). */
-function tenantPolicyFixturePath(resourceType, payload) {
-  const collection = graphPathFor(resourceType);
-  return resourceType === 'crossTenantAccessPolicyPartner' ? `${collection}/${payload.tenantId}` : collection;
+const FIXTURE_TENANT = 'fixture-tenant';
+
+/** Where the fake Graph holds a tenant policy object: the same route its update writes to. */
+function tenantPolicyFixturePath(resource) {
+  return tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource, { targetTenant: FIXTURE_TENANT });
 }
 
 // Roadmap task-109: the harness's snapshot read every collection completely,
@@ -248,8 +265,10 @@ function fixtureFor(resourceType, operation, graph) {
     if (operation === 'create') return { ...base, verb: 'create', payload };
     if (operation !== 'update') return null;
     const live = { ...payload, ...FIXTURE_DRIFT[resourceType](payload) };
-    graph.objects.set(tenantPolicyFixturePath(resourceType, payload), live);
-    return { ...base, verb: 'update', payload, targetId: existingId, live: { state: 'present', targetId: existingId, payload: live } };
+    const targetId = payload.id ?? existingId;
+    const resource = { ...base, verb: 'update', payload, targetId, live: { state: 'present', targetId, payload: live } };
+    graph.objects.set(tenantPolicyFixturePath(resource), live);
+    return resource;
   }
   if (operation === 'create') return { ...base, verb: 'create', payload };
   if (operation === 'update') {
@@ -284,7 +303,7 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
       const resource = fixtureFor(resourceType, operation, graph);
       try {
         const outcome = await applyWave(graph, governor, [resource], {
-          targetTenant: 'fixture-tenant', mode: 'enforce', simulationPassed: true, lockoutGate: FIXTURE_LOCKOUT_GATE,
+          targetTenant: FIXTURE_TENANT, mode: 'enforce', simulationPassed: true, lockoutGate: FIXTURE_LOCKOUT_GATE,
           existingTargetIds: new Map(FIXTURE_TARGET_IDS[resourceType] ?? []),
           observedCoverage: FIXTURE_COVERAGE,
           // The deletion guard verifies a policy against the CURRENT target state;

@@ -51,6 +51,8 @@ import '../collect/workloads/purview.mjs';
 import '../collect/workloads/mailFlow.mjs';
 // Registers the Teams org-wide policy adapter (issue #154), read-only and disabled behind Teams.
 import '../collect/workloads/teamsPolicies.mjs';
+// Registers the Purview retention and DLP adapter (issue #157), read-only and disabled behind Exchange.
+import '../collect/workloads/purviewRetentionDlp.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {

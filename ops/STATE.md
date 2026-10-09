@@ -36,7 +36,7 @@ fields qualified (#109); evidence in PR #121. Gate 116 live-qualified at `04d213
 |---|---|---|---|---|---|
 | Gates 120 → 123 same-build chain | #84 | [Continue earlier session](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVsbWJRxWn9A9AMnkNVwCUk) | Evidence PR #121 merged (`fcd9610`); #127 (drill test) merged, live = `f6523ab` | **Chain passed at `76ee9b5`** (Q35), `notQualifiedFields.label` empty (#109 done) | Gate 124 recapture (Q39) |
 | Gate 116 drill | #85 | [Gate 116 drill live acceptance](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZW3FgPouVRVvqwWbHs3ALBQ) | Evidence PR #126 merged (`9e1f92f`); #85 closed | **Live-qualified at `04d213d`** (Q36) | Done |
-| Task 124 release ledger | #86 | Gate 124 release ledger | #142 merged (`7a9dc08`), #86 closed | **Q39 done: all ten live gates live-qualified at `fb1493e`; ledger label `pending` only on objectives** | **Done.** Marouane's call on the objective gaps (D1-D10, G1-G8) for the ledger label |
+| Task 124 release ledger | #86 | Gate 124 release ledger | #142 (`7a9dc08`), #145 and #146 merged; #86 closed | **Done: ledger reads `ready` with `--accept-objective-gaps`** (Marouane, 2026-10-09 09:05 UTC); 7 objectives via live gates, 11 listed as accepted gaps | None |
 | CLAUDE.md with brain markers | #87 | [CLAUDE.md with brain markers](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZCa2V6KyBhYrHTm5E3V12tA) | #95 (supersedes #80, closed), merged as `702b1ee` | Done (issue closed) | None. `adopt.sh` run twice still unverified against the real brain script (needs a brain-side session) |
 | Status test temp dir | #88 | [Status test temp repo cleanup](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZVCPMsKvDN3LrLbaz9mMJaZ) | #94 (supersedes #76, closed), merged as `c4e24ac` | Merged | None |
 | Offsite backup unreachable | #89 | [Offsite backup unreachable](https://claude.ai/code/project/chan_01UnkUEPVPkFeErfJUUirWJZ?thread=cmsg_01UnkUEPVPkFeErfJUUirWJZ6zVkB3Qz4cxyHC1zVLpizB) | #100 merged as `c99a9f2`; docs PR #112 (automerge) | **Done** (Q31, 13:12): offsite ships to vol2 daily at 05:00 UTC; first copy byte-identical | #112 merge (waits on Actions billing) |
@@ -64,7 +64,7 @@ raw capture's sha256, carry no credential material, and fail verification withou
 
 ## Waiting on the human operator
 
-1. Release label: whether to accept objectives D1-D10 (D6 is met) and G1-G8 as known gaps (the gate 124 ledger is `pending` only on these).
+Nothing right now.
 
 ## Infrastructure facts
 
@@ -208,3 +208,4 @@ Last 24 hours only; git history keeps the rest.
 - 2026-10-07 12:13: gate 124 evidence merged (#142, `7a9dc08`; #86 closed). Q40 dropped the four Q39 DBs, and Q41 removed the Q39 recovery set and its vol2 copy. Older sets (2026-10-04, the 2026-10-05 q36/q6 sets) remain. #141 (gate 121 fingerprint, settings groups only) was merged by Marouane on 2026-10-08 08:08.
 - 2026-10-08 14:58: **Q42 done.** `claude/release-objectives-source` @ `e1896b4` adds `docs/release/objectives-source.md` (18/18 objectives, 0 redactions, scan clean). The 2026-09-15 spec only has the id/title/owner table, not full definitions; the Gate 124 thread was told, and it picks the fuller source file (8 grep candidates in Q42's Result) if mapping needs it.
 - 2026-10-08 15:18: #145 merged (Gate 124 thread): all 18 release objectives mapped, 7 via live gates and 11 explicit gaps with reasons. It also fixed `portal/test/remediation-preview.test.ts`, whose fixed deletedDateTime aged past the 30-day window and turned master Portal runs 265/267 red. The objectives' STATE row waits on Marouane's card about the 11 gaps.
+- 2026-10-09 09:19: #146 merged. **Gate 124 and the release ledger are done.** Marouane accepted the 11 objective gaps (2026-10-09 09:05 UTC), so ledger runs pass `--accept-objective-gaps`; the label reads `ready` and names the 11 gaps. `docs/release/acceptance.md` has the updated command.

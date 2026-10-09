@@ -68,7 +68,7 @@ export class GraphReader {
    * Retry-After — never a shorter guess — and the wait is recorded so the
    * observed ceiling can be reported rather than estimated.
    */
-  async get(version, path, { consistencyLevel = false, maxRetries = 5 } = {}) {
+  async get(version, path, { consistencyLevel = false, maxRetries = 5, acceptLanguage = 'en-US' } = {}) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) {
       return { ok: false, status: 0, code: 'UnsafeUrl', error: redactSecrets(`refused request to non-Graph host: ${url}`) };
@@ -86,9 +86,12 @@ export class GraphReader {
     // everywhere else, so it is sent unconditionally here rather than only on
     // the one endpoint that is known to need it today — scoping it would
     // leave the same trap for the next PIM-like endpoint.
+    // Issue #156: company branding is the one exception. Its GET answers in
+    // the language named here, and only `0` returns the default branding, so
+    // its catalogue entry overrides the header (catalog.mjs acceptLanguage).
     const headers = {
       Authorization: `Bearer ${await this.getAccessToken()}`,
-      'Accept-Language': 'en-US',
+      'Accept-Language': acceptLanguage,
     };
     if (consistencyLevel) headers.ConsistencyLevel = 'eventual';
 
@@ -139,7 +142,7 @@ export class GraphReader {
    * before it: callers can record a partial outcome with a real partial count
    * instead of discarding the evidence or claiming completeness.
    */
-  async collect(version, path, { pageCap = Infinity, consistencyLevel = false } = {}) {
+  async collect(version, path, { pageCap = Infinity, consistencyLevel = false, acceptLanguage } = {}) {
     const items = [];
     let next = path;
     let pages = 0;
@@ -147,7 +150,10 @@ export class GraphReader {
     let firstError = null;
 
     while (next && pages < pageCap) {
-      const res = await this.get(version, next, { consistencyLevel: consistencyLevel && pages === 0 });
+      const res = await this.get(version, next, {
+        consistencyLevel: consistencyLevel && pages === 0,
+        ...(acceptLanguage ? { acceptLanguage } : {}),
+      });
       if (!res.ok) {
         firstError = res;
         break;

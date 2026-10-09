@@ -52,6 +52,11 @@ const REGISTERED = Object.freeze({
   adminConsentRequestPolicy: ['update'],
   // Roadmap task-150: users are updated and restored in place, never created.
   user: ['update', 'restore-soft-deleted'],
+  // Issue #156: basic tenant settings.
+  organizationalBranding: ['update'],
+  organizationalBrandingLocalization: ['update'],
+  groupLifecyclePolicy: ['update'],
+  authenticationFlowsPolicy: ['update'],
   // Roadmap task-151: custom roles, PIM eligibility create and PIM role settings.
   roleDefinition: ['create', 'update'],
   roleEligibilitySchedule: ['create'],
@@ -150,7 +155,7 @@ test('roleAssignment/namedLocation are not soft-deletable: no restore-soft-delet
 // ---------------------------------------------------------------------------
 // Mutation check 1: qualify operation from pathFor alone.
 //
-// Every one of CATALOG's 57 types has a real Graph collection `path` — path
+// Every one of CATALOG's 62 types has a real Graph collection `path` — path
 // existence alone must never imply write capability. Every type outside the
 // four explicitly registered above must read 'unsupported' for all four
 // operations, even though a read path exists.

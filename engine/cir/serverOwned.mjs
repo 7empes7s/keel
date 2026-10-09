@@ -134,6 +134,20 @@ IMMUTABLE.set('servicePrincipal', new Set([
   'signInAudience', 'appRoles', 'oauth2PermissionScopes', 'passwordCredentials', 'keyCredentials',
 ]));
 
+// Issue #156: company branding. The CDN host list is Microsoft's and can change
+// on its own, so it is server-owned. The image and stylesheet paths change only
+// when someone uploads a new logo, background, favicon or stylesheet: that is
+// real drift, but those files are binary uploads KEEL never writes, so the
+// paths are immutable (in the hash, never PATCHed, reported not remediable).
+const BRANDING_ASSET_PATHS = [
+  'backgroundImageRelativeUrl', 'bannerLogoRelativeUrl', 'customCSSRelativeUrl', 'faviconRelativeUrl',
+  'headerLogoRelativeUrl', 'squareLogoRelativeUrl', 'squareLogoDarkRelativeUrl',
+];
+for (const resourceType of ['organizationalBranding', 'organizationalBrandingLocalization']) {
+  SERVER_OWNED.set(resourceType, new Set(['cdnList']));
+  IMMUTABLE.set(resourceType, new Set(BRANDING_ASSET_PATHS));
+}
+
 // namedLocation needs no entries — every field it collects (displayName, isTrusted,
 // ipRanges, countriesAndRegions, includeUnknownCountriesAndRegions) is writable, so
 // the empty default SERVER_OWNED/IMMUTABLE sets are already correct.

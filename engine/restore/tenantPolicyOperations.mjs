@@ -28,6 +28,13 @@
  * comparison. Every other section (Conditional Access, protected accounts,
  * their role assignments) must still be unchanged.
  *
+ * Issue #156 adds four basic tenant settings to the same path: the default
+ * company branding and its localizations (text, colours and layout only; the
+ * images and stylesheet are never written), the group expiration policy (only
+ * when the restore makes expiry less aggressive; see groupLifecycleGuard) and
+ * the authentication flows policy (self-service sign-up). The device
+ * registration policy is backed up but never written.
+ *
  * The capability registry (capabilities.mjs) holds the claims; this module
  * never raises one.
  *
@@ -50,7 +57,75 @@ const CROSS_TENANT_SETTINGS = Object.freeze([
   'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'inboundTrust', 'tenantRestrictions',
 ]);
 
-const record = (fields) => Object.freeze({ ...fields, writableFields: Object.freeze(fields.writableFields) });
+const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
+
+/**
+ * Issue #156: the company branding fields that are plain text, colours or
+ * layout settings. The images and the custom stylesheet (backgroundImage,
+ * bannerLogo, squareLogo, squareLogoDark, headerLogo, favicon, customCSS) are
+ * binary uploads with their own PUT routes; they are never written, so only
+ * their paths are kept in the snapshot (as immutable fields).
+ * contentCustomization is left out: it nests uploaded-file paths
+ * (attributeCollectionRelativeUrl, ...) beside its text, so it is not plain
+ * text and is never written.
+ */
+export const BRANDING_WRITABLE_FIELDS = Object.freeze([
+  'backgroundColor', 'customAccountResetCredentialsUrl', 'customCannotAccessYourAccountText',
+  'customCannotAccessYourAccountUrl', 'customForgotMyPasswordText', 'customPrivacyAndCookiesText', 'customPrivacyAndCookiesUrl',
+  'customResetItNowText', 'customTermsOfUseText', 'customTermsOfUseUrl', 'headerBackgroundColor',
+  'loginPageLayoutConfiguration', 'loginPageTextVisibilitySettings', 'signInPageText', 'usernameHintText',
+]);
+
+// Issue #156: how many groups a group expiration policy covers, narrowest first.
+const MANAGED_GROUP_SCOPE = Object.freeze({ none: 0, selected: 1, all: 2 });
+
+/**
+ * Issue #156: a group expiration restore may make expiry less aggressive, never
+ * more. A shorter lifetime, or a policy that covers more groups than the live
+ * one, can expire and delete Microsoft 365 groups, so that write is left to a
+ * person. Returns the reason, or null when the write may proceed.
+ */
+export function groupLifecycleGuard(desired, live) {
+  const has = (field) => Object.hasOwn(desired ?? {}, field);
+  if (has('groupLifetimeInDays')) {
+    const want = desired.groupLifetimeInDays;
+    const have = live?.groupLifetimeInDays;
+    const positive = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0;
+    if (!positive(want) || !positive(have)) {
+      return `the group lifetime cannot be compared (snapshot ${want}, live ${have}), so a shorter one cannot be ruled out; change it by hand`;
+    }
+    if (want < have) {
+      return `a group lifetime of ${want} days is shorter than the live ${have} days and could expire and delete groups; change it by hand`;
+    }
+  }
+  if (has('managedGroupTypes')) {
+    const wantScope = MANAGED_GROUP_SCOPE[String(desired.managedGroupTypes ?? '').toLowerCase()];
+    const haveScope = MANAGED_GROUP_SCOPE[String(live?.managedGroupTypes ?? '').toLowerCase()];
+    if (wantScope === undefined || haveScope === undefined) {
+      return `managedGroupTypes ${desired.managedGroupTypes} (live ${live?.managedGroupTypes}) is not a known value; change it by hand`;
+    }
+    if (wantScope > haveScope) {
+      return `expiry would cover more groups (${desired.managedGroupTypes} instead of ${live.managedGroupTypes}) and could expire and delete groups; change it by hand`;
+    }
+  }
+  if (has('alternateNotificationEmails')) {
+    // Groups without an owner send their renewal notice only to these
+    // addresses. Removing a live address would let such a group expire
+    // unnoticed and be deleted; adding one is safe.
+    const wanted = new Set(notificationAddresses(desired.alternateNotificationEmails));
+    const dropped = notificationAddresses(live?.alternateNotificationEmails).filter((address) => !wanted.has(address));
+    if (dropped.length > 0) {
+      return `the restore would stop renewal notices to ${dropped.join(', ')}, so groups without an owner could expire unnoticed and be deleted; change it by hand`;
+    }
+  }
+  return null;
+}
+
+/** The notification addresses of a group expiration policy, lower case. */
+function notificationAddresses(value) {
+  if (typeof value !== 'string') return [];
+  return [...new Set(value.split(';').map((address) => address.trim().toLowerCase()).filter((address) => address.length > 0))];
+}
 
 /** The operation records. */
 export const TENANT_POLICY_RECORDS = Object.freeze([
@@ -151,13 +226,71 @@ export const TENANT_POLICY_RECORDS = Object.freeze([
     signInPathSection: null,
     writableFields: ['isEnabled', 'notifyReviewers', 'remindersEnabled', 'requestDurationInDays', 'reviewers'],
   }),
+  // Issue #156: basic tenant settings. None of them can lock users out; the
+  // group expiration policy carries a guard because it can delete groups.
+  record({
+    resourceType: 'organizationalBranding',
+    operation: 'update',
+    // {org} is the target tenant id (an organization's id is its tenant id).
+    route: '/organization/{org}/branding',
+    method: 'PATCH',
+    permission: 'OrganizationalBranding.ReadWrite.All',
+    docs: `${DOCS}/organizationalbranding-update?view=graph-rest-1.0`,
+    // Only language 0 addresses the default branding; sent on the PATCH and
+    // on its read-back. Another language in the answer fails the read-back.
+    requestHeaders: Object.freeze({ 'Accept-Language': '0' }),
+    lockout: false,
+    signInPathSection: null,
+    writableFields: BRANDING_WRITABLE_FIELDS,
+  }),
+  record({
+    resourceType: 'organizationalBrandingLocalization',
+    operation: 'update',
+    // {id} is the localization's language, for example fr-FR.
+    route: '/organization/{org}/branding/localizations/{id}',
+    method: 'PATCH',
+    permission: 'OrganizationalBranding.ReadWrite.All',
+    docs: `${DOCS}/organizationalbrandinglocalization-update?view=graph-rest-1.0`,
+    lockout: false,
+    signInPathSection: null,
+    writableFields: BRANDING_WRITABLE_FIELDS,
+  }),
+  record({
+    resourceType: 'groupLifecyclePolicy',
+    operation: 'update',
+    route: '/groupLifecyclePolicies/{id}',
+    method: 'PATCH',
+    permission: 'Directory.ReadWrite.All',
+    docs: `${DOCS}/grouplifecyclepolicy-update?view=graph-rest-1.0`,
+    lockout: false,
+    signInPathSection: null,
+    guard: groupLifecycleGuard,
+    // Which groups a 'Selected' policy covers is changed through the
+    // addGroup / removeGroup actions, which are not written.
+    writableFields: ['alternateNotificationEmails', 'groupLifetimeInDays', 'managedGroupTypes'],
+  }),
+  record({
+    resourceType: 'authenticationFlowsPolicy',
+    operation: 'update',
+    route: '/policies/authenticationFlowsPolicy',
+    method: 'PATCH',
+    permission: 'Policy.ReadWrite.AuthenticationFlows',
+    docs: `${DOCS}/authenticationflowspolicy-update?view=graph-rest-1.0`,
+    lockout: false,
+    signInPathSection: null,
+    writableFields: ['selfServiceSignUp'],
+  }),
 ]);
 
 const GOVERNED_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 
-/** The registry write path of each governed type (capabilities.mjs registers these). */
+/**
+ * The registry write path of each governed type (capabilities.mjs registers
+ * these): a singleton's own route, otherwise the collection the object lives in.
+ */
 export const TENANT_POLICY_PATHS = Object.freeze(Object.fromEntries([...GOVERNED_TYPES].map((type) => [
-  type, type === 'crossTenantAccessPolicyPartner' ? PARTNERS : TENANT_POLICY_RECORDS.find((entry) => entry.resourceType === type).route,
+  type, type === 'crossTenantAccessPolicyPartner' ? PARTNERS
+    : TENANT_POLICY_RECORDS.find((entry) => entry.resourceType === type).route.replace(/\/\{id\}$/, ''),
 ])));
 
 /**
@@ -250,12 +383,36 @@ function partnerTenantId(resource) {
   return typeof id === 'string' && id.length > 0 ? id : null;
 }
 
-/** The exact Graph path one write of `resource` goes to. */
-export function tenantPolicyRoute(entry, resource) {
-  if (!entry.route.includes('{tenantId}')) return entry.route;
-  const tenantId = partnerTenantId(resource);
-  if (!tenantId) throw new Error(`${resource.naturalKey}: a partner write needs the partner's tenantId`);
-  return entry.route.replace('{tenantId}', encodeURIComponent(tenantId));
+/** The live object's own id, for a record whose route names it (issue #156). */
+function objectId(resource) {
+  const id = resource.live?.payload?.id ?? resource.targetId ?? resource.live?.targetId ?? resource.payload?.id;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+/**
+ * The exact Graph path one write of `resource` goes to. `{tenantId}` is a
+ * partner's tenant, `{org}` the target tenant (issue #156) and `{id}` the live
+ * object's id.
+ */
+export function tenantPolicyRoute(entry, resource, { targetTenant = null } = {}) {
+  let route = entry.route;
+  if (route.includes('{tenantId}')) {
+    const tenantId = partnerTenantId(resource);
+    if (!tenantId) throw new Error(`${resource.naturalKey}: a partner write needs the partner's tenantId`);
+    route = route.replace('{tenantId}', encodeURIComponent(tenantId));
+  }
+  if (route.includes('{org}')) {
+    if (typeof targetTenant !== 'string' || targetTenant.length === 0) {
+      throw new Error(`${resource.naturalKey}: a write under /organization needs the target tenant id`);
+    }
+    route = route.replace('{org}', encodeURIComponent(targetTenant));
+  }
+  if (route.includes('{id}')) {
+    const id = objectId(resource);
+    if (!id) throw new Error(`${resource.naturalKey}: the live object has no id to write to`);
+    route = route.replace('{id}', encodeURIComponent(id));
+  }
+  return route;
 }
 
 /**
@@ -296,6 +453,10 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null } 
     if (missing.length > 0) {
       return refusal('failed', `dependency: method ${missing.map((config) => config.id).join(', ')} does not exist in the live policy and cannot be created`);
     }
+  }
+  if (entry.guard) {
+    const reason = entry.guard(resource.payload, resource.live?.payload ?? null);
+    if (reason) return refusal('skipped', `manual: ${reason}`);
   }
   if (entry.lockout) {
     if (!lockoutGate || typeof lockoutGate.evaluate !== 'function') {
@@ -351,14 +512,14 @@ function withoutAnnotations(value) {
  * every writable field the snapshot holds; a create carries every writable
  * field the snapshot holds.
  */
-export function tenantPolicyRootWrite(entry, resource, desired) {
+export function tenantPolicyRootWrite(entry, resource, desired, { targetTenant = null } = {}) {
   const live = resource.live?.payload ?? null;
   const fields = entry.method === 'PATCH' ? changedFields(entry, desired, live)
     : entry.writableFields.filter((field) => Object.hasOwn(desired, field));
   if (entry.method === 'PATCH' && fields.length === 0) return null;
   if (entry.method === 'PUT' && changedFields(entry, desired, live).length === 0) return null;
   const body = Object.fromEntries(fields.map((field) => [field, withoutAnnotations(desired[field])]));
-  return { method: entry.method, path: tenantPolicyRoute(entry, resource), body, fields };
+  return { method: entry.method, path: tenantPolicyRoute(entry, resource, { targetTenant }), body, fields };
 }
 
 /**
@@ -407,6 +568,7 @@ export function buildTenantPolicyLedger() {
       permission: entry.permission,
       writableFields: entry.writableFields,
       lockout: entry.lockout,
+      guarded: entry.guard !== null,
       claim: capabilityFor(entry.resourceType, entry.operation).claim,
     }))),
   });

@@ -25,6 +25,9 @@ import { OPERATIONS, capabilityFor, graphPathFor, isSupportedClaim } from '../..
 import { EXPANSION_BATCHES, buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { buildPolicyFamilyLedger } from '../../engine/restore/policyOperations.mjs';
 import { buildAdministrativeFamilyLedger } from '../../engine/restore/administrativeOperations.mjs';
+import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
+
+const TENANT_POLICY_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 
@@ -61,13 +64,61 @@ const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Group.Unified', templateId: '62375ab9-6b52-47ed-826b-58e47e0e304b',
     values: [{ name: 'AllowGuestsToAccessGroups', value: 'false' }, { name: 'EnableGroupCreation', value: 'true' }],
   },
+  // Roadmap task-149: the tenant-wide security policies (singletons and partners).
+  authorizationPolicy: {
+    displayName: 'Authorization Policy', allowInvitesFrom: 'adminsAndGuestInviters', allowedToUseSSPR: true,
+    blockMsolPowerShell: true, defaultUserRolePermissions: { allowedToCreateApps: false, allowedToCreateSecurityGroups: false },
+  },
+  authenticationMethodsPolicy: {
+    displayName: 'Authentication Methods Policy', policyMigrationState: 'migrationComplete',
+    registrationEnforcement: { authenticationMethodsRegistrationCampaign: { state: 'enabled', snoozeDurationInDays: 1 } },
+    authenticationMethodConfigurations: [
+      { id: 'Fido2', state: 'enabled', isAttestationEnforced: true, includeTargets: [{ targetType: 'group', id: 'all_users' }] },
+      { id: 'Sms', state: 'disabled', includeTargets: [] },
+    ],
+  },
+  identitySecurityDefaultsEnforcementPolicy: { displayName: 'Security Defaults', isEnabled: false },
+  crossTenantAccessPolicy: { displayName: 'CrossTenantAccessPolicy', allowedCloudEndpoints: [] },
+  crossTenantAccessPolicyConfigurationDefault: {
+    isServiceDefault: false,
+    inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+    b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
+  },
+  crossTenantAccessPolicyPartner: {
+    tenantId: 'fixture-partner-tenant',
+    inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+  },
+  adminConsentRequestPolicy: {
+    isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
+    reviewers: [{ query: '/v1.0/users/fixture-reviewer', queryType: 'MicrosoftGraph', queryRoot: null }],
+  },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
 // display name is not writable.
 const FIXTURE_DRIFT = Object.freeze({
   groupSetting: (payload) => ({ values: payload.values.map((entry) => ({ ...entry, value: entry.value === 'true' ? 'false' : 'true' })) }),
+  // Roadmap task-149: each singleton drifts a writable setting.
+  authorizationPolicy: () => ({ allowInvitesFrom: 'everyone' }),
+  authenticationMethodsPolicy: (payload) => ({
+    authenticationMethodConfigurations: payload.authenticationMethodConfigurations.map((config) => (config.id === 'Fido2' ? { ...config, state: 'disabled' } : config)),
+  }),
+  identitySecurityDefaultsEnforcementPolicy: () => ({ isEnabled: true }),
+  crossTenantAccessPolicy: () => ({ allowedCloudEndpoints: ['microsoftonline.us'] }),
+  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
+  crossTenantAccessPolicyPartner: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
+  adminConsentRequestPolicy: () => ({ isEnabled: false }),
 });
+
+// Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the
+// harness supplies one that allows, because it proves the writer, not the gate.
+const FIXTURE_LOCKOUT_GATE = Object.freeze({ evaluate: () => ({ allowed: true, reason: 'fixture harness' }) });
+
+/** Where the fake Graph holds a tenant policy object (singleton route, or the partner path). */
+function tenantPolicyFixturePath(resourceType, payload) {
+  const collection = graphPathFor(resourceType);
+  return resourceType === 'crossTenantAccessPolicyPartner' ? `${collection}/${payload.tenantId}` : collection;
+}
 
 // Roadmap task-109: the harness's snapshot read every collection completely,
 // which is what a governed delete needs as evidence of absence.
@@ -100,6 +151,28 @@ export function fakeGraph() {
         deleted.delete(restore[1]);
         objects.set(entry.path, entry.body);
         return { ok: true, status: 200, body: entry.body };
+      }
+      // Roadmap task-149: a partner is addressed by its tenantId, a method
+      // configuration lives inside its policy, and PUT replaces the object.
+      if (method === 'POST' && path === '/policies/crossTenantAccessPolicy/partners') {
+        const created = { ...body };
+        objects.set(`${path}/${body.tenantId}`, created);
+        return { ok: true, status: 201, body: created };
+      }
+      const methodConfig = /^\/policies\/authenticationMethodsPolicy\/authenticationMethodConfigurations\/([^/]+)$/.exec(path);
+      if (methodConfig && method === 'PATCH') {
+        const policy = objects.get('/policies/authenticationMethodsPolicy');
+        const id = decodeURIComponent(methodConfig[1]);
+        const index = policy?.authenticationMethodConfigurations?.findIndex((config) => config.id === id) ?? -1;
+        if (index < 0) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+        const { '@odata.type': _type, ...fields } = body;
+        const configurations = policy.authenticationMethodConfigurations.map((config, i) => (i === index ? { ...config, ...fields } : config));
+        objects.set('/policies/authenticationMethodsPolicy', { ...policy, authenticationMethodConfigurations: configurations });
+        return { ok: true, status: 204, body: null };
+      }
+      if (method === 'PUT' && objects.has(path)) {
+        objects.set(path, { ...body });
+        return { ok: true, status: 204, body: null };
       }
       if (method === 'POST') {
         next += 1;
@@ -137,6 +210,13 @@ function fixtureFor(resourceType, operation, graph) {
   const blastRadius = CATALOG.find((entry) => entry.type === resourceType)?.blastRadius ?? null;
   const base = { naturalKey: `${resourceType}:fixture`, resourceType, references: [], blastRadius };
   const existingId = 'fixture-existing';
+  if (TENANT_POLICY_TYPES.has(resourceType)) {
+    if (operation === 'create') return { ...base, verb: 'create', payload };
+    if (operation !== 'update') return null;
+    const live = { ...payload, ...FIXTURE_DRIFT[resourceType](payload) };
+    graph.objects.set(tenantPolicyFixturePath(resourceType, payload), live);
+    return { ...base, verb: 'update', payload, targetId: existingId, live: { state: 'present', targetId: existingId, payload: live } };
+  }
   if (operation === 'create') return { ...base, verb: 'create', payload };
   if (operation === 'update') {
     // Drift a field the type actually has; a role assignment has no mutable name.
@@ -170,7 +250,7 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
       const resource = fixtureFor(resourceType, operation, graph);
       try {
         const outcome = await applyWave(graph, governor, [resource], {
-          targetTenant: 'fixture-tenant', mode: 'enforce', simulationPassed: true,
+          targetTenant: 'fixture-tenant', mode: 'enforce', simulationPassed: true, lockoutGate: FIXTURE_LOCKOUT_GATE,
           existingTargetIds: new Map(FIXTURE_TARGET_IDS[resourceType] ?? []),
           observedCoverage: FIXTURE_COVERAGE,
           // The deletion guard verifies a policy against the CURRENT target state;

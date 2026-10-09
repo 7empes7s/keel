@@ -25,6 +25,7 @@ import {
 } from '../coverage/qualification.mjs';
 import { createProjection, writableProjection } from '../reconcile/writableProjection.mjs';
 import { applyPatches, applyWave } from '../restore/applyEngine.mjs';
+import { TENANT_POLICY_PATHS } from '../restore/tenantPolicyOperations.mjs';
 import {
   BUILT_IN_AUTHENTICATION_STRENGTH_IDS, POLICY_OPERATION_RECORDS, buildPolicyFamilyLedger, currentProjection,
   policyPatchRefusal, policyProofFor, policySubtypeOf, projectionDigestFor, qualifyPolicyLiveEvidence,
@@ -116,7 +117,7 @@ test('the policy family ledger lists every policy type; the remainder stays rese
   assert.deepEqual(byType.get('authenticationStrengthPolicy').operations[1].writableFields, ['description', 'displayName']);
 
   for (const family of ledger.families) {
-    if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation'].includes(family.resourceType)) continue;
+    if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation', ...Object.keys(TENANT_POLICY_PATHS)].includes(family.resourceType)) continue;
     assert.equal(family.status, 'research-needed', family.resourceType);
     assert.equal(family.restoreScope, 'none', family.resourceType);
     assert.deepEqual(family.operations, [], `${family.resourceType} has no operation record`);
@@ -126,7 +127,7 @@ test('the policy family ledger lists every policy type; the remainder stays rese
   }
   // The batch inventory still validates; a subtype or scope cannot be declared on it.
   buildExpansionInventory();
-  const declared = { ...EXPANSION_INVENTORY, authorizationPolicy: { ...EXPANSION_INVENTORY.authorizationPolicy, qualifiedSubtypes: ['custom'] } };
+  const declared = { ...EXPANSION_INVENTORY, permissionGrantPolicy: { ...EXPANSION_INVENTORY.permissionGrantPolicy, qualifiedSubtypes: ['custom'] } };
   assert.throws(() => buildExpansionInventory({ inventory: declared }), /unrecognised fields qualifiedSubtypes/);
 });
 
@@ -342,7 +343,7 @@ test('the policy batch runner drives the subset through applyWave and prints the
   assert.deepEqual(strengthOps[1].writes, [`PATCH ${PATH}/fixture-existing`]);
   for (const op of report.operations) assert.equal(op.result, 'passed', `${op.resourceType} ${op.operation}: ${op.detail}`);
   assert.ok(report.refused.some((entry) => entry.resourceType === 'authenticationStrengthPolicy' && entry.operation === 'delete'));
-  assert.equal(report.policyLedger.families.length, 16);
+  assert.equal(report.policyLedger.families.length, 18);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };
@@ -351,5 +352,5 @@ test('the policy batch runner drives the subset through applyWave and prints the
   assert.match(text, /authenticationStrengthPolicy create: passed · claim fixture-tested · id server-assigned · subtype custom only/);
   assert.match(text, /authenticationStrengthPolicy update proof: current · writes description, displayName/);
   assert.match(text, /authenticationStrengthPolicy builtIn: refused \(immutable\)/);
-  assert.match(text, /authorizationPolicy: research-needed — tenant-wide singleton/);
+  assert.match(text, /permissionGrantPolicy: research-needed — built-in microsoft-\* policies are immutable/);
 });

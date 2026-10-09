@@ -21,6 +21,10 @@ import { resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
+  tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
+} from './tenantPolicyOperations.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -298,8 +302,15 @@ export async function applyWave(writer, governor, wave, {
   // Roadmap task-109: the source snapshot's per-type coverage entries
   // ({ [resourceType]: { outcome } }). A governed delete needs a complete one.
   observedCoverage = null,
+  // Roadmap task-149: decides whether a lockout-sensitive tenant policy
+  // (authentication methods, security defaults, authorization policy) may be
+  // written; engine/safety/lockoutGate.mjs. Without one they are skipped.
+  lockoutGate = null,
 }) {
   const applied = [];
+  // Roadmap task-149: sign-in path sections a tenant policy write changed on
+  // purpose and verified; the closing sign-in path comparison skips only these.
+  const intendedSignInSections = new Set();
   const skipped = [];
   const failed = [];
   const notRemediable = [];
@@ -362,6 +373,16 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
+    // Roadmap task-149: a tenant-wide policy writes only through its operation
+    // record, and a lockout-sensitive one only when the lockout gate allows it.
+    const tenantPolicyRefusal = tenantPolicyWriteRefusal(resource, effectiveVerb, { lockoutGate });
+    if (tenantPolicyRefusal) {
+      (tenantPolicyRefusal.outcome === 'skipped' ? skipped : failed).push(tenantPolicyRefusal.outcome === 'skipped'
+        ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason }
+        : { naturalKey: resource.naturalKey, error: tenantPolicyRefusal.reason });
+      continue;
+    }
+
     // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
     // manual/refused mechanism never writes and an expired recovery point is
     // refused at execution even after a clean dry run.
@@ -387,6 +408,16 @@ export async function applyWave(writer, governor, wave, {
         });
         continue;
       }
+    }
+
+    if (isTenantPolicyGoverned(resource.resourceType)) {
+      const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+      });
+      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.failed) failed.push(outcome.failed);
+      if (outcome.signInPathSection) intendedSignInSections.add(outcome.signInPathSection);
+      continue;
     }
 
     if (resource.verb === 'delete') {
@@ -780,13 +811,96 @@ export async function applyWave(writer, governor, wave, {
     const signInPathAfter = await snapshotSignInPath(signInPathGate.reader, {
       protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
     });
-    const gate = compareSignInPaths(signInPathBefore, signInPathAfter);
+    const gate = compareSignInPaths(signInPathBefore, signInPathAfter, { intendedSections: [...intendedSignInSections] });
     if (!gate.allowed) {
       failed.push({ naturalKey: 'sign-in-path-gate', error: gate.reason, changed: gate.changed });
     }
   }
 
   return { applied, skipped, failed, notRemediable };
+}
+
+/**
+ * Roadmap task-149: one tenant policy restore. The method configurations of
+ * the authentication methods policy are written first, then the root fields;
+ * the policy is read back once and every written field must match. Writes that
+ * read back as intended report their sign-in path section so the closing
+ * sign-in path gate does not count them as unexpected.
+ */
+async function applyTenantPolicyWrite(writer, resource, verb, {
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef,
+}) {
+  const { naturalKey } = resource;
+  const entry = tenantPolicyRecordFor(resource.resourceType, verb);
+  let desired = resource.payload;
+  const beforeRewrite = desired;
+  try {
+    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey);
+  } catch (err) {
+    return { failed: { naturalKey, error: err.message } };
+  }
+  const remapRefusal = unqualifiedRemapping(resource, verb, beforeRewrite, desired);
+  if (remapRefusal) return { failed: { naturalKey, error: remapRefusal } };
+
+  let root;
+  let methods;
+  let readPath;
+  try {
+    root = tenantPolicyRootWrite(entry, resource, desired);
+    methods = entry.methodConfigurations ? methodConfigurationWrites(resource, desired) : [];
+    readPath = verb === 'create'
+      ? tenantPolicyRoute(tenantPolicyRecordFor(resource.resourceType, 'update'), resource)
+      : tenantPolicyRoute(entry, resource);
+  } catch (err) {
+    return { failed: { naturalKey, error: err.message } };
+  }
+  const targetId = resource.targetId ?? resource.live?.targetId ?? null;
+  const writes = [...methods, ...(root ? [root] : [])];
+  if (writes.length === 0) return { applied: { naturalKey, targetId } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId } };
+
+  // A reviewer query names directory objects inside a string, out of reach of
+  // reference rewriting: each must still exist before the PUT replaces the policy.
+  for (const path of entry.resourceType === 'adminConsentRequestPolicy' ? reviewerQueryObjects(desired) : []) {
+    const found = await retryOperation(() => writer.read('v1.0', path));
+    if (found?.ok !== true) {
+      return { failed: { naturalKey, error: `dependency: admin consent reviewer ${path} ${isNotFound(found) ? 'does not exist in this tenant' : 'could not be read'}` } };
+    }
+  }
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: verb, targetId,
+    priorState: resource.live?.payload ?? null,
+    intendedState: desired,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+
+  for (const write of writes) {
+    const result = await retryOperation(() => writer.write('v1.0', write.path, { method: write.method, body: write.body }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+  }
+
+  const written = { fields: root?.fields ?? [], methods: methods.map((write) => write.methodId) };
+  const reRead = await readAfterWrite(writer, 'v1.0', readPath,
+    (r) => isNotFound(r) || (r?.ok === true && tenantPolicyPostStateRefusal(entry, desired, r.body, written) !== null), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const live = reRead?.body ?? reRead;
+  const postStateRefusal = tenantPolicyPostStateRefusal(entry, desired, live, written);
+  if (postStateRefusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'tenant policy post-state did not verify' });
+    return { failed: { naturalKey, error: postStateRefusal } };
+  }
+  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
+  return {
+    applied: { naturalKey, targetId: targetId ?? live?.id ?? null },
+    signInPathSection: entry.signInPathSection,
+  };
 }
 
 /** The collector projects group/user through a $select; the verify re-read has none, so Graph
@@ -942,7 +1056,7 @@ export async function applyPatches(writer, governor, patches, {
 
     // Roadmap task-108: a policy-governed type has no proven deferred-reference
     // patch (its records name whole-object writes only), so none is sent.
-    if (isPolicyGoverned(resourceType) || isAdministrativeGoverned(resourceType)) {
+    if (isPolicyGoverned(resourceType) || isAdministrativeGoverned(resourceType) || isTenantPolicyGoverned(resourceType)) {
       failed.push({ naturalKey: patch.naturalKey, reason: `unsupported operation: no proven deferred reference patch for ${resourceType}` });
       return { applied, failed };
     }

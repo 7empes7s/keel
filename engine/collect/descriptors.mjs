@@ -1,5 +1,5 @@
 /**
- * Graph-native ResourceTypeDescriptors (spec §7.1) for all 52 catalogue types.
+ * Graph-native ResourceTypeDescriptors (spec §7.1) for all 54 catalogue types.
  * Registration is static; the adapter id is a declaration, never a fallback.
  * criticality / blastRadius come from CATALOG and fidelity from FIDELITY.
  *
@@ -62,6 +62,10 @@ const DETAILS = {
   // — safe because a second object of this type can never exist to collide
   // with it.
   adminConsentRequestPolicy: { naturalKeyStrategy: 'constant' },
+  // Roadmap task-149: two more tenant singletons. Each has exactly one object
+  // per tenant, so a constant key can never collide.
+  identitySecurityDefaultsEnforcementPolicy: { naturalKeyStrategy: 'constant' },
+  crossTenantAccessPolicyConfigurationDefault: { naturalKeyStrategy: 'constant' },
   // Measured 2026-09-08, zero collisions and zero GUID-fallback for every
   // object of these types in the probe tenant (see the natural-key widening
   // report). All genuinely have a human-assigned displayName or name in
@@ -169,7 +173,15 @@ const PHASE3_TYPES = [
   'contact',
 ];
 
-export const DESCRIPTORS = [...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES].map(describe);
+// Roadmap task-149: tenant-wide security singletons that were not collected.
+// Security defaults was read only by the sign-in path gate; the cross-tenant
+// default lives under /default, not on the root crossTenantAccessPolicy object.
+const WIDENED_2026_10_09 = [
+  'identitySecurityDefaultsEnforcementPolicy',
+  'crossTenantAccessPolicyConfigurationDefault',
+];
+
+export const DESCRIPTORS = [...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES, ...WIDENED_2026_10_09].map(describe);
 
 // Retain the metadata export used by coverage consumers. Every type is now collected.
 export const ALL_DESCRIPTORS = DESCRIPTORS;

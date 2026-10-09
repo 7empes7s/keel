@@ -29,6 +29,9 @@ The descriptors cover 11 read operations across 5 workloads. Each records:
 | Purview labels | `purview.label-definitions` | `Get-Label` | Exchange.ManageAsApp, Compliance Administrator |
 | | `purview.label-publication` | `Get-LabelPolicy` | Exchange.ManageAsApp, Compliance Administrator |
 
+Later tasks added more reads. Issue #153 added a sixth workload, `exchange-mail-flow`,
+with eleven cmdlet reads: see [exchange-mail-flow-reads.md](exchange-mail-flow-reads.md).
+
 ### Scope validator
 
 `validateWorkloadDescriptor` (and `scopeProblems`) refuses anything that is not a

@@ -47,6 +47,8 @@ import '../collect/workloads/exchange.mjs';
 // Registers the OneDrive and Purview label adapters (task-106), disabled behind Exchange.
 import '../collect/workloads/onedrive.mjs';
 import '../collect/workloads/purview.mjs';
+// Registers the Exchange mail flow and protection adapter (issue #153), read-only and disabled behind Exchange.
+import '../collect/workloads/mailFlow.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {

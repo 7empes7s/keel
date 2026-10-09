@@ -4,11 +4,13 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
+import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
 } from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
+import { deletedPolicyRestoreRefusal, REPORT_ONLY } from './conditionalAccessEnforcement.mjs';
 import {
   isPolicyGoverned, policyCreateBody, policyPatchRefusal, policyPostCreateRefusal, policyWriteRefusal,
 } from './policyOperations.mjs';
@@ -29,6 +31,11 @@ import {
   assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
   userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
+import {
+  adminRoleWriteRefusal, eligibilityLookupPath, eligibilityPostStateRefusal, eligibilityRequestBody, isAdminRoleGoverned,
+  matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
+  roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
+} from './adminRoleOperations.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -312,6 +319,9 @@ export async function applyWave(writer, governor, wave, {
   // (authentication methods, security defaults, authorization policy) may be
   // written; engine/safety/lockoutGate.mjs. Without one they are skipped.
   lockoutGate = null,
+  // Task-152: { attempts, delayMs } for the restored policy's read-back and
+  // follow-up update; injectable so fixtures never wait in real time.
+  readAfterWriteOptions = {},
 }) {
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
@@ -389,6 +399,17 @@ export async function applyWave(writer, governor, wave, {
       continue;
     }
 
+    // Roadmap task-151: a custom role, an eligibility or PIM settings write only
+    // through their operation records; a built-in role, a group-inherited or
+    // expired eligibility is skipped before any write.
+    const adminRoleRefusal = adminRoleWriteRefusal(resource, effectiveVerb, { now: now() });
+    if (adminRoleRefusal) {
+      (adminRoleRefusal.outcome === 'skipped' ? skipped : failed).push(adminRoleRefusal.outcome === 'skipped'
+        ? { naturalKey: resource.naturalKey, reason: adminRoleRefusal.reason }
+        : { naturalKey: resource.naturalKey, error: adminRoleRefusal.reason });
+      continue;
+    }
+
     // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
     // manual/refused mechanism never writes and an expired recovery point is
     // refused at execution even after a clean dry run.
@@ -423,6 +444,17 @@ export async function applyWave(writer, governor, wave, {
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
       if (outcome.signInPathSection) intendedSignInSections.add(outcome.signInPathSection);
+      continue;
+    }
+
+    if (isAdminRoleGoverned(resource.resourceType)) {
+      const outcome = await applyAdminRoleWrite(writer, resource, effectiveVerb, {
+        mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now: now(),
+        targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
+      });
+      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.failed) failed.push(outcome.failed);
+      if (outcome.notRemediable) notRemediable.push(outcome.notRemediable);
       continue;
     }
 
@@ -533,6 +565,22 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      // Task-152 review: Microsoft restores a deleted policy in the state it was
+      // deleted in. One that comes back on is a lockout question before anything
+      // is sent: the break-glass gate must pass for that state, or nothing is written.
+      const isPolicy = resource.resourceType === 'conditionalAccessPolicy';
+      if (resource.live?.ambiguous) {
+        skipped.push({ naturalKey: resource.naturalKey, reason: 'ambiguous: several deleted objects share this name — restore refused' });
+        continue;
+      }
+      if (isPolicy) {
+        const refusal = deletedPolicyRestoreRefusal(resource, lockoutGate);
+        if (refusal) {
+          skipped.push({ naturalKey: resource.naturalKey, reason: refusal });
+          continue;
+        }
+      }
+
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
@@ -548,9 +596,14 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      // Roadmap task-152: a Conditional Access policy is restored from its own
+      // deleted-items container; directory objects from the directory one. A
+      // restored policy is always put back to report-only by the follow-up PATCH
+      // below, and anything short of a confirmed report-only read-back is a loud
+      // "may be ON" failure, never a quiet one.
       const restoreResult = await retryOperation(() => writer.write(
         'v1.0',
-        `/directory/deletedItems/${deletedItemId}/restore`,
+        deletedItemRestorePath(resource.resourceType, deletedItemId),
         { method: 'POST', body: {} },
       ));
       if (!restoreResult.ok) {
@@ -568,22 +621,40 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation });
-      if (reRead?.ok === false) {
+      // A restored policy whose state cannot be confirmed may be ON: say so loudly.
+      const policyMayBeOn = async (why, postState, result = null) => {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: postState ?? null, detail: `restored; may be ON: ${why}` });
+        failed.push({
+          ...(result ? graphFailure(resource.naturalKey, result) : { naturalKey: resource.naturalKey }),
+          error: `Conditional Access policy may be ON: ${resource.naturalKey} was restored, but KEEL could not confirm it is report-only (${why}). Check it now and set it to report-only.`,
+          policyMayBeOn: true,
+        });
+      };
+      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation, ...readAfterWriteOptions });
+      if (reRead?.ok === false && !isPolicy) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'restored object could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
-      let live = reRead?.body ?? reRead;
-      if (canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+      // A policy that could not be re-read is still written report-only below.
+      let live = reRead?.ok === false ? null : (reRead?.body ?? reRead);
+      if (live && canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
       }
 
       const payload = writableProjection(desired, resource.resourceType);
-      const updateResult = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
+      // A just-restored object can briefly 404 a write; a policy's follow-up
+      // PATCH retries that lag as well as throttling (both bounded).
+      const updateResult = isPolicy
+        ? await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation, ...readAfterWriteOptions })
+        : await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
       if (!updateResult.ok) {
+        if (isPolicy) {
+          await policyMayBeOn(`the report-only update failed: ${outcomeDetail(updateResult)}`, live, updateResult);
+          continue;
+        }
         // The restore landed (the object is back); only the follow-up PATCH did not.
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: `restored; follow-up update ${outcomeDetail(updateResult)}` });
         failed.push(graphFailure(resource.naturalKey, updateResult));
@@ -591,13 +662,21 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation });
+        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation, ...readAfterWriteOptions });
       if (updateReRead?.ok === false) {
+        if (isPolicy) {
+          await policyMayBeOn('the policy could not be read back after the report-only update', live, updateReRead);
+          continue;
+        }
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'restored; follow-up update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, updateReRead));
         continue;
       }
       live = updateReRead?.body ?? updateReRead;
+      if (isPolicy && live?.state !== REPORT_ONLY) {
+        await policyMayBeOn(`it reads back as ${live?.state ?? 'an unknown state'}`, live);
+        continue;
+      }
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
         const residual = residualDiff(desired, live, resource.resourceType);
         if (residual.length === 0) {
@@ -935,6 +1014,212 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     applied: { naturalKey, targetId: targetId ?? live?.id ?? null },
     signInPathSection: entry.signInPathSection,
   };
+}
+
+/**
+ * Roadmap task-151: one admin role write (adminRoleOperations.mjs). Only the
+ * references inside what is sent are rewritten; a rewrite to a different id
+ * needs a remapping proof for the operation, as everywhere else.
+ */
+async function applyAdminRoleWrite(writer, resource, verb, {
+  mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now, targetId,
+}) {
+  const { naturalKey } = resource;
+  const scoped = { ...resource, references: writtenReferences(resource) };
+  let desired = resource.payload;
+  try {
+    desired = rewriteReferences(desired, withExplicitReferences(scoped), referenceContext, naturalKey);
+  } catch (err) {
+    return { failed: { naturalKey, error: err.message } };
+  }
+  const remapRefusal = unqualifiedRemapping(scoped, verb, resource.payload, desired);
+  if (remapRefusal) return { failed: { naturalKey, error: remapRefusal } };
+  const context = { mode, retryOperation, rollbackClient, runId, restoreRef, now, targetId };
+  if (resource.resourceType === 'roleDefinition') return applyRoleDefinitionWrite(writer, resource, verb, desired, context);
+  if (resource.resourceType === 'roleEligibilitySchedule') return applyEligibilityCreate(writer, resource, desired, context);
+  return applyRolePolicyUpdate(writer, resource, desired, context);
+}
+
+async function applyRoleDefinitionWrite(writer, resource, verb, desired, {
+  mode, retryOperation, rollbackClient, runId, restoreRef, targetId,
+}) {
+  const { naturalKey } = resource;
+  const live = resource.live?.payload ?? null;
+  if (verb === 'update' && !targetId) return { failed: { naturalKey, error: 'update has no targetId' } };
+  // A create whose key already exists in the target is checked, never sent twice.
+  if (verb === 'create' && targetId) {
+    if (mode === 'dry-run') return { applied: { naturalKey, targetId } };
+    const existing = await retryOperation(() => writer.read('v1.0', roleDefinitionReadPath(targetId)));
+    if (existing?.ok !== true) {
+      return { failed: { naturalKey, error: `conflict: ${targetId} exists in target but could not be read (status ${existing?.status}) — manual reconciliation required` } };
+    }
+    if (roleDefinitionPostStateRefusal(desired, existing.body, roleDefinitionWrite('create', desired).fields)) {
+      return { failed: { naturalKey, error: `conflict: ${targetId} exists in target and differs from the snapshot — manual reconciliation required` } };
+    }
+    return { applied: { naturalKey, targetId } };
+  }
+  const write = roleDefinitionWrite(verb, desired, { live, targetId });
+  const changes = { fields: write?.fields ?? [], ...roleActionChanges(desired, verb === 'create' ? null : live) };
+  if (!write) return { applied: { naturalKey, targetId, changes } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId: targetId ?? null, changes } };
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: verb, targetId, priorState: live, intendedState: desired,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+
+  const result = await retryOperation(() => writer.write('v1.0', write.path, { method: write.method, body: write.body }));
+  if (!result.ok) {
+    await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    return { failed: graphFailure(naturalKey, result) };
+  }
+  const writtenId = verb === 'create' ? result.body?.id : targetId;
+  if (typeof writtenId !== 'string' || writtenId.length === 0) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'create returned no id' });
+    return { failed: { naturalKey, error: 'create returned no role id' } };
+  }
+  const reRead = await readAfterWrite(writer, 'v1.0', roleDefinitionReadPath(writtenId),
+    (r) => isNotFound(r) || (r?.ok === true && roleDefinitionPostStateRefusal(desired, r.body, write.fields) !== null), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { targetId: writtenId, detail: `${verb} could not be re-read` });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const after = reRead?.body ?? reRead;
+  const refusal = roleDefinitionPostStateRefusal(desired, after, write.fields);
+  if (refusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { targetId: writtenId, postState: after, detail: 'role post-state did not verify' });
+    return { failed: { naturalKey, error: refusal } };
+  }
+  await noteOutcome(rollbackClient, journal, 'succeeded', { targetId: writtenId, postState: after });
+  return { applied: { naturalKey, targetId: writtenId, changes } };
+}
+
+async function applyEligibilityCreate(writer, resource, desired, {
+  mode, retryOperation, rollbackClient, runId, restoreRef, now,
+}) {
+  const { naturalKey } = resource;
+  let body;
+  try {
+    body = eligibilityRequestBody(desired, { now });
+  } catch (err) {
+    return { failed: { naturalKey, error: err.message } };
+  }
+  const changes = {
+    principalId: body.principalId, roleDefinitionId: body.roleDefinitionId, directoryScopeId: body.directoryScopeId,
+    expiration: body.scheduleInfo.expiration,
+  };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId: null, changes } };
+
+  // The stored key is the old schedule id, which a recreate never gets back:
+  // the target is matched by principal, role and scope, and an eligibility that
+  // already exists is never requested again. A failed read is never "absent".
+  const lookupPath = eligibilityLookupPath(body);
+  const existing = await retryOperation(() => writer.read('v1.0', lookupPath));
+  if (existing?.ok !== true || !Array.isArray(existing.body?.value) || existing.body['@odata.nextLink']) {
+    return { failed: { naturalKey, error: `lookup-failed: the target's eligibilities for this principal and role could not be read completely (status ${existing?.status ?? 'unknown'}), so none is requested` } };
+  }
+  const already = matchingEligibility(existing.body.value, body);
+  if (already) return { applied: { naturalKey, targetId: already.id ?? null, changes: { ...changes, existing: true } } };
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: 'create', priorState: null, intendedState: body,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: 'refusing to create: rollback journal write failed' } };
+
+  const result = await retryOperation(() => writer.write('v1.0', '/roleManagement/directory/roleEligibilityScheduleRequests', { method: 'POST', body }));
+  if (!result.ok) {
+    await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    return { failed: graphFailure(naturalKey, result) };
+  }
+  const ungranted = ungrantedRequest(result.body);
+  if (ungranted) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: result.body ?? null, detail: `request ${ungranted}` });
+    return { failed: { naturalKey, error: `the eligibility request ended ${ungranted}, so no eligibility was granted` } };
+  }
+  const reRead = await readAfterWrite(writer, 'v1.0', lookupPath,
+    (r) => isNotFound(r) || (r?.ok === true && !matchingEligibility(r.body?.value, body)), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'eligibility could not be re-read' });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const schedule = matchingEligibility(reRead?.body?.value, body);
+  const refusal = eligibilityPostStateRefusal(body, schedule);
+  if (refusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: schedule, detail: 'eligibility post-state did not verify' });
+    return { failed: { naturalKey, error: refusal } };
+  }
+  await noteOutcome(rollbackClient, journal, 'succeeded', { targetId: schedule.id ?? null, postState: schedule });
+  return { applied: { naturalKey, targetId: schedule.id ?? null, changes } };
+}
+
+async function applyRolePolicyUpdate(writer, resource, desired, {
+  mode, retryOperation, rollbackClient, runId, restoreRef, targetId,
+}) {
+  const { naturalKey } = resource;
+  const live = resource.live.payload;
+  const policyId = targetId ?? live.id;
+  if (!policyId) return { failed: { naturalKey, error: 'update has no targetId' } };
+  let plan;
+  try {
+    plan = policyRuleWrites(policyId, desired, live);
+  } catch (err) {
+    return { failed: { naturalKey, error: `refused: ${err.message}` } };
+  }
+  const changes = { rules: plan.writes.map((write) => write.ruleId), withheld: plan.withheld, manual: plan.manual };
+  // A rule left as it is (withheld or manual) is a gap the run must show: it is
+  // reported as not remediable next to whatever was applied, never as a clean
+  // success.
+  const gap = plan.withheld.length > 0 || plan.manual.length > 0
+    ? {
+      naturalKey, status: 'not-remediable', targetId: policyId, withheld: plan.withheld, manual: plan.manual,
+      reason: `${plan.withheld.length + plan.manual.length} PIM rule(s) left for a person to change`,
+    }
+    : null;
+  const outcome = (result) => (gap ? { ...result, notRemediable: gap } : result);
+  if (mode === 'dry-run' || plan.writes.length === 0) {
+    // Nothing to write and nothing left over: the policy already matches.
+    return outcome(plan.writes.length > 0 || !gap ? { applied: { naturalKey, targetId: policyId, changes } } : {});
+  }
+
+  // An approval rule naming an approver who is gone would block activation.
+  for (const write of plan.writes.filter((candidate) => candidate.kind === 'approval')) {
+    for (const approver of ruleApprovers(write.body)) {
+      const found = await retryOperation(() => writer.read('v1.0', `/${approver.collection}/${encodeURIComponent(approver.id)}?$select=id`));
+      if (found?.ok !== true) {
+        return { failed: { naturalKey, error: `dependency: approver ${approver.collection}/${approver.id} in ${write.ruleId} ${isNotFound(found) ? 'does not exist in this tenant' : 'could not be read'}` } };
+      }
+    }
+  }
+
+  const journal = await journalBeforeMutation(rollbackClient, {
+    runId, restoreRef, resource, operation: 'update', targetId: policyId, priorState: live, intendedState: desired,
+  });
+  if (!journal.ok) return { failed: { naturalKey, error: 'refusing to update: rollback journal write failed' } };
+
+  for (const [index, write] of plan.writes.entries()) {
+    const result = await retryOperation(() => writer.write('v1.0', write.path, { method: 'PATCH', body: write.body }));
+    if (!result.ok) {
+      await noteOutcome(rollbackClient, journal, index === 0 ? classifyWriteOutcome(result) : 'uncertain', {
+        detail: index === 0 ? outcomeDetail(result) : `${index} rule(s) written; ${write.ruleId} ${outcomeDetail(result)}`,
+      });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+  }
+
+  const reRead = await readAfterWrite(writer, 'v1.0', policyReadPath(policyId),
+    (r) => isNotFound(r) || (r?.ok === true && policyPostStateRefusal(desired, r.body, plan.writes) !== null), { retryOperation });
+  if (reRead?.ok === false) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'policy could not be re-read' });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  const after = reRead?.body ?? reRead;
+  const refusal = policyPostStateRefusal(desired, after, plan.writes);
+  if (refusal) {
+    await noteOutcome(rollbackClient, journal, 'uncertain', { postState: after, detail: 'policy post-state did not verify' });
+    return { failed: { naturalKey, error: refusal } };
+  }
+  await noteOutcome(rollbackClient, journal, 'succeeded', { postState: after });
+  return outcome({ applied: { naturalKey, targetId: policyId, changes } });
 }
 
 /**

@@ -96,28 +96,34 @@ test('every catalogue type sits in exactly one expansion batch with an explicit 
   assert.equal(seen.get('application').batch, 'identity-application');
   // Roadmap task-109: the administrative unit is now a registered subset.
   assert.equal(seen.get('administrativeUnit').status, 'qualified-subset');
-  assert.equal(seen.get('roleEligibilitySchedule').status, 'research-needed');
+  // Roadmap task-151: the eligibility schedule is now a registered subset; the
+  // active time-bound assignment schedule stays research-needed.
+  assert.equal(seen.get('roleEligibilitySchedule').status, 'qualified-subset');
+  assert.equal(seen.get('roleAssignmentSchedule').status, 'research-needed');
   assert.equal(seen.get('oauth2PermissionGrant').status, 'research-needed');
 });
 
 test('scopes are derived from registered operations only; no new family is fully restorable', () => {
-  // group is the only type with every object operation registered (before task-107).
-  assert.deepEqual(CATALOG.map(({ type }) => type).filter((type) => restoreScopeFor(type) === 'full'), ['group']);
+  // group was the only type with every object operation registered (before task-107).
+  // Task-152 registered Conditional Access restore-soft-deleted, completing its set.
+  assert.deepEqual(CATALOG.map(({ type }) => type).filter((type) => restoreScopeFor(type) === 'full'), ['group', 'conditionalAccessPolicy']);
   assert.equal(restoreScopeFor('application'), 'partial');
   assert.equal(restoreScopeFor('servicePrincipal'), 'partial');
   assert.equal(restoreScopeFor('administrativeUnit'), 'partial', 'task-109: update only');
-  assert.equal(restoreScopeFor('roleEligibilitySchedule'), 'none');
-  const unit = qualificationFor('roleEligibilitySchedule');
+  assert.equal(restoreScopeFor('roleEligibilitySchedule'), 'partial', 'task-151: create only');
+  assert.equal(restoreScopeFor('roleAssignmentSchedule'), 'none');
+  const unit = qualificationFor('roleAssignmentSchedule');
   assert.equal(unit.decision, 'unknown');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
   assert.equal(qualificationFor('application').expansion.restoreScope, 'partial');
 });
 
 test('adversarial inventory edits are refused: a research-needed family cannot be marked restorable', () => {
-  // Roadmap task-109 registered administrativeUnit and groupSetting; the
-  // research-needed examples are now roleEligibilitySchedule and oauth2PermissionGrant.
-  const asQualified = { ...EXPANSION_INVENTORY, roleEligibilitySchedule: { ...EXPANSION_INVENTORY.roleEligibilitySchedule, status: 'qualified-subset' } };
-  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /roleEligibilitySchedule is marked qualified-subset but has no registered write capability/);
+  // Roadmap task-109 registered administrativeUnit and groupSetting, and
+  // task-151 roleEligibilitySchedule; the research-needed examples are now
+  // roleAssignmentSchedule and oauth2PermissionGrant.
+  const asQualified = { ...EXPANSION_INVENTORY, roleAssignmentSchedule: { ...EXPANSION_INVENTORY.roleAssignmentSchedule, status: 'qualified-subset' } };
+  assert.throws(() => buildExpansionInventory({ inventory: asQualified }), /roleAssignmentSchedule is marked qualified-subset but has no registered write capability/);
   const flagged = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, fullyRestorable: true } };
   assert.throws(() => buildExpansionInventory({ inventory: flagged }), /unrecognised fields fullyRestorable/);
   const { accessPackage: _omitted, ...missing } = EXPANSION_INVENTORY;
@@ -128,8 +134,8 @@ test('adversarial inventory edits are refused: a research-needed family cannot b
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
   const manualMismatch = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, status: 'manual' } };
   assert.throws(() => buildExpansionInventory({ inventory: manualMismatch }), /oauth2PermissionGrant is manual in its batch but unknown/);
-  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleEligibilitySchedule: { decision: 'automated', reason: 'x' } } }),
-    /roleEligibilitySchedule is marked automated but has no registered write capability/);
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleAssignmentSchedule: { decision: 'automated', reason: 'x' } } }),
+    /roleAssignmentSchedule is marked automated but has no registered write capability/);
 });
 
 // ------------------------------------------------- the qualified subset, through applyWave
@@ -305,10 +311,23 @@ test('the identity batch runner drives every qualified operation through applyWa
   // Roadmap task-150: a user is restored in place; create stays refused.
   assert.ok(report.operations.some((op) => op.resourceType === 'user' && op.operation === 'update' && op.result === 'passed'));
   assert.ok(report.refused.some((entry) => entry.resourceType === 'user' && entry.operation === 'create'));
+  // Roadmap task-151: custom roles, eligibility create and PIM settings pass;
+  // role delete and eligibility removal stay refused.
+  for (const [type, operation, write] of [
+    ['roleDefinition', 'create', 'POST /roleManagement/directory/roleDefinitions'],
+    ['roleEligibilitySchedule', 'create', 'POST /roleManagement/directory/roleEligibilityScheduleRequests'],
+    ['unifiedRoleManagementPolicy', 'update', 'PATCH /policies/roleManagementPolicies/fixture-existing/rules/Enablement_EndUser_Assignment'],
+  ]) {
+    const op = report.operations.find((entry) => entry.resourceType === type && entry.operation === operation);
+    assert.equal(op?.result, 'passed', `${type} ${operation}`);
+    assert.deepEqual(op.writes, [write]);
+  }
+  assert.ok(report.refused.some((entry) => entry.resourceType === 'roleDefinition' && entry.operation === 'delete'));
+  assert.ok(report.refused.some((entry) => entry.resourceType === 'roleEligibilitySchedule' && entry.operation === 'delete'));
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  for (const type of ['oauth2PermissionGrant', 'roleEligibilitySchedule', 'accessPackage']) {
+  for (const type of ['oauth2PermissionGrant', 'roleAssignmentSchedule', 'accessPackage']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

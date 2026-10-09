@@ -87,6 +87,7 @@ export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
+  conditionalAccessEnforcement = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -115,6 +116,11 @@ export function computePlanDigest({
     // the assessment version + fingerprint, exclusions, override and post-restore
     // checks. Null for every other restore, which keeps their digest.
     ...(incidentRecovery ? { incidentRecovery } : {}),
+    // Task-152: turning on a Conditional Access policy binds the restore it
+    // follows, the policy, its target id, its from/to state and its body hash.
+    // The gates are not in the digest: they are evaluated again at execution.
+    // Null otherwise.
+    ...(conditionalAccessEnforcement ? { conditionalAccessEnforcement } : {}),
   }));
 }
 
@@ -167,7 +173,7 @@ export async function createDryRunArtifact(client, {
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  workloadRestore = null,
+  workloadRestore = null, conditionalAccessEnforcement = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -178,8 +184,8 @@ export async function createDryRunArtifact(client, {
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
         relationship_operations, recovery_mechanisms, content_effects, compensation, incident_recovery,
-        workload_restore)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+        workload_restore, conditional_access_enforcement)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -197,6 +203,7 @@ export async function createDryRunArtifact(client, {
       compensation ? JSON.stringify(compensation) : null,
       incidentRecovery ? JSON.stringify(incidentRecovery) : null,
       workloadRestore ? JSON.stringify(workloadRestore) : null,
+      conditionalAccessEnforcement ? JSON.stringify(conditionalAccessEnforcement) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -252,6 +259,8 @@ function normalizeArtifact(row) {
     incidentRecovery: row.incident_recovery ?? null,
     // Task-103: set only on a workload configuration restore (no Entra snapshot).
     workloadRestore: row.workload_restore ?? null,
+    // Task-152: set only on a Conditional Access enforcement dry run.
+    conditionalAccessEnforcement: row.conditional_access_enforcement ?? null,
     createdAt: row.created_at,
   };
 }

@@ -279,3 +279,5 @@ added to the CI engine step in `.github/workflows/portal.yml`. That step passes 
 - **Out of scope.** Retention labels and retention policies (`Get-ComplianceTag`,
   `Get-RetentionCompliancePolicy`), auto-labeling policies, DLP and every item-level
   label are not read or restored here.
+  Issue #157 later added retention and DLP policy reads as a separate workload: see
+  [purview-retention-dlp-reads.md](purview-retention-dlp-reads.md).

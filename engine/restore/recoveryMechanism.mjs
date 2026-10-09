@@ -30,7 +30,9 @@
  */
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
 
-/** Entra keeps deleted users, groups and applications for 30 days. */
+/** Entra keeps deleted users, groups, applications and Conditional Access
+ * policies for 30 days (the Conditional Access figure is a declaration to
+ * confirm before live qualification, roadmap task-152). */
 export const SOFT_DELETE_RETENTION_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -58,14 +60,13 @@ const VERB_FOR_MECHANISM = Object.freeze({
  * must be checked against current Microsoft documentation (and credential-
  * qualified) before any route can be marked qualified. `docs` stays null until
  * that check is recorded — see docs/roadmap/native-recovery.md.
+ *
+ * Roadmap task-152: Conditional Access policies left this table. Their deleted
+ * items are now read by the reconciliation plan itself (liveState.mjs) and
+ * restored through the registered, fixture-tested restore-soft-deleted
+ * operation, so a deleted policy is a soft-delete restore, not a handoff.
  */
 export const NATIVE_RECOVERY_ROUTES = Object.freeze({
-  conditionalAccessPolicy: Object.freeze({
-    route: 'conditional-access-deleted-policies',
-    docs: null,
-    qualified: false,
-    reason: 'Conditional Access policy recovery from deleted items is not credential-qualified for KEEL',
-  }),
   namedLocation: Object.freeze({
     route: 'conditional-access-deleted-named-locations',
     docs: null,
@@ -131,6 +132,11 @@ export function selectRecoveryMechanism(resource, { deletedLookup = 'not-applica
     return decision(resource, 'delete', { ...proven, idOutcome: 'terminal', retainedId: resource.live?.targetId ?? resource.targetId ?? null });
   }
   if (verb === 'restore-soft-deleted') {
+    if (resource.live?.ambiguous) {
+      return decision(resource, 'refused', {
+        reason: `ambiguous: ${resource.live.candidates?.length ?? 'several'} deleted objects share this name, so KEEL cannot tell which one the backup holds — restore refused and nothing is recreated`,
+      });
+    }
     const deadline = softDeleteDeadline(resource.live?.payload);
     if (!deadline) {
       return decision(resource, 'refused', { reason: 'soft-delete retention deadline is unprovable (no deletedDateTime) — restore refused, and the object is never recreated beside its deleted original' });

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { PendingSteps } from "@/components/pending-steps";
 import { CompletionChecklist, completionStateLabel, type CompletionResource } from "@/components/recovery-completion";
 
 const resource = (state: CompletionResource["state"]): CompletionResource => ({
@@ -40,4 +41,32 @@ test("without the restore capability the checklist is read-only", () => {
 
 test("no items renders an explicit nothing-left message", () => {
   assert.match(renderToStaticMarkup(createElement(CompletionChecklist, { resources: [], canComplete: true })), /no follow-up work/);
+});
+
+test("task-152: a pending enforcement step names the approved next step and offers no evidence form", () => {
+  const enforcement: CompletionResource = {
+    naturalKey: "conditionalAccessPolicy:Require-MFA-All",
+    resourceType: "conditionalAccessPolicy",
+    mechanism: "soft-delete-restore",
+    state: "configuration-restored",
+    items: [
+      { id: "e1", kind: "enforcement", requirement: "conditionalAccessEnabled", description: "Turn the policy back on", owner: "op", state: "pending", evidence: [], closedAt: null, reopenCount: 0 },
+    ],
+  };
+  const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [enforcement], canComplete: true }));
+  assert.match(html, /Next: ask for the enforcement step, which needs a second person to approve it/);
+  assert.doesNotMatch(html, /Mark verified/, "a ticket cannot stand in for turning the policy on");
+});
+
+test("task-152: the pending steps list shows only when the restore left a policy report-only", () => {
+  assert.equal(renderToStaticMarkup(createElement(PendingSteps, { steps: [] })), "");
+  const html = renderToStaticMarkup(createElement(PendingSteps, {
+    steps: [{
+      naturalKey: "conditionalAccessPolicy:Require-MFA-All", resourceType: "conditionalAccessPolicy", step: "turn-on-conditional-access-policy",
+      snapshotState: "enabled", restoredState: "enabledForReportingButNotEnforced", description: "",
+    }],
+  }));
+  assert.match(html, /Still to do after this restore/);
+  assert.match(html, /report-only mode and protects no one/);
+  assert.match(html, /second person approves/);
 });

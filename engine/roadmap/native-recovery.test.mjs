@@ -136,8 +136,14 @@ test('mutation check: a 403 or a timeout on the deleted-items lookup never falls
 // ---------------------------------------------- acceptance 4: native routes stay manual
 
 test('an unqualified native recovery route is a manual handoff; a failed native lookup refuses', async () => {
-  const policy = { naturalKey: 'conditionalAccessPolicy:Block', resourceType: 'conditionalAccessPolicy', verb: 'create', payload: { displayName: 'Block' } };
-  assert.equal(NATIVE_RECOVERY_ROUTES.conditionalAccessPolicy.qualified, false);
+  // Roadmap task-152: a deleted Conditional Access policy is read from its own
+  // deleted items and soft-restored, so it is no longer a native-route handoff.
+  assert.equal(NATIVE_RECOVERY_ROUTES.conditionalAccessPolicy, undefined);
+  const policy = {
+    naturalKey: 'namedLocation:Office', resourceType: 'namedLocation', verb: 'create',
+    payload: { '@odata.type': '#microsoft.graph.ipNamedLocation', displayName: 'Office', isTrusted: false, ipRanges: [] },
+  };
+  assert.equal(NATIVE_RECOVERY_ROUTES.namedLocation.qualified, false);
   const manual = selectRecoveryMechanism(policy, { nativeLookup: { state: 'found' }, now: NOW });
   assert.equal(manual.mechanism, 'manual');
   assert.match(manual.reason, /not credential-qualified/);

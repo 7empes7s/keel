@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   KEEL PowerShell plane: run ONE allowlisted Exchange Online, Security & Compliance
-  (Purview) or PnP cmdlet (roadmap tasks 105 and 106).
+  (Purview), PnP or Microsoft Teams cmdlet (roadmap tasks 105 and 106, issue #154).
 
 .DESCRIPTION
   Reads the job descriptor from $env:KEEL_JOB_JSON:
@@ -18,8 +18,10 @@
   A cmdlet error is never reported as an empty success.
 
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
-  engine/roadmap/onedrive-purview.test.mjs and engine/roadmap/exchange-mail-flow.test.mjs
-  (which play this contract); it has not been run against a tenant.
+  engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
+  engine/roadmap/teams-org-policies.test.mjs and
+  engine/roadmap/purview-retention-dlp.test.mjs (which play this contract); it has not
+  been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -62,6 +64,30 @@ $AllowedMailFlow = @{
     'Get-SafeAttachmentPolicy'      = @()
 }
 
+# Issue #154: Teams org-wide policies and tenant configuration, read in the
+# MicrosoftTeams session with no parameters. Reads only: no Set-, New-, Grant- or Remove-.
+$AllowedTeamsPolicy = @{
+    'Get-CsTeamsMeetingPolicy'               = @()
+    'Get-CsTeamsMessagingPolicy'             = @()
+    'Get-CsTeamsAppSetupPolicy'              = @()
+    'Get-CsTeamsAppPermissionPolicy'         = @()
+    'Get-CsTenantFederationConfiguration'    = @()
+    'Get-CsTeamsClientConfiguration'         = @()
+    'Get-CsTeamsGuestMeetingConfiguration'   = @()
+    'Get-CsTeamsGuestMessagingConfiguration' = @()
+    'Get-CsTeamsGuestCallingConfiguration'   = @()
+}
+
+# Issue #157: Purview retention and DLP policies and rules, read in the Security &
+# Compliance session with no parameters. Reads only: no Set-, New- or Remove-, and no
+# cmdlet that reads DLP matches, incidents or reports.
+$AllowedPurviewRetentionDlp = @{
+    'Get-RetentionCompliancePolicy' = @()
+    'Get-RetentionComplianceRule'   = @()
+    'Get-DlpCompliancePolicy'       = @()
+    'Get-DlpComplianceRule'         = @()
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -70,13 +96,29 @@ $AllowedPnP = @{
 
 function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 8 -Compress))
+    # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
+    # sensitive information type groups, say) to type-name strings. Shallower answers
+    # serialize the same at either depth.
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 16 -Compress))
     exit $Code
 }
 
 function Out-Failure {
     param([string]$Message, [string]$Category = $null, [string]$ErrorId = $null)
     Out-Envelope -Envelope @{ ok = $false; error = @{ message = $Message; category = $Category; errorId = $ErrorId } } -Code 1
+}
+
+# The certificate re-imported through PKCS12, exactly as probe-workloads.ps1
+# (Get-KeelCertificate) builds it: CreateFromPemFile's ephemeral key does not survive
+# every .NET crypto provider on Linux. Used by the Teams session, whose live proof
+# comes from the probe, so the collector signs in the same way. Nothing is written to disk.
+function ConvertTo-KeelPkcs12Certificate {
+    param([System.Security.Cryptography.X509Certificates.X509Certificate2]$Raw)
+    $password = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+    $bytes = $Raw.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pkcs12, $password)
+    $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable -bor `
+        [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($bytes, $password, $flags)
 }
 
 try {
@@ -91,7 +133,9 @@ $module = [string]$job['module']
 if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
+elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
+elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
 $params = @{}
 if ($null -ne $job['parameters']) {
@@ -112,6 +156,12 @@ try {
         Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
         $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
         Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
+    } elseif ($session -eq 'teams') {
+        # Same app-only connection as the probe (probe-workloads.ps1, Teams block),
+        # including its PKCS12 round trip of the certificate.
+        Import-Module MicrosoftTeams -ErrorAction Stop | Out-Null
+        $teamsCert = ConvertTo-KeelPkcs12Certificate -Raw $cert
+        Connect-MicrosoftTeams -Certificate $teamsCert -ApplicationId $config.clientId -TenantId $config.tenantId | Out-Null
     } else {
         Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
         if ($session -eq 'ipps') {
@@ -134,5 +184,6 @@ try {
     Out-Failure -Message $record.Exception.Message -Category ([string]$record.CategoryInfo.Category) -ErrorId ([string]$record.FullyQualifiedErrorId)
 } finally {
     if ($session -eq 'pnp') { try { Disconnect-PnPOnline -ErrorAction SilentlyContinue | Out-Null } catch {} }
+    elseif ($session -eq 'teams') { try { Disconnect-MicrosoftTeams -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
     else { try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
 }

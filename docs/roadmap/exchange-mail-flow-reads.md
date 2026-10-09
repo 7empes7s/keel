@@ -71,7 +71,9 @@ Description redacted too, because an opaque key does not look like a credential.
   live-qualified, so the cmdlet once existed: losing it means those policies are no
   longer backed up, and the run is `partial`. A tenant that never had the licence
   never qualifies these reads, so they are listed as skipped instead. The same error
-  on any other cmdlet is a failure. A run where nothing could be read is `failed`.
+  on any other cmdlet is a failure. A run that kept no object is `failed` when every
+  family failed, was not licensed, or answered only objects with no identity (issue #157
+  review).
 - **Disabled until qualified.** `collectMailFlow` records a `disabled` run and sends
   nothing unless:
   - the Exchange mailbox workload is qualified (as Purview requires, so the order stays

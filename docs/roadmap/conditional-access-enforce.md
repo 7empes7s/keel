@@ -156,14 +156,11 @@ the existing approval and job path, so the portal needed no new action route.
   restore POST and the report-only PATCH. That window is allowed only after the
   lockout gate passed for the policy turned on. A failed PATCH is reported
   loudly as "may be ON" (see Soft-delete restore).
-- Because of #149, the forward restore's lockout gate is currently loaded with
-  the raw tenant id. In production it therefore likely refuses (fails closed)
-  every deleted policy that would come back on, until #149 is fixed.
 - No portal button to plan the step. Planning is CLI-only; the portal shows the
   step and the existing approval.
 - Turning on several policies at once: it is one policy per step.
 - Named-location soft restore.
-- Two existing issues are noted but not changed here:
-  - the forward restore's lockout gate passes the raw tenant id where a tenant
-    reference is expected (#149; see above);
-  - its sign-in path gate counts any Conditional Access change as a path change.
+- The forward restore's lockout gate used to be loaded with the raw tenant id;
+  it now uses the derived tenant reference, where readiness is stored.
+- One existing issue is noted but not changed here: the forward restore's
+  sign-in path gate counts any Conditional Access change as a path change.

@@ -38,6 +38,7 @@ import { createSnapshot, completeSnapshot, insertResourceVersion } from '../stor
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeGraph, runFixtureHarness } from '../../tools/qualification/operations.mjs';
 import { main, runRestore } from '../../cli/keel-restore.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -555,7 +556,10 @@ function cliDependencies(graph, world) {
         naturalKey: `conditionalAccessPolicy:${body.displayName}`, resourceType: 'conditionalAccessPolicy', sourceId: body.id, payload: body,
       })),
     ],
-    loadLockoutGateInputs: async () => gateInputs(world.gate),
+    loadLockoutGateInputs: async (_client, { tenantRef }) => {
+      world.gateTenantRefs?.push(tenantRef);
+      return gateInputs(world.gate);
+    },
     loadGroupMembership: async () => () => null,
   };
 }
@@ -683,7 +687,7 @@ test('a policy turned on outside KEEL, matching the backup, closes the step when
 
 test('a forward restore that cannot confirm a policy is report-only stops loudly and opens an item for it', async (t) => {
   const client = await schemaClient(t);
-  const world = { liveCa: false, gate: {} };
+  const world = { liveCa: false, gate: {}, gateTenantRefs: [] };
   const graph = fakeGraph();
   graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(2, new Date()) } });
   const write = graph.write.bind(graph);
@@ -701,6 +705,8 @@ test('a forward restore that cannot confirm a policy is report-only stops loudly
   await assert.rejects(run({ artifactId: restoreId, mode: 'enforce' }), /wave had failures/);
   assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, ENFORCED);
   assert.ok(errors.some((line) => /^WARNING: Conditional Access policy may be ON: /.test(line)), 'said loudly');
+  assert.ok(world.gateTenantRefs.length > 0, 'the gate was loaded');
+  assert.ok(world.gateTenantRefs.every((ref) => ref === tenantRefFor('tenant-152')), 'with the derived tenant reference, never the raw id');
   const items = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: restoreId });
   assert.deepEqual(items.map((item) => [item.requirement, item.state]), [['conditionalAccessStateConfirmed', 'pending']]);
 });

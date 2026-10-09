@@ -592,6 +592,19 @@ async function activeBreakGlassAlerts(client, tenantRef) {
  * portal page guard, or `read` in the CLI). Legacy installs without the task-94
  * tables read as `not-configured`, never as ready.
  */
+/**
+ * Roadmap task-149: the raw inputs engine/safety/lockoutGate.mjs evaluates a
+ * proposed tenant policy against (registered accounts before evaluation, the
+ * newest covered inventory and group membership).
+ */
+export async function loadLockoutGateInputs(client, { tenantRef, now = new Date() }) {
+  if (!await tableExists(client, 'breakglass_account')) return { configured: false, accounts: [], inventory: {}, groupMembers: () => null, now };
+  const accounts = await loadAccounts(client, tenantRef);
+  const inventory = await loadInventory(client, tenantRef);
+  const groupMembers = await loadGroupMembership(client, tenantRef, inventory);
+  return { configured: accounts.length > 0, accounts, inventory, groupMembers, now };
+}
+
 export async function loadBreakGlassReadiness(client, { tenantRef, now = new Date() }) {
   const generatedAt = new Date(now).toISOString();
   if (!await tableExists(client, 'breakglass_account')) {

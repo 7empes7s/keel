@@ -31,6 +31,9 @@ import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
+import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
+import { loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
+import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import {
@@ -115,6 +118,22 @@ const THROTTLE_SEEDS = {
  * one only from a complete observation of its collection). Scoped to the
  * snapshot's own tenant: another tenant's snapshot reads as no evidence (null).
  */
+/**
+ * Roadmap task-149: the break-glass lockout gate for this plan, or null when no
+ * lockout-sensitive tenant policy write is planned. A gate whose inputs cannot
+ * be read refuses every such write, never allows it.
+ */
+export async function lockoutGateFor(client, resources, { tenantRef }) {
+  const planned = resources.some((resource) => resource.verb && resource.verb !== 'noop'
+    && tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true);
+  if (!planned) return null;
+  try {
+    return breakGlassLockoutGate(await loadLockoutGateInputs(client, { tenantRef }));
+  } catch (error) {
+    return closedLockoutGate(`break-glass readiness could not be read: ${error.message}`);
+  }
+}
+
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
   if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
   const { rows } = await client.query(
@@ -429,6 +448,11 @@ export async function runRestore({
     };
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
     resources = reconciliation.resources;
+    // Roadmap task-149: a lockout-sensitive tenant policy (authentication methods,
+    // security defaults, authorization policy) is written only when the target's
+    // break-glass accounts stay ready under the proposed policy. Loaded only when
+    // such a write is planned; applyWave skips it without a gate.
+    const lockoutGate = await lockoutGateFor(client, resources, { tenantRef: collectorConfig.tenantId });
     // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
     // snapshot did not contain) is authorised only by a complete observation of
     // that collection in the source snapshot. Read only when such a delete is
@@ -625,6 +649,7 @@ export async function runRestore({
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
           targetTenant: collectorConfig.tenantId,
+          lockoutGate,
         }),
         ...relationshipPlan.refusals,
         ...contentEffects.refusals,
@@ -710,6 +735,7 @@ export async function runRestore({
         deletionGuardOptions,
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
         observedCoverage,
+        lockoutGate,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       results.applied.push(...result.applied);
@@ -777,6 +803,7 @@ export async function runRestore({
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
           observedCoverage,
+          lockoutGate,
         });
         logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
         results.applied.push(...result.applied);

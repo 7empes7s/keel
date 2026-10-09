@@ -56,6 +56,10 @@ const GLOBAL_CONSTANT_FIELDS = [
   // THIS tenant's apps resolve through the index before this rule is reached.)
   /^requiredResourceAccess\.resourceAccess\.id$/,
   /(^|\.)builtInStandardId$/,
+  // Roadmap task-149: the authorization policy's guest role is one of three
+  // Microsoft-defined role template ids (User, Guest User, Restricted Guest
+  // User), the same in every tenant.
+  /^guestUserRoleId$/,
   // Gallery application templates are published by Microsoft, not the tenant.
   /(^|\.)applicationTemplateId$/,
   // FIDO2 keyRestrictions.aaGuids list FIDO Alliance authenticator model ids

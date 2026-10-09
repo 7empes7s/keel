@@ -41,6 +41,14 @@ const REGISTERED = Object.freeze({
   // Roadmap task-109: the administrative-configuration subset.
   administrativeUnit: ['update'],
   groupSetting: ['update', 'delete'],
+  // Roadmap task-149: the tenant-wide security policies.
+  authorizationPolicy: ['update'],
+  authenticationMethodsPolicy: ['update'],
+  identitySecurityDefaultsEnforcementPolicy: ['update'],
+  crossTenantAccessPolicy: ['update'],
+  crossTenantAccessPolicyConfigurationDefault: ['update'],
+  crossTenantAccessPolicyPartner: ['create', 'update'],
+  adminConsentRequestPolicy: ['update'],
 });
 
 function governor() {
@@ -131,7 +139,7 @@ test('roleAssignment/namedLocation/conditionalAccessPolicy are not soft-deletabl
 // ---------------------------------------------------------------------------
 // Mutation check 1: qualify operation from pathFor alone.
 //
-// Every one of CATALOG's 52 types has a real Graph collection `path` — path
+// Every one of CATALOG's 54 types has a real Graph collection `path` — path
 // existence alone must never imply write capability. Every type outside the
 // four explicitly registered above must read 'unsupported' for all four
 // operations, even though a read path exists.
@@ -149,7 +157,7 @@ test('mutation pin: a real Graph collection path never implies write capability'
     assert.equal(graphPathFor(entry.type), null, `${entry.type} must have no registered write path`);
     checked += 1;
   }
-  assert.ok(checked > 40, 'this pin must exercise the bulk of the catalogue, not a token sample');
+  assert.ok(checked > CATALOG.length / 2, 'this pin must exercise the bulk of the catalogue, not a token sample');
 });
 
 test('mutation pin: descriptor.remappable never gates a capability claim', () => {

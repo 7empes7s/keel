@@ -208,11 +208,11 @@ test('the CLI checks completeness and prints the ledger', async () => {
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(line) };
   assert.equal(await operationsMain({ argv: ['--check'], out }), 0);
-  assert.match(lines[0], /^52 catalogue types, each with an explicit decision and an expansion batch$/);
+  assert.match(lines[0], /^54 catalogue types, each with an explicit decision and an expansion batch$/);
   lines.length = 0;
   assert.equal(await operationsMain({ argv: ['--json'], out }), 0);
   const parsed = JSON.parse(lines[0]);
-  assert.equal(parsed.types.length, 52);
+  assert.equal(parsed.types.length, 54);
   assert.equal(parsed.fixtureHarness, undefined, 'the harness only runs when asked');
 });
 

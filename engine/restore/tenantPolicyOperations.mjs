@@ -57,7 +57,7 @@ const CROSS_TENANT_SETTINGS = Object.freeze([
   'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'inboundTrust', 'tenantRestrictions',
 ]);
 
-const record = (fields) => Object.freeze({ guard: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
+const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
 
 /**
  * Issue #156: the company branding fields that are plain text, colours or
@@ -65,9 +65,12 @@ const record = (fields) => Object.freeze({ guard: null, ...fields, writableField
  * bannerLogo, squareLogo, squareLogoDark, headerLogo, favicon, customCSS) are
  * binary uploads with their own PUT routes; they are never written, so only
  * their paths are kept in the snapshot (as immutable fields).
+ * contentCustomization is left out: it nests uploaded-file paths
+ * (attributeCollectionRelativeUrl, ...) beside its text, so it is not plain
+ * text and is never written.
  */
 export const BRANDING_WRITABLE_FIELDS = Object.freeze([
-  'backgroundColor', 'contentCustomization', 'customAccountResetCredentialsUrl', 'customCannotAccessYourAccountText',
+  'backgroundColor', 'customAccountResetCredentialsUrl', 'customCannotAccessYourAccountText',
   'customCannotAccessYourAccountUrl', 'customForgotMyPasswordText', 'customPrivacyAndCookiesText', 'customPrivacyAndCookiesUrl',
   'customResetItNowText', 'customTermsOfUseText', 'customTermsOfUseUrl', 'headerBackgroundColor',
   'loginPageLayoutConfiguration', 'loginPageTextVisibilitySettings', 'signInPageText', 'usernameHintText',
@@ -83,22 +86,45 @@ const MANAGED_GROUP_SCOPE = Object.freeze({ none: 0, selected: 1, all: 2 });
  * person. Returns the reason, or null when the write may proceed.
  */
 export function groupLifecycleGuard(desired, live) {
-  const want = Number(desired?.groupLifetimeInDays);
-  const have = Number(live?.groupLifetimeInDays);
-  if (Object.hasOwn(desired ?? {}, 'groupLifetimeInDays') && Number.isFinite(want) && Number.isFinite(have) && want < have) {
-    return `a group lifetime of ${want} days is shorter than the live ${have} days and could expire and delete groups; change it by hand`;
+  const has = (field) => Object.hasOwn(desired ?? {}, field);
+  if (has('groupLifetimeInDays')) {
+    const want = desired.groupLifetimeInDays;
+    const have = live?.groupLifetimeInDays;
+    const positive = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0;
+    if (!positive(want) || !positive(have)) {
+      return `the group lifetime cannot be compared (snapshot ${want}, live ${have}), so a shorter one cannot be ruled out; change it by hand`;
+    }
+    if (want < have) {
+      return `a group lifetime of ${want} days is shorter than the live ${have} days and could expire and delete groups; change it by hand`;
+    }
   }
-  const wantScope = MANAGED_GROUP_SCOPE[String(desired?.managedGroupTypes ?? '').toLowerCase()];
-  const haveScope = MANAGED_GROUP_SCOPE[String(live?.managedGroupTypes ?? '').toLowerCase()];
-  if (Object.hasOwn(desired ?? {}, 'managedGroupTypes')) {
+  if (has('managedGroupTypes')) {
+    const wantScope = MANAGED_GROUP_SCOPE[String(desired.managedGroupTypes ?? '').toLowerCase()];
+    const haveScope = MANAGED_GROUP_SCOPE[String(live?.managedGroupTypes ?? '').toLowerCase()];
     if (wantScope === undefined || haveScope === undefined) {
-      return `managedGroupTypes ${desired?.managedGroupTypes} (live ${live?.managedGroupTypes}) is not a known value; change it by hand`;
+      return `managedGroupTypes ${desired.managedGroupTypes} (live ${live?.managedGroupTypes}) is not a known value; change it by hand`;
     }
     if (wantScope > haveScope) {
       return `expiry would cover more groups (${desired.managedGroupTypes} instead of ${live.managedGroupTypes}) and could expire and delete groups; change it by hand`;
     }
   }
+  if (has('alternateNotificationEmails')) {
+    // Groups without an owner send their renewal notice only to these
+    // addresses. Removing a live address would let such a group expire
+    // unnoticed and be deleted; adding one is safe.
+    const wanted = new Set(notificationAddresses(desired.alternateNotificationEmails));
+    const dropped = notificationAddresses(live?.alternateNotificationEmails).filter((address) => !wanted.has(address));
+    if (dropped.length > 0) {
+      return `the restore would stop renewal notices to ${dropped.join(', ')}, so groups without an owner could expire unnoticed and be deleted; change it by hand`;
+    }
+  }
   return null;
+}
+
+/** The notification addresses of a group expiration policy, lower case. */
+function notificationAddresses(value) {
+  if (typeof value !== 'string') return [];
+  return [...new Set(value.split(';').map((address) => address.trim().toLowerCase()).filter((address) => address.length > 0))];
 }
 
 /** The operation records. */
@@ -210,6 +236,9 @@ export const TENANT_POLICY_RECORDS = Object.freeze([
     method: 'PATCH',
     permission: 'OrganizationalBranding.ReadWrite.All',
     docs: `${DOCS}/organizationalbranding-update?view=graph-rest-1.0`,
+    // Only language 0 addresses the default branding; sent on the PATCH and
+    // on its read-back. Another language in the answer fails the read-back.
+    requestHeaders: Object.freeze({ 'Accept-Language': '0' }),
     lockout: false,
     signInPathSection: null,
     writableFields: BRANDING_WRITABLE_FIELDS,

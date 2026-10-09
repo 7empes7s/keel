@@ -129,10 +129,12 @@ async function readAfterWrite(writer, version, path, isStale, {
   attempts = 6,
   delayMs = 3000,
   retryOperation = (operation) => operation(),
+  // Issue #156: request headers for the read (company branding's language).
+  headers = null,
 } = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await retryOperation(() => writer.read(version, path));
+    result = await retryOperation(() => (headers ? writer.read(version, path, { headers }) : writer.read(version, path)));
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
@@ -905,7 +907,9 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 
   for (const write of writes) {
-    const result = await retryOperation(() => writer.write('v1.0', write.path, { method: write.method, body: write.body }));
+    const result = await retryOperation(() => writer.write('v1.0', write.path, {
+      method: write.method, body: write.body, ...(entry.requestHeaders ? { headers: entry.requestHeaders } : {}),
+    }));
     if (!result.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
       return { failed: graphFailure(naturalKey, result) };
@@ -914,7 +918,8 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
 
   const written = { fields: root?.fields ?? [], methods: methods.map((write) => write.methodId) };
   const reRead = await readAfterWrite(writer, 'v1.0', readPath,
-    (r) => isNotFound(r) || (r?.ok === true && tenantPolicyPostStateRefusal(entry, desired, r.body, written) !== null), { retryOperation });
+    (r) => isNotFound(r) || (r?.ok === true && tenantPolicyPostStateRefusal(entry, desired, r.body, written) !== null),
+    { retryOperation, headers: entry.requestHeaders ?? null });
   if (reRead?.ok === false) {
     await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };

@@ -41,13 +41,28 @@ const governor = { async acquire() {}, observeRetryAfter() {} };
 function recordingGraph() {
   const graph = fakeGraph();
   const bodies = [];
+  const headers = [];
   const write = graph.write.bind(graph);
+  const read = graph.read.bind(graph);
   graph.write = async (version, path, request) => {
     bodies.push({ method: request.method, path, body: request.body });
+    headers.push({ kind: 'write', path, headers: request.headers ?? null });
     return write(version, path, request);
   };
+  graph.read = async (version, path, options) => {
+    headers.push({ kind: 'read', path, headers: options?.headers ?? null });
+    return read(version, path);
+  };
   graph.bodies = bodies;
+  graph.headers = headers;
   return graph;
+}
+
+/** Every key at any depth of a value. */
+function deepKeys(value) {
+  if (Array.isArray(value)) return value.flatMap(deepKeys);
+  if (value && typeof value === 'object') return Object.entries(value).flatMap(([key, item]) => [key, ...deepKeys(item)]);
+  return [];
 }
 
 function plannedUpdate(graph, resourceType, path, desired, live) {
@@ -133,6 +148,30 @@ test('mutation: no branding (404) or no expiry policy is a complete empty backup
   assert.equal(coverageDigest.authenticationFlowsPolicy.outcome, 'failed');
 });
 
+test('collection: branding goes under the organization id read in the run; a 404 under anything else is a failure', async () => {
+  const paths = [];
+  const reader = (organizations) => ({
+    async collect(version, path) {
+      paths.push(path);
+      if (path === '/organization') return { items: organizations, pages: 1, status: 200, error: null };
+      if (path.includes('/branding')) return { items: [], pages: 0, status: null, error: { status: 404, error: 'not found' } };
+      return { items: [], pages: 1, status: 200, error: null };
+    },
+  });
+  // The configured tenant is a domain name; the run reads the directory id first.
+  let { coverageDigest } = await collectWithOutcomes(reader([{ id: TENANT }]), { tenantId: 'contoso.onmicrosoft.com' });
+  assert.ok(paths.includes(`/organization/${TENANT}/branding`));
+  assert.ok(!paths.some((path) => path.includes('contoso.onmicrosoft.com')));
+  assert.equal(coverageDigest.organizationalBranding.outcome, 'complete-empty');
+
+  // A tier-scoped run never reads the organization: a 404 under a domain name proves nothing.
+  ({ coverageDigest } = await collectWithOutcomes(reader([]), { tenantId: 'contoso.onmicrosoft.com', tier: 'tier3' }));
+  assert.equal(coverageDigest.organizationalBranding.outcome, 'failed');
+  assert.equal(coverageDigest.organizationalBrandingLocalization.outcome, 'failed');
+  ({ coverageDigest } = await collectWithOutcomes(reader([]), { tenantId: TENANT, tier: 'tier3' }));
+  assert.equal(coverageDigest.organizationalBranding.outcome, 'complete-empty', 'a directory id from configuration is enough');
+});
+
 test('the live plan resolves the organization id, reads branding in language 0 and treats 404 as absent', async () => {
   const calls = [];
   const reader = {
@@ -166,7 +205,7 @@ test('branding: the CDN list never reads as drift; a changed image path does, an
     assert.equal(fieldClass('bannerLogoRelativeUrl', type), 'immutable');
     assert.equal(fieldClass('signInPageText', type), 'writable');
   }
-  for (const field of BRANDING_WRITABLE_FIELDS) assert.doesNotMatch(field, /RelativeUrl$|^cdnList$|^(bannerLogo|backgroundImage|squareLogo|squareLogoDark|headerLogo|favicon|customCSS)$/);
+  for (const field of BRANDING_WRITABLE_FIELDS) assert.doesNotMatch(field, /RelativeUrl$|^cdnList$|^contentCustomization$|^(bannerLogo|backgroundImage|squareLogo|squareLogoDark|headerLogo|favicon|customCSS)$/);
 });
 
 // ------------------------------------------------------------------ decisions and capabilities
@@ -210,6 +249,27 @@ test('branding: only changed text, colour and layout fields are PATCHed under th
   assert.equal(result.applied.length, 1);
   assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { backgroundColor: '#1B2A4A', signInPageText: 'Welcome to Contoso' } }]);
   assert.equal(graph.objects.get(path).bannerLogoRelativeUrl, 'c1/banner-2.png', 'images are never written');
+  // The default branding is addressed as language 0, on the PATCH and on its read-back.
+  assert.deepEqual(graph.headers.map((entry) => `${entry.kind} ${entry.headers?.['Accept-Language']}`), ['write 0', 'read 0']);
+});
+
+test('mutation: a nested uploaded-file path (contentCustomization) is never sent, at any depth', async () => {
+  const graph = recordingGraph();
+  const path = `/organization/${TENANT}/branding`;
+  const desired = {
+    ...branding,
+    contentCustomization: { attributeCollection: [{ key: 'title', value: 'Sign up' }], attributeCollectionRelativeUrl: 'c1/attributes-1.json' },
+  };
+  const live = {
+    ...desired, signInPageText: 'Defaced',
+    contentCustomization: { attributeCollection: [{ key: 'title', value: 'Changed' }], attributeCollectionRelativeUrl: 'c1/attributes-2.json' },
+  };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  const keys = deepKeys(graph.bodies[0].body);
+  assert.deepEqual(keys, ['signInPageText']);
+  assert.ok(keys.every((key) => !/Url$/.test(key) && key !== 'contentCustomization'));
 });
 
 test('branding: a language is PATCHed at its own route; a missing branding or tenant id is refused', async () => {
@@ -259,7 +319,40 @@ test('mutation: group expiry that could delete groups is left to a person and no
     assert.match(result.skipped[0].reason, pattern);
   }
   assert.equal(groupLifecycleGuard({ groupLifetimeInDays: 180, managedGroupTypes: 'None' }, { groupLifetimeInDays: 180, managedGroupTypes: 'All' }), null);
-  assert.equal(groupLifecycleGuard({ alternateNotificationEmails: 'x@contoso.example' }, base), null, 'a field the snapshot lacks is not compared');
+  assert.equal(groupLifecycleGuard({ alternateNotificationEmails: 'x@contoso.example' }, base), null, 'adding an address to an empty list is safe');
+});
+
+test('mutation: group expiry that would drop a renewal notice address is left to a person', async () => {
+  const live = { id: 'policy-1', groupLifetimeInDays: 180, managedGroupTypes: 'All', alternateNotificationEmails: 'Admins@Contoso.example;it@contoso.example' };
+  for (const emails of ['', 'old-mailbox@contoso.example', 'admins@contoso.example']) {
+    const graph = recordingGraph();
+    const result = await run(graph, [plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...live, alternateNotificationEmails: emails }, live)]);
+    assert.equal(graph.bodies.length, 0, emails);
+    assert.match(result.skipped[0].reason, /^manual: the restore would stop renewal notices to /, emails);
+    assert.match(result.skipped[0].reason, /it@contoso\.example/);
+  }
+  // The other direction: keeping every live address (any case or order) and adding one is restored.
+  const graph = recordingGraph();
+  const desired = { ...live, alternateNotificationEmails: 'IT@contoso.example; admins@contoso.example;new@contoso.example' };
+  const result = await run(graph, [plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(graph.bodies[0].body, { alternateNotificationEmails: desired.alternateNotificationEmails });
+});
+
+test('mutation: a group lifetime that cannot be compared is left to a person', () => {
+  const base = { groupLifetimeInDays: 180, managedGroupTypes: 'All', alternateNotificationEmails: '' };
+  for (const [desired, live] of [
+    [{ groupLifetimeInDays: 30 }, { ...base, groupLifetimeInDays: null }],
+    [{ groupLifetimeInDays: 30 }, { managedGroupTypes: 'All' }],
+    [{ groupLifetimeInDays: '30' }, base],
+    [{ groupLifetimeInDays: null }, base],
+    [{ groupLifetimeInDays: 0 }, base],
+    [{ groupLifetimeInDays: 365 }, { ...base, groupLifetimeInDays: -1 }],
+  ]) {
+    assert.match(groupLifecycleGuard(desired, live) ?? '', /cannot be compared/, JSON.stringify([desired, live]));
+  }
+  assert.equal(groupLifecycleGuard({ groupLifetimeInDays: 365 }, base), null);
 });
 
 test('authentication flows: self-service sign-up is PATCHed and read back', async () => {

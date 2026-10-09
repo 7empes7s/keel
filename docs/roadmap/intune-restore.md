@@ -15,7 +15,9 @@ Three kinds of Intune policy can be created again or put back to their backed-up
 | Settings catalog policies | yes | yes, whole policy replaced | **beta** |
 
 For each one, KEEL also puts back **who the policy applies to** (its assignments) when
-the backup holds a complete read of them.
+the backup holds a complete read of them. Assignments are restored only when you pick
+policies for a restore (and when that restore's dry run is promoted). A drift fix or an
+older saved plan leaves assignments as they are, and its plan says so for each policy.
 
 ### How a restore works
 
@@ -24,14 +26,23 @@ the backup holds a complete read of them.
    the right type of profile.
 2. A compliance policy is always created with its actions for non-compliant devices
    (for example "mark as non-compliant after 0 days"). Microsoft refuses a compliance
-   policy without them. If the backup has no actions, KEEL refuses the restore.
-3. A settings catalog policy is always written with its full list of settings. If the
-   backup has no settings list, KEEL refuses, so that it never writes an empty policy.
+   policy without them. If the backup has no actions, KEEL refuses to create it. A backup
+   taken before actions were backed up can still update a policy: KEEL leaves the live
+   actions as they are and the plan says so. A backup that lists no actions at all is
+   refused, because an empty list would remove them.
+3. A settings catalog policy is always written with its full list of settings, which
+   replaces the whole policy. KEEL refuses when the backup has no settings list, or holds
+   fewer settings than the policy's own count says it has, so that it never deletes
+   settings. An empty list is accepted only when the policy says it has no settings.
 4. Assignments are written with the documented "assign" action, which replaces the full
-   list in one step. Groups are matched to the target tenant by name, through the same
-   matching used for every other restore. Groups created earlier in the same restore are
-   found too.
-5. After every write, KEEL reads the policy and its assignments back and checks that they
+   list in one step. Groups are matched to the target tenant by natural key (the group's
+   mail nickname), through the same matching used for every other restore. Groups
+   created earlier in the same restore are found too. A group matched only through its
+   history (renamed or recreated) is refused until someone reviews it.
+5. The plan says what happens to each policy's assignments, in words: for example
+   "replaces the 2 assignments the policy has now with the 3 in the backup", or "removes
+   all 2 assignments the policy has now, because the backup has none".
+6. After every write, KEEL reads the policy and its assignments back and checks that they
    match the backup.
 
 ### When KEEL refuses
@@ -40,7 +51,8 @@ KEEL stops before writing anything when:
 
 - **A target group is missing.** The plan names the group. Restore the group first, then
   run the restore again.
-- **An assignment filter is missing** in the target tenant.
+- **An assignment filter is missing** in the target tenant. The dry run checks this too
+  and refuses the same way. A preview, which has no write access, cannot check it.
 - **The live policy is a different kind** from the backup (for example a Windows profile
   where the backup has an iOS one).
 - **The backup's assignment read was incomplete.** KEEL then leaves the live assignments
@@ -88,8 +100,14 @@ silent wrong write.
 - Backups now read assignments for every Intune policy type that has an assignments
   route.
 - Compliance policy backups now include their actions for non-compliant devices, and
-  settings catalog backups now include their settings. The first backup after this
-  change will show these two types as changed, once.
+  settings catalog backups now include their settings.
+- Some fields Microsoft owns are no longer compared: the version on compliance policies
+  and device configuration profiles, whether a device configuration profile supports
+  scope tags, and the settings catalog's counts and flags.
+- Because of both, the first backup after this change will show compliance policies,
+  device configuration profiles and settings catalog policies as changed, once.
+- Each backup logs how many assignment reads were complete, partial, failed or not
+  supported (counts only), so a missing read permission is visible.
 
 ## Permission
 

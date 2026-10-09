@@ -324,20 +324,51 @@ export function intuneWriteRefusal(resource, verb) {
       };
     }
   }
-  if (entry.scheduledActions && verb === 'create'
-    && (!Array.isArray(payload.scheduledActionsForRule) || payload.scheduledActionsForRule.length === 0)) {
-    return {
-      outcome: 'failed',
-      reason: 'the backup does not hold this compliance policy\'s actions for noncompliance, and Graph needs them to create it; take a new backup, then restore',
-    };
+  if (entry.scheduledActions) {
+    // An update from a backup taken before actions were backed up leaves the live
+    // actions alone (backupHoldsActions); an explicit empty list is never sent,
+    // because Graph needs at least the block action.
+    if (Array.isArray(payload.scheduledActionsForRule) && payload.scheduledActionsForRule.length === 0) {
+      return {
+        outcome: 'failed',
+        reason: 'the backup lists no actions for noncompliance for this compliance policy, and Graph needs at least one; restore it by hand',
+      };
+    }
+    if (verb === 'create' && !backupHoldsActions(payload)) {
+      return {
+        outcome: 'failed',
+        reason: 'the backup does not hold this compliance policy\'s actions for noncompliance, and Graph needs them to create it; take a new backup, then restore',
+      };
+    }
   }
-  if (entry.settings && !Array.isArray(payload.settings)) {
-    return {
-      outcome: 'failed',
-      reason: 'the backup does not hold this settings catalog policy\'s settings (it was taken before settings were backed up); writing it would empty the policy, so take a new backup first',
-    };
+  if (entry.settings) {
+    if (!Array.isArray(payload.settings)) {
+      return {
+        outcome: 'failed',
+        reason: 'the backup does not hold this settings catalog policy\'s settings (it was taken before settings were backed up); writing it would empty the policy, so take a new backup first',
+      };
+    }
+    // The whole policy is replaced, so a short settings list would delete settings.
+    const count = payload.settingCount;
+    if (typeof count === 'number' && payload.settings.length !== count) {
+      return {
+        outcome: 'failed',
+        reason: `the backup holds ${payload.settings.length} of this settings catalog policy's ${count} settings; writing it would delete the rest, so take a new backup first`,
+      };
+    }
+    if (payload.settings.length === 0 && count !== 0) {
+      return {
+        outcome: 'failed',
+        reason: 'the backup holds no settings for this settings catalog policy and does not say it has none; writing it would empty the policy, so take a new backup first',
+      };
+    }
   }
   return null;
+}
+
+/** Whether a compliance backup holds its actions for noncompliance (backups taken before #155 do not). */
+export function backupHoldsActions(payload) {
+  return Array.isArray(payload?.scheduledActionsForRule) && payload.scheduledActionsForRule.length > 0;
 }
 
 // --------------------------------------------------------------- assignments
@@ -360,7 +391,9 @@ const edgeIdentity = (targetType, targetId, filter) => `${targetType}|${targetId
 /**
  * The assignments a restore writes for one policy, from the backup's
  * assignment read (`resource.assignments`: { outcome, targets }) with every
- * group mapped to its target id by `resolve(naturalKey)`.
+ * group mapped to its target id by `resolve(naturalKey)` (a string, null when
+ * missing, or { stale: true } for a group matched only through its lineage,
+ * which is refused).
  *
  * Returns { state, ... }:
  *  - 'not-observed': the backup holds no complete assignment read, so the
@@ -373,7 +406,10 @@ const edgeIdentity = (targetType, targetId, filter) => `${targetType}|${targetId
  */
 export function assignmentPlan(resource, resolve) {
   const desired = resource?.assignments;
-  if (!desired) return { state: 'not-observed', reason: 'the backup holds no assignment read for this policy, so its assignments are left as they are' };
+  // Only a selection restore attaches assignments (cli/keel-restore.mjs); any
+  // other scope never looked, which is not the same as a backup without them.
+  if (!desired) return { state: 'not-observed', reason: 'assignments are restored only when policies are picked for a restore; they were not checked, so they are left as they are' };
+  if (desired.outcome === 'absent') return { state: 'not-observed', reason: 'the backup holds no assignment read for this policy, so its assignments are left as they are' };
   if (!isComplete(desired.outcome)) {
     return { state: 'not-observed', reason: `the backup's assignment read was ${desired.outcome}, so its assignments are left as they are` };
   }
@@ -390,6 +426,10 @@ export function assignmentPlan(resource, resolve) {
     if (GROUP_TARGETS.has(targetType)) {
       const naturalKey = target.targetNaturalKey ?? null;
       const resolved = naturalKey ? resolve(naturalKey) : null;
+      if (resolved && typeof resolved === 'object' && resolved.stale) {
+        problems.push(`the group ${naturalKey} was matched only through its history (renamed or recreated), so it is not assigned without a review`);
+        continue;
+      }
       if (typeof resolved !== 'string' || resolved.length === 0) {
         problems.push(naturalKey
           ? `the group ${naturalKey} does not exist in the target`
@@ -466,21 +506,38 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
     if (!isIntuneGoverned(resource.resourceType) || resource.verb === 'delete') return resource;
     const key = `${resource.naturalKey}|assignment`;
     const want = desired?.get(key);
-    if (!want) return resource;
-    const withAssignments = { ...resource, assignments: { outcome: want.outcome, targets: want.targets } };
+    if (!want) return { ...resource, assignments: { outcome: 'absent', targets: [] } };
+    const observed = live.get(key);
+    const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true }).size : null;
+    const withAssignments = {
+      ...resource,
+      assignments: { outcome: want.outcome, targets: want.targets },
+      ...(liveCount === null ? {} : { liveAssignmentCount: liveCount }),
+    };
     if (resource.verb !== 'noop' || resource.live?.state !== 'present') return withAssignments;
     const plan = assignmentPlan(withAssignments, resolve);
-    const observed = live.get(key);
     let reason = null;
     if (plan.state === 'refused') reason = plan.reason;
-    else if (plan.state === 'ready' && observed && isComplete(observed.outcome)
+    else if (plan.state === 'ready' && liveCount !== null
       && !sameIdentities(plan.identities, liveAssignmentIdentities(observed.targets, { observed: true }))) {
-      reason = 'assignments differ: the backup assigns this policy to other groups than the live policy';
+      reason = `assignments differ: ${assignmentChange(plan, liveCount)}`;
     }
     if (!reason) return withAssignments;
     const promoted = { ...withAssignments, verb: 'update', verbReason: reason };
     return recoveryFor ? { ...promoted, recovery: recoveryFor(promoted) } : promoted;
   });
+}
+
+/**
+ * Plain words for what /assign does to a policy: `liveCount` is how many
+ * assignments it has now (null when unknown, e.g. a create).
+ */
+export function assignmentChange(plan, liveCount) {
+  const planned = plan.assignments.length;
+  const items = (n) => `${n} assignment${n === 1 ? '' : 's'}`;
+  if (liveCount === null || liveCount === undefined) return planned === 0 ? 'the backup has no assignments for this policy' : `assigns it as in the backup (${items(planned)})`;
+  if (planned === 0) return liveCount === 0 ? 'none, as in the backup' : `removes all ${items(liveCount)} the policy has now, because the backup has none`;
+  return `replaces the ${items(liveCount)} the policy has now with the ${items(planned)} in the backup`;
 }
 
 /**
@@ -496,7 +553,7 @@ export function intunePostStateRefusal(resourceType, desired, live, { verb, fiel
   }
   const differing = changedIntuneFields(resourceType, desired, live, verb).filter((field) => fields.includes(field));
   if (differing.length > 0) return `post-state: ${differing.join(', ')} did not read back as written`;
-  if (entry.scheduledActions && scheduledActionsDiffer(desired, live)) {
+  if (entry.scheduledActions && backupHoldsActions(desired) && scheduledActionsDiffer(desired, live)) {
     return 'post-state: the actions for noncompliance did not read back as written';
   }
   return null;

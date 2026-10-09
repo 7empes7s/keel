@@ -390,11 +390,29 @@ registerAll('crossTenantAccessPolicyPartner', '/policies/crossTenantAccessPolicy
 recordFixtureProof('crossTenantAccessPolicyPartner', 'create', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 recordFixtureProof('crossTenantAccessPolicyPartner', 'update', 'engine/roadmap/tenant-policy-fidelity.test.mjs');
 
+// Issue #155: Intune compliance policies, device configuration profiles and
+// settings catalog policies (the settings catalog through Graph beta, which is
+// the only version that has it). Create and update only, each through its
+// operation record in engine/restore/intuneOperations.mjs, with assignments
+// written through /assign. Delete is not registered: removing a policy
+// unprotects every device it applies to, and KEEL has no qualified guard for that.
+for (const [resourceType, path] of [
+  ['deviceCompliancePolicy', '/deviceManagement/deviceCompliancePolicies'],
+  ['deviceConfiguration', '/deviceManagement/deviceConfigurations'],
+  ['configurationPolicy', '/deviceManagement/configurationPolicies'],
+]) {
+  registerAll(resourceType, path, ['create', 'update']);
+  recordFixtureProof(resourceType, 'create', 'engine/roadmap/intune-restore.test.mjs');
+  recordFixtureProof(resourceType, 'update', 'engine/roadmap/intune-restore.test.mjs');
+}
+
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by
 // PATCHing a members/owners array onto the parent group. Every other relationship
 // family (transitiveMember, application/servicePrincipal owners, app role grants,
-// Intune assignments) stays read-only: no registration, so it reads 'unsupported'.
+// Intune assignments) has no edge registration, so it reads 'unsupported'. Issue
+// #155: an Intune policy's assignments are written only with the policy itself
+// (its create/update record above, through /assign), never as a standalone edge.
 const EDGE_HANDLER = 'engine/restore/relationshipWriter.mjs#applyRelationshipOperations';
 for (const family of ['member', 'owner']) {
   const resourceType = edgeCapabilityKey('group', family);

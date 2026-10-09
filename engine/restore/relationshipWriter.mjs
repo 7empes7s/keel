@@ -11,8 +11,10 @@
  * A membership is never PATCHed onto the parent object (applyEngine.mjs refuses
  * a parent payload that carries membership navigation). Every other
  * relationship family (transitive members, application/service principal
- * owners, app role grants, Intune assignments) stays read-only: it has no edge
- * capability registered in engine/coverage/capabilities.mjs and is refused.
+ * owners, app role grants, Intune assignments) has no edge capability
+ * registered in engine/coverage/capabilities.mjs and is refused here. Intune
+ * assignments are restored only with their policy, through /assign
+ * (applyEngine.mjs, issue #155).
  *
  * Planning (planRelationshipOperations) and execution
  * (applyRelationshipOperations) keep five guarantees:

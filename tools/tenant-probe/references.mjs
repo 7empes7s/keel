@@ -49,6 +49,8 @@ const normalisePath = (p) => p.replace(/\[\d+\]/g, '');
 const GLOBAL_CONSTANT_FIELDS = [
   /(^|\.)skuId$/,
   /(^|\.)servicePlanId$/,
+  // Roadmap task-150: a licence's disabled plans are service plan ids.
+  /(^|\.)disabledPlans$/,
   /(^|\.)roleTemplateId$/,
   /(^|\.)templateId$/,
   // Permission ids are defined by the resource application, not the tenant:

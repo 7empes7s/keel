@@ -302,10 +302,13 @@ test('the identity batch runner drives every qualified operation through applyWa
   assert.ok(kinds.includes('credential') && kinds.includes('certificate'), 'the report lists the irrecoverable credential steps');
   const spCreate = report.operations.find((op) => op.resourceType === 'servicePrincipal' && op.operation === 'create');
   assert.deepEqual(spCreate.writes, ['POST /servicePrincipals']);
+  // Roadmap task-150: a user is restored in place; create stays refused.
+  assert.ok(report.operations.some((op) => op.resourceType === 'user' && op.operation === 'update' && op.result === 'passed'));
+  assert.ok(report.refused.some((entry) => entry.resourceType === 'user' && entry.operation === 'create'));
 
   assert.ok(report.refused.some((entry) => entry.resourceType === 'application' && entry.operation === 'delete' && entry.claim === 'unsupported'));
   const remaining = new Map(report.remaining.map((entry) => [entry.resourceType, entry]));
-  for (const type of ['user', 'oauth2PermissionGrant', 'roleEligibilitySchedule', 'accessPackage']) {
+  for (const type of ['oauth2PermissionGrant', 'roleEligibilitySchedule', 'accessPackage']) {
     assert.ok(remaining.has(type), `${type} stays listed`);
     assert.equal(remaining.get(type).restoreScope, 'none');
     assert.ok(remaining.get(type).permission);

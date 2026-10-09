@@ -332,6 +332,14 @@ recordFixtureProof('application', 'create', 'engine/roadmap/fidelity-expansion.t
 recordFixtureProof('application', 'update', 'engine/roadmap/fidelity-expansion.test.mjs');
 recordFixtureProof('application', 'restore-soft-deleted', 'engine/roadmap/fidelity-expansion.test.mjs');
 
+// Roadmap task-150: a user is updated through a reviewed attribute allowlist and
+// restored from deleted items with the same id; licences are assigned add-only
+// (engine/restore/userOperations.mjs). create stays manual: a password and MFA
+// methods are never readable, and delete is not qualified.
+registerAll('user', '/users', ['update', 'restore-soft-deleted']);
+recordFixtureProof('user', 'update', 'engine/roadmap/user-fidelity.test.mjs');
+recordFixtureProof('user', 'restore-soft-deleted', 'engine/roadmap/user-fidelity.test.mjs');
+
 registerAll('servicePrincipal', '/servicePrincipals', ['create']);
 recordFixtureProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
 

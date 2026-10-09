@@ -57,10 +57,11 @@ export function restoreCandidates(versions, references) {
     refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
   }
   return (versions ?? [])
-    // users are never written. Roadmap task-108: authentication strengths are
-    // no longer filtered out; applyWave writes only custom strengths under
-    // their proven projection and skips built-in ones as immutable.
-    .filter((v) => v.resource_type !== 'user')
+    // Roadmap task-108: authentication strengths are not filtered out; applyWave
+    // writes only custom strengths under their proven projection and skips
+    // built-in ones as immutable. Roadmap task-150: users are no longer filtered
+    // out either; applyWave writes only their reviewed attributes and add-only
+    // licences, and never creates or deletes one.
     .map((v) => ({
       naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
       payloadHash: v.payload_hash,

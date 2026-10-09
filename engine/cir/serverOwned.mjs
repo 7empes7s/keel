@@ -68,10 +68,14 @@ SERVER_OWNED.set('group', new Set([
   'onPremisesProvisioningErrors', 'onPremisesSamAccountName', 'onPremisesSecurityIdentifier',
   'onPremisesSyncEnabled', 'proxyAddresses', 'resourceBehaviorOptions', 'resourceProvisioningOptions',
   'securityIdentifier', 'serviceProvisioningErrors', 'theme',
+  // Roadmap task-150: written only through assignLicense, add-only.
+  'assignedLicenses',
 ]));
 
+// Roadmap task-150: licences stay out of the hash (and out of every PATCH); they
+// are compared and restored add-only by engine/restore/userOperations.mjs.
 SERVER_OWNED.set('user', new Set([
-  'onPremisesSyncEnabled', 'onPremisesImmutableId', 'userType', 'assignedLicenses',
+  'onPremisesSyncEnabled', 'onPremisesImmutableId', 'userType', 'assignedLicenses', 'licenseAssignmentStates',
 ]));
 
 SERVER_OWNED.set('conditionalAccessPolicy', new Set(['templateId']));

@@ -13,6 +13,14 @@
  * policy and security defaults the gate checks readiness as collected; it does
  * not model the proposed setting.
  *
+ * Roadmap task-152: a Conditional Access policy that is about to be turned on
+ * is a proposed change too. The proposed policy (the live one with state
+ * `enabled`) replaces the collected policy of the same natural key, or joins
+ * the collection when it was restored after the last collection, and every
+ * account's policy exclusions are evaluated again. A policy that would apply
+ * to a break-glass account, or whose treatment of one cannot be read, is
+ * withheld.
+ *
  * The gate is pure over its inputs and never calls Microsoft. `unknown` is
  * never `ready`: missing evidence withholds the write.
  */
@@ -21,7 +29,21 @@ import { isDeepStrictEqual } from 'node:util';
 import { comparable } from '../restore/tenantPolicyOperations.mjs';
 import { evaluateAccountReadiness, tenantReadiness } from './breakGlassReadiness.mjs';
 
-function proposedInventory(inventory, { resourceType, desired }) {
+/**
+ * The inventory with one Conditional Access policy replaced by its proposed
+ * payload (task-152). Exported so a caller can read the group membership the
+ * proposed policy names before the gate is built. An uncovered collection is
+ * returned as it is: its exclusions stay unknown, which withholds the write.
+ */
+export function withProposedConditionalAccessPolicy(inventory, { naturalKey, desired }) {
+  const current = inventory?.conditionalAccessPolicy;
+  if (!current || current.status !== 'covered') return inventory;
+  const others = current.resources.filter((resource) => resource.naturalKey !== naturalKey);
+  return { ...inventory, conditionalAccessPolicy: { ...current, resources: [...others, { naturalKey, payload: desired }] } };
+}
+
+function proposedInventory(inventory, { resourceType, desired, naturalKey }) {
+  if (resourceType === 'conditionalAccessPolicy') return withProposedConditionalAccessPolicy(inventory, { naturalKey, desired });
   if (resourceType !== 'authenticationMethodsPolicy') return inventory;
   const current = inventory.authenticationMethodsPolicy;
   if (!current || current.status !== 'covered' || !current.resources.length) return inventory;
@@ -70,13 +92,16 @@ function narrowedTargets(inventory, { resourceType, desired }) {
  */
 export function breakGlassLockoutGate({ configured = true, accounts = [], inventory = {}, groupMembers = () => null, now = new Date() } = {}) {
   return Object.freeze({
-    evaluate({ resourceType, desired }) {
+    evaluate({ resourceType, desired, naturalKey = null }) {
       if (!configured) return { allowed: false, reason: 'break-glass accounts are not configured for this tenant' };
+      if (resourceType === 'conditionalAccessPolicy' && (typeof naturalKey !== 'string' || !naturalKey)) {
+        return { allowed: false, reason: 'a proposed Conditional Access policy must name the policy it changes' };
+      }
       const narrowed = narrowedTargets(inventory, { resourceType, desired });
       if (narrowed.length > 0) {
         return { allowed: false, reason: `the proposed policy changes who may use ${narrowed.join(', ')} to less than every user, so break-glass access cannot be shown to survive it` };
       }
-      const proposed = proposedInventory(inventory, { resourceType, desired });
+      const proposed = proposedInventory(inventory, { resourceType, desired, naturalKey });
       const evaluated = accounts.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory: proposed, groupMembers, now }) }));
       const verdict = tenantReadiness(evaluated);
       if (verdict.overall === 'ready') return { allowed: true, reason: 'every break-glass account stays ready under the proposed policy' };

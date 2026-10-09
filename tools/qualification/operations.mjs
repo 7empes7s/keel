@@ -13,7 +13,8 @@
  *                                                       # task-107: run one expansion batch and print its evidence report
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
- * group, named location, role assignment and conditional access operation,
+ * group, named location, role assignment and conditional access operation
+ * (including the task-152 Conditional Access soft-delete restore),
  * against an in-memory fake Graph. Its results are reported beside the ledger
  * and never change it: a passing fake cannot register, promote or qualify
  * anything (capabilities.mjs owns claims). No network, no tenant.
@@ -127,6 +128,32 @@ const FIXTURE_PAYLOADS = Object.freeze({
       },
     }],
   },
+  // Roadmap task-151: a custom role, a time-bound PIM eligibility and the PIM
+  // settings of one role (MFA and justification on activation, 8-hour maximum).
+  roleDefinition: {
+    displayName: 'Fixture helpdesk role', description: 'Fixture custom role', isBuiltIn: false, isEnabled: true,
+    templateId: 'fixture-role-template', version: '1',
+    rolePermissions: [{ allowedResourceActions: ['microsoft.directory/users/password/update'], condition: null }],
+  },
+  roleEligibilitySchedule: {
+    principalId: 'fixture-principal', roleDefinitionId: 'fixture-role', directoryScopeId: '/', memberType: 'Direct', status: 'Provisioned',
+    scheduleInfo: { startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2099-01-01T00:00:00Z' } },
+  },
+  unifiedRoleManagementPolicy: {
+    displayName: 'DirectoryRole', scopeId: '/', scopeType: 'DirectoryRole', isOrganizationDefault: false,
+    rules: [
+      {
+        '@odata.type': '#microsoft.graph.unifiedRoleManagementPolicyEnablementRule', id: 'Enablement_EndUser_Assignment',
+        enabledRules: ['MultiFactorAuthentication', 'Justification'],
+        target: { caller: 'EndUser', operations: ['all'], level: 'Assignment' },
+      },
+      {
+        '@odata.type': '#microsoft.graph.unifiedRoleManagementPolicyExpirationRule', id: 'Expiration_EndUser_Assignment',
+        isExpirationRequired: true, maximumDuration: 'PT8H',
+        target: { caller: 'EndUser', operations: ['all'], level: 'Assignment' },
+      },
+    ],
+  },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
@@ -159,6 +186,10 @@ const FIXTURE_DRIFT = Object.freeze({
       ...setting,
       settingInstance: { ...setting.settingInstance, choiceSettingValue: { ...setting.settingInstance.choiceSettingValue, value: 'device_vendor_msft_policy_config_defender_allowrealtimemonitoring_0' } },
     })),
+  }),
+  // Roadmap task-151: MFA on activation was turned off; the restore turns it back on.
+  unifiedRoleManagementPolicy: (payload) => ({
+    rules: payload.rules.map((rule) => (rule.id === 'Enablement_EndUser_Assignment' ? { ...rule, enabledRules: ['Justification'] } : rule)),
   }),
 });
 
@@ -196,11 +227,15 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path);
+      // Roadmap task-152: a Conditional Access policy is restored from its own
+      // deleted-items container; the fake keeps one deleted map for both.
+      const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path)
+        ?? /^\/identity\/conditionalAccess\/deletedItems\/policies\/([^/]+)\/restore$/.exec(path);
       if (restore && method === 'POST') {
-        const entry = deleted.get(restore[1]);
+        const id = decodeURIComponent(restore[1]);
+        const entry = deleted.get(id);
         if (!entry) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-        deleted.delete(restore[1]);
+        deleted.delete(id);
         objects.set(entry.path, entry.body);
         return { ok: true, status: 200, body: entry.body };
       }
@@ -264,6 +299,32 @@ export function fakeGraph() {
       if (method === 'POST' && path === '/deviceManagement/deviceCompliancePolicies' && !(body.scheduledActionsForRule?.length > 0)) {
         return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'scheduledActionsForRule is required' } } };
       }
+      // Roadmap task-151: an eligibility request creates its schedule (adminAssign
+      // only, with a justification and an end date not in the past), and a PIM
+      // rule is patched inside its policy.
+      if (method === 'POST' && path === '/roleManagement/directory/roleEligibilityScheduleRequests') {
+        const end = Date.parse(body?.scheduleInfo?.expiration?.endDateTime ?? '');
+        if (body?.action !== 'adminAssign' || !body.justification || !body.scheduleInfo || (!Number.isNaN(end) && end <= Date.now())) {
+          return { ok: false, status: 400, body: { error: { code: 'RoleAssignmentRequestPolicyValidationFailed' } } };
+        }
+        next += 1;
+        const scheduleId = `fixture-schedule-${next}`;
+        objects.set(`/roleManagement/directory/roleEligibilitySchedules/${scheduleId}`, {
+          id: scheduleId, principalId: body.principalId, roleDefinitionId: body.roleDefinitionId, directoryScopeId: body.directoryScopeId,
+          memberType: 'Direct', status: 'Provisioned', scheduleInfo: body.scheduleInfo,
+        });
+        return { ok: true, status: 201, body: { ...body, id: `fixture-request-${next}`, status: 'Provisioned', targetScheduleId: scheduleId } };
+      }
+      const pimRule = /^\/policies\/roleManagementPolicies\/([^/]+)\/rules\/([^/]+)$/.exec(path);
+      if (pimRule && method === 'PATCH') {
+        const policyPath = `/policies/roleManagementPolicies/${decodeURIComponent(pimRule[1])}`;
+        const policy = objects.get(policyPath);
+        const ruleId = decodeURIComponent(pimRule[2]);
+        if (!policy?.rules?.some((rule) => rule.id === ruleId)) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+        const { '@odata.type': _type, ...fields } = body;
+        objects.set(policyPath, { ...policy, rules: policy.rules.map((rule) => (rule.id === ruleId ? { ...rule, ...fields } : rule)) });
+        return { ok: true, status: 204, body: null };
+      }
       if (method === 'PUT' && objects.has(path)) {
         objects.set(path, { ...body });
         return { ok: true, status: 204, body: null };
@@ -275,7 +336,9 @@ export function fakeGraph() {
         // strength's policyType and requirementsSatisfied; the fake does the same.
         const created = path === '/applications' ? { ...body, id, appId: `fixture-appid-${next}` }
           : path === '/policies/authenticationStrengthPolicies' ? { ...body, id, policyType: 'custom', requirementsSatisfied: 'mfa' }
-            : { ...body, id };
+            // A created role is custom; Entra keeps a templateId it is given.
+            : path === '/roleManagement/directory/roleDefinitions' ? { ...body, id, isBuiltIn: false, templateId: body.templateId ?? id }
+              : { ...body, id };
         objects.set(`${path}/${id}`, created);
         return { ok: true, status: 201, body: created };
       }
@@ -296,6 +359,16 @@ export function fakeGraph() {
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
       if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Roadmap task-151: the eligibility collection answers a filter of
+      // `field eq 'value'` terms joined by `and`.
+      if (path === '/roleManagement/directory/roleEligibilitySchedules') {
+        const filter = /\$filter=([^&]*)/.exec(requested)?.[1] ?? '';
+        const terms = [...decodeURIComponent(filter).matchAll(/(\w+) eq '((?:[^']|'')*)'/g)].map(([, field, value]) => [field, value.replace(/''/g, "'")]);
+        const value = [...objects.entries()]
+          .filter(([key, object]) => key.startsWith(`${path}/`) && terms.every(([field, want]) => String(object[field]).toLowerCase() === want.toLowerCase()))
+          .map(([, object]) => object);
+        return { ok: true, status: 200, body: { value } };
+      }
       return objects.has(path) ? { ok: true, status: 200, body: objects.get(path) } : { ok: false, status: 404, body: null };
     },
   };
@@ -329,7 +402,11 @@ function fixtureFor(resourceType, operation, graph) {
     return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
   }
   if (operation === 'restore-soft-deleted') {
-    graph.deleted.set(existingId, { path: `${collection}/${existingId}`, body: { ...payload, id: existingId } });
+    // Roadmap task-152: a deleted Conditional Access policy comes back in the
+    // state it was deleted in; the fixture deletes an enabled one, so the run
+    // must put it back to report-only.
+    const deletedState = resourceType === 'conditionalAccessPolicy' ? { state: 'enabled' } : {};
+    graph.deleted.set(existingId, { path: `${collection}/${existingId}`, body: { ...payload, ...deletedState, id: existingId } });
     return { ...base, verb: 'restore-soft-deleted', payload, targetId: existingId, deletedItemId: existingId };
   }
   return null;

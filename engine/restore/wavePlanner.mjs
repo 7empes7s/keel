@@ -110,6 +110,10 @@ export const WORKLOAD_RESOURCE_TYPES = Object.freeze([
   'onedriveSite', 'purviewLabel', 'purviewLabelPolicy',
   // Issue #153: Exchange mail flow and protection settings (read-only for now).
   'exchangeMailFlow',
+  // Issue #154: Teams org-wide policies and tenant configuration (read-only for now).
+  'teamsOrgPolicy',
+  // Issue #157: Purview retention and DLP policies and rules (read-only for now).
+  'purviewRetentionDlp',
 ]);
 
 function assertNoWorkloadTypes(resources) {

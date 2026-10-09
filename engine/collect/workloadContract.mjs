@@ -8,7 +8,9 @@
  *  - Exchange mailbox settings;
  *  - OneDrive site-level settings;
  *  - Purview label definitions and their publication;
- *  - Exchange organization-wide mail flow and protection settings (issue #153).
+ *  - Exchange organization-wide mail flow and protection settings (issue #153);
+ *  - Teams organization-wide policies and configuration (issue #154);
+ *  - Purview retention and DLP policies and their rules (issue #157).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -37,7 +39,7 @@
 export const WORKLOAD_CONTRACT_VERSION = 1;
 export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
-  'exchange-mail-flow',
+  'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -147,14 +149,9 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'odata-nextLink', throttle: 'graph-429-retry-after', consistency: 'eventual',
     source: doc('/en-us/graph/api/group-list-members'),
   },
-  {
-    id: 'teams.meeting-policies', workload: 'teams-settings', resource: 'Teams meeting policies',
-    operation: cmdlet('Get-CsTeamsMeetingPolicy', 'MicrosoftTeams'),
-    auth: { application: true, delegated: true },
-    rbac: { permissions: [], roles: ['Teams Administrator'] },
-    paging: 'none', throttle: 'module-managed', consistency: 'eventual',
-    source: doc('/en-us/powershell/module/teams/get-csteamsmeetingpolicy'),
-  },
+  // Issue #154 moved `teams.meeting-policies` (declared here by task-101) into the
+  // teams-org-policies workload below. Its id is unchanged, so a probe row for it maps
+  // to the same read.
   {
     id: 'exchange.mailbox-settings', workload: 'exchange-mailbox-settings', resource: 'Mailbox settings (automatic replies, time zone, working hours)',
     operation: graph('/users/{user-id}/mailboxSettings'),
@@ -234,6 +231,45 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     operation: cmdlet(name, 'ExchangeOnlineManagement'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // Issue #154: Teams organization-wide policies and tenant configuration, read with
+  // no parameters in the MicrosoftTeams session. Policies are lists keyed by Identity
+  // (`Global`, `Tag:<name>`); configurations are tenant singletons (`Global`).
+  // engine/collect/workloads/teamsPolicies.mjs holds the fields and identities.
+  ...[
+    ['teams.meeting-policies', 'Teams meeting policies', 'Get-CsTeamsMeetingPolicy', 'cmdlet-unbounded'],
+    ['teams.messaging-policies', 'Teams messaging policies', 'Get-CsTeamsMessagingPolicy', 'cmdlet-unbounded'],
+    ['teams.app-setup-policies', 'Teams app setup policies', 'Get-CsTeamsAppSetupPolicy', 'cmdlet-unbounded'],
+    ['teams.app-permission-policies', 'Teams app permission policies', 'Get-CsTeamsAppPermissionPolicy', 'cmdlet-unbounded'],
+    ['teams.federation-configuration', 'Teams external access (federation) configuration', 'Get-CsTenantFederationConfiguration', 'none'],
+    ['teams.client-configuration', 'Teams client and guest access configuration', 'Get-CsTeamsClientConfiguration', 'none'],
+    ['teams.guest-meeting-configuration', 'Teams guest meeting configuration', 'Get-CsTeamsGuestMeetingConfiguration', 'none'],
+    ['teams.guest-messaging-configuration', 'Teams guest messaging configuration', 'Get-CsTeamsGuestMessagingConfiguration', 'none'],
+    ['teams.guest-calling-configuration', 'Teams guest calling configuration', 'Get-CsTeamsGuestCallingConfiguration', 'none'],
+  ].map(([id, resource, name, paging]) => ({
+    id, workload: 'teams-org-policies', resource,
+    operation: cmdlet(name, 'MicrosoftTeams'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: [], roles: ['Teams Administrator'] },
+    paging, throttle: 'module-managed', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/teams/${name.toLowerCase()}`),
+  })),
+  // Issue #157: Purview retention and DLP policies and their rules, in the Security &
+  // Compliance session, read with no parameters. The DLP reads need a licence that
+  // includes Purview DLP; engine/collect/workloads/purviewRetentionDlp.mjs treats them
+  // as optional so a tenant without it still backs up its retention policies.
+  ...[
+    ['purview.retention-policies', 'Retention policies', 'Get-RetentionCompliancePolicy'],
+    ['purview.retention-rules', 'Retention rules', 'Get-RetentionComplianceRule'],
+    ['purview.dlp-policies', 'Data loss prevention (DLP) policies', 'Get-DlpCompliancePolicy'],
+    ['purview.dlp-rules', 'Data loss prevention (DLP) rules', 'Get-DlpComplianceRule'],
+  ].map(([id, resource, name]) => ({
+    id, workload: 'purview-retention-dlp', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),

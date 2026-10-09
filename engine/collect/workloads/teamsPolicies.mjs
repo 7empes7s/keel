@@ -220,6 +220,7 @@ async function readFamily(family, { powershell, maxObjects }) {
  * collectTeamsPolicies.
  */
 export async function readTeamsPolicies({ powershell = {}, families = FAMILY_NAMES, maxObjects = DEFAULT_MAX_OBJECTS, now = () => new Date() }) {
+  if (!Array.isArray(families) || families.length === 0) throw new TypeError('readTeamsPolicies needs at least one family');
   for (const family of families) if (!FAMILIES[family]) throw new TypeError(`unknown Teams policy family ${family}`);
   const observedFrom = now().toISOString();
   const reads = [];
@@ -238,9 +239,9 @@ export async function readTeamsPolicies({ powershell = {}, families = FAMILY_NAM
   // answered nothing is a gap, not an empty tenant.
   const empty = families.filter((family, index) => !reads[index].failure && reads[index].resources.length === 0);
   let outcome;
-  if (families.length > 0 && failures.length === families.length) outcome = 'failed';
+  // There is no `complete-empty`: every family has Global objects, so an empty family is partial.
+  if (failures.length === families.length) outcome = 'failed';
   else if (failures.length || empty.length || capped || unidentified || statuses.some((status) => status !== 'observed')) outcome = 'partial';
-  else if (resources.length === 0) outcome = 'complete-empty';
   else outcome = 'complete';
   return {
     workload: TEAMS_POLICY_WORKLOAD,

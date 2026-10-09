@@ -357,6 +357,8 @@ test('failures are structured gaps, and a family with no Global answer is never 
   assert.equal(onlyEmpty.outcome, 'partial');
   assert.deepEqual(onlyEmpty.failures, []);
 
+  await assert.rejects(readTeamsPolicies({ powershell: fakeTeams().powershell, families: [] }), TypeError);
+
   const everything = Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, 'crash']));
   assert.equal((await readTeamsPolicies({ powershell: fakeTeams({ answers: everything }).powershell })).outcome, 'failed');
 });

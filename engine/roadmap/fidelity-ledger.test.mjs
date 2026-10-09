@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 30, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149)');
+  assert.equal(supported.length, 32, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -69,8 +69,10 @@ test('supported rows carry credential, id outcome, idempotency, field classifica
   assert.equal(ledger.edges.length, 4);
   assert.ok(ledger.edges.every((edge) => edge.decision === 'supported' && edge.remapping.requirement === 'none'));
   const user = ledger.types.find((row) => row.resourceType === 'user');
-  assert.equal(user.decision, 'manual');
-  assert.equal(user.operations.find((op) => op.operation === 'restore-soft-deleted').softRestoreCandidate, true);
+  // Roadmap task-150: a user is updated and restored in place; creating one stays manual.
+  assert.equal(user.decision, 'automated');
+  assert.equal(user.operations.find((op) => op.operation === 'create').claim, 'unsupported');
+  assert.equal(user.operations.find((op) => op.operation === 'restore-soft-deleted').claim, 'fixture-tested');
 });
 
 // --------------------------------------------- remappable is not a write gate
@@ -198,7 +200,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 30);
+  assert.equal(results.length, 32);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);

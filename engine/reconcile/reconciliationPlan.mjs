@@ -3,6 +3,17 @@ import { naturalKeyFor } from '../cir/naturalKey.mjs';
 import { SOFT_DELETABLE, buildLiveIndex } from './liveState.mjs';
 import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
 import { decideVerb } from './verb.mjs';
+import { licencePlan } from '../restore/userOperations.mjs';
+
+// Roadmap task-150: licences are left out of the hash, so an object whose only
+// difference is a licence the snapshot held and live lacks is planned as an update.
+function licenceDecision(resource, current, decision) {
+  if (decision.verb !== 'noop' || current?.state !== 'present') return decision;
+  if (resource.resourceType !== 'user' && resource.resourceType !== 'group') return decision;
+  const { add } = licencePlan(resource.payload, current.payload, { resourceType: resource.resourceType });
+  if (add.length === 0) return decision;
+  return { verb: 'update', reason: `licences differ: ${add.map((licence) => licence.skuId).join(', ')} held in the snapshot, missing live` };
+}
 
 function keyForLiveObject(targetResources) {
   const naturalKeyByTypeAndId = new Map();
@@ -52,11 +63,11 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
       ? null
       : { payloadHash: resource.payloadHash ?? canonicalHash(resource.payload, resource.resourceType) };
     const live = current?.state === 'present' ? { payloadHash: current.payloadHash } : null;
-    const decision = decideVerb({
+    const decision = licenceDecision(resource, current, decideVerb({
       desired,
       live,
       softDeleted: current?.state === 'soft-deleted',
-    });
+    }));
     const targetResource = targetByNaturalKey.get(resource.naturalKey);
     const planned = {
       ...resource,

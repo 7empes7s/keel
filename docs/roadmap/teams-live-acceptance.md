@@ -283,4 +283,5 @@ engine/coverage/*.test.mjs engine/cir/*.test.mjs` gives 23 pass, 0 fail.
   tenant-wide Teams setting is changed by the capture.
 - **Nothing is wired yet.** No worker job or portal view consumes the import seam.
 - **Teams meeting policies.** `teams.meeting-policies` (MicrosoftTeams module) is
-  not part of this gate. It stays unqualified.
+  not part of this gate. It stays unqualified. Issue #154 moved it into the
+  `teams-org-policies` workload ([teams-org-policy-reads.md](teams-org-policy-reads.md)).

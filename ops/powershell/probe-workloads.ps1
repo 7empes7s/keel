@@ -310,6 +310,11 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-Label' -Block { Get-Label }
                 # Task 101: label publication (policies), not labels applied to items.
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-LabelPolicy' -Block { Get-LabelPolicy }
+                # Issue #157: retention and DLP rules (configuration only; the two policy
+                # reads are probed above). Without a DLP licence the DLP rows fail with the
+                # cmdlet not found.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
             }
             if ($Workloads -contains 'defender') {
                 Add-Result -Workload 'defender' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
@@ -341,6 +346,14 @@ if ($Workloads -contains 'teams') {
         Add-Result -Workload 'teams' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingPolicy' -Block { Get-CsTeamsMeetingPolicy }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantFederationConfiguration' -Block { Get-CsTenantFederationConfiguration }
+        # Issue #154: the other org-wide policies and tenant configuration (read only).
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMessagingPolicy' -Block { Get-CsTeamsMessagingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAppSetupPolicy' -Block { Get-CsTeamsAppSetupPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAppPermissionPolicy' -Block { Get-CsTeamsAppPermissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsClientConfiguration' -Block { Get-CsTeamsClientConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestMeetingConfiguration' -Block { Get-CsTeamsGuestMeetingConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestMessagingConfiguration' -Block { Get-CsTeamsGuestMessagingConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestCallingConfiguration' -Block { Get-CsTeamsGuestCallingConfiguration }
     } catch {
         Add-Result -Workload 'teams' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "teams connect FAILED: $($_.Exception.Message)"

@@ -277,9 +277,9 @@ export function capabilitySummaryFor(resourceType) {
 // derivation from CATALOG or descriptors.mjs. See docs/roadmap/
 // capability-registry.md for the evidence backing each proofRef. Only the
 // operations Microsoft Graph and applyEngine.mjs actually support per type
-// are registered — e.g. roleAssignment/namedLocation/conditionalAccessPolicy
-// are not soft-deletable objects (engine/reconcile/liveState.mjs's
-// SOFT_DELETABLE names only user/group/application), so they carry no
+// are registered — e.g. roleAssignment/namedLocation are not soft-deletable
+// objects (engine/reconcile/liveState.mjs's SOFT_DELETABLE names only
+// user/group/application/conditionalAccessPolicy), so they carry no
 // 'restore-soft-deleted' entry.
 
 const HANDLER = 'engine/restore/applyEngine.mjs#applyWave';
@@ -312,10 +312,14 @@ recordFixtureProof('namedLocation', 'create', 'engine/roadmap/capability-registr
 recordFixtureProof('namedLocation', 'update', 'engine/roadmap/capability-registry.test.mjs');
 recordFixtureProof('namedLocation', 'delete', 'engine/roadmap/capability-registry.test.mjs');
 
-registerAll('conditionalAccessPolicy', '/identity/conditionalAccess/policies', ['create', 'update', 'delete']);
+// Roadmap task-152: restore-soft-deleted restores a deleted policy from the
+// Conditional Access deleted-items container with the same id, and lands it
+// report-only like every other Conditional Access write. Fixture-tested only.
+registerAll('conditionalAccessPolicy', '/identity/conditionalAccess/policies', ['create', 'update', 'delete', 'restore-soft-deleted']);
 recordFixtureProof('conditionalAccessPolicy', 'create', 'engine/restore/applyEngine.test.mjs');
 recordFixtureProof('conditionalAccessPolicy', 'update', 'engine/restore/updatePath.test.mjs');
 recordFixtureProof('conditionalAccessPolicy', 'delete', 'engine/roadmap/capability-registry.test.mjs');
+recordFixtureProof('conditionalAccessPolicy', 'restore-soft-deleted', 'engine/roadmap/conditional-access-enforce.test.mjs');
 
 // Roadmap task-107: the first bounded application/service-principal subset of
 // the Entra expansion batches (engine/coverage/qualification.mjs's
@@ -404,6 +408,23 @@ for (const [resourceType, path] of [
   registerAll(resourceType, path, ['update']);
   recordFixtureProof(resourceType, 'update', 'engine/roadmap/entra-basic-settings.test.mjs');
 }
+// Roadmap task-151: the admin role model (engine/restore/adminRoleOperations.mjs).
+// Custom roles are created and updated for the 'custom' subtype only: a built-in
+// role is immutable and skipped before any write. An eligibility is created
+// through a schedule request (its registered path), never updated or removed.
+// A PIM settings policy is only updated, rule by rule: Entra creates one per
+// role and it is never created or deleted. Role delete is not registered.
+for (const operation of ['create', 'update']) {
+  registerOperationCapability({
+    resourceType: 'roleDefinition', operation, subtype: 'custom',
+    path: '/roleManagement/directory/roleDefinitions', handler: HANDLER, idOutcome: idOutcomeFor(operation),
+  });
+  recordFixtureProof('roleDefinition', operation, 'engine/roadmap/admin-role-fidelity.test.mjs');
+}
+registerAll('roleEligibilitySchedule', '/roleManagement/directory/roleEligibilityScheduleRequests', ['create']);
+recordFixtureProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+registerAll('unifiedRoleManagementPolicy', '/policies/roleManagementPolicies', ['update']);
+recordFixtureProof('unifiedRoleManagementPolicy', 'update', 'engine/roadmap/admin-role-fidelity.test.mjs');
 
 // Roadmap task-61: group member/owner edges, written ONLY through the qualified
 // `$ref` navigation handlers in engine/restore/relationshipWriter.mjs — never by

@@ -7,6 +7,7 @@ import { postAction } from "@/lib/action-client";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
+import { PendingSteps, type PendingStep } from "@/components/pending-steps";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
@@ -61,6 +62,8 @@ interface DryRunResults {
   skipped: DryRunResourceResult[];
   failed: DryRunResourceResult[];
   notRemediable: DryRunResourceResult[];
+  // Roadmap task-152: steps the restore cannot finish itself (a policy left report-only).
+  pendingSteps?: PendingStep[];
 }
 
 // Roadmap task-61: a group member/owner edge change the dry run planned, written
@@ -795,6 +798,8 @@ export function RestoreSelection({
               </ul>
             </div>
           ) : null}
+
+          <PendingSteps steps={artifact.results.pendingSteps} />
 
           {artifact.recoveryMechanisms?.length ? (
             <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />

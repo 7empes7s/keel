@@ -1,5 +1,5 @@
 /**
- * Graph-native ResourceTypeDescriptors (spec §7.1) for all 59 catalogue types.
+ * Graph-native ResourceTypeDescriptors (spec §7.1) for all 62 catalogue types.
  * Registration is static; the adapter id is a declaration, never a fallback.
  * criticality / blastRadius come from CATALOG and fidelity from FIDELITY.
  *
@@ -186,6 +186,16 @@ const WIDENED_2026_10_09 = [
   'crossTenantAccessPolicyConfigurationDefault',
 ];
 
+// Roadmap task-151: the rest of the admin role model. PIM role settings (with
+// their rules), the binding of each settings policy to its role, and active
+// time-bound role assignments were not collected. All three are keyed by id
+// (engine/cir/naturalKey.mjs's ID_KEY_TYPES).
+const WIDENED_2026_10_09_ROLES = [
+  'unifiedRoleManagementPolicy',
+  'unifiedRoleManagementPolicyAssignment',
+  'roleAssignmentSchedule',
+];
+
 // Issue #156: basic tenant settings that were never backed up. An empty list,
 // or a 404 for a tenant with no company branding, is a valid observation.
 const BASIC_SETTINGS_2026_10_09 = [
@@ -197,7 +207,8 @@ const BASIC_SETTINGS_2026_10_09 = [
 ];
 
 export const DESCRIPTORS = [
-  ...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES, ...WIDENED_2026_10_09, ...BASIC_SETTINGS_2026_10_09,
+  ...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES, ...WIDENED_2026_10_09, ...WIDENED_2026_10_09_ROLES,
+  ...BASIC_SETTINGS_2026_10_09,
 ].map(describe);
 
 // Retain the metadata export used by coverage consumers. Every type is now collected.

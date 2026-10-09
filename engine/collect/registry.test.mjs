@@ -8,7 +8,7 @@ const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
 const M1_ORDER = ['user', 'authenticationStrengthPolicy', 'group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy'];
 
 // Widened 2026-09-08 after measuring naturalKeyFor()/naturalKey() against a
-// real tenant for all 52 original catalog types (54 after task-149) — see engine/collect/descriptors.mjs's
+// real tenant for all 52 original catalog types (54 after task-149, 57 after task-151) — see engine/collect/descriptors.mjs's
 // file header for the measurement and the full list of what was left out.
 const WIDENED_TYPES = [
   'organization', 'domain', 'subscribedSku', 'groupSetting', 'administrativeUnit', 'identityProvider',
@@ -43,8 +43,8 @@ assert.deepEqual(
 );
 assert.deepEqual([...M1_TYPES].sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
 
-assert.equal(CATALOG.length, 54);
-assert.equal(list().length, 54);
+assert.equal(CATALOG.length, 57);
+assert.equal(list().length, 57);
 assert.deepEqual(list().map((d) => d.type).sort(), [...ENABLED_TYPES].sort(), 'registry-vs-catalogue diff is empty');
 for (const entry of CATALOG) {
   assert.equal(get(entry.type).descriptor.type, entry.type);

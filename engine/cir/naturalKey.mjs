@@ -19,6 +19,12 @@ export const ID_KEY_TYPES = new Set([
   'deviceCategory', 'managedDevice', 'managedAppPolicy',
   'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'termsAndConditions',
   'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'contact',
+  // Roadmap task-151: PIM role settings, the policy-to-role bindings and active
+  // schedules. Every role policy is named "DirectoryRole", so a display name
+  // would collide; Entra creates the policies and never replaces them, so the
+  // id is stable for the tenant's lifetime. A restore into another tenant
+  // finds no policy under that key and is refused (policies are never created).
+  'unifiedRoleManagementPolicy', 'unifiedRoleManagementPolicyAssignment', 'roleAssignmentSchedule',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the

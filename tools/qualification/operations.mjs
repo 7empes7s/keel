@@ -33,6 +33,13 @@ import { completionItemsFor } from '../../engine/restore/completion.mjs';
 
 const FIXTURE_PAYLOADS = Object.freeze({
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
+  // Roadmap task-150: a cloud user with one direct licence.
+  user: {
+    userPrincipalName: 'fixture.user@fixture.example', displayName: 'Fixture User', accountEnabled: true,
+    department: 'Finance', jobTitle: 'Analyst', usageLocation: 'GB', onPremisesSyncEnabled: null,
+    assignedLicenses: [{ skuId: '6fd2c87f-b296-42f0-b197-1e91e994b900', disabledPlans: [] }],
+    licenseAssignmentStates: [{ skuId: '6fd2c87f-b296-42f0-b197-1e91e994b900', disabledPlans: [], assignedByGroup: null, state: 'Active' }],
+  },
   roleAssignment: { principalId: 'fixture-principal', roleDefinitionId: 'fixture-role', directoryScopeId: '/' },
   namedLocation: {
     '@odata.type': '#microsoft.graph.ipNamedLocation', displayName: 'Fixture location', isTrusted: false,
@@ -97,6 +104,8 @@ const FIXTURE_PAYLOADS = Object.freeze({
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
 // display name is not writable.
 const FIXTURE_DRIFT = Object.freeze({
+  // Roadmap task-150: a changed department and a removed licence.
+  user: () => ({ department: 'Sales', assignedLicenses: [], licenseAssignmentStates: [] }),
   groupSetting: (payload) => ({ values: payload.values.map((entry) => ({ ...entry, value: entry.value === 'true' ? 'false' : 'true' })) }),
   // Roadmap task-149: each singleton drifts a writable setting.
   authorizationPolicy: () => ({ allowInvitesFrom: 'everyone' }),
@@ -170,6 +179,29 @@ export function fakeGraph() {
         objects.set('/policies/authenticationMethodsPolicy', { ...policy, authenticationMethodConfigurations: configurations });
         return { ok: true, status: 204, body: null };
       }
+      // Roadmap task-150: assignLicense adds (or re-plans) licences on the object.
+      const licence = /^\/(users|groups)\/([^/]+)\/assignLicense$/.exec(path);
+      if (licence && method === 'POST') {
+        const target = `/${licence[1]}/${decodeURIComponent(licence[2])}`;
+        const object = objects.get(target);
+        if (!object) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+        if (licence[1] === 'users' && !object.usageLocation) return { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: 'usage location is not set' } } };
+        const removed = new Set((body.removeLicenses ?? []).map((sku) => sku.toLowerCase()));
+        const added = new Map(body.addLicenses.map((entry) => [entry.skuId.toLowerCase(), entry]));
+        const assignedLicenses = [
+          ...(object.assignedLicenses ?? []).filter((entry) => !removed.has(entry.skuId.toLowerCase()) && !added.has(entry.skuId.toLowerCase())),
+          ...body.addLicenses.map((entry) => ({ skuId: entry.skuId, disabledPlans: entry.disabledPlans })),
+        ];
+        const updated = { ...object, assignedLicenses };
+        if (licence[1] === 'users') {
+          updated.licenseAssignmentStates = [
+            ...(object.licenseAssignmentStates ?? []).filter((entry) => entry.assignedByGroup || !added.has(entry.skuId.toLowerCase())),
+            ...body.addLicenses.map((entry) => ({ skuId: entry.skuId, disabledPlans: entry.disabledPlans, assignedByGroup: null, state: 'Active' })),
+          ];
+        }
+        objects.set(target, updated);
+        return { ok: true, status: 200, body: updated };
+      }
       if (method === 'PUT' && objects.has(path)) {
         objects.set(path, { ...body });
         return { ok: true, status: 204, body: null };
@@ -196,7 +228,9 @@ export function fakeGraph() {
       }
       return { ok: false, status: 405, body: null };
     },
-    async read(version, path) {
+    async read(version, requested) {
+      // A $select narrows nothing here: the fake returns the whole object.
+      const path = requested.split('?')[0];
       return objects.has(path) ? { ok: true, status: 200, body: objects.get(path) } : { ok: false, status: 404, body: null };
     },
   };

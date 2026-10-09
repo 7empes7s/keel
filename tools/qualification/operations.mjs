@@ -13,7 +13,8 @@
  *                                                       # task-107: run one expansion batch and print its evidence report
  *
  * The harness drives the PRODUCTION applyWave() path, once for each registered
- * group, named location, role assignment and conditional access operation,
+ * group, named location, role assignment and conditional access operation
+ * (including the task-152 Conditional Access soft-delete restore),
  * against an in-memory fake Graph. Its results are reported beside the ledger
  * and never change it: a passing fake cannot register, promote or qualify
  * anything (capabilities.mjs owns claims). No network, no tenant.
@@ -183,11 +184,15 @@ export function fakeGraph() {
     writes,
     async write(version, path, { method, body }) {
       writes.push({ method, path });
-      const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path);
+      // Roadmap task-152: a Conditional Access policy is restored from its own
+      // deleted-items container; the fake keeps one deleted map for both.
+      const restore = /^\/directory\/deletedItems\/([^/]+)\/restore$/.exec(path)
+        ?? /^\/identity\/conditionalAccess\/deletedItems\/policies\/([^/]+)\/restore$/.exec(path);
       if (restore && method === 'POST') {
-        const entry = deleted.get(restore[1]);
+        const id = decodeURIComponent(restore[1]);
+        const entry = deleted.get(id);
         if (!entry) return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
-        deleted.delete(restore[1]);
+        deleted.delete(id);
         objects.set(entry.path, entry.body);
         return { ok: true, status: 200, body: entry.body };
       }
@@ -332,7 +337,11 @@ function fixtureFor(resourceType, operation, graph) {
     return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
   }
   if (operation === 'restore-soft-deleted') {
-    graph.deleted.set(existingId, { path: `${collection}/${existingId}`, body: { ...payload, id: existingId } });
+    // Roadmap task-152: a deleted Conditional Access policy comes back in the
+    // state it was deleted in; the fixture deletes an enabled one, so the run
+    // must put it back to report-only.
+    const deletedState = resourceType === 'conditionalAccessPolicy' ? { state: 'enabled' } : {};
+    graph.deleted.set(existingId, { path: `${collection}/${existingId}`, body: { ...payload, ...deletedState, id: existingId } });
     return { ...base, verb: 'restore-soft-deleted', payload, targetId: existingId, deletedItemId: existingId };
   }
   return null;

@@ -494,6 +494,11 @@ CREATE TABLE IF NOT EXISTS recovery_completion_item (
   updated_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (tenant_ref, restore_ref, natural_key, kind, requirement)
 );
+-- Roadmap task-152: a Conditional Access policy restored report-only that the
+-- snapshot had turned on leaves an 'enforcement' item until it is turned on.
+ALTER TABLE recovery_completion_item DROP CONSTRAINT IF EXISTS recovery_completion_item_kind_check;
+ALTER TABLE recovery_completion_item ADD CONSTRAINT recovery_completion_item_kind_check
+  CHECK (kind IN ('credential','certificate','consent','integration','service-validation','enforcement'));
 CREATE INDEX IF NOT EXISTS recovery_completion_item_open_idx
   ON recovery_completion_item (tenant_ref, state, created_at DESC);
 
@@ -1108,6 +1113,11 @@ ALTER TABLE restore_dry_run ALTER COLUMN snapshot_id DROP NOT NULL;
 ALTER TABLE restore_dry_run DROP CONSTRAINT IF EXISTS restore_dry_run_source_check;
 ALTER TABLE restore_dry_run ADD CONSTRAINT restore_dry_run_source_check
   CHECK (snapshot_id IS NOT NULL OR workload_restore IS NOT NULL);
+
+-- Roadmap task-152: turning on a Conditional Access policy a restore left
+-- report-only is its own dry run, bound to the restore it follows and promoted
+-- through the same approval as any restore.
+ALTER TABLE restore_dry_run ADD COLUMN IF NOT EXISTS conditional_access_enforcement jsonb;
 
 -- Roadmap task-94: emergency (break-glass) account lifecycle. An account is registered
 -- by Entra object id with its review intervals; its lifecycle events (a recorded

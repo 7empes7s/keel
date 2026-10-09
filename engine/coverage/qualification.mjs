@@ -73,7 +73,7 @@ export const TYPE_DECISIONS = Object.freeze({
   unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
   unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
   roleAssignmentSchedule: unknown(),
-  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete are registered; writes are forced report-only'),
+  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
   authenticationContextClassReference: unknown(),
@@ -607,7 +607,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
     'identity sources reference external tenants that cannot be verified from this tenant'),
   // ---- policies (task-108)
-  conditionalAccessPolicy: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/policies', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107; forced report-only'),
+  conditionalAccessPolicy: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/policies; POST /identity/conditionalAccess/deletedItems/policies/{id}/restore', 'Policy.ReadWrite.ConditionalAccess',
+    'create, update, delete and soft-delete restore are fixture-tested; every write lands report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate (task-152)'),
   namedLocation: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/namedLocations', 'Policy.ReadWrite.ConditionalAccess', 'registered before task-107'),
   // Roadmap task-108: the custom-strength subset; the operation records, their
   // subtype and field-projection binding live in engine/restore/policyOperations.mjs.

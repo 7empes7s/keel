@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { fakeGraph, runFixtureHarness } from '../../tools/qualification/operations.mjs';
-import { CATALOG, collectionPathFor } from '../../tools/tenant-probe/catalog.mjs';
+import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
 import { COLLECT_RELATIONSHIPS, describeAssignmentReads } from '../../cli/keel-collect.mjs';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
@@ -238,10 +238,10 @@ test('assignments are read for every policy type with an /assignments collection
 
 test('compliance actions and settings catalog settings are collected through $expand', () => {
   const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
-  assert.equal(collectionPathFor(byType.get('deviceCompliancePolicy')),
+  assert.equal(catalogReadPath(byType.get('deviceCompliancePolicy')),
     '/deviceManagement/deviceCompliancePolicies?$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)');
-  assert.equal(collectionPathFor(byType.get('configurationPolicy')), '/deviceManagement/configurationPolicies?$expand=settings');
-  assert.equal(collectionPathFor(byType.get('deviceConfiguration')), '/deviceManagement/deviceConfigurations');
+  assert.equal(catalogReadPath(byType.get('configurationPolicy')), '/deviceManagement/configurationPolicies?$expand=settings');
+  assert.equal(catalogReadPath(byType.get('deviceConfiguration')), '/deviceManagement/deviceConfigurations');
 });
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -256,7 +256,7 @@ test('a backup records each policy\'s assignments with group, filter and kind, r
     async collect(version, path) {
       const ok = (items) => ({ items, pages: 1, status: 200, capped: false, error: null });
       if (path === '/groups' || path.startsWith('/groups?')) return ok([{ id: SOURCE_FINANCE, displayName: 'Finance', mailNickname: 'finance' }]);
-      if (path === collectionPathFor(CATALOG.find((entry) => entry.type === 'deviceCompliancePolicy'))) return ok([{ ...compliance, id: 'p-1' }]);
+      if (path === catalogReadPath(CATALOG.find((entry) => entry.type === 'deviceCompliancePolicy'))) return ok([{ ...compliance, id: 'p-1' }]);
       if (path === '/deviceAppManagement/managedAppPolicies') return ok([{ id: 'app-1', displayName: 'iOS protection', '@odata.type': '#microsoft.graph.iosManagedAppProtection' }]);
       if (path === '/deviceManagement/deviceCompliancePolicies/p-1/assignments') {
         return ok([{ id: 'a1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: SOURCE_FINANCE, deviceAndAppManagementAssignmentFilterId: FILTER, deviceAndAppManagementAssignmentFilterType: 'include' } }]);

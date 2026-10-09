@@ -32,7 +32,8 @@ const REGISTERED = Object.freeze({
   group: ['create', 'update', 'delete', 'restore-soft-deleted'],
   roleAssignment: ['create', 'update', 'delete'],
   namedLocation: ['create', 'update', 'delete'],
-  conditionalAccessPolicy: ['create', 'update', 'delete'],
+  // Roadmap task-152: deleted policies are restored from the Conditional Access deleted items.
+  conditionalAccessPolicy: ['create', 'update', 'delete', 'restore-soft-deleted'],
   // Roadmap task-107: the first application/service-principal subset.
   application: ['create', 'update', 'restore-soft-deleted'],
   servicePrincipal: ['create'],
@@ -51,6 +52,10 @@ const REGISTERED = Object.freeze({
   adminConsentRequestPolicy: ['update'],
   // Roadmap task-150: users are updated and restored in place, never created.
   user: ['update', 'restore-soft-deleted'],
+  // Roadmap task-151: custom roles, PIM eligibility create and PIM role settings.
+  roleDefinition: ['create', 'update'],
+  roleEligibilitySchedule: ['create'],
+  unifiedRoleManagementPolicy: ['update'],
   // Issue #155: Intune compliance, device configuration and settings catalog.
   deviceCompliancePolicy: ['create', 'update'],
   deviceConfiguration: ['create', 'update'],
@@ -134,8 +139,8 @@ test('every registered operation is fixture-tested with a named proof and correc
   }
 });
 
-test('roleAssignment/namedLocation/conditionalAccessPolicy are not soft-deletable: no restore-soft-deleted capability', () => {
-  for (const type of ['roleAssignment', 'namedLocation', 'conditionalAccessPolicy']) {
+test('roleAssignment/namedLocation are not soft-deletable: no restore-soft-deleted capability', () => {
+  for (const type of ['roleAssignment', 'namedLocation']) {
     const capability = capabilityFor(type, 'restore-soft-deleted');
     assert.equal(capability.claim, 'unsupported', `${type} restore-soft-deleted should be unsupported`);
     assert.equal(capability.proofRef, null);
@@ -145,7 +150,7 @@ test('roleAssignment/namedLocation/conditionalAccessPolicy are not soft-deletabl
 // ---------------------------------------------------------------------------
 // Mutation check 1: qualify operation from pathFor alone.
 //
-// Every one of CATALOG's 54 types has a real Graph collection `path` — path
+// Every one of CATALOG's 57 types has a real Graph collection `path` — path
 // existence alone must never imply write capability. Every type outside the
 // four explicitly registered above must read 'unsupported' for all four
 // operations, even though a read path exists.

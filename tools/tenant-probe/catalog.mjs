@@ -71,6 +71,17 @@ export const CATALOG = [
     note: 'Break-glass accounts live here. The invariant in spec §10.4 reads this set.' },
   { type: 'roleEligibilitySchedule', path: '/roleManagement/directory/roleEligibilitySchedules', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
     note: 'PIM schedules. Measured HTTP 200 with the reader’s Accept-Language header.' },
+  // Roadmap task-151: active time-bound assignments (PIM activations and
+  // assignments with an end date). Permanent ones also appear as roleAssignment.
+  { type: 'roleAssignmentSchedule', path: '/roleManagement/directory/roleAssignmentSchedules', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout' },
+  // Roadmap task-151: PIM role settings. Entra keeps one policy per directory
+  // role; the policy does not name its role, so the policy assignments that
+  // bind each policy to a roleDefinitionId are collected beside it. Both
+  // collections require the scope filter; the rules are read inline.
+  { type: 'unifiedRoleManagementPolicy', path: '/policies/roleManagementPolicies', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
+    query: "$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=rules" },
+  { type: 'unifiedRoleManagementPolicyAssignment', path: '/policies/roleManagementPolicyAssignments', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
+    query: "$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'" },
 
   // ---------------------------------------------------- conditional access
   { type: 'conditionalAccessPolicy', path: '/identity/conditionalAccess/policies', version: 'v1.0', criticality: 'tier1', blastRadius: 'tenant-lockout',
@@ -112,12 +123,12 @@ export const CATALOG = [
   // Issue #155: Graph needs a compliance policy's actions for noncompliance to
   // create it, and lists them only when expanded.
   { type: 'deviceCompliancePolicy', path: '/deviceManagement/deviceCompliancePolicies', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
-    expand: 'scheduledActionsForRule($expand=scheduledActionConfigurations)',
+    query: '$expand=scheduledActionsForRule($expand=scheduledActionConfigurations)',
     note: 'Compliance feeds CA. A wrong compliance policy locks users out indirectly.' },
   // Issue #155: a settings catalog policy's settings are a separate collection,
   // listed only when expanded; without them the backup holds only the name.
   { type: 'configurationPolicy', path: '/deviceManagement/configurationPolicies', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    expand: 'settings',
+    query: '$expand=settings',
     note: 'Settings catalog. Beta-only; a fidelity risk the spec flags.' },
   { type: 'deviceEnrollmentConfiguration', path: '/deviceManagement/deviceEnrollmentConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'deviceManagementRoleDefinition', path: '/deviceManagement/roleDefinitions', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting' },
@@ -152,15 +163,12 @@ export const REFERENCEABLE_TYPES = new Set([
 const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
 /**
- * The list path a collection reads: the entry's path (or `basePath`, for an
- * entry whose path needs the tenant id) with its $select and $expand.
- * Collection and the restore's live index both build their path here, so a
- * backup and the live read it is compared with see the same projection.
+ * The read path for a catalogue entry: its $select and any fixed query
+ * (roadmap task-151: a scope filter or an $expand). `basePath` defaults to the
+ * entry's path; the organization placeholder is resolved by the caller.
  */
-export function collectionPathFor(entry, basePath = entry.path) {
-  const query = [];
-  if (entry.select) query.push(`$select=${entry.select}`);
-  if (entry.expand) query.push(`$expand=${entry.expand}`);
+export function catalogReadPath(entry, basePath = entry.path) {
+  const query = [entry.select ? `$select=${entry.select}` : null, entry.query ?? null].filter(Boolean);
   return query.length > 0 ? `${basePath}?${query.join('&')}` : basePath;
 }
 

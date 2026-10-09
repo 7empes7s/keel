@@ -143,7 +143,9 @@ function restoreFakes({
     async collect(version, path) {
       assert.equal(version, 'v1.0');
       if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
-        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group') {
+        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group'
+        // Task-152: deleted Conditional Access policies are looked up too.
+        || path === '/identity/conditionalAccess/deletedItems/policies') {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);
@@ -355,7 +357,9 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
       if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
-        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group') {
+        || path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group'
+        // Task-152: deleted Conditional Access policies are looked up too.
+        || path === '/identity/conditionalAccess/deletedItems/policies') {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);

@@ -342,6 +342,14 @@ test('a Defender family that is no longer available is labelled, and is a gap; o
 
   const everything = Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, 'crash']));
   assert.equal((await readMailFlow({ powershell: fakeExchange({ answers: everything }).powershell })).outcome, 'failed');
+
+  // Every family answered, but no object has an identity KEEL trusts: nothing usable, failed.
+  const noIdentity = Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, [{ Name: 'no identity' }]]));
+  const unusable = await readMailFlow({ powershell: fakeExchange({ answers: noIdentity }).powershell });
+  assert.equal(unusable.resources.length, 0);
+  assert.equal(unusable.outcome, 'failed');
+  // One family that genuinely read empty keeps it partial.
+  assert.equal((await readMailFlow({ powershell: fakeExchange({ answers: { ...noIdentity, 'Get-RemoteDomain': [] } }).powershell })).outcome, 'partial');
 });
 
 test('collection stays off until Exchange and every core read are qualified; Defender reads need their own proof', async (t) => {

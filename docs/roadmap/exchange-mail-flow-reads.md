@@ -51,7 +51,10 @@ plus the common typed conditions, exceptions and actions.
 TLS domains and IP ranges, never a password or key. An administrator could still type
 a secret into a rule (a header value, say). Every kept value goes through the shared
 redactor (`redactPayload` in `engine/telemetry/events.mjs`). A credential-shaped value
-is stored as `[redacted]` with field status `redacted`, never as the value.
+is stored as `[redacted]` with field status `redacted`, never as the value. A
+transport rule that stamps a header whose name suggests a credential (`X-Api-Key`,
+anything with auth, token, secret, key or password) has its header value and its
+Description redacted too, because an opaque key does not look like a credential.
 
 ## How it runs, and how it is enabled
 
@@ -61,11 +64,14 @@ is stored as `[redacted]` with field status `redacted`, never as the value.
   checks that both lists match.
 - A family that fails is `failed` or `denied`, with the structured error. A successful
   empty answer is a family with no objects.
-- **Not licensed is an observation.** Safe Links and Safe Attachments need Microsoft
-  Defender for Office 365. Without it, Exchange does not expose the cmdlet
-  (`CommandNotFoundException`), and the family is recorded as `not-licensed`. The run
-  does not fail and is not marked partial for it. The same error on any other cmdlet
-  is a failure.
+- **Not licensed is labelled, and it is a gap.** Safe Links and Safe Attachments need
+  Microsoft Defender for Office 365. Without it, or when the app's Exchange role no
+  longer includes the cmdlet, Exchange does not expose it (`CommandNotFoundException`),
+  and the family is recorded as `not-licensed`. These reads only run once they are
+  live-qualified, so the cmdlet once existed: losing it means those policies are no
+  longer backed up, and the run is `partial`. A tenant that never had the licence
+  never qualifies these reads, so they are listed as skipped instead. The same error
+  on any other cmdlet is a failure. A run where nothing could be read is `failed`.
 - **Disabled until qualified.** `collectMailFlow` records a `disabled` run and sends
   nothing unless:
   - the Exchange mailbox workload is qualified (as Purview requires, so the order stays

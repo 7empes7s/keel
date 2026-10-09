@@ -220,13 +220,29 @@ function notExposed(error) {
   return error instanceof CmdletError && NOT_FOUND.test(`${error.detail.errorId ?? ''} ${error.detail.message ?? ''}`);
 }
 
+// A transport rule that stamps a header whose name says it carries a credential
+// (an API key for a partner relay, say) holds that credential in plain text, in the
+// header value and in the rule's Description. Neither is stored.
+const SENSITIVE_HEADER = /key|auth|token|secret|passw|signature|credential|bearer/i;
+
+function sensitiveFields(family, body) {
+  if (family !== 'transportRule' || typeof body.SetHeaderName !== 'string' || !SENSITIVE_HEADER.test(body.SetHeaderName)) return new Set();
+  return new Set(['SetHeaderValue', 'Description']);
+}
+
 function observeObject(family, body) {
   const { fields, operation } = FAMILIES[family];
   const entry = { fields: {}, fieldCoverage: {} };
+  const sensitive = sensitiveFields(family, body);
   for (const field of fields) {
     const value = body[field];
     if (value === undefined) {
       entry.fieldCoverage[field] = { status: 'unknown', operation };
+      continue;
+    }
+    if (sensitive.has(field) && value !== null) {
+      entry.fields[field] = '[redacted]';
+      entry.fieldCoverage[field] = { status: 'redacted', operation, reason: 'the rule stamps a credential-named header, so its value was not stored' };
       continue;
     }
     // Defence in depth: a credential-shaped value (a bearer token in a rule's header
@@ -299,10 +315,14 @@ export async function readMailFlow({ powershell = {}, families = FAMILY_NAMES, s
     return [family, { status, objects: read.resources.length }];
   }));
   let outcome;
-  if (families.length > 0 && failures.length === families.length) outcome = 'failed';
-  // Not licensed is the tenant's state, not a gap in the read. A family skipped
-  // because its read is not qualified, or that failed, is a gap.
-  else if (failures.length || skipped.length || capped || unidentified || statuses.some((status) => status !== 'observed')) outcome = 'partial';
+  // Nothing was read at all: every family failed or was unavailable.
+  if (families.length > 0 && failures.length > 0 && failures.length + unavailable.length === families.length) outcome = 'failed';
+  // A Defender family runs only once its own read is live-qualified, so the cmdlet
+  // was proven present in this tenant: "not available" later means a lapsed licence
+  // or a removed role, and those policies are no longer backed up. That is a gap,
+  // like a family skipped because its read is not qualified, or one that failed.
+  else if (failures.length || unavailable.length || skipped.length || capped || unidentified
+    || statuses.some((status) => status !== 'observed')) outcome = 'partial';
   else if (resources.length === 0) outcome = 'complete-empty';
   else outcome = 'complete';
   return {

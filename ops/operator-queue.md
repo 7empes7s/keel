@@ -924,12 +924,18 @@ item that needs it stays untouched.
   or remove them and make both restores manual?
   - Decision: keep both (Marouane, 2026-10-08 09:25 UTC, same decision as D-93a).
 - D-148a (issue #148, Q43): may keel-operator run the lockout-sensitive steps on the test tenant? These are:
+  - create and change the fixture custom role `KEEL-RT-148-role` (one harmless permission: group names and
+    descriptions), assign it to `keel-rt-20260908-carla` and make her eligible for it, both scoped to the fixture
+    administrative unit `KEEL-RT-148-unit`. Never a built-in privileged role, never a break-glass principal;
+  - create, change and delete a named location and a custom authentication strength that no policy uses;
   - drift the authorization policy's guest-invitation setting;
   - turn off "MFA on activation" in the PIM settings of the fixture role `KEEL-RT-148-role`;
   - switch one authentication method that no break-glass account uses;
   - try security defaults;
   - create, change, delete and restore a report-only Conditional Access policy scoped to one fixture group;
-  - for the enforcement step, turn that policy **on** for `keel-rt-20260908-carla` only.
+  - turn that policy **on by hand**, for `keel-rt-20260908-carla` only, **before the snapshot** of the soft-delete
+    restore step, so that the backup has it on;
+  - let KEEL turn it **on** again, for `keel-rt-20260908-carla` only, in the enforcement step.
 
   KEEL restores each one behind the break-glass lockout gate. You stay signed in as a second Global Administrator
   while these steps run.
@@ -1788,8 +1794,9 @@ item that needs it stays untouched.
      - Steps that are not lockout-sensitive may share one snapshot and one restore that selects several fixtures (one
        approval).
      - Lockout-sensitive steps run last and one at a time, each only after its break-glass precondition holds.
-  3. A capture that exits 3 (the write failed): run the step's demote command and go on. Exit 4 (no such write): report
-     the step as blocked and go on. Any refusal: report it and go on. Never edit a record.
+  3. A capture that exits 3 (the write failed): run the step's demote command and go on. Exit 4 (blocked: no such write,
+     no recorded outcome yet, or recorded as done but the read-back is not verified): report the step as blocked, do
+     not demote, and go on. Any refusal: report it and go on. Never edit a record.
   4. If a Conditional Access step says "may be ON", turn the policy off by hand at once, stop the run and report.
   5. Do the checklist's "End of run" cleanup.
   6. Commit every `*.json`, `*.capture.json` and `*.demotion.json` from the evidence directory under

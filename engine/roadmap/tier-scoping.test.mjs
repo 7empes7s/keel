@@ -81,7 +81,8 @@ test('derived mutation "organization exempted from the tier check": a tier1 type
       'sanity: this only proves something if organization is really tier1');
     assert.deepEqual(coverageDigest.organization, { outcome: 'not-requested', itemCount: null },
       `organization is tier1, so a ${tier}-only run must never fetch it — no special exemption for this type`);
-    assert.equal(calls.some((p) => p.startsWith('/organization')), false,
+    // Exact endpoint: tier3 company branding (issue #156) lives under /organization/{id}/branding.
+    assert.equal(calls.some((p) => p === '/organization' || p.startsWith('/organization?')), false,
       `reader call log under ${tier} contains only requested-tier endpoints, including organization`);
   }
 });

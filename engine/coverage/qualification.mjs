@@ -54,6 +54,10 @@ export const TYPE_DECISIONS = Object.freeze({
   domain: manual('requires DNS ownership verification outside Graph'),
   subscribedSku: manual('licences are purchased, not configured'),
   directorySettingTemplate: manual('Microsoft-published template catalogue'),
+  // Issue #156: basic tenant settings.
+  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; logos, background images, favicon and custom stylesheet are binary uploads and are never written'),
+  organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; images are never written, and adding or removing a language is by hand'),
+  groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
@@ -85,6 +89,11 @@ export const TYPE_DECISIONS = Object.freeze({
   crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
   permissionGrantPolicy: unknown(),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
+  // Issue #156.
+  authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
+  deviceRegistrationPolicy: manual('backed up, never written: these settings decide who may register and join devices and whether joining needs MFA, so a wrong write could block admins from joining devices or silently drop the MFA requirement, so it is changed by hand', {
+    docs: `${DOCS}/resources/deviceregistrationpolicy?view=graph-rest-1.0`,
+  }),
   activityBasedTimeoutPolicy: unknown(),
   claimsMappingPolicy: unknown(),
   homeRealmDiscoveryPolicy: unknown(),
@@ -638,6 +647,11 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'built-in microsoft-* policies are immutable; includes and excludes are separate collections with no qualified writer'),
   adminConsentRequestPolicy: subset('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
     'update (a PUT of every writable field) is fixture-tested for the same tenant; reviewer queries are written as observed and are never remapped to another tenant'),
+  // Issue #156: basic tenant settings in the policy family.
+  authenticationFlowsPolicy: subset('policy', 'PATCH /policies/authenticationFlowsPolicy', 'Policy.ReadWrite.AuthenticationFlows',
+    'update of selfServiceSignUp (whether external users may sign themselves up through user flows) is fixture-tested; the user flows themselves are not collected'),
+  deviceRegistrationPolicy: byHand('policy', null, 'none',
+    'backed up only: device join and registration settings, including whether joining needs MFA, are changed by hand so an admin is never locked out of joining devices and MFA is never weakened silently'),
   activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
     'definition is a JSON string KEEL does not parse; a tenant-wide default and per-application assignment are not distinguished'),
   claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
@@ -661,6 +675,14 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update and delete of tenant-wide settings are fixture-tested; the template is never written; create and group-scoped settings are not qualified'),
   administrativeUnit: subset('administrative-configuration', 'PATCH /directory/administrativeUnits/{id}', 'AdministrativeUnit.ReadWrite.All',
     'update of displayName and description is fixture-tested; create, delete, soft-delete restore, membership and scoped role members are not qualified'),
+  // Issue #156: company branding and group expiration. Records live in
+  // engine/restore/tenantPolicyOperations.mjs.
+  organizationalBranding: subset('administrative-configuration', 'PATCH /organization/{id}/branding', 'OrganizationalBranding.ReadWrite.All',
+    'update of the default sign-in page text, colours and layout is fixture-tested; logos, background images, favicon and custom stylesheet are never written'),
+  organizationalBrandingLocalization: subset('administrative-configuration', 'PATCH /organization/{id}/branding/localizations/{locale}', 'OrganizationalBranding.ReadWrite.All',
+    'update of an existing language\'s text, colours and layout is fixture-tested; adding or removing a language and every image are by hand'),
+  groupLifecyclePolicy: subset('administrative-configuration', 'PATCH /groupLifecyclePolicies/{id}', 'Directory.ReadWrite.All',
+    'update is fixture-tested and runs only when it makes expiry less aggressive (a longer lifetime, fewer groups covered, no renewal notice address removed); create, delete and the list of selected groups are by hand'),
   // ---- device management (outside the Entra batches)
   // Issue #155: records, routes and the assignment writer live in
   // engine/restore/intuneOperations.mjs. The other Intune types are manual by
@@ -802,6 +824,21 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   ]),
   subscribedSku: Object.freeze([
     lost('configuration', 'licences', 'licences are purchased, not configured'),
+  ]),
+  // Issue #156.
+  organizationalBranding: Object.freeze([
+    lost('configuration', 'logos, background image, favicon, custom stylesheet', 'binary uploads with their own routes; only their file paths are backed up, and a change is reported not remediable'),
+    lost('configuration', 'content customization', 'it nests uploaded-file paths beside its text, so it is backed up but never written'),
+    lost('configuration', 'missing branding', 'a tenant with no branding gets none from KEEL; it is set up by hand'),
+  ]),
+  organizationalBrandingLocalization: Object.freeze([
+    lost('configuration', 'images of each language', 'binary uploads; never written'),
+    lost('configuration', 'added or removed languages', 'create and delete are not qualified; a missing language is added by hand'),
+  ]),
+  groupLifecyclePolicy: Object.freeze([
+    lost('configuration', 'shorter lifetime, wider scope or fewer notice addresses', 'could expire and delete groups, so the restore is refused and left to a person'),
+    lost('relationship', 'selected groups', 'which groups a Selected policy covers is changed through addGroup and removeGroup, which are not written'),
+    lost('configuration', 'missing policy', 'create and delete are not qualified; a missing policy is recreated by hand'),
   ]),
 });
 

@@ -130,7 +130,8 @@ test('three operation records, each a fixture-tested registration; every sibling
 test('the evidence report names what cannot be recovered and carries no coverage percentage', () => {
   const ledger = buildAdministrativeFamilyLedger();
   assert.deepEqual(ledger.families.map((family) => family.resourceType).sort(),
-    ['administrativeUnit', 'directorySettingTemplate', 'domain', 'groupSetting', 'organization', 'subscribedSku']);
+    ['administrativeUnit', 'directorySettingTemplate', 'domain', 'groupLifecyclePolicy', 'groupSetting', 'organization',
+      'organizationalBranding', 'organizationalBrandingLocalization', 'subscribedSku']);
   const byType = new Map(ledger.families.map((family) => [family.resourceType, family]));
   const unit = byType.get('administrativeUnit');
   assert.deepEqual({ status: unit.status, restoreScope: unit.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });
@@ -387,7 +388,8 @@ test('a deferred reference patch is never sent for a governed administrative typ
 test('the administrative batch runner drives the subset through applyWave and reports what cannot be recovered', async () => {
   const report = await runExpansionBatch('administrative-configuration');
   assert.deepEqual(report.operations.map((op) => `${op.resourceType} ${op.operation} ${op.result}`).sort(),
-    ['administrativeUnit update passed', 'groupSetting delete passed', 'groupSetting update passed']);
+    ['administrativeUnit update passed', 'groupLifecyclePolicy update passed', 'groupSetting delete passed', 'groupSetting update passed',
+      'organizationalBranding update passed', 'organizationalBrandingLocalization update passed']);
   assert.ok(report.operations.every((op) => op.synthetic === true));
   assert.ok(report.administrativeLedger.families.some((family) => family.resourceType === 'administrativeUnit'
     && family.unrecoverable.some((item) => item.name === 'members')));

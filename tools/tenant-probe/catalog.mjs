@@ -22,6 +22,18 @@ export const CATALOG = [
   // but its collection is groupSettingTemplates.
   { type: 'directorySettingTemplate', path: '/groupSettingTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic' },
   { type: 'groupSetting', path: '/groupSettings', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // Issue #156: basic tenant settings that were never backed up.
+  // Company branding (sign-in page text, colours, layout). Graph answers 404
+  // when the tenant has no branding, which is a valid empty observation
+  // (absentWhenNotFound). The default branding is read with Accept-Language 0;
+  // any other language returns that language's localization instead.
+  { type: 'organizationalBranding', path: '/organization/{org}/branding', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic',
+    needsOrgId: true, singleton: true, absentWhenNotFound: true, acceptLanguage: '0' },
+  { type: 'organizationalBrandingLocalization', path: '/organization/{org}/branding/localizations', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic',
+    needsOrgId: true, absentWhenNotFound: true },
+  // Group expiration. Zero or one policy per tenant; an empty list is valid.
+  { type: 'groupLifecyclePolicy', path: '/groupLifecyclePolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    note: 'A shorter lifetime can expire and delete Microsoft 365 groups.' },
 
   // ------------------------------------------------------------ principals
   // Operator decision (2026-09-08): users stay on the DAILY backup tier, so
@@ -106,6 +118,10 @@ export const CATALOG = [
   // crossTenantAccessPolicy object does not carry them.
   { type: 'crossTenantAccessPolicyConfigurationDefault', path: '/policies/crossTenantAccessPolicy/default', version: 'v1.0', singleton: true, criticality: 'tier1', blastRadius: 'access-affecting' },
   { type: 'crossTenantAccessPolicyPartner', path: '/policies/crossTenantAccessPolicy/partners', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting' },
+  // Issue #156: who may register and join devices, and whether joining needs MFA.
+  { type: 'deviceRegistrationPolicy', path: '/policies/deviceRegistrationPolicy', version: 'v1.0', singleton: true, criticality: 'tier1', blastRadius: 'access-affecting' },
+  // Issue #156: whether external users may sign themselves up through user flows.
+  { type: 'authenticationFlowsPolicy', path: '/policies/authenticationFlowsPolicy', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'permissionGrantPolicy', path: '/policies/permissionGrantPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'adminConsentRequestPolicy', path: '/policies/adminConsentRequestPolicy', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'activityBasedTimeoutPolicy', path: '/policies/activityBasedTimeoutPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },

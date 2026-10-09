@@ -6,7 +6,7 @@ import { phaseOneResources } from '../restore/wavePlanner.mjs';
  * symbolic IDs only after passing their wave, for later reference resolution. */
 export async function previewApplyPlan({
   resources, waves, deletionWaves, patches, existingTargetIds,
-  deletionGuardOptions, signInPathGate, targetTenant,
+  deletionGuardOptions, signInPathGate, targetTenant, lockoutGate = null,
 }) {
   const appliedIds = new Map();
   const refusals = [];
@@ -16,7 +16,7 @@ export async function previewApplyPlan({
     try {
       const result = await applyWave(null, null, wave, {
         mode: 'dry-run', targetTenant, existingTargetIds, appliedIds,
-        deletionGuardOptions, signInPathGate,
+        deletionGuardOptions, signInPathGate, lockoutGate,
       });
       refusals.push(...result.skipped, ...result.failed.map(({ naturalKey, error }) => ({
         naturalKey, reason: error,

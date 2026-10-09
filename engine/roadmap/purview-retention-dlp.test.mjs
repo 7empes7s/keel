@@ -13,6 +13,7 @@
 // Mutation checks (each was run once and made this file fail):
 //  - key objects by Name instead of Guid (the rename assertion fails);
 //  - stop counting rules with no parent policy (the unparented assertion fails);
+//  - accept any Guid-shaped parent without looking it up (the missing-parent test fails);
 //  - count a not-licensed family as complete, or as a failure (the outcome test fails);
 //  - run a DLP read whose own row is not enabled (the activation test fails).
 //
@@ -274,7 +275,11 @@ test('every policy and rule is one observation keyed by Guid, with its parent po
   assert.equal(result.resources.find((resource) => resource.resourceKey === `dlp-rule:${guid(6)}`).parentPolicy, null);
   assert.equal(result.discovery.unidentified, 1);
   assert.equal(result.discovery.unparented, 1);
+  assert.equal(rule.parentStatus, 'found');
+  assert.equal(result.resources.find((resource) => resource.resourceKey === `dlp-rule:${guid(6)}`).parentStatus, 'none');
   assert.equal(result.discovery.contentRead, false);
+  // The second copy of guid(5) disagrees on Name: recorded as a conflict, first copy kept.
+  assert.deepEqual(result.discovery.conflicts, [{ resourceKey: `dlp-rule:${guid(5)}`, fields: ['Name'] }]);
 
   // Sensitive information types, keywords and patterns are configuration: kept as is.
   assert.deepEqual(rule.fields.ContentContainsSensitiveInformation, SAMPLE['Get-DlpComplianceRule'][0].ContentContainsSensitiveInformation);
@@ -410,4 +415,89 @@ test('collection stays off until Exchange and both retention reads are qualified
   assert.equal(entry.status, 'complete');
   assert.throws(() => planWaves([{ naturalKey: 'x', resourceType: 'purviewRetentionDlp', verb: 'update', payload: {} }]), /workload restore path/);
   assert.throws(() => planDeletionWaves([{ naturalKey: 'x', resourceType: 'purviewRetentionDlp', verb: 'delete', payload: {} }]), /workload restore path/);
+});
+
+test('a rule is unparented when its own policy family was read in full and lacks its parent', async () => {
+  // Retention policies read empty; the rule names a policy that is not there.
+  const emptyPolicies = await readRetentionDlp({ powershell: fakeCompliance({ answers: { 'Get-RetentionCompliancePolicy': [] } }).powershell });
+  const lonely = emptyPolicies.resources.find((resource) => resource.resourceKey === `retention-rule:${guid(3)}`);
+  assert.equal(lonely.parentPolicy, guid(1));
+  assert.equal(lonely.parentStatus, 'missing');
+  assert.equal(emptyPolicies.discovery.unparented, 1);
+  assert.equal(emptyPolicies.outcome, 'partial');
+
+  // A retention rule naming a DLP policy's Guid has no retention parent.
+  const crossed = await readRetentionDlp({
+    powershell: fakeCompliance({ answers: { 'Get-RetentionComplianceRule': [{ ...SAMPLE['Get-RetentionComplianceRule'][0], Policy: guid(4) }] } }).powershell,
+  });
+  assert.equal(crossed.resources.find((resource) => resource.kind === 'retentionRule').parentStatus, 'missing');
+  assert.equal(crossed.discovery.unparented, 1);
+  assert.equal(crossed.outcome, 'partial');
+
+  // When the policy family did not read in full, absence proves nothing: unchecked.
+  const failedPolicies = await readRetentionDlp({ powershell: fakeCompliance({ answers: { 'Get-DlpCompliancePolicy': 'crash' } }).powershell });
+  assert.equal(failedPolicies.resources.find((resource) => resource.kind === 'dlpRule').parentStatus, 'unchecked');
+  assert.equal(failedPolicies.discovery.unparented, 0);
+
+  // The cap: one object per family. The second retention policy is dropped, so a rule
+  // naming it is unchecked, not unparented; the run is partial because it was capped.
+  const capped = await readRetentionDlp({
+    powershell: fakeCompliance({ answers: { 'Get-RetentionComplianceRule': [{ ...SAMPLE['Get-RetentionComplianceRule'][0], Policy: guid(2) }] } }).powershell,
+    maxObjects: 1,
+  });
+  assert.equal(capped.discovery.capped, true);
+  assert.equal(capped.resources.filter((resource) => resource.kind === 'retentionPolicy').length, 1);
+  assert.equal(capped.resources.find((resource) => resource.kind === 'retentionRule').parentStatus, 'unchecked');
+  assert.equal(capped.discovery.unparented, 0);
+  assert.equal(capped.outcome, 'partial');
+
+  // A duplicate that agrees with the first copy is not a conflict.
+  const agreeing = await readRetentionDlp({
+    powershell: fakeCompliance({ answers: { 'Get-DlpCompliancePolicy': [SAMPLE['Get-DlpCompliancePolicy'][0], SAMPLE['Get-DlpCompliancePolicy'][0]] } }).powershell,
+  });
+  assert.deepEqual(agreeing.discovery.conflicts, []);
+  assert.equal(agreeing.outcome, 'complete');
+});
+
+test('a run that kept no object is failed when nothing usable came back', async () => {
+  // Every family answered, but nothing has a Guid KEEL trusts.
+  const noGuids = Object.fromEntries(FAMILY_NAMES.map((name) => [FAMILIES[name].cmdlet, [{ Name: 'no guid' }]]));
+  const result = await readRetentionDlp({ powershell: fakeCompliance({ answers: noGuids }).powershell });
+  assert.equal(result.resources.length, 0);
+  assert.equal(result.outcome, 'failed');
+
+  // Mixed: unidentified, failed and not-licensed, nothing kept: failed.
+  const mixed = await readRetentionDlp({
+    powershell: fakeCompliance({
+      answers: {
+        'Get-RetentionCompliancePolicy': [{ Name: 'no guid' }],
+        'Get-RetentionComplianceRule': 'crash',
+        'Get-DlpCompliancePolicy': { error: NOT_FOUND('Get-DlpCompliancePolicy') },
+        'Get-DlpComplianceRule': { error: NOT_FOUND('Get-DlpComplianceRule') },
+      },
+    }).powershell,
+  });
+  assert.equal(mixed.outcome, 'failed');
+
+  // One family that genuinely read empty keeps it partial: that answer is usable.
+  const oneEmpty = await readRetentionDlp({ powershell: fakeCompliance({ answers: { ...noGuids, 'Get-DlpCompliancePolicy': [] } }).powershell });
+  assert.equal(oneEmpty.outcome, 'partial');
+});
+
+test('DLP rules enabled while DLP policies are not: rules run, their parents are unchecked, the run is partial', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const compliance = fakeCompliance();
+  const ledger = ledgerWith(tenantRef, [...OTHER_READS, ...CORE_OPERATIONS, 'purview.dlp-rules']);
+  const activation = retentionDlpActivation(ledger);
+  assert.equal(activation.enabled, true);
+  assert.deepEqual(activation.families, ['retentionPolicy', 'retentionRule', 'dlpRule']);
+  assert.deepEqual(activation.skipped.map((item) => item.family), ['dlpPolicy']);
+  const { run, result } = await collectRetentionDlp(client, { tenantRef, ledger, powershell: compliance.powershell, now: () => NOW });
+  assert.ok(!compliance.calls.some((call) => call.cmdlet === 'Get-DlpCompliancePolicy'), 'the unqualified policy read is never sent');
+  assert.equal(result.resources.find((resource) => resource.kind === 'dlpRule').parentStatus, 'unchecked');
+  assert.equal(result.discovery.unparented, 0);
+  assert.equal(run.outcome, 'partial');
+  const { rows } = await client.query(`SELECT fields FROM workload_observation WHERE collection_id = $1 AND resource_key = $2`, [run.id, `dlp-rule:${guid(5)}`]);
+  assert.equal(rows[0].fields.parentStatus, 'unchecked');
 });

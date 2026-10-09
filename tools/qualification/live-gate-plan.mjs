@@ -45,6 +45,7 @@ const OPERATION_RANK = Object.freeze({ create: 0, update: 1, 'restore-soft-delet
 
 const SINGLETON_TYPES = new Set([
   ...CONSTANT_KEY_TYPES,
+  ...CATALOG.filter((entry) => entry.singleton === true).map((entry) => entry.type),
   ...TENANT_POLICY_RECORDS.filter((entry) => !entry.route.includes('{')).map((entry) => entry.resourceType)
     .filter((type) => type !== 'crossTenantAccessPolicyPartner'),
 ]);
@@ -147,6 +148,26 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     kind: 'named-object', fixture: `settings catalog policy ${FIXTURE_PREFIX}-settings (one Defender setting), assigned to group ${FIXTURE_PREFIX}-group only`,
     select: `${FIXTURE_PREFIX}-settings`, drift: 'switch its one setting off',
   },
+  // Issue #156: basic tenant settings. None can lock anyone out.
+  organizationalBranding: {
+    kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',
+    drift: 'change its sign-in page text; write the original text down first',
+    note: 'If the tenant has no branding, Graph answers 404 and there is nothing to update: report this step as blocked.',
+  },
+  organizationalBrandingLocalization: {
+    kind: 'tenant-setting', fixture: 'one existing branding localization; if there is none, add fr-FR with sign-in page text KEEL-RT-148 before the snapshot',
+    select: 'the language of that localization, for example fr-FR', drift: 'change its sign-in page text',
+    note: 'Remove the fr-FR localization at the end if this run added it.',
+  },
+  groupLifecyclePolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant group expiration policy; if there is none, create one for Selected groups holding only KEEL-RT-148-group, lifetime 365 days',
+    select: 'the policy id KEEL shows (it has no name)', drift: 'make the lifetime LONGER (for example 400 days), never shorter: a shorter lifetime can expire and delete Microsoft 365 groups',
+    note: 'KEEL guards this write because it can delete groups. Delete the policy at the end if this run created it.',
+  },
+  authenticationFlowsPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant authentication flows policy (self-service sign-up for external users)', select: 'authenticationFlowsPolicy',
+    drift: 'switch self-service sign-up on or off',
+  },
   authorizationPolicy: {
     kind: 'tenant-setting', lockout: true, fixture: 'the tenant authorization policy', select: 'authorizationPolicy',
     drift: 'change allowInvitesFrom (guest invitations) only; never touch default user role permissions',
@@ -211,8 +232,11 @@ export function guidanceFor(resourceType) {
     reviewed: false,
     kind: singleton ? 'tenant-setting' : ID_KEY_TYPES.has(resourceType) ? 'by-reference' : 'named-object',
     lockout,
-    fixture: singleton ? `the tenant's one ${resourceType} object` : `a disposable ${resourceType} named ${FIXTURE_PREFIX}-${resourceType}`,
-    select: singleton ? resourceType : `${FIXTURE_PREFIX}-${resourceType}`,
+    // An id-keyed type has no name to make disposable: the operator picks the object.
+    fixture: singleton ? `the tenant's one ${resourceType} object`
+      : ID_KEY_TYPES.has(resourceType) ? `an existing ${resourceType} that only touches KEEL-RT fixtures (it has no name of its own)`
+        : `a disposable ${resourceType} named ${FIXTURE_PREFIX}-${resourceType}`,
+    select: singleton ? resourceType : ID_KEY_TYPES.has(resourceType) ? `the ${resourceType} id KEEL shows` : `${FIXTURE_PREFIX}-${resourceType}`,
     drift: 'change one field the restore writes (see the type\'s operation record)',
     breakGlass: lockout ? 'Not reviewed for this type yet: treat it as able to lock people out. Get decision D-148a extended to this type before running it.' : null,
     note: 'No reviewed guidance yet for this type: read its roadmap doc before running, and add an entry to FIXTURE_GUIDANCE.',

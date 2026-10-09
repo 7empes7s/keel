@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 36, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×3, application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151)');
+  assert.equal(supported.length, 37, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×4 (restore, task-152), application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -86,7 +86,7 @@ test('mutation check: no remappable descriptor becomes writable because it is re
     group: ['create', 'update', 'delete', 'restore-soft-deleted'],
     roleAssignment: ['create', 'update', 'delete'],
     namedLocation: ['create', 'update', 'delete'],
-    conditionalAccessPolicy: ['create', 'update', 'delete'],
+    conditionalAccessPolicy: ['create', 'update', 'delete', 'restore-soft-deleted'],
     authenticationStrengthPolicy: ['create', 'update'],
   };
   let unregistered = 0;
@@ -200,7 +200,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 36);
+  assert.equal(results.length, 37);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);

@@ -3,7 +3,34 @@ import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
-export const SOFT_DELETABLE = new Set(['user', 'group', 'application']);
+/**
+ * Where each soft-deletable type's deleted items are listed and restored.
+ * Directory objects use the directory deleted-items container; Conditional
+ * Access policies have their own (roadmap task-152). The Conditional Access
+ * routes and their API version are declarations to confirm against Microsoft
+ * documentation before live qualification: they are fixture-tested only.
+ */
+export const DELETED_ITEM_ROUTES = Object.freeze({
+  user: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.user', restore: (id) => `/directory/deletedItems/${id}/restore` }),
+  group: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.group', restore: (id) => `/directory/deletedItems/${id}/restore` }),
+  application: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.application', restore: (id) => `/directory/deletedItems/${id}/restore` }),
+  conditionalAccessPolicy: Object.freeze({
+    version: 'v1.0',
+    list: '/identity/conditionalAccess/deletedItems/policies',
+    restore: (id) => `/identity/conditionalAccess/deletedItems/policies/${encodeURIComponent(id)}/restore`,
+  }),
+});
+
+export const SOFT_DELETABLE = new Set(Object.keys(DELETED_ITEM_ROUTES));
+
+// Types whose deleted items are matched by a name that need not be unique.
+const AMBIGUITY_REFUSED = new Set(['conditionalAccessPolicy']);
+
+/** The restore route for a deleted item of this type (directory deleted items by default). */
+export function deletedItemRestorePath(resourceType, deletedItemId) {
+  const route = DELETED_ITEM_ROUTES[resourceType];
+  return route ? route.restore(deletedItemId) : `/directory/deletedItems/${deletedItemId}/restore`;
+}
 
 /** Spec M2.4. Facts about the live tenant for the natural keys in a plan.
  * state: 'present' | 'soft-deleted' | 'absent'
@@ -35,11 +62,8 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
 
     let deleted;
     try {
-      deleted = await list(
-        reader,
-        'v1.0',
-        `/directory/deletedItems/microsoft.graph.${resourceType}`,
-      );
+      const route = DELETED_ITEM_ROUTES[resourceType];
+      deleted = await list(reader, route.version, route.list);
     } catch (error) {
       if (!onDeletedLookupFailure) throw error;
       onDeletedLookupFailure(resourceType, error);
@@ -47,7 +71,15 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
     }
     for (const object of deleted) {
       const naturalKey = naturalKeyFor(resourceType, object);
-      if (index.get(naturalKey)?.state === 'present') continue;
+      const known = index.get(naturalKey);
+      if (known?.state === 'present') continue;
+      // Task-152: deleted Conditional Access policies are keyed by display name,
+      // so two with one name cannot be told apart. Neither is chosen: the entry
+      // is marked ambiguous and its restore is refused.
+      if (known?.state === 'soft-deleted' && AMBIGUITY_REFUSED.has(resourceType)) {
+        index.set(naturalKey, { ...known, ambiguous: true, candidates: [...(known.candidates ?? [known.deletedItemId]), object.id] });
+        continue;
+      }
       index.set(naturalKey, {
         targetId: object.id,
         payloadHash: canonicalHash(object, resourceType),

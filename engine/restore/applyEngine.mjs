@@ -4,11 +4,13 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
+import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
 } from '../coverage/qualification.mjs';
 import { recoveryGate } from './recoveryMechanism.mjs';
+import { deletedPolicyRestoreRefusal, REPORT_ONLY } from './conditionalAccessEnforcement.mjs';
 import {
   isPolicyGoverned, policyCreateBody, policyPatchRefusal, policyPostCreateRefusal, policyWriteRefusal,
 } from './policyOperations.mjs';
@@ -315,6 +317,9 @@ export async function applyWave(writer, governor, wave, {
   // (authentication methods, security defaults, authorization policy) may be
   // written; engine/safety/lockoutGate.mjs. Without one they are skipped.
   lockoutGate = null,
+  // Task-152: { attempts, delayMs } for the restored policy's read-back and
+  // follow-up update; injectable so fixtures never wait in real time.
+  readAfterWriteOptions = {},
 }) {
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
@@ -558,6 +563,22 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      // Task-152 review: Microsoft restores a deleted policy in the state it was
+      // deleted in. One that comes back on is a lockout question before anything
+      // is sent: the break-glass gate must pass for that state, or nothing is written.
+      const isPolicy = resource.resourceType === 'conditionalAccessPolicy';
+      if (resource.live?.ambiguous) {
+        skipped.push({ naturalKey: resource.naturalKey, reason: 'ambiguous: several deleted objects share this name — restore refused' });
+        continue;
+      }
+      if (isPolicy) {
+        const refusal = deletedPolicyRestoreRefusal(resource, lockoutGate);
+        if (refusal) {
+          skipped.push({ naturalKey: resource.naturalKey, reason: refusal });
+          continue;
+        }
+      }
+
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
@@ -573,9 +594,14 @@ export async function applyWave(writer, governor, wave, {
         continue;
       }
 
+      // Roadmap task-152: a Conditional Access policy is restored from its own
+      // deleted-items container; directory objects from the directory one. A
+      // restored policy is always put back to report-only by the follow-up PATCH
+      // below, and anything short of a confirmed report-only read-back is a loud
+      // "may be ON" failure, never a quiet one.
       const restoreResult = await retryOperation(() => writer.write(
         'v1.0',
-        `/directory/deletedItems/${deletedItemId}/restore`,
+        deletedItemRestorePath(resource.resourceType, deletedItemId),
         { method: 'POST', body: {} },
       ));
       if (!restoreResult.ok) {
@@ -593,22 +619,40 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
-      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation });
-      if (reRead?.ok === false) {
+      // A restored policy whose state cannot be confirmed may be ON: say so loudly.
+      const policyMayBeOn = async (why, postState, result = null) => {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { postState: postState ?? null, detail: `restored; may be ON: ${why}` });
+        failed.push({
+          ...(result ? graphFailure(resource.naturalKey, result) : { naturalKey: resource.naturalKey }),
+          error: `Conditional Access policy may be ON: ${resource.naturalKey} was restored, but KEEL could not confirm it is report-only (${why}). Check it now and set it to report-only.`,
+          policyMayBeOn: true,
+        });
+      };
+      const reRead = await readAfterWrite(writer, 'v1.0', path, isNotFound, { retryOperation, ...readAfterWriteOptions });
+      if (reRead?.ok === false && !isPolicy) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'restored object could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
-      let live = reRead?.body ?? reRead;
-      if (canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+      // A policy that could not be re-read is still written report-only below.
+      let live = reRead?.ok === false ? null : (reRead?.body ?? reRead);
+      if (live && canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
       }
 
       const payload = writableProjection(desired, resource.resourceType);
-      const updateResult = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
+      // A just-restored object can briefly 404 a write; a policy's follow-up
+      // PATCH retries that lag as well as throttling (both bounded).
+      const updateResult = isPolicy
+        ? await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation, ...readAfterWriteOptions })
+        : await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
       if (!updateResult.ok) {
+        if (isPolicy) {
+          await policyMayBeOn(`the report-only update failed: ${outcomeDetail(updateResult)}`, live, updateResult);
+          continue;
+        }
         // The restore landed (the object is back); only the follow-up PATCH did not.
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: `restored; follow-up update ${outcomeDetail(updateResult)}` });
         failed.push(graphFailure(resource.naturalKey, updateResult));
@@ -616,13 +660,21 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation });
+        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation, ...readAfterWriteOptions });
       if (updateReRead?.ok === false) {
+        if (isPolicy) {
+          await policyMayBeOn('the policy could not be read back after the report-only update', live, updateReRead);
+          continue;
+        }
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'restored; follow-up update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, updateReRead));
         continue;
       }
       live = updateReRead?.body ?? updateReRead;
+      if (isPolicy && live?.state !== REPORT_ONLY) {
+        await policyMayBeOn(`it reads back as ${live?.state ?? 'an unknown state'}`, live);
+        continue;
+      }
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
         const residual = residualDiff(desired, live, resource.resourceType);
         if (residual.length === 0) {

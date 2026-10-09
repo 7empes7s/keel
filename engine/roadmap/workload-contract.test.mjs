@@ -47,7 +47,7 @@ const graphDescriptor = (id, endpoint, workload = 'sharepoint-site-settings') =>
 });
 
 test('every declared operation is in configuration scope and complete', () => {
-  assert.equal(new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.workload)).size, 7, 'all seven workloads are declared');
+  assert.equal(new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.workload)).size, 8, 'all eight workloads are declared');
   for (const descriptor of WORKLOAD_DESCRIPTORS) {
     assert.doesNotThrow(() => validateWorkloadDescriptor(descriptor), descriptor.id);
     assert.equal(typeof descriptor.auth.application, 'boolean');

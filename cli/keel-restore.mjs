@@ -28,6 +28,7 @@ import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
+import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
@@ -514,8 +515,9 @@ export async function runRestore({
     // security defaults, authorization policy) is written only when the target's
     // break-glass accounts stay ready under the proposed policy. Loaded only when
     // such a write is planned; applyWave skips it without a gate.
+    // Readiness is stored under the target's derived tenant reference, never its raw id.
     const lockoutGate = await lockoutGateFor(client, resources, {
-      tenantRef: collectorConfig.tenantId, loadInputs: loadLockoutGateInputsFn, loadMembership: loadGroupMembershipFn,
+      tenantRef: tenantRefFor(collectorConfig.tenantId), loadInputs: loadLockoutGateInputsFn, loadMembership: loadGroupMembershipFn,
     });
     // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
     // snapshot did not contain) is authorised only by a complete observation of

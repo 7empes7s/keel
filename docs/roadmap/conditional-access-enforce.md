@@ -34,7 +34,13 @@ The restore must not look finished when it isn't.
   restore". The completion checklist shows the item with a "Next:" hint and
   no evidence form.
 - A ticket cannot close the item. `completeItem` refuses `enforcement` items.
-  Only `closeEnforcementItem` closes it, after the policy reads back as on.
+  `closeEnforcementItem` closes it in two cases:
+  - after the approved step turns the policy on and reads it back;
+  - when planning finds someone turned the policy on outside KEEL, and apart
+    from its state it matches the backup. Nothing is written to the tenant,
+    and the evidence says "turned on outside KEEL".
+  A policy that is on but differs from the backup is still refused ("already
+  turned on").
 
 ## Promotion: plan, approve, execute
 
@@ -48,8 +54,8 @@ shape is the compensation precedent from task-70.
    refused if:
    - the policy has no open item, or the item is already closed;
    - the backup did not have the policy `enabled`;
-   - the policy is not live, is already on, or is in any state other than
-     report-only (it changed after the restore).
+   - the policy is not live, is already on (and differs from the backup), or
+     is in any state other than report-only (it changed after the restore).
    The plan is stored on the dry-run artifact (`conditional_access_enforcement`)
    and folded into its digest.
 2. **Approve.** Use the normal restore approval for that artifact: the portal's
@@ -60,20 +66,22 @@ shape is the compensation precedent from task-70.
    - the digest and current-state fingerprint (a changed policy refuses);
    - that an approved request decided by someone other than the requester
      exists for this artifact;
-   - the gates again.
+   - the lockout gate again.
 
-### Gates, evaluated at planning and again at execution
+### Gates
 
-- **Break-glass lockout gate** (`engine/safety/lockoutGate.mjs`). "This policy
-  turned on" is evaluated as a proposed change
-  (`withProposedConditionalAccessPolicy`). Promotion is refused when:
+- **Break-glass lockout gate** (`engine/safety/lockoutGate.mjs`), evaluated at
+  planning and again at execution. "This policy turned on" is evaluated as a
+  proposed change (`withProposedConditionalAccessPolicy`). Promotion is refused
+  when:
   - a break-glass account would be blocked;
   - readiness is `unknown`;
   - the Conditional Access inventory isn't covered;
   - the gate cannot be read (it fails closed).
-- **Sign-in path gate.** The path is snapshotted before the write. Afterwards
-  it must equal the expected path, which is the old one with only this policy
-  on. On any other change KEEL writes report-only again and fails the step.
+- **Sign-in path gate**, at execution only, because it compares the path
+  before and after the write. The path is snapshotted before the write.
+  Afterwards it must equal the expected path, which is the old one with only
+  this policy on.
 
 ### The write
 
@@ -82,8 +90,23 @@ shape is the compensation precedent from task-70.
   override, with the approver as signer.
 - It is journaled as an `update` with the prior and intended state, so
   compensation can undo it.
-- KEEL then reads the policy back. It must be `enabled` with an unchanged body,
-  or the step fails.
+- The PATCH and every read go through the same bounded throttle retry as
+  `applyWave` (429/503 with Retry-After, through the tenant's governor).
+- A 4xx refusal changes nothing, and the step fails.
+- Any other outcome means the policy may be on. The step succeeds only if the
+  policy reads back as `enabled` with an unchanged body **and** the sign-in path
+  matches. In every other case KEEL PATCHes it back to report-only and reads
+  that back. Those cases are:
+  - an unknown PATCH outcome (5xx, timeout or throw);
+  - a failed or mismatched read-back;
+  - a sign-in path change;
+  - a sign-in path read that throws.
+- The journal records the real result:
+  - `failed`, with the report-only read-back, when the revert is confirmed;
+  - `uncertain` when the revert is not confirmed.
+  If the revert cannot be confirmed, the step fails with "Conditional Access
+  policy may be ON" and adds a "confirm this policy's state" completion item
+  (`service-validation`, `conditionalAccessStateConfirmed`) to the restore.
 - On success the item is closed with a log reference to the artifact and
   "approved by …".
 
@@ -99,8 +122,26 @@ the existing approval and job path, so the portal needed no new action route.
 - Deleted policies are read from `/identity/conditionalAccess/deletedItems/policies`
   (`DELETED_ITEM_ROUTES` in `liveState.mjs`).
 - The restore is `POST …/deletedItems/policies/{id}/restore`.
-- The id is kept. The usual hash compare then PATCHes the policy back to
-  report-only.
+- The id is kept.
+- **A policy deleted while on comes back on**, because Microsoft restores it in
+  the state it was deleted in. Before anything is sent, the deleted item's
+  state is read (`resource.live.payload.state`):
+  - report-only or off: restored without a gate;
+  - `enabled` or unknown: restored only if the break-glass lockout gate passes
+    for it turned on. A blocked account, unknown readiness, no gate, or a gate
+    that throws skips the restore, and nothing is written (dry run included).
+    The forward restore loads that gate (`lockoutGateFor`) whenever such a
+    restore is planned.
+- After the POST, the policy is always PATCHed to report-only (unless it
+  already reads back that way). The PATCH retries throttling and the brief
+  post-restore 404 through the bounded retry path.
+- If report-only cannot be confirmed (the PATCH fails, the read-back fails, or
+  it reads back in another state), the resource fails with "Conditional Access
+  policy may be ON: …" and an `uncertain` journal entry. The CLI logs a
+  `WARNING` and opens a `conditionalAccessStateConfirmed` completion item
+  before stopping the run.
+- Two deleted policies with the same display name are ambiguous. Neither is
+  restored (`refused: ambiguous`), and nothing is recreated.
 - Retention is 30 days from `deletedDateTime`. It is checked at planning and
   again by `applyWave` at execution. A missing date refuses.
 - A failed deleted-items read refuses absent policies (`lookup-failed`). They
@@ -111,15 +152,18 @@ the existing approval and job path, so the portal needed no new action route.
 ## Not included
 
 - No live qualification and no live evidence (see Status).
-- **Brief enabled window:** a policy deleted while `enabled` is briefly enabled
-  between the restore POST and the report-only PATCH. The PATCH follows
-  immediately for the same resource. If that PATCH fails, the run reports the
-  policy as failed with an uncertain journal entry, and it may still be on.
+- **Brief enabled window:** a policy deleted while `enabled` is on between the
+  restore POST and the report-only PATCH. That window is allowed only after the
+  lockout gate passed for the policy turned on. A failed PATCH is reported
+  loudly as "may be ON" (see Soft-delete restore).
+- Because of #149, the forward restore's lockout gate is currently loaded with
+  the raw tenant id. In production it therefore likely refuses (fails closed)
+  every deleted policy that would come back on, until #149 is fixed.
 - No portal button to plan the step. Planning is CLI-only; the portal shows the
   step and the existing approval.
 - Turning on several policies at once: it is one policy per step.
 - Named-location soft restore.
 - Two existing issues are noted but not changed here:
   - the forward restore's lockout gate passes the raw tenant id where a tenant
-    reference is expected (#149);
+    reference is expected (#149; see above);
   - its sign-in path gate counts any Conditional Access change as a path change.

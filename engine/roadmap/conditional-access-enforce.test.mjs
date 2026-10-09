@@ -23,7 +23,7 @@ import { capabilityFor } from '../coverage/capabilities.mjs';
 import { qualificationFor } from '../coverage/qualification.mjs';
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
 import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
-import { applyWave } from '../restore/applyEngine.mjs';
+import { applyWave, retryThrottledGraphOperation } from '../restore/applyEngine.mjs';
 import { grantRole } from '../authz/administration.mjs';
 import { CompletionEvidenceError, completeItem, completionItemsFor, listCompletionItems, resourceCompletionState } from '../restore/completion.mjs';
 import {
@@ -176,7 +176,7 @@ test('a deleted Conditional Access policy is soft-restored with its id and lands
   assert.equal(policy.recovery.retainedId, 'ca-1');
   assert.equal(policy.recovery.deadline, new Date(Date.parse(daysAgo(3)) + SOFT_DELETE_RETENTION_DAYS * DAY).toISOString());
 
-  const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW });
+  const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate() });
   assert.deepEqual(result.failed, []);
   assert.deepEqual(result.applied, [{ naturalKey: KEY, targetId: 'ca-1' }]);
   assert.deepEqual(graph.writes.map((w) => `${w.method} ${w.path}`), [
@@ -218,10 +218,115 @@ test('a dry run of the soft-delete restore sends nothing', async () => {
   const graph = fakeGraph();
   graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(3) } });
   const [policy] = (await buildReconciliationPlan(readerFor(graph), [desired()], { now: NOW })).resources;
-  const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'dry-run', now: () => NOW });
+  const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'dry-run', now: () => NOW, lockoutGate: gate() });
   assert.deepEqual(result.applied, [{ naturalKey: KEY, targetId: 'ca-1' }]);
   assert.equal(graph.writes.length, 0);
   assert.ok(graph.deleted.has('ca-1'));
+});
+
+/** A planned soft-delete restore of the MFA policy, deleted as `body` says. */
+async function deletedPolicy(body = {}) {
+  const graph = fakeGraph();
+  graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(3), ...body } });
+  const [policy] = (await buildReconciliationPlan(readerFor(graph), [desired()], { now: NOW })).resources;
+  return { graph, policy };
+}
+const noWait = { throttleRetryOptions: { sleep: async () => {} }, readAfterWriteOptions: { delayMs: 0 } };
+
+test('a policy deleted while on is restored only when the lockout gate passes for it on; otherwise nothing is written', async () => {
+  // Blocks a break-glass account (BG2 is not excluded), deleted while on.
+  const blocking = { conditions: { ...mfaPolicy.conditions, users: { includeUsers: ['All'], excludeUsers: [BG1] } } };
+  for (const mode of ['dry-run', 'enforce']) {
+    const { graph, policy } = await deletedPolicy(blocking);
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode, now: () => NOW, lockoutGate: gate() });
+    assert.match(result.skipped[0]?.reason ?? '', /^break-glass lockout gate: the policy was deleted while on and would come back on: /, mode);
+    assert.deepEqual(result.applied, []);
+    assert.equal(graph.writes.length, 0, `${mode}: nothing written`);
+    assert.ok(graph.deleted.has('ca-1'));
+  }
+  // No gate, a gate that cannot be evaluated, unknown readiness, an unknown deleted state: all refuse.
+  const throwing = { evaluate() { throw new Error('inventory unreadable'); } };
+  for (const [lockoutGate, body, pattern] of [
+    [null, {}, /no lockout gate was available/],
+    [throwing, {}, /could not be evaluated \(inventory unreadable\)/],
+    [gate({ caCovered: false }), {}, /break-glass lockout gate: /],
+    [null, { state: undefined }, /deleted in an unknown state/],
+  ]) {
+    const { graph, policy } = await deletedPolicy(body);
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate });
+    assert.match(result.skipped[0]?.reason ?? '', pattern);
+    assert.equal(graph.writes.length, 0);
+  }
+  // A policy deleted while report-only or off needs no gate: it comes back off.
+  for (const state of [REPORT_ONLY, 'disabled']) {
+    const { graph, policy } = await deletedPolicy({ state });
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: null });
+    assert.deepEqual(result.applied.map((entry) => entry.naturalKey), [KEY], state);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+  }
+});
+
+test('the report-only update after the restore is retried when throttled; if it cannot be confirmed the policy is reported as possibly on', async () => {
+  // 429 once, then success: retried through the throttle path and confirmed.
+  {
+    const { graph, policy } = await deletedPolicy();
+    const write = graph.write.bind(graph);
+    let throttled = 0;
+    graph.write = async (version, path, request) => {
+      if (request.method === 'PATCH' && throttled === 0) { throttled += 1; return { ok: false, status: 429, retryAfter: 0, body: { error: 'throttled' } }; }
+      return write(version, path, request);
+    };
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate(), ...noWait });
+    assert.deepEqual(result.failed, []);
+    assert.equal(throttled, 1);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+  }
+  // Permanent failure: the policy came back on and stays on. Loud, never quiet.
+  for (const status of [429, 500]) {
+    const { graph, policy } = await deletedPolicy();
+    const write = graph.write.bind(graph);
+    graph.write = async (version, path, request) => (request.method === 'PATCH'
+      ? { ok: false, status, retryAfter: 0, body: { error: 'unavailable' } }
+      : write(version, path, request));
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate(), ...noWait });
+    assert.equal(result.failed.length, 1);
+    assert.equal(result.failed[0].policyMayBeOn, true);
+    assert.match(result.failed[0].error, /^Conditional Access policy may be ON: .* could not confirm it is report-only \(the report-only update failed/);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, ENFORCED, 'the fixture shows why it is loud: the policy is on');
+  }
+  // The update is accepted but the read-back fails.
+  {
+    const { graph, policy } = await deletedPolicy();
+    const read = graph.read.bind(graph);
+    let patched = false;
+    const write = graph.write.bind(graph);
+    graph.write = async (version, path, request) => { if (request.method === 'PATCH') patched = true; return write(version, path, request); };
+    graph.read = async (version, path) => (patched ? { ok: false, status: 500, body: null } : read(version, path));
+    const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate(), ...noWait });
+    assert.equal(result.failed[0].policyMayBeOn, true);
+    assert.match(result.failed[0].error, /could not be read back/);
+  }
+  // As a completion item: a person confirms it, with evidence.
+  const [item] = completionItemsFor({ resourceType: 'conditionalAccessPolicy', mechanism: 'soft-delete-restore', stateUnconfirmed: true });
+  assert.deepEqual([item.kind, item.requirement], ['service-validation', 'conditionalAccessStateConfirmed']);
+  assert.match(item.description, /may be on/);
+});
+
+test('two deleted policies with one name are ambiguous: neither is restored', async () => {
+  const graph = fakeGraph();
+  graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(3) } });
+  graph.deleted.set('ca-9', { path: `${POLICIES}/ca-9`, body: { ...mfaPolicy, id: 'ca-9', deletedDateTime: daysAgo(5) } });
+  const [policy] = (await buildReconciliationPlan(readerFor(graph), [desired()], { now: NOW })).resources;
+  assert.equal(policy.verb, 'restore-soft-deleted');
+  assert.equal(policy.recovery.mechanism, 'refused');
+  assert.match(policy.recovery.reason, /^ambiguous: 2 deleted objects share this name/);
+  const result = await applyWave(graph, governor, [policy], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate() });
+  assert.match(result.skipped[0].reason, /ambiguous/);
+  assert.equal(graph.writes.length, 0);
+  // Even without a planned mechanism, applyWave refuses it.
+  const bare = await applyWave(graph, governor, [{ ...policy, recovery: undefined }], { targetTenant: 't', mode: 'enforce', now: () => NOW, lockoutGate: gate() });
+  assert.match(bare.skipped[0].reason, /^ambiguous/);
+  assert.equal(graph.writes.length, 0);
 });
 
 // ------------------------------------------------------------------ the lockout gate
@@ -330,6 +435,87 @@ test('a sign-in path change beyond this one policy puts it back to report-only a
   const result = await enforce(graph);
   assert.match(result.failed[0].error, /sign-in path changed beyond this policy .* put back to report-only/);
   assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+});
+
+/** The graph fails reads (503) from the moment the policy is turned on, `times` times. */
+function failReadsAfterEnable(graph, times = 1) {
+  const read = graph.read.bind(graph);
+  const write = graph.write.bind(graph);
+  let enabled = false;
+  let left = times;
+  graph.write = async (version, path, request) => { if (request.body?.state === ENFORCED) enabled = true; return write(version, path, request); };
+  graph.read = async (version, path) => {
+    if (enabled && left > 0) { left -= 1; return { ok: false, status: 503, body: null }; }
+    return read(version, path);
+  };
+}
+
+test('any outcome short of verified-and-unchanged puts the policy back to report-only and reads that back', async (t) => {
+  // Read-back 503: reverted, and the journal records the revert's real result.
+  const client = await schemaClient(t);
+  {
+    const graph = restoredGraph();
+    failReadsAfterEnable(graph);
+    const result = await enforce(graph, { rollbackClient: client, runId: 'run-503', restoreRef: 'enforce-503' });
+    assert.match(result.failed[0].error, /could not be read back \(status 503\); the policy was put back to report-only/);
+    assert.equal(result.failed[0].policyMayBeOn, undefined);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+    assert.deepEqual(graph.writes.map((w) => w.method), ['PATCH', 'PATCH']);
+    const [entry] = await listJournal(client, { restoreRef: 'enforce-503' });
+    assert.deepEqual([entry.outcome, entry.postState.state], ['failed', REPORT_ONLY], 'never "succeeded" with the policy on');
+  }
+  // The sign-in path re-read fails after the write: reverted.
+  {
+    const graph = restoredGraph();
+    const reader = readerFor(graph);
+    const get = reader.get.bind(reader);
+    reader.get = async (version, path) => {
+      if (graph.objects.get(`${POLICIES}/ca-1`).state === ENFORCED) throw new Error('503 from the sign-in path read');
+      return get(version, path);
+    };
+    const result = await enforce(graph, { signInPathGate: { reader, protectedPrincipalIds: [BG1] } });
+    assert.match(result.failed[0].error, /the check after the update could not finish \(503 from the sign-in path read\); the policy was put back to report-only/);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+  }
+  // A 503 on the enable itself: its outcome is unknown, so it is reverted too.
+  {
+    const graph = restoredGraph();
+    const write = graph.write.bind(graph);
+    graph.write = async (version, path, request) => {
+      const result = await write(version, path, request);
+      return request.body?.state === ENFORCED ? { ok: false, status: 503, body: null } : result;
+    };
+    const result = await enforce(graph);
+    assert.match(result.failed[0].error, /outcome is unknown \(503\); the policy was put back to report-only/);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, REPORT_ONLY);
+  }
+  // Throttled once, then accepted: retried through the throttle path and turned on.
+  {
+    const graph = restoredGraph();
+    const write = graph.write.bind(graph);
+    let throttled = 0;
+    graph.write = async (version, path, request) => {
+      if (request.body?.state === ENFORCED && throttled === 0) { throttled += 1; return { ok: false, status: 429, retryAfter: 0 }; }
+      return write(version, path, request);
+    };
+    const result = await enforce(graph, { retryOperation: (op) => retryThrottledGraphOperation(op, { governor, targetTenant: 't', sleep: async () => {} }) });
+    assert.deepEqual(result.failed, []);
+    assert.equal(throttled, 1);
+    assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, ENFORCED);
+  }
+});
+
+test('a revert that cannot be confirmed fails loudly: the policy may be on', async () => {
+  const graph = restoredGraph();
+  failReadsAfterEnable(graph, Infinity);
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => (request.body?.state === REPORT_ONLY
+    ? { ok: false, status: 500, body: null }
+    : write(version, path, request));
+  const result = await enforce(graph);
+  assert.equal(result.failed[0].policyMayBeOn, true);
+  assert.match(result.failed[0].error, /^Conditional Access policy may be ON: .*putting it back to report-only could not be confirmed \(the revert was not accepted \(status 500\)\)/);
+  assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, ENFORCED);
 });
 
 // ------------------------------------------------------ full CLI: restore -> approval -> on
@@ -474,6 +660,49 @@ test('promotion requires the approval; once approved and ready it turns the poli
 
   // Done once: the step cannot be planned again.
   await assert.rejects(planEnforcement(run, restoreId, crypto.randomUUID()), /already closed/);
+});
+
+test('a policy turned on outside KEEL, matching the backup, closes the step when it is planned', async (t) => {
+  const client = await schemaClient(t);
+  const { graph, run, restoreId } = await restoredThroughCli(client);
+  const writes = graph.writes.length;
+  graph.objects.set(`${POLICIES}/ca-1`, { ...graph.objects.get(`${POLICIES}/ca-1`), state: ENFORCED });
+  const planned = await planEnforcement(run, restoreId, crypto.randomUUID());
+  assert.equal(planned.observedOn, true);
+  assert.equal(graph.writes.length, writes, 'nothing written');
+  const [item] = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: restoreId });
+  assert.equal(item.state, 'verified');
+  assert.match(item.evidence[0].reference, /^conditional-access-observed-on:/);
+  assert.match(item.evidence[0].note, /turned on outside KEEL/);
+
+  // On, but changed from the backup: not closed from that reading.
+  const other = await restoredThroughCli(client);
+  other.graph.objects.set(`${POLICIES}/ca-1`, { ...other.graph.objects.get(`${POLICIES}/ca-1`), state: ENFORCED, grantControls: { operator: 'OR', builtInControls: ['block'] } });
+  await assert.rejects(planEnforcement(other.run, other.restoreId, crypto.randomUUID()), /already turned on/);
+});
+
+test('a forward restore that cannot confirm a policy is report-only stops loudly and opens an item for it', async (t) => {
+  const client = await schemaClient(t);
+  const world = { liveCa: false, gate: {} };
+  const graph = fakeGraph();
+  graph.deleted.set('ca-1', { path: `${POLICIES}/ca-1`, body: { ...mfaPolicy, id: 'ca-1', deletedDateTime: daysAgo(2, new Date()) } });
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => (request.method === 'PATCH' ? { ok: false, status: 500, body: { error: 'down' } } : write(version, path, request));
+  const errors = [];
+  const logger = { log() {}, error(line) { errors.push(line); } };
+  const run = (options) => runRestore({ readFile, dbUrl: database.url, dependencies: cliDependencies(graph, world), logger, ...options });
+  const snapshotId = await seedSnapshot(client);
+  const restoreId = crypto.randomUUID();
+  await run({
+    snapshotId, selection: [KEY], mode: 'dry-run', persistArtifactId: restoreId, requestedBy: 'requester',
+    collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), targetConfig: JSON.parse(configs.get('/fixtures/restorer.json')),
+    collectorConfigPath: '/fixtures/collector.json', targetConfigPath: '/fixtures/restorer.json',
+  });
+  await assert.rejects(run({ artifactId: restoreId, mode: 'enforce' }), /wave had failures/);
+  assert.equal(graph.objects.get(`${POLICIES}/ca-1`).state, ENFORCED);
+  assert.ok(errors.some((line) => /^WARNING: Conditional Access policy may be ON: /.test(line)), 'said loudly');
+  const items = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: restoreId });
+  assert.deepEqual(items.map((item) => [item.requirement, item.state]), [['conditionalAccessStateConfirmed', 'pending']]);
 });
 
 test('promotion is refused when a break-glass account would be blocked or readiness is unknown, at the dry run and again at execution', async (t) => {

@@ -36,13 +36,13 @@ import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
-import { applyWave, applyPatches } from '../engine/restore/applyEngine.mjs';
+import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
 import { withProposedConditionalAccessPolicy } from '../engine/safety/lockoutGate.mjs';
 import {
-  ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, enforcementPendingFor, pendingEnforcementSteps,
-  planConditionalAccessEnforcement,
+  ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, deletedPolicyRestoreRefusal, enforcementPendingFor,
+  observedTurnedOn, pendingEnforcementSteps, planConditionalAccessEnforcement,
 } from '../engine/restore/conditionalAccessEnforcement.mjs';
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
@@ -131,19 +131,39 @@ const THROTTLE_SEEDS = {
  */
 /**
  * Roadmap task-149: the break-glass lockout gate for this plan, or null when no
- * lockout-sensitive tenant policy write is planned. A gate whose inputs cannot
- * be read refuses every such write, never allows it.
+ * lockout-sensitive write is planned. A gate whose inputs cannot be read
+ * refuses every such write, never allows it.
+ *
+ * Task-152 review: restoring a deleted Conditional Access policy that would
+ * come back on is such a write too. Group membership is then read for the
+ * inventory with those policies as they would come back.
  */
-export async function lockoutGateFor(client, resources, { tenantRef }) {
-  const planned = resources.some((resource) => resource.verb && resource.verb !== 'noop'
+export async function lockoutGateFor(client, resources, {
+  tenantRef, loadInputs = loadLockoutGateInputs, loadMembership = loadGroupMembership,
+}) {
+  const comingBackOn = resources.filter((resource) => resource.verb === 'restore-soft-deleted'
+    && resource.resourceType === 'conditionalAccessPolicy'
+    && !offWhenDeleted(resource));
+  const planned = comingBackOn.length > 0 || resources.some((resource) => resource.verb && resource.verb !== 'noop'
     && tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true);
   if (!planned) return null;
   try {
-    return breakGlassLockoutGate(await loadLockoutGateInputs(client, { tenantRef }));
+    const inputs = await loadInputs(client, { tenantRef });
+    if (comingBackOn.length > 0) {
+      const proposed = comingBackOn.reduce((inventory, resource) => withProposedConditionalAccessPolicy(inventory, {
+        naturalKey: resource.naturalKey, desired: { ...resource.live.payload, state: ENFORCED },
+      }), inputs.inventory);
+      inputs.groupMembers = await loadMembership(client, tenantRef, proposed);
+    }
+    return breakGlassLockoutGate(inputs);
   } catch (error) {
     return closedLockoutGate(`break-glass readiness could not be read: ${error.message}`);
   }
 }
+
+// A deleted policy that was report-only or off needs no gate: with no gate,
+// deletedPolicyRestoreRefusal refuses only one that would come back on.
+const offWhenDeleted = (resource) => deletedPolicyRestoreRefusal(resource, null) === null;
 
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
   if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
@@ -494,7 +514,9 @@ export async function runRestore({
     // security defaults, authorization policy) is written only when the target's
     // break-glass accounts stay ready under the proposed policy. Loaded only when
     // such a write is planned; applyWave skips it without a gate.
-    const lockoutGate = await lockoutGateFor(client, resources, { tenantRef: collectorConfig.tenantId });
+    const lockoutGate = await lockoutGateFor(client, resources, {
+      tenantRef: collectorConfig.tenantId, loadInputs: loadLockoutGateInputsFn, loadMembership: loadGroupMembershipFn,
+    });
     // Roadmap task-109: a governed administrative delete (a tenant-wide setting the
     // snapshot did not contain) is authorised only by a complete observation of
     // that collection in the source snapshot. Read only when such a delete is
@@ -760,6 +782,23 @@ export async function runRestore({
     // classifyDryRunStatus below decide the artifact's terminal status.
     const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
 
+    // Task-152 review: a restored Conditional Access policy KEEL could not
+    // confirm as report-only may be on. Said loudly, and an enforced run opens a
+    // completion item for it before the run stops.
+    const reportPoliciesThatMayBeOn = async (failures) => {
+      const mayBeOn = failures.filter((entry) => entry.policyMayBeOn);
+      for (const entry of mayBeOn) logger.error(`WARNING: ${entry.error}`);
+      if (mayBeOn.length === 0 || mode !== 'enforce' || !artifact) return;
+      await emitCompletionItemsFn(client, {
+        tenantRef: artifact.tenantRef,
+        restoreRef: artifact.id ?? artifactId,
+        owner: artifact.requestedBy ?? null,
+        applied: mayBeOn.map((entry) => ({
+          naturalKey: entry.naturalKey, resourceType: 'conditionalAccessPolicy', mechanism: 'soft-delete-restore', stateUnconfirmed: true,
+        })),
+      });
+    };
+
     for (const [i, waveKeys] of waves.entries()) {
       const wave = phaseOneResources(
         writesBeforeDeletes.filter((r) => waveKeys.includes(r.naturalKey)),
@@ -786,6 +825,7 @@ export async function runRestore({
       results.notRemediable.push(...(result.notRemediable ?? []));
       recordAppliedIds(appliedIds, result.applied);
       if (result.failed.length) {
+        await reportPoliciesThatMayBeOn(result.failed);
         if (persistArtifactId === undefined) {
           throw new Error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
         }
@@ -1180,10 +1220,14 @@ async function buildEnforcement({ client, forward, naturalKey, collectorConfig, 
   const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
   const current = targetResources.find((resource) => resource.naturalKey === naturalKey && resource.resourceType === 'conditionalAccessPolicy');
   const live = current ? { targetId: current.sourceId, payload: current.payload } : null;
+  const snapshotPayload = rows[0]?.payload ?? null;
+  // Turned on outside KEEL since the restore, and matching the backup: nothing
+  // to plan; the caller closes the step from this reading.
+  if (observedTurnedOn({ pendingItem: pending, snapshotPayload, live })) return { observedOn: true, pending, live };
   let plan;
   try {
     plan = planConditionalAccessEnforcement({
-      restoreRef: forward.id, naturalKey, pendingItem: pending, snapshotPayload: rows[0]?.payload ?? null, live,
+      restoreRef: forward.id, naturalKey, pendingItem: pending, snapshotPayload, live,
     });
   } catch (error) {
     if (error instanceof EnforcementRefusal) throw new Error(`enforcement refused: ${error.message}`);
@@ -1234,7 +1278,20 @@ async function planEnforcementRun({ client, request, persistArtifactId, requeste
     client, forward, naturalKey: request.naturalKey, collectorConfig, targetConfig,
     collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, deps,
   });
-  // Every gate is evaluated; nothing is written.
+  if (ctx.observedOn) {
+    // Nothing is written to the tenant: the step is closed from the live reading.
+    const closed = await closeEnforcementItem(client, {
+      tenantRef: forward.tenantRef, itemId: ctx.pending.id,
+      observedOn: { restoreRef: forward.id, observedAt: new Date().toISOString() },
+    });
+    logger.log(`turn on ${request.naturalKey}: already on outside KEEL and matching the backup — step closed`);
+    return {
+      mode: 'dry-run', status: 'completed', observedOn: true, completionItem: closed.item, artifactId: null,
+      results: { applied: [], skipped: [], failed: [], notRemediable: [] },
+    };
+  }
+  // The lockout gate is evaluated (the sign-in path gate runs only around the
+  // write, at execution); nothing is written.
   const dry = await applyConditionalAccessEnforcement(null, ctx.plan, { mode: 'dry-run', live: ctx.live, lockoutGate: ctx.lockoutGate });
   const results = { ...dry, notRemediable: [] };
   const status = deps.classifyDryRunStatusFn(results);
@@ -1285,6 +1342,7 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
     client, forward, naturalKey: artifact.conditionalAccessEnforcement.naturalKey, collectorConfig, targetConfig,
     collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath, deps,
   });
+  if (ctx.observedOn) throw new Error('enforcement promotion refused: the policy is already turned on — plan the step again to close it');
   // Exactly the forward promotion gate: a changed plan or policy refuses first.
   const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
   if (!validation.ok) throw new Error(`enforcement promotion refused: ${validation.reason}`);
@@ -1293,7 +1351,12 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
 
   const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);
   const writer = new deps.GraphWriterClass(async () => restorerToken);
+  // The same bounded throttle retry (429/503, Retry-After) applyWave uses.
+  const governor = new deps.ThrottleGovernorClass(WRITE_SEEDS(targetConfig.tenantId));
   const result = await applyConditionalAccessEnforcement(writer, ctx.plan, {
+    retryOperation: (operation) => retryThrottledGraphOperation(operation, {
+      governor, targetTenant: targetConfig.tenantId, operationClass: 'write',
+    }),
     mode: 'enforce',
     live: ctx.live,
     lockoutGate: ctx.lockoutGate,
@@ -1306,7 +1369,16 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   const results = { ...result, notRemediable: [] };
   logger.log(`turn on ${ctx.plan.naturalKey}: applied ${results.applied.length}, skipped ${results.skipped.length}, failed ${results.failed.length}`);
   if (results.skipped.length > 0) throw new Error(`enforcement promotion refused: ${results.skipped[0].reason}`);
-  if (results.failed.length > 0) throw new Error(`enforcement failed: ${results.failed[0].error}`);
+  if (results.failed.length > 0) {
+    if (results.failed[0].policyMayBeOn) {
+      logger.error(`WARNING: ${results.failed[0].error}`);
+      await emitCompletionItems(client, {
+        tenantRef: forward.tenantRef, restoreRef: forward.id, owner: artifact.requestedBy ?? null,
+        applied: [{ naturalKey: ctx.plan.naturalKey, resourceType: 'conditionalAccessPolicy', mechanism: 'update-existing', stateUnconfirmed: true }],
+      });
+    }
+    throw new Error(`enforcement failed: ${results.failed[0].error}`);
+  }
   const closed = await closeEnforcementItem(client, {
     tenantRef: forward.tenantRef, itemId: ctx.pending.id, artifactId: artifact.id, approvedBy: approval.approvedBy,
   });

@@ -95,11 +95,23 @@ export const CONDITIONAL_ACCESS_ENFORCEMENT_ITEM = item(
 );
 
 /**
+ * Task-152 review: a restored Conditional Access policy KEEL could not confirm
+ * as report-only. It may be on; a person checks it and records where that is
+ * evidenced.
+ */
+export const CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM = item(
+  'service-validation',
+  'conditionalAccessStateConfirmed',
+  'KEEL restored this policy but could not confirm it is in report-only mode, so it may be on and enforcing now. Check it, set it to report-only or off, and record where that is shown',
+);
+
+/**
  * The completion items an applied recovery leaves open. Update/none/delete leave
  * none, except the task-152 enforcement step: `enforcementPending` is true when
  * a Conditional Access policy the snapshot had turned on was written report-only.
  */
-export function completionItemsFor({ resourceType, mechanism, enforcementPending = false }) {
+export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false }) {
+  if (stateUnconfirmed) return [CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM];
   const rule = COMPLETION_RULES[resourceType] ?? DEFAULT_RULE;
   const enforcement = enforcementPending ? [CONDITIONAL_ACCESS_ENFORCEMENT_ITEM] : [];
   if (mechanism === 'recreate') {
@@ -378,7 +390,8 @@ export async function reopenItem(client, { tenantRef, itemId, actorId, reason, a
 export async function findEnforcementItem(client, { tenantRef, restoreRef, naturalKey }) {
   const { rows } = await client.query(
     `SELECT * FROM recovery_completion_item
-      WHERE tenant_ref = $1 AND restore_ref = $2 AND natural_key = $3 AND kind = 'enforcement'`,
+      WHERE tenant_ref = $1 AND restore_ref = $2 AND natural_key = $3 AND kind = 'enforcement'
+        AND requirement = 'conditionalAccessEnabled'`,
     [tenantRef, restoreRef, naturalKey],
   );
   return rows[0] ? normalize(rows[0]) : null;
@@ -389,10 +402,15 @@ export async function findEnforcementItem(client, { tenantRef, restoreRef, natur
  * policy on through an approved, verified step. The evidence is a reference to
  * that step's artifact; the approver is recorded with it. Idempotent.
  */
-export async function closeEnforcementItem(client, { tenantRef, itemId, artifactId, approvedBy, at: requestedAt = undefined }) {
-  const linked = validateCompletionEvidence({
-    type: 'log-reference', reference: `conditional-access-enforcement:${artifactId}`, note: `approved by ${approvedBy}; turned on and read back`,
-  });
+export async function closeEnforcementItem(client, { tenantRef, itemId, artifactId, approvedBy, observedOn = null, at: requestedAt = undefined }) {
+  // observedOn: { restoreRef, observedAt } when someone turned the policy on
+  // outside KEEL and planning read it back as on and matching the backup.
+  const linked = validateCompletionEvidence(observedOn
+    ? {
+      type: 'log-reference', reference: `conditional-access-observed-on:${observedOn.restoreRef}`,
+      note: 'turned on outside KEEL; KEEL read it back as on and matching the backup', observedAt: observedOn.observedAt,
+    }
+    : { type: 'log-reference', reference: `conditional-access-enforcement:${artifactId}`, note: `approved by ${approvedBy}; turned on and read back` });
   await client.query('BEGIN');
   try {
     const at = requestedAt ?? await databaseNow(client);
@@ -421,7 +439,7 @@ export async function closeEnforcementItem(client, { tenantRef, itemId, artifact
       kind: COMPLETION_EVIDENCE_KIND,
       subject: {
         itemId: row.id, restoreRef: row.restore_ref, naturalKey: row.natural_key, kind: row.kind,
-        requirement: row.requirement, transition: 'verified', evidenceType: linked.type, evidenceReference: linked.reference, approvedBy,
+        requirement: row.requirement, transition: 'verified', evidenceType: linked.type, evidenceReference: linked.reference, ...(observedOn ? { observedOutsideKeel: true } : { approvedBy }),
       },
       actor,
     });

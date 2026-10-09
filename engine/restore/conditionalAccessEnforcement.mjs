@@ -17,8 +17,13 @@
  *         every break-glass account still ready with this policy turned on;
  *       - an approver other than the requester approved the dry run.
  *  3. The write is journaled, sends `state` only, and is read back. The sign-in
- *     path is compared before and after: anything beyond this one policy's state
- *     turns the policy back to report-only and fails the step.
+ *     path is compared before and after. Any outcome other than "read back as
+ *     on, nothing else changed, sign-in path as expected" puts the policy back
+ *     to report-only and reads that back; a revert that cannot be confirmed
+ *     fails loudly as "may be ON".
+ *  4. A deleted policy that would come back on when soft-restored is restored
+ *     only when the lockout gate passes for it on (deletedPolicyRestoreRefusal,
+ *     called by applyWave before anything is sent).
  *
  * Pure planning plus one writer path; it never decides on its own to enforce.
  */
@@ -114,6 +119,44 @@ export function planConditionalAccessEnforcement({ restoreRef, naturalKey, pendi
   });
 }
 
+/**
+ * True when the restore left this policy's enforcement step open and someone
+ * has since turned it on outside KEEL: it reads live as on, and apart from its
+ * state it matches the backup. Planning then closes the step from that reading.
+ */
+export function observedTurnedOn({ pendingItem, snapshotPayload, live }) {
+  return pendingItem?.state === 'pending'
+    && snapshotPayload?.state === ENFORCED
+    && live?.payload?.state === ENFORCED
+    && policyBodyHash(live.payload) === policyBodyHash(snapshotPayload);
+}
+
+const OFF_STATES = new Set([REPORT_ONLY, 'disabled']);
+
+/**
+ * Task-152 review: Microsoft restores a deleted Conditional Access policy in the
+ * state it was deleted in. One that would come back on (or whose state is
+ * unknown) is restored only when the break-glass lockout gate passes for it
+ * turned on. Returns the refusal reason, or null when the restore may proceed.
+ * No gate, or a gate that throws, refuses.
+ */
+export function deletedPolicyRestoreRefusal(resource, lockoutGate) {
+  const deleted = resource?.live?.payload ?? null;
+  if (OFF_STATES.has(deleted?.state)) return null;
+  const how = deleted?.state === ENFORCED ? 'was deleted while on' : 'was deleted in an unknown state';
+  if (!lockoutGate) {
+    return `break-glass lockout gate: the policy ${how} and comes back that way when restored, and no lockout gate was available, so it is not restored`;
+  }
+  let verdict;
+  try {
+    verdict = lockoutGate.evaluate({ resourceType: RESOURCE_TYPE, naturalKey: resource.naturalKey, desired: withState(deleted, ENFORCED) });
+  } catch (error) {
+    return `break-glass lockout gate could not be evaluated (${error.message}); the policy ${how}, so it is not restored`;
+  }
+  if (verdict?.allowed === true) return null;
+  return `break-glass lockout gate: the policy ${how} and would come back on: ${verdict?.reason ?? 'no verdict'}`;
+}
+
 /** The lockout gate's verdict on this policy turned on. No gate is a refusal. */
 export function evaluateEnforcementGate(lockoutGate, { naturalKey, livePayload }) {
   if (!lockoutGate) return { allowed: false, reason: 'no break-glass lockout gate was available' };
@@ -152,14 +195,39 @@ function recordingReader(reader) {
   };
 }
 
-async function readBack(writer, path, { attempts, delayMs, isStale }) {
+async function readBack(writer, path, { attempts, delayMs, isStale, retryOperation }) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await writer.read('v1.0', path);
+    result = await retryOperation(() => writer.read('v1.0', path));
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return result;
+}
+
+/** PATCHes the policy back to report-only and reads it back. */
+async function revertToReportOnly(writer, path, { attempts, delayMs, retryOperation }) {
+  let written;
+  try {
+    written = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: enforceReportOnly({}) }));
+  } catch (error) {
+    return { confirmed: false, why: `the revert could not be sent: ${error.message}` };
+  }
+  if (!written?.ok) return { confirmed: false, why: `the revert was not accepted (status ${written?.status ?? 'none'})` };
+  try {
+    const read = await readBack(writer, path, {
+      attempts, delayMs, retryOperation,
+      isStale: (r) => r?.ok === false ? r.status === 404 : r?.body?.state !== REPORT_ONLY,
+    });
+    if (read?.ok && read.body?.state === REPORT_ONLY) return { confirmed: true, postState: read.body };
+    return {
+      confirmed: false,
+      postState: read?.ok ? read.body : null,
+      why: read?.ok ? `it reads back as ${read.body?.state ?? 'an unknown state'}` : `it could not be read back (status ${read?.status ?? 'none'})`,
+    };
+  } catch (error) {
+    return { confirmed: false, why: `it could not be read back: ${error.message}` };
+  }
 }
 
 /**
@@ -181,6 +249,9 @@ export async function applyConditionalAccessEnforcement(writer, plan, {
   restoreRef = null,
   readAttempts = 6,
   readDelayMs = 3000,
+  // The throttle-aware retry applyWave uses (429/503 with Retry-After); the CLI
+  // passes one bound to the target tenant's governor.
+  retryOperation = (operation) => operation(),
 }) {
   const result = { applied: [], skipped: [], failed: [] };
   const { naturalKey } = plan;
@@ -230,30 +301,62 @@ export async function applyConditionalAccessEnforcement(writer, plan, {
     try { await recordWriteOutcome(rollbackClient, { entryId, outcome, ...extras }); } catch { /* left pending */ }
   };
 
-  const written = await writer.write('v1.0', path, { method: 'PATCH', body });
-  if (!written?.ok) {
-    await note(classifyWriteOutcome(written), { detail: `status ${written?.status ?? 'none'}` });
+  let written;
+  try {
+    written = await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body }));
+  } catch (error) {
+    written = { ok: false, error: error.message };
+  }
+  if (!written?.ok && classifyWriteOutcome(written) === 'failed') {
+    // A definite refusal (4xx): nothing changed.
+    await note('failed', { detail: `status ${written?.status ?? 'none'}` });
     return fail(`Graph refused the change: ${JSON.stringify(written?.body ?? written?.error ?? null)}`);
   }
 
-  const reRead = await readBack(writer, path, {
-    attempts: readAttempts, delayMs: readDelayMs,
-    isStale: (r) => r?.ok === false ? r.status === 404 : r?.body?.state !== ENFORCED,
-  });
-  const after = reRead?.ok ? reRead.body : null;
-  if (!after || after.state !== ENFORCED || policyBodyHash(after) !== plan.policyHash) {
-    await note('uncertain', { postState: after, detail: 'turned on, but the read-back did not verify' });
-    return fail('the policy did not read back as turned on with nothing else changed');
+  // From here the policy may be on. Anything other than "read back as on with
+  // nothing else changed AND the sign-in path as expected" puts it back to
+  // report-only and reads that back too.
+  let why = null;
+  let after = null;
+  if (!written?.ok) {
+    why = `the update's outcome is unknown (${written?.status ?? written?.error ?? 'no response'})`;
+  } else {
+    try {
+      const reRead = await readBack(writer, path, {
+        attempts: readAttempts, delayMs: readDelayMs, retryOperation,
+        isStale: (r) => r?.ok === false ? r.status === 404 : r?.body?.state !== ENFORCED,
+      });
+      after = reRead?.ok ? reRead.body : null;
+      if (!after || after.state !== ENFORCED || policyBodyHash(after) !== plan.policyHash) {
+        why = reRead?.ok === false
+          ? `the policy could not be read back (status ${reRead.status ?? 'none'})`
+          : 'the policy did not read back as turned on with nothing else changed';
+      } else {
+        // Only this policy's state may differ in the sign-in path.
+        const expected = await snapshotSignInPath(recorder.expected(plan.targetId), { protectedPrincipalIds: signInPathGate.protectedPrincipalIds });
+        const actual = await snapshotSignInPath(signInPathGate.reader, { protectedPrincipalIds: signInPathGate.protectedPrincipalIds });
+        const compared = compareSignInPaths(expected, actual);
+        if (!compared.allowed) why = `the sign-in path changed beyond this policy (${compared.reason})`;
+      }
+    } catch (error) {
+      why = `the check after the update could not finish (${error.message})`;
+    }
   }
 
-  // Only this policy's state may differ in the sign-in path.
-  const expected = await snapshotSignInPath(recorder.expected(plan.targetId), { protectedPrincipalIds: signInPathGate.protectedPrincipalIds });
-  const actual = await snapshotSignInPath(signInPathGate.reader, { protectedPrincipalIds: signInPathGate.protectedPrincipalIds });
-  const compared = compareSignInPaths(expected, actual);
-  if (!compared.allowed) {
-    const reverted = await writer.write('v1.0', path, { method: 'PATCH', body: enforceReportOnly({}) });
-    await note('succeeded', { postState: after, detail: `turned on, then put back to report-only (${reverted?.ok ? 'reverted' : 'revert failed'}): ${compared.reason}` });
-    return fail(`the sign-in path changed beyond this policy (${compared.reason}); the policy was ${reverted?.ok ? 'put back to report-only' : 'NOT put back to report-only — check it now'}`);
+  if (why) {
+    const revert = await revertToReportOnly(writer, path, { attempts: readAttempts, delayMs: readDelayMs, retryOperation });
+    if (revert.confirmed) {
+      // Net effect: the policy is report-only again, as before the step.
+      await note('failed', { postState: revert.postState, detail: `${why}; put back to report-only and read back` });
+      return fail(`${why}; the policy was put back to report-only`);
+    }
+    await note('uncertain', { postState: revert.postState ?? after, detail: `${why}; may be ON: ${revert.why}` });
+    result.failed.push({
+      naturalKey,
+      error: `Conditional Access policy may be ON: ${why}, and putting it back to report-only could not be confirmed (${revert.why}). Check it now.`,
+      policyMayBeOn: true,
+    });
+    return result;
   }
 
   await note('succeeded', { postState: after });

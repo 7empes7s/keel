@@ -451,14 +451,18 @@ export async function runRestore({
     resources = reconciliation.resources;
     // Issue #155: an Intune policy carries the assignments its backup observed, so
     // applyWave writes them through /assign; a policy whose only change is its
-    // assignments is planned as an update. Selection scope only, like group edges.
+    // assignments is planned as an update. Selection scope only (an operator-picked
+    // restore and its promotion), like group edges: a remediation or legacy plan
+    // scope leaves assignments untouched, and the plan says so for each policy.
     if (selection !== undefined && reconciliationResources === undefined) {
       const intuneParents = resources.filter((resource) => isIntuneGoverned(resource.resourceType) && resource.verb !== 'delete');
       if (intuneParents.length > 0) {
         const desiredAssignments = await loadSnapshotRelationshipsFn(client, {
           snapshotId: sourceSnapshot, families: ['assignment'], parentNaturalKeys: intuneParents.map((resource) => resource.naturalKey),
         });
-        const livePolicies = intuneParents.filter((resource) => resource.verb === 'noop' && resource.live?.state === 'present'
+        // Every policy present live is read, so the plan can say how many current
+        // assignments a restore replaces or removes.
+        const livePolicies = intuneParents.filter((resource) => resource.live?.state === 'present'
           && desiredAssignments.has(`${resource.naturalKey}|assignment`));
         const liveAssignments = livePolicies.length === 0 ? [] : await collectRelationshipsFn(targetReader, {
           tenantRef: collectorConfig.tenantId,

@@ -30,9 +30,9 @@ import {
   userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
 import {
-  ASSIGNMENT_FILTER_PATH, assignRequest, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
+  ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
   intunePostStateRefusal, intuneRecordFor, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
-  sameIdentities, scheduledActionsBody, scheduledActionsDiffer,
+  backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer,
 } from './intuneOperations.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
@@ -958,6 +958,20 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   };
 }
 
+/** Reads a Graph list and every page after it (@odata.nextLink), as one { ok, status, body: { value } }. */
+async function readAllPages(writer, version, path, { maxPages = 50 } = {}) {
+  const value = [];
+  let next = path;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await writer.read(version, next);
+    if (result?.ok !== true) return result;
+    value.push(...(result.body?.value ?? []));
+    next = result.body?.['@odata.nextLink'];
+    if (typeof next !== 'string' || next.length === 0) return { ok: true, status: result.status, body: { value } };
+  }
+  return { ok: false, status: null, error: `more than ${maxPages} pages` };
+}
+
 /**
  * Issue #155: create or update of one Intune policy through its operation
  * record (intuneOperations.mjs), then its assignments through /assign.
@@ -988,9 +1002,11 @@ async function applyIntuneWrite(writer, resource, verb, {
 
   // A group resolves exactly as a reference would (resolver.mjs): an object in the
   // target with the same natural key, or one this run created.
+  // A group matched only through its history (lineage) is refused, not assigned.
   const assignments = assignmentPlan(resource, (symbol) => {
     const result = resolveSymbol(symbol, referenceContext);
-    return result.resolved && result.via !== 'global-constant' ? result.targetId : null;
+    if (!result.resolved || result.via === 'global-constant') return null;
+    return result.stale ? { stale: true } : result.targetId;
   });
   if (assignments.state === 'refused') return { failed: { naturalKey, error: assignments.reason } };
 
@@ -1000,14 +1016,32 @@ async function applyIntuneWrite(writer, resource, verb, {
   const fields = verb === 'create' || !before
     ? Object.keys(intuneWriteBody(resourceType, desired, verb)).filter((field) => field !== '@odata.type')
     : changedIntuneFields(resourceType, desired, before, verb).filter((field) => field !== '@odata.type');
-  const actionsChanged = entry.scheduledActions && verb === 'update' && (!before || scheduledActionsDiffer(desired, before));
+  // A backup taken before actions were backed up leaves the live actions alone:
+  // an absent list is never sent as an empty one (that would remove them).
+  const actionsInBackup = backupHoldsActions(desired);
+  const actionsChanged = entry.scheduledActions && verb === 'update' && actionsInBackup && (!before || scheduledActionsDiffer(desired, before));
   const changes = (assignmentsWritten = null) => ({
     fields,
-    scheduledActions: actionsChanged,
+    scheduledActions: entry.scheduledActions && verb === 'update' && !actionsInBackup
+      ? 'left as they are: the backup was taken before actions for noncompliance were backed up'
+      : actionsChanged,
     assignments: assignments.state === 'ready'
-      ? (assignmentsWritten === null ? `${assignments.assignments.length} planned` : assignmentsWritten ? 'written' : 'already as in the backup')
+      ? (assignmentsWritten === null
+        ? assignmentChange(assignments, verb === 'create' ? 0 : (resource.liveAssignmentCount ?? null))
+        : assignmentsWritten ? 'written' : 'already as in the backup')
       : assignments.reason,
   });
+
+  // Assignment filters must exist in the target. Checked in a dry run too, so it
+  // refuses the same way; a preview (no writer) cannot read and skips it.
+  if (writer) {
+    for (const filterId of assignments.filters ?? []) {
+      const found = await retryOperation(() => writer.read('beta', ASSIGNMENT_FILTER_PATH(filterId)));
+      if (found?.ok !== true) {
+        return { failed: { naturalKey, error: `dependency: an assignment filter this policy uses ${isNotFound(found) ? 'does not exist in the target' : 'could not be read'}; nothing was written` } };
+      }
+    }
+  }
 
   if (verb === 'create') {
     const existingId = existingTargetIds.get(naturalKey);
@@ -1022,13 +1056,6 @@ async function applyIntuneWrite(writer, resource, verb, {
     }
   }
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes() } };
-
-  for (const filterId of assignments.filters ?? []) {
-    const found = await retryOperation(() => writer.read('beta', ASSIGNMENT_FILTER_PATH(filterId)));
-    if (found?.ok !== true) {
-      return { failed: { naturalKey, error: `dependency: an assignment filter this policy uses ${isNotFound(found) ? 'does not exist in the target' : 'could not be read'}; nothing was written` } };
-    }
-  }
 
   const journal = await journalBeforeMutation(rollbackClient, {
     runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
@@ -1093,7 +1120,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   if (assignments.state === 'ready') {
     let current = new Set();
     if (verb === 'update') {
-      const listed = await retryOperation(() => writer.read(entry.version, assignmentsReadPath(resourceType, targetId)));
+      const listed = await retryOperation(() => readAllPages(writer, entry.version, assignmentsReadPath(resourceType, targetId)));
       if (listed?.ok !== true) {
         await noteOutcome(rollbackClient, journal, objectWritten ? 'uncertain' : 'failed', { targetId, postState: live, detail: 'live assignments could not be read' });
         return { failed: { naturalKey, error: `${objectWritten ? 'the policy was written, but its' : 'the policy\'s'} live assignments could not be read, so they were not changed` } };
@@ -1108,7 +1135,8 @@ async function applyIntuneWrite(writer, resource, verb, {
         await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: live, detail: `assign ${outcomeDetail(result)}` });
         return { failed: { ...graphFailure(naturalKey, result), error: `${objectWritten ? 'the policy was written, but ' : ''}assigning it failed: ${outcomeDetail(result)}` } };
       }
-      const check = await readAfterWrite(writer, entry.version, assignmentsReadPath(resourceType, targetId),
+      const pagedReader = { read: (version, path) => readAllPages(writer, version, path) };
+      const check = await readAfterWrite(pagedReader, entry.version, assignmentsReadPath(resourceType, targetId),
         (r) => isNotFound(r) || (r?.ok === true && !sameIdentities(assignments.identities, liveAssignmentIdentities(r.body?.value ?? []))), { retryOperation });
       if (check?.ok !== true || !sameIdentities(assignments.identities, liveAssignmentIdentities(check.body?.value ?? []))) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: live, detail: 'assignments did not verify' });

@@ -20,7 +20,7 @@ import { after, test } from 'node:test';
 
 import { fakeGraph, runFixtureHarness } from '../../tools/qualification/operations.mjs';
 import { CATALOG, collectionPathFor } from '../../tools/tenant-probe/catalog.mjs';
-import { COLLECT_RELATIONSHIPS } from '../../cli/keel-collect.mjs';
+import { COLLECT_RELATIONSHIPS, describeAssignmentReads } from '../../cli/keel-collect.mjs';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import '../collect/entraAdapter.mjs';
@@ -582,4 +582,140 @@ test('planning: a policy whose only change is its assignments becomes an update;
   const [missing] = attachIntuneAssignments([base], { desired, live: liveOf(TARGET_FINANCE), resolve: () => null, recoveryFor });
   assert.equal(missing.verb, 'update', 'a missing group is surfaced as a refusal in the dry run, not hidden as a no-op');
   assert.equal(assignmentPlan(missing, () => null).state, 'refused');
+});
+
+// ------------------------------------------------- review fixes (issue #155)
+
+test('mutation: a compliance update from a backup taken before actions were backed up leaves the live actions alone', async () => {
+  const graph = recordingGraph();
+  const { scheduledActionsForRule: _dropped, ...oldBackup } = compliance;
+  const live = { ...compliance, passwordMinimumLength: 4 };
+  const outcome = await run(graph, [plannedUpdate(graph, 'deviceCompliancePolicy', oldBackup, live)]);
+  assert.deepEqual(outcome.failed, []);
+  assert.deepEqual(graph.bodies.map((body) => body.method), ['PATCH'], 'only the changed setting is written');
+  assert.ok(graph.bodies.every((body) => !body.path.endsWith('/scheduleActionsForRules')), 'the actions are never sent');
+  assert.ok(!Object.hasOwn(graph.bodies[0].body, 'scheduledActionsForRule'));
+  assert.match(outcome.applied[0].changes.scheduledActions, /left as they are/);
+  assert.equal(graph.objects.get('/deviceManagement/deviceCompliancePolicies/target-policy').scheduledActionsForRule.length, 1,
+    'the live actions are still there');
+
+  const dryGraph = recordingGraph();
+  const dry = await run(dryGraph, [plannedUpdate(dryGraph, 'deviceCompliancePolicy', oldBackup, live)], { mode: 'dry-run' });
+  assert.match(dry.applied[0].changes.scheduledActions, /left as they are/, 'the plan says so');
+});
+
+test('mutation: a compliance backup listing no actions is refused for create and update, never sent as an empty list', async () => {
+  const emptyActions = { ...compliance, scheduledActionsForRule: [] };
+  const createGraph = recordingGraph();
+  const created = await run(createGraph, [plannedCreate('deviceCompliancePolicy', emptyActions)]);
+  assert.match(created.failed[0].error, /lists no actions for noncompliance/);
+  assert.deepEqual(createGraph.bodies, []);
+
+  const graph = recordingGraph();
+  const updated = await run(graph, [plannedUpdate(graph, 'deviceCompliancePolicy', emptyActions, { ...compliance, passwordMinimumLength: 4 })]);
+  assert.match(updated.failed[0].error, /lists no actions for noncompliance/);
+  assert.deepEqual(graph.bodies, []);
+});
+
+test('mutation: a settings catalog backup holding fewer settings than the policy has is refused, never PUT', async () => {
+  const second = { id: '1', settingInstance: { ...catalogPolicy.settings[0].settingInstance, settingDefinitionId: 'device_vendor_msft_policy_config_defender_allowcloudprotection' } };
+  const live = { ...catalogPolicy, settingCount: 3, settings: [catalogPolicy.settings[0], second, { ...second, id: '2' }] };
+  const { settingCount: _count, ...uncounted } = catalogPolicy;
+  for (const [label, backup, pattern] of [
+    ['count 3, one setting', { ...catalogPolicy, settingCount: 3 }, /holds 1 of this settings catalog policy's 3 settings/],
+    ['count 3, no settings', { ...catalogPolicy, settingCount: 3, settings: [] }, /holds 0 of this settings catalog policy's 3 settings/],
+    ['no count, no settings', { ...uncounted, settings: [] }, /holds no settings/],
+  ]) {
+    const graph = recordingGraph();
+    const updated = await run(graph, [plannedUpdate(graph, 'configurationPolicy', backup, live)]);
+    assert.match(updated.failed[0]?.error ?? '', pattern, label);
+    assert.deepEqual(graph.bodies, [], `${label}: nothing is written`);
+    const createGraph = recordingGraph();
+    const created = await run(createGraph, [plannedCreate('configurationPolicy', backup)]);
+    assert.match(created.failed[0]?.error ?? '', pattern, `${label} (create)`);
+    assert.deepEqual(createGraph.bodies, []);
+  }
+  const emptyByDesign = await run(recordingGraph(), [plannedCreate('configurationPolicy', { ...catalogPolicy, settingCount: 0, settings: [] })], { mode: 'dry-run' });
+  assert.deepEqual(emptyByDesign.failed, [], 'a policy that really has no settings is still restorable');
+});
+
+test('the plan says plainly when a restore removes every current assignment', async () => {
+  const graph = recordingGraph();
+  const resource = plannedUpdate(graph, 'deviceConfiguration', restrictions, { ...restrictions, cameraBlocked: false }, {
+    assignments: { outcome: 'complete-empty', targets: [] }, liveAssignmentCount: 2,
+  });
+  const dry = await run(graph, [resource], { mode: 'dry-run' });
+  assert.equal(dry.applied[0].changes.assignments, 'removes all 2 assignments the policy has now, because the backup has none');
+  assert.deepEqual(graph.bodies, []);
+
+  const base = {
+    naturalKey: 'deviceConfiguration:Windows restrictions', resourceType: 'deviceConfiguration', verb: 'noop', payload: restrictions,
+    live: { state: 'present', targetId: 'target-policy', payload: restrictions },
+  };
+  const liveEdge = (targetId) => ({ edgeKey: `groupAssignmentTarget|${targetId}`, targetId, attributes: { targetType: 'groupAssignmentTarget', filterId: null, filterType: 'none' } });
+  const [promoted] = attachIntuneAssignments([base], {
+    desired: new Map([[`${base.naturalKey}|assignment`, { outcome: 'complete-empty', targets: [] }]]),
+    live: new Map([[`${base.naturalKey}|assignment`, { outcome: 'complete', targets: [liveEdge(TARGET_FINANCE), liveEdge(TARGET_KIOSKS)] }]]),
+    resolve: (key) => TARGETS.get(key) ?? null,
+  });
+  assert.equal(promoted.verb, 'update');
+  assert.match(promoted.verbReason, /removes all 2 assignments the policy has now/);
+  assert.equal(promoted.liveAssignmentCount, 2);
+});
+
+test('a policy outside a selection restore says its assignments were not checked; one the backup never read says so', () => {
+  const resource = plannedCreate('deviceConfiguration', restrictions);
+  assert.match(assignmentPlan(resource, () => null).reason, /restored only when policies are picked for a restore; they were not checked/);
+  const [attached] = attachIntuneAssignments([resource], { desired: new Map() });
+  assert.equal(attached.assignments.outcome, 'absent');
+  assert.match(assignmentPlan(attached, () => null).reason, /the backup holds no assignment read/);
+});
+
+test('a missing assignment filter is refused in a dry run as in enforce; a preview without a writer still plans', async () => {
+  const resource = plannedCreate('deviceConfiguration', restrictions, {
+    assignments: { outcome: 'complete', targets: [groupAssignment(SOURCE_FINANCE, 'group:finance', { filter: FILTER })] },
+  });
+  const graph = recordingGraph();
+  const dry = await run(graph, [resource], { mode: 'dry-run' });
+  assert.match(dry.failed[0]?.error ?? '', /assignment filter this policy uses does not exist/);
+  assert.deepEqual(graph.bodies, []);
+  const preview = await applyWave(null, null, [resource], { targetTenant: 'fixture', mode: 'dry-run', existingTargetIds: new Map(TARGETS) });
+  assert.deepEqual(preview.failed, []);
+});
+
+test('live assignments spread over several pages are read in full before deciding', async () => {
+  const graph = recordingGraph();
+  const resource = plannedUpdate(graph, 'deviceConfiguration', restrictions, restrictions, {
+    assignments: { outcome: 'complete', targets: [groupAssignment(SOURCE_FINANCE, 'group:finance'), groupAssignment(SOURCE_KIOSKS, 'group:kiosks')] },
+  });
+  const nextPage = 'https://graph.microsoft.com/v1.0/deviceManagement/deviceConfigurations/target-policy/assignments?$skiptoken=2';
+  graph.objects.set('/deviceManagement/deviceConfigurations/target-policy/assignments', {
+    value: [{ id: 'a', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: TARGET_FINANCE } }],
+    '@odata.nextLink': nextPage,
+  });
+  graph.objects.set(nextPage.split('?')[0], {
+    value: [{ id: 'b', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: TARGET_KIOSKS } }],
+  });
+  const outcome = await run(graph, [resource]);
+  assert.deepEqual(outcome.failed, []);
+  assert.deepEqual(graph.bodies, [], 'both pages match the backup, so nothing is reassigned');
+  assert.ok(graph.reads.some((read) => read.path === nextPage), 'the second page was read');
+});
+
+test('a group matched only through its history is not assigned without a review', () => {
+  const resource = plannedCreate('deviceConfiguration', restrictions, {
+    assignments: { outcome: 'complete', targets: [groupAssignment(SOURCE_FINANCE, 'group:finance')] },
+  });
+  const plan = assignmentPlan(resource, () => ({ stale: true }));
+  assert.equal(plan.state, 'refused');
+  assert.match(plan.reason, /group:finance was matched only through its history/);
+});
+
+test('collection logs how many assignment reads failed, with counts only', () => {
+  assert.equal(describeAssignmentReads(null), null);
+  assert.equal(describeAssignmentReads({ complete: 3, 'complete-empty': 1, unsupported: 2 }),
+    'policy assignment reads: 4 complete, 0 partial, 0 failed, 2 not supported');
+  const line = describeAssignmentReads({ complete: 1, failed: 5 });
+  assert.match(line, /5 failed/);
+  assert.match(line, /missing Intune read permission/);
 });

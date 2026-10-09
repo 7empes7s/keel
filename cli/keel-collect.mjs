@@ -18,6 +18,26 @@ function arg(name, fallback, argv = process.argv) {
 /** The relationship families every scheduled collection reads (issue #155). */
 export const COLLECT_RELATIONSHIPS = Object.freeze({ families: Object.freeze(['assignment']) });
 
+/**
+ * One log line with how many policy assignment reads ended in each outcome
+ * (counts only), so a missing read permission shows up instead of passing
+ * silently. Null when nothing was read.
+ */
+export function describeAssignmentReads(summary) {
+  if (!summary || Object.keys(summary).length === 0) return null;
+  const count = (outcome) => summary[outcome] ?? 0;
+  const parts = [
+    `${count('complete') + count('complete-empty')} complete`,
+    `${count('partial')} partial`,
+    `${count('failed')} failed`,
+    `${count('unsupported')} not supported`,
+  ];
+  const problems = count('partial') + count('failed');
+  return `policy assignment reads: ${parts.join(', ')}${problems > 0
+    ? ' — those policies\' assignments will not be restored; a failed read is often a missing Intune read permission'
+    : ''}`;
+}
+
 // A partial read fails completeness exactly like a failure; only
 // complete / complete-empty / not-requested outcomes keep a zero exit.
 export function exitCodeForDigest(coverageDigest) {
@@ -48,10 +68,12 @@ export async function runCollect({
     // Issue #155: each Intune policy's assignments (which groups get it) are read
     // beside the policy, so a restore can put them back. A failed assignment read
     // is recorded as its own observation and never changes a type's outcome.
-    const { snapshotId, coverageDigest } = await collectSnapshotFn(client, {
+    const { snapshotId, coverageDigest, relationships } = await collectSnapshotFn(client, {
       reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS,
     });
     logger.log(`snapshot ${snapshotId} complete`);
+    const assignmentLine = describeAssignmentReads(relationships);
+    if (assignmentLine) logger.log(assignmentLine);
     logger.table?.(coverageDigest);
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {

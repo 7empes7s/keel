@@ -65,10 +65,14 @@ export const TYPE_DECISIONS = Object.freeze({
   identityProvider: manual('client secrets are never readable'),
   certificateBasedAuthConfiguration: unknown(),
   directoryRole: manual('built-in roles are activated from templates, never authored'),
-  roleDefinition: unknown(),
+  roleDefinition: automated('unifiedroledefinition', 'task-151 subset: create and update of custom roles; built-in roles are immutable and refused, delete is not registered'),
   directoryRoleTemplate: manual('Microsoft-published template catalogue'),
   roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered'),
-  roleEligibilitySchedule: unknown(),
+  roleEligibilitySchedule: automated('unifiedroleeligibilityschedule', 'task-151 subset: create through an adminAssign schedule request that keeps the snapshot end date; update and removal are not registered'),
+  // Roadmap task-151: PIM role settings, their role bindings and active schedules.
+  unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
+  unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
+  roleAssignmentSchedule: unknown(),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete are registered; writes are forced report-only'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
@@ -160,6 +164,9 @@ recordRemappingProof('conditionalAccessPolicy', 'update', 'engine/roadmap/fideli
 // Roadmap task-107: a service principal created for an application recreated in
 // the same run carries that application's NEW appId (EXPLICIT_REFERENCES below).
 recordRemappingProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expansion.test.mjs');
+// Roadmap task-151: an eligibility whose group or custom role was recreated in
+// the same run is requested for the NEW principal and role ids.
+recordRemappingProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -580,12 +587,19 @@ export const EXPANSION_INVENTORY = Object.freeze({
   certificateBasedAuthConfiguration: research('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
     'tenant-lockout blast radius; no simulation gate for certificate trust changes exists'),
   directoryRole: byHand('identity-application', 'POST /directoryRoles (activate from template)', 'RoleManagement.ReadWrite.Directory', 'built-in roles are activated from templates, never authored'),
-  roleDefinition: research('identity-application', 'POST /roleManagement/directory/roleDefinitions', 'RoleManagement.ReadWrite.Directory',
-    'custom roles need a licence check and a privilege-escalation review before any write'),
+  // Roadmap task-151: the admin role model. Records, routes and the rule
+  // review live in engine/restore/adminRoleOperations.mjs.
+  roleDefinition: subset('identity-application', 'POST /roleManagement/directory/roleDefinitions; PATCH /roleManagement/directory/roleDefinitions/{id}', 'RoleManagement.ReadWrite.Directory',
+    'create and update of custom roles are fixture-tested; the dry run lists the resource actions a write adds and removes; built-in roles are immutable and refused; delete is refused; Graph refuses a custom role without an Entra ID P1 or P2 licence'),
   directoryRoleTemplate: byHand('identity-application', null, 'none', 'Microsoft-published template catalogue'),
   roleAssignment: subset('identity-application', 'POST/DELETE /roleManagement/directory/roleAssignments', 'RoleManagement.ReadWrite.Directory', 'registered before task-107'),
-  roleEligibilitySchedule: research('identity-application', 'POST /roleManagement/directory/roleEligibilityScheduleRequests', 'RoleEligibilitySchedule.ReadWrite.Directory',
-    'PIM writes go through schedule requests with their own approval and expiry semantics'),
+  roleEligibilitySchedule: subset('identity-application', 'POST /roleManagement/directory/roleEligibilityScheduleRequests', 'RoleEligibilitySchedule.ReadWrite.Directory',
+    'create (adminAssign with a justification) is fixture-tested and keeps the snapshot end date; an expired or group-inherited eligibility is not restored; an existing one is matched by principal, role and scope and never requested twice; update and removal are refused'),
+  unifiedRoleManagementPolicy: subset('identity-application', 'PATCH /policies/roleManagementPolicies/{id}/rules/{ruleId}', 'RoleManagementPolicy.ReadWrite.Directory',
+    'update of the expiration, enablement and approval rules is fixture-tested; a change that weakens protection is withheld as a manual step; approvers must exist; policies are never created or deleted'),
+  unifiedRoleManagementPolicyAssignment: byHand('identity-application', null, 'none', 'Entra binds one settings policy to each role; the binding is read to name the role, never written'),
+  roleAssignmentSchedule: research('identity-application', 'POST /roleManagement/directory/roleAssignmentScheduleRequests', 'RoleAssignmentSchedule.ReadWrite.Directory',
+    'active time-bound assignments; permanent ones are restored as roleAssignment, and a time-bound restore needs the same request and expiry contract as eligibility plus a check that an activation is not replayed'),
   accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
     'review history and decisions cannot be recreated; only the definition could be'),
   accessPackage: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages', 'EntitlementManagement.ReadWrite.All',

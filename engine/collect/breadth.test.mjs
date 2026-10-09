@@ -85,6 +85,28 @@ try {
     await assert.rejects(() => adapter.collect(reader, { tenantId }), /fixture denied/, type);
   }
 
+  // Roadmap task-151: the admin role model. The role settings collections
+  // require the directory-role scope filter, and the policies carry their rules.
+  const roleCases = [
+    ['roleAssignmentSchedule', '/v1.0/roleManagement/directory/roleAssignmentSchedules', 'tier1', 'tenant-lockout'],
+    ['unifiedRoleManagementPolicy', "/v1.0/policies/roleManagementPolicies?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=rules", 'tier1', 'tenant-lockout'],
+    ['unifiedRoleManagementPolicyAssignment', "/v1.0/policies/roleManagementPolicyAssignments?$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'", 'tier1', 'access-affecting'],
+  ];
+  for (const [type, endpoint, criticality, blastRadius] of roleCases) {
+    const { descriptor, adapter } = get(type);
+    assert.equal(descriptor.criticality, criticality, type);
+    assert.equal(descriptor.blastRadius, blastRadius, type);
+    assert.equal(descriptor.naturalKeyStrategy, 'id', type);
+    const object = { id: `${type}-1`, displayName: 'DirectoryRole' };
+    globalThis.fetch = async (url) => {
+      assert.equal(url, `https://graph.microsoft.com${endpoint}`, type);
+      return respond({ value: [object, { ...object, id: `${type}-2` }] });
+    };
+    const objects = await adapter.collect(new GraphReader(async () => 'fixture-token'));
+    // Every role policy is named "DirectoryRole": the id keeps them apart.
+    assert.deepEqual(canonicalizeAll([[type, objects]]).map((r) => r.naturalKey), [`${type}:${type}-1`, `${type}:${type}-2`]);
+  }
+
   // $top regression exercises both the actual adapter and GraphReader. The
   // simulated endpoint rejects $top exactly as Graph does, including page 2.
   const urls = [];
@@ -111,13 +133,13 @@ try {
     return { items: path === '/organization' ? [{ id: tenantId, displayName: 'Fixture' }] : [] };
   } };
   const all = await collectM1(reader);
-  assert.equal(all.length, 54);
+  assert.equal(all.length, 57);
   assert.ok(paths.includes(`/organization/${tenantId}/certificateBasedAuthConfiguration`));
   const before = paths.length;
   await assert.rejects(() => get('certificateBasedAuthConfiguration').adapter.collect(reader), /tenantId required/);
   assert.equal(paths.length, before, 'never send an unresolved organization placeholder');
   const empty = await collectWithOutcomes({ collect: async () => ({ items: [] }) }, { tenantId });
-  assert.equal(Object.keys(empty.coverageDigest).length, 54);
+  assert.equal(Object.keys(empty.coverageDigest).length, 57);
   for (const entry of Object.values(empty.coverageDigest)) {
     assert.equal(entry.outcome, 'complete-empty', 'a successful empty read is complete-empty, never a failure');
     assert.equal(entry.itemCount, 0);

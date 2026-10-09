@@ -17,7 +17,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getToken, decodeRoles } from './auth.mjs';
 import { GraphReader } from './graph.mjs';
-import { CATALOG } from './catalog.mjs';
+import { CATALOG, catalogReadPath } from './catalog.mjs';
 import { analyseReferences, naturalKey } from './references.mjs';
 import { renderReport } from './report.mjs';
 
@@ -89,7 +89,7 @@ async function main() {
       if (countRes.ok) declaredTotal = countRes.body?.['@odata.count'] ?? null;
     }
 
-    const query = entry.select ? `${path}?$select=${entry.select}&$top=999` : path;
+    const query = entry.select ? `${catalogReadPath(entry, path)}&$top=999` : catalogReadPath(entry, path);
     const { items, pages, capped, error } = await reader.collect(entry.version, query, {
       pageCap: entry.pageCap ?? Infinity,
     });

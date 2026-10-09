@@ -1,4 +1,4 @@
-import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
@@ -23,7 +23,7 @@ function graphNativeAdapter(type) {
     const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(tenantId)) : entry.path;
     // Do not append $top: directoryRoleTemplates rejects it. The reader
     // follows Graph's nextLink verbatim and handles singleton responses too.
-    const path = entry.select ? `${basePath}?$select=${entry.select}` : basePath;
+    const path = catalogReadPath(entry, basePath);
     const startedAt = new Date();
     const result = await reader.collect(entry.version, path, {
       pageCap: entry.pageCap ?? Infinity,

@@ -40,6 +40,7 @@ import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
+import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
 import { withProposedConditionalAccessPolicy } from '../engine/safety/lockoutGate.mjs';
 import {
   ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, deletedPolicyRestoreRefusal, enforcementPendingFor,
@@ -500,10 +501,7 @@ export async function runRestore({
     const targetCollected = await collectM1Fn(targetReader);
     const targetResources = canonicalizeAllFn(targetCollected);
     const existingTargetIds = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
-    const protectedPrincipalIds = targetResources
-      .filter((resource) => resource.resourceType === 'roleAssignment'
-        && resource.naturalKey.includes('GlobalAdministrator'))
-      .map((resource) => resource.payload.principalId);
+    const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
     const deletionGuardOptions = {
       breakGlassUserIds: protectedPrincipalIds,
       breakGlassGroupIds: [],
@@ -1105,9 +1103,7 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
     compensation: compensationDigestInput(plan),
   });
   const fingerprint = deps.computeCurrentStateFingerprintFn(targetResources, scopeKeys);
-  const protectedPrincipalIds = targetResources
-    .filter((resource) => resource.resourceType === 'roleAssignment' && resource.naturalKey.includes('GlobalAdministrator'))
-    .map((resource) => resource.payload.principalId);
+  const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
   const deletionGuardOptions = {
     breakGlassUserIds: protectedPrincipalIds,
     breakGlassGroupIds: [],
@@ -1296,9 +1292,7 @@ async function buildEnforcement({ client, forward, naturalKey, collectorConfig, 
     conditionalAccessEnforcement: plan,
   });
   const fingerprint = deps.computeCurrentStateFingerprintFn(targetResources, scopeKeys);
-  const protectedPrincipalIds = targetResources
-    .filter((resource) => resource.resourceType === 'roleAssignment' && resource.naturalKey.includes('GlobalAdministrator'))
-    .map((resource) => resource.payload.principalId);
+  const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
   return { plan, live, lockoutGate, digest, fingerprint, scopeKeys, targetReader, protectedPrincipalIds, pending };
 }
 

@@ -1784,9 +1784,10 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: todo
-- Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
-- Result: **Blocked before the first restore (20:23 UTC, B = `b41d33e`).** No restore ran, so there is nothing to capture,
+- Status: in-progress
+- Result: **In progress at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02 UTC, worker restarted 21:07). Earlier run notes from b41d33e are kept below.
+
+  **Blocked before the first restore (20:23 UTC, B = `b41d33e`).** No restore ran, so there is nothing to capture,
   promote or demote yet. Checklist first line: "Generated from the operation ledger: 51 registered operations, 52 steps."
   - **Blocker 1: code defect, not configuration.** Every restore stops in the apply wave with `Error: sign-in path gate
     requires at least one protected principal` (`engine/safety/signInPathGate.mjs:12`). `cli/keel-restore.mjs`
@@ -1824,6 +1825,7 @@ item that needs it stays untouched.
   - **Left in the tenant:** all the fixtures above, in their drifted state. They are kept for a rerun and get the
     checklist's end-of-run cleanup. No tenant-wide setting outside the fixtures was changed. Originals are recorded in
     `/root/keel-148/originals.json` (root-only).
+- Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
   - Decisions D-148a and D-148b: both answered yes (2026-10-10), including how the cross-tenant partner step is done.

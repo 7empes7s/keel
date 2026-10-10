@@ -29,6 +29,7 @@ import { can } from '../engine/authz/can.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { getActiveBaseline } from '../engine/store/governance.mjs';
+import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
 
 function usage() {
   console.log(`usage:
@@ -264,10 +265,7 @@ async function executeRollback(plan, { driftId, client }) {
 
   const { accessToken: restorerToken } = await getToken(restorer);
   const writer = new GraphWriter(async () => restorerToken);
-  const breakGlassUserIds = [...liveResources.values()]
-    .filter((resource) => resource.resourceType === 'roleAssignment'
-      && resource.naturalKey.includes('GlobalAdministrator'))
-    .map((resource) => resource.payload.principalId);
+  const breakGlassUserIds = globalAdministratorPrincipalIds(liveResources.values());
   const deletionGuardOptions = {
     breakGlassUserIds,
     keelAppIds: [collector.clientId, restorer.clientId],

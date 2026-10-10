@@ -955,7 +955,7 @@ item that needs it stays untouched.
   - the self-service sign-up switch for external users.
   - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC).
   - Partner tenant (Marouane, 2026-10-10 14:56 UTC): "there are existing configs, but I don't know if they're still
-    active/functional. I don't have another tenant tho." So, as the #147 thread's default:
+    active/functional. I don't have another tenant tho."
   - Follow-up (Marouane, 2026-10-10 15:53 UTC): "no, they're not being used." So:
     - the fixture is one of the EXISTING partner entries (pick one, write down all its settings first);
     - drift its inbound MFA trust, let KEEL restore it, capture and promote;

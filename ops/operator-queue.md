@@ -1803,8 +1803,8 @@ item that needs it stays untouched.
     - the D-148b drifts for steps 18 (`allowedCloudEndpoints`), 19 (default inbound MFA trust), 22 (admin consent request
       duration) and 32 (self-service sign-up).
 
-    These need Marouane to allow them for this session, or to make them himself. The lockout steps (33–52) will likely
-    hit the same refusal.
+    **Marouane allowed these changes at 20:26 UTC ("I allow those changes").** They are held until the code fix is
+    deployed, because no restore can put them back yet, and will be applied in the rerun.
   - **Steps 7 and 8 (owner edges) are blocked by design:** Entra keeps the last owner of the fixture group ("must have at
     least one owner"), and carla is the only fixture user allowed. Adding the fixture service principal as an owner did not
     count.

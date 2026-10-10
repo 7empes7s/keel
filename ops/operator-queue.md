@@ -956,11 +956,11 @@ item that needs it stays untouched.
   - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC).
   - Partner tenant (Marouane, 2026-10-10 14:56 UTC): "there are existing configs, but I don't know if they're still
     active/functional. I don't have another tenant tho." So, as the #147 thread's default:
-    - leave every existing partner entry exactly as it is: never drift, delete or restore one;
-    - the fixture is a NEW partner entry for Microsoft's own public tenant (the "Microsoft Services" tenant, its id
-      looked up from Microsoft's documentation at run time), created with default settings. A partner entry is a
-      setting on our side only; it needs nothing from the other tenant;
-    - drift its inbound MFA trust, let KEEL restore it, capture, then remove the entry.
+  - Follow-up (Marouane, 2026-10-10 15:53 UTC): "no, they're not being used." So:
+    - the fixture is one of the EXISTING partner entries (pick one, write down all its settings first);
+    - drift its inbound MFA trust, let KEEL restore it, capture and promote;
+    - leave it in place afterwards, set back to the values written down. No new partner entry is created, and the
+      other existing entries are not touched.
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch

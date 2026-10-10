@@ -1785,7 +1785,13 @@ item that needs it stays untouched.
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
 - Status: in-progress
-- Result: **In progress at B = `b41d33ee7ebb81a5090737c0d55453f11bd5d7ae`.** Generating the checklist and reading the runbook. Live steps wait for Marouane to be available to approve restores.
+- Result: **Ready; waiting for Marouane to be available to approve restores** (the third "Needs" item). Nothing written to the
+  tenant yet.
+  - B = `b41d33ee7ebb81a5090737c0d55453f11bd5d7ae` (/opt/keel-live, clean). Worktree `wt-148` at B, deps installed.
+  - Checklist `~/keel-148/plan-B.md`, first line: **"Generated from the operation ledger: 51 registered operations, 52
+    steps."** (matches the entry). Steps 1–32 are shared-capable; 33–52 are lockout-sensitive (each runs alone).
+  - Plan for approvals: steps 1–32 in a few shared restores (one approval each), then 20 lockout steps one at a time,
+    so about 25 approvals. Marouane stays signed in as a second Global Administrator for steps 33–52.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
   - Decisions D-148a and D-148b: both answered yes (2026-10-10), including how the cross-tenant partner step is done.

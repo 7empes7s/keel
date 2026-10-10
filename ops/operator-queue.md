@@ -1784,14 +1784,39 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: in-progress
-- Result: **Ready; waiting for Marouane to be available to approve restores** (the third "Needs" item). Nothing written to the
-  tenant yet.
-  - B = `b41d33ee7ebb81a5090737c0d55453f11bd5d7ae` (/opt/keel-live, clean). Worktree `wt-148` at B, deps installed.
-  - Checklist `~/keel-148/plan-B.md`, first line: **"Generated from the operation ledger: 51 registered operations, 52
-    steps."** (matches the entry). Steps 1–32 are shared-capable; 33–52 are lockout-sensitive (each runs alone).
-  - Plan for approvals: steps 1–32 in a few shared restores (one approval each), then 20 lockout steps one at a time,
-    so about 25 approvals. Marouane stays signed in as a second Global Administrator for steps 33–52.
+- Status: blocked
+- Result: **Blocked before the first restore (20:23 UTC, B = `b41d33e`).** No restore ran, so there is nothing to capture,
+  promote or demote yet. Checklist first line: "Generated from the operation ledger: 51 registered operations, 52 steps."
+  - **Blocker 1 (KEEL):** every restore stops in the apply wave with `Error: sign-in path gate requires at least one
+    protected principal` (`engine/safety/signInPathGate.mjs:12`). `breakglass_account` is empty, so KEEL has no
+    protected principal registered. That means registering the break-glass accounts in KEEL (via `keel-govern`). The
+    queue rules say I never touch break-glass accounts, so this needs Marouane's or the coordinator's decision, or a code
+    path that allows it.
+  - **Blocker 2 (operator host):** this session's tool permission system refused two kinds of tenant-wide write, so I did
+    not retry them:
+    - the default company branding sign-in text (step 29: no default branding existed; a fixture text was needed);
+    - the D-148b drifts for steps 18 (`allowedCloudEndpoints`), 19 (default inbound MFA trust), 22 (admin consent request
+      duration) and 32 (self-service sign-up).
+
+    These need Marouane to allow them for this session, or to make them himself. The lockout steps (33–52) will likely
+    hit the same refusal.
+  - **Steps 7 and 8 (owner edges) are blocked by design:** Entra keeps the last owner of the fixture group ("must have at
+    least one owner"), and carla is the only fixture user allowed. Adding the fixture service principal as an owner did not
+    count.
+  - **Done so far:**
+    - Scheduler: paused 20:16–20:24, now running again.
+    - Fixtures created with the Restorer (no Global Admin): `KEEL-RT-148-group` (carla member and owner), `KEEL-RT-148-app`
+      plus its service principal, `KEEL-RT-148-unit`, the Group.Unified setting (none existed), a partner entry for the
+      Microsoft Services tenant (the 2 existing partners untouched), `KEEL-RT-148-compliance`, `-restrictions`, `-settings`
+      (assigned to the fixture group only), branding localization fr-FR (this also created an empty default branding "0"),
+      and a group expiration policy (Selected, 365 days, fixture group).
+    - Snapshot S1 7570bb5a (pre-drift). Drifts were applied to the fixtures (descriptions/names, carla removed as member,
+      compliance length 6, camera blocked, settings off, fr-FR text, lifecycle 400 days, partner MFA trust on,
+      Group.Unified creation off). Carla's department was drifted and then **put back**.
+    - Dry-run artifact 0049a1fa was not created (the restore failed before the persist).
+  - **Left in the tenant:** all the fixtures above, in their drifted state. They are kept for a rerun and get the
+    checklist's end-of-run cleanup. No tenant-wide setting outside the fixtures was changed. Originals are recorded in
+    `/root/keel-148/originals.json` (root-only).
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
   - Decisions D-148a and D-148b: both answered yes (2026-10-10), including how the cross-tenant partner step is done.

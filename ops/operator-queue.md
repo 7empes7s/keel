@@ -1784,7 +1784,8 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: todo
+- Status: in-progress
+- Result: **In progress at B = `b41d33ee7ebb81a5090737c0d55453f11bd5d7ae`.** Generating the checklist and reading the runbook. Live steps wait for Marouane to be available to approve restores.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
   - Decisions D-148a and D-148b: both answered yes (2026-10-10), including how the cross-tenant partner step is done.

@@ -939,7 +939,10 @@ item that needs it stays untouched.
 
   KEEL restores each one behind the break-glass lockout gate. You stay signed in as a second Global Administrator
   while these steps run.
-  - Decision:
+  - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC): "yes, leave marouane.defili alone; there are other
+    admins and users you could target. Make sure I'm whitelisted from any new CAs." So: never target, assign, drift or
+    sign in as `marouane.defili`, and every Conditional Access policy the gate creates or turns on lists that account
+    under excluded users (as well as the break-glass accounts).
 - D-148b (issue #148, Q43): may keel-operator drift these tenant-wide settings on the test tenant and let KEEL put them
   back?
   - the Group.Unified directory setting, including deleting it for the delete step (the restore cannot recreate it,
@@ -950,7 +953,8 @@ item that needs it stays untouched.
   - the company branding and one branding localization (sign-in page text; fr-FR is added if none exists);
   - the group expiration policy (the lifetime is made longer, never shorter);
   - the self-service sign-up switch for external users.
-  - Decision:
+  - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC). No partner tenant was named, so the cross-tenant
+    partner step is reported as blocked until one is.
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
@@ -1777,8 +1781,8 @@ item that needs it stays untouched.
 - Status: todo
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
-  - Decisions D-148a and D-148b filled in below. Without D-148a, skip every lockout-sensitive step. Without D-148b,
-    skip every tenant-wide setting step. Report skipped steps as blocked.
+  - Decisions D-148a and D-148b: both answered yes (2026-10-10). The cross-tenant partner step stays blocked until a
+    partner tenant is named.
   - Marouane is available to approve each restore in the portal. The operator can never approve its own.
 - Why: every registered Entra write (and the #155 Intune writes) is only fixture-tested. #148 is done when each one has
   a real capture from the test tenant, promoted through `qualifyLiveEvidence`, and the ledger shows `live-qualified`.
@@ -1808,6 +1812,9 @@ item that needs it stays untouched.
   the Conditional Access, authentication method, authorization policy, security defaults and PIM steps, and the
   tenant-wide settings. Fixtures are `KEEL-RT-148-*` and the existing `keel-rt-20260908-carla`. Never touch the
   break-glass, admin or Global Reader accounts.
+- **Marouane's account (D-148a):** never target, assign, drift or sign in as `marouane.defili`. Before any Conditional
+  Access policy is created, restored or turned on, check that its excluded users list that account and the
+  break-glass accounts; if not, add them by hand first and report it. A policy without the exclusion is never turned on.
 - **Report:**
   - B and the checklist's first line.
   - Per step: captured / promoted / failed (demoted, with the reason) / blocked (why).

@@ -1784,8 +1784,8 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: in-progress
-- Result: **In progress at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
+- Status: blocked
+- Result: **Blocked (21:35 UTC) at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
   scheduler timer paused for the run). Checklist: "51 registered operations, 52 steps" (same as b41d33e). Snapshot S1
   7570bb5a (before every drift). Approval requests are filed by keel-operator through KEEL's `requestApproval()` (the portal
   never filed one for a CLI dry run) and decided by Marouane in the portal.
@@ -1807,8 +1807,19 @@ item that needs it stays untouched.
   - **Round 1b**, artifact a8cdd5b0, approval 1d4a92f8 (Marouane): the dependency closure adds
     `organizationalBrandingLocalization:0` (the empty default branding created as a side effect of the fr-FR fixture) to
     wave 1 next to the group. Its PATCH fails with 400 and stops the run, so **the group was not written** (steps 2/5 and 28
-    still open). Next: remove the fr-FR fixture and the empty default branding, take a fresh snapshot, and redo the group and
-    Intune steps.
+    still open).
+  - **Blocker (code / Graph):** `organizationalBrandingLocalization:0` lands in the dependency closure of restores that
+    don't select it (e.g. `group:` and `configurationPolicy:` only), and KEEL's PATCH of it returns HTTP 400 every time, so
+    every such wave stops. I tried removing the cause: deleting the fr-FR fixture localization and the default "0" (neither
+    existed before the run) returns 204, but Graph keeps returning both 6+ minutes later, even after a second delete.
+    **Coordinator: fix needed.** Either (a) don't pull branding into unrelated closures, or (b) make the branding-localization
+    update valid; a failed singleton dependency shouldn't stop the fixtures' wave. Then requeue Q43 from round 1b: group
+    2/5, settings 28, the create/soft-delete/edge-remove rounds, delete steps 4/17, and lockout 33–52.
+  - The portal approvals also queued worker `restore` jobs. They failed harmlessly ("requester no longer resolves to a
+    principal: keel-operator"); the CLI enforce did the work. Worth a look: an approval from the portal runs the restore again.
+  - Scheduler timer restarted 21:35. The fixtures stay for the rerun. Fixture group: description still drifted, carla removed
+    as member. Other leftover drifts: compliance length 6, app name -drifted, partner MFA trust on, lifecycle 400 days,
+    self-service sign-up unchanged (its drift failed).
   - Notes for the coordinator:
     - capture `--fixture` needs the full natural key (`administrativeUnit:KEEL-RT-148-unit`), not the bare name the checklist
       shows;

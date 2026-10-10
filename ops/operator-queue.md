@@ -1805,9 +1805,10 @@ item that needs it stays untouched.
 
     **Marouane allowed these changes at 20:26 UTC ("I allow those changes").** They are held until the code fix is
     deployed, because no restore can put them back yet, and will be applied in the rerun.
-  - **Steps 7 and 8 (owner edges) are blocked by design:** Entra keeps the last owner of the fixture group ("must have at
-    least one owner"), and carla is the only fixture user allowed. Adding the fixture service principal as an owner did not
-    count.
+  - **Steps 7 and 8 (owner edges): now possible.** Entra keeps a group's last owner, and carla was the only owner. At
+    Marouane's request (20:26 UTC, "Assign me as owner") marouane.defili was added as a second owner of `KEEL-RT-148-group`
+    only (owners now: marouane.defili, carla). He is never a target of a step, and he is removed in the end-of-run cleanup
+    when the group is deleted.
   - **Done so far:**
     - Scheduler: paused 20:16–20:24, now running again.
     - Fixtures created with the Restorer (no Global Admin): `KEEL-RT-148-group` (carla member and owner), `KEEL-RT-148-app`

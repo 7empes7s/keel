@@ -13,6 +13,7 @@ import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { resolvePlan } from '../engine/graph/resolver.mjs';
 import { buildGapReport, isPlanClean } from '../engine/graph/preflight.mjs';
 import { assertBreakGlassCoverage } from '../engine/safety/breakGlassInvariant.mjs';
+import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
 import { connect, getLatestSnapshot, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 
@@ -77,9 +78,7 @@ export async function runPlan({
     logger.log(report.text);
 
     if (isPlanClean(report)) {
-      const breakGlassUserIds = targetResources
-        .filter((r) => r.resourceType === 'roleAssignment' && r.naturalKey.includes('GlobalAdministrator'))
-        .map((r) => r.payload.principalId);
+      const breakGlassUserIds = globalAdministratorPrincipalIds(targetResources);
       const caInRestoreSet = resolved.filter((r) => r.resourceType === 'conditionalAccessPolicy');
       const bg = assertBreakGlassCoverage({ breakGlassUserIds, caPoliciesInRestoreSet: caInRestoreSet.map((r) => r.payload) });
       if (!bg.ok) logger.log(`\nBREAK-GLASS INVARIANT FAILED: ${bg.reason}`);

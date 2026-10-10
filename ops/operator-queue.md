@@ -953,8 +953,14 @@ item that needs it stays untouched.
   - the company branding and one branding localization (sign-in page text; fr-FR is added if none exists);
   - the group expiration policy (the lifetime is made longer, never shorter);
   - the self-service sign-up switch for external users.
-  - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC). No partner tenant was named, so the cross-tenant
-    partner step is reported as blocked until one is.
+  - Decision: yes (Marouane, #147 thread, 2026-10-10 14:55 UTC).
+  - Partner tenant (Marouane, 2026-10-10 14:56 UTC): "there are existing configs, but I don't know if they're still
+    active/functional. I don't have another tenant tho." So, as the #147 thread's default:
+    - leave every existing partner entry exactly as it is: never drift, delete or restore one;
+    - the fixture is a NEW partner entry for Microsoft's own public tenant (the "Microsoft Services" tenant, its id
+      looked up from Microsoft's documentation at run time), created with default settings. A partner entry is a
+      setting on our side only; it needs nothing from the other tenant;
+    - drift its inbound MFA trust, let KEEL restore it, capture, then remove the entry.
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
@@ -1781,8 +1787,7 @@ item that needs it stays untouched.
 - Status: todo
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.
-  - Decisions D-148a and D-148b: both answered yes (2026-10-10). The cross-tenant partner step stays blocked until a
-    partner tenant is named.
+  - Decisions D-148a and D-148b: both answered yes (2026-10-10), including how the cross-tenant partner step is done.
   - Marouane is available to approve each restore in the portal. The operator can never approve its own.
 - Why: every registered Entra write (and the #155 Intune writes) is only fixture-tested. #148 is done when each one has
   a real capture from the test tenant, promoted through `qualifyLiveEvidence`, and the ledger shows `live-qualified`.

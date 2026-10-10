@@ -1784,8 +1784,8 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: blocked
-- Result: **Blocked (21:35 UTC) at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
+- Status: in-progress
+- Result: **In progress again (21:46 UTC) at B = `09e1f00c3f2bda0ec6e6562015613907c810e7aa`** (#169 branding-closure fix deployed 21:40; worker restarted 21:44). Earlier work at = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
   scheduler timer paused for the run). Checklist: "51 registered operations, 52 steps" (same as b41d33e). Snapshot S1
   7570bb5a (before every drift). Approval requests are filed by keel-operator through KEEL's `requestApproval()` (the portal
   never filed one for a CLI dry run) and decided by Marouane in the portal.

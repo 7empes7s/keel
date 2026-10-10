@@ -66,11 +66,19 @@ function keyFor(type, obj, ctx) {
  */
 export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directorySettingTemplate']);
 
+// Types whose id is shared vocabulary, not an identifier: a branding
+// localization's id is its language ("0" for the default, "fr-FR", ...).
+// Indexing those ids made any payload string "0" or "fr-FR" (a group or
+// configuration-policy setting value) a reference to the localization, which
+// pulled it into unrelated restore closures. Nothing references a localization
+// by id, so these ids never resolve references; the resources keep their keys.
+const VOCABULARY_ID_TYPES = new Set(['organizationalBrandingLocalization']);
+
 function idKey(obj, type) {
   // Global templates can share ids with active role definitions. Collecting
   // the catalogue must not overwrite those tenant symbols or change existing
   // role-assignment keys. buildIndex already classifies templates as global.
-  if (CONTEXT_EXCLUDED_TYPES.has(type)) return null;
+  if (CONTEXT_EXCLUDED_TYPES.has(type) || VOCABULARY_ID_TYPES.has(type)) return null;
   return obj?.id != null ? String(obj.id).toLowerCase() : null;
 }
 

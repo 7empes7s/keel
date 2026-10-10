@@ -1785,46 +1785,34 @@ item that needs it stays untouched.
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
 - Status: in-progress
-- Result: **In progress at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02 UTC, worker restarted 21:07). Earlier run notes from b41d33e are kept below.
-
-  **Blocked before the first restore (20:23 UTC, B = `b41d33e`).** No restore ran, so there is nothing to capture,
-  promote or demote yet. Checklist first line: "Generated from the operation ledger: 51 registered operations, 52 steps."
-  - **Blocker 1: code defect, not configuration.** Every restore stops in the apply wave with `Error: sign-in path gate
-    requires at least one protected principal` (`engine/safety/signInPathGate.mjs:12`). `cli/keel-restore.mjs`
-    (~L503 and ~L1108, the same filter in each restore path) derives `protectedPrincipalIds` from roleAssignment
-    resources whose **natural key contains `GlobalAdministrator`**. Today's natural keys name the role by definition id
-    (`roleAssignment:roleDefinition:62e90394-69f5-4237-9190-012177145e10@user:…@/`; 62e90394 is the Global Administrator
-    template), so the filter never matches, the list is always empty, and every restore throws. Registering break-glass
-    accounts (`breakglass_account`, empty) does not feed this gate (Marouane said "CONFIGURE THE ACCOUNTS" at 20:25 UTC; it
-    would not clear it).
-    **Coordinator: code fix needed.** Match the Global Administrator role definition id (or the role's templateId) instead
-    of the display text, in every place that filter appears. Then requeue Q43.
-  - **Blocker 2 (operator host):** this session's tool permission system refused two kinds of tenant-wide write, so I did
-    not retry them:
-    - the default company branding sign-in text (step 29: no default branding existed; a fixture text was needed);
-    - the D-148b drifts for steps 18 (`allowedCloudEndpoints`), 19 (default inbound MFA trust), 22 (admin consent request
-      duration) and 32 (self-service sign-up).
-
-    **Marouane allowed these changes at 20:26 UTC ("I allow those changes").** They are held until the code fix is
-    deployed, because no restore can put them back yet, and will be applied in the rerun.
-  - **Steps 7 and 8 (owner edges): now possible.** Entra keeps a group's last owner, and carla was the only owner. At
-    Marouane's request (20:26 UTC, "Assign me as owner") marouane.defili was added as a second owner of `KEEL-RT-148-group`
-    only (owners now: marouane.defili, carla). He is never a target of a step, and he is removed in the end-of-run cleanup
-    when the group is deleted.
-  - **Done so far:**
-    - Scheduler: paused 20:16–20:24, now running again.
-    - Fixtures created with the Restorer (no Global Admin): `KEEL-RT-148-group` (carla member and owner), `KEEL-RT-148-app`
-      plus its service principal, `KEEL-RT-148-unit`, the Group.Unified setting (none existed), a partner entry for the
-      Microsoft Services tenant (the 2 existing partners untouched), `KEEL-RT-148-compliance`, `-restrictions`, `-settings`
-      (assigned to the fixture group only), branding localization fr-FR (this also created an empty default branding "0"),
-      and a group expiration policy (Selected, 365 days, fixture group).
-    - Snapshot S1 7570bb5a (pre-drift). Drifts were applied to the fixtures (descriptions/names, carla removed as member,
-      compliance length 6, camera blocked, settings off, fr-FR text, lifecycle 400 days, partner MFA trust on,
-      Group.Unified creation off). Carla's department was drifted and then **put back**.
-    - Dry-run artifact 0049a1fa was not created (the restore failed before the persist).
-  - **Left in the tenant:** all the fixtures above, in their drifted state. They are kept for a rerun and get the
-    checklist's end-of-run cleanup. No tenant-wide setting outside the fixtures was changed. Originals are recorded in
-    `/root/keel-148/originals.json` (root-only).
+- Result: **In progress at B = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
+  scheduler timer paused for the run). Checklist: "51 registered operations, 52 steps" (same as b41d33e). Snapshot S1
+  7570bb5a (before every drift). Approval requests are filed by keel-operator through KEEL's `requestApproval()` (the portal
+  never filed one for a CLI dry run) and decided by Marouane in the portal.
+  - **Round 1**, artifact 03c6d87c, approval d93538e2 (Marouane, 21:20):
+    - **Promoted to live-qualified (7):** user update (9), administrativeUnit update (15), groupSetting update (16),
+      crossTenantAccessPolicy update (18), crossTenantAccessPolicyConfigurationDefault update (19),
+      adminConsentRequestPolicy update (22), deviceConfiguration update (26). Steps 16/18/19/22 were captured with
+      `--allow-tenant-setting` (D-148b).
+    - **Failed → demoted (1):** organizationalBranding update (29): the live PATCH returned HTTP 400
+      (`organizationalBranding.update.demotion.json`).
+  - **Could not be planned (dry-run refusals, reported, not demoted):**
+    - crossTenantAccessPolicyPartner update (21): foreign-tenant reference not resolvable.
+    - deviceCompliancePolicy update (24): `scheduledActionConfigurations[0].id` not resolvable.
+    - application update (12): `createdByAppId` → Restorer app not resolvable. 11/13/14 are likely the same.
+    - organizationalBrandingLocalization update (30) and authenticationFlowsPolicy update (32): "unsupported operation: no
+      proven deferred reference patch". 32's drift was also refused by Graph (AADB2C90063).
+    - groupLifecyclePolicy update (31): guard refuses to shorten the lifetime 400 → 365 by design, so the runbook's
+      "make it longer" drift can't be auto-restored.
+  - **Round 1b**, artifact a8cdd5b0, approval 1d4a92f8 (Marouane): the dependency closure adds
+    `organizationalBrandingLocalization:0` (the empty default branding created as a side effect of the fr-FR fixture) to
+    wave 1 next to the group. Its PATCH fails with 400 and stops the run, so **the group was not written** (steps 2/5 and 28
+    still open). Next: remove the fr-FR fixture and the empty default branding, take a fresh snapshot, and redo the group and
+    Intune steps.
+  - Notes for the coordinator:
+    - capture `--fixture` needs the full natural key (`administrativeUnit:KEEL-RT-148-unit`), not the bare name the checklist
+      shows;
+    - tenant-wide steps need `--allow-tenant-setting`.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

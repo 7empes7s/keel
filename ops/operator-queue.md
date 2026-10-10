@@ -1787,11 +1787,16 @@ item that needs it stays untouched.
 - Status: blocked
 - Result: **Blocked before the first restore (20:23 UTC, B = `b41d33e`).** No restore ran, so there is nothing to capture,
   promote or demote yet. Checklist first line: "Generated from the operation ledger: 51 registered operations, 52 steps."
-  - **Blocker 1 (KEEL):** every restore stops in the apply wave with `Error: sign-in path gate requires at least one
-    protected principal` (`engine/safety/signInPathGate.mjs:12`). `breakglass_account` is empty, so KEEL has no
-    protected principal registered. That means registering the break-glass accounts in KEEL (via `keel-govern`). The
-    queue rules say I never touch break-glass accounts, so this needs Marouane's or the coordinator's decision, or a code
-    path that allows it.
+  - **Blocker 1: code defect, not configuration.** Every restore stops in the apply wave with `Error: sign-in path gate
+    requires at least one protected principal` (`engine/safety/signInPathGate.mjs:12`). `cli/keel-restore.mjs`
+    (~L503 and ~L1108, the same filter in each restore path) derives `protectedPrincipalIds` from roleAssignment
+    resources whose **natural key contains `GlobalAdministrator`**. Today's natural keys name the role by definition id
+    (`roleAssignment:roleDefinition:62e90394-69f5-4237-9190-012177145e10@user:…@/`; 62e90394 is the Global Administrator
+    template), so the filter never matches, the list is always empty, and every restore throws. Registering break-glass
+    accounts (`breakglass_account`, empty) does not feed this gate (Marouane said "CONFIGURE THE ACCOUNTS" at 20:25 UTC; it
+    would not clear it).
+    **Coordinator: code fix needed.** Match the Global Administrator role definition id (or the role's templateId) instead
+    of the display text, in every place that filter appears. Then requeue Q43.
   - **Blocker 2 (operator host):** this session's tool permission system refused two kinds of tenant-wide write, so I did
     not retry them:
     - the default company branding sign-in text (step 29: no default branding existed; a fixture text was needed);

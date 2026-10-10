@@ -1824,6 +1824,24 @@ item that needs it stays untouched.
     - capture `--fixture` needs the full natural key (`administrativeUnit:KEEL-RT-148-unit`), not the bare name the checklist
       shows;
     - tenant-wide steps need `--allow-tenant-setting`.
+  - **At 09e1f00** (fresh snapshot S2 8c375e1b; the #169 fix verified: closures no longer pull branding):
+    - round 1d, artifact e3ba04c3, approval dd3564a8: **configurationPolicy update (28) promoted**;
+    - round 2b, artifact 26fcf441, approval 5059a85a: **configurationPolicy create (27) promoted**.
+    - **Live-qualified total: 9.**
+  - **Newly blocked (code or runbook):**
+    - group update (2): `keel-collect` doesn't collect a group's `description`, so the drift is invisible and no write
+      happens.
+    - group#member/#owner edge steps (5–8): `keel-collect` reads only the `assignment` relationship family
+      (`COLLECT_RELATIONSHIPS`), so no membership or owner edges are in any snapshot.
+    - deviceConfiguration create (25): guard "unclassified-content-effect: internetSharingBlocked,
+      sharedUserAppDataAllowed". The fixture profile was deleted for the step and is gone (recreate or ignore at
+      cleanup).
+    - group restore-soft-deleted (3): a security group is never soft-deleted, so the fixture can't exercise it; it would
+      need a Microsoft 365 group.
+    - user restore-soft-deleted (10):
+      - first plan refused with "retention deadline unprovable (no deletedDateTime)" (replication lag);
+      - the replan chose `user create` ("not a registered write capability").
+      Carla was restored from deleted items **by hand** at 22:09 (memberships intact).
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

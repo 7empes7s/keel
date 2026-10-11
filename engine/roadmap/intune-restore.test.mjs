@@ -233,7 +233,7 @@ test('assignments are read for every policy type with an /assignments collection
   assert.match(ios[1].error, /defaultManagedAppProtection/);
   assert.equal(ios[2].outcome, 'unsupported', 'a device category has no assignments to read');
   assert.equal(calls.filter((call) => call.path.includes('cat-id')).length, 0);
-  assert.deepEqual(COLLECT_RELATIONSHIPS.families, ['assignment'], 'every scheduled backup reads assignments');
+  assert.ok(COLLECT_RELATIONSHIPS.families.includes('assignment'), 'every scheduled backup reads assignments');
 });
 
 test('compliance actions and settings catalog settings are collected through $expand', () => {

@@ -60,6 +60,7 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
   // { families: [...] }. Only groups from a successfully enumerated type are
   // read, and each parent x family keeps its own outcome.
   let relationshipSummary = null;
+  let relationshipsByFamily = null;
   if (relationships) {
     const families = relationships?.families ?? DEFAULT_RELATIONSHIP_FAMILIES;
     // Parents are the collected resources whose type a requested family applies
@@ -81,6 +82,17 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
       acc[obs.outcome] = (acc[obs.outcome] ?? 0) + 1;
       return acc;
     }, {});
+    // The same counts per family, so a caller can report each kind of read
+    // (policy assignments, group members, group owners) on its own.
+    relationshipsByFamily = observations.reduce((acc, obs) => {
+      const counts = (acc[obs.family] ??= {});
+      counts[obs.outcome] = (counts[obs.outcome] ?? 0) + 1;
+      return acc;
+    }, {});
   }
-  return { snapshotId, coverageDigest: result.coverageDigest, ...(relationshipSummary ? { relationships: relationshipSummary } : {}) };
+  return {
+    snapshotId,
+    coverageDigest: result.coverageDigest,
+    ...(relationshipSummary ? { relationships: relationshipSummary, relationshipsByFamily } : {}),
+  };
 }

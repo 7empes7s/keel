@@ -15,8 +15,12 @@ function arg(name, fallback, argv = process.argv) {
   return i > -1 ? argv[i + 1] : fallback;
 }
 
-/** The relationship families every scheduled collection reads (issue #155). */
-export const COLLECT_RELATIONSHIPS = Object.freeze({ families: Object.freeze(['assignment']) });
+/**
+ * The relationship families every scheduled collection reads: each Intune
+ * policy's assignments (issue #155) and each group's direct members and owners,
+ * so a restore can put a group's membership back.
+ */
+export const COLLECT_RELATIONSHIPS = Object.freeze({ families: Object.freeze(['assignment', 'member', 'owner']) });
 
 /**
  * One log line with how many policy assignment reads ended in each outcome
@@ -35,6 +39,20 @@ export function describeAssignmentReads(summary) {
   const problems = count('partial') + count('failed');
   return `policy assignment reads: ${parts.join(', ')}${problems > 0
     ? ' — those policies\' assignments will not be restored; a failed read is often a missing Intune read permission'
+    : ''}`;
+}
+
+/**
+ * One log line with how many group member and owner reads ended in each outcome
+ * (counts only). Null when no group was read.
+ */
+export function describeGroupMembershipReads(byFamily) {
+  const families = ['member', 'owner'].filter((family) => byFamily?.[family]);
+  if (families.length === 0) return null;
+  const count = (outcome) => families.reduce((sum, family) => sum + (byFamily[family][outcome] ?? 0), 0);
+  const problems = count('partial') + count('failed');
+  return `group member and owner reads: ${count('complete') + count('complete-empty')} complete, ${count('partial')} partial, ${count('failed')} failed${problems > 0
+    ? ' — those groups\' memberships will not be restored; a failed read is often a missing Group.Read.All or GroupMember.Read.All permission'
     : ''}`;
 }
 
@@ -66,14 +84,17 @@ export async function runCollect({
   logger.log('collecting graph-native types…');
   try {
     // Issue #155: each Intune policy's assignments (which groups get it) are read
-    // beside the policy, so a restore can put them back. A failed assignment read
-    // is recorded as its own observation and never changes a type's outcome.
-    const { snapshotId, coverageDigest, relationships } = await collectSnapshotFn(client, {
+    // beside the policy, and each group's members and owners beside the group, so
+    // a restore can put them back. A failed edge read is recorded as its own
+    // observation and never changes a type's outcome.
+    const { snapshotId, coverageDigest, relationshipsByFamily } = await collectSnapshotFn(client, {
       reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS,
     });
     logger.log(`snapshot ${snapshotId} complete`);
-    const assignmentLine = describeAssignmentReads(relationships);
+    const assignmentLine = describeAssignmentReads(relationshipsByFamily?.assignment);
     if (assignmentLine) logger.log(assignmentLine);
+    const membershipLine = describeGroupMembershipReads(relationshipsByFamily);
+    if (membershipLine) logger.log(membershipLine);
     logger.table?.(coverageDigest);
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {

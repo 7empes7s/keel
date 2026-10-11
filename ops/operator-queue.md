@@ -1860,9 +1860,17 @@ item that needs it stays untouched.
     accept b3a06c4b. The runbook's delete-step cleanup ("re-activate $BASELINE") can't work as written.
   - The scheduler timer was paused 21:46 → 07:12 UTC (overnight, while waiting), now running.
   - **Live-qualified total: 11.**
-  - Step 3: `KEEL-RT-148-group` deleted 08:32 (it went to deleted items). Dry-run artifact 91e8575d plans
-    `restore-soft-deleted` (id retained); approval 03d36c56 pending. Step 1 (create) follows by also removing it from
-    deleted items.
+  - **Step 3, group restore-soft-deleted, failed and demoted:** artifact 91e8575d (replanned after a target change),
+    approved by Marouane. The restore from deleted items worked, but KEEL's follow-up update of the same group got HTTP 404
+    (replication lag right after the restore), so the capture recorded the write as failed (exit 3).
+    `group.restore-soft-deleted.demotion.json`.
+  - **Step 1, group create, failed and demoted (11:34 UTC):** the group was removed from deleted items first. Artifact
+    01cf16da (from S2), approval 56a7f73f (Marouane). Live `POST /groups` returned HTTP 400: the create body is the
+    collected snapshot shape, including read-only properties (`id`, `createdDateTime`, `assignedLicenses`,
+    `onPremisesSyncEnabled`). Capture exit 3; `group.create.demotion.json`. Nothing was created: a read-only check shows no
+    `KEEL-RT-148-group`.
+  - **Live-qualified total: 11. Demoted: 3** (organizationalBranding update, group restore-soft-deleted, group create).
+  - Next: the lockout steps 33–52, one at a time, each with its own approval.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

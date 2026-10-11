@@ -1842,6 +1842,21 @@ item that needs it stays untouched.
       - first plan refused with "retention deadline unprovable (no deletedDateTime)" (replication lag);
       - the replan chose `user create` ("not a registered write capability").
       Carla was restored from deleted items **by hand** at 22:09 (memberships intact).
+  - **Delete steps 4 and 17** (Marouane chose "Act as my principal" for the baseline):
+    - Snapshot S3 876495db (neither object present). Temporary baseline **b3a06c4b** = version 2 of bd7d9515, created and
+      activated `--set-by` Marouane's principal.
+    - Created `KEEL-RT-148-group-delete` and Group.Unified. Drifts 3a0827b9 and fe78d84a were detected.
+    - Remediation dry runs were persisted through KEEL's `resolveRestoreScope` + `runRestore`. `keel-remediate --enforce`
+      would plan and enforce in one call, and the CLI enforce path checks no approval except for Conditional Access, so I
+      didn't use it.
+    - Artifacts 387733f3 (step 4) and 8e4db833 (step 17); approvals **66b8048a / 664ff71a pending** since 00:1x UTC
+      (expire 2026-10-12 07:10).
+  - **Baseline: can't be put back (code gap).** `keel-baseline-activate --baseline-id bd7d9515` refuses: "superseded by
+    a re-snapshot; activate its latest version". bd7d9515 has no `source_snapshot_id` (seeded before snapshots were
+    recorded), so a new version can't be cut from it either. **b3a06c4b (live-gate-148, 1789 resources, S3 of 2026-10-10)
+    stays active**; bd7d9515's resources are preserved. Coordinator: a way to re-activate a superseded version is needed, or
+    accept b3a06c4b. The runbook's delete-step cleanup ("re-activate $BASELINE") can't work as written.
+  - The scheduler timer was paused 21:46 → 07:12 UTC (overnight, while waiting), now running.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

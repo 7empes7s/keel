@@ -1836,8 +1836,8 @@ item that needs it stays untouched.
     - deviceConfiguration create (25): guard "unclassified-content-effect: internetSharingBlocked,
       sharedUserAppDataAllowed". The fixture profile was deleted for the step and is gone (recreate or ignore at
       cleanup).
-    - group restore-soft-deleted (3): a security group is never soft-deleted, so the fixture can't exercise it; it would
-      need a Microsoft 365 group.
+    - ~~group restore-soft-deleted (3) impossible~~: **correction**. Entra did soft-delete the fixture security group, so step 3
+      is running (see below).
     - user restore-soft-deleted (10):
       - first plan refused with "retention deadline unprovable (no deletedDateTime)" (replication lag);
       - the replan chose `user create` ("not a registered write capability").
@@ -1849,14 +1849,20 @@ item that needs it stays untouched.
     - Remediation dry runs were persisted through KEEL's `resolveRestoreScope` + `runRestore`. `keel-remediate --enforce`
       would plan and enforce in one call, and the CLI enforce path checks no approval except for Conditional Access, so I
       didn't use it.
-    - Artifacts 387733f3 (step 4) and 8e4db833 (step 17); approvals **66b8048a / 664ff71a pending** since 00:1x UTC
-      (expire 2026-10-12 07:10).
+    - Artifacts 387733f3 (step 4) and 8e4db833 (step 17); approvals 66b8048a / 664ff71a (Marouane, 08:30). After a
+      read-only review of both artifacts (each closure = exactly one fixture), enforced one at a time: both deletes
+      succeeded and read back absent. **group delete (4) and groupSetting delete (17) promoted.** Group.Unified is absent
+      again, the tenant's original state.
   - **Baseline: can't be put back (code gap).** `keel-baseline-activate --baseline-id bd7d9515` refuses: "superseded by
     a re-snapshot; activate its latest version". bd7d9515 has no `source_snapshot_id` (seeded before snapshots were
     recorded), so a new version can't be cut from it either. **b3a06c4b (live-gate-148, 1789 resources, S3 of 2026-10-10)
     stays active**; bd7d9515's resources are preserved. Coordinator: a way to re-activate a superseded version is needed, or
     accept b3a06c4b. The runbook's delete-step cleanup ("re-activate $BASELINE") can't work as written.
   - The scheduler timer was paused 21:46 → 07:12 UTC (overnight, while waiting), now running.
+  - **Live-qualified total: 11.**
+  - Step 3: `KEEL-RT-148-group` deleted 08:32 (it went to deleted items). Dry-run artifact 91e8575d plans
+    `restore-soft-deleted` (id retained); approval 03d36c56 pending. Step 1 (create) follows by also removing it from
+    deleted items.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

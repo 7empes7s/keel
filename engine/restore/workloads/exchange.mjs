@@ -7,7 +7,8 @@
  *  - mailbox-settings: one PATCH /users/{id}/mailboxSettings with the changed settings;
  *  - client-access:    one Set-CASMailbox with the changed protocol switches;
  *  - retention:        one Set-Mailbox with the changed hold and retention settings;
- *  - organization:     one Set-OrganizationConfig with the changed supported settings.
+ *  - organization:     one Set-OrganizationConfig with MailTipsLargeAudienceThreshold, the
+ *                      only organization setting KEEL writes; any other changed one is manual.
  * Everything else stays manual or excluded:
  *  - holds Purview or an administrator owns (in-place, compliance tag and delay holds,
  *    the litigation hold duration) are observed and never written;
@@ -76,6 +77,7 @@ const OPERATIONS = Object.freeze({
 const SERVER_OWNED = Object.freeze({ mailboxSettings: ['userPurpose'] });
 const MANUAL_REASON = Object.freeze({
   retention: 'this hold is owned by Purview or a compliance administrator; KEEL observes it and never writes it',
+  organization: 'this setting applies to the whole tenant; KEEL writes only the large-audience mail tip threshold there, so an administrator restores this one',
 });
 
 function canonical(value) {

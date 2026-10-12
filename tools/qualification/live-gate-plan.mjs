@@ -311,7 +311,7 @@ function setupFor(resourceType, operation, guidance, key) {
           '# Marouane approves artifact A in the portal (Restore, review).',
           'node cli/keel-restore.mjs --artifact "$A" --enforce',
         ],
-        cleanup: 'Re-activate the baseline version that was active before (`node cli/keel-baseline-activate.mjs --baseline-id "$BASELINE"`). Permanently delete the fixture from deleted items if it is there.',
+        cleanup: 'Reinstate the baseline version that was active before (`node cli/keel-baseline-activate.mjs --baseline-id "$BASELINE" --reinstate --actor keel-operator --reason "live gate 148 delete step done" --config "$COLLECTOR"`): it is superseded, so it is copied into a new latest version and that one is activated. Permanently delete the fixture from deleted items if it is there.',
       };
     case 'edge-add':
       return {

@@ -103,12 +103,79 @@ test('a benign or unchanged setting proceeds with no effect; narrowing is not an
 
 test('an unclassified dangerous transition on an unreviewed type refuses until classified', () => {
   const { effects, refusals } = classifyContentEffects([
-    update('deviceConfiguration', { displayName: 'Baseline', remoteWipeAfterDays: 0 }, { displayName: 'Baseline', remoteWipeAfterDays: 14 }),
+    update('mobileAppConfiguration', { displayName: 'Baseline', remoteWipeAfterDays: 0 }, { displayName: 'Baseline', remoteWipeAfterDays: 14 }),
     update('mobileAppConfiguration', { displayName: 'Old name' }, { displayName: 'New name' }),
   ]);
   assert.deepEqual(effects, []);
   assert.equal(refusals.length, 1);
-  assert.match(refusals[0].reason, /unclassified-content-effect: deviceConfiguration changes remoteWipeAfterDays/);
+  assert.match(refusals[0].reason, /unclassified-content-effect: mobileAppConfiguration changes remoteWipeAfterDays/);
+});
+
+// ------------------------------------------------------------ Intune (issue #155)
+
+const create = (resourceType, payload, naturalKey = `${resourceType}:${payload.displayName ?? payload.name}`) => ({ naturalKey, resourceType, verb: 'create', payload, live: null });
+const complianceWith = (...actionTypes) => ({
+  '@odata.type': '#microsoft.graph.windows10CompliancePolicy', displayName: 'Windows baseline', passwordRequired: true,
+  scheduledActionsForRule: [{ ruleName: 'PasswordRequired', scheduledActionConfigurations: actionTypes.map((actionType) => ({ actionType, gracePeriodHours: 24, notificationTemplateId: null, notificationMessageCCList: [] })) }],
+});
+
+test('Q43 step 25: creating a device configuration with hotspot and shared app data settings passes the guard', () => {
+  const { effects, refusals } = classifyContentEffects([
+    create('deviceConfiguration', {
+      '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', displayName: 'Windows restrictions',
+      internetSharingBlocked: true, sharedUserAppDataAllowed: false, storageBlockRemovableStorage: true, cameraBlocked: true,
+    }),
+    update('deviceConfiguration', { displayName: 'Windows restrictions', internetSharingBlocked: true, sharedUserAppDataAllowed: false },
+      { displayName: 'Windows restrictions', internetSharingBlocked: false, sharedUserAppDataAllowed: true }),
+    update('deviceConfiguration', { '@odata.type': '#microsoft.graph.androidWorkProfileGeneralDeviceConfiguration', displayName: 'Work profile', workProfileDataSharingType: 'preventAny', factoryResetBlocked: true },
+      { '@odata.type': '#microsoft.graph.androidWorkProfileGeneralDeviceConfiguration', displayName: 'Work profile', workProfileDataSharingType: 'allowPersonalToWork', factoryResetBlocked: false }),
+    create('deviceCompliancePolicy', complianceWith('block', 'notification', 'remoteLock')),
+  ]);
+  assert.deepEqual(refusals, [], 'device sharing settings are configuration, not content effects');
+  assert.deepEqual(effects, []);
+});
+
+test('a compliance policy that wipes or retires noncompliant devices is irreversible and needs the separate approval', async (t) => {
+  const created = classifyContentEffects([create('deviceCompliancePolicy', complianceWith('block', 'wipe'))]);
+  assert.deepEqual(created.refusals, []);
+  assert.deepEqual(created.effects.map((e) => [e.field, e.effect, e.before, e.after]), [['scheduledActionsForRule[actionType]', 'irreversible', [], ['block', 'wipe']]]);
+  assert.equal(created.effects[0].disclosure, disclosureFor('irreversible'));
+
+  const retired = classifyContentEffects([update('deviceCompliancePolicy', complianceWith('block'), complianceWith('block', 'retire'))]);
+  assert.deepEqual(retired.effects.map((e) => e.effect), ['irreversible']);
+  // Dropping the wipe, or a backup without actions (live actions are kept), is benign.
+  const softened = classifyContentEffects([
+    update('deviceCompliancePolicy', complianceWith('wipe'), complianceWith('block')),
+    update('deviceCompliancePolicy', complianceWith('wipe'), { displayName: 'Windows baseline', passwordRequired: false }),
+  ]);
+  assert.deepEqual(softened.effects, []);
+
+  const client = await schemaClient(t);
+  await assert.rejects(
+    assertContentEffectApproval(client, { artifact: { id: crypto.randomUUID(), requestedBy: 'nobody' }, effects: created.effects }),
+    /blocked-content-effect: 1 content effect\(s\) \(irreversible\)/,
+  );
+});
+
+test('a device profile or settings catalog policy that introduces or lowers a failed-sign-in wipe is irreversible; raising it is not', () => {
+  const catalog = (value) => ({ name: 'Device lock', settings: [{ settingInstance: { settingDefinitionId: 'device_vendor_msft_policy_config_devicelock_maxdevicepasswordfailedattempts', simpleSettingValue: { value } } }] });
+  const { effects, refusals } = classifyContentEffects([
+    create('deviceConfiguration', { '@odata.type': '#microsoft.graph.iosGeneralDeviceConfiguration', displayName: 'iOS lock', passcodeSignInFailureCountBeforeWipe: 10 }),
+    update('deviceConfiguration', { passwordSignInFailureCountBeforeFactoryReset: 10 }, { passwordSignInFailureCountBeforeFactoryReset: 5 }, 'deviceConfiguration:Android lock'),
+    update('deviceConfiguration', { passwordSignInFailureCountBeforeFactoryReset: 5 }, { passwordSignInFailureCountBeforeFactoryReset: null }, 'deviceConfiguration:Android relax'),
+    update('deviceConfiguration', { accountManagerPolicy: { accountDeletionPolicy: 'diskSpaceThreshold', inactiveThresholdDays: 30 } },
+      { accountManagerPolicy: { accountDeletionPolicy: 'immediately', inactiveThresholdDays: 7 } }, 'deviceConfiguration:Shared PC'),
+    create('configurationPolicy', catalog('8')),
+    update('configurationPolicy', catalog('4'), catalog('8'), 'configurationPolicy:Device lock relax'),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects.map((e) => `${e.naturalKey}:${e.field}:${e.effect}`).sort(), [
+    'configurationPolicy:Device lock:settings[device_vendor_msft_policy_config_devicelock_maxdevicepasswordfailedattempts]:irreversible',
+    'deviceConfiguration:Android lock:passwordSignInFailureCountBeforeFactoryReset:irreversible',
+    'deviceConfiguration:Shared PC:accountManagerPolicy.accountDeletionPolicy:irreversible',
+    'deviceConfiguration:Shared PC:accountManagerPolicy.inactiveThresholdDays:retention-reducing',
+    'deviceConfiguration:iOS lock:passcodeSignInFailureCountBeforeWipe:irreversible',
+  ]);
 });
 
 // ------------------------------------------------- mutation check: preservation lock

@@ -145,6 +145,9 @@ const THROTTLE_SEEDS = {
  * Task-152 review: restoring a deleted Conditional Access policy that would
  * come back on is such a write too. Group membership is then read for the
  * inventory with those policies as they would come back.
+ *
+ * Gap register D1: a tenant-lockout delete is decided from break-glass
+ * readiness after the delete, so the gate is loaded for one too.
  */
 export async function lockoutGateFor(client, resources, {
   tenantRef, loadInputs = loadLockoutGateInputs, loadMembership = loadGroupMembership,
@@ -153,7 +156,8 @@ export async function lockoutGateFor(client, resources, {
     && resource.resourceType === 'conditionalAccessPolicy'
     && !offWhenDeleted(resource));
   const planned = comingBackOn.length > 0 || resources.some((resource) => resource.verb && resource.verb !== 'noop'
-    && tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true);
+    && (tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true
+      || (resource.verb === 'delete' && resource.blastRadius === 'tenant-lockout')));
   if (!planned) return null;
   try {
     const inputs = await loadInputs(client, { tenantRef });

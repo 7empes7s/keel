@@ -86,14 +86,63 @@ function narrowedTargets(inventory, { resourceType, desired }) {
 }
 
 /**
+ * Gap register D1: the inventory as it would be after `deletes` (each
+ * { resourceType, naturalKey, targetId }). A type readiness does not read is
+ * left as it is. A collection that is not covered, or that does not hold the
+ * object, cannot show the state after the delete: a reason is returned instead.
+ */
+function inventoryWithout(inventory, deletes) {
+  let next = inventory;
+  for (const { resourceType, naturalKey = null, targetId = null } of deletes) {
+    const current = next?.[resourceType];
+    if (current === undefined) continue;
+    if (!current || current.status !== 'covered') {
+      return { reason: `the newest collection of ${resourceType} is incomplete, so the state after the delete cannot be evaluated` };
+    }
+    const id = targetId == null ? null : String(targetId).toLowerCase();
+    const matches = (resource) => (Boolean(naturalKey) && resource.naturalKey === naturalKey)
+      || (id !== null && String(resource.payload?.id ?? '').toLowerCase() === id);
+    if (!current.resources.some(matches)) {
+      return { reason: `the object is not in the newest collection of ${resourceType}, so the state after the delete cannot be evaluated` };
+    }
+    next = { ...next, [resourceType]: { ...current, resources: current.resources.filter((resource) => !matches(resource)) } };
+  }
+  return { inventory: next };
+}
+
+/**
  * Builds the gate from loadLockoutGateInputs()'s result (or the same shape in a
  * test): `accounts` are the registered accounts before evaluation, `inventory`
  * the newest covered collections, `groupMembers` the membership lookup.
+ *
+ * Gap register D1: `evaluate({ operation: 'delete', resourceType, naturalKey,
+ * targetId, earlierDeletes })` evaluates readiness with the object, and the
+ * deletes planned before it in the same run, removed from the inventory.
  */
 export function breakGlassLockoutGate({ configured = true, accounts = [], inventory = {}, groupMembers = () => null, now = new Date() } = {}) {
+  const readinessUnder = (proposed, when) => {
+    const evaluated = accounts.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory: proposed, groupMembers, now }) }));
+    const verdict = tenantReadiness(evaluated);
+    if (verdict.overall === 'ready') return { allowed: true, reason: `every break-glass account stays ready ${when}` };
+    const blocking = evaluated
+      .filter((account) => account.overall !== 'ready')
+      .map((account) => `${account.label ?? account.accountId}: ${Object.entries(account.dimensions ?? {})
+        .filter(([, dimension]) => dimension.status !== 'pass')
+        .map(([name, dimension]) => `${name} ${dimension.status} (${dimension.reason})`).join(', ')}`);
+    return {
+      allowed: false,
+      reason: `break-glass readiness is ${verdict.overall} ${when} (${verdict.reason})${blocking.length ? `; ${blocking.join('; ')}` : ''}`,
+    };
+  };
   return Object.freeze({
-    evaluate({ resourceType, desired, naturalKey = null }) {
+    evaluate({ resourceType, desired, naturalKey = null, operation = 'write', targetId = null, earlierDeletes = [] }) {
       if (!configured) return { allowed: false, reason: 'break-glass accounts are not configured for this tenant' };
+      if (operation === 'delete') {
+        if (!naturalKey && targetId == null) return { allowed: false, reason: 'a proposed delete must name the object it removes' };
+        const after = inventoryWithout(inventory, [...earlierDeletes, { resourceType, naturalKey, targetId }]);
+        if (after.reason) return { allowed: false, reason: after.reason };
+        return readinessUnder(after.inventory, 'after the delete');
+      }
       if (resourceType === 'conditionalAccessPolicy' && (typeof naturalKey !== 'string' || !naturalKey)) {
         return { allowed: false, reason: 'a proposed Conditional Access policy must name the policy it changes' };
       }
@@ -101,19 +150,7 @@ export function breakGlassLockoutGate({ configured = true, accounts = [], invent
       if (narrowed.length > 0) {
         return { allowed: false, reason: `the proposed policy changes who may use ${narrowed.join(', ')} to less than every user, so break-glass access cannot be shown to survive it` };
       }
-      const proposed = proposedInventory(inventory, { resourceType, desired, naturalKey });
-      const evaluated = accounts.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory: proposed, groupMembers, now }) }));
-      const verdict = tenantReadiness(evaluated);
-      if (verdict.overall === 'ready') return { allowed: true, reason: 'every break-glass account stays ready under the proposed policy' };
-      const blocking = evaluated
-        .filter((account) => account.overall !== 'ready')
-        .map((account) => `${account.label ?? account.accountId}: ${Object.entries(account.dimensions ?? {})
-          .filter(([, dimension]) => dimension.status !== 'pass')
-          .map(([name, dimension]) => `${name} ${dimension.status} (${dimension.reason})`).join(', ')}`);
-      return {
-        allowed: false,
-        reason: `break-glass readiness is ${verdict.overall} under the proposed policy (${verdict.reason})${blocking.length ? `; ${blocking.join('; ')}` : ''}`,
-      };
+      return readinessUnder(proposedInventory(inventory, { resourceType, desired, naturalKey }), 'under the proposed policy');
     },
   });
 }

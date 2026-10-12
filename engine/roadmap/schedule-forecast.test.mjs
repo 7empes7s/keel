@@ -290,9 +290,17 @@ test('acceptance: acknowledging a warning cannot bypass the floor or current aut
   // The runtime governor still applies on every tick, even to an acknowledged row that
   // was forced below the floor outside the save path.
   await client.query("UPDATE schedule SET cron_override = '*/5 * * * *', next_due_at = $2 WHERE id = $1", [before.id, at(1)]);
-  await assert.rejects(tick(client, { now: NOW }), /schedule_minimum_interval/);
-  const { rows: [{ count }] } = await client.query("SELECT count(*)::int AS count FROM job WHERE params->>'tenantRef' = $1 AND status = 'queued'", [tenantRef]);
+  // The tick skips and reports that row (other due rows still run); it never enqueues it.
+  const reported = [];
+  const consoleError = console.error;
+  console.error = (...args) => reported.push(args.join(' '));
+  let ticked;
+  try { ticked = await tick(client, { now: NOW }); } finally { console.error = consoleError; }
+  assert.ok(reported.some((line) => line.includes(before.id) && /schedule_minimum_interval/.test(line)), reported.join('\n'));
+  assert.ok(ticked.every((job) => !job.idempotency_key.startsWith(`schedule:${before.id}:`)));
+  const { rows: [{ count }] } = await client.query('SELECT count(*)::int AS count FROM job WHERE idempotency_key LIKE $1', [`schedule:${before.id}:%`]);
   assert.equal(count, 0, 'no job is enqueued for a schedule below the floor');
+  assert.equal((await schedule('tier1')).next_due_at.toISOString(), at(1), 'the refused row is not advanced');
   // The forced cadence also voids the acknowledgement, which was given for another cadence.
   const voided = byTier(await loadScheduleForecasts(client, { id: viewer.id }, { tenantRef, now: NOW }), 'tier1');
   assert.equal(voided.acknowledgement, null);

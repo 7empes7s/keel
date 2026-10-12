@@ -2028,3 +2028,32 @@ item that needs it stays untouched.
   6. Clean up every KEEL-RT fixture you create, and read every tenant-wide setting back as original.
 - **Never** write to anything but the KEEL-RT fixtures and the tenant settings the runbook names.
 - **Report:** per step, promoted / failed (demoted, with the reason) / blocked (why), and the new live-qualified total.
+### Q46: Phase 3 live checks on the test tenant — Exchange org setting, lockout deletes, branding files, PIM admin-unit scope
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
+- Status: todo
+- Result:
+- Needs: Q45 done first. A live build that contains PRs #192 (Exchange org setting), #195 (PIM admin-unit scope), #197 (lockout
+  delete evidence) and #199 (branding files). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run
+  only the parts whose PR is live and report the rest as waiting.
+- **Test tenant only. Never** touch anything but KEEL-RT fixtures and the one setting named below.
+- **A. Exchange org setting (#192, gap W7).** Marouane allowed one tenant-wide setting; the thread chose `MailTipsLargeAudienceThreshold`.
+  1. Rebuild the PowerShell image (its allowlist now accepts only this setting for `Set-OrganizationConfig`).
+  2. Read the value: `Get-OrganizationConfig | Select-Object MailTipsLargeAudienceThreshold` (expected 25). Note it.
+  3. Follow `docs/roadmap/exchange-live-acceptance.md` step 9: rebuild `docs.json` (8 URLs), preview offline with
+     `node tools/qualification/exchangeLive.mjs plan --include-organization-config ...`, then run the usual capture with
+     `--include-organization-config` added. It sets value+1, reads back, puts the original back, reads back.
+  4. `verify --require-live --gate exchange-live-acceptance`. Read the value again by hand. On exit code 3, run the printed
+     `Set-OrganizationConfig -MailTipsLargeAudienceThreshold <original>` at once and re-read.
+  5. This also refreshes the 2026-10-07 Exchange record, which lapses about 2026-11-06.
+- **B. Lockout deletes (#197, gap D1).** With Q44's two break-glass accounts registered and ready: create a KEEL-RT named
+  location used by no policy, back up, delete it from the snapshot side with the new delete scope
+  (`node cli/keel-restore.mjs --snapshot-id <S> --delete namedLocation:<name>` dry run, Marouane's approval,
+  `--artifact <id> --enforce`). Expected: allowed and verified. Then a dry run deleting a role assignment of a break-glass
+  account must be **refused** (dry run only, never enforce). Report both reasons verbatim.
+- **C. Branding files (#199, gap M6).** Back up, change the KEEL-RT test language's favicon or background image by hand in the
+  Entra admin center, restore with a selection of `organizationalBranding`. Expected: the file uploaded and read back by hash.
+  If the read-back fails because Microsoft re-encoded the image, report it; don't retry.
+- **D. PIM eligibility at an admin-unit scope (#195, gap D2).** A KEEL-RT eligibility scoped to the KEEL-RT admin unit: back
+  up, remove it, restore. Expected: recreated at the same unit scope.
+- Capture and promote as in Q43 where a gate exists; commit evidence to `claude/live-evidence-q46` and say so in the Result.
+- **Report:** per part, passed / failed (with the error) / waiting (PR not live), and every tenant setting read back as original.

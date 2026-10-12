@@ -508,8 +508,18 @@ export async function runRestore({
       keelAppIds: [],
       caPolicies: targetResources.filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
     };
-    const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources });
+    // Same-tenant restore: a live object is matched by its object id before its
+    // natural key, so a renamed policy is updated (name put back), not recreated.
+    const sameTenant = sourceTenantRef === tenantRefFor(collectorConfig.tenantId);
+    const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources, sameTenant });
     resources = reconciliation.resources;
+    // An object matched by id under another name is known to the plan alone: its
+    // snapshot key resolves to the live id for references and relationship edges.
+    for (const resource of resources) {
+      if (resource.live?.state === 'present' && !existingTargetIds.has(resource.naturalKey)) {
+        existingTargetIds.set(resource.naturalKey, resource.live.targetId);
+      }
+    }
     // Issue #155: an Intune policy carries the assignments its backup observed, so
     // applyWave writes them through /assign; a policy whose only change is its
     // assignments is planned as an update. Selection scope only (an operator-picked

@@ -22,6 +22,7 @@ import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey,
 } from '../coverage/capabilities.mjs';
 import { decideEdgeVerb } from '../reconcile/verb.mjs';
+import { writableProjection } from '../reconcile/writableProjection.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
 import {
   computeCurrentStateFingerprint, computePlanDigest, createDryRunArtifact, getDryRunArtifactById,
@@ -320,6 +321,45 @@ test('a snapshot that never observed edges (legacy) plans nothing; an unreadable
   const failed = planFor(desiredOf('failed', []), liveOf('complete', ['target-mallory']));
   assert.deepEqual(failed.operations, []);
   assert.equal(failed.notes.length, 1);
+});
+
+test('a dynamic-membership group plans owner edges only, with a note; a static group plans both', () => {
+  // Both groups drifted the same way: alice is a desired member and owner,
+  // mallory a live member and owner that the snapshot does not want.
+  const drifted = (group, groupTypes) => {
+    const desired = new Map();
+    const live = new Map();
+    for (const family of ['member', 'owner']) {
+      desired.set(`${group}|${family}`, { parentNaturalKey: group, family, outcome: 'complete', targets: [{ targetId: 'src-alice', targetNaturalKey: 'user:alice' }] });
+      live.set(`${group}|${family}`, { outcome: 'complete', targets: [{ targetId: 'target-mallory' }] });
+    }
+    return planRelationshipOperations({
+      parents: [{ naturalKey: group, verb: 'update', liveTargetId: `target-${group}`, groupTypes }],
+      desired, live,
+      resolveTargetId: (key) => targets.get(key) ?? null,
+      naturalKeyForTargetId: (id) => [...targets].find(([, value]) => value === id)?.[0] ?? null,
+    });
+  };
+  const summary = (plan) => plan.operations.map(({ family, action, targetId }) => `${family}:${action}:${targetId}`);
+
+  const dynamic = drifted('group:dyn', ['DynamicMembership']);
+  assert.deepEqual(summary(dynamic), ['owner:add:target-alice', 'owner:remove:target-mallory'], 'no $ref member write is planned for a dynamic group');
+  assert.deepEqual(dynamic.refusals, []);
+  assert.equal(dynamic.notes.length, 1);
+  assert.equal(dynamic.notes[0].naturalKey, 'edge:group:dyn|member');
+  assert.match(dynamic.notes[0].note, /membership comes from the membership rule; restore the rule instead/);
+  assert.ok(!dynamic.observed.some((set) => set.family === 'member'), 'the member set of a dynamic group is not reconciled, so it is not bound');
+
+  const unified = drifted('group:m365', ['Unified']);
+  assert.deepEqual(summary(unified), ['member:add:target-alice', 'member:remove:target-mallory', 'owner:add:target-alice', 'owner:remove:target-mallory']);
+  const fixed = drifted('group:static', []);
+  assert.deepEqual(summary(fixed), summary(unified));
+  assert.deepEqual([unified.notes, fixed.notes], [[], []]);
+
+  // The rule itself is what restores a dynamic group's membership: the group
+  // update carries it (collected by $select, writable in the PATCH projection).
+  const rule = { id: 'g', displayName: 'Dyn', groupTypes: ['DynamicMembership'], membershipRule: 'user.department -eq "Eng"', membershipRuleProcessingState: 'On' };
+  assert.deepEqual(writableProjection(rule, 'group'), { displayName: 'Dyn', membershipRule: rule.membershipRule, membershipRuleProcessingState: 'On' });
 });
 
 // ---------------------------------------- digest/fingerprint + mutation check 2

@@ -608,6 +608,9 @@ export async function runRestore({
             naturalKey: resource.naturalKey,
             verb: resource.verb,
             liveTargetId: resource.live?.state === 'present' ? resource.live.targetId : null,
+            // groupTypes is immutable, so snapshot and live agree; either saying
+            // dynamic is enough for the planner to skip member edges.
+            groupTypes: [...new Set([...(resource.payload?.groupTypes ?? []), ...(resource.live?.payload?.groupTypes ?? [])])],
           }));
         const liveParents = edgeParents.filter((parent) => typeof parent.liveTargetId === 'string');
         const liveObservations = liveParents.length === 0 ? [] : await collectRelationshipsFn(targetReader, {

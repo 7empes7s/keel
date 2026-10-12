@@ -24,7 +24,7 @@
  *  - a fixture that is not a KEEL-RT-* / keel-rehearsal-* object, unless the
  *    reviewed guidance says it is a tenant-wide setting or an object that only
  *    points at fixtures and the operator passed the matching --allow flag;
- *  - output that still holds the raw tenant id or credential material.
+ *  - output that still holds the raw tenant id, a raw object id (GUID or SID) or credential material.
  * Every id is pseudonymized (#138, pseudonymize.mjs) before it is written.
  *
  * promote runs the record through capabilities.mjs's qualifyLiveEvidence (the
@@ -53,7 +53,7 @@ import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { signEvidence } from '../release/qualification.mjs';
 import { ENTRA_LIVE_EVIDENCE_DIR, evidenceStem, guidanceFor } from './live-gate-plan.mjs';
 import { runFixtureHarness } from './operations.mjs';
-import { pseudonymizer } from './pseudonymize.mjs';
+import { pseudonymizer, rawIdentifiers } from './pseudonymize.mjs';
 
 export const ENTRA_LIVE_GATE = 'entra-live-acceptance';
 export const ENTRA_LIVE_KIND = 'entra-live-write-capture';
@@ -172,9 +172,17 @@ export function assertTestTenant(tenantRef, testTenantRefs = TEST_TENANT_REFS) {
   return tenantRef;
 }
 
-function assertSafeText(text, { rawTenantId, label }) {
-  if (rawTenantId && text.toLowerCase().includes(String(rawTenantId).toLowerCase())) {
+/**
+ * Refuses text that still holds the raw tenant id, any raw id (GUID or SID) the capture held
+ * before pseudonymization, or credential material. Exported for its test only.
+ */
+export function assertSafeText(text, { rawTenantId, rawIds = [], label }) {
+  const lower = text.toLowerCase();
+  if (rawTenantId && lower.includes(String(rawTenantId).toLowerCase())) {
     throw new LiveGateRefusal(`refusing: ${label} still holds the raw tenant id after pseudonymization`);
+  }
+  if (rawIds.some((id) => lower.includes(String(id).toLowerCase()))) {
+    throw new LiveGateRefusal(`refusing: ${label} still holds a raw object id after pseudonymization`);
   }
   for (const pattern of SECRET_PATTERNS) {
     if (pattern.test(text)) throw new LiveGateRefusal(`refusing: ${label} holds credential material`);
@@ -272,16 +280,19 @@ export async function captureLive({
   const ok = verifiedOutcome(entry.outcome, entry.outcomeDetail);
   // 'succeeded' without a verified read-back is not a failed write: report it, never promote it.
   const status = ok ? 'captured' : entry.outcome === 'succeeded' ? 'unverified' : 'failed';
-  const log = walk({
+  const rawLog = {
     restoreRef,
     entry: {
       naturalKey: entry.naturalKey, resourceType: entry.resourceType, operation: entry.operation, targetId: entry.targetId,
       outcome: entry.outcome, outcomeDetail: entry.outcomeDetail, recordedAt: new Date(entry.recordedAt).toISOString(),
       priorState: entry.priorState, intendedState: entry.intendedState, postState: entry.postState,
     },
-  });
+  };
+  // Every GUID and SID the log held before pseudonymization must be gone from what is written.
+  const rawIds = rawIdentifiers(JSON.stringify(rawLog));
+  const log = walk(rawLog);
   const captureLog = `${JSON.stringify(log, null, 2)}\n`;
-  assertSafeText(captureLog, { rawTenantId, label: 'the capture log' });
+  assertSafeText(captureLog, { rawTenantId, rawIds, label: 'the capture log' });
 
   const stem = evidenceStem(resourceType, operation);
   const unsigned = {
@@ -309,7 +320,7 @@ export async function captureLive({
     proofRef: `${ENTRA_LIVE_EVIDENCE_DIR}/${stem}.json`,
   };
   const record = signEvidence(unsigned, hmacKey, LIVE_RUNNER);
-  assertSafeText(JSON.stringify(record), { rawTenantId, label: 'the record' });
+  assertSafeText(JSON.stringify(record), { rawTenantId, rawIds, label: 'the record' });
   return { status, record, captureLog };
 }
 

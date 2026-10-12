@@ -311,7 +311,11 @@ export function classify({ path, guid, ownIds, index }) {
   const p = normalisePath(path);
 
   if (SENTINEL.test(guid)) return { klass: 'nonReference' };
-  if (ownIds.has(guid)) return { klass: 'identity' };
+  // ownIdentifiers() lowercases; walkGuids does too, but canonicalize's
+  // walkKnownSymbolValues yields ids in their original case (base64
+  // roleAssignment ids, singleton ids like "authenticationFlowsPolicy").
+  // Normalise here so the comparison matches on both sides.
+  if (ownIds.has(guid.toLowerCase())) return { klass: 'identity' };
   if (matches(CHILD_IDENTITY_FIELDS, p)) return { klass: 'identity' };
   if (matches(NON_REFERENCE_FIELDS, p)) return { klass: 'nonReference' };
   if (matches(READ_ONLY_FIELDS, p)) return { klass: 'readOnly' };

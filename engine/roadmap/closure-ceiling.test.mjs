@@ -318,10 +318,13 @@ try {
       fakes.state.writes.map(({ path, method }) => `${method} ${path}`).sort(),
       [
         'PATCH /groups/target-Privileged',
-        'PATCH /groups/target-Privileged',
         'POST /groups',
       ],
-      'within-ceiling remediation writes the whole expanded closure (the dependency update, the drifted create, and the wave planner\'s deferred reference patch for the Finance<->Privileged edge)',
+      // Finance -> Privileged is a one-way edge, so there is no cycle and no
+      // deferred reference patch. The second PATCH this once expected was a
+      // self-cycle on group:Privileged (its mixed-case target id classified as
+      // a reference to itself) patching `id`, which no type can apply.
+      'within-ceiling remediation writes the whole expanded closure (the dependency update and the drifted create) and nothing else',
     );
     assert.equal(fakes.liveGroups.size, 2);
 
@@ -453,7 +456,9 @@ try {
       dependencies: promotionFakes.dependencies,
       logger: noopLogger,
     });
-    assert.equal(promotionFakes.state.writes.length, 3, 'the same artifact promotes once the recorded policy constraints are current again');
+    // Two writes: the dependency update and the drifted create (see the
+    // within-ceiling scenario above for why there is no deferred patch).
+    assert.equal(promotionFakes.state.writes.length, 2, 'the same artifact promotes once the recorded policy constraints are current again');
   }
 
   // ---------------------------------------------------------------------------

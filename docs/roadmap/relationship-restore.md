@@ -96,9 +96,13 @@ delete wave. For each group and family:
 
 - Only direct group members and owners are restored. Nested (transitive)
   membership follows from restoring each group's direct members.
-- Dynamic-membership groups are not special-cased. Graph rejects `$ref` writes
-  to a dynamic group, so the edge fails and the run stops. Restoring the group's
-  `membershipRule` is how its membership comes back.
+- A dynamic-membership group (`groupTypes` contains `DynamicMembership`) gets
+  no member edge: Graph rejects `$ref` member writes to it. The plan carries a
+  note for its member set ("membership comes from the membership rule; restore
+  the rule instead") and its membership comes back through the group update,
+  which carries `membershipRule` and `membershipRuleProcessingState` when they
+  differ from the snapshot. Owner edges of a dynamic group are planned and
+  written like any other group's.
 - Writes to role-assignable groups need the restorer to hold the matching
   directory role. A refusal surfaces as a failed edge, not a silent skip.
 - Every edge claim is fixture-tested against fake readers and writers

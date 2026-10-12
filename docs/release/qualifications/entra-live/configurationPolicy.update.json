@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "configurationPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-10T21:52:38.753Z",
+  "restoreRef": "bbcfa4da-ff51-833c-aace-ef02fd4f67d1",
+  "naturalKey": "configurationPolicy:KEEL-RT-148-settings",
+  "fixtureKind": "named-object",
+  "captureSha256": "80b97e5ea1cddd55e4c7beb41a7fb5cc5313cb5d656033667b78d07dbe34238b",
+  "proofRef": "docs/release/qualifications/entra-live/configurationPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "3062dba0ccaf6535d42678e529c81ca1e940e5b0750c73d1ca6ee08b068cb6c9"
+    }
+  }
+}

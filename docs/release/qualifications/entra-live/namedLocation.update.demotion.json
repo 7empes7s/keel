@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "namedLocation",
+  "operation": "update",
+  "reason": "Live PATCH of the named location returned HTTP 400. The update body is the collected snapshot shape, which includes read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime); same cause as namedLocation create.",
+  "restoreRef": "e8040fd4-dd67-88df-b5e3-c2845dbf828d",
+  "decidedAt": "2026-10-11T19:08:16.253Z",
+  "builderSteps": [
+    "remove the update registration for namedLocation in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.namedLocation.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

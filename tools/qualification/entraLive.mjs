@@ -24,7 +24,7 @@
  *  - a fixture that is not a KEEL-RT-* / keel-rehearsal-* object, unless the
  *    reviewed guidance says it is a tenant-wide setting or an object that only
  *    points at fixtures and the operator passed the matching --allow flag;
- *  - output that still holds the raw tenant id or credential material.
+ *  - output that still holds the raw tenant id, a raw object id (GUID or SID) or credential material.
  * Every id is pseudonymized (#138, pseudonymize.mjs) before it is written.
  *
  * promote runs the record through capabilities.mjs's qualifyLiveEvidence (the
@@ -53,7 +53,7 @@ import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { signEvidence } from '../release/qualification.mjs';
 import { ENTRA_LIVE_EVIDENCE_DIR, evidenceStem, guidanceFor } from './live-gate-plan.mjs';
 import { runFixtureHarness } from './operations.mjs';
-import { pseudonymizer } from './pseudonymize.mjs';
+import { pseudonymizer, rawIdentifiers } from './pseudonymize.mjs';
 
 export const ENTRA_LIVE_GATE = 'entra-live-acceptance';
 export const ENTRA_LIVE_KIND = 'entra-live-write-capture';
@@ -172,9 +172,17 @@ export function assertTestTenant(tenantRef, testTenantRefs = TEST_TENANT_REFS) {
   return tenantRef;
 }
 
-function assertSafeText(text, { rawTenantId, label }) {
-  if (rawTenantId && text.toLowerCase().includes(String(rawTenantId).toLowerCase())) {
+/**
+ * Refuses text that still holds the raw tenant id, any raw id (GUID or SID) the capture held
+ * before pseudonymization, or credential material. Exported for its test only.
+ */
+export function assertSafeText(text, { rawTenantId, rawIds = [], label }) {
+  const lower = text.toLowerCase();
+  if (rawTenantId && lower.includes(String(rawTenantId).toLowerCase())) {
     throw new LiveGateRefusal(`refusing: ${label} still holds the raw tenant id after pseudonymization`);
+  }
+  if (rawIds.some((id) => lower.includes(String(id).toLowerCase()))) {
+    throw new LiveGateRefusal(`refusing: ${label} still holds a raw object id after pseudonymization`);
   }
   for (const pattern of SECRET_PATTERNS) {
     if (pattern.test(text)) throw new LiveGateRefusal(`refusing: ${label} holds credential material`);
@@ -272,16 +280,19 @@ export async function captureLive({
   const ok = verifiedOutcome(entry.outcome, entry.outcomeDetail);
   // 'succeeded' without a verified read-back is not a failed write: report it, never promote it.
   const status = ok ? 'captured' : entry.outcome === 'succeeded' ? 'unverified' : 'failed';
-  const log = walk({
+  const rawLog = {
     restoreRef,
     entry: {
       naturalKey: entry.naturalKey, resourceType: entry.resourceType, operation: entry.operation, targetId: entry.targetId,
       outcome: entry.outcome, outcomeDetail: entry.outcomeDetail, recordedAt: new Date(entry.recordedAt).toISOString(),
       priorState: entry.priorState, intendedState: entry.intendedState, postState: entry.postState,
     },
-  });
+  };
+  // Every GUID and SID the log held before pseudonymization must be gone from what is written.
+  const rawIds = rawIdentifiers(JSON.stringify(rawLog));
+  const log = walk(rawLog);
   const captureLog = `${JSON.stringify(log, null, 2)}\n`;
-  assertSafeText(captureLog, { rawTenantId, label: 'the capture log' });
+  assertSafeText(captureLog, { rawTenantId, rawIds, label: 'the capture log' });
 
   const stem = evidenceStem(resourceType, operation);
   const unsigned = {
@@ -309,7 +320,7 @@ export async function captureLive({
     proofRef: `${ENTRA_LIVE_EVIDENCE_DIR}/${stem}.json`,
   };
   const record = signEvidence(unsigned, hmacKey, LIVE_RUNNER);
-  assertSafeText(JSON.stringify(record), { rawTenantId, label: 'the record' });
+  assertSafeText(JSON.stringify(record), { rawTenantId, rawIds, label: 'the record' });
   return { status, record, captureLog };
 }
 
@@ -404,6 +415,7 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
     builderSteps: [
       `remove the ${operation} registration for ${resourceType} in engine/coverage/capabilities.mjs`,
       `add "live gate #148: ${operation} failed live: <reason>" to TYPE_DECISIONS.${resourceType}.reason in engine/coverage/qualification.mjs (manual if no operation is left)`,
+      `or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.${resourceType}.liveFailures['${operation}'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run`,
       'commit this file under docs/release/qualifications/entra-live/ in the same PR',
     ],
   };
@@ -411,8 +423,12 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
 
 /**
  * Committed demotions that the code has not applied yet. A demotion is applied
- * when the operation is no longer a registered write and the type's
- * TYPE_DECISIONS reason quotes the recorded reason.
+ * in one of two ways:
+ *  - the operation is no longer a registered write and the type's
+ *    TYPE_DECISIONS reason quotes the recorded reason; or
+ *  - the write stays registered (the cause is a KEEL bug with a fix under way)
+ *    and TYPE_DECISIONS.<type>.liveFailures.<operation> records the demotion's
+ *    date and quotes its reason, so the ledger row shows the failed live run.
  */
 export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = TYPE_DECISIONS, claimOf = (type, op) => capabilityFor(type, op).claim } = {}) {
   if (!existsSync(dir)) return [];
@@ -420,6 +436,16 @@ export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = 
   for (const name of readdirSync(dir).filter((file) => file.endsWith('.demotion.json')).sort()) {
     const demotion = JSON.parse(readFileSync(join(dir, name), 'utf8'));
     const key = demotion.resourceType.split('#')[0];
+    const noted = decisions[key]?.liveFailures?.[demotion.operation];
+    if (noted) {
+      if (!String(noted.reason ?? '').includes(demotion.reason)) {
+        problems.push(`${name}: TYPE_DECISIONS.${key}.liveFailures.${demotion.operation}.reason does not quote the demotion reason`);
+      }
+      if (noted.failedAt !== String(demotion.decidedAt ?? '').slice(0, 10)) {
+        problems.push(`${name}: TYPE_DECISIONS.${key}.liveFailures.${demotion.operation}.failedAt is not the demotion's date`);
+      }
+      continue;
+    }
     if (demotion.operation !== ENFORCEMENT_STEP && isSupportedClaim(claimOf(demotion.resourceType, demotion.operation))) {
       problems.push(`${name}: ${demotion.resourceType} ${demotion.operation} is still a registered write`);
     }

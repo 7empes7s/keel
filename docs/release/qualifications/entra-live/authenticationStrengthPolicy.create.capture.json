@@ -1,0 +1,42 @@
+{
+  "restoreRef": "6b12f86c-cffb-81d1-acfd-ff7f5256506c",
+  "entry": {
+    "naturalKey": "authenticationStrengthPolicy:KEEL-RT-148-strength",
+    "resourceType": "authenticationStrengthPolicy",
+    "operation": "create",
+    "targetId": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-11T19:44:32.277Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "70d44426-0125-8bc5-8fe2-00a2f7441e8e",
+      "policyType": "custom",
+      "description": "KEEL live gate 148 fixture strength (unused)",
+      "displayName": "KEEL-RT-148-strength",
+      "createdDateTime": "2026-10-11T19:08:37.542927Z",
+      "modifiedDateTime": "2026-10-11T19:08:37.542927Z",
+      "allowedCombinations": [
+        "fido2"
+      ],
+      "requirementsSatisfied": "mfa",
+      "combinationConfigurations": [],
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('70d44426-0125-8bc5-8fe2-00a2f7441e8e')/combinationConfigurations"
+    },
+    "postState": {
+      "id": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+      "policyType": "custom",
+      "description": "KEEL live gate 148 fixture strength (unused)",
+      "displayName": "KEEL-RT-148-strength",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies/$entity",
+      "createdDateTime": "2026-10-11T19:44:32.4130979Z",
+      "modifiedDateTime": "2026-10-11T19:44:32.4130979Z",
+      "allowedCombinations": [
+        "fido2"
+      ],
+      "requirementsSatisfied": "mfa",
+      "combinationConfigurations": [],
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('1757be52-9656-8a7d-95d6-74e1bc48a51c')/combinationConfigurations"
+    }
+  }
+}

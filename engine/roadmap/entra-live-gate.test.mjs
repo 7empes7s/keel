@@ -12,7 +12,7 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey, isSupportedClaim, recordFixtureProof, registerOperationCapability,
 } from '../coverage/capabilities.mjs';
-import { buildOperationLedger } from '../coverage/qualification.mjs';
+import { TYPE_DECISIONS, buildOperationLedger } from '../coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../restore/conditionalAccessEnforcement.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
@@ -22,6 +22,7 @@ import {
 import {
   FIXTURE_GUIDANCE, buildLiveGatePlan, guidanceFor, main as planMain, renderMarkdown,
 } from '../../tools/qualification/live-gate-plan.mjs';
+import { guidToCloudSid } from '../../tools/qualification/pseudonymize.mjs';
 
 // The three break-glass lines every lockout-sensitive step shares.
 const BREAK_GLASS_COMMON_COUNT = 3;
@@ -65,6 +66,8 @@ function fixtureRestore(step, {
   const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
   const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  // Graph returns the object id a second time, encoded as a security identifier.
+  const securityIdentifier = guidToCloudSid(targetId);
   const entry = {
     id: 1,
     runId: `run-${restoreRef}`,
@@ -75,7 +78,7 @@ function fixtureRestore(step, {
     targetId,
     priorState: edge
       ? { kind: 'relationship-edge', parentNaturalKey: key, parentTargetId: targetId, family, targetId: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff', present: step.operation === 'edge-remove' }
-      : { id: targetId, ...(name ? { displayName: name } : {}), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
+      : { id: targetId, securityIdentifier, ...(name ? { displayName: name } : {}), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
     intendedState: edge ? null : { ...(name ? { displayName: name } : {}), description: 'after' },
     postState: edge ? null : { id: targetId, ...(name ? { displayName: name } : {}), description: 'after' },
     outcome,
@@ -217,7 +220,7 @@ test('one simulated capture per family promotes through qualifyLiveEvidence and 
   for (const [family, step] of picked) {
     const before = ledgerRow(step.resourceType, step.operation);
     assert.equal(before.claim, 'fixture-tested', `${family}: starts fixture-tested`);
-    assert.equal(before.live.result, 'none');
+    assert.notEqual(before.live.result, 'qualified');
 
     const result = await capture(step);
     assert.equal(result.status, 'captured', `${family}: ${step.id}`);
@@ -227,6 +230,7 @@ test('one simulated capture per family promotes through qualifyLiveEvidence and 
     const written = `${JSON.stringify(result.record)}${result.captureLog}`;
     assert.ok(!written.includes(FIXTURE_TENANT_ID), `${family}: the raw tenant id is pseudonymized`);
     assert.ok(!written.includes('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'), `${family}: object ids are pseudonymized`);
+    assert.ok(!written.includes(guidToCloudSid('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')), `${family}: the object's SID is pseudonymized`);
 
     const promoted = promote(result);
     assert.deepEqual(promoted.failures, [], `${family}: ${step.id}`);
@@ -402,6 +406,24 @@ test('a failed live write is never promoted, and its demotion must be applied in
     claimOf: () => 'unsupported',
   });
   assert.deepEqual(applied, []);
+
+  // The other way: the write stays registered because the cause is a KEEL bug
+  // being fixed, and the type records the failed live run with its date and
+  // the demotion's own words.
+  const decisionWith = (failure) => ({ roleDefinition: { decision: 'automated', reason: 'custom roles: create and update', liveFailures: { update: failure } } });
+  assert.deepEqual(unappliedDemotions({ dir, decisions: decisionWith({ failedAt: '2026-10-09', reason: demotion.reason, fix: 'x' }) }), []);
+  const vague = unappliedDemotions({ dir, decisions: decisionWith({ failedAt: '2026-10-01', reason: 'it broke' }) });
+  assert.equal(vague.length, 2, 'a paraphrased reason or another date is not the demotion');
+  assert.match(vague[0], /does not quote the demotion reason/);
+  assert.match(vague[1], /is not the demotion's date/);
+  // The ledger shows the failure on the row, and the claim is untouched.
+  const ledger = buildOperationLedger({ decisions: { ...TYPE_DECISIONS, ...decisionWith({ failedAt: '2026-10-09', reason: demotion.reason, fix: 'x' }) } });
+  const row = ledger.types.find((type) => type.resourceType === 'roleDefinition').operations.find((op) => op.operation === 'update');
+  assert.equal(row.claim, 'fixture-tested');
+  assert.deepEqual(row.live, { result: 'failed', proofRef: null, failedAt: '2026-10-09', reason: demotion.reason, fix: 'x' });
+  // A failure note for a write that is not registered describes nothing and is refused.
+  assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleDefinition: { ...TYPE_DECISIONS.roleDefinition, liveFailures: { delete: { failedAt: '2026-10-09', reason: 'x' } } } } }),
+    /liveFailures\.delete names an operation that is not a registered write/);
 });
 
 test('committed demotions are applied, and committed records only verify with the key', () => {
@@ -409,6 +431,21 @@ test('committed demotions are applied, and committed records only verify with th
   assert.deepEqual(unappliedDemotions({ dir }), []);
   for (const result of applyCommittedEvidence({ dir, hmacKey: null })) {
     assert.equal(result.promoted, false, `${result.file} must not verify without the key`);
+  }
+  // Run 1 (2026-10-10 to 12) demoted writes whose cause is a KEEL bug with a
+  // fix under way, so each stays registered and its type records the failed
+  // live run, dated and in the demotion's words. (The ledger row itself is
+  // checked in the roleDefinition test above: the simulated promotions earlier
+  // in this file may already have flipped a demoted write's in-process claim.)
+  const demotions = readdirSync(dir).filter((name) => name.endsWith('.demotion.json'));
+  assert.ok(demotions.length > 0, 'the live gate recorded demotions');
+  for (const name of demotions) {
+    const demotion = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+    const failure = TYPE_DECISIONS[demotion.resourceType.split('#')[0]].liveFailures?.[demotion.operation];
+    assert.ok(failure, `${name}: recorded under liveFailures`);
+    assert.equal(failure.failedAt, demotion.decidedAt.slice(0, 10), `${name}: dated`);
+    assert.ok(failure.reason.includes(demotion.reason), `${name}: in the demotion's words`);
+    assert.ok(failure.fix, `${name}: names the fix`);
   }
 });
 

@@ -163,7 +163,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -359,7 +359,7 @@ IF to_regclass('schedule') IS NULL THEN
 CREATE TABLE schedule (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_ref    text NOT NULL,
-  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift'
+  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift' | 'workload-collect'
   tier          text,                -- 'tier1' | 'tier2' | 'tier3' | null (job kinds with no tier concept)
   cadence       jsonb NOT NULL,      -- { "every": "hour"|"day"|"week", "n": 1, "atTime": "05:00" | null }
   cron_override text,                -- raw cron expression; when set, takes precedence over `cadence`
@@ -1101,6 +1101,36 @@ CREATE TABLE IF NOT EXISTS workload_observation (
   fields         jsonb NOT NULL DEFAULT '{}'::jsonb,
   field_coverage jsonb NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (collection_id, resource_key)
+);
+
+-- Gap W1: the workload ledger's inputs, persisted so a scheduled workload-collect job can
+-- rebuild the ledger without an operator in the loop. Rows come only from verified live
+-- acceptance records (cli/keel-workload-collect.mjs import); the ledger itself is never
+-- stored, it is rebuilt from these rows at run time so the 30-day and version rules
+-- apply on every run. One evidence row per operation per proof; one grants row per app.
+CREATE TABLE IF NOT EXISTS workload_ledger_evidence (
+  tenant_ref         text NOT NULL,
+  operation_id       text NOT NULL,
+  proof_ref          text NOT NULL,
+  kind               text NOT NULL CHECK (kind IN ('live-capture','live-write-capture')),
+  synthetic          boolean NOT NULL,
+  captured_at        timestamptz,
+  version            text,
+  ok                 boolean NOT NULL,
+  read_back_verified boolean,
+  error              text,
+  observed           jsonb,
+  imported_at        timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, operation_id, proof_ref)
+);
+CREATE TABLE IF NOT EXISTS workload_ledger_grants (
+  tenant_ref  text NOT NULL,
+  app         text NOT NULL CHECK (app IN ('collector','restorer')),
+  permissions jsonb NOT NULL DEFAULT '[]'::jsonb,
+  roles       jsonb NOT NULL DEFAULT '[]'::jsonb,
+  modules     jsonb NOT NULL DEFAULT '{}'::jsonb,
+  imported_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, app)
 );
 
 -- Roadmap task-103: a workload configuration restore (SharePoint tenant sharing

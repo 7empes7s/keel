@@ -278,6 +278,25 @@ export const JOB_HANDLERS = {
       return args;
     },
   },
+  // Gap W1: scheduled workload settings collection. Read-only: the script rebuilds the
+  // workload ledger from stored live proof and runs only the workloads it enables; the
+  // rest record a `disabled` run and send nothing. Params can only point it at an
+  // operator-written tenant config or workload scope file; tenantRef is what the
+  // scheduler always sends and is checked against the config by the script.
+  'workload-collect': {
+    script: join(__dirname, 'keel-workload-collect.mjs'),
+    argsFor(params = {}) {
+      if (params === null || typeof params !== 'object' || Array.isArray(params)
+          || Object.keys(params).some((key) => !['config', 'scope', 'tenantRef'].includes(key))) {
+        throw new Error('workload-collect params may contain only config, scope and tenantRef');
+      }
+      const args = ['run'];
+      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
+      if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
+      if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
+      return args;
+    },
+  },
   // Plan task 16: a backup IS a tiered collection — the tiered systemd units run
   // keel-collect.mjs --tier tierN, so the job dispatches to that exact script rather
   // than reimplementing any of its logic. The tier is whitelisted here even though

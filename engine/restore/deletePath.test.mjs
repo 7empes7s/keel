@@ -129,7 +129,8 @@ assert.equal(guardRefusal.skipped.length, 1);
 assert.match(guardRefusal.skipped[0].reason, /break-glass/i);
 assert.equal(guardedWriter.calls.length, 0);
 
-// Tenant-lockout deletes need an explicit successful simulation result.
+// Tenant-lockout deletes need break-glass readiness and the sign-in path gate
+// for the state after the delete (gap register D1); without them nothing is sent.
 const tenantLockout = deletionResource({
   naturalKey: 'roleAssignment:Global-Administrator',
   resourceType: 'roleAssignment',
@@ -148,7 +149,7 @@ const tenantLockoutRefusal = await applyWave(tenantLockoutWriter, governor, [ten
 assert.equal(tenantLockoutRefusal.applied.length, 0);
 assert.deepEqual(tenantLockoutRefusal.skipped, [{
   naturalKey: tenantLockout.naturalKey,
-  reason: 'refusing to delete tenant-lockout resource: simulationPassed must be true',
+  reason: 'refusing to delete tenant-lockout resource: break-glass readiness was not loaded for this run, so the state after the delete cannot be checked',
 }]);
 assert.equal(tenantLockoutWriter.calls.length, 0);
 

@@ -19,11 +19,12 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { verifyEvidence } from './qualification.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
-const QUALIFICATIONS_DIR = new URL('../../docs/release/qualifications/', import.meta.url).pathname;
+const QUALIFICATIONS_DIR = join(fileURLToPath(import.meta.url), '..', '..', '..', 'docs', 'release', 'qualifications');
 
 /**
  * The externally qualified gates the release consumes. A gate that is not

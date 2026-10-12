@@ -71,7 +71,7 @@ export async function currentSchemaPin({ readFileFn = fsReadFile } = {}) {
  */
 export function currentBuildRevision({ execFn, repoPath } = {}) {
   const exec = execFn ?? ((args) => execFileSync('git', args, { encoding: 'utf8' }));
-  const repo = repoPath ?? fileURLToPath(new URL('../../', import.meta.url));
+  const repo = repoPath ?? join(fileURLToPath(import.meta.url), '..', '..', '..');
   try {
     return exec(['-C', repo, 'rev-parse', 'HEAD']).trim();
   } catch {

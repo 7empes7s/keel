@@ -120,9 +120,15 @@ export function selectRecoveryMechanism(resource, { deletedLookup = 'not-applica
   const { supported, record } = capability(resource.resourceType, verb);
   const proven = { credentialMode: record.credentialMode, proofRef: record.proofRef };
   // An unregistered verb keeps applyWave's own fail-closed capability refusal;
-  // the mechanism only says no automated route exists.
+  // the mechanism only says no automated route exists. Gap B4: for a
+  // soft-deletable type this is explicit about what was (not) found, so a
+  // user that is neither live nor among deleted items reads as a handoff,
+  // never as a planned "user create".
   if (!supported) {
-    return decision(resource, 'manual', { reason: `${resource.resourceType} ${verb} has no qualified capability (claim: ${record.claim})` });
+    const found = verb === 'create' && deletedLookup === 'ok'
+      ? ' — the object is neither live nor among the deleted items, and nothing is recreated'
+      : '';
+    return decision(resource, 'manual', { reason: `${resource.resourceType} ${verb} has no qualified capability (claim: ${record.claim})${found}` });
   }
 
   if (verb === 'update') {
@@ -139,7 +145,9 @@ export function selectRecoveryMechanism(resource, { deletedLookup = 'not-applica
     }
     const deadline = softDeleteDeadline(resource.live?.payload);
     if (!deadline) {
-      return decision(resource, 'refused', { reason: 'soft-delete retention deadline is unprovable (no deletedDateTime) — restore refused, and the object is never recreated beside its deleted original' });
+      // Gap B4: the verb stays restore-soft-deleted; a refused restore never
+      // becomes a create (unregistered for users) on a replan.
+      return decision(resource, 'refused', { reason: 'soft-delete retention deadline is unprovable (the deleted-items listing carried no deletedDateTime; its $select must name it) — restore blocked, and the object is never recreated beside its deleted original' });
     }
     if (Date.parse(deadline) <= now.getTime()) {
       return decision(resource, 'refused', { deadline, reason: `recovery-point-expired: the soft-deleted object passed its retention deadline ${deadline}` });

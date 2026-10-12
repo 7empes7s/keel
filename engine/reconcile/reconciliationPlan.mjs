@@ -15,7 +15,7 @@ function licenceDecision(resource, current, decision) {
   return { verb: 'update', reason: `licences differ: ${add.map((licence) => licence.skuId).join(', ')} held in the snapshot, missing live` };
 }
 
-function keyForLiveObject(targetResources) {
+function keyForLiveObject(targetResources, resources = []) {
   const naturalKeyByTypeAndId = new Map();
   const symbolById = new Map();
   const targetByNaturalKey = new Map(targetResources.map((resource) => [resource.naturalKey, resource]));
@@ -25,17 +25,32 @@ function keyForLiveObject(targetResources) {
     naturalKeyByTypeAndId.set(`${resource.resourceType}:${resource.sourceId}`, resource.naturalKey);
     symbolById.set(resource.sourceId.toLowerCase(), resource.naturalKey);
   }
+  // Gap B4: the target's current collection never holds a deleted item, so a
+  // deleted item is matched by the SNAPSHOT's source id (the same tenant keeps
+  // the id through a soft delete) before its natural key, which Entra may have
+  // changed on deletion.
+  const snapshotKeyByTypeAndId = new Map();
+  for (const resource of resources) {
+    if (typeof resource.sourceId !== 'string' || resource.sourceId.length === 0) continue;
+    snapshotKeyByTypeAndId.set(`${resource.resourceType}:${resource.sourceId.toLowerCase()}`, resource.naturalKey);
+  }
+
+  function naturalKeyForLiveObject(resourceType, object) {
+    const known = naturalKeyByTypeAndId.get(`${resourceType}:${object.id}`);
+    if (known) return known;
+
+    const naturalKey = naturalKeyFor(resourceType, object, {
+      resolveSymbol: (id) => symbolById.get(id.toLowerCase()) ?? null,
+    });
+    return resourceType === 'roleAssignment' ? naturalKey : `${resourceType}:${naturalKey}`;
+  }
 
   return {
     targetByNaturalKey,
-    naturalKeyForLiveObject(resourceType, object) {
-      const known = naturalKeyByTypeAndId.get(`${resourceType}:${object.id}`);
-      if (known) return known;
-
-      const naturalKey = naturalKeyFor(resourceType, object, {
-        resolveSymbol: (id) => symbolById.get(id.toLowerCase()) ?? null,
-      });
-      return resourceType === 'roleAssignment' ? naturalKey : `${resourceType}:${naturalKey}`;
+    naturalKeyForLiveObject,
+    naturalKeyForDeletedObject(resourceType, object) {
+      const id = typeof object?.id === 'string' ? object.id.toLowerCase() : null;
+      return (id && snapshotKeyByTypeAndId.get(`${resourceType}:${id}`)) ?? naturalKeyForLiveObject(resourceType, object);
     },
   };
 }
@@ -44,7 +59,7 @@ function keyForLiveObject(targetResources) {
  * Current facts are collected with the reader, desired state comes from the supplied
  * resource set, and decideVerb remains the only write-verb table. */
 export async function buildReconciliationPlan(reader, resources, { targetResources = [], nativeLookups = null, now = new Date() } = {}) {
-  const { targetByNaturalKey, naturalKeyForLiveObject } = keyForLiveObject(targetResources);
+  const { targetByNaturalKey, naturalKeyForLiveObject, naturalKeyForDeletedObject } = keyForLiveObject(targetResources, resources);
   const resourceTypes = [...new Set(resources.map((resource) => resource.resourceType))];
   // Task-64: a failed deleted-items read is kept per type, so an absent object
   // of that type is refused rather than recreated beside a possible original.
@@ -52,6 +67,7 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
   const liveIndex = await buildLiveIndex(reader, {
     resourceTypes,
     naturalKeyFor: naturalKeyForLiveObject,
+    deletedNaturalKeyFor: naturalKeyForDeletedObject,
     onDeletedLookupFailure: (resourceType, error) => deletedLookupFailures.set(resourceType, error.message),
   });
   const resolved = [];

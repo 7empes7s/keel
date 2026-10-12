@@ -11,9 +11,29 @@ const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
  * documentation before live qualification: they are fixture-tested only.
  */
 export const DELETED_ITEM_ROUTES = Object.freeze({
-  user: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.user', restore: (id) => `/directory/deletedItems/${id}/restore` }),
-  group: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.group', restore: (id) => `/directory/deletedItems/${id}/restore` }),
-  application: Object.freeze({ version: 'v1.0', list: '/directory/deletedItems/microsoft.graph.application', restore: (id) => `/directory/deletedItems/${id}/restore` }),
+  // Gap B4 (Q43 step 10): every directory deleted-items listing names its
+  // fields. Graph's default projection of a deleted user omits deletedDateTime
+  // (groups return it by default), and without it the retention deadline is
+  // unprovable and the restore is refused. `select` always carries the id, the
+  // natural-key fields and deletedDateTime.
+  user: Object.freeze({
+    version: 'v1.0',
+    list: '/directory/deletedItems/microsoft.graph.user',
+    select: 'id,userPrincipalName,displayName,deletedDateTime,onPremisesSyncEnabled,onPremisesImmutableId,accountEnabled,userType',
+    restore: (id) => `/directory/deletedItems/${id}/restore`,
+  }),
+  group: Object.freeze({
+    version: 'v1.0',
+    list: '/directory/deletedItems/microsoft.graph.group',
+    select: 'id,displayName,mailNickname,deletedDateTime,groupTypes,securityEnabled,mailEnabled,onPremisesSyncEnabled',
+    restore: (id) => `/directory/deletedItems/${id}/restore`,
+  }),
+  application: Object.freeze({
+    version: 'v1.0',
+    list: '/directory/deletedItems/microsoft.graph.application',
+    select: 'id,appId,displayName,deletedDateTime',
+    restore: (id) => `/directory/deletedItems/${id}/restore`,
+  }),
   conditionalAccessPolicy: Object.freeze({
     version: 'v1.0',
     list: '/identity/conditionalAccess/deletedItems/policies',
@@ -25,6 +45,13 @@ export const SOFT_DELETABLE = new Set(Object.keys(DELETED_ITEM_ROUTES));
 
 // Types whose deleted items are matched by a name that need not be unique.
 const AMBIGUITY_REFUSED = new Set(['conditionalAccessPolicy']);
+
+/** The deleted-items listing path for this type, with its `$select` when the route names one. */
+export function deletedItemListPath(resourceType) {
+  const route = DELETED_ITEM_ROUTES[resourceType];
+  if (!route) throw new Error(`resource type ${resourceType} is not soft-deletable`);
+  return route.select ? `${route.list}?$select=${route.select}` : route.list;
+}
 
 /** The restore route for a deleted item of this type (directory deleted items by default). */
 export function deletedItemRestorePath(resourceType, deletedItemId) {
@@ -39,8 +66,9 @@ export function deletedItemRestorePath(resourceType, deletedItemId) {
  * unknown). A failed deleted-items listing is reported through
  * `onDeletedLookupFailure(resourceType, error)` when the caller supplies it, so
  * an absent object of that type is planned as "lookup failed", never as "not
- * found". Without the callback it throws, exactly as before. */
-export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onDeletedLookupFailure }) {
+ * found". Without the callback it throws, exactly as before.
+ * `deletedNaturalKeyFor` keys deleted items (defaults to `naturalKeyFor`). */
+export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, deletedNaturalKeyFor = naturalKeyFor, onDeletedLookupFailure }) {
   const index = new Map();
   // Issue #156: types under /organization/{id} (company branding and its
   // languages, and the certificate-based authentication configuration) need
@@ -78,14 +106,16 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, onD
     let deleted;
     try {
       const route = DELETED_ITEM_ROUTES[resourceType];
-      deleted = await list(reader, route.version, route.list);
+      deleted = await list(reader, route.version, deletedItemListPath(resourceType));
     } catch (error) {
       if (!onDeletedLookupFailure) throw error;
       onDeletedLookupFailure(resourceType, error);
       continue;
     }
     for (const object of deleted) {
-      const naturalKey = naturalKeyFor(resourceType, object);
+      // Gap B4: a deleted item is matched by the snapshot's source id first (its
+      // name may have changed on deletion), then by its natural key.
+      const naturalKey = deletedNaturalKeyFor(resourceType, object);
       const known = index.get(naturalKey);
       if (known?.state === 'present') continue;
       // Task-152: deleted Conditional Access policies are keyed by display name,

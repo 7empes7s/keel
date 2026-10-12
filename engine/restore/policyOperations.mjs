@@ -31,7 +31,7 @@ import { createHash } from 'node:crypto';
 
 import { IMMUTABLE, SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { knownFieldsFor } from '../contracts/fieldProjection.mjs';
-import { capabilityFor, isSupportedClaim, qualifyLiveEvidence } from '../coverage/capabilities.mjs';
+import { capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../coverage/capabilities.mjs';
 import { CREATE_EXCLUDED_FIELDS, EXPANSION_BATCHES, buildExpansionInventory } from '../coverage/qualification.mjs';
 import { createProjection } from '../reconcile/writableProjection.mjs';
 
@@ -221,6 +221,18 @@ export function policyPostCreateRefusal(resource, live) {
  * (tenant, freshness, non-synthetic, contract version) consulted.
  */
 export function qualifyPolicyLiveEvidence(resourceType, operation, evidence, { tenantRef, now = new Date(), subtype = 'custom' } = {}) {
+  const failures = policyEvidenceFailures(resourceType, operation, evidence, subtype);
+  if (failures.length > 0) return { promoted: false, claim: capabilityFor(resourceType, operation).claim, failures };
+  return qualifyLiveEvidence(resourceType, operation, evidence, { tenantRef, now });
+}
+
+/** qualifyPolicyLiveEvidence's checks without the promotion (gap P2); an empty list passes. */
+export function policyLiveEvidenceFailures(resourceType, operation, evidence, { tenantRef, now = new Date(), subtype = 'custom' } = {}) {
+  const failures = policyEvidenceFailures(resourceType, operation, evidence, subtype);
+  return failures.length > 0 ? failures : liveEvidenceFailures(resourceType, operation, evidence, { tenantRef, now });
+}
+
+function policyEvidenceFailures(resourceType, operation, evidence, subtype) {
   const proof = policyProofFor(resourceType, operation, subtype);
   const failures = [];
   if (!proof.valid) failures.push(proof.reason);
@@ -228,8 +240,7 @@ export function qualifyPolicyLiveEvidence(resourceType, operation, evidence, { t
   if (proof.record && evidence?.projectionDigest !== proof.record.projectionDigest) {
     failures.push('evidence was taken under a different field projection');
   }
-  if (failures.length > 0) return { promoted: false, claim: capabilityFor(resourceType, operation).claim, failures };
-  return qualifyLiveEvidence(resourceType, operation, evidence, { tenantRef, now });
+  return failures;
 }
 
 /**

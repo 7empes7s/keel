@@ -14,6 +14,7 @@ import {
   standingSentence,
   tierLabel,
   typeName,
+  workloadLiveLines,
   type RestoreStanding,
 } from "@/lib/protect-view";
 import type { CoverageData, CoverageType, TypeExpansion } from "@/lib/types";
@@ -206,6 +207,7 @@ export function CoverageReport({ data, now }: { data: CoverageData; now?: string
       .sort((a, b) => (a.criticality ?? "tier9").localeCompare(b.criticality ?? "tier9") || a.type.localeCompare(b.type)),
   })).filter((group) => group.items.length > 0);
 
+  const liveLines = workloadLiveLines(data);
   const windows = [...new Set(data.types.flatMap((item) => item.observation?.window
     ? [`${item.observation.window.startedAt} – ${item.observation.window.endedAt}`] : []))];
 
@@ -226,6 +228,13 @@ export function CoverageReport({ data, now }: { data: CoverageData; now?: string
           <TechnicalDetails>
             <RecordField copy={false} label="Observation windows differ" value={windows.join("; ")} />
           </TechnicalDetails>
+        </aside>
+      ) : null}
+
+      {liveLines.length ? (
+        <aside className="honesty-note" aria-label="Live runs for workload settings">
+          <strong>Live runs recorded for workload settings</strong>
+          <ul>{liveLines.map((line) => <li key={line}>{line}</li>)}</ul>
         </aside>
       ) : null}
 

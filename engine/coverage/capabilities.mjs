@@ -72,7 +72,7 @@ export const CREDENTIAL_MODES = Object.freeze(['collector', 'restorer']);
 // tools/release/qualification.mjs's DEFAULT_MAX_AGE_HOURS (30 days), kept as
 // an independent constant here since this registry does not import that
 // release-gate module (a different workstream's evidence contract).
-const LIVE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+export const LIVE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export class UnregisteredCapabilityError extends Error {
   constructor(resourceType, operation) {
@@ -165,13 +165,27 @@ export function recordFixtureProof(resourceType, operation, proofRef) {
 export function qualifyLiveEvidence(resourceType, operation, evidence, { tenantRef, now = new Date() } = {}) {
   const entry = REGISTRY.get(resourceType);
   const record = entry?.operations.get(operation);
+  const failures = liveEvidenceFailures(resourceType, operation, evidence, { tenantRef, now });
+  if (failures.length > 0) return { promoted: false, claim: record.claim, failures };
+
+  entry.operations.set(operation, Object.freeze({ ...record, claim: 'live-qualified', proofRef: evidence.proofRef }));
+  return { promoted: true, claim: 'live-qualified', failures: [] };
+}
+
+/**
+ * qualifyLiveEvidence's checks without the promotion: the reasons `evidence`
+ * would be refused, or an empty list. It never changes a claim, so a reader
+ * (the portal, gap P2) can re-check committed records as they age.
+ */
+export function liveEvidenceFailures(resourceType, operation, evidence, { tenantRef, now = new Date() } = {}) {
+  const record = REGISTRY.get(resourceType)?.operations.get(operation);
   if (!record) throw new UnregisteredCapabilityError(resourceType, operation);
 
   if (record.claim !== 'fixture-tested' && record.claim !== 'live-qualified') {
-    return { promoted: false, claim: record.claim, failures: [`${resourceType} ${operation} has not been fixture-tested yet — live qualification requires prior fixture proof`] };
+    return [`${resourceType} ${operation} has not been fixture-tested yet — live qualification requires prior fixture proof`];
   }
   if (typeof tenantRef !== 'string' || tenantRef.length === 0) {
-    return { promoted: false, claim: record.claim, failures: ['qualifyLiveEvidence requires the tenantRef being qualified'] };
+    return ['qualifyLiveEvidence requires the tenantRef being qualified'];
   }
 
   const failures = [];
@@ -204,11 +218,7 @@ export function qualifyLiveEvidence(resourceType, operation, evidence, { tenantR
       failures.push('evidence is missing a proofRef');
     }
   }
-
-  if (failures.length > 0) return { promoted: false, claim: record.claim, failures };
-
-  entry.operations.set(operation, Object.freeze({ ...record, claim: 'live-qualified', proofRef: evidence.proofRef }));
-  return { promoted: true, claim: 'live-qualified', failures: [] };
+  return failures;
 }
 
 /**

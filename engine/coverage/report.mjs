@@ -62,7 +62,12 @@ const STALE_AFTER_MS = {
   tier3: 3 * 7 * 24 * 60 * 60 * 1000,
 };
 
-export async function buildCoverageReport(client, { tenantRef, catalog, descriptors, now }) {
+/**
+ * @param {any} client
+ * @param {{ tenantRef: string, catalog: any[], descriptors: any[], now?: Date, liveRecords?: any }} options
+ *   `liveRecords` (gap P2) is tools/qualification/liveRecords.mjs loadLiveRecords() output, or null.
+ */
+export async function buildCoverageReport(client, { tenantRef, catalog, descriptors, now, liveRecords = null }) {
   const generatedAt = (now ?? new Date()).toISOString();
   const { snapshot, byType, latestDigest } = await latestCompletedSnapshots(client, tenantRef);
   const drillEvidence = await loadDrillEvidence(client, tenantRef);
@@ -75,6 +80,7 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
 
   for (const descriptor of descriptors) {
     const entry = coveredEntry(descriptor, byType.get(descriptor.type), drillEvidence.get(descriptor.type), generatedAt, tenantRef, latestDigest?.[descriptor.type], catalogByType.get(descriptor.type));
+    entry.writeCapability = withLiveRecords(entry.writeCapability, liveRecords);
     // Diagnosis (roadmap task-53) is an ADDITIONAL field on a failed entry.
     // It never changes status/covered/outcome/detail — the raw collection
     // outcome stays exactly as observed, diagnosis or not.
@@ -122,7 +128,7 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       // Evidence-backed write-operation claims (roadmap task-52) — a
       // not-covered catalogue entry still has its own capability claims,
       // independent of read-coverage status.
-      writeCapability: capabilitySummaryFor(entry.type),
+      writeCapability: withLiveRecords(capabilitySummaryFor(entry.type), liveRecords),
       // Roadmap task-63: the explicit recovery decision (automated / manual /
       // unknown) and per-operation remapping proof, from the qualification ledger.
       qualification: qualificationFor(entry.type),
@@ -159,7 +165,11 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
     types,
     // Roadmap task-102: workload configuration reads (SharePoint first) are reported
     // beside the catalogue types, never merged into them or into the summary.
-    workloads: await loadWorkloadCoverage(client, tenantRef),
+    workloads: withWorkloadLiveRecords(await loadWorkloadCoverage(client, tenantRef), liveRecords),
+    // Gap P2: whether the committed live records were checked, and with a key.
+    liveEvidence: liveRecords
+      ? { checkedAt: liveRecords.checkedAt, keyConfigured: liveRecords.keyConfigured, workloads: liveRecords.workloads }
+      : null,
     // Gap W3: each stored workload live proof and when it stops counting ("expires in
     // N days"), so a recapture is due before the workloads silently switch off.
     workloadProof: await loadProofExpiry(client, { tenantRef, now: new Date(generatedAt) }),
@@ -171,6 +181,41 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
       stale: types.filter((t) => t.stale).length,
     },
   };
+}
+
+/**
+ * Gap P2: overlays the committed live records (tools/qualification/liveRecords.mjs,
+ * already verified for this tenant and moment) on one type's write claims. A
+ * verified record lifts a fixture-tested operation to live-qualified; any record
+ * is attached as `liveRecord` so a reader sees why one does not count. Without
+ * `liveRecords` the summary is returned unchanged.
+ */
+export function withLiveRecords(summary, liveRecords) {
+  if (!liveRecords || !summary) return summary;
+  const operations = {};
+  for (const [operation, capability] of Object.entries(summary.operations)) {
+    const record = liveRecords.operations.find((candidate) => candidate.resourceType === summary.resourceType && candidate.operation === operation);
+    if (!record) {
+      operations[operation] = capability;
+      continue;
+    }
+    const live = record.live && (capability.claim === 'fixture-tested' || capability.claim === 'live-qualified');
+    operations[operation] = Object.freeze({
+      ...capability,
+      claim: live ? 'live-qualified' : capability.claim,
+      proofRef: live ? record.proofRef : capability.proofRef,
+      liveRecord: Object.freeze({ live, observedAt: record.observedAt, expiresAt: record.expiresAt, reason: record.reason, failures: record.failures }),
+    });
+  }
+  return Object.freeze({ ...summary, operations: Object.freeze(operations) });
+}
+
+function withWorkloadLiveRecords(workloads, liveRecords) {
+  if (!liveRecords) return workloads;
+  return workloads.map((workload) => {
+    const record = liveRecords.workloads.find((candidate) => candidate.workloads.includes(workload.workload));
+    return record ? { ...workload, liveRecord: { gate: record.gate, live: record.live, observedAt: record.observedAt, expiresAt: record.expiresAt, reason: record.reason } } : workload;
+  });
 }
 
 // Fields Graph itself owns for this type — SERVER_OWNED_ALWAYS applies to

@@ -2,7 +2,6 @@
  * never from an uploaded pack. This validates that evidence, not legal entitlement. */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { assertTenantRef } from '../../engine/store/tenantRef.mjs';
 
@@ -81,7 +80,7 @@ export function validateLicense({ source, rights, grants = [], tenantRef, use = 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     if (process.argv.length !== 3) throw new Error('usage');
-    const input = JSON.parse(await readFile(process.argv[2], 'utf8'));
+    const input = JSON.parse(readFileSync(process.argv[2], 'utf8'));
     const rights = validateLicense(input);
     console.log(JSON.stringify({ status: 'fixture-tested', sourceDigest: rights.sourceDigest,
       redistributionScope: rights.redistributionScope, liveQualified: false }));

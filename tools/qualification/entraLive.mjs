@@ -43,11 +43,11 @@ import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../../engine/contracts/fieldProjection.mjs';
-import { capabilityFor, isSupportedClaim, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
+import { capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
 import { TYPE_DECISIONS } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { getDryRunArtifactById } from '../../engine/restore/dryRunArtifact.mjs';
-import { isPolicyGoverned, policyProofFor, qualifyPolicyLiveEvidence } from '../../engine/restore/policyOperations.mjs';
+import { isPolicyGoverned, policyLiveEvidenceFailures, policyProofFor, qualifyPolicyLiveEvidence } from '../../engine/restore/policyOperations.mjs';
 import { listJournal } from '../../engine/restore/rollbackJournal.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { signEvidence } from '../release/qualification.mjs';
@@ -365,16 +365,47 @@ export function verifyRunner(record, hmacKey) {
 export function promoteRecord(record, {
   hmacKey, captureLog = null, now = new Date(), tenantRef = TEST_TENANT_REFS[0], testTenantRefs = TEST_TENANT_REFS,
 } = {}) {
-  const failures = [];
   const resourceType = record?.resourceType;
   const operation = record?.operation;
   const before = resourceType && operation && operation !== ENFORCEMENT_STEP ? capabilityFor(resourceType, operation).claim : null;
-  const refuse = () => ({ promoted: false, before, after: before, failures });
+  const failures = recordFailures(record, { hmacKey, captureLog, tenantRef, testTenantRefs });
+  if (failures.length > 0) return { promoted: false, before, after: before, failures };
 
+  const result = isPolicyGoverned(resourceType)
+    ? qualifyPolicyLiveEvidence(resourceType, operation, record, { tenantRef, now, subtype: record.subtype })
+    : qualifyLiveEvidence(resourceType, operation, record, { tenantRef, now });
+  return { promoted: result.promoted, before, after: capabilityFor(resourceType, operation).claim, failures: result.failures };
+}
+
+/**
+ * Gap P2: every check promoteRecord makes (signature, test tenant, read-back,
+ * capture digest, then the capability's own live gate), without promoting.
+ * The portal calls it on each refresh, so a record that expires stops
+ * counting as live without a restart. `ok` true means the record proves the
+ * write live on `tenantRef`.
+ */
+export function verifyRecord(record, {
+  hmacKey, captureLog = null, now = new Date(), tenantRef, testTenantRefs = TEST_TENANT_REFS,
+} = {}) {
+  const failures = recordFailures(record, { hmacKey, captureLog, tenantRef, testTenantRefs });
+  if (failures.length > 0) return { ok: false, failures };
+  const { resourceType, operation } = record;
+  try {
+    const gate = isPolicyGoverned(resourceType)
+      ? policyLiveEvidenceFailures(resourceType, operation, record, { tenantRef, now, subtype: record.subtype })
+      : liveEvidenceFailures(resourceType, operation, record, { tenantRef, now });
+    return { ok: gate.length === 0, failures: gate };
+  } catch {
+    return { ok: false, failures: [`${resourceType} ${operation} is not a registered write`] };
+  }
+}
+
+function recordFailures(record, { hmacKey, captureLog, tenantRef, testTenantRefs }) {
+  const failures = [];
   if (record?.kind !== ENTRA_LIVE_KIND) failures.push(`not a ${ENTRA_LIVE_KIND} record`);
-  if (operation === ENFORCEMENT_STEP) {
+  if (record?.operation === ENFORCEMENT_STEP) {
     failures.push('the Conditional Access enforcement step is not a registered capability; its record is kept as evidence and never promoted');
-    return refuse();
+    return failures;
   }
   if (!testTenantRefs.includes(tenantRef)) failures.push(`refusing: ${tenantRef} is not the test tenant`);
   if (!testTenantRefs.includes(record?.tenantRef)) failures.push(`refusing: the record's tenant ${record?.tenantRef} is not the test tenant`);
@@ -386,12 +417,7 @@ export function promoteRecord(record, {
     failures.push('the write was not verified by its read-back, so it cannot be promoted');
   }
   if (captureLog !== null && sha256(captureLog) !== record?.captureSha256) failures.push('the capture log does not match the record\'s captureSha256');
-  if (failures.length > 0) return refuse();
-
-  const result = isPolicyGoverned(resourceType)
-    ? qualifyPolicyLiveEvidence(resourceType, operation, record, { tenantRef, now, subtype: record.subtype })
-    : qualifyLiveEvidence(resourceType, operation, record, { tenantRef, now });
-  return { promoted: result.promoted, before, after: capabilityFor(resourceType, operation).claim, failures: result.failures };
+  return failures;
 }
 
 /** The demotion record a failed live capture leaves; a builder applies it in code. */

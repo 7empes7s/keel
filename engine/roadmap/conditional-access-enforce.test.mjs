@@ -639,14 +639,17 @@ test('promotion requires the approval; once approved and ready it turns the poli
 
   // Mutation check: promoting the reviewed artifact without an approved request.
   await assert.rejects(run({ artifactId: enforcementId, mode: 'enforce' }), /needs an approved request/);
-  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId: enforcementId }, requestedBy: 'requester' });
-  await assert.rejects(approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'requester' }), SelfApprovalError);
+  // Gap B11: this artifact was planned with the CLI and is carried out with the CLI,
+  // so its approval says so and mints no worker job.
+  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId: enforcementId }, requestedBy: restorer.id, executor: 'cli' });
+  await assert.rejects(approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: restorer.id }), SelfApprovalError);
   await assert.rejects(run({ artifactId: enforcementId, mode: 'enforce' }), /needs an approved request/);
   assert.equal(graph.writes.length, writesAfterRestore, 'nothing written without the approval');
 
   const approved = await approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'approver' });
-  assert.equal(approved.job.params.artifactId, enforcementId);
-  assert.equal(approved.job.params.mode, 'enforce');
+  assert.equal(approved.request.executor, 'cli');
+  assert.equal(approved.job, null, 'a CLI-executed approval mints no worker job');
+  assert.equal((await client.query(`SELECT count(*)::int AS n FROM job WHERE kind = 'restore'`)).rows[0].n, 0, 'no second, worker-run restore is queued');
 
   const result = await run({ artifactId: enforcementId, mode: 'enforce' });
   assert.deepEqual(result.results.failed, []);
@@ -730,7 +733,8 @@ test('promotion is refused when a break-glass account would be blocked or readin
   world.gate = {};
   const enforcementId = crypto.randomUUID();
   assert.equal((await planEnforcement(run, restoreId, enforcementId)).status, 'completed');
-  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId: enforcementId }, requestedBy: 'requester' });
+  const { rows: [requester] } = await client.query(`INSERT INTO principal (email) VALUES ('requester@contoso.example') RETURNING id::text AS id`);
+  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId: enforcementId }, requestedBy: requester.id, executor: 'cli' });
   await approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'approver' });
   world.gate = { accountIds: [BG1, BG2, BG3] };
   await assert.rejects(run({ artifactId: enforcementId, mode: 'enforce' }), /enforcement promotion refused: break-glass lockout gate/);

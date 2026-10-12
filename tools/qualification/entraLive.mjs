@@ -345,7 +345,7 @@ export async function captureOffline({ resourceType, operation, build, hmacKey =
   return { status: 'synthetic', record: signEvidence(unsigned, hmacKey, FIXTURE_RUNNER), captureLog };
 }
 
-function verifyRunner(record, hmacKey) {
+export function verifyRunner(record, hmacKey) {
   const runner = record?.proof?.runner;
   if (!runner || typeof runner.identity !== 'string' || typeof runner.signature !== 'string') return { ok: false, reason: 'no runner signature' };
   const trusted = RUNNERS[runner.identity];

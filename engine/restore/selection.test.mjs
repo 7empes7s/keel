@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import {
   assertSelectionClosed,
+  deletionScope,
   dependencyClosure,
   selectionGuardRefusals,
 } from './selection.mjs';
@@ -158,6 +159,31 @@ const candidates = [caPolicy, adminsGroup, parentGroup, unrelated];
     }],
     'the synced-object guard refusal must surface at selection time',
   );
+}
+
+// --- gap D7: the delete scope (a key live but absent from the snapshot) ---
+{
+  // Each key becomes desired absence, typed from its key, with the catalog's blast
+  // radius so the tenant-lockout guard sees a named location as tenant-lockout.
+  assert.deepEqual(
+    deletionScope(candidates, ['namedLocation:Old-Office', 'group:Stale', 'group:Stale']),
+    [
+      { naturalKey: 'group:Stale', resourceType: 'group', payload: null, blastRadius: 'access-affecting' },
+      { naturalKey: 'namedLocation:Old-Office', resourceType: 'namedLocation', payload: null, blastRadius: 'tenant-lockout' },
+    ],
+    'a delete scope is sorted, de-duplicated desired absence with the type and blast radius of each key',
+  );
+  // A key the snapshot holds is refused: restoring that snapshot keeps the object.
+  assert.throws(
+    () => deletionScope(candidates, ['group:Admins']),
+    /refusing to delete group:Admins: the snapshot holds this object/,
+  );
+  // A type with no registered delete operation is refused (users are never deleted).
+  assert.throws(
+    () => deletionScope(candidates, ['user:someone@contoso.example']),
+    /refusing to delete user:someone@contoso\.example: Keel has no reviewed delete operation for user/,
+  );
+  assert.throws(() => deletionScope(candidates, ['notAType:Thing']), /no reviewed delete operation for notAType/);
 }
 
 console.log('selection.test.mjs — all assertions passed');

@@ -4,6 +4,11 @@
 // node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
 // node keel-restore.mjs --snapshot-id <id> --select <naturalKey> [--select <naturalKey>...] --collector-config ... --target-config ... [--enforce]
 //
+// node keel-restore.mjs --snapshot-id <id> --delete <naturalKey> [--delete <naturalKey>...] --collector-config ... --target-config ... [--persist-artifact <id>]
+// plans deleting objects that exist live but are absent from the snapshot (gap D7), as a
+// dry run. It is executed only by promoting that artifact with --artifact <id> --enforce;
+// a key the snapshot holds, or a type Keel cannot delete, is refused.
+//
 // --plan restores everything the plan covers; --snapshot-id + --select restores the
 // dependency closure of exactly the selected natural keys (portal-design §4.1 — the
 // closure is recomputed here from the snapshot, never trusted from the caller).
@@ -32,7 +37,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
-import { dependencyClosure } from '../engine/restore/selection.mjs';
+import { deletionScope, dependencyClosure } from '../engine/restore/selection.mjs';
 import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
@@ -183,6 +188,10 @@ export async function runRestore({
   snapshotId,
   selection,
   reconciliationResources,
+  // Gap D7: natural keys present live but absent from the snapshot, to delete.
+  // A dry run turns them into a reconciliation scope of desired absence (see
+  // deletionScope), which the artifact stores and its promotion executes.
+  deleteKeys,
   previewOnly = false,
   targetConfig,
   collectorConfig,
@@ -263,6 +272,18 @@ export async function runRestore({
     if (artifactId !== undefined) throw new Error('incidentId is supplied by the dry-run artifact on promotion, never by the caller');
     if (selection === undefined || planId !== undefined || reconciliationResources !== undefined || compensateArtifactId !== undefined) {
       throw new Error('incidentId requires the snapshotId/selection restore scope');
+    }
+  }
+  if (deleteKeys !== undefined) {
+    if (!Array.isArray(deleteKeys) || deleteKeys.length === 0
+      || deleteKeys.some((key) => typeof key !== 'string' || key.length === 0)) {
+      throw new Error('deleteKeys must be a non-empty array of natural keys');
+    }
+    if (snapshotId === undefined) throw new Error('deleteKeys requires snapshotId');
+    if (planId !== undefined || selection !== undefined || reconciliationResources !== undefined || artifactId !== undefined
+      || compensateArtifactId !== undefined || enforceConditionalAccess !== undefined || incidentId !== undefined
+      || automationPolicyIds !== undefined) {
+      throw new Error('deleteKeys is its own restore scope — a snapshot and the keys to delete, nothing else');
     }
   }
   if (enforceConditionalAccess !== undefined) {
@@ -414,6 +435,13 @@ export async function runRestore({
     const versions = await getResourceVersionsFn(client, { snapshotId: sourceSnapshot });
     const references = await getReferencesFn(client, { snapshotId: sourceSnapshot });
     let resources = restoreCandidates(versions, references);
+    // Gap D7: the delete scope is checked against this snapshot and becomes the
+    // reconciliation scope below, so it is persisted, digested and promoted
+    // exactly like a drift remediation's added-object delete.
+    if (deleteKeys !== undefined) {
+      reconciliationResources = deletionScope(resources, deleteKeys);
+      logger.log(`delete scope: ${reconciliationResources.map((resource) => resource.naturalKey).join(', ')}`);
+    }
 
     let closureKeys = null;
     const artifactScopeReconciliationResources = reconciliationResources;
@@ -783,6 +811,7 @@ export async function runRestore({
     // snapshot, selection, or dependency closure changes the digest; a target that
     // drifted since the dry run ran changes the fingerprint. Either one fails the
     // whole run closed, before a single write.
+    let approvedContentEffects = [];
     if (artifact) {
       const freshDigest = computePlanDigestFn({
         snapshotId: sourceSnapshot,
@@ -810,7 +839,10 @@ export async function runRestore({
       if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
       // Task-66: the effects just recomputed must carry a separate, current
       // high-impact approval bound to exactly them — never the requester's own.
-      await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      const contentEffectApproval = await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      // Gap D3: only effects whose separate approval was just checked unlock a
+      // write the guard otherwise refuses (a shorter group lifetime).
+      if (contentEffectApproval) approvedContentEffects = contentEffects.effects;
     }
 
     const seeds = {
@@ -862,8 +894,13 @@ export async function runRestore({
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
         observedCoverage,
         lockoutGate,
+        approvedContentEffects,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      for (const entry of [...result.applied, ...result.skipped]) {
+        const step = entry.pendingApproval ?? entry.completion;
+        if (step) logger.log(`completion step: ${entry.naturalKey} — ${step.description}`);
+      }
       results.applied.push(...result.applied);
       results.skipped.push(...result.skipped);
       results.failed.push(...result.failed);
@@ -1436,6 +1473,7 @@ export async function main({
   const planId = arg('plan', undefined, argv);
   const snapshotId = arg('snapshot-id', undefined, argv);
   const selection = argAll('select', argv);
+  const deleteKeys = argAll('delete', argv);
   const artifactId = arg('artifact', undefined, argv);
   const persistArtifactId = arg('persist-artifact', undefined, argv);
   const compensateArtifactId = arg('compensate', undefined, argv);
@@ -1448,8 +1486,8 @@ export async function main({
   // Task-70: a compensation is planned from the promoted restore's own journal and
   // frozen config — never with --enforce, and never alongside another scope.
   if (compensateArtifactId !== undefined) {
-    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
-      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
     if (mode === 'enforce') {
       throw new Error('--compensate is a dry run only; execute it by promoting the compensation artifact with --artifact <id> --enforce');
@@ -1462,8 +1500,8 @@ export async function main({
   // Task-152: turning a Conditional Access policy on is planned from one promoted
   // restore and one policy — never with --enforce, and never alongside another scope.
   if (enforceRestoreArtifactId !== undefined) {
-    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
-      throw new Error('--enforce-conditional-access is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--enforce-conditional-access is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
     if (!enforcePolicy) throw new Error('--enforce-conditional-access requires --policy <naturalKey>');
     if (mode === 'enforce') {
@@ -1479,8 +1517,8 @@ export async function main({
   // to reach --enforce for every restore scope — it carries its own frozen
   // snapshot, selection and target config paths, so it is mutually exclusive with
   // every other scope flag.
-  if (artifactId !== undefined && (planId || snapshotId || selection.length)) {
-    throw new Error('--artifact is mutually exclusive with --plan/--snapshot-id/--select — a promotion is driven entirely by its dry-run artifact');
+  if (artifactId !== undefined && (planId || snapshotId || selection.length || deleteKeys.length)) {
+    throw new Error('--artifact is mutually exclusive with --plan/--snapshot-id/--select/--delete — a promotion is driven entirely by its dry-run artifact');
   }
   if (artifactId !== undefined && mode !== 'enforce') {
     throw new Error('--artifact may only be used with --enforce');
@@ -1490,17 +1528,26 @@ export async function main({
   }
   // --plan and --snapshot-id/--select are two scopes for the one apply path; mixing
   // them is a usage error, and so is either half of the selection scope on its own.
-  if (planId && (snapshotId || selection.length)) {
-    throw new Error('--plan is mutually exclusive with --snapshot-id/--select');
+  if (planId && (snapshotId || selection.length || deleteKeys.length)) {
+    throw new Error('--plan is mutually exclusive with --snapshot-id/--select/--delete');
   }
   if (!snapshotId && selection.length) throw new Error('--select requires --snapshot-id');
+  // Gap D7: --delete is its own scope on a snapshot — never mixed with --select or
+  // an incident recovery, and never a direct enforce (promote its dry run instead).
+  if (deleteKeys.length) {
+    if (!snapshotId) throw new Error('--delete requires --snapshot-id');
+    if (selection.length) throw new Error('--delete and --select are separate restore scopes — run them as two restores');
+    if (incidentId !== undefined) throw new Error('--delete cannot be combined with --incident');
+  }
   // Task-71: a promotion's incident comes from its artifact, never from argv.
   if (incidentId !== undefined && (artifactId !== undefined || !snapshotId)) {
     throw new Error('--incident requires --snapshot-id/--select (a promotion carries its incident in the dry-run artifact)');
   }
-  if (snapshotId && !selection.length) throw new Error('--snapshot-id requires at least one --select <naturalKey>');
+  if (snapshotId && !selection.length && !deleteKeys.length) {
+    throw new Error('--snapshot-id requires at least one --select <naturalKey> or --delete <naturalKey>');
+  }
   if (!planId && !snapshotId && !artifactId) {
-    throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, or --artifact <id> required');
+    throw new Error('--plan <id>, --snapshot-id <id> with --select or --delete <naturalKey>, or --artifact <id> required');
   }
   if (mode === 'enforce' && !artifactId) {
     throw new Error('enforce requires --artifact <id> (promote a completed dry-run artifact; a direct enforce is refused)');
@@ -1526,6 +1573,7 @@ export async function main({
     planId,
     snapshotId,
     selection: selection.length ? selection : undefined,
+    deleteKeys: deleteKeys.length ? deleteKeys : undefined,
     targetConfig,
     collectorConfig,
     collectorConfigPath,

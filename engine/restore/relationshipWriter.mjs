@@ -292,19 +292,33 @@ export async function applyRelationshipOperations(writer, governor, operations, 
 
       const request = refRequestFor(op, parentTargetId, targetId);
       let result;
-      for (let attempt = 1; attempt <= THROTTLE_MAX_ATTEMPTS; attempt += 1) {
+      let throttled = 0;
+      let lagged = 0;
+      for (;;) {
         await governor.acquire(targetTenant, 'entra', 'write');
         try {
           result = await writer.write('v1.0', request.path, { method: request.method, body: request.body });
         } catch (error) {
           result = { ok: false, status: null, lost: true, error: error?.message ?? String(error) };
         }
+        if (result?.ok) break;
         // Only a 429 provably did nothing and may be re-sent. A 5xx or a lost
         // response may have been applied: it is reconciled by reading, below.
-        if (result?.ok || result?.status !== 429 || attempt === THROTTLE_MAX_ATTEMPTS) break;
-        const delay = Number.isSafeInteger(result.retryAfter) && result.retryAfter >= 0 ? result.retryAfter : 1;
-        governor.observeRetryAfter?.(targetTenant, 'entra', 'write', delay);
-        await sleep(delay * 1000);
+        if (result?.status === 429 && throttled < THROTTLE_MAX_ATTEMPTS - 1) {
+          throttled += 1;
+          const delay = Number.isSafeInteger(result.retryAfter) && result.retryAfter >= 0 ? result.retryAfter : 1;
+          governor.observeRetryAfter?.(targetTenant, 'entra', 'write', delay);
+          await sleep(delay * 1000);
+          continue;
+        }
+        // A $ref write right after the parent group was created or restored can
+        // 404 for the same replication lag the verify read tolerates: bounded retry.
+        if (result?.status === 404 && lagged < verifyAttempts - 1) {
+          lagged += 1;
+          await sleep(verifyDelayMs);
+          continue;
+        }
+        break;
       }
 
       if (result?.ok) {

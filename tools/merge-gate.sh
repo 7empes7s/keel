@@ -17,7 +17,15 @@ check_pr() {
   pr=$(gh api "repos/$repo/pulls/$n") || { echo "#$n: could not read PR"; return 1; }
   [ "$(jq -r .state <<<"$pr")" = "open" ] || { echo "#$n: not open"; return 1; }
   [ "$(jq -r .draft <<<"$pr")" = "false" ] || { echo "#$n: draft"; return 1; }
-  # mergeable is null while GitHub is still computing it; treat that as not ready yet.
+  # mergeable is null while GitHub is still computing it, which is the state of every other
+  # open PR right after this gate merges one. Reading the PR starts that computation, so poll
+  # a few times before giving up; otherwise the queue advances only one PR per gate run.
+  local tries=0
+  while [ "$(jq -r .mergeable <<<"$pr")" = "null" ] && [ "$tries" -lt "${MERGEABLE_POLLS:-12}" ]; do
+    sleep "${MERGEABLE_POLL_SECONDS:-5}"
+    tries=$((tries + 1))
+    pr=$(gh api "repos/$repo/pulls/$n") || { echo "#$n: could not read PR"; return 1; }
+  done
   [ "$(jq -r .mergeable <<<"$pr")" = "true" ] || { echo "#$n: not mergeable yet ($(jq -r .mergeable_state <<<"$pr"))"; return 1; }
   sha=$(jq -r .head.sha <<<"$pr")
   author=$(jq -r .user.login <<<"$pr")

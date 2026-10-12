@@ -28,7 +28,7 @@ import { SHAREPOINT_OPERATIONS } from '../collect/workloads/sharepoint.mjs';
 import { TEAMS_OPERATIONS } from '../collect/workloads/teams.mjs';
 import { scopeProblems } from '../collect/workloadContract.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
-import { workloadWriteQualification } from '../coverage/qualification.mjs';
+import { WORKLOAD_WRITE_OPERATIONS, workloadWriteQualification } from '../coverage/qualification.mjs';
 import { cmdletJob } from '../powershell/jobQueue.mjs';
 import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import {
@@ -275,11 +275,11 @@ async function planned(client, tenantRef, { source, exchange, identity = MAILBOX
   return { plan, artifact, requestedBy };
 }
 
-/** A live mailbox that drifted: time zone changed, OWA off, Focused Inbox off. */
+/** A live mailbox that drifted: time zone changed, OWA off; the organization: Focused Inbox off, threshold 26. */
 function drifted({ identity = MAILBOX, retention = {}, hooks = {} } = {}) {
   return fakeExchange({
     mailboxes: { [identity]: mailboxState({ settings: { timeZone: 'Pacific Standard Time' }, cas: { OWAEnabled: false }, retention }) },
-    organization: { ...ORGANIZATION, FocusedInboxOn: false },
+    organization: { ...ORGANIZATION, FocusedInboxOn: false, MailTipsLargeAudienceThreshold: 26 },
     hooks,
   });
 }
@@ -325,6 +325,12 @@ test('the reader keeps mailbox settings, client access, holds and organization c
     assert.throws(() => assertExchangeCmdlet({ cmdlet }), ExchangeScopeError, cmdlet);
   }
   assert.throws(() => assertExchangeCmdlet({ cmdlet: 'Get-Mailbox', parameters: { Identity: MAILBOX, Filter: '*' } }), /does not take Filter/);
+  // Gap W7: the organization write takes one setting; every other one is refused before sending.
+  assert.ok(assertExchangeCmdlet({ cmdlet: 'Set-OrganizationConfig', parameters: { MailTipsLargeAudienceThreshold: 26 } }));
+  for (const field of ORGANIZATION_FIELDS.filter((name) => name !== 'MailTipsLargeAudienceThreshold')) {
+    assert.throws(() => assertExchangeCmdlet({ cmdlet: 'Set-OrganizationConfig', parameters: { [field]: true } }), new RegExp(`does not take ${field}`), field);
+  }
+  assert.deepEqual(WORKLOAD_WRITE_OPERATIONS['exchange.organization-config.update'].fields, ['MailTipsLargeAudienceThreshold']);
   assert.notEqual(scopeProblems({ kind: 'cmdlet', cmdlet: 'Get-MailboxFolderStatistics', module: 'x' }).length, 0);
   // The Node and container allowlists are the same list.
   assert.deepEqual(Object.fromEntries(Object.entries(EXCHANGE_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), ALLOWLIST);
@@ -501,7 +507,13 @@ test('mailbox settings, client access and organization configuration restore as 
   assert.equal(result.outcome, 'verified');
   assert.deepEqual(exchange.writes().sort(), ['PATCH mailboxSettings', 'Set-CASMailbox', 'Set-OrganizationConfig'].sort());
   assert.deepEqual(exchange.requests.find((request) => request.method === 'PATCH').body, { timeZone: 'UTC' }, 'only the changed setting');
-  assert.deepEqual(exchange.calls.find((call) => call.cmdlet === 'Set-OrganizationConfig').args, [['FocusedInboxOn', true]]);
+  // Gap W7: the organization write carries only the large-audience threshold. Focused
+  // Inbox drifted too, but it is a tenant-wide setting KEEL does not write: it is manual.
+  assert.deepEqual(exchange.calls.find((call) => call.cmdlet === 'Set-OrganizationConfig').args, [['MailTipsLargeAudienceThreshold', 25]]);
+  assert.deepEqual(plan.operations.find((op) => op.group === 'organization').changes, [{ field: 'MailTipsLargeAudienceThreshold', before: 26, after: 25 }]);
+  assert.ok(plan.manual.some((item) => item.resourceKey === 'organization' && item.field === 'organization.FocusedInboxOn' && /KEEL writes only the large-audience mail tip threshold/.test(item.reason)));
+  assert.equal(exchange.state.organization.FocusedInboxOn, false, 'never written');
+  assert.equal(exchange.state.organization.MailTipsLargeAudienceThreshold, 25);
   assert.equal(exchange.state.mailboxes[MAILBOX].settings.timeZone, 'UTC');
   assert.equal(exchange.contentCalls(), 0);
   const rows = (await evidenceRows(client, tenantRef)).filter((subject) => subject.artifactId === artifact.id);

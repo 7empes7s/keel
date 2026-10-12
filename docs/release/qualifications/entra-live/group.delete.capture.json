@@ -1,0 +1,29 @@
+{
+  "restoreRef": "262a6900-d740-8a38-8a83-6d346c33d7d2",
+  "entry": {
+    "naturalKey": "group:KEEL-RT-148-group-delete",
+    "resourceType": "group",
+    "operation": "delete",
+    "targetId": "d3be8fc2-810a-8918-8ae9-e9502744611a",
+    "outcome": "succeeded",
+    "outcomeDetail": "absent",
+    "recordedAt": "2026-10-11T08:31:27.261Z",
+    "priorState": {
+      "id": "d3be8fc2-810a-8918-8ae9-e9502744611a",
+      "groupTypes": [],
+      "visibility": null,
+      "displayName": "KEEL-RT-148-group-delete",
+      "mailEnabled": false,
+      "mailNickname": "KEEL-RT-148-group-delete",
+      "membershipRule": null,
+      "createdDateTime": "2026-10-11T07:07:59Z",
+      "securityEnabled": true,
+      "assignedLicenses": [],
+      "isAssignableToRole": null,
+      "onPremisesSyncEnabled": null,
+      "membershipRuleProcessingState": null
+    },
+    "intendedState": null,
+    "postState": null
+  }
+}

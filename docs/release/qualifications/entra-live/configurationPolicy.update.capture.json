@@ -1,0 +1,127 @@
+{
+  "restoreRef": "bbcfa4da-ff51-833c-aace-ef02fd4f67d1",
+  "entry": {
+    "naturalKey": "configurationPolicy:KEEL-RT-148-settings",
+    "resourceType": "configurationPolicy",
+    "operation": "update",
+    "targetId": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:52:38.753Z",
+    "priorState": {
+      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
+      "name": "KEEL-RT-148-settings",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring_0",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "windows10",
+      "description": "KEEL #148 fixture",
+      "settingCount": 1,
+      "technologies": "mdm",
+      "creationSource": null,
+      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "priorityMetaData": null,
+      "templateReference": {
+        "templateId": "",
+        "templateFamily": "none",
+        "templateDisplayName": null,
+        "templateDisplayVersion": null
+      },
+      "lastModifiedDateTime": "2026-10-10T21:46:38.8588297Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+    },
+    "intendedState": {
+      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
+      "name": "KEEL-RT-148-settings",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring_1",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "windows10",
+      "description": "KEEL #148 fixture",
+      "settingCount": 1,
+      "technologies": "mdm",
+      "creationSource": null,
+      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "priorityMetaData": null,
+      "templateReference": {
+        "templateId": "",
+        "templateFamily": "none",
+        "templateDisplayName": null,
+        "templateDisplayVersion": null
+      },
+      "lastModifiedDateTime": "2026-10-10T21:46:00.7765922Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+    },
+    "postState": {
+      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
+      "name": "KEEL-RT-148-settings",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring_1",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "device_vendor_msft_policy_config_defender_allowrealtimemonitoring",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "windows10",
+      "description": "KEEL #148 fixture",
+      "settingCount": 1,
+      "technologies": "mdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "priorityMetaData": null,
+      "templateReference": {
+        "templateId": "",
+        "templateFamily": "none",
+        "templateDisplayName": null,
+        "templateDisplayVersion": null
+      },
+      "lastModifiedDateTime": "2026-10-10T21:52:38.9962721Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+    }
+  }
+}

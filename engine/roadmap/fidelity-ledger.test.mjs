@@ -64,7 +64,7 @@ test('supported rows carry credential, id outcome, idempotency, field classifica
     assert.ok(op.fieldClassification);
     assert.equal(op.fixture.result, 'passed');
     assert.ok(existsSync(new URL(op.fixture.proofRef, ROOT)), `${op.fixture.proofRef} must exist`);
-    assert.equal(op.live.result, 'none', 'nothing is live-qualified by fixtures');
+    assert.notEqual(op.live.result, 'qualified', 'nothing is live-qualified by fixtures');
   }
   assert.equal(ledger.edges.length, 4);
   assert.ok(ledger.edges.every((edge) => edge.decision === 'supported' && edge.remapping.requirement === 'none'));
@@ -195,7 +195,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
   );
   assert.equal(capabilityFor('deviceCategory', 'update').claim, 'unsupported');
   const ledger = buildOperationLedger();
-  assert.ok(ledger.types.flatMap((row) => row.operations).every((op) => op.live.result === 'none'));
+  assert.ok(ledger.types.flatMap((row) => row.operations).every((op) => op.live.result !== 'qualified'));
 });
 
 test('the fixture harness drives every registered operation and never changes a claim', async () => {

@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "conditionalAccessPolicy",
+  "operation": "create",
+  "reason": "Graph returned 400: the create body carries server-managed read-only fields (id, createdDateTime, modifiedDateTime, deletedDateTime, @odata.context) from the snapshot; the same body without them is accepted (201)",
+  "restoreRef": "41eef8de-20ea-86bd-88c9-89102b837d07",
+  "decidedAt": "2026-10-12T11:16:09.390Z",
+  "builderSteps": [
+    "remove the create registration for conditionalAccessPolicy in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.conditionalAccessPolicy.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

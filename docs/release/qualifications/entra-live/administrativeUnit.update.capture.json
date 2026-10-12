@@ -1,0 +1,40 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "administrativeUnit:KEEL-RT-148-unit",
+    "resourceType": "administrativeUnit",
+    "operation": "update",
+    "targetId": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:21:31.548Z",
+    "priorState": {
+      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+      "visibility": null,
+      "description": "KEEL #148 fixture DRIFTED",
+      "displayName": "KEEL-RT-148-unit",
+      "membershipRule": null,
+      "membershipType": null,
+      "deletedDateTime": null,
+      "isMemberManagementRestricted": null,
+      "membershipRuleProcessingState": null
+    },
+    "intendedState": {
+      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+      "visibility": null,
+      "description": "KEEL #148 live gate fixture",
+      "displayName": "KEEL-RT-148-unit",
+      "membershipRule": null,
+      "membershipType": null,
+      "deletedDateTime": null,
+      "isMemberManagementRestricted": null,
+      "membershipRuleProcessingState": null
+    },
+    "postState": {
+      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+      "description": "KEEL #148 live gate fixture",
+      "displayName": "KEEL-RT-148-unit",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directory/administrativeUnits/$entity"
+    }
+  }
+}

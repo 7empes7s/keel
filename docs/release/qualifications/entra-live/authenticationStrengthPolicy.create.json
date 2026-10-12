@@ -1,0 +1,31 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "authenticationStrengthPolicy",
+  "operation": "create",
+  "subtype": "custom",
+  "projectionDigest": "139a42f356f269da9bfe2c9a32db4b06e80f8d10c91455027e76ad73ee874392",
+  "fieldProjectionContractVersion": 1,
+  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-11T19:44:32.277Z",
+  "restoreRef": "6b12f86c-cffb-81d1-acfd-ff7f5256506c",
+  "naturalKey": "authenticationStrengthPolicy:KEEL-RT-148-strength",
+  "fixtureKind": "named-object",
+  "captureSha256": "9ceb111bff8d648a892d4a6b1d437c3525cf961fb9611b61b5b030b33c54e99c",
+  "proofRef": "docs/release/qualifications/entra-live/authenticationStrengthPolicy.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "9ff4008cf8153b6c39a55a7cc0e2fa252c25ca30e16e8122734c46776366f2eb"
+    }
+  }
+}

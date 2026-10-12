@@ -48,7 +48,7 @@ export const CATALOG = [
     pageCap: 20,
     note: 'onPremisesSyncEnabled drives the AD-sync guard — synced users must not be cloud-restored.' },
   { type: 'group', path: '/groups', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
-    select: 'id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses',
+    select: 'id,displayName,description,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses',
     pageCap: 20 },
   { type: 'administrativeUnit', path: '/directory/administrativeUnits', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'contact', path: '/contacts', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic', pageCap: 5 },
@@ -61,7 +61,7 @@ export const CATALOG = [
     // appRoles and oauth2PermissionScopes publish the permission ids that every
     // application's requiredResourceAccess points at. Without them, every
     // permission in the tenant reads as a dangling reference.
-    select: 'id,appId,displayName,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,tags,signInAudience,appRoles,oauth2PermissionScopes',
+    select: 'id,appId,displayName,description,notes,servicePrincipalType,accountEnabled,appRoleAssignmentRequired,tags,signInAudience,appRoles,oauth2PermissionScopes',
     pageCap: 20 },
   { type: 'oauth2PermissionGrant', path: '/oauth2PermissionGrants', version: 'v1.0', criticality: 'tier1', blastRadius: 'access-affecting',
     pageCap: 20,

@@ -10,9 +10,16 @@ export function buildGraph(resources) {
   const nodes = new Map(resources.map((r) => [r.naturalKey, r]));
   const edges = new Map();
   for (const r of resources) {
+    // A reference whose symbol is the resource's own key is never a
+    // dependency: a resource cannot wait for itself, and a self-edge would be
+    // reported as a one-node cycle that the wave planner turns into a patch
+    // on `id`, which no type can apply. Dropped here rather than in
+    // canonicalize so snapshots that already stored such a self-reference
+    // (from before classify() compared ids case-insensitively) plan cleanly.
     const deps = new Set(
       r.references
-        .filter((ref) => !isVerbatimSymbol(ref.symbol) && nodes.has(ref.symbol))
+        .filter((ref) => ref.symbol && ref.symbol !== r.naturalKey
+          && !isVerbatimSymbol(ref.symbol) && nodes.has(ref.symbol))
         .map((ref) => ref.symbol),
     );
     edges.set(r.naturalKey, deps);

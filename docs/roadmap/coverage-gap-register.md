@@ -135,14 +135,13 @@ line next to every workload so no user expects a mailbox restore.
 | P3 | Entra live acceptance is not a release-ledger gate. | Add it once P1 is in, with the 30-day freshness rule. |
 | P4 | Every "manual" and "unknown" reason lives in code comments. | Generate `docs/coverage.md` from `TYPE_DECISIONS` and the workload ledger on every build, so the documentation can't drift from the code. This is the "everything documented" deliverable. |
 
-## 6. Decisions and steps only Marouane can take
+## 6. Decisions taken by Marouane (2026-10-12)
 
-1. **Register a second break-glass account** in Readiness. This alone unblocks the auth methods,
-   security defaults and authorization policy steps.
-2. **Purge `KEEL-RT-148-ca`** from Conditional Access deleted policies, or leave it to age out.
-3. **Exchange org config:** name one tenant-wide setting the operator may flip and put back (W7).
-4. **Signing key in the portal process** (P2): yes, or keep live status CLI-only.
-5. **Branding images (M6):** confirm Keel may store the image files in its backups.
+1. **Second break-glass account:** agreed. Registration runs on the host (`cli/keel-breakglass.mjs register`, by keel-operator); the Readiness page only reads. Marouane names the account: cloud-only, enabled, member, managed domain, strong method, excluded from the enabled Conditional Access policies. After registration he signs in once and the operator records the test.
+2. **`KEEL-RT-148-ca`:** permanently deleted by Marouane. Cleanup complete.
+3. **Exchange org config (W7):** the setting the operator may flip and put back is `MailTipsLargeAudienceThreshold` (25 → 26 → 25). It only changes when Outlook shows a large-audience tip.
+4. **Signing key in the portal process (P2):** yes. The portal may hold the evidence signing key and show live status.
+5. **Branding images (M6):** yes. Keel stores the branding image files in its backups and restores them through their upload routes.
 
 ## Phases
 

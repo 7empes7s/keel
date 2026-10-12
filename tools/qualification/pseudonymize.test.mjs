@@ -2,11 +2,15 @@ import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
-import { pseudonymizeCapture, pseudonymizer } from './pseudonymize.mjs';
+import { LiveGateRefusal, assertSafeText } from './entraLive.mjs';
+import { cloudSidToGuid, guidToCloudSid, pseudonymizeCapture, pseudonymizer, rawIdentifiers } from './pseudonymize.mjs';
 
 const TENANT = '73b6beef-0000-4000-8000-000000000001';
 const APP = '87aa77c4-0000-4000-8000-000000000002';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const GROUP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const GROUP_SID = 'S-1-12-1-2863311530-1288485819-4008631693-4008636142';
+const ONPREM_SID = 'S-1-5-21-1004336348-1177238915-682003330-1105';
 
 test('ids and tenant hosts become stable, well-formed pseudonyms that depend on the tenant', () => {
   const a = pseudonymizer('sha256:aaaa');
@@ -55,4 +59,43 @@ test('a capture loses every raw id, stays consistent with its log, and binds the
   assert.equal(safe.tenantRef, record.tenantRef);
   assert.equal(safe.build, record.build);
   assert.equal(record.subject.directoryTenantId, TENANT, 'the input is not mutated');
+});
+
+test('a security identifier maps consistently with the GUID it encodes', () => {
+  // Cloud SIDs are the object GUID as four little-endian 32-bit words (Guid.ToByteArray order).
+  assert.equal(guidToCloudSid(GROUP), GROUP_SID);
+  assert.equal(cloudSidToGuid(GROUP_SID), GROUP);
+  const a = pseudonymizer('sha256:aaaa');
+  const safe = a.text(`${GROUP} ${GROUP_SID}`);
+  assert.doesNotMatch(safe, /aaaaaaaa|2863311530/);
+  const [guid, sid] = safe.split(' ');
+  assert.match(sid, /^S-1-12-1(-\d+){4}$/);
+  assert.equal(sid, guidToCloudSid(guid), 'the SID still encodes the pseudonymized GUID');
+  assert.equal(a.text(GROUP_SID), sid, 'stable within a run');
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(GROUP_SID), sid);
+  assert.equal(a.walk({ securityIdentifier: GROUP_SID }).securityIdentifier, sid);
+  // An on-premises SID keeps its shape and its domain part across the domain's objects.
+  const onPrem = a.text(ONPREM_SID);
+  assert.match(onPrem, /^S-1-5-21(-\d+){4}$/);
+  assert.notEqual(onPrem, ONPREM_SID);
+  assert.equal(onPrem.split('-').slice(0, 7).join('-'), a.text(ONPREM_SID.replace(/-1105$/, '')));
+  assert.notEqual(onPrem, a.text(ONPREM_SID.replace(/-1105$/, '-1106')));
+  assert.equal(a.text('S-1-5-32-544'), 'S-1-5-32-544', 'well-known SIDs name no object');
+  // An immutable id (base64 of the AD objectGUID bytes) maps through the GUID mapping.
+  const immutable = Buffer.from('aaaaaaaabbbb4ccc8dddeeeeeeeeeeee', 'hex').toString('base64');
+  const walked = a.walk({ onPremisesImmutableId: immutable, note: immutable });
+  assert.match(walked.onPremisesImmutableId, /^[A-Za-z0-9+/]{22}==$/);
+  assert.notEqual(walked.onPremisesImmutableId, immutable);
+  assert.equal(walked.onPremisesImmutableId, a.immutableId(immutable), 'stable within a run');
+  assert.equal(a.walk({ onPremisesImmutableId: null }).onPremisesImmutableId, null);
+  assert.deepEqual(rawIdentifiers(`${GROUP} ${GROUP_SID} ${ONPREM_SID} ${GROUP}`), [GROUP, GROUP_SID.toLowerCase(), ONPREM_SID.toLowerCase()]);
+});
+
+test('the capture guard refuses output that still holds a raw SID of the tenant\'s objects', () => {
+  const rawIds = rawIdentifiers(JSON.stringify({ id: GROUP, securityIdentifier: GROUP_SID }));
+  const leaked = JSON.stringify({ id: pseudonymizer('sha256:aaaa').guid(GROUP), securityIdentifier: GROUP_SID });
+  assert.throws(() => assertSafeText(leaked, { rawTenantId: TENANT, rawIds, label: 'the capture log' }), (error) => error instanceof LiveGateRefusal && /raw object id/.test(error.message));
+  assert.throws(() => assertSafeText(leaked.toUpperCase(), { rawTenantId: TENANT, rawIds, label: 'the record' }), LiveGateRefusal);
+  const safe = JSON.stringify(pseudonymizer('sha256:aaaa').walk({ id: GROUP, securityIdentifier: GROUP_SID }));
+  assert.doesNotThrow(() => assertSafeText(safe, { rawTenantId: TENANT, rawIds, label: 'the capture log' }));
 });

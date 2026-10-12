@@ -319,8 +319,23 @@ export const JOB_HANDLERS = {
   },
   'baseline-activate': {
     script: join(__dirname, 'keel-baseline-activate.mjs'),
-    argsFor(params = {}) {
+    argsFor(params = {}, job = {}) {
       const args = ['--baseline-id', requireString(params.baselineId, 'params.baselineId')];
+      // Live gate #148 (Q43): reinstating a superseded version is the same approval and
+      // capability as an activation; the job requester is the recorded actor.
+      if (params.reinstate === true) {
+        args.push('--reinstate');
+        if (params.version !== undefined) {
+          if (!Number.isInteger(params.version) || params.version < 1) {
+            throw new Error('params.version must be a positive integer');
+          }
+          args.push('--version', String(params.version));
+        }
+        args.push('--actor', requireString(job.requested_by, 'job.requested_by'));
+        if (params.reason !== undefined) {
+          args.push('--reason', requireString(params.reason, 'params.reason'));
+        }
+      }
       if (params.tenantRef !== undefined) {
         args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       }

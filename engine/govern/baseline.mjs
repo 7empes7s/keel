@@ -443,3 +443,112 @@ export async function activateBaseline(client, { tenantRef, baselineId }) {
     throw error;
   }
 }
+
+/**
+ * Live gate #148 (Q43): the rollback path for a baseline change. A superseded version is
+ * history and is never activated again (activateBaseline refuses it), so putting an
+ * earlier version back means copying its baseline_resource rows into a NEW latest version
+ * of the same chain: the current latest version is superseded in turn, the history stays
+ * append-only, and the new version is then activated through activateBaseline. It needs no
+ * source snapshot, so a baseline seeded before snapshots were recorded reinstates too.
+ *
+ * `baselineId` names any version of the chain; `version` picks the one to copy (default:
+ * baselineId's own version). Reinstating the current version is refused.
+ */
+export async function reinstateBaseline(client, {
+  tenantRef, baselineId, version, actor, reason,
+}) {
+  assertTenantRef(tenantRef);
+  if (typeof actor !== 'string' || actor.length === 0) throw new Error('actor is required');
+  let created;
+  let source;
+  let latest;
+  let copied;
+  await client.query('BEGIN');
+  try {
+    // Every version linked to baselineId through supersedes_id, in either direction.
+    const { rows: chain } = await client.query(
+      `WITH RECURSIVE chain AS (
+         SELECT b.* FROM baseline b WHERE b.id = $1 AND b.tenant_ref = $2
+         UNION
+         SELECT b.* FROM baseline b JOIN chain c
+           ON b.id = c.supersedes_id OR b.supersedes_id = c.id
+       )
+       SELECT * FROM chain ORDER BY version`,
+      [baselineId, tenantRef],
+    );
+    if (chain.length === 0) throw new Error(`baseline not found for tenant: ${baselineId}`);
+    const wanted = version === undefined || version === null
+      ? chain.find((row) => row.id === baselineId)
+      : chain.find((row) => Number(row.version) === Number(version));
+    if (!wanted) throw new Error(`baseline ${baselineId} has no version ${version}`);
+    source = wanted;
+    latest = chain.find((row) => !row.superseded_at);
+    if (!latest) throw new Error(`baseline ${baselineId} has no current version`);
+    if (source.id === latest.id) {
+      throw new Error(`baseline ${source.id} (v${source.version}) is the current version; nothing to reinstate`);
+    }
+
+    const { rows: lockedRows } = await client.query(
+      'SELECT id, version, label, active FROM baseline WHERE id = $1 AND superseded_at IS NULL FOR UPDATE',
+      [latest.id],
+    );
+    if (!lockedRows[0]) throw new Error(`baseline ${latest.id} was superseded concurrently; retry`);
+    latest = lockedRows[0];
+    const nextVersion = Number(latest.version) + 1;
+
+    await client.query(
+      'UPDATE baseline SET superseded_at = now(), active = false WHERE id = $1',
+      [latest.id],
+    );
+    const { rows } = await client.query(
+      `INSERT INTO baseline
+         (tenant_ref, set_by, label, description, source_snapshot_id, captured_at,
+          observation_scope, version, supersedes_id, active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, version`,
+      [
+        tenantRef, actor, versionLabel(latest.label, nextVersion), source.description ?? null,
+        source.source_snapshot_id ?? null, source.captured_at ?? null, source.observation_scope ?? null,
+        nextVersion, latest.id, latest.active,
+      ],
+    );
+    created = rows[0];
+    const copy = await client.query(
+      `INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id)
+       SELECT $1, natural_key, resource_version_id
+       FROM baseline_resource
+       WHERE baseline_id = $2`,
+      [created.id, source.id],
+    );
+    copied = copy.rowCount;
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+
+  // The new version is active already when the one it superseded was, so the tenant
+  // never passes through a zero-active state; otherwise this is the activation proper.
+  await activateBaseline(client, { tenantRef, baselineId: created.id });
+
+  await appendEvidence(client, {
+    tenantRef,
+    kind: 'baseline-reinstate',
+    actor,
+    subject: {
+      baselineId: created.id,
+      version: created.version,
+      supersedesBaselineId: latest.id,
+      reinstatedBaselineId: source.id,
+      reinstatedVersion: Number(source.version),
+      resourceCount: copied,
+      reason: reason ?? null,
+      active: true,
+    },
+  });
+  return {
+    id: created.id, version: created.version, supersedesId: latest.id,
+    reinstatedId: source.id, reinstatedVersion: Number(source.version), active: true,
+  };
+}

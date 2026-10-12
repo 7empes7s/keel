@@ -404,6 +404,23 @@ assert.throws(
   () => JOB_HANDLERS['baseline-activate'].argsFor({}),
   /params.baselineId must be a non-empty string/,
 );
+// Live gate #148 (Q43): a reinstatement rides the same job kind, with the requester as actor.
+assert.deepEqual(
+  JOB_HANDLERS['baseline-activate'].argsFor(
+    { baselineId: 'baseline-1', reinstate: true, version: 2, reason: 'delete step done' },
+    { requested_by: 'principal-operator' },
+  ),
+  ['--baseline-id', 'baseline-1', '--reinstate', '--version', '2',
+    '--actor', 'principal-operator', '--reason', 'delete step done'],
+);
+assert.throws(
+  () => JOB_HANDLERS['baseline-activate'].argsFor({ baselineId: 'baseline-1', reinstate: true }, {}),
+  /job.requested_by must be a non-empty string/,
+);
+assert.throws(
+  () => JOB_HANDLERS['baseline-activate'].argsFor({ baselineId: 'baseline-1', reinstate: true, version: '2' }, { requested_by: 'p' }),
+  /params.version must be a positive integer/,
+);
 
 // --- plan task 27: policy evaluation is a policies-authorized tenant-scoped job ---
 assert.equal(

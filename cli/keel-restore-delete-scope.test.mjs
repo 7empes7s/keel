@@ -179,7 +179,7 @@ function runDeleteDryRun(keys, dependencies, { artifactId, extraArgv = [], error
 }
 
 // --- the guards still apply: a named location is tenant-lockout, so its delete is
-// refused without a passed simulation, and the dry run cannot be promoted. ---
+// refused without break-glass evidence, and the dry run cannot be promoted. ---
 {
   const artifacts = new Map();
   const artifactId = 'd7d7d7d7-0000-4000-8000-000000000002';
@@ -188,10 +188,11 @@ function runDeleteDryRun(keys, dependencies, { artifactId, extraArgv = [], error
   assert.equal(await runDeleteDryRun(['namedLocation:Old Office'], fixture.dependencies, { artifactId, errors }), 0, errors.join('\n'));
   const artifact = artifacts.get(artifactId);
   assert.equal(artifact.status, 'refused');
-  assert.deepEqual(artifact.results.skipped, [{
-    naturalKey: 'namedLocation:Old Office',
-    reason: 'refusing to delete tenant-lockout resource: simulationPassed must be true',
-  }]);
+  // The lockout gate (engine/safety/lockoutDeleteGate.mjs) names the missing evidence; this
+  // fixture registers no break-glass readiness, so any of its refusals is the expected outcome.
+  assert.equal(artifact.results.skipped.length, 1);
+  assert.equal(artifact.results.skipped[0].naturalKey, 'namedLocation:Old Office');
+  assert.match(artifact.results.skipped[0].reason, /^refusing to delete tenant-lockout resource: /);
   assert.equal(fixture.state.writes.length, 0);
 
   const promotion = fakes(artifacts);

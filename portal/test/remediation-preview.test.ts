@@ -41,7 +41,7 @@ class Reader {
   async collect(_version: string, path: string) {
     if (collectorFailure) return { items: [], error: { status: 403 } };
     if (path.startsWith("/groups?")) return { items: liveGroups, error: null };
-    if (path === "/directory/deletedItems/microsoft.graph.group") return { items: deletedGroups, error: null };
+    if (path.startsWith("/directory/deletedItems/microsoft.graph.group")) return { items: deletedGroups, error: null };
     if (path === "/identity/conditionalAccess/policies") return { items: [ca], error: null };
     if (path.startsWith("/roleManagement/directory/roleAssignments")) return { items: protectedPrincipal ? [assignment] : [], error: null };
     if (path === "/organization") return { items: [{ id: config.tenantId }], error: null };

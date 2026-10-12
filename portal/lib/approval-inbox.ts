@@ -39,6 +39,8 @@ export interface ApprovalRequestRecord {
   reason: string | null;
   createdAt: string | null;
   expiresAt: string | null;
+  // Gap B11: who carries the request out once approved. Absent reads as "worker".
+  executor?: "worker" | "cli";
   // Roadmap task-130: requester, decider, dry run, baseline and changes resolved to
   // names by the engine (one query per kind). Absent on rows read without it.
   references?: RowReferences;
@@ -115,6 +117,7 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
     reason: (row.reason as string | null) ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
+    executor: row.executor === "cli" ? "cli" : "worker",
     references: (row.references as RowReferences | undefined) ?? EMPTY_REFERENCES,
   };
 }

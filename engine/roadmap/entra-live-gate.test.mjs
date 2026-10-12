@@ -22,6 +22,7 @@ import {
 import {
   FIXTURE_GUIDANCE, buildLiveGatePlan, guidanceFor, main as planMain, renderMarkdown,
 } from '../../tools/qualification/live-gate-plan.mjs';
+import { guidToCloudSid } from '../../tools/qualification/pseudonymize.mjs';
 
 // The three break-glass lines every lockout-sensitive step shares.
 const BREAK_GLASS_COMMON_COUNT = 3;
@@ -65,6 +66,8 @@ function fixtureRestore(step, {
   const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
   const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  // Graph returns the object id a second time, encoded as a security identifier.
+  const securityIdentifier = guidToCloudSid(targetId);
   const entry = {
     id: 1,
     runId: `run-${restoreRef}`,
@@ -75,7 +78,7 @@ function fixtureRestore(step, {
     targetId,
     priorState: edge
       ? { kind: 'relationship-edge', parentNaturalKey: key, parentTargetId: targetId, family, targetId: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff', present: step.operation === 'edge-remove' }
-      : { id: targetId, ...(name ? { displayName: name } : {}), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
+      : { id: targetId, securityIdentifier, ...(name ? { displayName: name } : {}), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
     intendedState: edge ? null : { ...(name ? { displayName: name } : {}), description: 'after' },
     postState: edge ? null : { id: targetId, ...(name ? { displayName: name } : {}), description: 'after' },
     outcome,
@@ -227,6 +230,7 @@ test('one simulated capture per family promotes through qualifyLiveEvidence and 
     const written = `${JSON.stringify(result.record)}${result.captureLog}`;
     assert.ok(!written.includes(FIXTURE_TENANT_ID), `${family}: the raw tenant id is pseudonymized`);
     assert.ok(!written.includes('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'), `${family}: object ids are pseudonymized`);
+    assert.ok(!written.includes(guidToCloudSid('aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')), `${family}: the object's SID is pseudonymized`);
 
     const promoted = promote(result);
     assert.deepEqual(promoted.failures, [], `${family}: ${step.id}`);

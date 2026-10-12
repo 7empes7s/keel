@@ -37,6 +37,11 @@ let client: TestClient;
 let activeBaselineId: string;
 let currentTenantRef: string;
 
+// Gap B11: a request's requester must resolve to an enabled principal, as the portal's
+// own principal ids always do.
+const RESTORER = "1b2a4a00-0000-4000-8000-0000000000d1";
+const RESTORER_BULK = "1b2a4a00-0000-4000-8000-0000000000d2";
+
 before(async () => {
   if (!process.env.KEEL_DB_TEST_URL) {
     const env = readFileSync("/etc/keel/db.env", "utf8");
@@ -68,6 +73,10 @@ before(async () => {
 
   currentTenantRef = tenantRef();
   client = await database.connect();
+  await client.query(
+    `INSERT INTO principal (id, email) VALUES ($1, 'restorer@drift.test'), ($2, 'bulk@drift.test')`,
+    [RESTORER, RESTORER_BULK],
+  );
   const { rows } = await client.query(
     `INSERT INTO baseline (tenant_ref, set_by, active)
      VALUES ($1, 'test-operator', true)
@@ -219,7 +228,7 @@ test("remediate creates an approval request and never a job", async () => {
   const jobsBefore = await jobCount();
   const response = await remediateRoute(
     post("/api/actions/remediate", {
-      principalId: "principal-restorer",
+      principalId: RESTORER,
       capabilities: ["remediate"],
       body: { driftIds: [drift.id], justification: "Restore the approved baseline" },
     }),
@@ -240,7 +249,7 @@ test("bulk remediation enqueues exactly the selected drift IDs", async () => {
   const visibleDriftIds = [first.id, middle.id, last.id];
   const response = await remediateRoute(
     post("/api/actions/remediate", {
-      principalId: "principal-restorer-bulk",
+      principalId: RESTORER_BULK,
       capabilities: ["remediate"],
       body: remediationParams({
         selectedDriftIds,

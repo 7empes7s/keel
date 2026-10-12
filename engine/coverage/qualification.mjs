@@ -65,13 +65,13 @@ export const TYPE_DECISIONS = Object.freeze({
   subscribedSku: manual('licences are purchased, not configured'),
   directorySettingTemplate: manual('Microsoft-published template catalogue'),
   // Issue #156: basic tenant settings.
-  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; logos, background images, favicon and custom stylesheet are binary uploads and are never written', {
+  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; its logos, background image, favicon and custom stylesheet are backed up and uploaded back (fixture-tested, not yet live)', {
     liveFailures: {
       update: failedLive('2026-10-10', 'live restore PATCH of the default company branding returned HTTP 400 (eef1019, test tenant); default branding existed only as an empty localization 0 created with fr-FR',
         'fix the default branding PATCH body (400 on the test tenant); live gate #148 run 1, to be re-run after the fix'),
     },
   }),
-  organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; images are never written, and adding or removing a language is by hand'),
+  organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; its images and stylesheet are backed up and uploaded back (fixture-tested, not yet live); adding or removing a language is by hand'),
   groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
@@ -459,10 +459,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     method: 'Set-OrganizationConfig',
     module: 'ExchangeOnlineManagement',
     readBack: 'exchange.organization-config',
-    fields: Object.freeze([
-      'FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled',
-      'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled',
-    ]),
+    // Allowlist of one (gap W7): the large-audience mail tip threshold. Every other
+    // organization setting is observed and left to an administrator.
+    fields: Object.freeze(['MailTipsLargeAudienceThreshold']),
     rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] }),
     grantsRequired: true,
     requires: Object.freeze(['teams.settings.update']),
@@ -734,9 +733,9 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // Issue #156: company branding and group expiration. Records live in
   // engine/restore/tenantPolicyOperations.mjs.
   organizationalBranding: subset('administrative-configuration', 'PATCH /organization/{id}/branding', 'OrganizationalBranding.ReadWrite.All',
-    'update of the default sign-in page text, colours and layout is fixture-tested; logos, background images, favicon and custom stylesheet are never written'),
+    'update of the default sign-in page text, colours and layout is fixture-tested; logos, background image, favicon and custom stylesheet are uploaded with PUT /organization/{id}/branding/localizations/0/{file} (fixture-tested, not live)'),
   organizationalBrandingLocalization: subset('administrative-configuration', 'PATCH /organization/{id}/branding/localizations/{locale}', 'OrganizationalBranding.ReadWrite.All',
-    'update of an existing language\'s text, colours and layout is fixture-tested; adding or removing a language and every image are by hand'),
+    'update of an existing language\'s text, colours and layout is fixture-tested; its images and stylesheet are uploaded with PUT /organization/{id}/branding/localizations/{locale}/{file} (fixture-tested, not live); adding or removing a language is by hand'),
   groupLifecyclePolicy: subset('administrative-configuration', 'PATCH /groupLifecyclePolicies/{id}', 'Directory.ReadWrite.All',
     'update is fixture-tested and runs only when it makes expiry less aggressive (a longer lifetime, fewer groups covered, no renewal notice address removed); create, delete and the list of selected groups are by hand'),
   // ---- device management (outside the Entra batches)
@@ -883,12 +882,13 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   ]),
   // Issue #156.
   organizationalBranding: Object.freeze([
-    lost('configuration', 'logos, background image, favicon, custom stylesheet', 'binary uploads with their own routes; only their file paths are backed up, and a change is reported not remediable'),
+    lost('configuration', 'header logo', 'not backed up; only its file path is kept'),
+    lost('configuration', 'a file the backup did not have', 'a logo, image or stylesheet that was not set, too large (over 1 MB) or unreadable at backup time is never removed or written; the live one is kept'),
     lost('configuration', 'content customization', 'it nests uploaded-file paths beside its text, so it is backed up but never written'),
     lost('configuration', 'missing branding', 'a tenant with no branding gets none from KEEL; it is set up by hand'),
   ]),
   organizationalBrandingLocalization: Object.freeze([
-    lost('configuration', 'images of each language', 'binary uploads; never written'),
+    lost('configuration', 'header logo of each language', 'not backed up; only its file path is kept'),
     lost('configuration', 'added or removed languages', 'create and delete are not qualified; a missing language is added by hand'),
   ]),
   groupLifecyclePolicy: Object.freeze([

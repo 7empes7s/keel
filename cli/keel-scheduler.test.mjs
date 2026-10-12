@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { gzipSync } from 'node:zlib';
@@ -16,8 +17,11 @@ import { processCollectionCompletions } from '../engine/schedules/completions.mj
 import { verifyFreshManifest, recordShippedManifest } from '../engine/schedules/offsite.mjs';
 import { localTimeToUTC, utcTimeToLocal } from '../engine/schedules/timeOfDay.mjs';
 import { JOB_HANDLERS, runJob } from './keel-worker.mjs';
+import { seedSchedules } from '../engine/store/scheduleSeed.mjs';
 
 const exec = promisify(execFile);
+// Child commands use repo-relative paths (cli/..., ops/...): run them from the checkout, wherever it lives.
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
 const directory = await mkdtemp(join(tmpdir(), 'keel-scheduler-'));
@@ -120,6 +124,47 @@ try {
     assert.equal((await tick(client, { now: late })).length, 0);
   });
 
+  await test('every seeded kind is schedulable: the weekly api-drift row enqueues and advances one week', async () => {
+    await clearJobs();
+    const others = (await client.query('UPDATE schedule SET enabled = false WHERE enabled RETURNING id')).rows.map((r) => r.id);
+    await seedSchedules(client, { tenantRef: 'seed-fixture', now: due });
+    try {
+      const seeded = (await client.query("SELECT * FROM schedule WHERE tenant_ref = 'seed-fixture'")).rows;
+      assert.equal(seeded.length, 7, "collect tiers 1-3, prune, offsite, api-drift and workload-collect");
+      for (const schedule of seeded) assert.doesNotThrow(() => validateSchedule(schedule), schedule.job_kind);
+      const apiDrift = seeded.find((schedule) => schedule.job_kind === 'api-drift');
+      const jobs = await tick(client, { now: apiDrift.next_due_at });
+      assert.ok(jobs.some((job) => job.kind === 'api-drift'), 'the api-drift job is enqueued');
+      assert.ok(jobs.some((job) => job.kind === 'collect'), 'the other due kinds run in the same tick');
+      const advanced = (await client.query('SELECT next_due_at FROM schedule WHERE id = $1', [apiDrift.id])).rows[0].next_due_at;
+      assert.equal(advanced.valueOf() - apiDrift.next_due_at.valueOf(), 7 * 24 * 3_600_000);
+    } finally {
+      await clearJobs();
+      await client.query("DELETE FROM schedule WHERE tenant_ref = 'seed-fixture'");
+      await client.query('UPDATE schedule SET enabled = true WHERE id = ANY($1)', [others]);
+    }
+  });
+
+  await test('one unschedulable row is skipped and left due; the rest of the tick still commits', async () => {
+    await clearJobs();
+    await client.query('UPDATE schedule SET next_due_at = $1 WHERE id = $2', [due, row.id]);
+    const bad = (await client.query(`INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at)
+      VALUES ('fixture', 'restore', NULL, '{"every":"day","n":1,"atTime":null}', $1) RETURNING *`, [due])).rows[0];
+    const errors = [];
+    const original = console.error;
+    console.error = (...args) => errors.push(args.join(' '));
+    try {
+      const jobs = await tick(client, { now: due });
+      assert.deepEqual(jobs.map((job) => job.kind), ['collect']);
+      assert.equal((await client.query('SELECT next_due_at FROM schedule WHERE id = $1', [row.id])).rows[0].next_due_at.toISOString(), '2026-09-14T01:00:00.000Z');
+      assert.deepEqual((await client.query('SELECT * FROM schedule WHERE id = $1', [bad.id])).rows[0], bad);
+      assert.ok(errors.some((line) => /skipped schedule/.test(line) && /not schedulable/.test(line)), errors.join('\n'));
+    } finally {
+      console.error = original;
+      await client.query('DELETE FROM schedule WHERE id = $1', [bad.id]);
+    }
+  });
+
   await test('worker lock covers collect and manual backup in both directions, including stale heartbeat reset', async () => {
     await clearJobs();
     const operator = (await client.query("INSERT INTO principal (email) VALUES ('operator@fixture.invalid') RETURNING *")).rows[0];
@@ -184,14 +229,14 @@ try {
     // A valid active baseline ensures rejection reaches the snapshot coverage gate.
     await assert.rejects(() => exec(process.execPath, ['cli/keel-drift.mjs', 'detect',
       '--snapshot-id', partial.id, '--tenant-ref', 'fixture', '--db-url', database.url],
-    { cwd: '/opt/keel' }), (error) => {
+    { cwd: repoRoot }), (error) => {
       assert.equal(error.code, 1);
       assert.match(error.stderr, /drift-detect deferred: snapshot coverage is incomplete/);
       assert.doesNotMatch(error.stdout, /drift report:|snapshot .* complete/);
       return true;
     });
     assert.equal((await client.query('SELECT count(*)::int AS count FROM drift WHERE observed_snapshot = $1', [partial.id])).rows[0].count, 0);
-    const result = await exec(process.execPath, ['cli/keel-drift.mjs', ...JOB_HANDLERS['drift-detect'].argsFor(queued[0].params), '--db-url', database.url], { cwd: '/opt/keel' });
+    const result = await exec(process.execPath, ['cli/keel-drift.mjs', ...JOB_HANDLERS['drift-detect'].argsFor(queued[0].params), '--db-url', database.url], { cwd: repoRoot });
     assert.match(result.stdout, new RegExp(`snapshot ${full.id} complete`));
   });
 
@@ -217,7 +262,7 @@ try {
     const driftJob = (await listJobs(client)).find((job) => job.kind === 'drift-detect');
     assert.equal(driftJob.status, 'queued');
     const args = ['cli/keel-drift.mjs', 'detect', '--snapshot-id', observed.id, '--tenant-ref', tenantRef, '--db-url', database.url];
-    await exec(process.execPath, args, { cwd: '/opt/keel' });
+    await exec(process.execPath, args, { cwd: repoRoot });
     const drift = (await client.query('SELECT natural_key, change_type FROM drift WHERE observed_snapshot = $1', [observed.id])).rows;
     assert.deepEqual(drift, [{ natural_key: 'group:fixture', change_type: 'removed' }]);
     for (const incomplete of [
@@ -227,7 +272,7 @@ try {
       { group: { itemCount: 0 } }, {},
     ]) {
       await client.query('UPDATE snapshot SET coverage_digest = $2 WHERE id = $1', [observed.id, incomplete]);
-      await assert.rejects(() => exec(process.execPath, args, { cwd: '/opt/keel' }), (error) => {
+      await assert.rejects(() => exec(process.execPath, args, { cwd: repoRoot }), (error) => {
         assert.equal(error.code, 1);
         assert.match(error.stderr, /drift-detect deferred: snapshot coverage is incomplete/);
         return true;
@@ -278,7 +323,7 @@ try {
       VALUES ('tenant-b', 'complete', $1) RETURNING *`, [{ 'entra.group': { outcome: 'complete', itemCount: 0 } }])).rows[0];
     await assert.rejects(() => exec(process.execPath, ['cli/keel-drift.mjs', 'detect',
       '--snapshot-id', otherTenantSnapshot.id, '--tenant-ref', 'tenant-a', '--db-url', database.url],
-    { cwd: '/opt/keel' }), (error) => {
+    { cwd: repoRoot }), (error) => {
       assert.equal(error.code, 1);
       assert.match(error.stderr, /drift-detect deferred: snapshot coverage is incomplete/);
       return true;
@@ -304,7 +349,7 @@ try {
     await writeFile(join(directory, 'ssh'), `#!/bin/sh\ncase "$*" in *sha256sum*) echo '${manifest.checksum} fixture';; esac\n`, { mode: 0o700 });
     // KEEL_OFFSITE_REMOTE selects the SSH transport, so the fake ssh/scp above stand in for the target.
     const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: directory, KEEL_OFFSITE_REMOTE: 'fixture@offsite', PATH: `${directory}:${process.env.PATH}` };
-    await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { env }), (error) => /not newer/.test(error.stderr));
+    await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env }), (error) => /not newer/.test(error.stderr));
     // A scheduled stale shipment must surface as a failed job, never success.
     await clearJobs();
     await client.query(`INSERT INTO schedule (tenant_ref, job_kind, cadence, next_due_at)
@@ -328,12 +373,12 @@ try {
     assert.match(flagged.error, /not newer/);
     await rm(shippedPath);
     await writeFile(manifestPath, JSON.stringify(manifest));
-    await exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { env });
+    await exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env });
     await assert.rejects(() => readFile(shippedPath), { code: 'ENOENT' });
     const fakeEnv = env;
-    await exec('bash', ['ops/keel-offsite.sh'], { env: fakeEnv });
+    await exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: fakeEnv });
     assert.deepEqual(JSON.parse(await readFile(shippedPath)), manifest);
-    await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh'], { env: fakeEnv }), (error) => /not newer/.test(error.stderr));
+    await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: fakeEnv }), (error) => /not newer/.test(error.stderr));
     await writeFile(manifestPath, JSON.stringify({ ...manifest, timestamp: '2026-09-15T05:00:00Z', checksum: '0'.repeat(64) }));
     await assert.rejects(() => verifyFreshManifest(manifestPath, shippedPath), /checksum mismatch/);
   });
@@ -360,7 +405,7 @@ try {
       // the original bytes, simulating a writer racing the script's own recheck.
       await writeFile(join(workDir, 'gzip'), `#!/bin/sh\nif [ "$1" = "-t" ]; then cp "${corruptPath}" "$2"; fi\nexec "${realGzip.trim()}" "$@"\n`, { mode: 0o700 });
       const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: workDir, PATH: `${workDir}:${process.env.PATH}` };
-      await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: '/opt/keel', env }), (error) => {
+      await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env }), (error) => {
         assert.match(error.stderr, /dump changed after manifest verification/);
         return true;
       });

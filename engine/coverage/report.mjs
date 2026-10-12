@@ -38,6 +38,7 @@ import { diagnoseFailure } from './diagnosis.mjs';
 import { loadRelationshipState, summarizeRelationshipState } from '../collect/relationships.mjs';
 import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { listWorkloads } from '../collect/registry.mjs';
+import { loadProofExpiry } from '../collect/workloadLedgerStore.mjs';
 // Registers the SharePoint workload adapter (task-102) so its coverage is reported.
 import '../collect/workloads/sharepoint.mjs';
 // Registers the Teams workload adapter (task-104), disabled like SharePoint.
@@ -169,6 +170,9 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
     liveEvidence: liveRecords
       ? { checkedAt: liveRecords.checkedAt, keyConfigured: liveRecords.keyConfigured, workloads: liveRecords.workloads }
       : null,
+    // Gap W3: each stored workload live proof and when it stops counting ("expires in
+    // N days"), so a recapture is due before the workloads silently switch off.
+    workloadProof: await loadProofExpiry(client, { tenantRef, now: new Date(generatedAt) }),
     summary: {
       covered: types.filter((t) => t.status === 'covered').length,
       failed: types.filter((t) => t.status === 'failed').length,

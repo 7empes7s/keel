@@ -45,11 +45,13 @@ writeFileSync(fixturePath, `
   setInterval(() => {}, 1000);
 `);
 
-const execution = startJobChild(fixturePath, [grandchildPidPath], { timeoutMs: 100 });
+// The timeout must outlast Node start-up of the child under a loaded CI runner: at 100ms the child
+// was sometimes killed before it wrote the grandchild pid file (ENOENT on the read below).
+const execution = startJobChild(fixturePath, [grandchildPidPath], { timeoutMs: 3000 });
 const processGroupId = execution.child.pid;
 
 try {
-  await assert.rejects(execution.completed, /execution timed out after 100ms/);
+  await assert.rejects(execution.completed, /execution timed out after 3000ms/);
   assert.equal(
     isProcessGroupAlive(processGroupId),
     false,
@@ -254,8 +256,8 @@ assert.ok(
 );
 assertSchemaJobKindCoverage(schemaSql, JOB_HANDLERS, JOB_KIND_CAPABILITIES);
 const fixtureSchemaSql = schemaSql.replace(
-  ",'api-drift'));",
-  ",'api-drift','fixture-schema-kind'));",
+  ",'workload-collect'));",
+  ",'workload-collect','fixture-schema-kind'));",
 );
 assert.notEqual(fixtureSchemaSql, schemaSql, 'the fixture must add a schema-accepted kind');
 assert.throws(
@@ -285,6 +287,7 @@ assert.deepEqual(
     offsite: 'configuration',
     'drift-detect': 'collect',
     'api-drift': 'collect',
+    'workload-collect': 'collect',
     backup: 'backup',
     'baseline-create': 'baseline-create',
     'baseline-activate': 'baseline-create',

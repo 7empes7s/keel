@@ -40,7 +40,12 @@ export async function tick(client, { now = new Date(), afterEnqueue } = {}) {
        ORDER BY next_due_at, id FOR UPDATE SKIP LOCKED`, [now],
     );
     for (const row of rows) {
-      validateSchedule(row);
+      // One invalid row must not roll back every other due schedule. It stays due and
+      // is reported on each tick until an operator fixes or disables it.
+      try { validateSchedule(row); } catch (error) {
+        console.error(`scheduler: skipped schedule ${row.id} (${row.job_kind}): ${error.message}`);
+        continue;
+      }
       const job = await enqueueSchedule(client, row, principal.id);
       if (afterEnqueue) await afterEnqueue(job);
       await client.query(

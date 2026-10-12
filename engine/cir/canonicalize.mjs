@@ -205,7 +205,7 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
   const references = [];
   const seen = new Set();
   const staleReferences = [];
-  for (const { path, guid } of referenceValues(obj, idToSymbol)) {
+  for (const { path, guid, prefix } of [...referenceValues(obj, idToSymbol), ...scopeReferenceValues(type, obj)]) {
     if (seen.has(path)) continue;
     seen.add(path);
     const batchSymbol = idToSymbol.get(guid.toLowerCase());
@@ -217,7 +217,9 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
     if (c.klass === 'identity' || c.klass === 'nonReference') continue;
     const stale = c.klass === 'resolvable' && (historical != null || recovered != null);
     if (stale) staleReferences.push(path);
-    references.push({ field: path, symbol: symbolFor(c, guid), required: true, klass: c.klass, ...(stale ? { stale: true } : {}) });
+    references.push({
+      field: path, symbol: symbolFor(c, guid), required: true, klass: c.klass, ...(stale ? { stale: true } : {}), ...(prefix ? { prefix } : {}),
+    });
   }
   return {
     naturalKey: key,
@@ -248,6 +250,22 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
     },
     sourceId: obj.id,
   };
+}
+
+// Gap register D2: a PIM eligibility scoped to an administrative unit holds
+// the unit as a path ("/administrativeUnits/{id}"), not a bare id, so the GUID
+// walk never sees it. The id inside is a reference like any other, resolved
+// through the unit's natural key; `prefix` tells the writer to put the target
+// id back into the same path. Only the eligibility's scope is read this way.
+const SCOPE_REFERENCE_FIELDS = new Map([['roleEligibilitySchedule', ['directoryScopeId']]]);
+const ADMINISTRATIVE_UNIT_SCOPE = /^\/administrativeUnits\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+export const ADMINISTRATIVE_UNIT_SCOPE_PREFIX = '/administrativeUnits/';
+
+function* scopeReferenceValues(type, obj) {
+  for (const field of SCOPE_REFERENCE_FIELDS.get(type) ?? []) {
+    const match = typeof obj?.[field] === 'string' ? ADMINISTRATIVE_UNIT_SCOPE.exec(obj[field]) : null;
+    if (match) yield { path: field, guid: match[1].toLowerCase(), prefix: ADMINISTRATIVE_UNIT_SCOPE_PREFIX };
+  }
 }
 
 function* referenceValues(node, idToSymbol, path = '') {

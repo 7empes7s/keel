@@ -132,7 +132,7 @@ line next to every workload so no user expects a mailbox restore.
 | --- | --- | --- |
 | P1 | The Q43 evidence (16 promoted, 7 demoted) is on `claude/live-evidence-148` with no PR. Master's ledger still says every Entra write is fixture-tested. | Open the PR, apply the 7 demotions to `capabilities.mjs` and `TYPE_DECISIONS` as the runbook requires, merge. |
 | P2 | The portal and coverage report never load committed live records; they always show fixture-tested. | Load the signed records at startup. Needs the signing key available to the portal process (decision in §6). |
-| P3 | Entra live acceptance is not a release-ledger gate. | Add it once P1 is in, with the 30-day freshness rule. |
+| P3 | Entra live acceptance is not a release-ledger gate. | **Fixed by the `claude/entra-live-ledger-gate` PR.** The ledger now has an Entra gate judged per registered write: a verified live record from the last 30 days passes it, and a demoted, expired, unverified or missing write is shown with why. Today the 7 committed demotions make the ledger report blocked; the ledger command still exits 0 (report only). |
 | P4 | Every "manual" and "unknown" reason lives in code comments. | Generate `docs/coverage.md` from `TYPE_DECISIONS` and the workload ledger on every build, so the documentation can't drift from the code. This is the "everything documented" deliverable. |
 
 ## 6. Decisions taken by Marouane (2026-10-12)

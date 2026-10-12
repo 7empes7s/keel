@@ -1409,3 +1409,11 @@ CREATE TABLE IF NOT EXISTS itsm_adapter_config (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_ref, adapter)
 );
+
+-- Gap B11: who carries out an approved request. 'worker': approval mints the job (every
+-- request made before B11). 'cli': an operator runs it with the CLI, so approval mints
+-- no job. Additive: existing rows read as 'worker' and keep their behaviour.
+ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS executor text NOT NULL DEFAULT 'worker';
+ALTER TABLE approval_request DROP CONSTRAINT IF EXISTS approval_request_executor_check;
+ALTER TABLE approval_request ADD CONSTRAINT approval_request_executor_check
+  CHECK (executor IN ('worker', 'cli'));

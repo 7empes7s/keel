@@ -811,6 +811,7 @@ export async function runRestore({
     // snapshot, selection, or dependency closure changes the digest; a target that
     // drifted since the dry run ran changes the fingerprint. Either one fails the
     // whole run closed, before a single write.
+    let approvedContentEffects = [];
     if (artifact) {
       const freshDigest = computePlanDigestFn({
         snapshotId: sourceSnapshot,
@@ -838,7 +839,10 @@ export async function runRestore({
       if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
       // Task-66: the effects just recomputed must carry a separate, current
       // high-impact approval bound to exactly them — never the requester's own.
-      await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      const contentEffectApproval = await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      // Gap D3: only effects whose separate approval was just checked unlock a
+      // write the guard otherwise refuses (a shorter group lifetime).
+      if (contentEffectApproval) approvedContentEffects = contentEffects.effects;
     }
 
     const seeds = {
@@ -890,8 +894,13 @@ export async function runRestore({
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
         observedCoverage,
         lockoutGate,
+        approvedContentEffects,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      for (const entry of [...result.applied, ...result.skipped]) {
+        const step = entry.pendingApproval ?? entry.completion;
+        if (step) logger.log(`completion step: ${entry.naturalKey} — ${step.description}`);
+      }
       results.applied.push(...result.applied);
       results.skipped.push(...result.skipped);
       results.failed.push(...result.failed);

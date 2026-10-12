@@ -1,0 +1,73 @@
+{
+  "restoreRef": "41eef8de-20ea-86bd-88c9-89102b837d07",
+  "entry": {
+    "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca",
+    "resourceType": "conditionalAccessPolicy",
+    "operation": "create",
+    "targetId": null,
+    "outcome": "failed",
+    "outcomeDetail": "status 400",
+    "recordedAt": "2026-10-12T08:23:45.348Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "ee179985-a920-878f-916d-a4099e3c922a",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "excludeRoles": [],
+          "excludeUsers": [
+            "387df5b1-6f21-82b1-a085-cc16cc32a24d",
+            "8aa8d0e6-1afc-8f12-9ab6-ba93988eb6e0",
+            "4d947a08-1117-8e21-ad0f-2bbf00af6bdd"
+          ],
+          "includeRoles": [],
+          "includeUsers": [],
+          "excludeGroups": [],
+          "includeGroups": [
+            "a9f95845-1cf1-8688-bb4e-597f2643a6c8"
+          ],
+          "excludeGuestsOrExternalUsers": null,
+          "includeGuestsOrExternalUsers": null
+        },
+        "devices": null,
+        "locations": null,
+        "platforms": null,
+        "applications": {
+          "applicationFilter": null,
+          "includeUserActions": [],
+          "excludeApplications": [],
+          "includeApplications": [
+            "All"
+          ],
+          "includeAuthenticationContextClassReferences": []
+        },
+        "clientAppTypes": [
+          "all"
+        ],
+        "userRiskLevels": [],
+        "signInRiskLevels": [],
+        "insiderRiskLevels": null,
+        "clientApplications": null,
+        "authenticationFlows": null,
+        "servicePrincipalRiskLevels": []
+      },
+      "templateId": null,
+      "displayName": "KEEL-RT-148-ca",
+      "grantControls": {
+        "operator": "OR",
+        "termsOfUse": [],
+        "builtInControls": [
+          "block"
+        ],
+        "authenticationStrength": null,
+        "customAuthenticationFactors": [],
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('ee179985-a920-878f-916d-a4099e3c922a')/grantControls/authenticationStrength/$entity"
+      },
+      "createdDateTime": "2026-10-11T20:28:36.3718378Z",
+      "deletedDateTime": null,
+      "sessionControls": null,
+      "modifiedDateTime": null
+    },
+    "postState": null
+  }
+}

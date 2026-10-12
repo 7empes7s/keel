@@ -1,0 +1,81 @@
+{
+  "restoreRef": "d49b1bd4-2251-801b-956b-532755b75fd2",
+  "entry": {
+    "naturalKey": "groupSetting:Group.Unified",
+    "resourceType": "groupSetting",
+    "operation": "delete",
+    "targetId": "97dc62f4-507a-86f5-ad8a-b91a5574cc5a",
+    "outcome": "succeeded",
+    "outcomeDetail": "absent",
+    "recordedAt": "2026-10-11T08:32:00.388Z",
+    "priorState": {
+      "id": "97dc62f4-507a-86f5-ad8a-b91a5574cc5a",
+      "values": [
+        {
+          "name": "NewUnifiedGroupWritebackDefault",
+          "value": "true"
+        },
+        {
+          "name": "EnableMIPLabels",
+          "value": "false"
+        },
+        {
+          "name": "CustomBlockedWordsList",
+          "value": ""
+        },
+        {
+          "name": "EnableMSStandardBlockedWords",
+          "value": "false"
+        },
+        {
+          "name": "ClassificationDescriptions",
+          "value": ""
+        },
+        {
+          "name": "DefaultClassification",
+          "value": ""
+        },
+        {
+          "name": "PrefixSuffixNamingRequirement",
+          "value": ""
+        },
+        {
+          "name": "AllowGuestsToBeGroupOwner",
+          "value": "false"
+        },
+        {
+          "name": "AllowGuestsToAccessGroups",
+          "value": "true"
+        },
+        {
+          "name": "GuestUsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "GroupCreationAllowedGroupId",
+          "value": ""
+        },
+        {
+          "name": "AllowToAddGuests",
+          "value": "true"
+        },
+        {
+          "name": "UsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "ClassificationList",
+          "value": ""
+        },
+        {
+          "name": "EnableGroupCreation",
+          "value": "true"
+        }
+      ],
+      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
+      "displayName": "Group.Unified"
+    },
+    "intendedState": null,
+    "postState": null
+  }
+}

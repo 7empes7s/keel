@@ -3,6 +3,8 @@ import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion, insertReferences } from '../store/db.mjs';
 import { loadSymbolContext, recordSymbolContext, seedSymbolContext } from '../store/resourceSymbols.mjs';
 import { collectRelationships, recordRelationships, parentTypesForFamilies, DEFAULT_RELATIONSHIP_FAMILIES } from './relationships.mjs';
+import { brandingLocales, collectBrandingAssets, organizationIdOf } from './brandingAssets.mjs';
+import { recordBrandingAssets } from '../store/brandingAssets.mjs';
 
 /** Group ids (lowercase) named in any collected Conditional Access policy's user conditions. */
 export function conditionalAccessGroupIds(canonical) {
@@ -19,7 +21,7 @@ export function conditionalAccessGroupIds(canonical) {
 }
 
 /** Persist outcomes independently of resources, including completed empty reads. */
-export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false }) {
+export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false, brandingAssets = false }) {
   // Tier selection (task 49) happens inside collectWithOutcomes, before any
   // HTTP read: an excluded type's endpoint is never called, so `collected`
   // below already holds only the requested tier's types (or every type when
@@ -117,9 +119,25 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
       return acc;
     }, {});
   }
+  // Gap register M6: the company branding files (images, favicon, custom
+  // stylesheet) of every locale this snapshot holds, read beside it and stored
+  // by content hash. Opt-in, like relationships. A file read never changes a
+  // type's outcome; each file keeps its own (present, absent, too-large, failed).
+  let brandingAssetSummary = null;
+  if (brandingAssets) {
+    const locales = brandingLocales(result.collected);
+    // The files are read under the directory id of this run's organization
+    // object; without one (the type was not collected) nothing is read.
+    const organizationId = organizationIdOf(result.collected);
+    if (locales.length > 0 && organizationId && typeof reader?.getStream === 'function') {
+      const observations = await collectBrandingAssets(reader, { organizationId, locales });
+      brandingAssetSummary = await recordBrandingAssets(client, { snapshotId, tenantRef, observations });
+    }
+  }
   return {
     snapshotId,
     coverageDigest: result.coverageDigest,
     ...(relationshipSummary ? { relationships: relationshipSummary, relationshipsByFamily } : {}),
+    ...(brandingAssetSummary ? { brandingAssets: brandingAssetSummary } : {}),
   };
 }

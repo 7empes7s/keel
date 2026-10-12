@@ -87,7 +87,7 @@ export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  conditionalAccessEnforcement = null,
+  conditionalAccessEnforcement = null, brandingUploads = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -101,6 +101,10 @@ export function computePlanDigest({
     patches,
     ...(automationContext ? { automationContext } : {}),
     ...(relationshipOperations?.length ? { relationshipOperations } : {}),
+    // Gap register M6: the branding files the plan uploads (locale, file, the
+    // backed-up and live hashes, size, type). Folded only when there is at
+    // least one, so plans without uploads keep their digest.
+    ...(brandingUploads?.length ? { brandingUploads } : {}),
     // Task-64: the recovery mechanism per resource (mechanism, retained/new id,
     // deadline, credential, proof). Folded whenever supplied — every new dry run
     // supplies it — and left out only for an artifact persisted before task-64,

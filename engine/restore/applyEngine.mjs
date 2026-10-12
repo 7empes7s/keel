@@ -134,7 +134,9 @@ export function rewriteReferences(payload, references, ctx, naturalKey, resource
       throw new UnresolvedReferenceError(naturalKey, ref, result.reason);
     }
     if (VERBATIM_RESOLUTIONS.has(result.via)) continue;
-    rewritten = setAtPath(rewritten, ref.field, result.targetId);
+    // A reference held inside a path (an administrative-unit scope) keeps its
+    // path; only the id after the prefix is rewritten.
+    rewritten = setAtPath(rewritten, ref.field, ref.prefix ? `${ref.prefix}${result.targetId}` : result.targetId);
   }
   return rewritten;
 }
@@ -296,6 +298,25 @@ async function noteOutcome(rollbackClient, journal, outcome, extras = {}) {
 function outcomeDetail(result) {
   if (result?.status !== undefined && result?.status !== null) return `status ${result.status}`;
   return result?.error ? String(result.error).slice(0, 200) : 'no response';
+}
+
+/**
+ * Gap B9: the outcome detail of a failed write, with Graph's error body
+ * appended, so a refused write (the live branding 400) can be diagnosed from
+ * the journal alone. The body is Graph's own error (code, message, request
+ * ids); it is cut to a bounded length.
+ */
+function outcomeDetailWithBody(result) {
+  const detail = outcomeDetail(result);
+  const body = result?.body?.error ?? result?.body;
+  if (body === undefined || body === null || body === '') return detail;
+  let text;
+  try {
+    text = typeof body === 'string' ? body : JSON.stringify(body);
+  } catch {
+    return detail;
+  }
+  return `${detail}: ${text.slice(0, 2000)}`;
 }
 
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
@@ -1066,7 +1087,7 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
       method: write.method, body: write.body, ...(entry.requestHeaders ? { headers: entry.requestHeaders } : {}),
     }));
     if (!result.ok) {
-      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetailWithBody(result) });
       return { failed: graphFailure(naturalKey, result) };
     }
   }

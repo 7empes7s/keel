@@ -1784,7 +1784,7 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: in-progress
+- Status: doing
 - Result: **In progress again (21:46 UTC) at B = `09e1f00c3f2bda0ec6e6562015613907c810e7aa`** (#169 branding-closure fix deployed 21:40; worker restarted 21:44). Earlier work at = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
   scheduler timer paused for the run). Checklist: "51 registered operations, 52 steps" (same as b41d33e). Snapshot S1
   7570bb5a (before every drift). Approval requests are filed by keel-operator through KEEL's `requestApproval()` (the portal
@@ -1870,7 +1870,41 @@ item that needs it stays untouched.
     `onPremisesSyncEnabled`). Capture exit 3; `group.create.demotion.json`. Nothing was created: a read-only check shows no
     `KEEL-RT-148-group`.
   - **Live-qualified total: 11. Demoted: 3** (organizationalBranding update, group restore-soft-deleted, group create).
-  - Next: the lockout steps 33–52, one at a time, each with its own approval.
+  - **Lockout steps 33–52 (2026-10-11 → 12), one at a time, each approved by Marouane in the portal.**
+    - Break-glass: Marouane registered his own account (label "Marouane break-glass") and is excluded directly from both
+      enabled CA policies. Readiness: 4/5 dimensions pass, policyExclusions unknown (group membership is not collected),
+      overall not-ready (< 2 accounts). Marouane chose to proceed on a Graph check of the exclusions (runbook override).
+    - Restorer got Policy.Read.All (global admin, 2026-10-11 18:50, logged).
+    - **Promoted:** 33 roleDefinition create, 34 roleDefinition update, 42 authenticationStrengthPolicy create,
+      43 authenticationStrengthPolicy update, 50 conditionalAccessPolicy restore-soft-deleted (id kept, report-only).
+    - **Demoted:** 39 namedLocation create and 40 namedLocation update (HTTP 400, read-only fields in the body);
+      45 unifiedRoleManagementPolicy update (write landed, MFA rule back on, but read-back fails with
+      CultureNotFoundException, outcome uncertain); 48 conditionalAccessPolicy create (HTTP 400, body carries `id`,
+      `createdDateTime`, `modifiedDateTime`, `deletedDateTime`, `@odata.context`; the same body without them returned 201).
+    - **Blocked:** 35 roleAssignment create (dry run always fails: the assignment's own id is a required deferred patch);
+      36 roleAssignment update (no write planned); 37 roleAssignment, 41 namedLocation, 52 conditionalAccessPolicy delete
+      (lockout delete guard needs `simulationPassed`, which no CLI sets; not run); 38 roleEligibilitySchedule create
+      (only scope "/" supported, AU scope required); 44 authorizationPolicy, 46 authenticationMethodsPolicy,
+      47 securityDefaults (break-glass lockout gate; 47 also because CA policies are on). Artifact 34cd4d69 failed at the
+      gate; guest invites were restored by hand and read back. 49 conditionalAccessPolicy update: the drift renamed the
+      policy, and the natural key is the display name, so KEEL journaled a create (HTTP 400) rather than an update; capture
+      exit 4. 51 turn-on: not run (Marouane chose not to enable the fixture policy; no snapshot with it on).
+    - Note: steps 48–50 were first captured with `--fixture KEEL-RT-148-ca` (exit 4); the journal key is
+      `conditionalAccessPolicy:KEEL-RT-148-ca`. Recaptured with it.
+  - **Live-qualified total: 16. Demoted: 7.**
+  - **Coordinator gaps (Marouane's direction: restore from the recycle bin first, keeping ids; otherwise create with the
+    same values minus ids and Microsoft-owned fields):**
+    1. Create/update bodies must strip server-managed read-only fields (blocks group create, namedLocation create/update,
+       CA create/update).
+    2. `keel-collect` requests only `COLLECT_RELATIONSHIPS = {families:['assignment']}` (`cli/keel-collect.mjs:19`); group
+       member/owner are supported by the engine but never collected. That also leaves break-glass policyExclusions unknown.
+    3. roleAssignment create plans its own id as a required deferred patch.
+    4. The lockout delete guard needs `simulationPassed`, which nothing sets.
+    5. roleEligibilitySchedule: AU scope unsupported.
+    6. PIM read-back fails (CultureNotFoundException) with app tokens.
+    7. CA purge from deleted items needs a delegated token (app-only 403); Marouane purged by hand.
+    8. A display-name natural key turns a rename drift into a create.
+  - Next: end-of-run cleanup, evidence branch, `--live-evidence`.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

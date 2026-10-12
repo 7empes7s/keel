@@ -92,7 +92,7 @@ Four distinct operation records:
 | `exchange.mailbox-settings.update` | `PATCH /users/{id}/mailboxSettings`, changed settings only | `exchange.mailbox-settings` | `MailboxSettings.ReadWrite` |
 | `exchange.client-access.update` | `Set-CASMailbox` | `exchange.client-access` | `Exchange.ManageAsApp`, Exchange Administrator |
 | `exchange.mailbox-retention.update` | `Set-Mailbox` (four hold and retention settings) | `exchange.mailbox-hold` | `Exchange.ManageAsApp`, Exchange Administrator |
-| `exchange.organization-config.update` | `Set-OrganizationConfig` (eight settings) | `exchange.organization-config` | `Exchange.ManageAsApp`, Exchange Administrator |
+| `exchange.organization-config.update` | `Set-OrganizationConfig` (only `MailTipsLargeAudienceThreshold`; gap W7) | `exchange.organization-config` | `Exchange.ManageAsApp`, Exchange Administrator |
 
 `workloadWriteQualification` gained two inputs, used only by writes that declare them:
 - `grants`: what the restorer app is observed to hold. Each Exchange write declares
@@ -249,7 +249,9 @@ to the CI engine step in `.github/workflows/portal.yml`.
 - **Named mailboxes only.** The reader covers the mailboxes it is given (at most 50 per
   run); it does not discover mailboxes. Shared, resource and group mailboxes were not
   considered separately.
-- **Narrow organization scope.** Eight organization settings are restorable. Transport
+- **Narrow organization scope.** Eight organization settings are read; only
+  `MailTipsLargeAudienceThreshold` is restorable (gap W7). A drift in the other seven
+  is listed as manual in the plan and never written. Transport
   rules, connectors, accepted domains, retention policies, mobile device policies and
   every other organization object are not read or restored here.
 - **Automatic reply text is configuration.** `automaticRepliesSetting` includes the

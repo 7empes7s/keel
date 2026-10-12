@@ -118,6 +118,9 @@ export function ApprovalInbox({
                     {request.justification ? <>: “{request.justification}”</> : "."}
                   </p>
                   {impact ? <p className="approval-impact">Impact: {impact.toLowerCase()}.</p> : null}
+                  {request.executor === "cli" ? (
+                    <p>This dry run was planned from the command line. Approving it starts nothing here: an operator runs it from the command line.</p>
+                  ) : null}
                   <p>
                     Expires <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{fromNow(request.expiresAt, now)}</time>. Nothing changes until someone other than the requester approves.
                   </p>

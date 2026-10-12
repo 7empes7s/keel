@@ -109,4 +109,35 @@ assert.match(malformedEnvelope.failed[0].error.message, /malformed/i);
 await assert.rejects(() => writer.write('v1.0', 'https://evil.example.com/x', { method: 'POST', body: {} }),
   /refused/i);
 
+// Accept-Language on every read and write. Measured live (Q43 step 45): the
+// PIM role-settings read-back (unifiedRoleManagementPolicy) 400s with
+// CultureNotFoundException under an app token without it, so a correct write
+// was demoted to unverified. The default is en-US, as the collector's
+// GraphReader already sends; a caller's own header (company branding: a
+// language, or `0` for the default branding) must still win.
+{
+  const calls = [];
+  globalThis.fetch = async (url, opts) => {
+    calls.push({ url, headers: opts.headers });
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ id: 'policy-1' }) };
+  };
+  const pim = '/policies/roleManagementPolicies/DirectoryRole_tenant_policy-1';
+  const languageWriter = new GraphWriter(async () => 'fake-token');
+  await languageWriter.read('v1.0', pim);
+  await languageWriter.write('v1.0', pim, { method: 'PATCH', body: { rules: [] } });
+  await languageWriter.read('v1.0', '/organization/tenant/branding', { headers: { 'Accept-Language': '0' } });
+  await languageWriter.write('v1.0', '/organization/tenant/branding/localizations/fr-FR', {
+    method: 'PATCH', body: { signInPageText: 'Bienvenue' }, headers: { 'Accept-Language': 'fr-FR' },
+  });
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].headers['Accept-Language'], 'en-US', 'PIM policy read must send Accept-Language: en-US');
+  assert.equal(calls[1].headers['Accept-Language'], 'en-US', 'PIM policy write must send Accept-Language: en-US');
+  assert.equal(calls[2].headers['Accept-Language'], '0', 'branding read keeps the caller language');
+  assert.equal(calls[3].headers['Accept-Language'], 'fr-FR', 'branding localization write keeps the caller language');
+  for (const call of calls) {
+    assert.equal(call.headers.Authorization, 'Bearer fake-token', 'the default adds to the headers, never replaces them');
+    assert.equal(Object.keys(call.headers).filter((key) => key.toLowerCase() === 'accept-language').length, 1, 'one Accept-Language per request');
+  }
+}
+
 console.log('graphWriter.test.mjs — all assertions passed');

@@ -199,6 +199,29 @@ test('an ambiguous 5xx that did NOT apply fails without a blind resend; a 429 is
   assert.deepEqual(ok.failed, []);
 });
 
+test('a $ref add that 404s right after the parent group was created or restored is retried (bounded)', async () => {
+  // Graph replication lag: the parent 404s the first two $ref writes, then accepts.
+  let lagged = 0;
+  const lag = fakeTenant({ 'target-eng|member': [] });
+  lag.failures.write = () => (lagged++ < 2 ? { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } } : null);
+  const ok = await applyRelationshipOperations(lag.writer, governor, [op('add', 'user:bob', 'target-bob')], {
+    reader: lag.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]), sleep: noSleep,
+  });
+  assert.equal(lag.writes.length, 3, 'two 404s are retried, the third write lands');
+  assert.deepEqual(ok.failed, []);
+  assert.deepEqual(lag.ids('target-eng|member'), ['target-bob']);
+
+  // A 404 that outlasts the bound still fails, with exactly verifyAttempts writes.
+  const stuck = fakeTenant({ 'target-eng|member': [] });
+  stuck.failures.write = () => ({ ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } });
+  const failed = await applyRelationshipOperations(stuck.writer, governor, [op('add', 'user:bob', 'target-bob')], {
+    reader: stuck.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]), sleep: noSleep, verifyAttempts: 3,
+  });
+  assert.equal(stuck.writes.length, 3);
+  assert.equal(failed.failed.length, 1);
+  assert.equal(failed.failed[0].status, 404);
+});
+
 test('an edge already in the desired state is reconciled without a write, and every write is journalled first', async () => {
   const tenant = fakeTenant({ 'target-eng|member': ['target-bob'] });
   const journal = [];

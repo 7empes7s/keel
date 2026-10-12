@@ -38,6 +38,7 @@
  */
 import { createHash } from 'node:crypto';
 import { buildGraph } from './dependencyGraph.mjs';
+import { isVerbatimSymbol } from './resolver.mjs';
 import { dependencyClosure } from '../restore/selection.mjs';
 import { planWaves } from '../restore/wavePlanner.mjs';
 import { RELATIONSHIP_FAMILIES, ASSIGNMENT_PARENT_TYPES } from '../collect/relationships.mjs';
@@ -95,7 +96,7 @@ export function buildImpactGraph({
 
   for (const resource of resources) {
     for (const ref of resource.references ?? []) {
-      if (!ref.symbol || ref.symbol.startsWith('global:')) continue; // globals always resolve
+      if (!ref.symbol || isVerbatimSymbol(ref.symbol)) continue; // globals, foreign tenant ids and read-only fields always resolve
       if (!nodes.has(ref.symbol)) {
         touchHidden(ref.symbol, { reason: 'unresolved-reference', by: { from: resource.naturalKey, field: ref.field, required: ref.required === true } });
       }

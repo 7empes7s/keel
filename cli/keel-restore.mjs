@@ -23,6 +23,17 @@
 // while the backup had it enabled (roadmap task-152), as a dry run. It is executed
 // only by promoting that artifact with --artifact <id> --enforce after an approver
 // other than the requester approved it; the break-glass lockout gate runs at both.
+//
+// node keel-restore.mjs --workload <name> --collection <id> <workload options> --collector-config <path> [--persist-artifact <id>] [--requested-by <who>]
+// plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
+// one recorded workload collection, as a dry run (gap register W2). Workload options:
+//   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
+//   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
+//   teams-settings             --team <team id>
+//   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
+// It is executed only by promoting that artifact with --artifact <id> --enforce after an
+// approver other than the requester approved it; the credential files are the
+// server's (engine/restore/credentialPaths.mjs), never argv.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -71,6 +82,10 @@ import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
+import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import {
+  WORKLOAD_RESTORES, graphTransport, isWorkloadArtifact, workloadRestoreFor,
+} from '../engine/restore/workloads/dispatch.mjs';
 import {
   IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
@@ -206,6 +221,10 @@ export async function runRestore({
   // restore left report-only: { restoreArtifactId, naturalKey }. A dry run only;
   // the resulting artifact is promoted with artifactId after approval.
   enforceConditionalAccess,
+  // Gap register W2: plan a workload configuration restore from one recorded
+  // workload collection: { workload, collectionId, ...workload options }. A dry run
+  // only; the resulting artifact is promoted with artifactId after approval.
+  workloadRestore,
   // Roadmap task-55: the automation policies a remediation is executing under,
   // discovered server-side by cli/keel-remediate.mjs from the durable
   // auto_remediation_execution link table. Only identities travel here — the
@@ -256,6 +275,13 @@ export async function runRestore({
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
     loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
+    // W2: the workload table, how a workload run reaches the tenant, and which
+    // workload writes are qualified. Tests inject fakes; nothing here is a tenant.
+    workloadRestores = WORKLOAD_RESTORES,
+    workloadConnection: workloadConnectionFn = defaultWorkloadConnection,
+    workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
+    credentialPaths: credentialPathsFn = credentialPaths,
+    sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
   } = dependencies;
 
   if (incidentId !== undefined) {
@@ -277,6 +303,21 @@ export async function runRestore({
     if (mode !== 'dry-run') {
       throw new Error('turning a Conditional Access policy on is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
     }
+  }
+  if (workloadRestore !== undefined) {
+    if (planId !== undefined || snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined
+      || artifactId !== undefined || automationPolicyIds !== undefined || compensateArtifactId !== undefined
+      || enforceConditionalAccess !== undefined || incidentId !== undefined) {
+      throw new Error('workloadRestore is its own scope: one recorded workload collection');
+    }
+    if (typeof workloadRestore?.workload !== 'string' || !workloadRestore.workload) {
+      throw new Error('workloadRestore needs the workload name');
+    }
+    workloadRestoreFor(workloadRestore.workload, workloadRestores);
+    if (mode !== 'dry-run') {
+      throw new Error('a workload restore is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
+    }
+    if (!collectorConfig?.tenantId) throw new Error('a workload restore dry run needs the collector config');
   }
   if (compensateArtifactId !== undefined) {
     if (planId !== undefined || snapshotId !== undefined || selection !== undefined
@@ -300,7 +341,8 @@ export async function runRestore({
   }
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
-    if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && (planId !== undefined || snapshotId === undefined)) {
+    if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && workloadRestore === undefined
+      && (planId !== undefined || snapshotId === undefined)) {
       throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
     }
   }
@@ -308,8 +350,8 @@ export async function runRestore({
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
   if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined
-    && enforceConditionalAccess === undefined) {
-    throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, or compensateArtifactId');
+    && enforceConditionalAccess === undefined && workloadRestore === undefined) {
+    throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, compensateArtifactId, or workloadRestore');
   }
   if (selection !== undefined) {
     if (snapshotId === undefined) throw new Error('selection requires snapshotId');
@@ -363,6 +405,14 @@ export async function runRestore({
         client, request: enforceConditionalAccess, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
       });
     }
+    const workloadDeps = {
+      workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, getTokenFn, sleep,
+    };
+    if (workloadRestore !== undefined) {
+      return await planWorkloadRun({
+        client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps: workloadDeps,
+      });
+    }
     let sourceSnapshot = snapshotId;
     let plan = null;
     let artifact = null;
@@ -372,6 +422,11 @@ export async function runRestore({
       if (!artifact) throw new Error(`restore promotion refused: dry-run artifact not found: ${artifactId}`);
       if (artifact.status !== 'completed') {
         throw new Error(`restore promotion refused: dry-run artifact ${artifactId} is not complete (status: ${artifact.status})`);
+      }
+      // W2: a workload artifact has no snapshot and its config paths are only the
+      // marker `workload:<name>`, so it is promoted before any snapshot or file read.
+      if (isWorkloadArtifact(artifact)) {
+        return await executeWorkloadRun({ client, artifact, readFile, logger, deps: workloadDeps });
       }
       sourceSnapshot = artifact.snapshotId;
       selection = artifact.selection;
@@ -1426,6 +1481,78 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   return { mode: 'enforce', conditionalAccessEnforcement: ctx.plan, results, completionItem: closed.item, artifactId: artifact.id };
 }
 
+// ------------------------------------------------------------- workload restores (W2)
+
+/** Production connection for a workload run: a Graph transport and the cmdlet job options. */
+async function defaultWorkloadConnection({ config, configPath, getTokenFn }) {
+  const { accessToken } = await getTokenFn(config);
+  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath } };
+}
+
+/**
+ * Which workload writes are qualified on this host. No persisted workload ledger
+ * exists yet (gap register W1), so none is: every write reports `disabled` and
+ * nothing is sent. The executors refuse a missing qualification on their own.
+ */
+async function defaultWorkloadQualifications() {
+  return {};
+}
+
+const WORKLOAD_SUCCESS = new Set(['verified', 'no-change']);
+
+async function planWorkloadRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps }) {
+  const entry = workloadRestoreFor(request.workload, deps.workloadRestores);
+  const tenantRef = tenantRefFor(collectorConfig.tenantId);
+  // The dry run reads with the collector only; it never holds the restorer.
+  const connection = await deps.workloadConnectionFn({
+    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
+  });
+  const plan = await entry.plan(client, { tenantRef, tenantId: collectorConfig.tenantId, request, connection, sleep: deps.sleep });
+  const artifact = await entry.create(client, {
+    tenantRef, plan, requestedBy: requestedBy ?? null, ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
+  });
+  logger.log(`${entry.label} restore plan: ${plan.operations.length} change(s), ${plan.manual.length} manual, ${plan.refusals.length} refused`);
+  logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);
+  return { mode: 'dry-run', workloadRestore: plan, status: artifact.status, artifactId: artifact.id };
+}
+
+async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) {
+  const plan = artifact.workloadRestore;
+  if (!plan) throw new Error('workload restore promotion refused: the artifact holds no workload plan');
+  const entry = workloadRestoreFor(plan.workload, deps.workloadRestores);
+  // The same approval as turning a Conditional Access policy on: approved, by
+  // someone other than the requester. Checked before any credential is read.
+  const approval = await enforcementApproval(client, artifact.id);
+  if (!approval) {
+    throw new Error('workload restore promotion refused: it needs an approved request from someone other than the requester');
+  }
+  // The credential files are the server's, never the artifact's marker paths.
+  const paths = deps.credentialPathsFn();
+  const collectorConfig = JSON.parse(readFile(paths.collectorConfig, 'utf8'));
+  const targetConfig = JSON.parse(readFile(paths.targetConfig, 'utf8'));
+  assertSeparateRestorer(collectorConfig, targetConfig);
+  if (tenantRefFor(targetConfig.tenantId) !== artifact.tenantRef) {
+    throw new Error('workload restore promotion refused: the restorer signs in to a different tenant than the one this plan was made for');
+  }
+  const connection = await deps.workloadConnectionFn({
+    role: 'restorer', config: targetConfig, configPath: paths.targetConfig, getTokenFn: deps.getTokenFn,
+  });
+  const qualifications = await deps.workloadQualificationsFn(client, { tenantRef: artifact.tenantRef, operations: entry.operations });
+  if (Object.keys(qualifications ?? {}).length === 0) {
+    logger.log(`no ${entry.label} write is qualified on this host yet; nothing will be written`);
+  }
+  const result = await entry.execute(client, {
+    tenantRef: artifact.tenantRef, artifactId: artifact.id, tenantId: targetConfig.tenantId, plan, connection,
+    qualifications: qualifications ?? {}, sleep: deps.sleep,
+  });
+  logger.log(`${entry.label} restore: ${result.outcome}`);
+  if (!WORKLOAD_SUCCESS.has(result.outcome)) {
+    const reasons = [...(result.reasons ?? []), ...(result.operations ?? []).flatMap((op) => op.reasons ?? [])];
+    throw new Error(`${entry.label} restore ${result.outcome}${reasons.length ? `: ${reasons.join('; ')}` : ''}`);
+  }
+  return { mode: 'enforce', workloadRestore: plan, outcome: result.outcome, result, artifactId: artifact.id };
+}
+
 export async function main({
   argv = process.argv,
   readFile = readFileSync,
@@ -1475,6 +1602,34 @@ export async function main({
     });
   }
 
+  // W2: a workload restore is planned from one recorded workload collection with the
+  // collector only — never with --enforce, and never alongside another scope.
+  const workload = arg('workload', undefined, argv);
+  if (workload !== undefined) {
+    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--workload is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    }
+    if (mode === 'enforce') {
+      throw new Error('--workload is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
+    }
+    const collectorConfigPath = arg('collector-config', undefined, argv);
+    if (!collectorConfigPath) throw new Error('--collector-config <path> required (the workload dry run reads with the collector)');
+    return runRestore({
+      workloadRestore: {
+        workload,
+        collectionId: arg('collection', undefined, argv),
+        tenantHost: arg('tenant-host', undefined, argv),
+        mailbox: arg('mailbox', undefined, argv),
+        includeOrganization: flag('include-organization', argv),
+        teamId: arg('team', undefined, argv),
+        targets: argAll('target', argv),
+      },
+      collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),
+      collectorConfigPath,
+      persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+    });
+  }
+
   // Plan task 8: --artifact promotes a completed dry-run artifact and is the ONLY way
   // to reach --enforce for every restore scope — it carries its own frozen
   // snapshot, selection and target config paths, so it is mutually exclusive with
@@ -1500,7 +1655,7 @@ export async function main({
   }
   if (snapshotId && !selection.length) throw new Error('--snapshot-id requires at least one --select <naturalKey>');
   if (!planId && !snapshotId && !artifactId) {
-    throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, or --artifact <id> required');
+    throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, --workload <name>, or --artifact <id> required');
   }
   if (mode === 'enforce' && !artifactId) {
     throw new Error('enforce requires --artifact <id> (promote a completed dry-run artifact; a direct enforce is refused)');

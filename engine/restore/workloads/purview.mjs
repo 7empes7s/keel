@@ -225,9 +225,9 @@ export function planPurviewRestore({ source, live, tenantId, targets }) {
 }
 
 /** Persists the plan as an immutable dry-run artifact. */
-export async function createPurviewRestoreArtifact(client, { tenantRef, plan, requestedBy }) {
+export async function createPurviewRestoreArtifact(client, { tenantRef, plan, requestedBy, id = randomUUID() }) {
   return createDryRunArtifact(client, {
-    id: randomUUID(),
+    id,
     tenantRef,
     snapshotId: null,
     selection: plan.targets.map((key) => `purview:${key}`),

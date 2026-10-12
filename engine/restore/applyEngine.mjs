@@ -134,7 +134,9 @@ export function rewriteReferences(payload, references, ctx, naturalKey, resource
       throw new UnresolvedReferenceError(naturalKey, ref, result.reason);
     }
     if (VERBATIM_RESOLUTIONS.has(result.via)) continue;
-    rewritten = setAtPath(rewritten, ref.field, result.targetId);
+    // A reference held inside a path (an administrative-unit scope) keeps its
+    // path; only the id after the prefix is rewritten.
+    rewritten = setAtPath(rewritten, ref.field, ref.prefix ? `${ref.prefix}${result.targetId}` : result.targetId);
   }
   return rewritten;
 }

@@ -1969,3 +1969,30 @@ item that needs it stays untouched.
   - The evidence branch and commit.
   - The `--live-evidence` output.
   - Anything left in the tenant.
+
+### Q44: Register the two dedicated break-glass accounts — issue #148 follow-up
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-12). Marouane named the accounts in that thread at 13:57 UTC.
+- Status: todo
+- Result:
+- Needs: nothing. No code change; the live build is fine.
+- Why: Readiness reads one emergency account (Marouane's own), so `MINIMUM_ACCOUNTS = 2` fails and the break-glass gate blocks
+  the authentication-methods, security-defaults and authorization-policy restores (Q43 steps 44, 46, 47). The tenant has two
+  dedicated accounts that KEEL doesn't know about.
+- **The accounts** (Marouane, 2026-10-12): `emergency-access@techinsiderbytes.com` and `break-glass@techinsiderbytes.com`.
+  Both are Global Administrators and both had their passwords reset today.
+- **Read only in the tenant.** Register in KEEL's database only; never sign in as, change, assign or drift these accounts.
+- Do, on the host, as the operator principal:
+  1. Read-only Graph checks for each account, through the Collector: object id, `accountEnabled`, `userType`,
+     `onPremisesSyncEnabled` (must be null), the domain's authentication type (managed), and that both enabled Conditional
+     Access policies exclude the account directly (`conditions.users.excludeUsers`) or through an excluded group. Report each
+     check as pass/fail. Don't fix anything in the tenant; a failed check is a result for Marouane.
+  2. `node cli/keel-breakglass.mjs register --actor <operator principal id> --account-id <object id> --label "Emergency access"`
+     and the same with `--label "Break glass"` (defaults for validation and rotation days).
+  3. `node cli/keel-breakglass.mjs record --actor <operator principal id> --account-id <object id> --kind credential-rotated
+     --at <today> --note "password reset by Marouane, 2026-10-12"` for both.
+  4. Do **not** record `validated`: that needs a real sign-in test by a person. Marouane does it; the next queue item records it.
+  5. `node cli/keel-breakglass.mjs report` and copy the per-account dimensions (no object ids in the Result; use the labels).
+  6. Leave Marouane's own registration ("Marouane break-glass") as it is.
+- **Report:** the two registrations, the step-1 checks per account, the readiness report's overall state and each dimension
+  per account, and anything that still reads `unknown` (expected: `policyExclusions` until transitive membership is collected,
+  and `lastValidation` until Marouane's sign-in test is recorded).

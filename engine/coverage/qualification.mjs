@@ -459,10 +459,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     method: 'Set-OrganizationConfig',
     module: 'ExchangeOnlineManagement',
     readBack: 'exchange.organization-config',
-    fields: Object.freeze([
-      'FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled',
-      'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled',
-    ]),
+    // Allowlist of one (gap W7): the large-audience mail tip threshold. Every other
+    // organization setting is observed and left to an administrator.
+    fields: Object.freeze(['MailTipsLargeAudienceThreshold']),
     rbac: Object.freeze({ permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] }),
     grantsRequired: true,
     requires: Object.freeze(['teams.settings.update']),

@@ -34,9 +34,15 @@ the record against the production declarations it qualifies, not against a copy:
   `exchange.mailbox-retention.update`.
 
 The fourth write, `exchange.organization-config.update` (`Set-OrganizationConfig`),
-changes the whole tenant. It is **not** part of the capture: a record whose log sends
-it, or that carries a capture for it, fails. It stays unqualified (see the open
-operator decisions).
+changes the whole tenant. Since gap W7 (decision 2026-10-12) it is an **opt-in** part
+of the capture (`--include-organization-config`), limited to one setting:
+`MailTipsLargeAudienceThreshold`, moved up by one and put back (for example 25 → 26 →
+25). That setting only changes when Outlook shows a large-audience mail tip. The
+restore path writes only that setting too: every other organization setting is
+refused by the cmdlet allowlist (`Set-OrganizationConfig` takes no other parameter,
+in `engine/collect/workloads/exchange.mjs` and `ops/powershell/run-cmdlet.ps1`), and a
+restore plan lists any other drifted organization setting as manual. A record without
+the organization capture still verifies; it just leaves this write disabled.
 
 On top of the generic verifier (schema, gate, tenant, freshness, `--require-live`),
 a record passes only when all of these hold.
@@ -52,8 +58,9 @@ a record passes only when all of these hold.
 | Grants | The collector holds `MailboxSettings.Read`, `Exchange.ManageAsApp` and the `Exchange Administrator` role. The restorer holds `MailboxSettings.ReadWrite`, `Exchange.ManageAsApp` and `Exchange Administrator`. The collector must **not** hold `MailboxSettings.ReadWrite`. The two credential references must differ. |
 | Fixture | One user mailbox (`RecipientTypeDetails: UserMailbox`) whose identity is a UPN starting with `keel-rt-`, which answered as that UPN and has a directory object id. |
 | Zero content calls | Every Graph request is re-checked against the task-105 `assertExchangeRequest` shapes (only `/users/{id}/mailboxSettings`, no query) and the task-101 scope validator; every cmdlet against the task-105 cmdlet allowlist with its parameter names. Only the fixture mailbox is addressed, except one absent `keel-rt-*` probe identity, which must not answer. Only the collector reads the organization. The collector never writes. |
-| Hold guard | `Set-Mailbox` may carry only `RetainDeletedItemsFor`, and only a value longer than the starting value and at most 30 days. Any `LitigationHoldEnabled`, `RetentionHoldEnabled` or `SingleItemRecoveryEnabled` in a `Set-Mailbox` fails. `Set-CASMailbox` may carry only `PopEnabled`. `Set-OrganizationConfig` always fails. |
-| Write counts | Exactly 2 mailboxSettings PATCHes (change, put back), 2 `Set-CASMailbox` (change, put back), 1 `Set-Mailbox` (extend). A throttled (429/503) Graph write was not applied and is not counted. |
+| Hold guard | `Set-Mailbox` may carry only `RetainDeletedItemsFor`, and only a value longer than the starting value and at most 30 days. Any `LitigationHoldEnabled`, `RetentionHoldEnabled` or `SingleItemRecoveryEnabled` in a `Set-Mailbox` fails. `Set-CASMailbox` may carry only `PopEnabled`. `Set-OrganizationConfig` may carry only `MailTipsLargeAudienceThreshold` (a whole number), only from the restorer, and only in a record that holds the organization capture. |
+| Write counts | Exactly 2 mailboxSettings PATCHes (change, put back), 2 `Set-CASMailbox` (change, put back), 1 `Set-Mailbox` (extend). `Set-OrganizationConfig`: exactly 2 (change, put back) with the organization capture, 0 without it. A throttled (429/503) Graph write was not applied and is not counted. |
+| Organization post-state (only with the organization capture, under `writes.organization`) | Mode `reversible-change`, on `MailTipsLargeAudienceThreshold`. The target is the starting value plus one, it read back as written, it was put back, the final value equals the starting value, the two logged writes carry exactly the target and then the starting value, and the fingerprint of all eight organization fields is the same before and after. The `Set-OrganizationConfig` documentation page must be in `docs.json`. |
 | Settings and client-access post-state | Mode `reversible-change`, on `timeZone` and `PopEnabled`. The change read back as written, was put back, and the final fingerprint of the whole observation group equals the starting one. |
 | Retention post-state | Mode `extend-only`, on `RetainDeletedItemsFor`. Retention after is longer than before and at most 30 days. The three hold and recovery switches are recorded and unchanged, and the holds Purview owns (`InPlaceHolds`, compliance tag, delay holds, litigation hold duration) have the same fingerprint before and after. |
 | Refusals | The record shows `Set-Mailbox -LitigationHoldDuration` (a held field KEEL never writes) and a `/messages` path refused before anything was sent. |
@@ -100,16 +107,22 @@ without `--require-live`.
      **longer** (never past 30 days), and reads back. Retention is never put back,
      because that would shorten it. If retention is already 30 days, nothing is
      written and the retention write does not qualify.
+  6. Only with `--include-organization-config`: the collector runs
+     `Get-OrganizationConfig`; the restorer runs `Set-OrganizationConfig
+     -MailTipsLargeAudienceThreshold <start + 1>`; the collector reads back (up to 5
+     reads, 2 s apart); the restorer sets the starting value back; the collector reads
+     back. No other organization parameter is sent.
 - **Write legs.** They run only when every read succeeded, the organization reports
   the managed tenant, the fixture answered as its UPN and is a user mailbox, and the
   probe identity does not exist.
   - Only the fixture mailbox is written. No hold is released or changed, no
     retention is shortened, the mailbox is never deleted, and no message, folder,
     rule, calendar or contact is read.
-  - `Set-OrganizationConfig` is never sent.
+  - `Set-OrganizationConfig` is sent only in step 6, with that one parameter.
   - After an accepted first change, the put-back is always attempted.
   - If a put-back fails, the output says exactly what to fix by hand, and the exit
-    code is 3.
+    code is 3. For the organization step it prints the exact
+    `Set-OrganizationConfig -MailTipsLargeAudienceThreshold <start>` to run.
 - **Credentials and proof.** Graph tokens are read from `KEEL_EXCHANGE_COLLECTOR_TOKEN`
   and `KEEL_EXCHANGE_RESTORER_TOKEN` and never written. Cmdlet credentials stay in the
   two tenant config files the container reads (`--collector-config`,
@@ -123,7 +136,8 @@ without `--require-live`.
 
 A record that passes the gate with `--require-live` becomes:
 - `live-capture` evidence for the four Exchange reads in `buildWorkloadLedger`;
-- one `live-write-capture` for each of the three captured writes, for
+- one `live-write-capture` for each of the three captured writes, plus the
+  organization write when the record holds its capture, for
   `workloadWriteQualification`;
 - the collector's grants, the restorer's grants (the Exchange writes declare
   `grantsRequired`), and the module version the cmdlet captures are bound to
@@ -158,12 +172,11 @@ calls this seam yet, so no read or write is enabled by this task.
 These are not taken by this task. The capture works around the first; the others
 block the gate until the operator decides.
 
-1. **Organization-wide writes (`Set-OrganizationConfig`).** Any change to the
-   organization configuration affects the whole tenant, even if it is put back
-   seconds later. The capture never sends it, so `exchange.organization-config.update`
-   stays unqualified and disabled. Qualifying it needs an explicit operator decision:
-   which setting may be flipped and put back tenant-wide, and when. That would be a
-   separate, additive capture leg.
+1. **Organization-wide writes (`Set-OrganizationConfig`). Decided 2026-10-12 (gap
+   W7).** The operator may flip `MailTipsLargeAudienceThreshold` on the test tenant
+   and put it back. It is the only organization setting KEEL writes, in a capture or a
+   restore. The capture runs it only with `--include-organization-config` (operator
+   step 9).
 2. **Exchange app-only grant for the Restorer.** The task-105 status records (operator
    decision 2026-09-30) that the Restorer holds Graph `MailboxSettings.ReadWrite` only,
    with no `Exchange.ManageAsApp` or Exchange role. `Set-CASMailbox` and `Set-Mailbox`
@@ -240,7 +253,8 @@ qualified. Builders must not run them.
    - 0: verified;
    - 1: captured, but did not verify;
    - 2: refused before any request (including an unverified Teams record);
-   - 3: check the fixture mailbox's `timeZone` or `PopEnabled` by hand.
+   - 3: check the fixture mailbox's `timeZone` or `PopEnabled` (or, with step 9, the
+     organization's `MailTipsLargeAudienceThreshold`) by hand.
 8. **Verify** (the task's final Validate step):
    ```bash
    KEEL_QUALIFICATION_HMAC_KEY=... KEEL_QUALIFICATION_TENANT_REF=<tenant_ref> \
@@ -249,10 +263,36 @@ qualified. Builders must not run them.
    ```
    The record is valid for 30 days, only for the build it names, and only while the
    Teams and SharePoint records beside it also verify.
+9. **Organization capture (gap W7), on the test tenant only.** This is the same
+   capture as step 7 with one flag added; it also qualifies
+   `exchange.organization-config.update`. It changes a tenant-wide setting for a few
+   seconds, so run it only against the test tenant.
+   1. Note the starting value, read-only:
+      `Get-OrganizationConfig | Select-Object MailTipsLargeAudienceThreshold`
+      (expected 25).
+   2. Re-collect `docs.json` with the organization page included (eight URLs):
+      ```bash
+      node -e "import('./tools/qualification/exchangeAcceptance.mjs').then(m => console.log(m.exchangeRequiredDocumentation({ organization: true }).join('\n')))"
+      ```
+   3. Preview, offline, and check that step 6 lists only
+      `MailTipsLargeAudienceThreshold`:
+      ```bash
+      node tools/qualification/exchangeLive.mjs plan --include-organization-config \
+        --fixture-mailbox keel-rt-20260908-alice@<tenant domain>
+      ```
+   4. Run the step 7 command with `--include-organization-config` added. The tool sets
+      the threshold to the starting value plus one (26), reads it back, sets the
+      starting value back (25), and reads it back.
+   5. Verify as in step 8, then confirm in the record that `writes.organization` shows
+      `original` 25, `target` 26, `final` 25, `readBackVerified: true` and
+      `restoredToOriginal: true`.
+   6. Read the setting again by hand and confirm it is back at the starting value. On
+      exit code 3, run the `Set-OrganizationConfig -MailTipsLargeAudienceThreshold
+      <start>` line the tool printed, then read it again.
 
 ## Proof
 
-`engine/roadmap/exchange-live-acceptance.test.mjs` has 9 tests. They need no database.
+`engine/roadmap/exchange-live-acceptance.test.mjs` has 11 tests. They need no database.
 All three capture tools run against in-memory fakes. The SharePoint and Teams ones
 produce the verified task-120 and task-121 prerequisites. The Exchange one has:
 - a Graph `mailboxSettings` endpoint that throttles the first read and adds a
@@ -303,7 +343,8 @@ Records are signed with a test-only key in a temporary directory and never kept.
   - With the verified SharePoint and Teams records, a verified Exchange record enables
     the three captured Exchange writes, each on its own Exchange capture, for its own
     tenant only.
-  - It never enables `exchange.organization-config.update`.
+  - It never enables `exchange.organization-config.update` without the organization
+    capture.
   - Exchange evidence without Teams' enables none; unknown restorer grants block
     them; another module version invalidates the cmdlet captures.
 - **Request-log checks.** Each of these fails:
@@ -312,13 +353,14 @@ Records are signed with a test-only key in a temporary directory and never kept.
   - addressing: another mailbox (read or write), a probe that answered, a restorer
     organization read, a collector write;
   - writes: an extra PATCH or `Set-CASMailbox`, another client-access switch,
-    `Set-OrganizationConfig`;
+    a `Set-OrganizationConfig` with any other setting, from the collector, or in a
+    record without the organization capture;
   - the hold guard: a `Set-Mailbox` releasing a litigation hold, disabling single
     item recovery, shortening or not extending retention, or going past 30 days;
   - the record itself: a held field, a non-cmdlet transport, parameters recorded as a
     string, a shortened or hold-changing post-state, a changed Purview hold
     fingerprint, a client-access final state that differs from the start, an
-    organization write capture, a token or certificate thumbprint.
+    organization capture without its two writes, a token or certificate thumbprint.
 
   A throttled Graph write resent after Retry-After does not fail.
 - **The tool:** `plan` and an unconfirmed `capture` send nothing, and `plan` never
@@ -334,6 +376,17 @@ Records are signed with a test-only key in a temporary directory and never kept.
     verify.
   - A failed client-access put-back keeps the platform's message, is reported
     (exit 3) and never verifies.
+- **The organization capture (gap W7)** verifies and enables
+  `exchange.organization-config.update` beside the three mailbox writes. It sends
+  exactly two `Set-OrganizationConfig` calls from the restorer, each with only the
+  threshold (26, then 25), and the organization ends exactly where it started. Each of
+  these fails, even re-signed: a target other than start + 1, a final value other than
+  the start, no put-back, a changed fingerprint, another property, no read-back, the
+  capture under another key, a missing documentation page, a third write, a non-number
+  value, an empty parameter set. A platform that ignores the write does not verify; a
+  failed put-back is exit 3 with the exact command to run and never verifies; a
+  threshold that is not a whole number, or an organization in another tenant, gets no
+  organization write.
 
 Required mutations were each applied alone and then restored (2026-10-04):
 

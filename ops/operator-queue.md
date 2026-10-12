@@ -2057,3 +2057,26 @@ item that needs it stays untouched.
   up, remove it, restore. Expected: recreated at the same unit scope.
 - Capture and promote as in Q43 where a gate exists; commit evidence to `claude/live-evidence-q46` and say so in the Result.
 - **Report:** per part, passed / failed (with the error) / waiting (PR not live), and every tenant setting read back as original.
+### Q47: Turn on scheduled workload backups and the portal's live-record check
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
+- Status: todo
+- Result:
+- Needs: a live build containing PRs #200 (portal live records), #201 (workload schedule) and #202 (scheduler api-drift fix).
+  Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; do only the parts whose PR is live.
+- **No tenant writes.** Everything here is host setup and read-only collection.
+- **A. Signing key for the portal (#200, gap P2).** Create `/etc/keel/qualification.env` holding
+  `KEEL_QUALIFICATION_HMAC_KEY=<the release runner signing key>`, owned by the user `keel-portal` runs as, mode 600.
+  Never print the key. Restart `keel-portal`. Check: the Coverage page shows Entra writes with 2026-10-10 records as
+  "proven on this tenant", and a mode other than 600 is refused with the reason on the page.
+- **B. Scheduled workload backups (#201, gaps W1/W3).**
+  1. Apply the additive statements from `engine/store/schema.sql` to the live database (the `job` kind check with
+     `workload-collect`, tables `workload_ledger_evidence` and `workload_ledger_grants`). Back up the schema first.
+  2. `node cli/keel-workload-collect.mjs import` with `KEEL_QUALIFICATION_HMAC_KEY` set. Report how many records stored.
+  3. `node cli/keel-schedules-migrate.mjs --kinds workload-collect`.
+  4. Write `/etc/keel/workload-scope.json` (SharePoint host, the KEEL-RT mailboxes and OneDrive sites) so SharePoint
+     doesn't record "failed" and Exchange reads more than org settings.
+  5. Run `node cli/keel-workload-collect.mjs run` once by hand and report each workload's outcome
+     (collected / disabled / failed with the reason). Then `... proof` and report days left per proof.
+- **C. Scheduler (#202).** After the next tick, `journalctl -u keel-scheduler --since -1h | grep -E "not schedulable|skipped schedule"`
+  should be empty, and an `api-drift` job should appear in the week. Report what you see.
+- **Report:** per part, done / failed (with the error) / waiting (PR not live).

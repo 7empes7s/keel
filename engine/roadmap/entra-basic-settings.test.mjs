@@ -225,8 +225,9 @@ test('update is registered and fixture-tested for four settings; device registra
   assert.match(TYPE_DECISIONS.deviceRegistrationPolicy.reason, /MFA/);
   for (const operation of OPERATIONS) assert.equal(capabilityFor('deviceRegistrationPolicy', operation).claim, 'unsupported', operation);
   assert.equal(expansionFor('deviceRegistrationPolicy').status, 'manual');
-  assert.ok(expansionFor('organizationalBranding').unrecoverable.some((item) => /logos/.test(item.name)));
-  assert.match(TYPE_DECISIONS.organizationalBranding.reason, /never written/);
+  // Gap register M6: the files are uploaded back (branding-files.test.mjs); only the header logo is left by hand.
+  assert.ok(expansionFor('organizationalBranding').unrecoverable.some((item) => /header logo/.test(item.name)));
+  assert.match(TYPE_DECISIONS.organizationalBranding.reason, /uploaded back \(fixture-tested, not yet live\)/);
 });
 
 test('mutation: the device registration policy is refused by applyWave for every verb', async () => {

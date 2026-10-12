@@ -6,6 +6,20 @@ import { collectRelationships, recordRelationships, parentTypesForFamilies, DEFA
 import { brandingLocales, collectBrandingAssets, organizationIdOf } from './brandingAssets.mjs';
 import { recordBrandingAssets } from '../store/brandingAssets.mjs';
 
+/** Group ids (lowercase) named in any collected Conditional Access policy's user conditions. */
+export function conditionalAccessGroupIds(canonical) {
+  const ids = new Set();
+  for (const resource of canonical ?? []) {
+    if (resource.resourceType !== 'conditionalAccessPolicy') continue;
+    const users = resource.payload?.conditions?.users ?? {};
+    for (const list of [users.excludeGroups, users.includeGroups]) {
+      if (!Array.isArray(list)) continue;
+      for (const id of list) if (typeof id === 'string' && id.length > 0) ids.add(id.toLowerCase());
+    }
+  }
+  return [...ids].sort();
+}
+
 /** Persist outcomes independently of resources, including completed empty reads. */
 export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false, brandingAssets = false }) {
   // Tier selection (task 49) happens inside collectWithOutcomes, before any
@@ -78,6 +92,19 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
         subtype: resource.payload?.['@odata.type'] ?? null,
       }));
     const observations = await collectRelationships(reader, { tenantRef, parents, families });
+    // Gap D5: a group named in a Conditional Access policy's user conditions also
+    // gets a read-only transitive membership read, so break-glass readiness can
+    // prove an account is (or is not) excluded through a nested group. Only those
+    // groups are read; the derived set is kept apart from direct membership.
+    if (relationships?.conditionalAccessTransitive && !families.includes('transitiveMember')) {
+      const groupsById = new Map(canonical
+        .filter((resource) => resource.resourceType === 'group' && resource.sourceId)
+        .map((resource) => [String(resource.sourceId).toLowerCase(), resource]));
+      const transitiveParents = conditionalAccessGroupIds(canonical).map((id) => ({
+        type: 'group', sourceId: id, naturalKey: groupsById.get(id)?.naturalKey ?? null,
+      }));
+      observations.push(...await collectRelationships(reader, { tenantRef, parents: transitiveParents, families: ['transitiveMember'] }));
+    }
     const targetContext = await loadSymbolContext(client, { tenantRef });
     await recordRelationships(client, { snapshotId, tenantRef, observations, context: targetContext });
     relationshipSummary = observations.reduce((acc, obs) => {
@@ -85,7 +112,7 @@ export async function collectSnapshot(client, { reader, tenantRef, tenantId, tie
       return acc;
     }, {});
     // The same counts per family, so a caller can report each kind of read
-    // (policy assignments, group members, group owners) on its own.
+    // (policy assignments, group members and owners, nested membership) on its own.
     relationshipsByFamily = observations.reduce((acc, obs) => {
       const counts = (acc[obs.family] ??= {});
       counts[obs.outcome] = (counts[obs.outcome] ?? 0) + 1;

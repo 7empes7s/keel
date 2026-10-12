@@ -45,6 +45,8 @@ const THROTTLE_MAX_ATTEMPTS = 3;
 const lower = (id) => (typeof id === 'string' && id.length > 0 ? id.toLowerCase() : null);
 const isComplete = (outcome) => outcome === 'complete' || outcome === 'complete-empty';
 const setKey = (parentNaturalKey, family) => `${parentNaturalKey}|${family}`;
+/** Graph refuses `$ref` member writes to a dynamic-membership group; owners stay writable. */
+export const isDynamicMembership = (parent) => Array.isArray(parent?.groupTypes) && parent.groupTypes.includes('DynamicMembership');
 
 /** Stable identity of one edge operation — its result/refusal/journal key. */
 export function relationshipOperationKey(op) {
@@ -83,8 +85,12 @@ function compareOperations(a, b) {
 /**
  * Plans edge operations for the groups a restore covers.
  *
- * - `parents`: restore resources of type group ({ naturalKey, verb, liveTargetId }),
- *   liveTargetId set only when the group currently exists in the target.
+ * - `parents`: restore resources of type group ({ naturalKey, verb, liveTargetId, groupTypes }),
+ *   liveTargetId set only when the group currently exists in the target;
+ *   groupTypes from the group payload. A `DynamicMembership` group plans no
+ *   member edge (Graph rejects `$ref` member writes to it): its membership
+ *   comes from `membershipRule`, which the group update carries. Owner edges
+ *   are planned as for any group.
  * - `desired`: loadSnapshotRelationships() output for the source snapshot.
  * - `live`: Map setKey -> live observation (collectRelationships) for parents that exist.
  * - `resolveTargetId(naturalKey)`: target-tenant id of an existing object, or null.
@@ -114,6 +120,10 @@ export function planRelationshipOperations({
       if (!want) continue; // never observed in this snapshot (legacy): edges untouched
       const refuse = (reason) => refusals.push({ naturalKey: `edge:${key}`, reason });
 
+      if (family === 'member' && isDynamicMembership(parent)) {
+        notes.push({ naturalKey: `edge:${key}`, note: `${parent.naturalKey} is a dynamic-membership group: membership comes from the membership rule; restore the rule instead` });
+        continue;
+      }
       if (!isComplete(want.outcome) && want.outcome !== 'partial') {
         notes.push({ naturalKey: `edge:${key}`, note: `snapshot ${family} read for ${parent.naturalKey} was ${want.outcome}; edges are not reconciled` });
         continue;

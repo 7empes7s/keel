@@ -35,7 +35,7 @@ $Allowed = @{
     'Get-CASMailbox'         = @('Identity')
     'Set-CASMailbox'         = @('Identity', 'OWAEnabled', 'ActiveSyncEnabled', 'PopEnabled', 'ImapEnabled', 'MAPIEnabled', 'EwsEnabled', 'SmtpClientAuthenticationDisabled')
     'Set-Mailbox'            = @('Identity', 'LitigationHoldEnabled', 'RetentionHoldEnabled', 'SingleItemRecoveryEnabled', 'RetainDeletedItemsFor')
-    'Set-OrganizationConfig' = @('FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled', 'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled')
+    'Set-OrganizationConfig' = @('MailTipsLargeAudienceThreshold')
 }
 
 # Task-106: Purview label configuration runs in the Security & Compliance session

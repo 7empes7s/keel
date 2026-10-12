@@ -45,11 +45,13 @@ writeFileSync(fixturePath, `
   setInterval(() => {}, 1000);
 `);
 
-const execution = startJobChild(fixturePath, [grandchildPidPath], { timeoutMs: 100 });
+// The timeout must outlast Node start-up of the child under a loaded CI runner: at 100ms the child
+// was sometimes killed before it wrote the grandchild pid file (ENOENT on the read below).
+const execution = startJobChild(fixturePath, [grandchildPidPath], { timeoutMs: 3000 });
 const processGroupId = execution.child.pid;
 
 try {
-  await assert.rejects(execution.completed, /execution timed out after 100ms/);
+  await assert.rejects(execution.completed, /execution timed out after 3000ms/);
   assert.equal(
     isProcessGroupAlive(processGroupId),
     false,

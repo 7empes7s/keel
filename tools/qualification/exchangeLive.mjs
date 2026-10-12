@@ -13,7 +13,8 @@
  *        --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
  *        --exchange-module-version <x.y.z> --grants grants.json --docs docs.json \
  *        --teams-evidence docs/release/qualifications/teams-live-acceptance.json \
- *        --out docs/release/qualifications/exchange-live-acceptance.json [--build <sha>] [--powershell-image <tag>]
+ *        --out docs/release/qualifications/exchange-live-acceptance.json [--build <sha>] [--powershell-image <tag>] \
+ *        [--include-organization-config]
  *
  * Before anything is sent, the task-121 Teams record must verify with --require-live
  * for the same tenant and build, and sit beside --out (with the task-120 SharePoint
@@ -32,11 +33,14 @@
  *  4. restorer: Get-CASMailbox; Set-CASMailbox -PopEnabled to the other value; read
  *     back; Set-CASMailbox -PopEnabled back; read back;
  *  5. restorer: Get-Mailbox; Set-Mailbox -RetainDeletedItemsFor one day LONGER (at
- *     most 30 days); read back. Retention is never put back: that would shorten it.
+ *     most 30 days); read back. Retention is never put back: that would shorten it;
+ *  6. only with --include-organization-config (gap W7): collector Get-OrganizationConfig;
+ *     restorer Set-OrganizationConfig -MailTipsLargeAudienceThreshold <original + 1>;
+ *     collector reads back; restorer puts the original back; collector reads back.
  * Only the fixture mailbox is addressed. No message, folder, rule, calendar, contact
  * or file is read; no hold is released or changed; no retention is shortened; the
- * mailbox is never deleted. Set-OrganizationConfig is never sent: it changes the
- * whole tenant and is an open operator decision.
+ * mailbox is never deleted. Set-OrganizationConfig is sent only in step 6, with that
+ * one parameter: it changes the whole tenant, so it is opt-in and always put back.
  *
  * Cmdlets run through the bounded task-105 job transport (engine/powershell/jobQueue.mjs):
  * parameters are JSON data, never script source. Graph tokens come from the
@@ -47,7 +51,8 @@
  *
  * ledgerEvidenceFromExchangeAcceptance() is the import seam: a record that passes
  * `verify --require-live` becomes task-101 read evidence for the four Exchange reads
- * and one live write capture per qualified Exchange write. Anything less becomes nothing.
+ * and one live write capture per qualified Exchange write (the organization write
+ * only when the record holds its capture). Anything less becomes nothing.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -63,7 +68,8 @@ import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import {
   EXCHANGE_CAS_TOGGLE, EXCHANGE_FIXTURE_PREFIX, EXCHANGE_HOLD_WRITE_FIELDS, EXCHANGE_LIVE_CAS_WRITE, EXCHANGE_LIVE_CREDENTIAL_MODE,
-  EXCHANGE_LIVE_GATE, EXCHANGE_LIVE_OPERATION, EXCHANGE_LIVE_PREREQUISITES, EXCHANGE_LIVE_RETENTION_WRITE, EXCHANGE_LIVE_SETTINGS_WRITE,
+  EXCHANGE_LIVE_GATE, EXCHANGE_LIVE_OPERATION, EXCHANGE_LIVE_ORGANIZATION_WRITE, EXCHANGE_LIVE_PREREQUISITES, EXCHANGE_LIVE_RETENTION_WRITE,
+  EXCHANGE_LIVE_SETTINGS_WRITE, EXCHANGE_ORGANIZATION_TOGGLE,
   EXCHANGE_MAX_RETENTION_MS, EXCHANGE_REFUSAL_PROBE, EXCHANGE_RETENTION_PROPERTY, EXCHANGE_SETTINGS_TOGGLE, EXCHANGE_TRANSPORT,
   exchangeDurationMs, exchangeDurationText, exchangeGroupFingerprint, exchangeIsFixtureIdentity, exchangeOperationVersion, exchangeReadDescriptor,
 } from './exchangeAcceptance.mjs';
@@ -98,7 +104,7 @@ export function exchangeProbeIdentity(fixtureMailbox, suffix = randomBytes(6).to
 }
 
 /** Offline: the requests and cmdlets a capture would send, in order. */
-export function exchangeCapturePlan({ fixtureMailbox }) {
+export function exchangeCapturePlan({ fixtureMailbox, includeOrganization = false }) {
   const problems = exchangeFixtureProblems({ fixtureMailbox });
   if (problems.length) throw new Error(problems.join('; '));
   const settings = `/v1.0/users/${encodeURIComponent(fixtureMailbox)}/mailboxSettings`;
@@ -124,6 +130,13 @@ export function exchangeCapturePlan({ fixtureMailbox }) {
     { step: 5, credential: 'restorer', cmdlet: 'Get-Mailbox', parameters: id, operationId: EXCHANGE_LIVE_RETENTION_WRITE },
     { step: 5, credential: 'restorer', cmdlet: 'Set-Mailbox', parameters: { ...id, [EXCHANGE_RETENTION_PROPERTY]: '<current + 1 day, at most 30.00:00:00>' }, operationId: EXCHANGE_LIVE_RETENTION_WRITE, note: 'extend only; never put back' },
     { step: 5, credential: 'restorer', cmdlet: 'Get-Mailbox', parameters: id, operationId: EXCHANGE_LIVE_RETENTION_WRITE, note: 'read back' },
+    ...(includeOrganization ? [
+      { step: 6, credential: 'collector', cmdlet: 'Get-OrganizationConfig', parameters: {}, operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE },
+      { step: 6, credential: 'restorer', cmdlet: 'Set-OrganizationConfig', parameters: { [EXCHANGE_ORGANIZATION_TOGGLE]: '<original + 1>' }, operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE, note: 'whole tenant; only this setting' },
+      { step: 6, credential: 'collector', cmdlet: 'Get-OrganizationConfig', parameters: {}, operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE, note: 'read back' },
+      { step: 6, credential: 'restorer', cmdlet: 'Set-OrganizationConfig', parameters: { [EXCHANGE_ORGANIZATION_TOGGLE]: '<original>' }, operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE, note: 'put back' },
+      { step: 6, credential: 'collector', cmdlet: 'Get-OrganizationConfig', parameters: {}, operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE, note: 'read back' },
+    ] : []),
   ];
 }
 
@@ -165,7 +178,7 @@ const present = (body, fields) => (body && typeof body === 'object' ? fields.fil
 export async function captureExchangeAcceptance({
   collector, restorer, directoryTenantId, fixtureMailbox, probeIdentity = null, tenantRef, build, credentials, grants, moduleVersion,
   teamsQualification, credentialTenants = {}, documentation = [], now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
-  readBackAttempts = 5, readBackDelayMs = 2000,
+  readBackAttempts = 5, readBackDelayMs = 2000, includeOrganization = false,
 }) {
   const problems = exchangeFixtureProblems({ fixtureMailbox });
   if (typeof directoryTenantId !== 'string' || !GUID_RE.test(directoryTenantId)) problems.push('--directory-tenant-id must be the managed tenant id (a GUID)');
@@ -310,6 +323,9 @@ export async function captureExchangeAcceptance({
     clientAccess: { operationId: EXCHANGE_LIVE_CAS_WRITE, version: exchangeOperationVersion(EXCHANGE_LIVE_CAS_WRITE, moduleVersion), synthetic: false, writeMode: 'reversible-change', property: EXCHANGE_CAS_TOGGLE, ok: false, readBackVerified: false, restoredToOriginal: false, preFingerprint: null, finalFingerprint: null },
     retention: { operationId: EXCHANGE_LIVE_RETENTION_WRITE, version: exchangeOperationVersion(EXCHANGE_LIVE_RETENTION_WRITE, moduleVersion), synthetic: false, writeMode: 'extend-only', property: EXCHANGE_RETENTION_PROPERTY, ok: false, readBackVerified: false, before: null, after: null, complianceHoldsFingerprint: null, finalComplianceHoldsFingerprint: null },
   };
+  if (includeOrganization) {
+    writes.organization = { operationId: EXCHANGE_LIVE_ORGANIZATION_WRITE, version: exchangeOperationVersion(EXCHANGE_LIVE_ORGANIZATION_WRITE, moduleVersion), synthetic: false, writeMode: 'reversible-change', property: EXCHANGE_ORGANIZATION_TOGGLE, ok: false, readBackVerified: false, restoredToOriginal: false, original: null, target: null, final: null, preFingerprint: null, finalFingerprint: null };
+  }
   if (refusal) {
     for (const capture of Object.values(writes)) { capture.error = refusal; capture.capturedAt = now().toISOString(); }
   } else {
@@ -319,6 +335,10 @@ export async function captureExchangeAcceptance({
     writes.clientAccess.capturedAt = now().toISOString();
     await exchangeRetentionExtend({ cmdlet: restore.cmdlet, identity, capture: writes.retention, log, timing });
     writes.retention.capturedAt = now().toISOString();
+    if (writes.organization) {
+      await exchangeOrganizationRoundTrip({ read: collect.cmdlet, write: restore.cmdlet, capture: writes.organization, log, timing });
+      writes.organization.capturedAt = now().toISOString();
+    }
   }
 
   const captureLog = `${JSON.stringify(log, null, 2)}\n`;
@@ -353,7 +373,8 @@ export async function captureExchangeAcceptance({
     },
   };
   const needsManualRevert = (log.values.settingsWritten === true && writes.mailboxSettings.restoredToOriginal !== true)
-    || (log.values.clientAccessWritten === true && writes.clientAccess.restoredToOriginal !== true);
+    || (log.values.clientAccessWritten === true && writes.clientAccess.restoredToOriginal !== true)
+    || (log.values.organizationWritten === true && writes.organization?.restoredToOriginal !== true);
   return { ...pseudonymizeCapture({ record, log }), needsManualRevert };
 }
 
@@ -424,6 +445,59 @@ async function exchangeClientAccessRoundTrip({ cmdlet, identity, capture, log, t
   }
 }
 
+// Exchange answers the threshold as a number; a numeric string is read as one.
+const threshold = (value) => (typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value);
+
+/**
+ * Gap W7: the one organization-wide write. Moves MailTipsLargeAudienceThreshold up by
+ * one, reads it back, and always puts the original back once a write may have applied.
+ * The collector reads; the restorer writes; no other organization parameter is sent.
+ */
+async function exchangeOrganizationRoundTrip({ read: readCmdlet, write, capture, log, timing }) {
+  const read = async () => exchangeSingle('Get-OrganizationConfig', await readCmdlet('Get-OrganizationConfig'));
+  const field = EXCHANGE_ORGANIZATION_TOGGLE;
+  let original = null;
+  try {
+    const before = await read();
+    capture.preFingerprint = exchangeGroupFingerprint(before, ORGANIZATION_FIELDS);
+    original = threshold(before?.[field]);
+    capture.original = Number.isInteger(original) ? original : null;
+    log.values.originalLargeAudienceThreshold = capture.original;
+    if (!Number.isInteger(original) || original < 0) { capture.error = `${field} is not a whole number; nothing was written`; return; }
+    const target = original + 1;
+    capture.target = target;
+    try {
+      await write('Set-OrganizationConfig', { [field]: target });
+    } catch (error) {
+      // A cmdlet error is a definite answer; anything else may have applied.
+      if (error?.detail?.code === 'CMDLET_ERROR') { capture.error = `Set-OrganizationConfig failed: ${error.message}`; return; }
+      log.values.organizationWritten = true;
+      throw error;
+    }
+    log.values.organizationWritten = true;
+    const seen = await exchangeReadUntil(read, (body) => threshold(body?.[field]) === target, timing);
+    capture.readBackVerified = seen.matched;
+    // Always put the setting back once a write was accepted, whatever the read-back said.
+    let revertError = null;
+    try {
+      await write('Set-OrganizationConfig', { [field]: original });
+    } catch (error) {
+      revertError = error;
+    }
+    const restored = await exchangeReadUntil(read, (body) => threshold(body?.[field]) === original, timing);
+    capture.restoredToOriginal = restored.matched;
+    capture.final = threshold(restored.body?.[field] ?? null);
+    capture.finalFingerprint = exchangeGroupFingerprint(restored.body, ORGANIZATION_FIELDS);
+    capture.ok = revertError === null;
+    if (!restored.matched) capture.error = `PUTTING THE SETTING BACK FAILED${revertError ? ` (${revertError.message})` : ''}: run Set-OrganizationConfig -${field} ${original} by hand`;
+  } catch (error) {
+    capture.error ??= error.message;
+    if (log.values.organizationWritten === true && capture.restoredToOriginal !== true) {
+      capture.error = `THE ${field} SETTING MAY NOT BE BACK (${error.message}): check it and set it to ${original} by hand`;
+    }
+  }
+}
+
 async function exchangeRetentionExtend({ cmdlet, identity, capture, timing }) {
   const read = async () => exchangeSingle('Get-Mailbox', await cmdlet('Get-Mailbox', { Identity: identity }));
   try {
@@ -484,7 +558,7 @@ export function ledgerEvidenceFromExchangeAcceptance(evidence, options = {}) {
       operationId: item.operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: item.capturedAt,
       version: item.version, ok: item.ok === true, error: null, observed: {}, proofRef,
     })),
-    writes: [subject.writes.mailboxSettings, subject.writes.clientAccess, subject.writes.retention].map(write),
+    writes: [subject.writes.mailboxSettings, subject.writes.clientAccess, subject.writes.retention, subject.writes.organization].filter(Boolean).map(write),
     grants: { permissions: [...subject.grants.collector.permissions], roles: [...subject.grants.collector.roles] },
     restorerGrants: { permissions: [...subject.grants.restorer.permissions], roles: [...subject.grants.restorer.roles] },
     runtime: { modules: { [EXCHANGE_MODULE]: subject.execution.moduleVersion } },
@@ -493,7 +567,7 @@ export function ledgerEvidenceFromExchangeAcceptance(evidence, options = {}) {
 
 function parseExchangeArgs(argv) {
   const [command = 'plan', ...rest] = argv;
-  const options = { command, confirm: false };
+  const options = { command, confirm: false, includeOrganization: false };
   const names = {
     '--tenant-ref': 'tenantRef', '--directory-tenant-id': 'directoryTenantId', '--fixture-mailbox': 'fixtureMailbox',
     '--collector-ref': 'collectorRef', '--restorer-ref': 'restorerRef', '--collector-config': 'collectorConfig', '--restorer-config': 'restorerConfig',
@@ -503,6 +577,7 @@ function parseExchangeArgs(argv) {
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === '--confirm-live-tenant-write') options.confirm = true;
+    else if (arg === '--include-organization-config') options.includeOrganization = true;
     else if (names[arg]) options[names[arg]] = rest[++index];
     else throw new Error(`unknown argument: ${arg}`);
   }
@@ -523,7 +598,7 @@ export async function main(argv = process.argv.slice(2), {
   if (options.command !== 'capture') throw new Error('usage: exchangeLive.mjs plan|capture ...');
   if (!options.confirm) {
     out(JSON.stringify(exchangeCapturePlan(options), null, 2));
-    out('refused: a capture writes the fixture mailbox\'s settings, client access and retention; rerun with --confirm-live-tenant-write');
+    out(`refused: a capture writes the fixture mailbox's settings, client access and retention${options.includeOrganization ? ', and moves the organization\'s large-audience mail tip threshold up by one and back' : ''}; rerun with --confirm-live-tenant-write`);
     return 2;
   }
   for (const [flag, key] of [
@@ -564,6 +639,7 @@ export async function main(argv = process.argv.slice(2), {
     documentation: JSON.parse(readFile(options.docs)),
     teamsQualification: { gate: TEAMS_LIVE_GATE, evidence: basename(teamsPath), captureLogSha256: teams.subject.captureLogSha256 },
     credentialTenants: { collector: tokenTenantId(env.KEEL_EXCHANGE_COLLECTOR_TOKEN), restorer: tokenTenantId(env.KEEL_EXCHANGE_RESTORER_TOKEN) },
+    includeOrganization: options.includeOrganization,
   });
   const { evidence, logPath } = writeExchangeAcceptanceFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: EXCHANGE_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

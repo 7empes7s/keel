@@ -71,7 +71,7 @@ const previewRoute = guardedRead(DATA_SURFACES.remediateSelectionApi, remediatio
 }));
 const enforceRoute = guardedAction({ action: "remediate", jobKind: "remediate", requiresApproval: true }, deps);
 const approveRoute = guardedApprovalDecision("approve", deps);
-function request(body: unknown, capabilities = ["read", "remediate"], path = "/api/actions/remediate/selection", principal = "operator") {
+function request(body: unknown, capabilities = ["read", "remediate"], path = "/api/actions/remediate/selection", principal = OPERATOR) {
   return new Request(`http://localhost${path}`, { method: "POST", headers: {
     "content-type": "application/json",
     [PRINCIPAL_ID_HEADER]: principal,
@@ -79,6 +79,10 @@ function request(body: unknown, capabilities = ["read", "remediate"], path = "/a
   }, body: JSON.stringify(body) });
 }
 function selection(...names: string[]) { return { driftIds: names.map((name) => ids.get(name)) }; }
+
+// Gap B11: a request's requester must resolve to an enabled principal, as the portal's
+// own principal ids always do.
+const OPERATOR = "1b2a4a00-0000-4000-8000-0000000000e1";
 
 before(async () => {
   if (!process.env.KEEL_DB_TEST_URL) {
@@ -88,6 +92,7 @@ before(async () => {
   database = await createIsolatedTestDatabase(import.meta.url) as Database;
   client = await database.connect();
   await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query("INSERT INTO principal (id, email) VALUES ($1, 'operator@remediation-preview.test')", [OPERATOR]);
   const snapshot = (await client.query("INSERT INTO snapshot (tenant_ref, status) VALUES ($1, 'complete') RETURNING id", [tenant])).rows[0].id;
   const baseline = (await client.query("INSERT INTO baseline (tenant_ref, set_by) VALUES ($1, 'test') RETURNING id", [tenant])).rows[0].id;
   for (const [name, changeType, blastRadius] of [

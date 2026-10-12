@@ -10,9 +10,10 @@
  *  - three of the four task-105 writes, each with its own capture:
  *    exchange.mailbox-settings.update, exchange.client-access.update and
  *    exchange.mailbox-retention.update. The fourth, exchange.organization-config.update
- *    (Set-OrganizationConfig), changes the whole tenant: it is NOT part of this
- *    capture, a record that sends it fails, and it stays unqualified until the
- *    operator decides otherwise (docs/roadmap/exchange-live-acceptance.md).
+ *    (Set-OrganizationConfig), changes the whole tenant. It is optional in a record
+ *    (gap W7): when present it may only move MailTipsLargeAudienceThreshold up by one
+ *    and put it back, exactly two Set-OrganizationConfig calls by the restorer with
+ *    that one parameter. Any other organization parameter fails the record.
  *
  * What a passing subject proves, beyond the generic verifier (signature, capture
  * log digest, gate, tenant, freshness, --require-live):
@@ -65,8 +66,11 @@ export const EXCHANGE_LIVE_SETTINGS_WRITE = 'exchange.mailbox-settings.update';
 export const EXCHANGE_LIVE_CAS_WRITE = 'exchange.client-access.update';
 export const EXCHANGE_LIVE_RETENTION_WRITE = 'exchange.mailbox-retention.update';
 export const EXCHANGE_LIVE_WRITES = Object.freeze([EXCHANGE_LIVE_SETTINGS_WRITE, EXCHANGE_LIVE_CAS_WRITE, EXCHANGE_LIVE_RETENTION_WRITE]);
-// Organization-wide: excluded from the capture until the operator decides (see the doc).
-export const EXCHANGE_LIVE_EXCLUDED_WRITES = Object.freeze(['exchange.organization-config.update']);
+// Organization-wide and optional in a record (gap W7): the one setting the operator may
+// flip and put back is the large-audience mail tip threshold, moved up by one.
+export const EXCHANGE_LIVE_ORGANIZATION_WRITE = 'exchange.organization-config.update';
+export const EXCHANGE_ORGANIZATION_TOGGLE = 'MailTipsLargeAudienceThreshold';
+export const EXCHANGE_ORGANIZATION_EXPECTED_WRITES = 2;
 export const EXCHANGE_FIXTURE_PREFIX = 'keel-rt-';
 export const EXCHANGE_TRANSPORT = 'powershell-cmdlet-job';
 // The properties a capture changes: one per write, each a supported, non-hold setting.
@@ -95,6 +99,7 @@ const SECRET_KEY = /(token|secret|password|passwd|private.?key|bearer|authorizat
 const SECRET_VALUE = /^(eyJ[\w-]+\.[\w-]+\.|Bearer\s)|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
 
 const WRITE_CMDLET = Object.freeze({ 'Set-CASMailbox': EXCHANGE_LIVE_CAS_WRITE, 'Set-Mailbox': EXCHANGE_LIVE_RETENTION_WRITE });
+const isThreshold = (value) => Number.isInteger(value) && value >= 0;
 export const EXCHANGE_SUPPORTED_FIELDS = Object.freeze({
   mailboxSettings: MAILBOX_SETTING_FIELDS, clientAccess: CLIENT_ACCESS_FIELDS, retention: RETENTION_FIELDS, organization: ORGANIZATION_FIELDS,
 });
@@ -143,9 +148,9 @@ export function exchangeGroupFingerprint(body, fields) {
 }
 
 /** The documentation every qualified Exchange operation was declared from. */
-export function exchangeRequiredDocumentation() {
+export function exchangeRequiredDocumentation({ organization = false } = {}) {
   const urls = EXCHANGE_LIVE_READS.map((id) => exchangeReadDescriptor(id)?.source?.url);
-  for (const id of EXCHANGE_LIVE_WRITES) urls.push(WORKLOAD_WRITE_OPERATIONS[id]?.source);
+  for (const id of [...EXCHANGE_LIVE_WRITES, ...(organization ? [EXCHANGE_LIVE_ORGANIZATION_WRITE] : [])]) urls.push(WORKLOAD_WRITE_OPERATIONS[id]?.source);
   return [...new Set(urls.filter(Boolean))];
 }
 
@@ -229,7 +234,7 @@ function exchangeGraphRequestProblems(label, request, { identity, counts }) {
   return failures;
 }
 
-function exchangeCmdletRequestProblems(label, request, { identity, probeIdentity, counts, retentionStart }) {
+function exchangeCmdletRequestProblems(label, request, { identity, probeIdentity, counts, retentionStart, organizationValues }) {
   const failures = [];
   const parameters = request.parameters && typeof request.parameters === 'object' && !Array.isArray(request.parameters) ? request.parameters : null;
   if (!parameters) return [`${label}: parameters not recorded as data`];
@@ -239,7 +244,13 @@ function exchangeCmdletRequestProblems(label, request, { identity, probeIdentity
     return [`${label}: content call or undeclared cmdlet: ${error.message}`];
   }
   if (request.cmdlet === 'Set-OrganizationConfig') {
-    return [`${label}: an organization-wide write is not part of this capture; it is an open operator decision`];
+    if (request.credential !== 'restorer') return [`${label}: not an allowed write (only the restorer writes the organization)`];
+    counts[EXCHANGE_LIVE_ORGANIZATION_WRITE] += 1;
+    organizationValues.push(parameters[EXCHANGE_ORGANIZATION_TOGGLE]);
+    const names = Object.keys(parameters);
+    if (names.length !== 1 || names[0] !== EXCHANGE_ORGANIZATION_TOGGLE) failures.push(`${label}: changes more than ${EXCHANGE_ORGANIZATION_TOGGLE}; no other organization setting may be written`);
+    else if (!isThreshold(parameters[EXCHANGE_ORGANIZATION_TOGGLE])) failures.push(`${label}: ${EXCHANGE_ORGANIZATION_TOGGLE} is not a whole number`);
+    return failures;
   }
   if (request.cmdlet === 'Get-OrganizationConfig') {
     if (request.credential !== 'collector') failures.push(`${label}: only the collector reads the organization`);
@@ -278,16 +289,25 @@ function exchangeRequestProblems(requests, context) {
   if (!Array.isArray(requests) || requests.length === 0) return ['no request log recorded'];
   if (!context.identity) return ['no fixture mailbox to check the request log against'];
   const failures = [];
-  const counts = Object.fromEntries(EXCHANGE_LIVE_WRITES.map((id) => [id, 0]));
+  const counts = Object.fromEntries([...EXCHANGE_LIVE_WRITES, EXCHANGE_LIVE_ORGANIZATION_WRITE].map((id) => [id, 0]));
+  const organizationValues = [];
   for (const [index, request] of requests.entries()) {
     const label = `request ${index} (${request?.transport ?? '?'} ${request?.method ?? request?.cmdlet ?? '?'} ${request?.path ?? ''})`.replace(/ \)$/, ')');
     if (!['collector', 'restorer'].includes(request?.credential)) { failures.push(`${label}: unknown credential`); continue; }
     if (request.transport === 'graph') failures.push(...exchangeGraphRequestProblems(label, request, { ...context, counts }));
-    else if (request.transport === EXCHANGE_TRANSPORT) failures.push(...exchangeCmdletRequestProblems(label, request, { ...context, counts }));
+    else if (request.transport === EXCHANGE_TRANSPORT) failures.push(...exchangeCmdletRequestProblems(label, request, { ...context, counts, organizationValues }));
     else failures.push(`${label}: not the Graph or bounded cmdlet transport`);
   }
   for (const [id, expected] of Object.entries(EXCHANGE_EXPECTED_WRITES)) {
     if (counts[id] !== expected) failures.push(`expected exactly ${expected} ${id} write(s), found ${counts[id]}`);
+  }
+  // The organization write is optional: none without its capture, exactly two (change, put back) with it.
+  const organization = context.organization ?? null;
+  const organizationExpected = organization ? EXCHANGE_ORGANIZATION_EXPECTED_WRITES : 0;
+  if (counts[EXCHANGE_LIVE_ORGANIZATION_WRITE] !== organizationExpected) {
+    failures.push(`expected exactly ${organizationExpected} ${EXCHANGE_LIVE_ORGANIZATION_WRITE} write(s), found ${counts[EXCHANGE_LIVE_ORGANIZATION_WRITE]}`);
+  } else if (organization && (organizationValues[0] !== organization.target || organizationValues[1] !== organization.original)) {
+    failures.push(`the logged ${EXCHANGE_ORGANIZATION_TOGGLE} writes are not the recorded change and put-back`);
   }
   return failures;
 }
@@ -313,6 +333,18 @@ function exchangeRoundTripProblems(capture, id, property) {
   if (typeof capture.preFingerprint !== 'string' || capture.preFingerprint !== capture.finalFingerprint) {
     failures.push(`${id}: the final configuration does not match the starting configuration`);
   }
+  return failures;
+}
+
+/** The organization threshold moved up by exactly one, read back, and was put back. */
+function exchangeOrganizationProblems(capture) {
+  if (!capture) return [];
+  const id = EXCHANGE_LIVE_ORGANIZATION_WRITE;
+  const failures = [];
+  if (!isThreshold(capture.original) || capture.target !== capture.original + 1) {
+    failures.push(`${id}: ${EXCHANGE_ORGANIZATION_TOGGLE} must move from its starting value up by exactly one`);
+  }
+  if (capture.final !== capture.original) failures.push(`${id}: ${EXCHANGE_ORGANIZATION_TOGGLE} did not read back at its starting value`);
   return failures;
 }
 
@@ -497,8 +529,14 @@ export function validateExchangeLiveSubject(evidence, context = {}) {
   failures.push(...exchangeRoundTripProblems(writes.mailboxSettings, EXCHANGE_LIVE_SETTINGS_WRITE, EXCHANGE_SETTINGS_TOGGLE));
   failures.push(...exchangeRoundTripProblems(writes.clientAccess, EXCHANGE_LIVE_CAS_WRITE, EXCHANGE_CAS_TOGGLE));
   failures.push(...exchangeRetentionProblems(writes.retention));
-  for (const id of EXCHANGE_LIVE_EXCLUDED_WRITES) {
-    if (Object.values(writes).some((capture) => capture?.operationId === id)) failures.push(`${id} is not part of this capture; it is an open operator decision`);
+  const organizationWrite = writes.organization ?? null;
+  if (organizationWrite) {
+    failures.push(...exchangeWriteCaptureProblems(organizationWrite, EXCHANGE_LIVE_ORGANIZATION_WRITE, { observedAt, moduleVersion }));
+    failures.push(...exchangeRoundTripProblems(organizationWrite, EXCHANGE_LIVE_ORGANIZATION_WRITE, EXCHANGE_ORGANIZATION_TOGGLE));
+    failures.push(...exchangeOrganizationProblems(organizationWrite));
+  }
+  for (const [key, capture] of Object.entries(writes)) {
+    if (key !== 'organization' && capture?.operationId === EXCHANGE_LIVE_ORGANIZATION_WRITE) failures.push(`${EXCHANGE_LIVE_ORGANIZATION_WRITE} is recorded only under writes.organization`);
   }
 
   // Unsupported held/locked fields refused, platform errors preserved.
@@ -512,7 +550,7 @@ export function validateExchangeLiveSubject(evidence, context = {}) {
 
   // Zero content calls, fixture-only addressing and the hold guard, re-derived from the log.
   failures.push(...exchangeRequestProblems(subject.requests, {
-    identity, probeIdentity: subject.platformError?.identity ?? null,
+    identity, probeIdentity: subject.platformError?.identity ?? null, organization: organizationWrite,
     retentionStart: exchangeDurationMs(writes.retention?.before?.[EXCHANGE_RETENTION_PROPERTY]),
   }));
 
@@ -522,7 +560,7 @@ export function validateExchangeLiveSubject(evidence, context = {}) {
   }
 
   const docs = Array.isArray(subject.documentation) ? subject.documentation : [];
-  for (const url of exchangeRequiredDocumentation()) {
+  for (const url of exchangeRequiredDocumentation({ organization: Boolean(organizationWrite) })) {
     const entry = docs.find((item) => item?.url === url);
     if (!entry || Number.isNaN(Date.parse(entry.retrievedAt ?? ''))) failures.push(`documentation not retrieved: ${url}`);
   }

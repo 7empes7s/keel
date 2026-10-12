@@ -16,6 +16,10 @@
 // sees them, never silently dropped.
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { isVerbatimSymbol } from '../graph/resolver.mjs';
+import { verbCapability } from '../reconcile/verb.mjs';
+import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+
+const BLAST_RADIUS_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry.blastRadius]));
 
 function sortedKeys(keys) {
   return [...keys].sort((a, b) => a.localeCompare(b));
@@ -117,4 +121,49 @@ export function selectionGuardRefusals(resources) {
     .filter((entry) => entry.result.refused)
     .map((entry) => ({ naturalKey: entry.naturalKey, reason: entry.result.reason }))
     .sort((a, b) => a.naturalKey.localeCompare(b.naturalKey));
+}
+
+/** The resource type a natural key names: the text before its first colon, or the
+ * whole key for a tenant singleton (whose key is its type). */
+export function resourceTypeOfKey(naturalKey) {
+  const colon = naturalKey.indexOf(':');
+  return colon === -1 ? naturalKey : naturalKey.slice(0, colon);
+}
+
+/**
+ * Gap D7: the "delete this natural key" restore scope. A snapshot restore can only
+ * select what the snapshot holds, so an object that exists live but is absent from
+ * the snapshot is deleted through this scope instead of a drift remediation with a
+ * temporary baseline. Each key becomes a reconciliation resource with desired
+ * absence (payload null) — the same shape a drift remediation's added-object delete
+ * has — so planning, the dry-run artifact, approval and promotion all take the
+ * existing reconciliation path, and applyWave's delete guards (protected
+ * principals, tenant lockout, dependent impact, journal-before-delete) apply
+ * unchanged.
+ *
+ * Refused, before anything is read live:
+ *  - a key the snapshot holds (restoring the snapshot would put it back, so a
+ *    delete scope there contradicts the snapshot: restore it with a selection);
+ *  - a type without a registered delete operation.
+ * The blast radius comes from the catalog for the type; an unlisted one is treated
+ * as tenant-lockout, the strictest, so the lockout guard can never be bypassed by
+ * a missing entry.
+ */
+export function deletionScope(candidates, deleteKeys) {
+  const inSnapshot = new Set((candidates ?? []).map((resource) => resource.naturalKey));
+  return sortedKeys(new Set(deleteKeys)).map((naturalKey) => {
+    if (inSnapshot.has(naturalKey)) {
+      throw new Error(`refusing to delete ${naturalKey}: the snapshot holds this object, so a restore from it keeps the object — restore it with --select instead`);
+    }
+    const resourceType = resourceTypeOfKey(naturalKey);
+    if (!verbCapability(resourceType, 'delete').supported) {
+      throw new Error(`refusing to delete ${naturalKey}: Keel has no reviewed delete operation for ${resourceType}`);
+    }
+    return {
+      naturalKey,
+      resourceType,
+      payload: null,
+      blastRadius: BLAST_RADIUS_BY_TYPE.get(resourceType) ?? 'tenant-lockout',
+    };
+  });
 }

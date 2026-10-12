@@ -40,6 +40,7 @@ The rules are explicit before/after field rules per type (`CONTENT_EFFECT_RULES`
 | deviceConfiguration | `passcodeSignInFailureCountBeforeWipe`, `passwordSignInFailureCountBeforeFactoryReset`, `workProfilePasswordSignInFailureCountBeforeFactoryReset` | a failed-sign-in wipe is introduced or lowered → irreversible (judged on create too) |
 | deviceConfiguration | `accountManagerPolicy.accountDeletionPolicy` | becomes `immediately` (shared PC) → irreversible |
 | deviceConfiguration | `accountManagerPolicy.inactiveThresholdDays` | decreases (shared PC) → retention-reducing |
+| groupLifecyclePolicy | `groupLifetimeInDays` | decreases → retention-reducing (groups nobody renews in time expire and are deleted). With this approval the restore guard writes the shorter lifetime; without it the write is skipped with a completion item (gap D3) |
 | configurationPolicy | `settings[…devicelock_maxdevicepasswordfailedattempts]` | the catalog's failed-sign-in wipe is introduced or lowered → irreversible (judged on create too) |
 
 Intune settings reviewed and found to be configuration only, with no rule:

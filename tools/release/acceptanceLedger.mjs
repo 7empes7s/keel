@@ -8,6 +8,8 @@
  * - live acceptance: the externally captured records in
  *   docs/release/qualifications/, each verified with `--require-live` semantics
  *   through verifyEvidence. A record is live-qualified only when it verifies.
+ *   The Entra gate (issue #148) is judged per registered write from
+ *   docs/release/qualifications/entra-live/, with the same 30-day freshness.
  *
  * Readiness is 'ready' only when every fixture journey passed, every live gate
  * verified (or is an accepted gap by operator decision) and no objective is left open. Any unknown (missing record, pending
@@ -17,10 +19,15 @@
  *
  * Nothing here captures, signs or upgrades evidence.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-import { verifyEvidence } from './qualification.mjs';
+import {
+  ENTRA_DEMOTION_KIND, ENTRA_LIVE_GATE, ENTRA_LIVE_KIND, TEST_TENANT_REFS, verifiedOutcome, verifyRunner,
+} from '../qualification/entraLive.mjs';
+import { evidenceStem, registeredOperations } from '../qualification/live-gate-plan.mjs';
+import { DEFAULT_MAX_AGE_HOURS, verifyEvidence } from './qualification.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 const QUALIFICATIONS_DIR = new URL('../../docs/release/qualifications/', import.meta.url).pathname;
@@ -46,6 +53,8 @@ export const LIVE_ACCEPTANCE_GATES = Object.freeze([
   { task: 'task-121', gate: 'teams-live-acceptance', title: 'Teams configuration workload' },
   { task: 'task-122', gate: 'exchange-live-acceptance', title: 'Exchange configuration workload' },
   { task: 'task-123', gate: 'onedrive-purview-live-acceptance', title: 'OneDrive and Purview configuration' },
+  { task: 'issue-148', gate: ENTRA_LIVE_GATE, title: 'Entra writes proven live on the test tenant', perOperation: true,
+    note: 'Judged per registered write: each needs its own verified live record from the last 30 days.' },
 ].map((entry) => Object.freeze(entry)));
 
 const OBJECTIVES_SOURCE = 'docs/release/objectives-source.md';
@@ -123,9 +132,112 @@ export const RELEASE_OBJECTIVES = Object.freeze([
     evidence: ['storage-live-acceptance', 'drill-live-acceptance'], gap: null },
 ].map((entry) => Object.freeze(entry)));
 
+const ENTRA_LIVE_SUBDIR = 'entra-live';
+
+/**
+ * The committed Entra live files (issue #148) by evidence stem: the capture
+ * record, its capture log and any demotion. Unreadable files are kept as such.
+ */
+export function loadEntraLiveFiles(dir) {
+  const byStem = new Map();
+  if (!existsSync(dir)) return byStem;
+  const read = (name) => {
+    try {
+      return JSON.parse(readFileSync(join(dir, name), 'utf8'));
+    } catch (error) {
+      return { unreadable: error.message };
+    }
+  };
+  for (const name of readdirSync(dir).filter((file) => file.endsWith('.json')).sort()) {
+    const [, stem, part = 'record'] = name.match(/^(.*?)(?:\.(capture|demotion))?\.json$/);
+    const entry = byStem.get(stem) ?? {};
+    if (part === 'capture') entry.captureLog = readFileSync(join(dir, name), 'utf8');
+    else entry[part] = read(name);
+    byStem.set(stem, entry);
+  }
+  return byStem;
+}
+
+const day = (iso) => String(iso ?? '').slice(0, 10) || 'an unknown date';
+
+/**
+ * One registered Entra write's live status. The newest of its capture record and
+ * its demotion decides. Statuses:
+ *  - 'live-qualified': a non-synthetic, test-tenant record whose write was verified
+ *    by its read-back, signed by the release runner, matching its capture log and
+ *    observed within the last 30 days (the workload gates' freshness rule);
+ *  - 'demoted': a failed live run was recorded; `failures` quotes why;
+ *  - 'expired': the record verified once but is older than 30 days;
+ *  - 'unverified': no verification key to check the signature with;
+ *  - 'failed': the record was checked and does not prove the write;
+ *  - 'missing': no record has been captured.
+ */
+export function classifyEntraOperation(files, {
+  hmacKey = null, now = new Date(), maxAgeHours = DEFAULT_MAX_AGE_HOURS, testTenantRefs = TEST_TENANT_REFS,
+} = {}) {
+  const { record = null, demotion = null, captureLog = null } = files ?? {};
+  const recordAt = Date.parse(record?.observedAt);
+  const demotedAt = Date.parse(demotion?.decidedAt);
+  const observedAt = record?.observedAt ?? null;
+  if (demotion && (demotion.unreadable || !record || Number.isNaN(recordAt) || !(recordAt > demotedAt))) {
+    if (demotion.unreadable) return { status: 'failed', observedAt, failures: [`demotion unreadable: ${demotion.unreadable}`] };
+    if (demotion.kind !== ENTRA_DEMOTION_KIND) return { status: 'failed', observedAt, failures: [`not a ${ENTRA_DEMOTION_KIND} record`] };
+    return { status: 'demoted', observedAt: demotion.decidedAt ?? null, failures: [`failed live on ${day(demotion.decidedAt)}: ${demotion.reason}`] };
+  }
+  if (!record) return { status: 'missing', observedAt: null, failures: ['no live record has been captured'] };
+  if (record.unreadable) return { status: 'failed', observedAt: null, failures: [`record unreadable: ${record.unreadable}`] };
+
+  const failures = [];
+  if (record.kind !== ENTRA_LIVE_KIND) failures.push(`not a ${ENTRA_LIVE_KIND} record`);
+  if (record.gate !== ENTRA_LIVE_GATE) failures.push(`gate mismatch: '${record.gate}'`);
+  if (!testTenantRefs.includes(record.tenantRef)) failures.push('the record was not captured on the test tenant');
+  if (record.synthetic !== false || record.evidenceLevel !== 'live-qualified') failures.push('synthetic or fixture evidence is never live qualification');
+  if (record.ok !== true || record.readBackVerified !== true || !verifiedOutcome(record.outcome, record.outcomeDetail)) {
+    failures.push(`the write was not verified by its read-back (outcome: ${record.outcome ?? 'missing'})`);
+  }
+  if (Number.isNaN(recordAt)) failures.push('observedAt is not a valid timestamp');
+  else if (recordAt > now.getTime() + 5 * 60 * 1000) failures.push('observedAt is in the future');
+  if (captureLog === null) failures.push('the capture log is missing');
+  else if (createHash('sha256').update(captureLog).digest('hex') !== record.captureSha256) failures.push('the capture log does not match the record');
+  if (failures.length > 0) return { status: 'failed', observedAt, failures };
+
+  if (now.getTime() - recordAt > maxAgeHours * 60 * 60 * 1000) {
+    return { status: 'expired', observedAt, failures: [`the live record from ${day(observedAt)} is older than ${maxAgeHours / 24} days; capture it again`] };
+  }
+  if (!hmacKey) return { status: 'unverified', observedAt, failures: ['cannot check the runner signature without the verification key'] };
+  const runner = verifyRunner(record, hmacKey);
+  if (!runner.ok) return { status: 'failed', observedAt, failures: [runner.reason] };
+  if (runner.synthetic) return { status: 'failed', observedAt, failures: ['signed by the fixture runner: synthetic evidence is never live qualification'] };
+  return { status: 'live-qualified', observedAt, failures: [] };
+}
+
+/**
+ * The Entra gate: one row per registered write, then the gate status. Any
+ * demoted or failed write fails the gate; it is live-qualified only when every
+ * write is; otherwise (missing, expired, unverified) it is pending.
+ */
+export function classifyEntraGate(files, { operations = registeredOperations(), ...options } = {}) {
+  const rows = operations.map(({ resourceType, operation }) => ({
+    resourceType, operation, ...classifyEntraOperation(files.get(evidenceStem(resourceType, operation)), options),
+  }));
+  const count = (status) => rows.filter((row) => row.status === status).length;
+  const notQualified = rows.filter((row) => row.status !== 'live-qualified');
+  const status = rows.some((row) => row.status === 'failed' || row.status === 'demoted') ? 'failed'
+    : notQualified.length === 0 && rows.length > 0 ? 'live-qualified' : 'pending';
+  const summary = ['live-qualified', 'demoted', 'failed', 'expired', 'unverified', 'missing']
+    .filter((key) => count(key) > 0).map((key) => `${count(key)} ${key}`).join(', ');
+  const failures = rows.length === 0 ? ['no registered Entra write to qualify'] : status === 'live-qualified' ? [] : [
+    `${rows.length} registered Entra writes: ${summary}`,
+    ...notQualified.filter((row) => row.status !== 'missing')
+      .map((row) => `${row.resourceType} ${row.operation} is ${row.status}: ${row.failures.join('; ')}`),
+  ];
+  return { status, failures, operations: rows };
+}
+
 /** Read the checked-in record of every live gate (null when no file exists). */
 export function loadLiveRecords({ dir = QUALIFICATIONS_DIR } = {}) {
   return LIVE_ACCEPTANCE_GATES.map((spec) => {
+    if (spec.perOperation) return { ...spec, files: loadEntraLiveFiles(join(dir, ENTRA_LIVE_SUBDIR)) };
     const path = join(dir, `${spec.gate}.json`);
     if (!existsSync(path)) return { ...spec, record: null, evidenceDir: dir };
     try {
@@ -202,8 +314,10 @@ export function buildReleaseLedger({
     const classified = !entry
       ? { status: 'missing', failures: [`no ${spec.gate} record was supplied`] }
       : entry.status
-        ? { status: entry.status, failures: entry.failures ?? [] }
-        : classifyLiveRecord(spec, entry.record, { hmacKey, tenantRef, build, evidenceDir: entry.evidenceDir, now });
+        ? { status: entry.status, failures: entry.failures ?? [], ...(entry.operations ? { operations: entry.operations } : {}) }
+        : spec.perOperation
+          ? classifyEntraGate(entry.files ?? new Map(), { hmacKey, now, ...(entry.operations ? { operations: entry.operations } : {}) })
+          : classifyLiveRecord(spec, entry.record, { hmacKey, tenantRef, build, evidenceDir: entry.evidenceDir, now });
     return { task: spec.task, gate: spec.gate, title: spec.title, note: spec.note ?? null, acceptedGap: spec.acceptedGap ?? null, ...classified };
   });
   const acceptedGaps = [];
@@ -215,10 +329,10 @@ export function buildReleaseLedger({
     }
     if (row.status === 'failed') {
       blocked = true;
-      reasons.push(`${row.gate} (${row.task}) failed live verification`);
+      reasons.push(`${row.gate} (${row.task}) failed live verification${row.operations ? `: ${row.failures[0]}` : ''}`);
     } else {
       pending = true;
-      reasons.push(`${row.gate} (${row.task}) is ${row.status}`);
+      reasons.push(`${row.gate} (${row.task}) is ${row.status}${row.operations ? `: ${row.failures[0]}` : ''}`);
     }
   }
 

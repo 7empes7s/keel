@@ -1443,3 +1443,11 @@ CREATE TABLE IF NOT EXISTS branding_asset (
   FOREIGN KEY (tenant_ref, sha256) REFERENCES branding_asset_blob (tenant_ref, sha256),
   CHECK ((outcome = 'present') = (sha256 IS NOT NULL))
 );
+
+-- Gap B11: who carries out an approved request. 'worker': approval mints the job (every
+-- request made before B11). 'cli': an operator runs it with the CLI, so approval mints
+-- no job. Additive: existing rows read as 'worker' and keep their behaviour.
+ALTER TABLE approval_request ADD COLUMN IF NOT EXISTS executor text NOT NULL DEFAULT 'worker';
+ALTER TABLE approval_request DROP CONSTRAINT IF EXISTS approval_request_executor_check;
+ALTER TABLE approval_request ADD CONSTRAINT approval_request_executor_check
+  CHECK (executor IN ('worker', 'cli'));

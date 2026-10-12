@@ -86,6 +86,30 @@ const shortensTimespan = (before, after) => {
   return b === null || a === null ? true : a < b;
 };
 
+// Intune (issue #155). Compliance actions that destroy or release a device:
+// a wipe factory-resets it, a retire removes company data from it.
+const DEVICE_DESTROYING_ACTIONS = ['wipe', 'retire'];
+/** The distinct noncompliance action types of a compliance policy, lower-cased. */
+const complianceActionTypes = (payload) => [...new Set(
+  (Array.isArray(payload?.scheduledActionsForRule) ? payload.scheduledActionsForRule : [])
+    .flatMap((rule) => (Array.isArray(rule?.scheduledActionConfigurations) ? rule.scheduledActionConfigurations : []))
+    .map((action) => String(action?.actionType ?? '').toLowerCase()),
+)].sort();
+const addsDeviceDestroyingAction = (before, after) => DEVICE_DESTROYING_ACTIONS.some((action) => listOf(after).includes(action) && !listOf(before).includes(action));
+// A failed-sign-in wipe threshold: null, 0 or absent means the device is never
+// wiped. Introducing one, or lowering it, wipes the device after fewer attempts.
+const positive = (value) => typeof value === 'number' && value > 0;
+const wipeThresholdTightens = (before, after) => positive(after) && (!positive(before) || after < before);
+/** A settings catalog value by its definition id, read from the policy's settings list. */
+const catalogSetting = (definitionId) => (payload) => {
+  const settings = Array.isArray(payload?.settings) ? payload.settings : [];
+  const instance = settings.map((setting) => setting?.settingInstance).find((candidate) => candidate?.settingDefinitionId === definitionId);
+  const value = instance?.simpleSettingValue?.value;
+  return typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value;
+};
+// Windows DeviceLock/MaxDevicePasswordFailedAttempts in the settings catalog: wipes the device after that many failures (0 = never).
+const CATALOG_WIPE_THRESHOLD = 'device_vendor_msft_policy_config_devicelock_maxdevicepasswordfailedattempts';
+
 /** groupSetting stores its values as [{ name, value }]; address one by name. */
 const settingValue = (name) => (payload) => payload?.values?.find?.((entry) => entry?.name === name)?.value;
 
@@ -173,6 +197,39 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },
+  // Issue #155: Intune policies. These rules land on DEVICE content, which a
+  // policy reaches as soon as it is assigned, whether the policy is new or
+  // changed, so these three types judge creates too (judgesCreates). Reviewed
+  // and found to be configuration only, not content effects: hotspot and
+  // tethering (internetSharingBlocked), app data shared between users of a
+  // device (sharedUserAppDataAllowed), work-profile data sharing, storage and
+  // removable-media blocks, iCloud backup blocks, and factoryResetBlocked (which
+  // PREVENTS a reset). The compliance "block" and "notification" actions, and
+  // remoteLock, keep data on the device.
+  //  - A compliance policy whose noncompliance actions gain a wipe (factory
+  //    reset) or a retire (company data removed) destroys device content.
+  //  - A device configuration that introduces or lowers a failed-sign-in wipe
+  //    threshold (iOS, Android, Android work profile, Windows) wipes devices
+  //    after fewer attempts. A shared PC profile that deletes cached accounts at
+  //    sign-out destroys their local data; one that deletes them after fewer
+  //    inactive days keeps that data for less time.
+  //  - A settings catalog policy is an opaque list of definition ids whose
+  //    meaning KEEL cannot read in general; the one wipe setting it knows
+  //    (DeviceLock/MaxDevicePasswordFailedAttempts) is classified like the
+  //    profile thresholds. Other catalog settings are not classified (doc).
+  deviceCompliancePolicy: { reviewed: true, judgesCreates: true, rules: [
+    rule('scheduledActionsForRule[actionType]', 'irreversible', addsDeviceDestroyingAction, complianceActionTypes),
+  ] },
+  deviceConfiguration: { reviewed: true, judgesCreates: true, rules: [
+    rule('passcodeSignInFailureCountBeforeWipe', 'irreversible', wipeThresholdTightens),
+    rule('passwordSignInFailureCountBeforeFactoryReset', 'irreversible', wipeThresholdTightens),
+    rule('workProfilePasswordSignInFailureCountBeforeFactoryReset', 'irreversible', wipeThresholdTightens),
+    rule('accountManagerPolicy.accountDeletionPolicy', 'irreversible', becomes('immediately')),
+    rule('accountManagerPolicy.inactiveThresholdDays', 'retention-reducing', decreases),
+  ] },
+  configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
+    rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),
+  ] },
 });
 
 // A changed leaf whose NAME suggests content consequences, on a type with no
@@ -226,9 +283,12 @@ export function classifyContentEffects(resources) {
         effects.push({ naturalKey, resourceType, field: '(object deleted)', effect: review.onDelete, before: 'present', after: 'deleted', disclosure: disclosureFor(review.onDelete) });
         continue;
       }
-      if (!before || !after) continue; // a create starts from nothing; no existing content changes reach
+      if (!after) continue;
+      // A create starts from nothing, so no existing content changes reach,
+      // unless the type's effects land on content outside the object (devices).
+      if (!before && !review.judgesCreates) continue;
       for (const entry of review.rules) {
-        const b = entry.read(before);
+        const b = entry.read(before ?? {});
         const a = entry.read(after);
         if (JSON.stringify(b ?? null) === JSON.stringify(a ?? null)) continue; // unchanged: benign
         if (entry.when(b, a)) {

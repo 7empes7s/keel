@@ -36,13 +36,31 @@ The rules are explicit before/after field rules per type (`CONTENT_EFFECT_RULES`
 | ediscoveryHoldPolicy | `isEnabled` | true → false → hold-releasing |
 | ediscoveryHoldPolicy | (object deleted) | hold-releasing |
 | conditionalAccessPolicy, namedLocation, roleAssignment | — | reviewed: access configuration only |
+| deviceCompliancePolicy | `scheduledActionsForRule[actionType]` | noncompliance actions gain `wipe` or `retire` → irreversible (judged on create too) |
+| deviceConfiguration | `passcodeSignInFailureCountBeforeWipe`, `passwordSignInFailureCountBeforeFactoryReset`, `workProfilePasswordSignInFailureCountBeforeFactoryReset` | a failed-sign-in wipe is introduced or lowered → irreversible (judged on create too) |
+| deviceConfiguration | `accountManagerPolicy.accountDeletionPolicy` | becomes `immediately` (shared PC) → irreversible |
+| deviceConfiguration | `accountManagerPolicy.inactiveThresholdDays` | decreases (shared PC) → retention-reducing |
+| configurationPolicy | `settings[…devicelock_maxdevicepasswordfailedattempts]` | the catalog's failed-sign-in wipe is introduced or lowered → irreversible (judged on create too) |
+
+Intune settings reviewed and found to be configuration only, with no rule:
+hotspot and tethering (`internetSharingBlocked`), app data shared between the
+users of one device (`sharedUserAppDataAllowed`), work-profile data sharing,
+storage and removable-media blocks, iCloud backup blocks, `factoryResetBlocked`
+(which prevents a reset), and the compliance actions `block`, `notification`,
+`pushNotification`, `remoteLock` and `removeResourceAccessProfiles`, which keep
+data on the device. Before this review a device configuration profile create was
+refused by the field-name heuristic for `internetSharingBlocked` and
+`sharedUserAppDataAllowed` (live gate Q43, step 25).
 
 How a change is judged:
 
 - **Unchanged or narrowing settings are benign.** A visibility change from
   Public to Private, or a longer retention, is not an effect.
-- **Creates are benign.** A create starts from nothing, so no existing content
-  changes reach.
+- **Creates are benign**, except on device types. A create starts from nothing,
+  so no existing content changes reach. The Intune types are the exception
+  (`judgesCreates`): a policy reaches existing devices as soon as it is
+  assigned, so a new compliance policy with a wipe action, or a new profile with
+  a failed-sign-in wipe, is judged against an empty "before".
 - **Unknown dangerous transitions are refused.** On a type with no review, a
   changed field whose name looks content-bearing (retention, hold, preserve,
   share, guest, external, invite, wipe, purge, anonymous, public) is refused
@@ -107,3 +125,7 @@ run is required.
   they are exercised by the boundary tests.
 - Classification sees configuration only. It does not count how much content an
   effect would touch.
+- Settings catalog policies are a list of setting definition ids whose meaning
+  KEEL does not read in general. Only the DeviceLock failed-attempts wipe is
+  classified; another catalog setting that wipes or retires a device would pass
+  unclassified.

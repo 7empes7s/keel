@@ -1,0 +1,29 @@
+{
+  "restoreRef": "43b5ad83-2d10-8824-afc4-a0caa596d9ec",
+  "entry": {
+    "naturalKey": "namedLocation:KEEL-RT-148-location",
+    "resourceType": "namedLocation",
+    "operation": "create",
+    "targetId": null,
+    "outcome": "failed",
+    "outcomeDetail": "status 400",
+    "recordedAt": "2026-10-11T18:52:55.665Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "cec6f4c5-90bc-8cd8-bdc4-2f4be326fc37",
+      "ipRanges": [
+        {
+          "@odata.type": "#microsoft.graph.iPv4CidrRange",
+          "cidrAddress": "203.0.113.0/24"
+        }
+      ],
+      "isTrusted": false,
+      "@odata.type": "#microsoft.graph.ipNamedLocation",
+      "displayName": "KEEL-RT-148-location",
+      "createdDateTime": "2026-10-11T18:50:24.7189658Z",
+      "deletedDateTime": null,
+      "modifiedDateTime": "2026-10-11T18:50:24.7189658Z"
+    },
+    "postState": null
+  }
+}

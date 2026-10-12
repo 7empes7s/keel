@@ -415,6 +415,7 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
     builderSteps: [
       `remove the ${operation} registration for ${resourceType} in engine/coverage/capabilities.mjs`,
       `add "live gate #148: ${operation} failed live: <reason>" to TYPE_DECISIONS.${resourceType}.reason in engine/coverage/qualification.mjs (manual if no operation is left)`,
+      `or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.${resourceType}.liveFailures['${operation}'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run`,
       'commit this file under docs/release/qualifications/entra-live/ in the same PR',
     ],
   };
@@ -422,8 +423,12 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
 
 /**
  * Committed demotions that the code has not applied yet. A demotion is applied
- * when the operation is no longer a registered write and the type's
- * TYPE_DECISIONS reason quotes the recorded reason.
+ * in one of two ways:
+ *  - the operation is no longer a registered write and the type's
+ *    TYPE_DECISIONS reason quotes the recorded reason; or
+ *  - the write stays registered (the cause is a KEEL bug with a fix under way)
+ *    and TYPE_DECISIONS.<type>.liveFailures.<operation> records the demotion's
+ *    date and quotes its reason, so the ledger row shows the failed live run.
  */
 export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = TYPE_DECISIONS, claimOf = (type, op) => capabilityFor(type, op).claim } = {}) {
   if (!existsSync(dir)) return [];
@@ -431,6 +436,16 @@ export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = 
   for (const name of readdirSync(dir).filter((file) => file.endsWith('.demotion.json')).sort()) {
     const demotion = JSON.parse(readFileSync(join(dir, name), 'utf8'));
     const key = demotion.resourceType.split('#')[0];
+    const noted = decisions[key]?.liveFailures?.[demotion.operation];
+    if (noted) {
+      if (!String(noted.reason ?? '').includes(demotion.reason)) {
+        problems.push(`${name}: TYPE_DECISIONS.${key}.liveFailures.${demotion.operation}.reason does not quote the demotion reason`);
+      }
+      if (noted.failedAt !== String(demotion.decidedAt ?? '').slice(0, 10)) {
+        problems.push(`${name}: TYPE_DECISIONS.${key}.liveFailures.${demotion.operation}.failedAt is not the demotion's date`);
+      }
+      continue;
+    }
     if (demotion.operation !== ENFORCEMENT_STEP && isSupportedClaim(claimOf(demotion.resourceType, demotion.operation))) {
       problems.push(`${name}: ${demotion.resourceType} ${demotion.operation} is still a registered write`);
     }

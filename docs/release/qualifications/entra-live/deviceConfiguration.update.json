@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceConfiguration",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-10T21:21:51.447Z",
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "naturalKey": "deviceConfiguration:KEEL-RT-148-restrictions",
+  "fixtureKind": "named-object",
+  "captureSha256": "882fd1d551c476f06f3b8a2b71f97049e77c45c510c5f2c4b4a058d8faaf935c",
+  "proofRef": "docs/release/qualifications/entra-live/deviceConfiguration.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "ee68fd5e35cc8625cfe2c4af15f92eb2358797e90f5e1f3bc64beb9b39e3b0c6"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "unifiedRoleManagementPolicy",
+  "operation": "update",
+  "reason": "Write outcome \"uncertain\": KEEL could not re-read the PIM policy after the PATCH (direct GET of the policy or rule returns HTTP 400 CultureNotFoundException for these app tokens). A later collection shows the rule did change (MFA on activation back on), so the write works but its read-back path does not.",
+  "restoreRef": "ef3354d5-156a-8ddd-bfd8-50135a1571fc",
+  "decidedAt": "2026-10-11T20:28:18.770Z",
+  "builderSteps": [
+    "remove the update registration for unifiedRoleManagementPolicy in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.unifiedRoleManagementPolicy.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

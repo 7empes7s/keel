@@ -93,6 +93,26 @@ snapshot that the principal is a KEEL-RT fixture and the role is `KEEL-RT-148-ro
    reason to `TYPE_DECISIONS`. `engine/roadmap/entra-live-gate.test.mjs` fails until both are done.
 6. Clean up as the step says.
 
+## End of run: put the baseline back
+
+The delete steps activate a temporary baseline (`live-gate-148`, a new version of the tenant's
+baseline). Once the temporary version is active, the version that was active before reads
+**superseded**, and `keel-baseline-activate.mjs --baseline-id "$BASELINE"` refuses it: a superseded
+version is history and is never activated again. Re-snapshotting does not help either, because it
+needs a snapshot newer than the capture, and a baseline seeded before snapshots were recorded has no
+capture at all. The rollback path is **reinstatement**:
+
+```sh
+node cli/keel-baseline-activate.mjs --baseline-id "$BASELINE" --reinstate \
+  --actor keel-operator --reason "live gate 148 delete steps done" --config "$COLLECTOR"
+```
+
+It copies the superseded version's resources into a new latest version of the same baseline (the
+temporary version is superseded in turn, so the history stays append-only), activates it, and writes
+a `baseline-reinstate` evidence record. `--version N` picks a specific version of the chain. In the
+portal it is `POST /api/actions/baseline/reinstate` with `{ "baselineId": "...", "version": N }`; like
+an activation it needs a second person's approval. Reinstating the current version is refused.
+
 ## After the run
 
 - Commit every record, capture log and demotion file under `docs/release/qualifications/entra-live/`
@@ -138,8 +158,9 @@ snapshot that the principal is a KEEL-RT fixture and the role is `KEEL-RT-148-ro
   when they start. They still show `fixture-tested`. Wiring that in needs the signing key available to
   the portal process, which is a decision.
 - **Delete steps** go through drift remediation, because a restore cannot select an object that is
-  absent from its snapshot. That means a temporary baseline, which the step puts back afterwards. A
-  restore scope for "delete this key" would make these steps shorter.
+  absent from its snapshot. That means a temporary baseline, which the end of the run puts back by
+  reinstating the previous version (see "End of run"). A restore scope for "delete this key" would
+  make these steps shorter.
 - **Security defaults** can't be turned on while any Conditional Access policy is on. If the test
   tenant has one, that step is blocked, not failed.
 - **Release gate.** `entra-live-acceptance` is not a release-ledger gate. Adding one would turn the

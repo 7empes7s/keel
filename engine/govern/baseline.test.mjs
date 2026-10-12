@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
   acceptDrift, seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
+  resnapshotBaseline, reinstateBaseline,
 } from './baseline.mjs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
@@ -434,6 +435,145 @@ try {
   await raceClientA.end();
   await raceClientB.end();
 }
+
+// --- Live gate #148 (Q43): reinstating a superseded baseline version ---
+// A superseded version is never activated again, so putting it back means a NEW latest
+// version that holds the same resources. The version it supersedes is superseded in turn
+// (history is append-only), the new version is active, and the change is in the audit
+// record. It needs no source snapshot, and the current version cannot be reinstated.
+const reinstateTenantRef = 'sha256:baseline-reinstate-test';
+const reinstateSnapshotV1 = await createFullSnapshot(reinstateTenantRef);
+await addGroup(reinstateSnapshotV1, 'group:keep', 'Keep');
+await addGroup(reinstateSnapshotV1, 'group:fixture', 'Fixture');
+const reinstateV1 = await seedFromSnapshot(client, {
+  tenantRef: reinstateTenantRef,
+  snapshotId: reinstateSnapshotV1,
+  setBy: 'reinstate-operator',
+  label: 'Golden state',
+});
+const reinstateSnapshotV2 = await createFullSnapshot(reinstateTenantRef);
+await addGroup(reinstateSnapshotV2, 'group:keep', 'Keep');
+await client.query(
+  "UPDATE snapshot SET completed_at = (SELECT completed_at + interval '1 minute' FROM snapshot WHERE id = $2) WHERE id = $1",
+  [reinstateSnapshotV2, reinstateSnapshotV1],
+);
+const reinstateV2 = await resnapshotBaseline(client, {
+  tenantRef: reinstateTenantRef,
+  baselineId: reinstateV1,
+  snapshotId: reinstateSnapshotV2,
+  setBy: 'reinstate-operator',
+});
+assert.equal(reinstateV2.version, 2);
+assert.equal(reinstateV2.active, true);
+await assert.rejects(
+  () => activateBaseline(client, { tenantRef: reinstateTenantRef, baselineId: reinstateV1 }),
+  /superseded/,
+);
+
+const baselineResources = async (id) => (await client.query(
+  'SELECT natural_key, resource_version_id FROM baseline_resource WHERE baseline_id = $1 ORDER BY natural_key',
+  [id],
+)).rows;
+const v1Resources = await baselineResources(reinstateV1);
+assert.equal(v1Resources.length, 2);
+
+const reinstated = await reinstateBaseline(client, {
+  tenantRef: reinstateTenantRef,
+  baselineId: reinstateV1,
+  actor: 'reinstate-operator',
+  reason: 'put the pre-delete-step baseline back',
+});
+assert.equal(reinstated.version, 3);
+assert.equal(reinstated.supersedesId, reinstateV2.id);
+assert.equal(reinstated.reinstatedId, reinstateV1);
+assert.equal(reinstated.reinstatedVersion, 1);
+assert.deepEqual(await baselineResources(reinstated.id), v1Resources, 'v3 holds exactly v1\'s resources');
+assert.deepEqual(await baselineResources(reinstateV1), v1Resources, 'v1 is untouched');
+
+const { rows: reinstateRows } = await client.query(
+  'SELECT id, version, active, superseded_at, supersedes_id, label, source_snapshot_id FROM baseline WHERE tenant_ref = $1 ORDER BY version',
+  [reinstateTenantRef],
+);
+assert.deepEqual(reinstateRows.map((row) => [row.version, row.active, row.superseded_at !== null]), [
+  [1, false, true],
+  [2, false, true],
+  [3, true, false],
+], 'the old active version reads superseded and only the reinstated version is active');
+assert.equal(String(reinstateRows[2].supersedes_id), reinstateV2.id);
+assert.equal(reinstateRows[2].label, 'Golden state (v3)');
+assert.equal(String(reinstateRows[2].source_snapshot_id), reinstateSnapshotV1);
+
+const { rows: reinstateEvidence } = await client.query(
+  "SELECT subject, actor FROM evidence WHERE tenant_ref = $1 AND kind = 'baseline-reinstate'",
+  [reinstateTenantRef],
+);
+assert.equal(reinstateEvidence.length, 1);
+assert.equal(reinstateEvidence[0].actor, 'reinstate-operator');
+assert.equal(reinstateEvidence[0].subject.baselineId, reinstated.id);
+assert.equal(reinstateEvidence[0].subject.reinstatedBaselineId, reinstateV1);
+assert.equal(reinstateEvidence[0].subject.supersedesBaselineId, reinstateV2.id);
+assert.equal(reinstateEvidence[0].subject.resourceCount, 2);
+assert.equal(reinstateEvidence[0].subject.reason, 'put the pre-delete-step baseline back');
+
+// The current version cannot be reinstated, whichever way it is named.
+await assert.rejects(
+  () => reinstateBaseline(client, { tenantRef: reinstateTenantRef, baselineId: reinstated.id, actor: 'reinstate-operator' }),
+  /current version/,
+);
+await assert.rejects(
+  () => reinstateBaseline(client, { tenantRef: reinstateTenantRef, baselineId: reinstateV1, version: 3, actor: 'reinstate-operator' }),
+  /current version/,
+);
+await assert.rejects(
+  () => reinstateBaseline(client, { tenantRef: reinstateTenantRef, baselineId: reinstateV1, version: 9, actor: 'reinstate-operator' }),
+  /no version 9/,
+);
+await assert.rejects(
+  () => reinstateBaseline(client, { tenantRef: 'sha256:some-other-tenant', baselineId: reinstateV1, actor: 'reinstate-operator' }),
+  /not found/,
+);
+assert.equal((await client.query('SELECT count(*)::int AS count FROM baseline WHERE tenant_ref = $1', [reinstateTenantRef])).rows[0].count, 3);
+
+// Any version of the chain plus --version N picks the version to copy.
+const reinstatedV2 = await reinstateBaseline(client, {
+  tenantRef: reinstateTenantRef, baselineId: reinstated.id, version: 2, actor: 'reinstate-operator',
+});
+assert.equal(reinstatedV2.version, 4);
+assert.equal(reinstatedV2.reinstatedId, reinstateV2.id);
+assert.deepEqual(await baselineResources(reinstatedV2.id), await baselineResources(reinstateV2.id));
+assert.deepEqual(
+  (await client.query('SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true', [reinstateTenantRef])).rows.map((row) => row.id),
+  [reinstatedV2.id],
+);
+
+// A baseline seeded before snapshots were recorded (no source_snapshot_id, no
+// captured_at) cannot be re-versioned from a snapshot, but it reinstates fine.
+const legacyTenantRef = 'sha256:baseline-reinstate-legacy';
+const legacySnapshot = await createFullSnapshot(legacyTenantRef);
+await addGroup(legacySnapshot, 'group:legacy', 'Legacy');
+const legacyV1 = await seedFromSnapshot(client, {
+  tenantRef: legacyTenantRef, snapshotId: legacySnapshot, setBy: 'legacy-operator', label: 'Legacy',
+});
+await client.query(
+  'UPDATE baseline SET source_snapshot_id = NULL, captured_at = NULL, observation_scope = NULL WHERE id = $1',
+  [legacyV1],
+);
+const legacySnapshot2 = await createFullSnapshot(legacyTenantRef);
+const legacyV2 = await resnapshotBaseline(client, {
+  tenantRef: legacyTenantRef, baselineId: legacyV1, snapshotId: legacySnapshot2, setBy: 'legacy-operator',
+});
+assert.deepEqual(await baselineResources(legacyV2.id), []);
+const legacyReinstated = await reinstateBaseline(client, {
+  tenantRef: legacyTenantRef, baselineId: legacyV1, actor: 'legacy-operator',
+});
+assert.equal(legacyReinstated.version, 3);
+assert.deepEqual(await baselineResources(legacyReinstated.id), await baselineResources(legacyV1));
+const { rows: [legacyRow] } = await client.query(
+  'SELECT active, source_snapshot_id, captured_at FROM baseline WHERE id = $1', [legacyReinstated.id],
+);
+assert.equal(legacyRow.active, true);
+assert.equal(legacyRow.source_snapshot_id, null);
+assert.equal(legacyRow.captured_at, null);
 
 } finally {
   await client?.end();

@@ -136,7 +136,7 @@ try {
       async collect(version, path) {
         assert.equal(version, 'v1.0');
         if (path.startsWith('/groups?')) return { items: [...liveGroups.values()], capped: false, error: null };
-        if (path === '/directory/deletedItems/microsoft.graph.group') return { items: [], capped: false, error: null };
+        if (path.startsWith('/directory/deletedItems/microsoft.graph.group')) return { items: [], capped: false, error: null };
         if (path === '/identity/conditionalAccess/policies') return { items: [], capped: false, error: null };
         if (path.startsWith('/roleManagement/directory/roleAssignments')) return { items: [breakGlassRoleAssignment], capped: false, error: null };
         throw new Error(`unexpected collector read: ${path}`);

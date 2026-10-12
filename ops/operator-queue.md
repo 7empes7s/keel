@@ -1913,8 +1913,13 @@ item that needs it stays untouched.
     enabled CA policies. **Left in the tenant:** KEEL-RT-148-ca in CA deleted items (app-only purge is 403; Marouane can
     purge it in the portal, or it ages out in 30 days). Baseline v3 b4635c7f stays active. Final break-glass readiness:
     not-ready (1 account; policyExclusions unknown), as before the run.
-  - **Evidence:** branch `claude/live-evidence-148` commit 48f8b04 (53 files in
+  - **Evidence:** branch `claude/live-evidence-148` commit e7f2264 (51 files in
     `docs/release/qualifications/entra-live/`, from builds eef1019 and 09e1f00). Secret scan clean; no raw tenant ids.
+    The first push (48f8b04) was replaced: a background security review found that
+    `group.restore-soft-deleted.capture.json` carried the group's `securityIdentifier` (Entra SID `S-1-12-1-…`), which
+    encodes the raw object id of the purged fixture group KEEL-RT-148-group. That record and capture are omitted (the step
+    is demoted; its demotion.json is kept). **Coordinator gap 9:** `pseudonymize.mjs` must cover `securityIdentifier`
+    (and any SID-encoded id).
   - **`operations.mjs --live-evidence`:** 16 `fixture-tested -> live-qualified` (adminConsentRequestPolicy.update,
     administrativeUnit.update, authenticationStrengthPolicy.create/update, conditionalAccessPolicy.restore-soft-deleted,
     configurationPolicy.create/update, crossTenantAccessPolicy.update, crossTenantAccessPolicyConfigurationDefault.update,

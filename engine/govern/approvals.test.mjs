@@ -8,13 +8,16 @@ import {
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
+  ApprovalRequestRefusedError,
   PromotionRefusedError,
   SelfApprovalError,
   approveRequest,
   listApprovalRequests,
   rejectRequest,
   requestApproval,
+  restoreExecutorForArtifact,
 } from './approvals.mjs';
+import { enqueue } from '../jobs/queue.mjs';
 import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
 import { createSnapshot } from '../store/db.mjs';
 import { verifyChain } from './evidence.mjs';
@@ -28,6 +31,10 @@ try {
   await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
 
   const tenantRef = 'sha256:approvals-test';
+  // Gap B11: a request's requester must resolve to an enabled principal.
+  const { rows: [{ id: restorer }] } = await client.query(
+    `INSERT INTO principal (email, display_name) VALUES ('restorer@approvals.test', 'Restorer') RETURNING id::text AS id`,
+  );
 
   async function jobRows() {
     const { rows } = await client.query(`SELECT * FROM job`);
@@ -51,13 +58,13 @@ try {
     tenantRef,
     action: 'baseline-activate',
     params: { naturalKey: 'group:alpha' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'change ticket 42',
   });
   assert.equal(request.status, 'pending');
   assert.equal(request.action, 'baseline-activate');
   assert.deepEqual(request.params, { naturalKey: 'group:alpha' });
-  assert.equal(request.requested_by, 'principal-restorer');
+  assert.equal(request.requested_by, restorer);
   assert.equal(request.justification, 'change ticket 42');
   assert.ok(new Date(request.expires_at) > new Date(), 'a fresh request is not expired');
   assert.equal((await jobRows()).length, 0, 'a request must never create a job');
@@ -68,7 +75,7 @@ try {
     approveRequest(client, {
       tenantRef,
       id: request.id,
-      decidedBy: 'principal-restorer',
+      decidedBy: restorer,
     }),
     (error) => error instanceof SelfApprovalError,
   );
@@ -87,7 +94,7 @@ try {
   assert.ok(approved.decided_at, 'the decision is timestamped');
   assert.equal(job.kind, 'baseline-activate');
   assert.deepEqual(job.params, { naturalKey: 'group:alpha' });
-  assert.equal(job.requested_by, 'principal-restorer');
+  assert.equal(job.requested_by, restorer);
   assert.equal(job.status, 'queued');
   assert.equal((await jobRows()).length, 1, 'approval mints exactly one job');
 
@@ -108,7 +115,7 @@ try {
     tenantRef,
     action: 'baseline-activate',
     params: { naturalKey: 'group:stale' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'stale parameters',
     ttlMs: -1000,
   });
@@ -141,7 +148,7 @@ try {
     tenantRef,
     action: 'remediate',
     params: { naturalKey: 'group:beta' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'remediate beta',
   });
   const rejected = await rejectRequest(client, {
@@ -159,7 +166,7 @@ try {
     tenantRef,
     action: 'remediate',
     params: { naturalKey: 'group:missing-rejection-reason' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'requires a visible rejection reason',
   });
   await assert.rejects(
@@ -184,14 +191,14 @@ try {
     tenantRef,
     action: 'restore',
     params: { target: 'group:inbox-pending' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'pending inbox review',
   });
   const inboxExpired = await requestApproval(client, {
     tenantRef,
     action: 'restore',
     params: { target: 'group:inbox-expired' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'expired inbox review',
     ttlMs: -1000,
   });
@@ -199,7 +206,7 @@ try {
     tenantRef,
     action: 'remediate',
     params: { target: 'group:older-history' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'older history review',
   });
   await rejectRequest(client, {
@@ -212,7 +219,7 @@ try {
     tenantRef,
     action: 'remediate',
     params: { target: 'group:newer-history' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'newer history review',
   });
   await rejectRequest(client, {
@@ -231,7 +238,7 @@ try {
   assert.equal(pending[0].effective_status, 'pending');
   assert.equal(pending[0].action, 'restore');
   assert.deepEqual(pending[0].params, { target: 'group:inbox-pending' });
-  assert.equal(pending[0].requested_by, 'principal-restorer');
+  assert.equal(pending[0].requested_by, restorer);
   assert.equal(pending[0].justification, 'pending inbox review');
   assert.ok(pending[0].created_at);
   assert.ok(pending[0].expires_at);
@@ -267,14 +274,14 @@ try {
     tenantRef,
     action: 'remediate',
     params: { target: 'group:tie-older' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'tie-break ordering: older insert, smaller id',
   });
   const tieNewer = await requestApproval(client, {
     tenantRef,
     action: 'remediate',
     params: { target: 'group:tie-newer' },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
     justification: 'tie-break ordering: newer insert, larger id',
   });
   const TIE_SMALL_ID = '00000000-0000-4000-8000-0000000000aa';
@@ -318,7 +325,7 @@ try {
     tenantRef,
     action: 'restore',
     params: {},
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
   });
   await assert.rejects(
     approveRequest(client, { tenantRef, id: restoreRequestWithNoArtifact.id, decidedBy: 'principal-approver' }),
@@ -345,7 +352,7 @@ try {
     currentStateFingerprint: 'fingerprint-completed',
     digest: 'digest-completed',
     status: 'completed',
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
   });
   const artifactDerivedJobParams = {
     mode: 'enforce',
@@ -377,7 +384,7 @@ try {
       selection: ['group:Everyone'],
       targetConfigPath: '/etc/keel/a-different-restorer.json',
     },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
   });
   const { job: mismatchedParamsJob } = await approveRequest(client, {
     tenantRef, id: restoreRequestWithMismatchedParams.id, decidedBy: 'principal-approver',
@@ -398,13 +405,85 @@ try {
     tenantRef,
     action: 'restore',
     params: { artifactId: completedArtifact.id },
-    requestedBy: 'principal-restorer',
+    requestedBy: restorer,
   });
   const { job: restoreJob } = await approveRequest(client, {
     tenantRef, id: restoreRequestWithCompletedArtifact.id, decidedBy: 'principal-approver',
   });
   assert.equal(restoreJob.kind, 'restore');
   assert.deepEqual(restoreJob.params, artifactDerivedJobParams);
+  assert.equal(restoreRequestWithCompletedArtifact.executor, 'worker', 'a request is carried out by the worker unless it says otherwise');
+
+  // Gap B11: the requester is validated when the request is made. A CLI artifact's
+  // `unknown`, a missing requester, an id with no principal and a disabled principal
+  // are all refused, and nothing is written — so no approval can ever mint a job the
+  // worker would then fail with "requester no longer resolves to a principal".
+  const { rows: [{ id: disabledPrincipal }] } = await client.query(
+    `INSERT INTO principal (email, disabled_at) VALUES ('gone@approvals.test', now()) RETURNING id::text AS id`,
+  );
+  const requestCountBefore = (await client.query(`SELECT count(*)::int AS n FROM approval_request`)).rows[0].n;
+  for (const requestedBy of ['unknown', undefined, '', randomUUID(), disabledPrincipal]) {
+    await assert.rejects(
+      requestApproval(client, { tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy }),
+      (error) => error instanceof ApprovalRequestRefusedError && /enabled principal/.test(error.message),
+      `requester ${String(requestedBy)} must be refused`,
+    );
+  }
+  // Only the CLI or the worker carries out a request, and the CLI only a restore.
+  await assert.rejects(
+    requestApproval(client, { tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer, executor: 'portal' }),
+    ApprovalRequestRefusedError,
+  );
+  await assert.rejects(
+    requestApproval(client, { tenantRef, action: 'baseline-activate', params: { naturalKey: 'group:alpha' }, requestedBy: restorer, executor: 'cli' }),
+    /only a restore can be carried out with the CLI/,
+  );
+  assert.equal((await client.query(`SELECT count(*)::int AS n FROM approval_request`)).rows[0].n, requestCountBefore, 'a refused request writes nothing');
+
+  // Gap B11: a CLI-executed restore. Approval checks the artifact like any restore,
+  // closes the request and records the decision, but mints no worker job: the
+  // operator runs the approved artifact with the CLI.
+  const jobsBeforeCliApproval = (await jobRows()).length;
+  const cliRequest = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer, executor: 'cli',
+  });
+  assert.equal(cliRequest.executor, 'cli');
+  const cliDecision = await approveRequest(client, { tenantRef, id: cliRequest.id, decidedBy: 'principal-approver' });
+  assert.equal(cliDecision.job, null, 'a CLI-executed approval mints no job');
+  assert.equal(cliDecision.request.status, 'approved');
+  assert.equal(cliDecision.request.executor, 'cli');
+  assert.equal((await jobRows()).length, jobsBeforeCliApproval, 'no worker restore is queued for a CLI-executed approval');
+  assert.equal(
+    (await listApprovalRequests(client, { statuses: ['approved'] })).find((row) => row.id === cliRequest.id)?.executor,
+    'cli',
+    'the inbox shows who carries the request out',
+  );
+  // Self-approval and the artifact gate still apply to a CLI-executed request.
+  const cliSelf = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer, executor: 'cli',
+  });
+  await assert.rejects(approveRequest(client, { tenantRef, id: cliSelf.id, decidedBy: restorer }), SelfApprovalError);
+  const cliMissingArtifact = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: randomUUID() }, requestedBy: restorer, executor: 'cli',
+  });
+  await assert.rejects(approveRequest(client, { tenantRef, id: cliMissingArtifact.id, decidedBy: 'principal-approver' }), PromotionRefusedError);
+
+  // Who carries out a restore follows how its dry run was planned: a worker dry-run
+  // job (the portal's dry run or undo plan) means the worker; none means the CLI.
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: completedArtifact.id }), 'cli');
+  const workerPlannedId = randomUUID();
+  await enqueue(client, {
+    kind: 'restore',
+    params: { snapshotId: restoreSnapshotId, selection: ['group:Admins'], collectorConfig: '/c.json', targetConfig: '/t.json', artifactId: workerPlannedId },
+    requestedBy: restorer,
+  });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: workerPlannedId }), 'worker');
+  const undoPlanId = randomUUID();
+  await enqueue(client, { kind: 'restore', params: { compensates: completedArtifact.id, artifactId: undoPlanId }, requestedBy: restorer });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: undoPlanId }), 'worker');
+  // The worker job an approval mints (mode enforce) is not a dry run: it never makes
+  // a CLI-planned artifact look worker-planned.
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: completedArtifact.id }), 'cli');
 
   // The evidence chain contains both the request and the decision, and verifies.
   const { rows: evidenceRows } = await client.query(
@@ -415,7 +494,7 @@ try {
   const decisions = evidenceRows.filter((row) => row.kind === APPROVAL_DECISION_EVIDENCE_KIND);
   assert.ok(
     requests.some(
-      (row) => row.subject.requestId === request.id && row.actor === 'principal-restorer',
+      (row) => row.subject.requestId === request.id && row.actor === restorer,
     ),
     'the evidence chain must contain the request',
   );
@@ -424,9 +503,23 @@ try {
       (row) => row.subject.requestId === request.id
         && row.subject.decision === 'approved'
         && row.subject.jobId === job.id
+        && row.subject.executor === 'worker'
         && row.actor === 'principal-approver',
     ),
     'the evidence chain must contain the approval decision',
+  );
+  assert.ok(
+    requests.some((row) => row.subject.requestId === cliRequest.id && row.subject.executor === 'cli'),
+    'the request evidence records who carries it out',
+  );
+  assert.ok(
+    decisions.some(
+      (row) => row.subject.requestId === cliRequest.id
+        && row.subject.decision === 'approved'
+        && row.subject.executor === 'cli'
+        && row.subject.jobId === null,
+    ),
+    'a CLI-executed approval is recorded with no job',
   );
   assert.ok(
     decisions.some(

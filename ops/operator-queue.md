@@ -1990,9 +1990,11 @@ item that needs it stays untouched.
      and the same with `--label "Break glass"` (defaults for validation and rotation days).
   3. `node cli/keel-breakglass.mjs record --actor <operator principal id> --account-id <object id> --kind credential-rotated
      --at <today> --note "password reset by Marouane, 2026-10-12"` for both.
-  4. Do **not** record `validated`: that needs a real sign-in test by a person. Marouane does it; the next queue item records it.
+  4. Marouane signed in with both accounts on 2026-10-12 at about 14:10 UTC (his statement in the thread). Record it:
+     `node cli/keel-breakglass.mjs record --actor <operator principal id> --account-id <object id> --kind validated
+     --at 2026-10-12T14:10:00Z --note "sign-in test by Marouane"` for both.
   5. `node cli/keel-breakglass.mjs report` and copy the per-account dimensions (no object ids in the Result; use the labels).
   6. Leave Marouane's own registration ("Marouane break-glass") as it is.
 - **Report:** the two registrations, the step-1 checks per account, the readiness report's overall state and each dimension
   per account, and anything that still reads `unknown` (expected: `policyExclusions` until transitive membership is collected,
-  and `lastValidation` until Marouane's sign-in test is recorded).
+  only).

@@ -555,7 +555,7 @@ export async function applyWave(writer, governor, wave, {
     // allowlist, plus add-only licence assignment.
     if (isUserGoverned(resource.resourceType)) {
       const outcome = await applyUserWrite(writer, resource, effectiveVerb, {
-        mode, retryOperation, rollbackClient, runId, restoreRef,
+        mode, retryOperation, rollbackClient, runId, restoreRef, readAfterWriteOptions,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey),
       });
       if (outcome.applied) applied.push(outcome.applied);
@@ -671,11 +671,10 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const payload = writableProjection(desired, resource.resourceType);
-      // A just-restored object can briefly 404 a write; a policy's follow-up
-      // PATCH retries that lag as well as throttling (both bounded).
-      const updateResult = isPolicy
-        ? await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation, ...readAfterWriteOptions })
-        : await retryOperation(() => writer.write('v1.0', path, { method: 'PATCH', body: payload }));
+      // A just-restored object can briefly 404 a write (Graph replication lag,
+      // seen live on a group); every type's follow-up PATCH retries that lag
+      // as well as throttling (both bounded).
+      const updateResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation, ...readAfterWriteOptions });
       if (!updateResult.ok) {
         if (isPolicy) {
           await policyMayBeOn(`the report-only update failed: ${outcomeDetail(updateResult)}`, live, updateResult);
@@ -1493,7 +1492,7 @@ async function restoreLicences(writer, { collection, resourceType, targetId, des
  * user is restored with the same id first.
  */
 async function applyUserWrite(writer, resource, verb, {
-  mode, retryOperation, rollbackClient, runId, restoreRef, targetId,
+  mode, retryOperation, rollbackClient, runId, restoreRef, targetId, readAfterWriteOptions = {},
 }) {
   const { naturalKey } = resource;
   if (!targetId) return { failed: { naturalKey, error: `${verb} has no targetId` } };
@@ -1549,7 +1548,8 @@ async function applyUserWrite(writer, resource, verb, {
   const fields = changedUserFields(desired, current);
   if (fields.length > 0) {
     const body = Object.fromEntries(fields.map((field) => [field, desired[field] ?? null]));
-    const result = await retryOperation(() => writer.write('v1.0', `/users/${encodeURIComponent(targetId)}`, { method: 'PATCH', body }));
+    // A just-restored user can briefly 404 its follow-up PATCH (replication lag): bounded retry.
+    const result = await writeAfterCreate(writer, 'v1.0', `/users/${encodeURIComponent(targetId)}`, { method: 'PATCH', body }, { retryOperation, ...readAfterWriteOptions });
     if (!result.ok) {
       await noteOutcome(rollbackClient, journal, verb === 'update' ? classifyWriteOutcome(result) : 'uncertain', {
         detail: verb === 'update' ? outcomeDetail(result) : `restored; attribute update ${outcomeDetail(result)}`,
@@ -1560,7 +1560,7 @@ async function applyUserWrite(writer, resource, verb, {
   const licences = licencePlan(desired, current).add;
   if (licences.length > 0) {
     // Licences need a usage location; the PATCH above has already set it when the snapshot holds one.
-    const result = await retryOperation(() => writer.write('v1.0', `/users/${encodeURIComponent(targetId)}/assignLicense`, { method: 'POST', body: assignLicenseBody(licences) }));
+    const result = await writeAfterCreate(writer, 'v1.0', `/users/${encodeURIComponent(targetId)}/assignLicense`, { method: 'POST', body: assignLicenseBody(licences) }, { retryOperation, ...readAfterWriteOptions });
     if (!result.ok) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `attributes written; assignLicense ${outcomeDetail(result)}` });
       return { failed: { ...graphFailure(naturalKey, result), error: `assignLicense failed: ${outcomeDetail(result)}` } };

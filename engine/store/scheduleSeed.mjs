@@ -17,6 +17,11 @@ export function initialSchedules(now = new Date()) {
   // default cadence, operator-tunable through the schedule row like every other kind.
   const weeklyMetadata = new Date(weekly);
   weeklyMetadata.setUTCHours(3, 0, 0, 0);
+  // Gap W1: workload settings (SharePoint, Teams, Exchange, OneDrive, Purview) daily at
+  // 02:00 UTC, after the midnight tier-2 collection and before the 05:00 off-site copy.
+  const workload = new Date(now);
+  workload.setUTCHours(2, 0, 0, 0);
+  if (workload <= now) workload.setUTCDate(workload.getUTCDate() + 1);
   return [
     { jobKind: 'collect', tier: 'tier1', cadence: { every: 'hour', n: 1, atTime: null }, nextDueAt: hourly },
     { jobKind: 'collect', tier: 'tier2', cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
@@ -24,6 +29,7 @@ export function initialSchedules(now = new Date()) {
     { jobKind: 'prune', tier: null, cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
     { jobKind: 'offsite', tier: null, cadence: { every: 'day', n: 1, atTime: '05:00' }, nextDueAt: offsite },
     { jobKind: 'api-drift', tier: null, cadence: { every: 'week', n: 1, atTime: '03:00' }, cronOverride: '0 3 * * 1', nextDueAt: weeklyMetadata },
+    { jobKind: 'workload-collect', tier: null, cadence: { every: 'day', n: 1, atTime: '02:00' }, nextDueAt: workload },
   ];
 }
 

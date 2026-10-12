@@ -15,6 +15,7 @@
 // the candidate set are cross-snapshot/external; they are reported so the operator
 // sees them, never silently dropped.
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
+import { isVerbatimSymbol } from '../graph/resolver.mjs';
 
 function sortedKeys(keys) {
   return [...keys].sort((a, b) => a.localeCompare(b));
@@ -54,7 +55,7 @@ export function dependencyClosure(resources, selectedKeys) {
     const key = queue.shift();
     const resource = nodes.get(key);
     for (const ref of resource.references ?? []) {
-      if (!ref.symbol || ref.symbol.startsWith('global:')) continue;
+      if (!ref.symbol || isVerbatimSymbol(ref.symbol)) continue;
       if (!nodes.has(ref.symbol)) {
         unresolved.push({ from: key, field: ref.field, symbol: ref.symbol });
         continue;

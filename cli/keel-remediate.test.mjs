@@ -220,7 +220,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
           capped: false, error: null,
         };
       }
-      if (path.startsWith('/groups?') || path === '/directory/deletedItems/microsoft.graph.group') {
+      if (path.startsWith('/groups?') || path.startsWith('/directory/deletedItems/microsoft.graph.group')) {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);
@@ -322,7 +322,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
     async collect(version, path) {
       assert.equal(version, 'v1.0');
       if (path.startsWith('/groups?')) return { items: [...liveGroups.values()], capped: false, error: null };
-      if (path === '/directory/deletedItems/microsoft.graph.group') {
+      if (path.startsWith('/directory/deletedItems/microsoft.graph.group')) {
         return { items: [...deletedGroups.values()], capped: false, error: null };
       }
       if (path === '/identity/conditionalAccess/policies') return { items: [], capped: false, error: null };

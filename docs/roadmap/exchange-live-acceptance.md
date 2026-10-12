@@ -177,12 +177,12 @@ block the gate until the operator decides.
    and put it back. It is the only organization setting KEEL writes, in a capture or a
    restore. The capture runs it only with `--include-organization-config` (operator
    step 9).
-2. **Exchange app-only grant for the Restorer.** The task-105 status records (operator
-   decision 2026-09-30) that the Restorer holds Graph `MailboxSettings.ReadWrite` only,
-   with no `Exchange.ManageAsApp` or Exchange role. `Set-CASMailbox` and `Set-Mailbox`
-   cannot run without them, so steps 4 and 5 cannot be captured until the operator
-   grants them (or decides on a narrower custom role, which would change the task-105
-   declarations).
+2. **Exchange app-only grant for the Restorer.** Resolved. The Restorer now holds
+   `Exchange.ManageAsApp` and the Exchange Administrator role beside Graph
+   `MailboxSettings.ReadWrite`. The 2026-10-07 record (`exchange-live-acceptance.json`)
+   shows these grants and all three writes (mailbox settings, client access, retention)
+   written and read back. A narrower custom role would still change the task-105
+   declarations.
 3. **Collector role.** The task-105 declarations give the cmdlet reads the same
    `Exchange Administrator` role as the writes. The gate can separate the Graph
    permissions (the collector may not hold `MailboxSettings.ReadWrite`), and the log

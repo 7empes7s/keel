@@ -59,12 +59,12 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'A setting that was deleted, and settings on a single group, are recreated by hand from the backup.',
   }),
   organizationalBranding: auto('Company branding', {
-    keeps: 'Puts the sign-in page text, colours and layout back.',
-    todo: 'Logos, background images, the favicon and custom stylesheets are files that are not restored: upload them again in the Entra admin center. A tenant with no branding gets none from KEEL.',
+    keeps: 'Puts the sign-in page text, colours and layout back, and uploads the background image, banner logo, square logos, favicon and custom stylesheet again when they changed (tested against a simulated tenant only).',
+    todo: 'The header logo, and any file that was not set or was over 1 MB at backup time, are uploaded by hand in the Entra admin center. A tenant with no branding gets none from KEEL.',
   }),
   organizationalBrandingLocalization: auto('Company branding per language', {
-    keeps: 'Puts the sign-in page text, colours and layout of each existing language back.',
-    todo: 'Images are not restored, and a language that was added or removed is added or removed by hand.',
+    keeps: 'Puts the sign-in page text, colours and layout of each existing language back, and uploads its images and stylesheet again when they changed (tested against a simulated tenant only).',
+    todo: 'The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.',
   }),
   groupLifecyclePolicy: auto('Group expiration policy', {
     keeps: 'Puts the policy back only when that makes group expiry less aggressive.',

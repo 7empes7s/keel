@@ -55,6 +55,9 @@ interface IsolatedDatabase {
 let database: IsolatedDatabase;
 let client: TestClient;
 
+const RESTORER = "1b2a4a00-0000-4000-8000-0000000000a1";
+const OPERATOR = "1b2a4a00-0000-4000-8000-0000000000a2";
+
 before(async () => {
   if (!process.env.KEEL_DB_TEST_URL) {
     // This task's validate command (`npm test`) does not source /etc/keel/db.env,
@@ -93,6 +96,12 @@ before(async () => {
   process.env.KEEL_TENANT_CONFIG_PATH = join(tenantConfigDir, "tenant.json");
 
   client = await database.connect();
+  // Gap B11: a request's requester must resolve to an enabled principal, as the
+  // portal's own principal ids always do.
+  await client.query(
+    `INSERT INTO principal (id, email) VALUES ($1, 'restorer@action.test'), ($2, 'operator@action.test')`,
+    [RESTORER, OPERATOR],
+  );
   // Task-76: the portal starts a collection only once the read grants are confirmed.
   // These routes test the action API itself, so the tenant has already collected once.
   await client.query(
@@ -312,7 +321,7 @@ test("a route requiring approval creates an approval request and never a job", a
   for (const route of approvalRoutes) {
     const response = await route.post(
       postAction(`/api/actions/${route.name}`, {
-        principalId: "principal-restorer",
+        principalId: RESTORER,
         capabilities: [route.capability],
         body: { target: "group:alpha", justification: "change ticket 42" },
       }),
@@ -325,14 +334,15 @@ test("a route requiring approval creates an approval request and never a job", a
     );
     const { approvalRequest } = await response.json();
     assert.equal(approvalRequest.status, "pending");
-    assert.equal(approvalRequest.requestedBy, "principal-restorer");
+    assert.equal(approvalRequest.requestedBy, RESTORER);
     assert.equal(approvalRequest.justification, "change ticket 42");
     assert.deepEqual(approvalRequest.params, { target: "group:alpha" });
   }
   assert.equal(await jobCount(), 0, "a request must never enqueue a job directly");
 
   const { rows } = await client.query(
-    `SELECT * FROM approval_request WHERE requested_by = 'principal-restorer'`,
+    `SELECT * FROM approval_request WHERE requested_by = $1`,
+    [RESTORER],
   );
   assert.equal(
     rows.length,
@@ -343,7 +353,7 @@ test("a route requiring approval creates an approval request and never a job", a
 
 test("a permitted caller enqueues exactly one job with the right kind and params", async () => {
   const operator = {
-    principalId: "principal-operator",
+    principalId: OPERATOR,
     capabilities: ["collect", "backup", "baseline-create", "dispose-accept"],
   };
 
@@ -354,7 +364,7 @@ test("a permitted caller enqueues exactly one job with the right kind and params
   const { job: collectJob } = await collected.json();
   assert.equal(collectJob.kind, "collect");
   assert.deepEqual(collectJob.params, { tier: "tier1" });
-  assert.equal(collectJob.requestedBy, "principal-operator");
+  assert.equal(collectJob.requestedBy, OPERATOR);
   assert.equal(collectJob.status, "queued");
 
   const collectRows = await jobRows("collect");
@@ -466,7 +476,7 @@ test("baseline activation requires approval — it creates a request, never a jo
   const baselineId = randomUUID();
   const response = await baselineActivateRoute(
     postAction("/api/actions/baseline/activate", {
-      principalId: "principal-operator",
+      principalId: OPERATOR,
       capabilities: ["baseline-create"],
       body: { baselineId, justification: "recovery rehearsal" },
     }),
@@ -476,7 +486,7 @@ test("baseline activation requires approval — it creates a request, never a jo
   const { approvalRequest } = await response.json();
   assert.equal(approvalRequest.status, "pending");
   assert.equal(approvalRequest.action, "baseline-activate");
-  assert.equal(approvalRequest.requestedBy, "principal-operator");
+  assert.equal(approvalRequest.requestedBy, OPERATOR);
   assert.deepEqual(approvalRequest.params, { baselineId });
   assert.equal(
     (await jobRows("baseline-activate")).length,
@@ -487,7 +497,7 @@ test("baseline activation requires approval — it creates a request, never a jo
 
 test("a replayed request with the same idempotency key does not enqueue twice", async () => {
   const replay = {
-    principalId: "principal-operator",
+    principalId: OPERATOR,
     capabilities: ["backup"],
     idempotencyKey: "backup-replay-1",
     body: { tier: "tier1" },
@@ -535,7 +545,7 @@ test("every denial and every recorded attempt lands in the evidence chain", asyn
   assert.ok(
     rows.some(
       (row) =>
-        row.actor === "principal-operator" &&
+        row.actor === OPERATOR &&
         row.subject.decision === "attempted" &&
         row.subject.action === "collect",
     ),
@@ -551,7 +561,7 @@ test("every denial and every recorded attempt lands in the evidence chain", asyn
   assert.ok(
     requestRows.some(
       (row) =>
-        row.actor === "principal-operator" && row.subject.action === "baseline-activate",
+        row.actor === OPERATOR && row.subject.action === "baseline-activate",
     ),
     "the approval request must be recorded",
   );
@@ -564,7 +574,7 @@ test("GET /api/jobs is gated at viewer and lists the enqueued jobs", async () =>
 
   const withoutRead = await listJobsRoute(
     getJobs("/api/jobs", {
-      principalId: "principal-operator",
+      principalId: OPERATOR,
       capabilities: ["collect"],
     }),
   );
@@ -582,7 +592,7 @@ test("GET /api/jobs is gated at viewer and lists the enqueued jobs", async () =>
   assert.ok(
     body.jobs.some(
       (job: { kind: string; requestedBy: string }) =>
-        job.kind === "collect" && job.requestedBy === "principal-operator",
+        job.kind === "collect" && job.requestedBy === OPERATOR,
     ),
     "the enqueued collect job must be listed",
   );
@@ -597,7 +607,7 @@ test("GET /api/jobs/[id] shows one job to a viewer and nothing to anyone else", 
 
   const withoutRead = await showJobRoute(
     getJobs(`/api/jobs/${id}`, {
-      principalId: "principal-operator",
+      principalId: OPERATOR,
       capabilities: ["collect"],
     }),
   );
@@ -619,7 +629,7 @@ test("GET /api/jobs/[id] shows one job to a viewer and nothing to anyone else", 
   const { job } = await found.json();
   assert.equal(job.id, id);
   assert.equal(job.kind, "collect");
-  assert.equal(job.requestedBy, "principal-operator");
+  assert.equal(job.requestedBy, OPERATOR);
 });
 
 

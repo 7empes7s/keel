@@ -19,8 +19,6 @@ EXCLUDED=(
   engine/roadmap/scubagear-benchmark-acceptance.test.mjs
   # Fail today (null revision lookup); never ran in CI. Fix, then remove from this list.
   engine/roadmap/foundation.test.mjs
-  # 5 of 17 subtests fail today; never ran in CI. Fix, then remove from this list.
-  cli/keel-scheduler.test.mjs
 )
 
 root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"

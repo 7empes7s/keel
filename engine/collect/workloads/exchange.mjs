@@ -69,6 +69,10 @@ export const ORGANIZATION_FIELDS = Object.freeze([
   'FocusedInboxOn', 'MailTipsAllTipsEnabled', 'MailTipsExternalRecipientsTipsEnabled', 'MailTipsGroupMetricsEnabled',
   'MailTipsLargeAudienceThreshold', 'OAuth2ClientProfileEnabled', 'SmtpActionableMessagesEnabled', 'ConnectorsEnabled',
 ]);
+// The only organization setting KEEL writes (gap W7, decided 2026-10-12): it changes
+// only when Outlook shows a large-audience tip, so flipping and putting it back on the
+// test tenant is harmless. Every other organization setting is observed, never written.
+export const ORGANIZATION_WRITABLE_FIELDS = Object.freeze(['MailTipsLargeAudienceThreshold']);
 export const EXCHANGE_GROUPS = Object.freeze({
   mailboxSettings: Object.freeze({ fields: MAILBOX_SETTING_FIELDS, operation: 'exchange.mailbox-settings' }),
   clientAccess: Object.freeze({ fields: CLIENT_ACCESS_FIELDS, operation: 'exchange.client-access', cmdlet: 'Get-CASMailbox' }),
@@ -89,7 +93,7 @@ export const EXCHANGE_CMDLET_PARAMETERS = Object.freeze({
   'Get-CASMailbox': Object.freeze(['Identity']),
   'Set-CASMailbox': Object.freeze(['Identity', ...CLIENT_ACCESS_FIELDS]),
   'Set-Mailbox': Object.freeze(['Identity', 'LitigationHoldEnabled', 'RetentionHoldEnabled', 'SingleItemRecoveryEnabled', 'RetainDeletedItemsFor']),
-  'Set-OrganizationConfig': Object.freeze([...ORGANIZATION_FIELDS]),
+  'Set-OrganizationConfig': Object.freeze([...ORGANIZATION_WRITABLE_FIELDS]),
 });
 export const EXCHANGE_CMDLETS = new Set(Object.keys(EXCHANGE_CMDLET_PARAMETERS));
 

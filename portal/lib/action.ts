@@ -3,6 +3,7 @@ import {
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
+  ApprovalRequestRefusedError,
   ApprovalScopeError,
   PromotionRefusedError,
   SelfApprovalError,
@@ -139,6 +140,8 @@ export function normalizeApprovalRequest(row: Record<string, unknown>) {
     reason: (row.reason as string | null) ?? null,
     createdAt: iso(row.created_at),
     expiresAt: iso(row.expires_at),
+    // Gap B11: "worker" (approval queues the job) or "cli" (an operator runs it).
+    executor: row.executor === "cli" ? "cli" : "worker",
   };
 }
 
@@ -255,6 +258,9 @@ export function guarded(
           { status: 400, headers: NO_STORE },
         );
       }
+      // Gap B11: the requester no longer resolves to an enabled principal, so no
+      // request is created that could never be carried out.
+      if (error instanceof ApprovalRequestRefusedError) return forbidden();
       console.error(`[keel-portal] guarded action ${spec.action} failed`, error);
       return Response.json(
         { error: "unavailable" },
@@ -524,9 +530,10 @@ export function guardedApprovalDecision(
             decidedBy: principalId,
             enforceScope: true,
             approverScope: entityScopeFrom(request.headers, "approve"),
-          })) as { job: Record<string, unknown> };
+          })) as { job: Record<string, unknown> | null };
+          // Gap B11: a CLI-executed request is approved without queuing a job.
           return Response.json(
-            { job: normalizeJob(job) },
+            { job: job ? normalizeJob(job) : null },
             { status: 202, headers: NO_STORE },
           );
         }

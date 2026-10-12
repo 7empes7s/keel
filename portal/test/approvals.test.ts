@@ -48,6 +48,10 @@ interface IsolatedDatabase {
 let database: IsolatedDatabase;
 let client: TestClient;
 
+// Gap B11: a request's requester must resolve to an enabled principal, as the portal's
+// own principal ids always do.
+const RESTORER = "1b2a4a00-0000-4000-8000-00000000f5a6";
+
 before(async () => {
   if (!process.env.KEEL_DB_TEST_URL) {
     const env = readFileSync("/etc/keel/db.env", "utf8");
@@ -84,6 +88,10 @@ before(async () => {
   process.env.KEEL_TENANT_CONFIG_PATH = join(tenantConfigDir, "tenant.json");
 
   client = await database.connect();
+  await client.query(
+    `INSERT INTO principal (id, email, display_name) VALUES ($1, 'restorer@approvals.test', 'Rita Restorer')`,
+    [RESTORER],
+  );
 });
 
 after(async () => {
@@ -130,7 +138,7 @@ function get(path: string, options: RequestOptions = {}): Request {
   return new Request(`http://localhost${path}`, { method: "GET", headers });
 }
 
-async function createRestoreRequest(): Promise<string> {
+async function createRestoreRequest({ plannedWith = "portal" }: { plannedWith?: "portal" | "cli" } = {}): Promise<string> {
   const { rows } = await client.query(
     `INSERT INTO snapshot (tenant_ref, status, completed_at)
      VALUES ($1, 'complete', now())
@@ -157,11 +165,19 @@ async function createRestoreRequest(): Promise<string> {
     currentStateFingerprint: `fingerprint-${randomUUID()}`,
     digest: `digest-${randomUUID()}`,
     status: "completed",
-    requestedBy: "principal-restorer",
+    requestedBy: RESTORER,
   });
+  // The portal plans every dry run through a worker job, so its promotion is carried
+  // out by the worker (gap B11: an artifact without one was planned with the CLI).
+  if (plannedWith === "portal") {
+    await client.query(
+      `INSERT INTO job (kind, params, requested_by) VALUES ('restore', $1, $2)`,
+      [{ snapshotId: String(rows[0].id), selection: ["group:alpha"], artifactId: artifact.id }, RESTORER],
+    );
+  }
   const response = await restoreRoute(
     post("/api/actions/restore", {
-      principalId: "principal-restorer",
+      principalId: RESTORER,
       capabilities: ["restore"],
       body: { artifactId: artifact.id, justification: "change ticket 7" },
     }),
@@ -254,7 +270,7 @@ function renderApprovalInbox() {
       id: "00000000-0000-4000-8000-000000000101",
       action: "restore",
       params: { target: "group:approve-control" },
-      requestedBy: "principal-restorer",
+      requestedBy: RESTORER,
       justification: "approve the listed request",
       status: "pending",
       decidedBy: null,
@@ -267,7 +283,7 @@ function renderApprovalInbox() {
       id: "00000000-0000-4000-8000-000000000202",
       action: "remediate",
       params: { target: "group:reject-control" },
-      requestedBy: "principal-restorer",
+      requestedBy: RESTORER,
       justification: "reject the listed request",
       status: "pending",
       decidedBy: null,
@@ -351,7 +367,7 @@ test("an approver can list and decide another principal's request", async () => 
     id,
     action: "restore",
     params: { artifactId: request.params.artifactId },
-    requestedBy: "principal-restorer",
+    requestedBy: RESTORER,
     justification: "change ticket 7",
     status: "pending",
     decidedBy: null,
@@ -359,12 +375,13 @@ test("an approver can list and decide another principal's request", async () => 
     reason: null,
     createdAt: request.createdAt,
     expiresAt: request.expiresAt,
+    executor: "worker",
     references: request.references,
   });
   // Task-130: the request arrives with what it concerns resolved to names.
   assert.equal(request.references.plan.id, request.params.artifactId);
   assert.equal(request.references.plan.readable, true);
-  assert.equal(request.references.people.requested_by.name, "principal-restorer");
+  assert.equal(request.references.people.requested_by.name, "Rita Restorer");
 
   const decided = await approveRoute(
     post(`/api/approvals/${id}/approve`, approver),
@@ -405,8 +422,9 @@ test("viewers and unregistered principals are refused before an approval loader 
 
 test("a self-authored request is visible but cannot be approved", async () => {
   const id = await createRestoreRequest();
+  const jobsBefore = await jobCount();
   const selfApprover = {
-    principalId: "principal-restorer",
+    principalId: RESTORER,
     capabilities: ["restore", "approve"],
   };
 
@@ -418,7 +436,7 @@ test("a self-authored request is visible but cannot be approved", async () => {
     post(`/api/approvals/${id}/approve`, selfApprover),
   );
   assert.equal(decision.status, 403);
-  assert.equal(await jobCount(), 1, "self approval cannot mint a job");
+  assert.equal(await jobCount(), jobsBefore, "self approval cannot mint a job");
 });
 
 test("an expired inbox row is history and cannot mint a job", async () => {
@@ -572,7 +590,7 @@ test("approval by a different principal holding approver mints exactly one job",
   const { job } = await response.json();
   assert.equal(job.kind, "restore");
   assert.equal(typeof job.params.artifactId, "string");
-  assert.equal(job.requestedBy, "principal-restorer");
+  assert.equal(job.requestedBy, RESTORER);
   assert.equal(job.status, "queued");
 
   const decided = await requestRow(id);
@@ -592,6 +610,50 @@ test("approval by a different principal holding approver mints exactly one job",
   );
 });
 
+test("gap B11: approving a dry run planned with the CLI queues no worker restore", async () => {
+  const id = await createRestoreRequest({ plannedWith: "cli" });
+  assert.equal((await requestRow(id)).executor, "cli");
+  const jobsBefore = await jobCount();
+
+  const listed = await inboxRoute(get("/api/approvals", approver));
+  const inbox = await listed.json();
+  assert.equal(inbox.pending.find((candidate: { id: string }) => candidate.id === id).executor, "cli");
+
+  const response = await approveRoute(post(`/api/approvals/${id}/approve`, approver));
+  assert.equal(response.status, 202);
+  assert.deepEqual(await response.json(), { job: null });
+  assert.equal((await requestRow(id)).status, "approved");
+  assert.equal(await jobCount(), jobsBefore, "a CLI-executed approval queues no second, worker-run restore");
+});
+
+test("gap B11: a requester that is not an enabled principal cannot ask for a restore", async () => {
+  const { rows } = await client.query(
+    `INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now()) RETURNING id`,
+    [tenantRef()],
+  );
+  const artifact = await createDryRunArtifact(client, {
+    id: randomUUID(), tenantRef: tenantRef(), snapshotId: String(rows[0].id),
+    selection: ["group:alpha"], closureKeys: ["group:alpha"], targetTenantId: "task-14-approval-target",
+    collectorConfigPath: "/fixtures/collector.json", targetConfigPath: "/fixtures/restorer.json",
+    reconciliationResources: null, waves: [["group:alpha"]], patches: [], guardRefusals: [],
+    results: { applied: [{ naturalKey: "group:alpha", targetId: null }], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: `fingerprint-${randomUUID()}`, digest: `digest-${randomUUID()}`,
+    status: "completed", requestedBy: "unknown",
+  });
+  const { rows: before } = await client.query(`SELECT count(*)::int AS count FROM approval_request`);
+  const response = await restoreRoute(
+    post("/api/actions/restore", {
+      principalId: "unknown",
+      capabilities: ["restore"],
+      body: { artifactId: artifact.id },
+    }),
+  );
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "forbidden" });
+  const { rows: after } = await client.query(`SELECT count(*)::int AS count FROM approval_request`);
+  assert.equal(after[0].count, before[0].count, "no request is created");
+});
+
 test("approveRequest refuses a completed dry-run artifact belonging to another tenant", async () => {
   const localId = await createRestoreRequest();
   const localRequest = await requestRow(localId);
@@ -602,7 +664,7 @@ test("approveRequest refuses a completed dry-run artifact belonging to another t
     tenantRef: foreignTenantRef,
     action: "restore",
     params: localRequest.params,
-    requestedBy: "principal-restorer",
+    requestedBy: RESTORER,
     justification: "cross-tenant artifact regression",
   });
   const { rows: jobsBefore } = await client.query("SELECT id FROM job ORDER BY id");
@@ -648,7 +710,7 @@ test("self-approval is refused server-side", async () => {
 
   const response = await approveRoute(
     post(`/api/approvals/${id}/approve`, {
-      principalId: "principal-restorer",
+      principalId: RESTORER,
       capabilities: ["restore", "approve"],
     }),
   );
@@ -773,7 +835,7 @@ test("the evidence chain contains both the request and the decision", async () =
       (row) =>
         row.kind === APPROVAL_REQUEST_EVIDENCE_KIND
         && row.subject.requestId === id
-        && row.actor === "principal-restorer",
+        && row.actor === RESTORER,
     ),
     "the evidence chain must contain the request",
   );

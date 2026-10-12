@@ -4,6 +4,11 @@
 // node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
 // node keel-restore.mjs --snapshot-id <id> --select <naturalKey> [--select <naturalKey>...] --collector-config ... --target-config ... [--enforce]
 //
+// node keel-restore.mjs --snapshot-id <id> --delete <naturalKey> [--delete <naturalKey>...] --collector-config ... --target-config ... [--persist-artifact <id>]
+// plans deleting objects that exist live but are absent from the snapshot (gap D7), as a
+// dry run. It is executed only by promoting that artifact with --artifact <id> --enforce;
+// a key the snapshot holds, or a type Keel cannot delete, is refused.
+//
 // --plan restores everything the plan covers; --snapshot-id + --select restores the
 // dependency closure of exactly the selected natural keys (portal-design §4.1 — the
 // closure is recomputed here from the snapshot, never trusted from the caller).
@@ -23,6 +28,17 @@
 // while the backup had it enabled (roadmap task-152), as a dry run. It is executed
 // only by promoting that artifact with --artifact <id> --enforce after an approver
 // other than the requester approved it; the break-glass lockout gate runs at both.
+//
+// node keel-restore.mjs --workload <name> --collection <id> <workload options> --collector-config <path> [--persist-artifact <id>] [--requested-by <who>]
+// plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
+// one recorded workload collection, as a dry run (gap register W2). Workload options:
+//   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
+//   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
+//   teams-settings             --team <team id>
+//   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
+// It is executed only by promoting that artifact with --artifact <id> --enforce after an
+// approver other than the requester approved it; the credential files are the
+// server's (engine/restore/credentialPaths.mjs), never argv.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -32,7 +48,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
-import { dependencyClosure } from '../engine/restore/selection.mjs';
+import { deletionScope, dependencyClosure } from '../engine/restore/selection.mjs';
 import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
@@ -68,9 +84,18 @@ import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recove
 import { attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
+import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
+import {
+  BRANDING_RESOURCE_TYPES, applyBrandingAssetUploads, brandingLocaleFor, brandingUploadDigestInput, planBrandingAssetUploads,
+  readLiveBrandingAssets,
+} from '../engine/restore/brandingAssets.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
+import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import {
+  WORKLOAD_RESTORES, graphTransport, isWorkloadArtifact, workloadRestoreFor,
+} from '../engine/restore/workloads/dispatch.mjs';
 import {
   IncidentRecoveryRefusal, applyIncidentExclusions, evaluatePostRestoreChecks, incidentRecoveryDigestInput,
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
@@ -140,6 +165,9 @@ const THROTTLE_SEEDS = {
  * Task-152 review: restoring a deleted Conditional Access policy that would
  * come back on is such a write too. Group membership is then read for the
  * inventory with those policies as they would come back.
+ *
+ * Gap register D1: a tenant-lockout delete is decided from break-glass
+ * readiness after the delete, so the gate is loaded for one too.
  */
 export async function lockoutGateFor(client, resources, {
   tenantRef, loadInputs = loadLockoutGateInputs, loadMembership = loadGroupMembership,
@@ -148,7 +176,8 @@ export async function lockoutGateFor(client, resources, {
     && resource.resourceType === 'conditionalAccessPolicy'
     && !offWhenDeleted(resource));
   const planned = comingBackOn.length > 0 || resources.some((resource) => resource.verb && resource.verb !== 'noop'
-    && tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true);
+    && (tenantPolicyRecordFor(resource.resourceType, resource.verb)?.lockout === true
+      || (resource.verb === 'delete' && resource.blastRadius === 'tenant-lockout')));
   if (!planned) return null;
   try {
     const inputs = await loadInputs(client, { tenantRef });
@@ -183,6 +212,10 @@ export async function runRestore({
   snapshotId,
   selection,
   reconciliationResources,
+  // Gap D7: natural keys present live but absent from the snapshot, to delete.
+  // A dry run turns them into a reconciliation scope of desired absence (see
+  // deletionScope), which the artifact stores and its promotion executes.
+  deleteKeys,
   previewOnly = false,
   targetConfig,
   collectorConfig,
@@ -206,6 +239,10 @@ export async function runRestore({
   // restore left report-only: { restoreArtifactId, naturalKey }. A dry run only;
   // the resulting artifact is promoted with artifactId after approval.
   enforceConditionalAccess,
+  // Gap register W2: plan a workload configuration restore from one recorded
+  // workload collection: { workload, collectionId, ...workload options }. A dry run
+  // only; the resulting artifact is promoted with artifactId after approval.
+  workloadRestore,
   // Roadmap task-55: the automation policies a remediation is executing under,
   // discovered server-side by cli/keel-remediate.mjs from the durable
   // auto_remediation_execution link table. Only identities travel here — the
@@ -256,6 +293,16 @@ export async function runRestore({
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
     loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
+    // W2: the workload table, how a workload run reaches the tenant, and which
+    // workload writes are qualified. Tests inject fakes; nothing here is a tenant.
+    workloadRestores = WORKLOAD_RESTORES,
+    workloadConnection: workloadConnectionFn = defaultWorkloadConnection,
+    workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
+    credentialPaths: credentialPathsFn = credentialPaths,
+    sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
+    loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
+    readLiveBrandingAssets: readLiveBrandingAssetsFn = readLiveBrandingAssets,
+    applyBrandingAssetUploads: applyBrandingAssetUploadsFn = applyBrandingAssetUploads,
   } = dependencies;
 
   if (incidentId !== undefined) {
@@ -263,6 +310,18 @@ export async function runRestore({
     if (artifactId !== undefined) throw new Error('incidentId is supplied by the dry-run artifact on promotion, never by the caller');
     if (selection === undefined || planId !== undefined || reconciliationResources !== undefined || compensateArtifactId !== undefined) {
       throw new Error('incidentId requires the snapshotId/selection restore scope');
+    }
+  }
+  if (deleteKeys !== undefined) {
+    if (!Array.isArray(deleteKeys) || deleteKeys.length === 0
+      || deleteKeys.some((key) => typeof key !== 'string' || key.length === 0)) {
+      throw new Error('deleteKeys must be a non-empty array of natural keys');
+    }
+    if (snapshotId === undefined) throw new Error('deleteKeys requires snapshotId');
+    if (planId !== undefined || selection !== undefined || reconciliationResources !== undefined || artifactId !== undefined
+      || compensateArtifactId !== undefined || enforceConditionalAccess !== undefined || incidentId !== undefined
+      || automationPolicyIds !== undefined) {
+      throw new Error('deleteKeys is its own restore scope — a snapshot and the keys to delete, nothing else');
     }
   }
   if (enforceConditionalAccess !== undefined) {
@@ -277,6 +336,21 @@ export async function runRestore({
     if (mode !== 'dry-run') {
       throw new Error('turning a Conditional Access policy on is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
     }
+  }
+  if (workloadRestore !== undefined) {
+    if (planId !== undefined || snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined
+      || artifactId !== undefined || automationPolicyIds !== undefined || compensateArtifactId !== undefined
+      || enforceConditionalAccess !== undefined || incidentId !== undefined) {
+      throw new Error('workloadRestore is its own scope: one recorded workload collection');
+    }
+    if (typeof workloadRestore?.workload !== 'string' || !workloadRestore.workload) {
+      throw new Error('workloadRestore needs the workload name');
+    }
+    workloadRestoreFor(workloadRestore.workload, workloadRestores);
+    if (mode !== 'dry-run') {
+      throw new Error('a workload restore is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
+    }
+    if (!collectorConfig?.tenantId) throw new Error('a workload restore dry run needs the collector config');
   }
   if (compensateArtifactId !== undefined) {
     if (planId !== undefined || snapshotId !== undefined || selection !== undefined
@@ -300,7 +374,8 @@ export async function runRestore({
   }
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
-    if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && (planId !== undefined || snapshotId === undefined)) {
+    if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && workloadRestore === undefined
+      && (planId !== undefined || snapshotId === undefined)) {
       throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
     }
   }
@@ -308,8 +383,8 @@ export async function runRestore({
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
   if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined
-    && enforceConditionalAccess === undefined) {
-    throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, or compensateArtifactId');
+    && enforceConditionalAccess === undefined && workloadRestore === undefined) {
+    throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, compensateArtifactId, or workloadRestore');
   }
   if (selection !== undefined) {
     if (snapshotId === undefined) throw new Error('selection requires snapshotId');
@@ -363,6 +438,14 @@ export async function runRestore({
         client, request: enforceConditionalAccess, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
       });
     }
+    const workloadDeps = {
+      workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, getTokenFn, sleep,
+    };
+    if (workloadRestore !== undefined) {
+      return await planWorkloadRun({
+        client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps: workloadDeps,
+      });
+    }
     let sourceSnapshot = snapshotId;
     let plan = null;
     let artifact = null;
@@ -372,6 +455,11 @@ export async function runRestore({
       if (!artifact) throw new Error(`restore promotion refused: dry-run artifact not found: ${artifactId}`);
       if (artifact.status !== 'completed') {
         throw new Error(`restore promotion refused: dry-run artifact ${artifactId} is not complete (status: ${artifact.status})`);
+      }
+      // W2: a workload artifact has no snapshot and its config paths are only the
+      // marker `workload:<name>`, so it is promoted before any snapshot or file read.
+      if (isWorkloadArtifact(artifact)) {
+        return await executeWorkloadRun({ client, artifact, readFile, logger, deps: workloadDeps });
       }
       sourceSnapshot = artifact.snapshotId;
       selection = artifact.selection;
@@ -414,6 +502,13 @@ export async function runRestore({
     const versions = await getResourceVersionsFn(client, { snapshotId: sourceSnapshot });
     const references = await getReferencesFn(client, { snapshotId: sourceSnapshot });
     let resources = restoreCandidates(versions, references);
+    // Gap D7: the delete scope is checked against this snapshot and becomes the
+    // reconciliation scope below, so it is persisted, digested and promoted
+    // exactly like a drift remediation's added-object delete.
+    if (deleteKeys !== undefined) {
+      reconciliationResources = deletionScope(resources, deleteKeys);
+      logger.log(`delete scope: ${reconciliationResources.map((resource) => resource.naturalKey).join(', ')}`);
+    }
 
     let closureKeys = null;
     const artifactScopeReconciliationResources = reconciliationResources;
@@ -647,6 +742,26 @@ export async function runRestore({
     const relationshipOperations = relationshipPlan.operations;
     const relationshipFingerprint = { relationships: relationshipPlan.observed };
 
+    // Gap register M6: the company branding files (images, favicon, custom
+    // stylesheet) of each restored branding locale. Selection scope only, like
+    // relationship edges. Each backed-up file is compared with the live one by
+    // hash; only those that differ are uploaded, after the objects' own writes.
+    // A snapshot that holds no files plans nothing.
+    let brandingPlan = { uploads: [], unchanged: [], refusals: [], notes: [] };
+    if (selection !== undefined && reconciliationResources === undefined) {
+      const brandingResources = resources.filter((resource) => BRANDING_RESOURCE_TYPES.includes(resource.resourceType) && resource.verb !== 'delete');
+      const locales = [...new Set(brandingResources.map(brandingLocaleFor).filter(Boolean))].sort();
+      const desiredFiles = locales.length === 0 ? [] : await loadSnapshotBrandingAssetsFn(client, { snapshotId: sourceSnapshot, locales });
+      if (desiredFiles.length > 0) {
+        const liveLocales = new Set(brandingResources.filter((resource) => resource.live?.state === 'present').map(brandingLocaleFor));
+        const live = await readLiveBrandingAssetsFn(targetReader, { organizationId: targetConfig.tenantId, locales: [...liveLocales].sort() });
+        brandingPlan = planBrandingAssetUploads({ desired: desiredFiles, live, liveLocales });
+        for (const note of brandingPlan.notes) logger.log(`branding file not restored: ${note.note}`);
+        logger.log(`branding files: ${brandingPlan.uploads.length} to upload, ${brandingPlan.unchanged.length} unchanged, ${brandingPlan.refusals.length} refused`);
+      }
+    }
+    const brandingUploads = brandingUploadDigestInput(brandingPlan.uploads);
+
     // Roadmap task-59: delete impact is re-evaluated at execution against the
     // CURRENT live state just collected. A resource still referencing one being
     // deleted — and neither deleted nor rewritten by this plan — would be left
@@ -761,6 +876,7 @@ export async function runRestore({
           lockoutGate,
         }),
         ...relationshipPlan.refusals,
+        ...brandingPlan.refusals,
         ...contentEffects.refusals,
       ]);
       return {
@@ -771,6 +887,7 @@ export async function runRestore({
         waves, deletionWaves,
         patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
         relationshipOperations,
+        brandingUploads,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         guardRefusals,
@@ -783,6 +900,7 @@ export async function runRestore({
     // snapshot, selection, or dependency closure changes the digest; a target that
     // drifted since the dry run ran changes the fingerprint. Either one fails the
     // whole run closed, before a single write.
+    let approvedContentEffects = [];
     if (artifact) {
       const freshDigest = computePlanDigestFn({
         snapshotId: sourceSnapshot,
@@ -796,6 +914,7 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        brandingUploads,
         // An artifact persisted before task-64 carries no mechanisms and keeps its
         // original digest inputs; every newer artifact binds them.
         recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
@@ -810,7 +929,10 @@ export async function runRestore({
       if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
       // Task-66: the effects just recomputed must carry a separate, current
       // high-impact approval bound to exactly them — never the requester's own.
-      await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      const contentEffectApproval = await assertContentEffectApprovalFn(client, { artifact, effects: contentEffects.effects });
+      // Gap D3: only effects whose separate approval was just checked unlock a
+      // write the guard otherwise refuses (a shorter group lifetime).
+      if (contentEffectApproval) approvedContentEffects = contentEffects.effects;
     }
 
     const seeds = {
@@ -862,8 +984,13 @@ export async function runRestore({
         signInPathGate: { reader: targetReader, protectedPrincipalIds },
         observedCoverage,
         lockoutGate,
+        approvedContentEffects,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      for (const entry of [...result.applied, ...result.skipped]) {
+        const step = entry.pendingApproval ?? entry.completion;
+        if (step) logger.log(`completion step: ${entry.naturalKey} — ${step.description}`);
+      }
       results.applied.push(...result.applied);
       results.skipped.push(...result.skipped);
       results.failed.push(...result.failed);
@@ -894,7 +1021,7 @@ export async function runRestore({
     // carrying any is 'refused' and can never be promoted). Edge writes run after
     // every object exists (so a member created by this run resolves through
     // appliedIds) and before any delete.
-    results.skipped.push(...relationshipPlan.refusals, ...contentEffects.refusals);
+    results.skipped.push(...relationshipPlan.refusals, ...brandingPlan.refusals, ...contentEffects.refusals);
     if (results.failed.length === 0 && relationshipOperations.length > 0) {
       const edgeResult = await applyRelationshipOperationsFn(writer, governor, relationshipOperations, {
         reader: targetReader,
@@ -912,6 +1039,25 @@ export async function runRestore({
       results.failed.push(...edgeResult.failed);
       if (edgeResult.failed.length && persistArtifactId === undefined) {
         throw new Error('relationship edge operations had failures — stopping run (each edge is re-read before any retry, so a retry never adds a member twice)');
+      }
+    }
+
+    // Gap register M6: branding file uploads, after every object write and before any delete.
+    if (results.failed.length === 0 && brandingPlan.uploads.length > 0) {
+      const fileResult = await applyBrandingAssetUploadsFn(writer, brandingPlan.uploads, {
+        reader: targetReader,
+        mode,
+        targetTenant: targetConfig.tenantId,
+        rollbackClient: client,
+        runId,
+        restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
+        governor,
+      });
+      logger.log(`branding files: uploaded ${fileResult.applied.length}, failed ${fileResult.failed.length}`);
+      results.applied.push(...fileResult.applied);
+      results.failed.push(...fileResult.failed);
+      if (fileResult.failed.length && persistArtifactId === undefined) {
+        throw new Error('branding file uploads had failures — stopping run (each file is compared by hash before any retry, so a retry uploads only what still differs)');
       }
     }
 
@@ -1030,6 +1176,7 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        brandingUploads,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
@@ -1065,7 +1212,7 @@ export async function runRestore({
     }
 
     return {
-      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
+      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, brandingUploads, recoveryMechanisms,
       completionItems, pendingSteps, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
@@ -1426,6 +1573,78 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
   return { mode: 'enforce', conditionalAccessEnforcement: ctx.plan, results, completionItem: closed.item, artifactId: artifact.id };
 }
 
+// ------------------------------------------------------------- workload restores (W2)
+
+/** Production connection for a workload run: a Graph transport and the cmdlet job options. */
+async function defaultWorkloadConnection({ config, configPath, getTokenFn }) {
+  const { accessToken } = await getTokenFn(config);
+  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath } };
+}
+
+/**
+ * Which workload writes are qualified on this host. No persisted workload ledger
+ * exists yet (gap register W1), so none is: every write reports `disabled` and
+ * nothing is sent. The executors refuse a missing qualification on their own.
+ */
+async function defaultWorkloadQualifications() {
+  return {};
+}
+
+const WORKLOAD_SUCCESS = new Set(['verified', 'no-change']);
+
+async function planWorkloadRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps }) {
+  const entry = workloadRestoreFor(request.workload, deps.workloadRestores);
+  const tenantRef = tenantRefFor(collectorConfig.tenantId);
+  // The dry run reads with the collector only; it never holds the restorer.
+  const connection = await deps.workloadConnectionFn({
+    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
+  });
+  const plan = await entry.plan(client, { tenantRef, tenantId: collectorConfig.tenantId, request, connection, sleep: deps.sleep });
+  const artifact = await entry.create(client, {
+    tenantRef, plan, requestedBy: requestedBy ?? null, ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
+  });
+  logger.log(`${entry.label} restore plan: ${plan.operations.length} change(s), ${plan.manual.length} manual, ${plan.refusals.length} refused`);
+  logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);
+  return { mode: 'dry-run', workloadRestore: plan, status: artifact.status, artifactId: artifact.id };
+}
+
+async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) {
+  const plan = artifact.workloadRestore;
+  if (!plan) throw new Error('workload restore promotion refused: the artifact holds no workload plan');
+  const entry = workloadRestoreFor(plan.workload, deps.workloadRestores);
+  // The same approval as turning a Conditional Access policy on: approved, by
+  // someone other than the requester. Checked before any credential is read.
+  const approval = await enforcementApproval(client, artifact.id);
+  if (!approval) {
+    throw new Error('workload restore promotion refused: it needs an approved request from someone other than the requester');
+  }
+  // The credential files are the server's, never the artifact's marker paths.
+  const paths = deps.credentialPathsFn();
+  const collectorConfig = JSON.parse(readFile(paths.collectorConfig, 'utf8'));
+  const targetConfig = JSON.parse(readFile(paths.targetConfig, 'utf8'));
+  assertSeparateRestorer(collectorConfig, targetConfig);
+  if (tenantRefFor(targetConfig.tenantId) !== artifact.tenantRef) {
+    throw new Error('workload restore promotion refused: the restorer signs in to a different tenant than the one this plan was made for');
+  }
+  const connection = await deps.workloadConnectionFn({
+    role: 'restorer', config: targetConfig, configPath: paths.targetConfig, getTokenFn: deps.getTokenFn,
+  });
+  const qualifications = await deps.workloadQualificationsFn(client, { tenantRef: artifact.tenantRef, operations: entry.operations });
+  if (Object.keys(qualifications ?? {}).length === 0) {
+    logger.log(`no ${entry.label} write is qualified on this host yet; nothing will be written`);
+  }
+  const result = await entry.execute(client, {
+    tenantRef: artifact.tenantRef, artifactId: artifact.id, tenantId: targetConfig.tenantId, plan, connection,
+    qualifications: qualifications ?? {}, sleep: deps.sleep,
+  });
+  logger.log(`${entry.label} restore: ${result.outcome}`);
+  if (!WORKLOAD_SUCCESS.has(result.outcome)) {
+    const reasons = [...(result.reasons ?? []), ...(result.operations ?? []).flatMap((op) => op.reasons ?? [])];
+    throw new Error(`${entry.label} restore ${result.outcome}${reasons.length ? `: ${reasons.join('; ')}` : ''}`);
+  }
+  return { mode: 'enforce', workloadRestore: plan, outcome: result.outcome, result, artifactId: artifact.id };
+}
+
 export async function main({
   argv = process.argv,
   readFile = readFileSync,
@@ -1436,6 +1655,7 @@ export async function main({
   const planId = arg('plan', undefined, argv);
   const snapshotId = arg('snapshot-id', undefined, argv);
   const selection = argAll('select', argv);
+  const deleteKeys = argAll('delete', argv);
   const artifactId = arg('artifact', undefined, argv);
   const persistArtifactId = arg('persist-artifact', undefined, argv);
   const compensateArtifactId = arg('compensate', undefined, argv);
@@ -1448,8 +1668,8 @@ export async function main({
   // Task-70: a compensation is planned from the promoted restore's own journal and
   // frozen config — never with --enforce, and never alongside another scope.
   if (compensateArtifactId !== undefined) {
-    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
-      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--compensate is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
     if (mode === 'enforce') {
       throw new Error('--compensate is a dry run only; execute it by promoting the compensation artifact with --artifact <id> --enforce');
@@ -1462,8 +1682,8 @@ export async function main({
   // Task-152: turning a Conditional Access policy on is planned from one promoted
   // restore and one policy — never with --enforce, and never alongside another scope.
   if (enforceRestoreArtifactId !== undefined) {
-    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
-      throw new Error('--enforce-conditional-access is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--enforce-conditional-access is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
     if (!enforcePolicy) throw new Error('--enforce-conditional-access requires --policy <naturalKey>');
     if (mode === 'enforce') {
@@ -1475,12 +1695,40 @@ export async function main({
     });
   }
 
+  // W2: a workload restore is planned from one recorded workload collection with the
+  // collector only — never with --enforce, and never alongside another scope.
+  const workload = arg('workload', undefined, argv);
+  if (workload !== undefined) {
+    if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--workload is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
+    }
+    if (mode === 'enforce') {
+      throw new Error('--workload is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
+    }
+    const collectorConfigPath = arg('collector-config', undefined, argv);
+    if (!collectorConfigPath) throw new Error('--collector-config <path> required (the workload dry run reads with the collector)');
+    return runRestore({
+      workloadRestore: {
+        workload,
+        collectionId: arg('collection', undefined, argv),
+        tenantHost: arg('tenant-host', undefined, argv),
+        mailbox: arg('mailbox', undefined, argv),
+        includeOrganization: flag('include-organization', argv),
+        teamId: arg('team', undefined, argv),
+        targets: argAll('target', argv),
+      },
+      collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),
+      collectorConfigPath,
+      persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+    });
+  }
+
   // Plan task 8: --artifact promotes a completed dry-run artifact and is the ONLY way
   // to reach --enforce for every restore scope — it carries its own frozen
   // snapshot, selection and target config paths, so it is mutually exclusive with
   // every other scope flag.
-  if (artifactId !== undefined && (planId || snapshotId || selection.length)) {
-    throw new Error('--artifact is mutually exclusive with --plan/--snapshot-id/--select — a promotion is driven entirely by its dry-run artifact');
+  if (artifactId !== undefined && (planId || snapshotId || selection.length || deleteKeys.length)) {
+    throw new Error('--artifact is mutually exclusive with --plan/--snapshot-id/--select/--delete — a promotion is driven entirely by its dry-run artifact');
   }
   if (artifactId !== undefined && mode !== 'enforce') {
     throw new Error('--artifact may only be used with --enforce');
@@ -1490,17 +1738,26 @@ export async function main({
   }
   // --plan and --snapshot-id/--select are two scopes for the one apply path; mixing
   // them is a usage error, and so is either half of the selection scope on its own.
-  if (planId && (snapshotId || selection.length)) {
-    throw new Error('--plan is mutually exclusive with --snapshot-id/--select');
+  if (planId && (snapshotId || selection.length || deleteKeys.length)) {
+    throw new Error('--plan is mutually exclusive with --snapshot-id/--select/--delete');
   }
   if (!snapshotId && selection.length) throw new Error('--select requires --snapshot-id');
+  // Gap D7: --delete is its own scope on a snapshot — never mixed with --select or
+  // an incident recovery, and never a direct enforce (promote its dry run instead).
+  if (deleteKeys.length) {
+    if (!snapshotId) throw new Error('--delete requires --snapshot-id');
+    if (selection.length) throw new Error('--delete and --select are separate restore scopes — run them as two restores');
+    if (incidentId !== undefined) throw new Error('--delete cannot be combined with --incident');
+  }
   // Task-71: a promotion's incident comes from its artifact, never from argv.
   if (incidentId !== undefined && (artifactId !== undefined || !snapshotId)) {
     throw new Error('--incident requires --snapshot-id/--select (a promotion carries its incident in the dry-run artifact)');
   }
-  if (snapshotId && !selection.length) throw new Error('--snapshot-id requires at least one --select <naturalKey>');
+  if (snapshotId && !selection.length && !deleteKeys.length) {
+    throw new Error('--snapshot-id requires at least one --select <naturalKey> or --delete <naturalKey>');
+  }
   if (!planId && !snapshotId && !artifactId) {
-    throw new Error('--plan <id>, --snapshot-id <id> with --select <naturalKey>, or --artifact <id> required');
+    throw new Error('--plan <id>, --snapshot-id <id> with --select or --delete <naturalKey>, --workload <name>, or --artifact <id> required');
   }
   if (mode === 'enforce' && !artifactId) {
     throw new Error('enforce requires --artifact <id> (promote a completed dry-run artifact; a direct enforce is refused)');
@@ -1526,6 +1783,7 @@ export async function main({
     planId,
     snapshotId,
     selection: selection.length ? selection : undefined,
+    deleteKeys: deleteKeys.length ? deleteKeys : undefined,
     targetConfig,
     collectorConfig,
     collectorConfigPath,

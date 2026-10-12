@@ -293,7 +293,8 @@ test('the existing sign-in path gate and lockout-delete refusal cannot be bypass
   assert.equal(result.failed.at(-1)?.naturalKey, 'sign-in-path-gate', JSON.stringify(result));
   assert.equal(compareSignInPaths({ a: 1 }, { a: 2 }, gate).allowed, false);
 
-  // A tenant-lockout delete still needs the explicit simulation flag, which no gate result sets.
+  // A tenant-lockout delete is never authorized by a scenario result: without
+  // break-glass readiness for the state after the delete it is refused.
   const deleteWriter = { calls: 0, write: async () => { deleteWriter.calls += 1; return { ok: true, status: 204 }; }, read: async () => ({ ok: false, status: 404 }) };
   const refused = await applyWave(deleteWriter, new ThrottleGovernor({ 'target/entra/write': { capacity: 10, refillPerSecond: 10 } }), [{
     naturalKey: 'roleAssignment:Global-Administrator', resourceType: 'roleAssignment', targetId: 'ra-1', verb: 'delete',
@@ -304,7 +305,7 @@ test('the existing sign-in path gate and lockout-delete refusal cannot be bypass
     rollbackClient: { query: async () => {} }, runId: 'policy-scenario-lockout-delete',
   });
   assert.equal(deleteWriter.calls, 0);
-  assert.match(refused.skipped[0].reason, /simulationPassed must be true/);
+  assert.match(refused.skipped[0].reason, /break-glass readiness was not loaded for this run/);
 
   // No production CLI passes a simulation flag, and the scenario CLI cannot write.
   const cliDir = new URL('../../cli/', import.meta.url);

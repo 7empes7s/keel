@@ -36,6 +36,10 @@ let client: TestClient;
 let currentTenantRef: string;
 let snapshotId: string;
 
+// Gap B11: a request's requester must resolve to an enabled principal, as the portal's
+// own principal ids always do.
+const RESTORER = "1b2a4a00-0000-4000-8000-0000000000c1";
+
 before(async () => {
   if (!process.env.KEEL_DB_TEST_URL) {
     const env = readFileSync("/etc/keel/db.env", "utf8");
@@ -67,6 +71,7 @@ before(async () => {
 
   currentTenantRef = tenantRef();
   client = await database.connect();
+  await client.query(`INSERT INTO principal (id, email) VALUES ($1, 'restorer@restore.test')`, [RESTORER]);
 
   // Fixture snapshot: a Conditional Access policy that excludes a group (§4.1's
   // motivating case), the referenced group, an AD-synced group, and an unrelated
@@ -146,7 +151,7 @@ function get(
   return new Request(`http://localhost${path}`, { headers });
 }
 
-const restorer = { principalId: "principal-restorer", capabilities: ["read", "restore"] };
+const restorer = { principalId: RESTORER, capabilities: ["read", "restore"] };
 
 test("the selection preview refuses callers without read or restore", async () => {
   const unauthenticated = await selectionPreviewRoute(
@@ -159,7 +164,7 @@ test("the selection preview refuses callers without read or restore", async () =
 
   const withoutRead = await selectionPreviewRoute(
     post("/api/actions/restore/selection", {
-      principalId: "principal-restorer",
+      principalId: RESTORER,
       capabilities: ["restore"],
       body: { snapshotId, selected: ["conditionalAccessPolicy:Protect-Admins"] },
     }),
@@ -317,7 +322,7 @@ test("a raw selection starts a dry run, then only its completed artifact can req
     currentStateFingerprint: "fixture-fingerprint",
     digest: "fixture-digest",
     status: "completed",
-    requestedBy: "principal-restorer",
+    requestedBy: RESTORER,
   });
 
   const confirmed = await restoreRoute(
@@ -331,6 +336,8 @@ test("a raw selection starts a dry run, then only its completed artifact can req
   assert.equal(approvalRequest.status, "pending");
   assert.equal(approvalRequest.action, "restore");
   assert.deepEqual(approvalRequest.params, { artifactId });
+  // Gap B11: a dry run planned in the portal is still carried out by the worker.
+  assert.equal(approvalRequest.executor, "worker");
 });
 
 // Plan task 8, step 2: confirmation renders the dry run's ACTUAL planned changes and
@@ -362,7 +369,7 @@ test("the dry-run artifact route serves the full per-resource results the dry ru
     currentStateFingerprint: "fixture-fingerprint",
     digest: "fixture-digest",
     status: "completed",
-    requestedBy: "principal-restorer",
+    requestedBy: RESTORER,
   });
 
   const unauthenticated = await dryRunArtifactRoute(

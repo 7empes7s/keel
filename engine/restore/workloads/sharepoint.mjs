@@ -187,9 +187,9 @@ export async function readLiveSettings({ transport, sleep }) {
 }
 
 /** Persists the plan as an immutable dry-run artifact. */
-export async function createSharePointRestoreArtifact(client, { tenantRef, plan, requestedBy }) {
+export async function createSharePointRestoreArtifact(client, { tenantRef, plan, requestedBy, id = randomUUID() }) {
   return createDryRunArtifact(client, {
-    id: randomUUID(),
+    id,
     tenantRef,
     snapshotId: null,
     selection: [NATURAL_KEY],

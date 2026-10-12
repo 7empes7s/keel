@@ -283,12 +283,13 @@ test('preview shares the enforce plan but never acquires Restorer credentials or
     naturalKey: 'group:lockout', resourceType: 'group', verb: 'delete', verbReason: 'desired absence',
   }]);
   assert.deepEqual(preview.deletionWaves, [['group:lockout']]);
-  // A tenant-lockout delete without simulation evidence is a refusal, never a
-  // green preview — evaluated by the real apply guards in dry-run mode.
-  assert.deepEqual(preview.guardRefusals, [{
-    naturalKey: 'group:lockout',
-    reason: 'refusing to delete tenant-lockout resource: simulationPassed must be true',
-  }]);
+  // A tenant-lockout delete without break-glass readiness for the state after
+  // it is a refusal, never a green preview — evaluated by the real apply guards
+  // in dry-run mode. The fixture database holds no readiness, so the gate is closed.
+  assert.equal(preview.guardRefusals.length, 1);
+  assert.equal(preview.guardRefusals[0].naturalKey, 'group:lockout');
+  assert.match(preview.guardRefusals[0].reason,
+    /^refusing to delete tenant-lockout resource: break-glass readiness after the delete is not established: break-glass readiness could not be read/);
   assert.deepEqual(tokens, ['collector'], 'no Restorer token may be requested for a preview');
   assert.equal(state.writerConstructions, 0, 'a preview never constructs a writer');
   assert.equal(state.writes, 0);

@@ -30,7 +30,7 @@ import { TYPE_DECISIONS, buildExpansionInventory, expansionFor, qualificationFor
 import { buildLiveIndex } from '../reconcile/liveState.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
 import {
-  BRANDING_WRITABLE_FIELDS, GROUP_LIFETIME_PORTAL_PATH, groupLifecycleGuard, groupLifetimeCompletionItem,
+  BRANDING_WRITABLE_FIELDS, GROUP_LIFETIME_PORTAL_PATH, brandingSendable, groupLifecycleGuard, groupLifetimeCompletionItem,
 } from '../restore/tenantPolicyOperations.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
@@ -294,6 +294,115 @@ test('branding: a language is PATCHed at its own route; a missing branding or te
   result = await run(graph, [{ naturalKey: 'organizationalBranding:organizationalBranding', resourceType: 'organizationalBranding', verb: 'create', payload: branding, references: [], blastRadius: 'cosmetic' }]);
   assert.match(result.failed[0].error, /not a registered write capability/);
   assert.equal(graph.bodies.length, 0);
+});
+
+// ------------------------------------------------------------------ gap B9: valid branding PATCH bodies
+
+/** Every value at any depth of a value. */
+function deepValues(value) {
+  if (Array.isArray(value)) return value.flatMap(deepValues);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(deepValues);
+  return [value];
+}
+
+test('B9: brandingSendable drops empty values, unlisted nested members and objects where text is expected', () => {
+  assert.equal(brandingSendable('signInPageText', null), undefined);
+  assert.equal(brandingSendable('signInPageText', ''), undefined);
+  assert.equal(brandingSendable('signInPageText', undefined), undefined);
+  assert.equal(brandingSendable('signInPageText', 'Welcome'), 'Welcome');
+  assert.equal(brandingSendable('signInPageText', { text: 'Welcome' }), undefined);
+  assert.equal(brandingSendable('backgroundColor', ['#000000']), undefined);
+  assert.deepEqual(brandingSendable('loginPageLayoutConfiguration', {
+    '@odata.type': '#microsoft.graph.loginPageLayoutConfiguration', layoutTemplateType: 'twoColumn', isHeaderShown: false, isFooterShown: null,
+    headerLogoRelativeUrl: 'c1/header.png',
+  }), { isHeaderShown: false, layoutTemplateType: 'twoColumn' });
+  assert.equal(brandingSendable('loginPageTextVisibilitySettings', { hideTermsOfUse: null, hideResetItNow: '' }), undefined);
+  assert.equal(brandingSendable('loginPageTextVisibilitySettings', 'yes'), undefined);
+});
+
+test('B9: a branding PATCH never carries null, "" or a nested read-only field; "" and null are the same value', async () => {
+  const graph = recordingGraph();
+  const path = `/organization/${TENANT}/branding`;
+  const desired = {
+    ...branding,
+    usernameHintText: null, customTermsOfUseText: '', backgroundColor: null, headerBackgroundColor: '',
+    customCannotAccessYourAccountText: { text: 'not text' },
+    loginPageLayoutConfiguration: {
+      '@odata.type': '#microsoft.graph.loginPageLayoutConfiguration', layoutTemplateType: 'twoColumn', isHeaderShown: true, isFooterShown: null,
+      backgroundImageRelativeUrl: 'c1/background-1.png',
+    },
+    loginPageTextVisibilitySettings: { hideForgotMyPassword: true, hideTermsOfUse: null },
+  };
+  const live = {
+    ...branding,
+    signInPageText: 'Defaced', usernameHintText: '', customTermsOfUseText: null, backgroundColor: '#000000', headerBackgroundColor: '#FFFFFF',
+    loginPageLayoutConfiguration: { layoutTemplateType: 'default', isHeaderShown: true, isFooterShown: true },
+    loginPageTextVisibilitySettings: { hideForgotMyPassword: false, hideTermsOfUse: true },
+  };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied.length, 1);
+  assert.deepEqual(graph.bodies, [{
+    method: 'PATCH', path, body: {
+      loginPageLayoutConfiguration: { isHeaderShown: true, layoutTemplateType: 'twoColumn' },
+      loginPageTextVisibilitySettings: { hideForgotMyPassword: true },
+      signInPageText: 'Welcome to Contoso',
+    },
+  }]);
+  const values = deepValues(graph.bodies[0].body);
+  assert.ok(values.every((value) => value !== null && value !== ''), 'no null or empty value is sent');
+  assert.ok(deepKeys(graph.bodies[0].body).every((key) => !key.includes('@odata.') && !/Url$/.test(key)), 'no annotation or file path is sent');
+  // An empty snapshot value is never written over a live one.
+  assert.equal(graph.objects.get(path).backgroundColor, '#000000');
+});
+
+test('B9: a branding whose only differences are empty values is not written at all', async () => {
+  const graph = recordingGraph();
+  const path = `/organization/${TENANT}/branding`;
+  const desired = { ...branding, usernameHintText: '', customTermsOfUseText: null, loginPageTextVisibilitySettings: { hideForgotMyPassword: false, hideTermsOfUse: null } };
+  const live = { ...branding, usernameHintText: 'name@contoso.example', customTermsOfUseText: '', loginPageTextVisibilitySettings: { hideForgotMyPassword: false, hideTermsOfUse: true, hideResetItNow: true } };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied.length, 1);
+  assert.deepEqual(graph.bodies, []);
+});
+
+test('B9: a branding language PATCH omits null-valued fields too', async () => {
+  const graph = recordingGraph();
+  const path = `/organization/${TENANT}/branding/localizations/fr-FR`;
+  const desired = { id: 'fr-FR', signInPageText: 'Bienvenue', usernameHintText: null, backgroundColor: null, customPrivacyAndCookiesText: '' };
+  const live = { id: 'fr-FR', signInPageText: 'Defaced', usernameHintText: 'nom@contoso.example', backgroundColor: '#000000', customPrivacyAndCookiesText: null };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBrandingLocalization', path, desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { signInPageText: 'Bienvenue' } }]);
+});
+
+test('B9: a refused branding write records the Graph error body in the journal', async () => {
+  const graph = recordingGraph();
+  const path = `/organization/${TENANT}/branding`;
+  const graphError = { code: 'Request_BadRequest', message: 'Invalid value specified for property backgroundColor.', innerError: { 'request-id': 'fixture-request-1' } };
+  graph.write = async (version, requested, request) => {
+    graph.bodies.push({ method: request.method, path: requested, body: request.body });
+    return { ok: false, status: 400, body: { error: graphError } };
+  };
+  const outcomes = [];
+  const journal = {
+    async query(text, values) {
+      if (text.includes('INSERT INTO rollback_entry')) return { rows: [{ id: 'entry-1' }] };
+      if (text.includes('SET outcome')) outcomes.push({ outcome: values[1], detail: values[4] });
+      return { rows: [] };
+    },
+  };
+  const live = { ...branding, signInPageText: 'Defaced' };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, branding, live)], {
+    rollbackClient: journal, runId: 'run-b9', restoreRef: 'restore-b9',
+  });
+  assert.equal(result.applied.length, 0);
+  assert.equal(result.failed.length, 1);
+  assert.equal(outcomes.length, 1);
+  assert.equal(outcomes[0].outcome, 'failed');
+  assert.ok(outcomes[0].detail.startsWith('status 400: '), outcomes[0].detail);
+  assert.deepEqual(JSON.parse(outcomes[0].detail.slice('status 400: '.length)), graphError);
 });
 
 test('group expiry: a longer lifetime or narrower scope is restored', async () => {

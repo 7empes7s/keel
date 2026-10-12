@@ -225,8 +225,9 @@ Nothing in production calls this seam yet, so this task enables no read and no w
   The capture tool is the operator CLI.
 - **Server and UI.** None in this task. There is no evidence to show yet, and the
   coverage report already shows the OneDrive and Purview workloads as disabled, with the
-  reason. Wiring imported evidence into `collectOneDrive`, `collectPurview` and
-  `executePurviewRestore` is follow-up work once a verified record exists.
+  reason. Since gap W1, `cli/keel-workload-collect.mjs import` stores the evidence of a
+  verified record, and the daily `workload-collect` job feeds it to `collectOneDrive` and
+  `collectPurview`. Wiring it into `executePurviewRestore` is gap W2.
 
 ## Migration and legacy reads
 
@@ -241,12 +242,12 @@ Nothing in production calls this seam yet, so this task enables no read and no w
 This task takes none of these decisions. Anything tenant-wide is listed here and never
 done silently.
 
-1. **Restorer grants for Purview.** Operator decision 2026-09-30 gave the Restorer
-   Graph `MailboxSettings.ReadWrite` only. `Set-Label` and `Set-LabelPolicy` need
-   `Exchange.ManageAsApp` and the **Compliance Administrator** role, a tenant-wide
-   directory role. Steps 4 and 5 cannot be captured until the operator grants them to the
-   Restorer, or decides on a narrower custom role group in the Purview portal. A narrower
-   role would change the task-106 declarations.
+1. **Restorer grants for Purview.** Resolved. The Restorer now holds
+   `Exchange.ManageAsApp` and the **Compliance Administrator** role, which `Set-Label`
+   and `Set-LabelPolicy` need. The 2026-10-07 record
+   (`onedrive-purview-live-acceptance.json`) shows these grants and both writes (label
+   and label policy) written and read back. A narrower custom role group in the Purview
+   portal would still change the task-106 declarations.
 2. **Collector grants.** The task-101 and task-106 declarations give the collector
    `Sites.FullControl.All` with SharePoint Administrator for the OneDrive read, and
    Compliance Administrator for the label reads. Both can write, tenant-wide. The log

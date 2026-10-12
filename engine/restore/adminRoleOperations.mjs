@@ -10,7 +10,10 @@
  *    a schedule request with action 'adminAssign' and a justification. The
  *    snapshot's expiry is kept (an "after duration" expiry becomes the same
  *    end date), a future start is kept, an expired schedule is never restored,
- *    and only directory-wide (scope "/") eligibility is written. An eligibility a
+ *    and only a directory-wide (scope "/") or administrative-unit scoped
+ *    eligibility is written. An administrative-unit scope is rewritten through
+ *    the unit's natural key, like every other reference; a scope the snapshot
+ *    cannot name, or that the target does not hold, is refused. An eligibility a
  *    principal holds through a group is not written; the group's own
  *    eligibility is. Removal and update are not registered.
  *  - PIM role settings (unifiedRoleManagementPolicy): update of the reviewed
@@ -193,6 +196,27 @@ export function scheduleEnd(scheduleInfo) {
   return { type, error: `expiration type ${type ?? 'missing'} is not known` };
 }
 
+const ADMINISTRATIVE_UNIT_SCOPE = /^\/administrativeUnits\/[^/]+$/;
+
+/**
+ * Why an eligibility's directory scope cannot be restored, or null. "/" needs
+ * nothing. "/administrativeUnits/{id}" needs the snapshot's reference to that
+ * unit by its natural key, so the writer can map it to the target's unit (the
+ * resolution itself fails the write when the target lacks the unit). Any
+ * other scope is refused.
+ */
+export function eligibilityScopeRefusal(scope, references = []) {
+  if (scope === '/') return null;
+  if (!ADMINISTRATIVE_UNIT_SCOPE.test(scope)) {
+    return `unsupported: an eligibility scoped to ${scope} is not restored; only directory-wide (scope "/") and administrative-unit scopes are qualified`;
+  }
+  const ref = (references ?? []).find((entry) => entry?.field === 'directoryScopeId');
+  if (!ref || typeof ref.symbol !== 'string' || !ref.symbol.startsWith('administrativeUnit:') || ref.prefix !== '/administrativeUnits/') {
+    return `unresolvable scope: the eligibility is scoped to ${scope}, an administrative unit the snapshot cannot name, so the scope cannot be mapped to the target and the eligibility is not restored`;
+  }
+  return null;
+}
+
 function sameId(left, right) {
   return String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase();
 }
@@ -244,9 +268,8 @@ export function adminRoleWriteRefusal(resource, verb, { now = new Date() } = {})
     if (desired.appScopeId && desired.appScopeId !== '/') {
       return refusal('failed', 'unsupported: an eligibility scoped to an application (appScopeId) is not restored');
     }
-    if ((desired.directoryScopeId ?? '/') !== '/') {
-      return refusal('failed', `unsupported: an eligibility scoped to ${desired.directoryScopeId} is not restored; only directory-wide (scope "/") eligibility is qualified, and a scope id is never rewritten`);
-    }
+    const scopeRefusal = eligibilityScopeRefusal(desired.directoryScopeId ?? '/', resource.references);
+    if (scopeRefusal) return refusal('failed', scopeRefusal);
     const end = scheduleEnd(desired.scheduleInfo);
     if (end.error) return refusal('failed', `the eligibility schedule cannot be kept: ${end.error}`);
     if (end.end && end.end.getTime() <= now.getTime()) {
@@ -375,7 +398,7 @@ export function eligibilityLookupPath(body) {
 export function matchingEligibility(schedules, body) {
   return (schedules ?? []).find((schedule) => sameId(schedule?.principalId, body.principalId)
     && sameId(schedule?.roleDefinitionId, body.roleDefinitionId)
-    && (schedule?.directoryScopeId ?? '/') === body.directoryScopeId
+    && sameId(schedule?.directoryScopeId ?? '/', body.directoryScopeId)
     && (!schedule?.memberType || schedule.memberType === 'Direct')) ?? null;
 }
 
@@ -542,14 +565,15 @@ export function policyPostStateRefusal(desired, live, writes) {
 }
 
 /**
- * Only the references inside what a write sends are rewritten: the role and
- * principal of an eligibility, and the reviewed rules of a policy. A server
+ * Only the references inside what a write sends are rewritten: the role,
+ * principal and administrative-unit scope of an eligibility, and the reviewed
+ * rules of a policy. A server
  * field elsewhere in the payload (lastModifiedBy) is never resolved or sent.
  */
 export function writtenReferences(resource) {
   const references = resource.references ?? [];
   if (resource.resourceType === 'roleEligibilitySchedule') {
-    return references.filter((ref) => ref.field === 'principalId' || ref.field === 'roleDefinitionId');
+    return references.filter((ref) => ref.field === 'principalId' || ref.field === 'roleDefinitionId' || ref.field === 'directoryScopeId');
   }
   if (resource.resourceType === 'unifiedRoleManagementPolicy') {
     const reviewed = new Set((resource.payload?.rules ?? []).map((rule, index) => (ruleKind(rule) ? index : null)).filter((index) => index !== null));
@@ -581,7 +605,7 @@ export function buildAdminRoleLedger() {
       'role delete, eligibility removal and eligibility update are not registered',
       'an eligibility held through a group is restored on the group, not per member',
       'an expired eligibility is not restored',
-      'an eligibility scoped below the directory (directoryScopeId other than "/") is not restored',
+      'an eligibility scoped to anything but the directory ("/") or an administrative unit the snapshot names is not restored',
       'a PIM rule change that weakens protection is reported, never written',
       'notification and authentication-context rules are reported, never written',
     ]),

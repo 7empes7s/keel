@@ -339,12 +339,109 @@ test('mutation: a future-dated eligibility starts on its own start date, never e
   });
 });
 
-test('mutation: an eligibility scoped below the directory is refused, never sent with an unrewritten scope', async () => {
+// Gap register D2: an administrative-unit scope resolves through the unit's
+// natural key, like every other reference.
+const SOURCE_UNIT = 'a1b2c3d4-0000-4000-8000-00000000a001';
+const TARGET_UNIT = 'b2c3d4e5-0000-4000-8000-00000000b002';
+const unit = Object.freeze({ id: SOURCE_UNIT, displayName: 'EU Region', description: 'Europe', visibility: null });
+const unitScoped = Object.freeze({ ...eligibility, directoryScopeId: `/administrativeUnits/${SOURCE_UNIT}` });
+
+function canonicalUnitEligibility(units = [unit]) {
+  const resources = canonicalizeAll([['administrativeUnit', units], ['roleEligibilitySchedule', [unitScoped]]]);
+  return resources.find((resource) => resource.resourceType === 'roleEligibilitySchedule');
+}
+
+/** Only the scope reference: the fixture's principal is not collected, so its reference is not under test here. */
+const scopeReferences = (units = [unit]) => canonicalUnitEligibility(units).references.filter((ref) => ref.field === 'directoryScopeId');
+
+test('collection: an administrative-unit scope is a reference to the unit by its natural key; an unnamed unit has no symbol', () => {
+  const named = canonicalUnitEligibility();
+  assert.deepEqual(named.references.find((ref) => ref.field === 'directoryScopeId'), {
+    field: 'directoryScopeId', symbol: 'administrativeUnit:EU Region', required: true, klass: 'resolvable', prefix: '/administrativeUnits/',
+  });
+  const unnamed = canonicalUnitEligibility([]);
+  assert.equal(unnamed.references.find((ref) => ref.field === 'directoryScopeId').symbol, null);
+  // A directory-wide eligibility carries no scope reference.
+  const [wide] = canonicalizeAll([['roleEligibilitySchedule', [eligibility]]]);
+  assert.equal(wide.references.some((ref) => ref.field === 'directoryScopeId'), false);
+});
+
+test('tenant scope: a directory-wide eligibility is requested at "/" with no scope rewrite', async () => {
   const graph = recordingGraph();
-  const result = await run(graph, [eligibilityCreate({ ...eligibility, directoryScopeId: '/administrativeUnits/au-1' })]);
-  assert.match(result.failed[0].error, /unsupported: an eligibility scoped to \/administrativeUnits\/au-1 is not restored; only directory-wide/);
+  const [wide] = canonicalizeAll([['administrativeUnit', [unit]], ['roleEligibilitySchedule', [eligibility]]])
+    .filter((resource) => resource.resourceType === 'roleEligibilitySchedule');
+  const references = wide.references.filter((ref) => ref.field === 'directoryScopeId');
+  assert.deepEqual(references, []);
+  const result = await run(graph, [eligibilityCreate(eligibility, { references })]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  assert.equal(graph.bodies[0].body.directoryScopeId, '/');
+});
+
+test('admin-unit scope: restored into another tenant, the scope points at that tenant\'s unit of the same name', async () => {
+  const references = scopeReferences();
+  const graph = recordingGraph();
+  const result = await run(graph, [eligibilityCreate(unitScoped, { references })], {
+    existingTargetIds: new Map([['administrativeUnit:EU Region', TARGET_UNIT]]),
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  assert.equal(graph.bodies[0].body.directoryScopeId, `/administrativeUnits/${TARGET_UNIT}`);
+  assert.equal(result.applied[0].changes.directoryScopeId, `/administrativeUnits/${TARGET_UNIT}`);
+  const schedule = graph.objects.get(`${SCHEDULES}/${result.applied[0].targetId}`);
+  assert.equal(schedule.directoryScopeId, `/administrativeUnits/${TARGET_UNIT}`);
+});
+
+test('admin-unit scope: restored into the same tenant the scope is unchanged, and a unit recreated in this run is used', async () => {
+  const references = scopeReferences();
+  const same = recordingGraph();
+  let result = await run(same, [eligibilityCreate(unitScoped, { references })], {
+    existingTargetIds: new Map([['administrativeUnit:EU Region', SOURCE_UNIT]]),
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(same.bodies[0].body.directoryScopeId, `/administrativeUnits/${SOURCE_UNIT}`);
+
+  const recreated = recordingGraph();
+  result = await run(recreated, [eligibilityCreate(unitScoped, { references })], {
+    appliedIds: new Map([['administrativeUnit:EU Region', TARGET_UNIT]]),
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(recreated.bodies[0].body.directoryScopeId, `/administrativeUnits/${TARGET_UNIT}`);
+});
+
+test('admin-unit scope: the target\'s existing eligibility in the mapped unit is never requested again', async () => {
+  const references = scopeReferences();
+  const graph = recordingGraph();
+  graph.objects.set(`${SCHEDULES}/schedule-new`, { ...eligibility, id: 'schedule-new', directoryScopeId: `/administrativeUnits/${TARGET_UNIT}` });
+  const result = await run(graph, [eligibilityCreate(unitScoped, { references })], {
+    existingTargetIds: new Map([['administrativeUnit:EU Region', TARGET_UNIT]]),
+  });
+  assert.equal(graph.bodies.length, 0);
+  assert.equal(result.applied[0].targetId, 'schedule-new');
+});
+
+test('mutation: an unresolvable admin-unit scope is refused with the reason, never sent with the source unit', async () => {
+  // The snapshot cannot name the unit.
+  let graph = recordingGraph();
+  let result = await run(graph, [eligibilityCreate(unitScoped, { references: scopeReferences([]) })]);
+  assert.match(result.failed[0].error, /unresolvable scope: the eligibility is scoped to \/administrativeUnits\/.+, an administrative unit the snapshot cannot name/);
   assert.equal(graph.bodies.length, 0);
   assert.equal(graph.reads.length, 0);
+  // A snapshot taken before scopes were references carries none.
+  graph = recordingGraph();
+  result = await run(graph, [eligibilityCreate(unitScoped)]);
+  assert.match(result.failed[0].error, /unresolvable scope/);
+  assert.equal(graph.bodies.length, 0);
+  // The snapshot names the unit, but the target holds no unit of that name.
+  graph = recordingGraph();
+  result = await run(graph, [eligibilityCreate(unitScoped, { references: scopeReferences() })]);
+  assert.match(result.failed[0].error, /cannot resolve reference at "directoryScopeId" \(symbol administrativeUnit:EU Region\): not-found-in-target/);
+  assert.equal(graph.bodies.length, 0);
+  // Any other scope shape is refused.
+  graph = recordingGraph();
+  result = await run(graph, [eligibilityCreate({ ...eligibility, directoryScopeId: `/${SOURCE_UNIT}` })]);
+  assert.match(result.failed[0].error, /unsupported: an eligibility scoped to \/.+ is not restored; only directory-wide/);
+  assert.equal(graph.bodies.length, 0);
 });
 
 test('mutation: an expired eligibility is not restored, and an unreadable schedule is refused', async () => {

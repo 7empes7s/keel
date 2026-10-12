@@ -73,6 +73,11 @@ import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recove
 import { attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
+import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
+import {
+  BRANDING_RESOURCE_TYPES, applyBrandingAssetUploads, brandingLocaleFor, brandingUploadDigestInput, planBrandingAssetUploads,
+  readLiveBrandingAssets,
+} from '../engine/restore/brandingAssets.mjs';
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
@@ -269,6 +274,9 @@ export async function runRestore({
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
     loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
+    loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
+    readLiveBrandingAssets: readLiveBrandingAssetsFn = readLiveBrandingAssets,
+    applyBrandingAssetUploads: applyBrandingAssetUploadsFn = applyBrandingAssetUploads,
   } = dependencies;
 
   if (incidentId !== undefined) {
@@ -679,6 +687,26 @@ export async function runRestore({
     const relationshipOperations = relationshipPlan.operations;
     const relationshipFingerprint = { relationships: relationshipPlan.observed };
 
+    // Gap register M6: the company branding files (images, favicon, custom
+    // stylesheet) of each restored branding locale. Selection scope only, like
+    // relationship edges. Each backed-up file is compared with the live one by
+    // hash; only those that differ are uploaded, after the objects' own writes.
+    // A snapshot that holds no files plans nothing.
+    let brandingPlan = { uploads: [], unchanged: [], refusals: [], notes: [] };
+    if (selection !== undefined && reconciliationResources === undefined) {
+      const brandingResources = resources.filter((resource) => BRANDING_RESOURCE_TYPES.includes(resource.resourceType) && resource.verb !== 'delete');
+      const locales = [...new Set(brandingResources.map(brandingLocaleFor).filter(Boolean))].sort();
+      const desiredFiles = locales.length === 0 ? [] : await loadSnapshotBrandingAssetsFn(client, { snapshotId: sourceSnapshot, locales });
+      if (desiredFiles.length > 0) {
+        const liveLocales = new Set(brandingResources.filter((resource) => resource.live?.state === 'present').map(brandingLocaleFor));
+        const live = await readLiveBrandingAssetsFn(targetReader, { organizationId: targetConfig.tenantId, locales: [...liveLocales].sort() });
+        brandingPlan = planBrandingAssetUploads({ desired: desiredFiles, live, liveLocales });
+        for (const note of brandingPlan.notes) logger.log(`branding file not restored: ${note.note}`);
+        logger.log(`branding files: ${brandingPlan.uploads.length} to upload, ${brandingPlan.unchanged.length} unchanged, ${brandingPlan.refusals.length} refused`);
+      }
+    }
+    const brandingUploads = brandingUploadDigestInput(brandingPlan.uploads);
+
     // Roadmap task-59: delete impact is re-evaluated at execution against the
     // CURRENT live state just collected. A resource still referencing one being
     // deleted — and neither deleted nor rewritten by this plan — would be left
@@ -793,6 +821,7 @@ export async function runRestore({
           lockoutGate,
         }),
         ...relationshipPlan.refusals,
+        ...brandingPlan.refusals,
         ...contentEffects.refusals,
       ]);
       return {
@@ -803,6 +832,7 @@ export async function runRestore({
         waves, deletionWaves,
         patches: patches.map(({ naturalKey, field, symbol }) => ({ naturalKey, field, symbol })),
         relationshipOperations,
+        brandingUploads,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         guardRefusals,
@@ -829,6 +859,7 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        brandingUploads,
         // An artifact persisted before task-64 carries no mechanisms and keeps its
         // original digest inputs; every newer artifact binds them.
         recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
@@ -935,7 +966,7 @@ export async function runRestore({
     // carrying any is 'refused' and can never be promoted). Edge writes run after
     // every object exists (so a member created by this run resolves through
     // appliedIds) and before any delete.
-    results.skipped.push(...relationshipPlan.refusals, ...contentEffects.refusals);
+    results.skipped.push(...relationshipPlan.refusals, ...brandingPlan.refusals, ...contentEffects.refusals);
     if (results.failed.length === 0 && relationshipOperations.length > 0) {
       const edgeResult = await applyRelationshipOperationsFn(writer, governor, relationshipOperations, {
         reader: targetReader,
@@ -953,6 +984,25 @@ export async function runRestore({
       results.failed.push(...edgeResult.failed);
       if (edgeResult.failed.length && persistArtifactId === undefined) {
         throw new Error('relationship edge operations had failures — stopping run (each edge is re-read before any retry, so a retry never adds a member twice)');
+      }
+    }
+
+    // Gap register M6: branding file uploads, after every object write and before any delete.
+    if (results.failed.length === 0 && brandingPlan.uploads.length > 0) {
+      const fileResult = await applyBrandingAssetUploadsFn(writer, brandingPlan.uploads, {
+        reader: targetReader,
+        mode,
+        targetTenant: targetConfig.tenantId,
+        rollbackClient: client,
+        runId,
+        restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
+        governor,
+      });
+      logger.log(`branding files: uploaded ${fileResult.applied.length}, failed ${fileResult.failed.length}`);
+      results.applied.push(...fileResult.applied);
+      results.failed.push(...fileResult.failed);
+      if (fileResult.failed.length && persistArtifactId === undefined) {
+        throw new Error('branding file uploads had failures — stopping run (each file is compared by hash before any retry, so a retry uploads only what still differs)');
       }
     }
 
@@ -1071,6 +1121,7 @@ export async function runRestore({
         patches,
         automationContext,
         relationshipOperations,
+        brandingUploads,
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
@@ -1106,7 +1157,7 @@ export async function runRestore({
     }
 
     return {
-      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, recoveryMechanisms,
+      plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, brandingUploads, recoveryMechanisms,
       completionItems, pendingSteps, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,

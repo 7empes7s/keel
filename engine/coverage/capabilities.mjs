@@ -408,6 +408,19 @@ for (const [resourceType, path] of [
   registerAll(resourceType, path, ['update']);
   recordFixtureProof(resourceType, 'update', 'engine/roadmap/entra-basic-settings.test.mjs');
 }
+// Gap register M6: the company branding files (background image, banner logo,
+// square logo and its dark variant, favicon, custom stylesheet) of the default
+// branding (locale 0) and each existing language, uploaded with PUT through
+// engine/restore/brandingAssets.mjs. Kept apart from the branding objects' own
+// update, like an edge, so the PATCH of text and colours never implies it.
+// Fixture-tested only; no live run has uploaded a file yet.
+export const BRANDING_FILE_CAPABILITY = 'organizationalBranding#file';
+registerOperationCapability({
+  resourceType: BRANDING_FILE_CAPABILITY, operation: 'update',
+  path: '/organization/{org}/branding/localizations/{locale}/{file}',
+  handler: 'engine/restore/brandingAssets.mjs#applyBrandingAssetUploads', idOutcome: 'preserved',
+});
+recordFixtureProof(BRANDING_FILE_CAPABILITY, 'update', 'engine/roadmap/branding-files.test.mjs');
 // Roadmap task-151: the admin role model (engine/restore/adminRoleOperations.mjs).
 // Custom roles are created and updated for the 'custom' subtype only: a built-in
 // role is immutable and skipped before any write. An eligibility is created

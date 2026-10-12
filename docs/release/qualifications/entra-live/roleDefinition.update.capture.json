@@ -1,0 +1,79 @@
+{
+  "restoreRef": "12abe3a0-16ef-8587-8969-1f5560e0627e",
+  "entry": {
+    "naturalKey": "roleDefinition:d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+    "resourceType": "roleDefinition",
+    "operation": "update",
+    "targetId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-11T18:19:15.614Z",
+    "priorState": {
+      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "version": null,
+      "isBuiltIn": false,
+      "isEnabled": true,
+      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "description": "KEEL live gate 148 fixture role - drifted",
+      "displayName": "KEEL-RT-148-role",
+      "resourceScopes": [
+        "/"
+      ],
+      "rolePermissions": [
+        {
+          "condition": null,
+          "allowedResourceActions": [
+            "microsoft.directory/groups/basic/update"
+          ]
+        }
+      ],
+      "inheritsPermissionsFrom": [],
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+    },
+    "intendedState": {
+      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "version": null,
+      "isBuiltIn": false,
+      "isEnabled": true,
+      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "description": "KEEL live gate 148 fixture role (group names and descriptions only)",
+      "displayName": "KEEL-RT-148-role",
+      "resourceScopes": [
+        "/"
+      ],
+      "rolePermissions": [
+        {
+          "condition": null,
+          "allowedResourceActions": [
+            "microsoft.directory/groups/basic/update"
+          ]
+        }
+      ],
+      "inheritsPermissionsFrom": [],
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+    },
+    "postState": {
+      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "version": null,
+      "isBuiltIn": false,
+      "isEnabled": true,
+      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "description": "KEEL live gate 148 fixture role (group names and descriptions only)",
+      "displayName": "KEEL-RT-148-role",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions/$entity",
+      "resourceScopes": [
+        "/"
+      ],
+      "rolePermissions": [
+        {
+          "condition": null,
+          "allowedResourceActions": [
+            "microsoft.directory/groups/basic/update"
+          ]
+        }
+      ],
+      "inheritsPermissionsFrom": [],
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+    }
+  }
+}

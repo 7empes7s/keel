@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "groupSetting",
+  "operation": "delete",
+  "fieldProjectionContractVersion": 1,
+  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": "absent",
+  "readBackVerified": true,
+  "observedAt": "2026-10-11T08:32:00.388Z",
+  "restoreRef": "d49b1bd4-2251-801b-956b-532755b75fd2",
+  "naturalKey": "groupSetting:Group.Unified",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "46793dd7643db411b94ff1720d214172f73f42dd1b5ab09c1625ba8e822d4537",
+  "proofRef": "docs/release/qualifications/entra-live/groupSetting.delete.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "7c16f0b6990bbd88a060be878088e6745161f35d1027bda279dd1f7fef5eb46d"
+    }
+  }
+}

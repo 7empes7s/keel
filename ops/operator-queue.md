@@ -1784,7 +1784,7 @@ item that needs it stays untouched.
 
 ### Q43: Entra live gate: run every registered Entra write once on the test tenant — issue #148
 - Drafted by the #148 thread (builder, 2026-10-09). The tools and runbook are in the #148 PR.
-- Status: doing
+- Status: done
 - Result: **In progress again (21:46 UTC) at B = `09e1f00c3f2bda0ec6e6562015613907c810e7aa`** (#169 branding-closure fix deployed 21:40; worker restarted 21:44). Earlier work at = `eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69`** (#168 deployed 21:02; worker restarted 21:07;
   scheduler timer paused for the run). Checklist: "51 registered operations, 52 steps" (same as b41d33e). Snapshot S1
   7570bb5a (before every drift). Approval requests are filed by keel-operator through KEEL's `requestApproval()` (the portal
@@ -1904,7 +1904,24 @@ item that needs it stays untouched.
     6. PIM read-back fails (CultureNotFoundException) with app tokens.
     7. CA purge from deleted items needs a delegated token (app-only 403); Marouane purged by hand.
     8. A display-name natural key turns a rename drift into a create.
-  - Next: end-of-run cleanup, evidence branch, `--live-evidence`.
+  - **End-of-run cleanup (2026-10-12, Restorer):** deleted KEEL-RT-148 role assignment, role, named location,
+    authentication strength, CA policy, CA group, app (+SP), AU, compliance policy, settings-catalog policy, the group
+    lifecycle policy; removed the Microsoft Services partner entry; reset the cross-tenant default to system default;
+    purged KEEL-RT-148-group-delete, KEEL-RT-148-ca-users and the app from deleted items. Every tenant-wide setting in
+    originals.json reads back unchanged, except Marouane's own break-glass changes, left in place: FIDO2/passkeys enabled
+    and the registration campaign now targets FIDO2 (authenticationMethodsPolicy), and his direct exclusion from the 2
+    enabled CA policies. **Left in the tenant:** KEEL-RT-148-ca in CA deleted items (app-only purge is 403; Marouane can
+    purge it in the portal, or it ages out in 30 days). Baseline v3 b4635c7f stays active. Final break-glass readiness:
+    not-ready (1 account; policyExclusions unknown), as before the run.
+  - **Evidence:** branch `claude/live-evidence-148` commit 48f8b04 (53 files in
+    `docs/release/qualifications/entra-live/`, from builds eef1019 and 09e1f00). Secret scan clean; no raw tenant ids.
+  - **`operations.mjs --live-evidence`:** 16 `fixture-tested -> live-qualified` (adminConsentRequestPolicy.update,
+    administrativeUnit.update, authenticationStrengthPolicy.create/update, conditionalAccessPolicy.restore-soft-deleted,
+    configurationPolicy.create/update, crossTenantAccessPolicy.update, crossTenantAccessPolicyConfigurationDefault.update,
+    deviceConfiguration.update, group.delete, groupSetting.delete/update, roleDefinition.create/update, user.update);
+    7 `not applied (write not verified by its read-back)` (conditionalAccessPolicy.create, group.create,
+    group.restore-soft-deleted, namedLocation.create/update, organizationalBranding.update,
+    unifiedRoleManagementPolicy.update), applied as demotions.
 - Requeued by the coordinator (2026-10-10 21:05 UTC): the protected-principal fix is merged as PR #168 (`eef1019`). Run only once the live build is `eef1019` or later; if it is still `b41d33e`, leave this `todo` and check again next pass. Marouane's permission for the tenant-wide drifts and the second group owner from the previous Result still apply.
 - Needs:
   - The #148 PR merged and deployed. Check: `/opt/keel-live/tools/qualification/live-gate-plan.mjs` exists.

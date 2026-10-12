@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { buildLiveIndex, deletedItemListPath } from './liveState.mjs';
 
-const groupPath = '/groups?$select=id,displayName,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses';
+const groupPath = '/groups?$select=id,displayName,description,mailNickname,groupTypes,securityEnabled,mailEnabled,membershipRule,membershipRuleProcessingState,onPremisesSyncEnabled,isAssignableToRole,visibility,createdDateTime,assignedLicenses';
 const deletedGroupPath = deletedItemListPath('group');
 const roleAssignmentPath = '/roleManagement/directory/roleAssignments';
 

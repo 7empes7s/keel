@@ -4,6 +4,20 @@
 const GRAPH = { 'v1.0': 'https://graph.microsoft.com/v1.0', beta: 'https://graph.microsoft.com/beta' };
 const GRAPH_HOSTS = new Set(['graph.microsoft.com']);
 export const RETRY_AFTER_FALLBACK_SECONDS = 60;
+// Every Graph request carries Accept-Language. Measured live (Q43 step 45,
+// 2026-10-12): the PIM role-settings read-back (unifiedRoleManagementPolicy)
+// 400s with CultureNotFoundException under an app token when the header is
+// absent, so a correct write was recorded as unverified. The collector's
+// GraphReader (tools/tenant-probe/graph.mjs) sends the same default for the
+// same reason. A caller's own Accept-Language (company branding: a specific
+// language, or `0` for the default branding) always wins.
+export const DEFAULT_ACCEPT_LANGUAGE = 'en-US';
+
+function withAcceptLanguage(headers) {
+  return headerValue(headers, 'accept-language') === undefined
+    ? { 'Accept-Language': DEFAULT_ACCEPT_LANGUAGE, ...headers }
+    : { ...headers };
+}
 
 function isGraphUrl(url) {
   try { return GRAPH_HOSTS.has(new URL(url).host); } catch { return false; }
@@ -55,7 +69,7 @@ export class GraphWriter {
     if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
     const res = await fetch(url, {
       method,
-      headers: { ...headers, Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const responseBody = await res.json().catch(() => null);
@@ -68,7 +82,7 @@ export class GraphWriter {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) throw new Error(`refused read from non-Graph host: ${url}`);
     const res = await fetch(url, {
-      headers: { ...headers, Authorization: `Bearer ${await this.getAccessToken()}` },
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}` },
     });
     const body = await res.json().catch(() => null);
     const result = { ok: res.ok, status: res.status, body };
@@ -87,7 +101,7 @@ export class GraphWriter {
     if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: requests.map((r) => ({ id: r.id, method: r.method, url: r.url, body: r.body })) }),
     });
     const body = await res.json().catch(() => null);
@@ -128,7 +142,7 @@ export class GraphWriter {
     const url = this.url('beta', '/identity/conditionalAccess/evaluate');
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ signInIdentity, signInContext, signInConditions, appliedPoliciesOnly }),
     });
     const body = await res.json();

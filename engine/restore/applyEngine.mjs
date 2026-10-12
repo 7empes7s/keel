@@ -2,7 +2,7 @@ import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
-import { immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { createBodyProjection, immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
@@ -896,7 +896,12 @@ export async function applyWave(writer, governor, wave, {
     // Roadmap task-108: a policy-governed create sends only its record's
     // writable fields; unknown fields are never sent and are reported.
     const policyCreate = isPolicyGoverned(resource.resourceType) ? policyCreateBody(resource.resourceType, payload) : null;
-    const createBody = policyCreate ? policyCreate.body : createExcluded ? withoutFields(payload, createExcluded) : payload;
+    // Every other create drops what the server owns (id, timestamps, @odata
+    // annotations, a group's securityIdentifier/assignedLicenses/onPremises*):
+    // the raw snapshot payload is never posted, Graph refuses it with 400.
+    // The same body is what verification below compares against.
+    const createBody = policyCreate ? policyCreate.body
+      : withoutFields(createBodyProjection(payload, resource.resourceType), createExcluded ?? []);
     const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: createBody }));
     if (!writeResult.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
@@ -905,6 +910,20 @@ export async function applyWave(writer, governor, wave, {
     }
 
     const targetId = writeResult.body.id;
+    // Roadmap task-150: assignedLicenses is server-owned and left out of the
+    // body above; a created group's own licences are restored add-only through
+    // assignLicense, the same path an updated group uses.
+    if (resource.resourceType === 'group') {
+      const licenceFailure = await restoreLicences(writer, {
+        collection: 'groups', resourceType: 'group', targetId, desired: payload, live: null,
+        readPath: groupLicenceReadPath(targetId), retryOperation,
+      });
+      if (licenceFailure) {
+        await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: `created; licences ${licenceFailure.error}` });
+        failed.push({ naturalKey: resource.naturalKey, ...licenceFailure });
+        continue;
+      }
+    }
     const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound, { retryOperation });
     if (reRead?.ok === false) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: 'created object could not be re-read' });

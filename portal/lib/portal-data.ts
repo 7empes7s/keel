@@ -32,6 +32,7 @@ import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import { getLiveRecords } from "@/lib/live-records";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
@@ -53,6 +54,7 @@ import type {
   DashboardData,
   DeclaredEndpoint,
   DiagnosisState,
+  LiveRecordStatus,
   ChangeAttribution,
   ChangeEvidence,
   DriftData,
@@ -162,6 +164,32 @@ function normalizeOperationCapability(raw: UnknownRecord): WriteOperationCapabil
     projection: PROJECTION_STATES.includes(raw.projection as typeof PROJECTION_STATES[number])
       ? (raw.projection as WriteOperationCapability["projection"])
       : "unreviewed",
+    liveRecord: normalizeLiveRecord(raw.liveRecord),
+  };
+}
+
+// Gap P2: a checked live record, without its raw failures (they can name tenant references).
+function normalizeLiveRecord(raw: unknown): LiveRecordStatus | null {
+  const record = raw as UnknownRecord | null;
+  if (!record || typeof record.live !== "boolean") return null;
+  return {
+    live: record.live,
+    observedAt: iso(record.observedAt),
+    expiresAt: iso(record.expiresAt),
+    reason: typeof record.reason === "string" ? record.reason : null,
+  };
+}
+
+function normalizeLiveEvidence(raw: unknown): CoverageData["liveEvidence"] {
+  const record = raw as UnknownRecord | null;
+  if (!record) return null;
+  const workloads = Array.isArray(record.workloads) ? (record.workloads as UnknownRecord[]) : [];
+  return {
+    keyConfigured: record.keyConfigured === true,
+    workloads: workloads.flatMap((workload) => {
+      const status = normalizeLiveRecord(workload);
+      return status && typeof workload.label === "string" ? [{ ...status, label: workload.label }] : [];
+    }),
   };
 }
 
@@ -355,12 +383,23 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
   };
 }
 
+// Gap P2: an unreadable evidence directory never takes the coverage report down; the
+// report then carries no live records and every claim stays as the registry has it.
+function liveRecordsOrNull(ref: string) {
+  try {
+    return getLiveRecords(ref);
+  } catch {
+    return null;
+  }
+}
+
 async function rawCoverageReport(client: KeelClient, ref: string): Promise<UnknownRecord> {
   return (await buildCoverageReport(client, {
     tenantRef: ref,
     catalog: CATALOG,
     descriptors: DESCRIPTORS,
     now: new Date(),
+    liveRecords: liveRecordsOrNull(ref),
   })) as UnknownRecord;
 }
 
@@ -388,6 +427,7 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
       total: types.length,
     },
     types,
+    liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
   };
 }
 

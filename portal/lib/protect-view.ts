@@ -97,9 +97,23 @@ const OPERATION_WORDS: Record<string, string> = {
   "restore-soft-deleted": "bring back from deleted items",
 };
 
+function liveDate(value: string | null): string {
+  return value ? formatTimestamp(value).replace(/,? \d{2}:\d{2} UTC$/, "") : "";
+}
+
 function proofWords(capability: WriteOperationCapability): string {
-  if (capability.claim === "live-qualified") return "proven on this tenant";
-  if (capability.claim === "fixture-tested") return "tested, not yet proven on this tenant";
+  const record = capability.liveRecord ?? null;
+  if (capability.claim === "live-qualified") {
+    return record?.live && record.observedAt
+      ? `proven on this tenant by a live run on ${liveDate(record.observedAt)}, valid until ${liveDate(record.expiresAt)}`
+      : "proven on this tenant";
+  }
+  if (capability.claim === "fixture-tested") {
+    // Gap P2: a committed live record that does not count says why.
+    return record && !record.live && record.reason
+      ? `tested, not yet proven on this tenant (a live run was recorded but does not count: ${record.reason})`
+      : "tested, not yet proven on this tenant";
+  }
   if (capability.claim === "declared") return "declared, not yet tested";
   if (capability.claim === "unsupported") return "not supported";
   return "unknown";
@@ -111,6 +125,13 @@ export function restoreOperations(item: CoverageType): string[] {
   return Object.entries(item.writeCapability.operations)
     .filter(([, capability]) => capability.claim !== "unsupported")
     .map(([operation, capability]) => `Can ${OPERATION_WORDS[operation] ?? operation.replaceAll("-", " ")}: ${proofWords(capability)}.`);
+}
+
+/** Gap P2: one line per committed workload live record, saying whether it counts here and why not. */
+export function workloadLiveLines(data: CoverageData): string[] {
+  return (data.liveEvidence?.workloads ?? []).map((record) => record.live
+    ? `${record.label}: proven on this tenant by a live run on ${liveDate(record.observedAt)}, valid until ${liveDate(record.expiresAt)}.`
+    : `${record.label}: not proven on this tenant. A live run was recorded but does not count: ${record.reason ?? "it did not pass its checks"}.`);
 }
 
 /** The recovery decision and whether references are rewritten when an ID changes. */

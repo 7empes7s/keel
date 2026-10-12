@@ -22,6 +22,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   ENTRA_DEMOTION_KIND, ENTRA_LIVE_GATE, ENTRA_LIVE_KIND, TEST_TENANT_REFS, verifiedOutcome, verifyRunner,
@@ -30,7 +31,7 @@ import { evidenceStem, registeredOperations } from '../qualification/live-gate-p
 import { DEFAULT_MAX_AGE_HOURS, verifyEvidence } from './qualification.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
-const QUALIFICATIONS_DIR = new URL('../../docs/release/qualifications/', import.meta.url).pathname;
+const QUALIFICATIONS_DIR = join(fileURLToPath(import.meta.url), '..', '..', '..', 'docs', 'release', 'qualifications');
 
 /**
  * The externally qualified gates the release consumes. A gate that is not

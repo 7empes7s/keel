@@ -189,7 +189,7 @@ The record is valid for 30 days, only for the build and tenant it names.
 Steps: [exchange-live-acceptance.md › Operator steps](exchange-live-acceptance.md#operator-steps).
 It runs only after the 120 and 121 records verify at the same build. It changes the fixture
 mailbox's `timeZone` and `PopEnabled` and puts them back, extends its deleted-item retention
-by one day (never shortens it), never sends `Set-OrganizationConfig`, and never reads mail
+by one day (never shortens it), sends `Set-OrganizationConfig` only with `--include-organization-config` (one setting, `MailTipsLargeAudienceThreshold`, up by one and back), and never reads mail
 content. The PowerShell image must be rebuilt first: task-105 added `run-cmdlet.ps1` to it.
 
 **Decisions needed before capture** (full list in the doc's "Open operator decisions"):

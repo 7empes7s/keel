@@ -33,7 +33,7 @@ import { captureSharePointAcceptance, ledgerEvidenceFromAcceptance, writeAccepta
 import { TEAMS_LIVE_GATE, teamsRequiredDocumentation, teamsRequiredGrants } from '../../tools/qualification/teamsAcceptance.mjs';
 import { captureTeamsAcceptance, ledgerEvidenceFromTeamsAcceptance, writeTeamsAcceptanceFiles } from '../../tools/qualification/teamsLive.mjs';
 import {
-  EXCHANGE_LIVE_EXCLUDED_WRITES, EXCHANGE_LIVE_GATE, EXCHANGE_LIVE_READS, EXCHANGE_LIVE_WRITES, exchangeRequiredDocumentation, exchangeRequiredGrants,
+  EXCHANGE_LIVE_GATE, EXCHANGE_LIVE_ORGANIZATION_WRITE, EXCHANGE_LIVE_READS, EXCHANGE_LIVE_WRITES, exchangeRequiredDocumentation, exchangeRequiredGrants,
 } from '../../tools/qualification/exchangeAcceptance.mjs';
 import {
   captureExchangeAcceptance, ledgerEvidenceFromExchangeAcceptance, main as exchangeMain, writeExchangeAcceptanceFiles,
@@ -163,6 +163,7 @@ const ALLOWLIST = containerAllowlist();
 function exchangeFake({
   retainFor = '14.00:00:00', orgTenant = TENANT, recipientType = 'UserMailbox', probeExists = false, ignoreSettingsWrites = false,
   ignoreCasWrites = false, failCasRevert = false, ignoreRetentionWrites = false, timeZone = 'UTC',
+  threshold = 25, ignoreOrganizationWrites = false, failOrganizationRevert = false,
 } = {}) {
   const mailbox = {
     settings: {
@@ -178,7 +179,7 @@ function exchangeFake({
   };
   const organization = {
     FocusedInboxOn: true, MailTipsAllTipsEnabled: true, MailTipsExternalRecipientsTipsEnabled: false, MailTipsGroupMetricsEnabled: true,
-    MailTipsLargeAudienceThreshold: 25, OAuth2ClientProfileEnabled: true, SmtpActionableMessagesEnabled: true, ConnectorsEnabled: true,
+    MailTipsLargeAudienceThreshold: threshold, OAuth2ClientProfileEnabled: true, SmtpActionableMessagesEnabled: true, ConnectorsEnabled: true,
     ExternalDirectoryOrganizationId: orgTenant,
   };
   const calls = [];
@@ -186,6 +187,7 @@ function exchangeFake({
   const jobs = [];
   let throttled = false;
   let casSets = 0;
+  let organizationSets = 0;
   const envelope = (body, exitCode = 0) => ({ stdout: JSON.stringify(body), exitCode });
 
   async function transport(url, init) {
@@ -214,6 +216,12 @@ function exchangeFake({
     calls.push({ cmdlet: job.cmdlet, args, config: job.tenantConfigPath ?? null });
     const values = Object.fromEntries(args);
     if (job.cmdlet === 'Get-OrganizationConfig') return envelope({ ok: true, output: [{ Identity: 'contoso.onmicrosoft.com', ...organization }] });
+    if (job.cmdlet === 'Set-OrganizationConfig') {
+      organizationSets += 1;
+      if (failOrganizationRevert && organizationSets === 2) return envelope({ ok: false, error: { message: 'The server is busy.', category: 'ResourceUnavailable', errorId: 'ServerBusy' } }, 1);
+      if (!ignoreOrganizationWrites) Object.assign(organization, values);
+      return envelope({ ok: true, output: [] });
+    }
     if (values.Identity !== MAILBOX && !(probeExists && values.Identity === PROBE)) {
       return envelope({ ok: false, error: { message: `The operation couldn't be performed because object '${values.Identity}' couldn't be found.`, category: 'NotSpecified', errorId: 'ManagementObjectNotFoundException' } }, 1);
     }
@@ -227,7 +235,6 @@ function exchangeFake({
       if (!ignoreCasWrites) Object.assign(mailbox.cas, changes);
     }
     if (job.cmdlet === 'Set-Mailbox' && !ignoreRetentionWrites) Object.assign(mailbox.retention, changes);
-    if (job.cmdlet === 'Set-OrganizationConfig') Object.assign(organization, changes);
     return envelope({ ok: true, output: [] });
   }
 
@@ -260,13 +267,13 @@ function exchangeFake({
   };
 }
 
-const exchangeDocumentation = () => exchangeRequiredDocumentation().map((url) => ({ url, retrievedAt: '2026-10-02T12:00:00Z' }));
+const exchangeDocumentation = (organization = false) => exchangeRequiredDocumentation({ organization }).map((url) => ({ url, retrievedAt: '2026-10-02T12:00:00Z' }));
 
 async function capture(fake = exchangeFake(), overrides = {}) {
   return captureExchangeAcceptance({
     collector: fake.collector, restorer: fake.restorer, directoryTenantId: TENANT, fixtureMailbox: MAILBOX, probeIdentity: PROBE,
     tenantRef, build, moduleVersion: MODULE_VERSION, credentials: { collector: 'app:keel-exo-collector', restorer: 'app:keel-exo-restorer' },
-    grants: exchangeRequiredGrants(), teamsQualification: teamsReference, documentation: exchangeDocumentation(),
+    grants: exchangeRequiredGrants(), teamsQualification: teamsReference, documentation: exchangeDocumentation(overrides.includeOrganization === true),
     now: fixedClock, sleep: noSleep, readBackDelayMs: 0, ...overrides,
   });
 }
@@ -521,8 +528,9 @@ test('fixture evidence is never elevated to live-qualified, and only a verified 
     assert.equal(state.enabled, true, `${id}: ${state.reasons.join('; ')}`);
     assert.match(state.proof.live.proofRef, /^exchange-live-acceptance@/);
   }
-  // The organization-wide write is not part of the capture and stays disabled.
-  for (const id of EXCHANGE_LIVE_EXCLUDED_WRITES) assert.equal(writeState(id, ledger, writes).enabled, false, id);
+  // The organization-wide write is opt-in: a record without its capture leaves it disabled.
+  assert.equal(writeState(EXCHANGE_LIVE_ORGANIZATION_WRITE, ledger, writes).enabled, false);
+  assert.ok(!exchange.writes.some((item) => item.operationId === EXCHANGE_LIVE_ORGANIZATION_WRITE));
   // Unknown restorer RBAC still blocks the writes; another module version invalidates the cmdlet captures.
   assert.equal(writeState('exchange.mailbox-retention.update', ledger, writes, null).enabled, false);
   assert.equal(workloadWriteQualification('exchange.client-access.update', {
@@ -552,7 +560,9 @@ test('a content call, another mailbox, a collector write, an organization-wide w
     [cmd('restorer', 'Set-CASMailbox', { Identity: OTHER_MAILBOX, PopEnabled: true }), /other than the keel-rt fixture/],
     [cmd('restorer', 'Set-CASMailbox', { Identity: MAILBOX, PopEnabled: true }), /exactly 2 exchange.client-access.update/],
     [cmd('restorer', 'Set-CASMailbox', { Identity: MAILBOX, OWAEnabled: false }), /changes more than the PopEnabled switch/],
-    [cmd('restorer', 'Set-OrganizationConfig', { FocusedInboxOn: false }), /organization-wide write is not part of this capture/],
+    [cmd('restorer', 'Set-OrganizationConfig', { FocusedInboxOn: false }), /content call or undeclared cmdlet: Set-OrganizationConfig does not take FocusedInboxOn/],
+    [cmd('restorer', 'Set-OrganizationConfig', { MailTipsLargeAudienceThreshold: 26 }), /expected exactly 0 exchange.organization-config.update write\(s\), found 1/],
+    [cmd('collector', 'Set-OrganizationConfig', { MailTipsLargeAudienceThreshold: 26 }), /not an allowed write \(only the restorer writes the organization\)/],
     [cmd('restorer', 'Set-Mailbox', { Identity: MAILBOX, LitigationHoldEnabled: false }), /never releases or changes a hold/],
     [cmd('restorer', 'Set-Mailbox', { Identity: MAILBOX, SingleItemRecoveryEnabled: false }), /never releases or changes a hold/],
     [cmd('restorer', 'Set-Mailbox', { Identity: MAILBOX, RetainDeletedItemsFor: '7.00:00:00' }), /shortens or does not extend deleted item retention/],
@@ -571,7 +581,7 @@ test('a content call, another mailbox, a collector write, an organization-wide w
     [(e) => { e.subject.writes.retention.writeMode = 'reversible-change'; return e; }, /extend-only write/],
     [(e) => { e.subject.writes.retention.finalComplianceHoldsFingerprint = '0'.repeat(64); return e; }, /holds Purview owns changed/],
     [(e) => { e.subject.writes.clientAccess.finalFingerprint = '0'.repeat(64); return e; }, /final configuration does not match/],
-    [(e) => { e.subject.writes.organization = { operationId: 'exchange.organization-config.update' }; return e; }, /not part of this capture/],
+    [(e) => { e.subject.writes.organization = { operationId: 'exchange.organization-config.update' }; return e; }, /expected exactly 2 exchange.organization-config.update write\(s\), found 0/],
   ]) {
     assert.match(verifyIn(resign(evidence, change)).failures.join('\n'), pattern);
   }
@@ -686,4 +696,101 @@ test('when Exchange reports an empty organization tenant id, the collector token
   // A record whose tenant source was tampered with fails, even when re-signed.
   const tampered = resign(proven.evidence, (e) => { e.subject.organization.tenantIdSource = 'operator-said-so'; return e; });
   assert.match(verifyIn(tampered).failures.join('\n'), /organization's tenant has no recognized source/);
+});
+
+test('gap W7: the opt-in organization capture moves only the large-audience threshold up by one, puts it back, and qualifies only that write', async () => {
+  const fake = exchangeFake();
+  const { evidence, outPath, record, needsManualRevert } = await capturedFiles(fake, { includeOrganization: true });
+  assert.deepEqual(verifyEvidenceFile(outPath, options()), { ok: true, failures: [] });
+  assert.equal(needsManualRevert, false);
+  // Exactly two organization writes, by the restorer, each with that one parameter: up by one, then back.
+  const sets = fake.calls.filter((call) => call.cmdlet === 'Set-OrganizationConfig');
+  assert.deepEqual(sets.map((call) => call.args), [[['MailTipsLargeAudienceThreshold', 26]], [['MailTipsLargeAudienceThreshold', 25]]]);
+  assert.ok(sets.every((call) => call.config === '/etc/keel/exchange-restorer.json'));
+  assert.ok(fake.calls.filter((call) => call.cmdlet === 'Get-OrganizationConfig').every((call) => call.config === '/etc/keel/exchange-collector.json'));
+  // Post-state: the organization is exactly where it started.
+  assert.deepEqual(fake.organization, {
+    FocusedInboxOn: true, MailTipsAllTipsEnabled: true, MailTipsExternalRecipientsTipsEnabled: false, MailTipsGroupMetricsEnabled: true,
+    MailTipsLargeAudienceThreshold: 25, OAuth2ClientProfileEnabled: true, SmtpActionableMessagesEnabled: true, ConnectorsEnabled: true,
+    ExternalDirectoryOrganizationId: TENANT,
+  });
+  const organization = record.subject.writes.organization;
+  assert.deepEqual([organization.original, organization.target, organization.final, organization.readBackVerified, organization.restoredToOriginal], [25, 26, 25, true, true]);
+  assert.equal(organization.preFingerprint, organization.finalFingerprint);
+
+  // The verified record enables the organization write, beside the three mailbox writes.
+  const seam = { tenantRef, build, now: verifyNow, hmacKey: KEY, evidenceDir: dir };
+  const sharePoint = ledgerEvidenceFromAcceptance(sharePointEvidence, seam);
+  const teams = ledgerEvidenceFromTeamsAcceptance(teamsEvidence, seam);
+  const exchange = ledgerEvidenceFromExchangeAcceptance(evidence, seam);
+  assert.equal(exchange.ok, true, exchange.failures.join('; '));
+  const grants = {
+    permissions: [...sharePoint.grants.permissions, ...teams.grants.permissions, ...exchange.grants.permissions],
+    roles: [...sharePoint.grants.roles, ...teams.grants.roles, ...exchange.grants.roles],
+  };
+  const ledger = buildWorkloadLedger({ evidence: [...sharePoint.reads, ...teams.reads, ...exchange.reads], grants, runtime: exchange.runtime, tenantRef, now: verifyNow });
+  const writes = [...sharePoint.writes, ...teams.writes, ...exchange.writes];
+  for (const id of [...EXCHANGE_LIVE_WRITES, EXCHANGE_LIVE_ORGANIZATION_WRITE]) {
+    const state = workloadWriteQualification(id, { readLedger: ledger, evidence: writes, tenantRef, now: verifyNow, runtime: exchange.runtime, grants: exchange.restorerGrants });
+    assert.equal(state.enabled, true, `${id}: ${state.reasons.join('; ')}`);
+  }
+
+  // A dishonest record fails, even when re-signed by the trusted runner.
+  const orgDoc = 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-organizationconfig';
+  const firstOrgSet = (e) => e.subject.requests.find((r) => r.cmdlet === 'Set-OrganizationConfig');
+  for (const [change, pattern] of [
+    [(e) => { e.subject.writes.organization.target = 27; return e; }, /up by exactly one/],
+    [(e) => { e.subject.writes.organization.final = 26; return e; }, /did not read back at its starting value/],
+    [(e) => { e.subject.writes.organization.restoredToOriginal = false; return e; }, /exchange.organization-config.update: the setting was not put back/],
+    [(e) => { e.subject.writes.organization.finalFingerprint = '0'.repeat(64); return e; }, /final configuration does not match/],
+    [(e) => { e.subject.writes.organization.property = 'FocusedInboxOn'; return e; }, /not the qualified MailTipsLargeAudienceThreshold change/],
+    [(e) => { e.subject.writes.organization.readBackVerified = false; return e; }, /exchange.organization-config.update: the change was not read back/],
+    [(e) => { e.subject.writes.extra = { ...e.subject.writes.organization }; return e; }, /recorded only under writes.organization/],
+    [(e) => { e.subject.documentation = e.subject.documentation.filter((item) => item.url !== orgDoc); return e; }, /documentation not retrieved: .*set-organizationconfig/],
+    [(e) => { e.subject.requests.push({ credential: 'restorer', transport: 'powershell-cmdlet-job', cmdlet: 'Set-OrganizationConfig', parameters: { MailTipsLargeAudienceThreshold: 26 }, outcome: 'ok' }); return e; }, /expected exactly 2 exchange.organization-config.update write\(s\), found 3/],
+    [(e) => { firstOrgSet(e).parameters = { MailTipsLargeAudienceThreshold: '26' }; return e; }, /is not a whole number/],
+    [(e) => { firstOrgSet(e).parameters = {}; return e; }, /changes more than MailTipsLargeAudienceThreshold/],
+    [(e) => {
+      const [up, back] = e.subject.requests.filter((r) => r.cmdlet === 'Set-OrganizationConfig');
+      [up.parameters, back.parameters] = [back.parameters, up.parameters];
+      return e;
+    }, /logged MailTipsLargeAudienceThreshold writes are not the recorded change and put-back/],
+  ]) {
+    assert.match(verifyIn(resign(evidence, change)).failures.join('\n'), pattern);
+  }
+
+  // The offline plan names the step only when asked for it.
+  const lines = [];
+  assert.equal(await exchangeMain(['plan', '--fixture-mailbox', MAILBOX, '--include-organization-config'], { out: (line) => lines.push(line) }), 0);
+  assert.match(lines[0], /"cmdlet": "Set-OrganizationConfig"/);
+  assert.match(lines[0], /MailTipsLargeAudienceThreshold/);
+  assert.doesNotMatch(lines[0], /FocusedInboxOn/);
+  assert.equal(await exchangeMain(['capture', '--fixture-mailbox', MAILBOX, '--include-organization-config'], { out: (line) => lines.push(line) }), 2);
+  assert.match(lines.at(-1), /large-audience mail tip threshold up by one and back/);
+
+  // A platform that ignores the write is not qualified, and the threshold never moved.
+  const ignored = exchangeFake({ ignoreOrganizationWrites: true });
+  const ignoredResult = await capturedFiles(ignored, { includeOrganization: true });
+  assert.match(verifyEvidenceFile(ignoredResult.outPath, options()).failures.join('\n'), /exchange.organization-config.update: the change was not read back/);
+  assert.equal(ignored.organization.MailTipsLargeAudienceThreshold, 25);
+
+  // A failed put-back is loud and never verifies.
+  const stuck = exchangeFake({ failOrganizationRevert: true });
+  const failed = await capturedFiles(stuck, { includeOrganization: true });
+  assert.equal(failed.needsManualRevert, true);
+  assert.match(failed.record.subject.writes.organization.error, /PUTTING THE SETTING BACK FAILED \(Set-OrganizationConfig: The server is busy.\): run Set-OrganizationConfig -MailTipsLargeAudienceThreshold 25 by hand/);
+  assert.equal(stuck.organization.MailTipsLargeAudienceThreshold, 26);
+  assert.equal(verifyEvidenceFile(failed.outPath, options()).ok, false);
+
+  // A threshold that is not a whole number is never written.
+  const odd = exchangeFake({ threshold: null });
+  const oddResult = await capture(odd, { includeOrganization: true });
+  assert.ok(!odd.calls.some((call) => call.cmdlet === 'Set-OrganizationConfig'));
+  assert.match(oddResult.record.subject.writes.organization.error, /not a whole number; nothing was written/);
+
+  // An unsafe state (another tenant) writes nothing, the organization included.
+  const foreign = exchangeFake({ orgTenant: OTHER_TENANT });
+  const foreignResult = await capture(foreign, { includeOrganization: true });
+  assert.deepEqual(foreign.writes(), []);
+  assert.match(foreignResult.record.subject.writes.organization.error, /another tenant/);
 });

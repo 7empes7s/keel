@@ -17,12 +17,19 @@ import { resolveRowReferences } from './references.mjs';
 import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
 import { capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
+import { findPrincipalById } from '../authz/principals.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
 export const APPROVAL_STATUSES = Object.freeze([
   'pending', 'approved', 'rejected', 'expired',
 ]);
+// Gap B11: who carries out an approved request. 'worker' (the default, and every
+// request made before B11): approval mints the job and the worker runs it. 'cli': an
+// operator runs it with the CLI (`keel-restore --artifact <id> --enforce`), so approval
+// mints no job — a second, worker-run copy of the same restore would be wrong. Only a
+// restore may be CLI-executed.
+export const APPROVAL_EXECUTORS = Object.freeze(['worker', 'cli']);
 export const DEFAULT_APPROVAL_LIST_LIMIT = 100;
 export const MAX_APPROVAL_LIST_LIMIT = 100;
 
@@ -35,6 +42,11 @@ export class ApprovalClosedError extends Error {}
 export class ApprovalExpiredError extends Error {}
 export class ApprovalReasonRequiredError extends Error {}
 export class SelfApprovalError extends Error {}
+// Gap B11: the requester does not resolve to an enabled principal (for example a CLI
+// artifact's `unknown`), or the executor is not one this action allows. Nothing is
+// created: a request whose job could never pass the worker's requester check is
+// refused when it is made, not after it is approved.
+export class ApprovalRequestRefusedError extends Error {}
 // Plan task 8: a restore approval references a completed dry-run artifact rather than
 // repeating mutable restore parameters. Promotion fails closed — this error, never a
 // silent mint — if that artifact is absent, incomplete, refused, or failed.
@@ -100,7 +112,7 @@ export async function listApprovalRequests(client, {
 } = {}) {
   const scope = approvalInboxPredicate(approverScope, { nextParam: 3 });
   const { rows } = await client.query(
-    `SELECT id, action, params, requested_by, justification, status,
+    `SELECT id, action, params, requested_by, justification, status, executor,
             decided_by, decided_at, reason, created_at, expires_at, entity_scope, route,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
@@ -122,19 +134,32 @@ export async function listApprovalRequests(client, {
 // Task 90: `entityScope` is entityScope.mjs#captureApprovalScope's server-side capture
 // of the resources this request concerns. Omitted, the request is central-only.
 /** @param {any} client
- * @param {{ tenantRef: string, action: string, params?: any, requestedBy: string, justification?: string | null, ttlMs?: number, entityScope?: any }} options
+ * @param {{ tenantRef: string, action: string, params?: any, requestedBy: string, justification?: string | null, ttlMs?: number, entityScope?: any, executor?: 'worker' | 'cli' }} options
  */
 export async function requestApproval(client, {
   tenantRef, action, params, requestedBy, justification, ttlMs = DEFAULT_APPROVAL_TTL_MS, entityScope = null,
+  executor = 'worker',
 }) {
+  // Gap B11: checked before anything is written. The worker re-checks the requester
+  // again at execution; this only stops a request that could never run.
+  if (!APPROVAL_EXECUTORS.includes(executor)) {
+    throw new ApprovalRequestRefusedError(`executor must be one of ${APPROVAL_EXECUTORS.join(', ')}`);
+  }
+  if (executor === 'cli' && action !== 'restore') {
+    throw new ApprovalRequestRefusedError('only a restore can be carried out with the CLI');
+  }
+  const requester = await findPrincipalById(client, requestedBy);
+  if (!requester || requester.disabled_at) {
+    throw new ApprovalRequestRefusedError(`requester does not resolve to an enabled principal: ${requestedBy}`);
+  }
   // Task 91: where the request goes, from current ownership at request time. Advisory
   // for the inbox and the evidence; eligibility is still decided afresh at decision time.
   const route = await routeApproval(client, { tenantRef, entityScope, requesterId: requestedBy });
   const { rows } = await client.query(
-    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope, route)
-     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6, $7)
+    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope, route, executor)
+     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6, $7, $8)
      RETURNING *`,
-    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope, route],
+    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope, route, executor],
   );
   const request = rows[0];
 
@@ -147,6 +172,7 @@ export async function requestApproval(client, {
       params: request.params,
       requestedBy,
       route,
+      executor,
     },
     actor: requestedBy,
   });
@@ -348,7 +374,10 @@ export async function approveRequest(client, {
 
     // The idempotency key pins the minted job to this request: even a retried or
     // duplicated approval can never mint a second job for the same request.
-    const job = await enqueue(client, {
+    // Gap B11: a CLI-executed request mints no job at all; the operator runs the
+    // approved artifact with the CLI. Everything above (expiry, self-approval,
+    // eligibility, the artifact check) still applies to it.
+    const job = request.executor === 'cli' ? null : await enqueue(client, {
       kind: request.action,
       params: jobParams,
       requestedBy: request.requested_by,
@@ -375,7 +404,8 @@ export async function approveRequest(client, {
       requestId: decided.request.id,
       action: decided.request.action,
       decision: 'approved',
-      jobId: decided.job.id,
+      executor: decided.request.executor,
+      jobId: decided.job?.id ?? null,
     },
     actor: decidedBy,
   });
@@ -442,6 +472,26 @@ export async function rejectRequest(client, {
     actor: decidedBy,
   });
   return rejected;
+}
+
+/**
+ * Gap B11: who carries out the restore that promotes this dry-run artifact. An
+ * artifact a worker job planned (the portal's dry run or undo plan) is carried out by
+ * the worker, as before; an artifact planned with the CLI is carried out with the CLI,
+ * so approving it mints no worker job. A promotion job (mode 'enforce', minted by an
+ * earlier approval) is not a dry run and never counts.
+ */
+export async function restoreExecutorForArtifact(client, { artifactId }) {
+  const { rows } = await client.query(
+    `SELECT 1 FROM job
+      WHERE kind = 'restore'
+        AND params->>'artifactId' = $1
+        AND NOT (params ? 'mode')
+        AND (params ? 'snapshotId' OR params ? 'compensates')
+      LIMIT 1`,
+    [artifactId],
+  );
+  return rows.length > 0 ? 'worker' : 'cli';
 }
 
 /**

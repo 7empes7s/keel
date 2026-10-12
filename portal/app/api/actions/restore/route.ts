@@ -13,7 +13,7 @@ import { approvalTtlMs } from "@/lib/runtime-config";
 // requestApproval is imported directly (rather than via guardedAction/guarded's own
 // requiresApproval shortcut) because this route must validate the referenced
 // artifact BEFORE any request is created — see the comment below.
-import { requestApproval } from "../../../../../engine/govern/approvals.mjs";
+import { requestApproval, restoreExecutorForArtifact } from "../../../../../engine/govern/approvals.mjs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -52,6 +52,10 @@ export const POST = guarded(
     const validation = validateArtifactForApproval(artifact);
     if (!validation.ok) throw new InvalidActionRequest(validation.reason);
 
+    // Gap B11: a dry run planned in the portal is carried out by the worker, as before;
+    // one planned with the CLI is carried out with the CLI, so approving it must not
+    // queue a second, worker-run restore.
+    const executor = await restoreExecutorForArtifact(client, { artifactId });
     const approvalRequest = (await requestApproval(client, {
       tenantRef,
       action: "restore",
@@ -59,6 +63,7 @@ export const POST = guarded(
       requestedBy: principalId,
       justification: typeof justification === "string" ? justification : null,
       ttlMs: approvalTtlMs(),
+      executor,
     })) as Record<string, unknown>;
 
     return Response.json(

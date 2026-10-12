@@ -69,6 +69,14 @@ is verified as granted to the KEEL Restorer.
   coverage, a removed address, an unknown value, or a lifetime that is not a
   positive number on either side is skipped with a `manual:` reason and
   nothing is sent.
+  Gap D3: a shorter lifetime on its own is also a retention-reducing content
+  effect. A promotion whose content effects carry the separate high-impact
+  approval (a second person) writes it. Without that approval it is skipped
+  with a completion item: the target lifetime and the portal path (Microsoft
+  Entra admin center > Groups > All groups > Expiration > Group lifetime (in
+  days)). A dry run reports the item as pending approval instead of refusing,
+  so it can still be promoted once approved. Wider coverage or a removed
+  address is never approvable.
 - **Device registration is never written.** These settings decide who may
   register and join devices, who becomes a local admin on joined devices, and
   whether joining needs MFA. A wrong write could block admins from joining

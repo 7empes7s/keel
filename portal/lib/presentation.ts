@@ -173,6 +173,7 @@ export const DISPLAY_ENUMS = {
     "policy-evaluate": "Policy run",
     notify: "Notification",
     "api-drift": "Microsoft API check",
+    "workload-collect": "Backup of SharePoint, Teams, Exchange and Purview settings",
   },
   jobStatus: {
     queued: "Waiting to start",

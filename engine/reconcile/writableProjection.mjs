@@ -33,6 +33,40 @@ function project(value, resourceType, path = '') {
 }
 
 /**
+ * The POST body for a create outside the policy-governed set: every path
+ * whose fieldClass() is serverOwned is dropped, recursively, so a raw
+ * collected snapshot (`id`, `createdDateTime`, `@odata.context`, a group's
+ * `securityIdentifier`/`assignedLicenses`/`onPremisesSyncEnabled`, ...) is
+ * never posted as-is; Graph refuses such a body with 400. Immutable and
+ * writable fields are both settable at create and stay. `@odata.type` is the
+ * derived-type discriminator Graph needs on a create (an ipNamedLocation, a
+ * countryNamedLocation) and is kept, as intuneOperations.mjs already does.
+ * Unlike createProjection() this never throws for an unreviewed type and
+ * never drops an 'unknown' field: it narrows nothing, it only removes what
+ * the server owns.
+ */
+export function createBodyProjection(payload, resourceType) {
+  fieldClass('', resourceType);
+  return withoutServerOwned(payload, resourceType, '');
+}
+
+function withoutServerOwned(value, resourceType, path) {
+  if (Array.isArray(value)) {
+    return value.map((item) => withoutServerOwned(item, resourceType, path));
+  }
+  if (value && typeof value === 'object') {
+    const projected = {};
+    for (const key of Object.keys(value)) {
+      const dottedPath = path ? `${path}.${key}` : key;
+      if (key !== '@odata.type' && fieldClass(dottedPath, resourceType) === 'serverOwned') continue;
+      projected[key] = withoutServerOwned(value[key], resourceType, dottedPath);
+    }
+    return projected;
+  }
+  return value;
+}
+
+/**
  * Top-level fields of `payload` that a reviewed type's known-field list does
  * not name — excluded from writableProjection's output above and surfaced
  * here so a caller can flag them for review instead of the field silently

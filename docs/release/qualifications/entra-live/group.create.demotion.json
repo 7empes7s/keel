@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "group",
+  "operation": "create",
+  "reason": "Live POST /groups returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, assignedLicenses, onPremisesSyncEnabled).",
+  "restoreRef": "b956de04-bd7c-83e8-a447-1bc29f0ed73c",
+  "decidedAt": "2026-10-11T11:34:41.581Z",
+  "builderSteps": [
+    "remove the create registration for group in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.group.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

@@ -39,15 +39,25 @@ export const LEDGER_CONTRACT_VERSION = 1;
 export const TYPE_DECISION_VALUES = Object.freeze(['automated', 'manual', 'unknown']);
 
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
-const automated = (resource, reason, { view = 'graph-rest-1.0' } = {}) => ({ decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason });
+const automated = (resource, reason, { view = 'graph-rest-1.0', liveFailures = null } = {}) => ({
+  decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason, ...(liveFailures ? { liveFailures: Object.freeze(liveFailures) } : {}),
+});
 const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra });
 const unknown = (extra = {}) => ({ decision: 'unknown', reason: 'not yet investigated for automated recovery', ...extra });
+// Issue #148: a registered write that failed its live run. `reason` quotes the
+// committed demotion record verbatim (tools/qualification/entraLive.mjs checks
+// that), `failedAt` is the day it was decided and `fix` names what is being
+// changed. The write stays fixture-tested; the ledger row shows the failure.
+const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
 
 /**
  * The explicit per-type decision. Reviewed by hand, never derived from
  * CATALOG paths, descriptor.remappable or a fixture result. `softRestoreCandidate`
  * marks types Graph can restore from deleted items. That is a candidate for
- * investigation, not a capability.
+ * investigation, not a capability. `liveFailures` (issue #148) records, per
+ * operation, a registered write whose live run on the test tenant failed and
+ * why; it never lowers the claim and is removed once a fresh capture promotes
+ * the operation.
  */
 export const TYPE_DECISIONS = Object.freeze({
   organization: manual('the tenant object itself; it is never recreated'),
@@ -55,12 +65,24 @@ export const TYPE_DECISIONS = Object.freeze({
   subscribedSku: manual('licences are purchased, not configured'),
   directorySettingTemplate: manual('Microsoft-published template catalogue'),
   // Issue #156: basic tenant settings.
-  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; logos, background images, favicon and custom stylesheet are binary uploads and are never written'),
+  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; logos, background images, favicon and custom stylesheet are binary uploads and are never written', {
+    liveFailures: {
+      update: failedLive('2026-10-10', 'live restore PATCH of the default company branding returned HTTP 400 (eef1019, test tenant); default branding existed only as an empty localization 0 created with fr-FR',
+        'fix the default branding PATCH body (400 on the test tenant); live gate #148 run 1, to be re-run after the fix'),
+    },
+  }),
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; images are never written, and adding or removing a language is by hand'),
   groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
-  group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
+  group: automated('group', 'create/update/delete/restore and member/owner edges are registered', {
+    liveFailures: {
+      create: failedLive('2026-10-11', 'Live POST /groups returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, assignedLicenses, onPremisesSyncEnabled).',
+        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
+      'restore-soft-deleted': failedLive('2026-10-11', 'restore from deleted items succeeded (group back, same id) but the follow-up update in the same restore got HTTP 404 from Graph replication lag right after the restore, so the outcome is recorded uncertain; a read-back retry on the follow-up update (like the 115 read-back fix) would likely make this pass',
+        'retry the follow-up update after a restore from deleted items; live gate #148 run 1, to be re-run after the fix'),
+    },
+  }),
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
@@ -74,12 +96,29 @@ export const TYPE_DECISIONS = Object.freeze({
   roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered'),
   roleEligibilitySchedule: automated('unifiedroleeligibilityschedule', 'task-151 subset: create through an adminAssign schedule request that keeps the snapshot end date; update and removal are not registered'),
   // Roadmap task-151: PIM role settings, their role bindings and active schedules.
-  unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
+  unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written', {
+    liveFailures: {
+      update: failedLive('2026-10-11', 'Write outcome "uncertain": KEEL could not re-read the PIM policy after the PATCH (direct GET of the policy or rule returns HTTP 400 CultureNotFoundException for these app tokens). A later collection shows the rule did change (MFA on activation back on), so the write works but its read-back path does not.',
+        'send an Accept-Language header on the PIM read-back; live gate #148 run 1, to be re-run after the fix'),
+    },
+  }),
   unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
   roleAssignmentSchedule: unknown(),
-  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
+  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate', {
+    liveFailures: {
+      create: failedLive('2026-10-12', 'Graph returned 400: the create body carries server-managed read-only fields (id, createdDateTime, modifiedDateTime, deletedDateTime, @odata.context) from the snapshot; the same body without them is accepted (201)',
+        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
+    },
+  }),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
-  namedLocation: automated('namedlocation', 'create/update/delete are registered'),
+  namedLocation: automated('namedlocation', 'create/update/delete are registered', {
+    liveFailures: {
+      create: failedLive('2026-10-11', 'Live POST /identity/conditionalAccess/namedLocations returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime).',
+        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
+      update: failedLive('2026-10-11', 'Live PATCH of the named location returned HTTP 400. The update body is the collected snapshot shape, which includes read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime); same cause as namedLocation create.',
+        'strip server-managed read-only fields from update bodies; live gate #148 run 1, to be re-run after the fix'),
+    },
+  }),
   authenticationContextClassReference: unknown(),
   authenticationMethodsPolicy: automated('authenticationmethodspolicy', 'task-149: update of the policy and its method configurations, only behind the break-glass lockout gate'),
   identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate'),
@@ -188,6 +227,13 @@ function sourceFor(type, decision) {
   });
 }
 
+/** The row's live evidence: a qualified record, a recorded live failure (issue #148), or nothing. */
+function liveFor(capability, failure) {
+  if (capability.claim === 'live-qualified') return { result: 'qualified', proofRef: capability.proofRef };
+  if (failure) return { result: 'failed', proofRef: null, failedAt: failure.failedAt, reason: failure.reason, fix: failure.fix ?? null };
+  return { result: 'none', proofRef: null };
+}
+
 function rowFor(resourceType, operation, { capabilityKey = resourceType, decision }) {
   const capability = capabilityFor(capabilityKey, operation);
   const supported = isSupportedClaim(capability.claim);
@@ -207,7 +253,7 @@ function rowFor(resourceType, operation, { capabilityKey = resourceType, decisio
     fixture: capability.claim === 'fixture-tested' || capability.claim === 'live-qualified'
       ? { result: 'passed', proofRef: capability.claim === 'fixture-tested' ? capability.proofRef : null }
       : { result: 'none', proofRef: null },
-    live: capability.claim === 'live-qualified' ? { result: 'qualified', proofRef: capability.proofRef } : { result: 'none', proofRef: null },
+    live: liveFor(capability, decision.liveFailures?.[operation]),
     softRestoreCandidate: operation === 'restore-soft-deleted' && decision.softRestoreCandidate === true && !supported,
   });
 }
@@ -236,6 +282,16 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
       }
     } else if (operations.some((row) => row.decision === 'supported')) {
       throw new Error(`${type} has a registered write capability but is marked ${decision.decision}`);
+    }
+    // A live failure can only be recorded against a registered write; a note
+    // left behind after a registration is removed would describe nothing.
+    for (const [operation, failure] of Object.entries(decision.liveFailures ?? {})) {
+      if (!operations.some((row) => row.operation === operation && row.decision === 'supported')) {
+        throw new Error(`${type}: liveFailures.${operation} names an operation that is not a registered write`);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(failure?.failedAt ?? '') || typeof failure.reason !== 'string' || failure.reason.length === 0) {
+        throw new Error(`${type}: liveFailures.${operation} needs a failedAt date and a reason`);
+      }
     }
     return Object.freeze({
       resourceType: type,

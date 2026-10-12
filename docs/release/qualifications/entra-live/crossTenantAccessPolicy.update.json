@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "crossTenantAccessPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-10T21:21:34.956Z",
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "naturalKey": "crossTenantAccessPolicy:CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "3c1b7e3f76dbe3a686ba2cefc71067267db518bb18730cef56209db32f0e4cee",
+  "proofRef": "docs/release/qualifications/entra-live/crossTenantAccessPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "a3e5547be3009997507d339b1e3c82981b69e8fd7b11f27eebe969dcebb15ee8"
+    }
+  }
+}

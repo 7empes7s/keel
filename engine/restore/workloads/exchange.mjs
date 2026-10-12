@@ -256,10 +256,10 @@ export async function readLiveExchange({ transport, powershell, mailbox, include
 }
 
 /** Persists the plan as an immutable dry-run artifact. */
-export async function createExchangeRestoreArtifact(client, { tenantRef, plan, requestedBy }) {
+export async function createExchangeRestoreArtifact(client, { tenantRef, plan, requestedBy, id = randomUUID() }) {
   const keys = [`exchange:${mailboxKey(plan.mailbox)}`, ...plan.operations.map((op) => op.naturalKey)];
   return createDryRunArtifact(client, {
-    id: randomUUID(),
+    id,
     tenantRef,
     snapshotId: null,
     selection: [`exchange:${mailboxKey(plan.mailbox)}`, ...(plan.includeOrganization ? ['exchange:organization'] : [])],

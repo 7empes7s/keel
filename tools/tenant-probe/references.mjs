@@ -122,6 +122,11 @@ const CHILD_IDENTITY_FIELDS = [
   /^(appRoles|oauth2PermissionScopes|oauth2Permissions)\.id$/,
   /^api\.oauth2PermissionScopes\.id$/,
   /^(passwordCredentials|keyCredentials)\.(keyId|customKeyIdentifier)$/,
+  // Issue #155: an Intune compliance policy's actions for noncompliance (a rule
+  // and its scheduled action configurations) carry ids the service assigns anew
+  // on every create. They are the policy's own, never a pointer at another object.
+  /^scheduledActionsForRule\.id$/,
+  /^scheduledActionsForRule\.scheduledActionConfigurations\.id$/,
 ];
 
 /**

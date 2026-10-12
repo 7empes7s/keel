@@ -29,7 +29,10 @@ import { OPERATIONS, capabilityFor, isSupportedClaim } from '../coverage/capabil
 import { TYPE_DECISIONS, buildExpansionInventory, expansionFor, qualificationFor } from '../coverage/qualification.mjs';
 import { buildLiveIndex } from '../reconcile/liveState.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
-import { BRANDING_WRITABLE_FIELDS, groupLifecycleGuard } from '../restore/tenantPolicyOperations.mjs';
+import {
+  BRANDING_WRITABLE_FIELDS, GROUP_LIFETIME_PORTAL_PATH, groupLifecycleGuard, groupLifetimeCompletionItem,
+} from '../restore/tenantPolicyOperations.mjs';
+import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
 const PROOF = 'engine/roadmap/entra-basic-settings.test.mjs';
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -320,6 +323,85 @@ test('mutation: group expiry that could delete groups is left to a person and no
   }
   assert.equal(groupLifecycleGuard({ groupLifetimeInDays: 180, managedGroupTypes: 'None' }, { groupLifetimeInDays: 180, managedGroupTypes: 'All' }), null);
   assert.equal(groupLifecycleGuard({ alternateNotificationEmails: 'x@contoso.example' }, base), null, 'adding an address to an empty list is safe');
+});
+
+// Gap D3: a shorter lifetime is refused by default, written only with its
+// separate high-impact approval, and otherwise left as a guided step.
+const expiryLive = Object.freeze({ id: 'policy-1', groupLifetimeInDays: 180, managedGroupTypes: 'Selected', alternateNotificationEmails: '' });
+
+test('D3: a shorter group lifetime is refused by default and leaves a completion item; nothing is sent', async () => {
+  const graph = recordingGraph();
+  const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...expiryLive, groupLifetimeInDays: 90 }, expiryLive);
+  const result = await run(graph, [resource]);
+  assert.equal(graph.bodies.length, 0);
+  assert.deepEqual(result.applied, []);
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /^manual: a group lifetime of 90 days is shorter than the live 180 days/);
+  assert.match(result.skipped[0].reason, /separate high-impact approval/);
+  assert.deepEqual(result.skipped[0].completion, groupLifetimeCompletionItem({ from: 180, to: 90 }));
+
+  // Approved effects of a different value, or an approval with nothing in it, do not unlock it.
+  for (const approvedContentEffects of [
+    [],
+    classifyContentEffects([{ ...resource, payload: { ...expiryLive, groupLifetimeInDays: 30 } }]).effects,
+    classifyContentEffects([{ ...resource, naturalKey: 'groupLifecyclePolicy:other' }]).effects,
+  ]) {
+    const again = await run(graph, [resource], { approvedContentEffects });
+    assert.equal(graph.bodies.length, 0, JSON.stringify(approvedContentEffects));
+    assert.equal(again.skipped.length, 1);
+  }
+});
+
+test('D3: the completion item names the target value and where to set it in the Entra portal', () => {
+  const item = groupLifetimeCompletionItem({ from: 180, to: 90 });
+  assert.equal(item.requirement, 'groupLifetimeInDays');
+  assert.equal(item.targetValue, 90);
+  assert.equal(item.portalPath, 'Microsoft Entra admin center > Groups > All groups > Expiration > Group lifetime (in days)');
+  assert.equal(item.description,
+    `Set the group lifetime to 90 days (it is 180 days now) in the ${GROUP_LIFETIME_PORTAL_PATH}, choosing Custom. `
+    + 'Groups not renewed within 90 days then expire and are deleted. Or have a second person approve the shorter lifetime '
+    + 'as a high-impact change and promote the restore again.');
+});
+
+test('D3: a shorter group lifetime is a content effect needing the separate approval, and is written with it', async () => {
+  const graph = recordingGraph();
+  const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...expiryLive, groupLifetimeInDays: 90 }, expiryLive);
+  const { effects, refusals } = classifyContentEffects([resource]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after })), [
+    { naturalKey: resource.naturalKey, field: 'groupLifetimeInDays', effect: 'retention-reducing', before: 180, after: 90 },
+  ]);
+  // A longer lifetime, or a change to the other fields, is not a content effect.
+  assert.deepEqual(classifyContentEffects([{ ...resource, payload: { ...expiryLive, groupLifetimeInDays: 365, managedGroupTypes: 'All' } }]).effects, []);
+
+  // A dry run simulates the write and reports the pending approval, so it stays promotable.
+  const dry = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(dry.skipped, []);
+  assert.deepEqual(dry.failed, []);
+  assert.equal(dry.applied.length, 1);
+  assert.deepEqual(dry.applied[0].pendingApproval, groupLifetimeCompletionItem({ from: 180, to: 90 }));
+  assert.equal(graph.bodies.length, 0);
+
+  // The promotion passes the effects whose approval it checked: the PATCH is sent.
+  const result = await run(graph, [resource], { approvedContentEffects: effects });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.skipped, []);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/groupLifecyclePolicies/policy-1', body: { groupLifetimeInDays: 90 } }]);
+});
+
+test('D3: an approved shorter lifetime never unlocks a wider scope or a dropped notice address', async () => {
+  for (const change of [{ managedGroupTypes: 'All' }, { alternateNotificationEmails: '' }]) {
+    const live = { ...expiryLive, alternateNotificationEmails: 'it@contoso.example' };
+    const graph = recordingGraph();
+    const resource = plannedUpdate(graph, 'groupLifecyclePolicy', '/groupLifecyclePolicies/policy-1', { ...live, groupLifetimeInDays: 90, ...change }, live);
+    const { effects } = classifyContentEffects([resource]);
+    for (const mode of ['enforce', 'dry-run']) {
+      const result = await run(graph, [resource], { mode, approvedContentEffects: effects });
+      assert.equal(graph.bodies.length, 0, JSON.stringify(change));
+      assert.equal(result.skipped.length, 1, `${mode} ${JSON.stringify(change)}`);
+      assert.equal(result.skipped[0].completion, undefined);
+    }
+  }
 });
 
 test('mutation: group expiry that would drop a renewal notice address is left to a person', async () => {

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "namedLocation",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "synthetic": false,
+  "evidenceLevel": "failed",
+  "ok": false,
+  "outcome": "failed",
+  "outcomeDetail": "status 400",
+  "readBackVerified": false,
+  "observedAt": "2026-10-11T18:52:55.665Z",
+  "restoreRef": "43b5ad83-2d10-8824-afc4-a0caa596d9ec",
+  "naturalKey": "namedLocation:KEEL-RT-148-location",
+  "fixtureKind": "named-object",
+  "captureSha256": "07be8149cb76b668232ca922000d10ae999c64cbb9b66ab773e05bd27c916c22",
+  "proofRef": "docs/release/qualifications/entra-live/namedLocation.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "17f3b6fcd46e22efd2671b27c50f444ab3cc2af068f79d024337e82bcb1841f0"
+    }
+  }
+}

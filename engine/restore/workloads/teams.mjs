@@ -349,10 +349,10 @@ export async function readLiveTeam({ transport, teamId, sleep }) {
 }
 
 /** Persists the plan as an immutable dry-run artifact. */
-export async function createTeamsRestoreArtifact(client, { tenantRef, plan, requestedBy }) {
+export async function createTeamsRestoreArtifact(client, { tenantRef, plan, requestedBy, id = randomUUID() }) {
   const keys = [`teams:${plan.teamId}`, ...plan.operations.map((op) => op.naturalKey)];
   return createDryRunArtifact(client, {
-    id: randomUUID(),
+    id,
     tenantRef,
     snapshotId: null,
     selection: [`teams:${plan.teamId}`],

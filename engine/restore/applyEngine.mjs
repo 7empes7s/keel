@@ -19,7 +19,7 @@ import {
 } from './administrativeOperations.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
-import { resolveSymbol } from '../graph/resolver.mjs';
+import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
@@ -104,11 +104,15 @@ function valueAtPath(root, path) {
  * source-tenant guid — callers must catch UnresolvedReferenceError and fail the resource.
  * A `global-constant` resolution leaves the field UNTOUCHED: resolveSymbol reports its
  * targetId as the symbolic string itself (e.g. "global:GlobalAdministrator"), which is a
- * placeholder for "resolvable, no rewrite needed" — not a literal value to write. */
-export function rewriteReferences(payload, references, ctx, naturalKey) {
+ * placeholder for "resolvable, no rewrite needed" — not a literal value to write. The same
+ * holds for a foreign tenant id and a read-only field (resolver.mjs's VERBATIM_RESOLUTIONS).
+ * A reference in a server-owned field of `resourceType` is skipped outright: no write
+ * carries that field, so it can neither dangle nor block the resource. */
+export function rewriteReferences(payload, references, ctx, naturalKey, resourceType = null) {
   if (!references || references.length === 0) return payload;
   let rewritten = payload;
   for (const ref of references) {
+    if (isServerOwnedReference(ref, resourceType)) continue;
     // Roadmap task-107: an explicit reference that holds one of the target's
     // alternate identifiers (a service principal's appId). The identifier is
     // rewritten only to a value a create in THIS run reported; a target that
@@ -128,7 +132,7 @@ export function rewriteReferences(payload, references, ctx, naturalKey) {
     if (!result.resolved) {
       throw new UnresolvedReferenceError(naturalKey, ref, result.reason);
     }
-    if (result.via === 'global-constant') continue;
+    if (VERBATIM_RESOLUTIONS.has(result.via)) continue;
     rewritten = setAtPath(rewritten, ref.field, result.targetId);
   }
   return rewritten;
@@ -580,7 +584,7 @@ export async function applyWave(writer, governor, wave, {
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
       const beforeRewrite = desired;
       try {
-        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey);
+        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
         continue;
@@ -740,7 +744,7 @@ export async function applyWave(writer, governor, wave, {
       if (resource.resourceType === 'conditionalAccessPolicy') desired = enforceReportOnly(desired);
       const beforeRewrite = desired;
       try {
-        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey);
+        desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
         continue;
@@ -844,7 +848,7 @@ export async function applyWave(writer, governor, wave, {
     if (resource.resourceType === 'conditionalAccessPolicy') payload = enforceReportOnly(payload);
     const beforeRewrite = payload;
     try {
-      payload = rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey);
+      payload = rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
     } catch (err) {
       failed.push({ naturalKey: resource.naturalKey, error: err.message });
       continue;
@@ -971,7 +975,7 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   let desired = resource.payload;
   const beforeRewrite = desired;
   try {
-    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey);
+    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey, resource.resourceType);
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }
@@ -1077,7 +1081,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   let desired = resource.payload;
   const beforeRewrite = desired;
   try {
-    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey);
+    desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, naturalKey, resource.resourceType);
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }
@@ -1245,7 +1249,7 @@ async function applyAdminRoleWrite(writer, resource, verb, {
   const scoped = { ...resource, references: writtenReferences(resource) };
   let desired = resource.payload;
   try {
-    desired = rewriteReferences(desired, withExplicitReferences(scoped), referenceContext, naturalKey);
+    desired = rewriteReferences(desired, withExplicitReferences(scoped), referenceContext, naturalKey, scoped.resourceType);
   } catch (err) {
     return { failed: { naturalKey, error: err.message } };
   }

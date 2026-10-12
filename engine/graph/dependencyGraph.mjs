@@ -1,7 +1,10 @@
+import { isVerbatimSymbol } from './resolver.mjs';
+
 /**
  * Nodes are natural keys. Edges are tenant-specific symbol references only —
- * global constants (spec §6.1's "always resolves") never gate a wave, since
- * they need no target-tenant object to exist first.
+ * global constants (spec §6.1's "always resolves"), foreign tenant ids and
+ * read-only fields never gate a wave, since they need no target-tenant object
+ * to exist first.
  */
 export function buildGraph(resources) {
   const nodes = new Map(resources.map((r) => [r.naturalKey, r]));
@@ -9,7 +12,7 @@ export function buildGraph(resources) {
   for (const r of resources) {
     const deps = new Set(
       r.references
-        .filter((ref) => ref.symbol && !ref.symbol.startsWith('global:') && nodes.has(ref.symbol))
+        .filter((ref) => !isVerbatimSymbol(ref.symbol) && nodes.has(ref.symbol))
         .map((ref) => ref.symbol),
     );
     edges.set(r.naturalKey, deps);

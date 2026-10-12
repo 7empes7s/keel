@@ -1998,3 +1998,33 @@ item that needs it stays untouched.
 - **Report:** the two registrations, the step-1 checks per account, the readiness report's overall state and each dimension
   per account, and anything that still reads `unknown` (expected: `policyExclusions` until transitive membership is collected,
   only).
+### Q45: Rerun Q43's demoted and blocked steps at the Phase 1 build — issue #148 follow-up
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
+- Status: todo
+- Result:
+- Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
+  Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
+- Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.
+  | Q43 outcome | Fix now on master |
+  | --- | --- |
+  | group create (1), named location create/update (39, 40), CA create: read-only fields in the body | #173 strips server-owned fields |
+  | group restore-soft-deleted (3): follow-up PATCH hit replication lag (404) | #177 retries every write after a restore |
+  | group update: `description` not collected | #174 collects it |
+  | group member/owner edges (5–8): not collected | #170 collects them; dynamic groups are skipped with a note (#181) |
+  | user restore from deleted items fell back to create | #185 matches deleted users by source id |
+  | role assignment create (35): own id planned as a missing reference | #179 drops self-references |
+  | application (11–14), cross-tenant partner (21), compliance policy (24): unresolvable references | #180 keeps foreign, read-only and server-owned references verbatim |
+  | CA update: a rename planned as a create | #176 matches by id first in the same tenant |
+  | device configuration create (25): content guard | #175 reviewed Intune content effects |
+  | branding update (29): HTTP 400 | #182 sends `Accept-Language: en-US`; retry and report the Graph error if it still fails |
+  | auth methods, security defaults, authorization policy (44, 46, 47): break-glass gate | Q44 |
+- Do, on the host, as the operator principal, following `docs/roadmap/live-gate-148.md` exactly as in Q43:
+  1. Fresh snapshot, then print the checklist and confirm the steps above are still listed.
+  2. Run only the steps in the table, plus any Q43 step left "could not be planned". Same rules as Q43: dry run,
+     Marouane's approval in the portal, `--enforce`, capture, promote, clean up. Lockout-sensitive steps last and one at a time.
+  3. Exit 3 means demote and go on. Exit 4 or any refusal means report it and go on. Never edit a record.
+  4. If promotion refuses an operation because Q43 demoted it, report that and go on. Don't edit the demotion.
+  5. Commit the new evidence files to a new branch `claude/live-evidence-q45` and say so in the Result. The thread opens the PR.
+  6. Clean up every KEEL-RT fixture you create, and read every tenant-wide setting back as original.
+- **Never** write to anything but the KEEL-RT fixtures and the tenant settings the runbook names.
+- **Report:** per step, promoted / failed (demoted, with the reason) / blocked (why), and the new live-qualified total.

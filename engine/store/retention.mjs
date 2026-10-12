@@ -27,7 +27,7 @@ export function isPrunable(snapshot, { now, referencedSnapshotIds, policy }) {
 // deleting the snapshot would either lose history the governance loop reads or fail
 // the whole prune on the constraint. Closed drift and superseded baselines count:
 // they are the record of what was decided, not cleanup. The snapshot's own rows
-// (resource_version, resource_reference, relationship_edge_set) go with it instead;
+// (resource_version, resource_reference, relationship_edge_set, branding_asset) go with it instead;
 // retention.test.mjs checks this list against the schema's foreign keys.
 const REFERENCED_SNAPSHOTS_SQL = `
   SELECT DISTINCT snapshot_id
@@ -108,6 +108,18 @@ export async function pruneSnapshots(client, { tenantRef, policy, now }) {
       await client.query(
         'DELETE FROM relationship_edge_set WHERE snapshot_id = ANY($1::uuid[])',
         [prunableSnapshotIds],
+      );
+      // Gap register M6: the snapshot's branding file rows go with it, then any
+      // stored file of this tenant that no remaining snapshot points at.
+      await client.query(
+        'DELETE FROM branding_asset WHERE snapshot_id = ANY($1::uuid[])',
+        [prunableSnapshotIds],
+      );
+      await client.query(
+        `DELETE FROM branding_asset_blob b
+         WHERE b.tenant_ref = $1
+           AND NOT EXISTS (SELECT 1 FROM branding_asset a WHERE a.tenant_ref = b.tenant_ref AND a.sha256 = b.sha256)`,
+        [tenantRef],
       );
       await client.query('DELETE FROM snapshot WHERE id = ANY($1::uuid[])', [prunableSnapshotIds]);
     }

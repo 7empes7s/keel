@@ -56,6 +56,20 @@ export function describeGroupMembershipReads(byFamily) {
     : ''}`;
 }
 
+/**
+ * Gap register M6: one log line with how many company branding files were
+ * found, not set, too large or unreadable, and how many were new contents.
+ * Null when no file was read.
+ */
+export function describeBrandingFileReads(summary) {
+  if (!summary) return null;
+  const count = (outcome) => summary[outcome] ?? 0;
+  const problems = count('failed') + count('too-large');
+  return `branding file reads: ${count('present')} backed up (${count('stored')} new, ${count('reused')} unchanged), ${count('absent')} not set, ${count('too-large')} too large, ${count('failed')} failed${problems > 0
+    ? ' — those files will not be restored'
+    : ''}`;
+}
+
 // A partial read fails completeness exactly like a failure; only
 // complete / complete-empty / not-requested outcomes keep a zero exit.
 export function exitCodeForDigest(coverageDigest) {
@@ -87,14 +101,17 @@ export async function runCollect({
     // beside the policy, and each group's members and owners beside the group, so
     // a restore can put them back. A failed edge read is recorded as its own
     // observation and never changes a type's outcome.
-    const { snapshotId, coverageDigest, relationshipsByFamily } = await collectSnapshotFn(client, {
-      reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS,
+    // Gap register M6: the company branding files are backed up with the snapshot.
+    const { snapshotId, coverageDigest, relationshipsByFamily, brandingAssets } = await collectSnapshotFn(client, {
+      reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS, brandingAssets: true,
     });
     logger.log(`snapshot ${snapshotId} complete`);
     const assignmentLine = describeAssignmentReads(relationshipsByFamily?.assignment);
     if (assignmentLine) logger.log(assignmentLine);
     const membershipLine = describeGroupMembershipReads(relationshipsByFamily);
     if (membershipLine) logger.log(membershipLine);
+    const brandingLine = describeBrandingFileReads(brandingAssets);
+    if (brandingLine) logger.log(brandingLine);
     logger.table?.(coverageDigest);
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {

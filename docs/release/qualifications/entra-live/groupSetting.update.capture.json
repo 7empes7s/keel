@@ -1,0 +1,214 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "groupSetting:Group.Unified",
+    "resourceType": "groupSetting",
+    "operation": "update",
+    "targetId": "437a16a9-944f-883d-a663-913216d2a619",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:21:52.090Z",
+    "priorState": {
+      "id": "437a16a9-944f-883d-a663-913216d2a619",
+      "values": [
+        {
+          "name": "NewUnifiedGroupWritebackDefault",
+          "value": "true"
+        },
+        {
+          "name": "EnableMIPLabels",
+          "value": "false"
+        },
+        {
+          "name": "CustomBlockedWordsList",
+          "value": ""
+        },
+        {
+          "name": "EnableMSStandardBlockedWords",
+          "value": "false"
+        },
+        {
+          "name": "ClassificationDescriptions",
+          "value": ""
+        },
+        {
+          "name": "DefaultClassification",
+          "value": ""
+        },
+        {
+          "name": "PrefixSuffixNamingRequirement",
+          "value": ""
+        },
+        {
+          "name": "AllowGuestsToBeGroupOwner",
+          "value": "false"
+        },
+        {
+          "name": "AllowGuestsToAccessGroups",
+          "value": "true"
+        },
+        {
+          "name": "GuestUsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "GroupCreationAllowedGroupId",
+          "value": ""
+        },
+        {
+          "name": "AllowToAddGuests",
+          "value": "true"
+        },
+        {
+          "name": "UsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "ClassificationList",
+          "value": ""
+        },
+        {
+          "name": "EnableGroupCreation",
+          "value": "false"
+        }
+      ],
+      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
+      "displayName": "Group.Unified"
+    },
+    "intendedState": {
+      "id": "437a16a9-944f-883d-a663-913216d2a619",
+      "values": [
+        {
+          "name": "NewUnifiedGroupWritebackDefault",
+          "value": "true"
+        },
+        {
+          "name": "EnableMIPLabels",
+          "value": "false"
+        },
+        {
+          "name": "CustomBlockedWordsList",
+          "value": ""
+        },
+        {
+          "name": "EnableMSStandardBlockedWords",
+          "value": "false"
+        },
+        {
+          "name": "ClassificationDescriptions",
+          "value": ""
+        },
+        {
+          "name": "DefaultClassification",
+          "value": ""
+        },
+        {
+          "name": "PrefixSuffixNamingRequirement",
+          "value": ""
+        },
+        {
+          "name": "AllowGuestsToBeGroupOwner",
+          "value": "false"
+        },
+        {
+          "name": "AllowGuestsToAccessGroups",
+          "value": "true"
+        },
+        {
+          "name": "GuestUsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "GroupCreationAllowedGroupId",
+          "value": ""
+        },
+        {
+          "name": "AllowToAddGuests",
+          "value": "true"
+        },
+        {
+          "name": "UsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "ClassificationList",
+          "value": ""
+        },
+        {
+          "name": "EnableGroupCreation",
+          "value": "true"
+        }
+      ],
+      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
+      "displayName": "Group.Unified"
+    },
+    "postState": {
+      "id": "437a16a9-944f-883d-a663-913216d2a619",
+      "values": [
+        {
+          "name": "NewUnifiedGroupWritebackDefault",
+          "value": "true"
+        },
+        {
+          "name": "EnableMIPLabels",
+          "value": "false"
+        },
+        {
+          "name": "CustomBlockedWordsList",
+          "value": ""
+        },
+        {
+          "name": "EnableMSStandardBlockedWords",
+          "value": "false"
+        },
+        {
+          "name": "ClassificationDescriptions",
+          "value": ""
+        },
+        {
+          "name": "DefaultClassification",
+          "value": ""
+        },
+        {
+          "name": "PrefixSuffixNamingRequirement",
+          "value": ""
+        },
+        {
+          "name": "AllowGuestsToBeGroupOwner",
+          "value": "false"
+        },
+        {
+          "name": "AllowGuestsToAccessGroups",
+          "value": "true"
+        },
+        {
+          "name": "GuestUsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "GroupCreationAllowedGroupId",
+          "value": ""
+        },
+        {
+          "name": "AllowToAddGuests",
+          "value": "true"
+        },
+        {
+          "name": "UsageGuidelinesUrl",
+          "value": ""
+        },
+        {
+          "name": "ClassificationList",
+          "value": ""
+        },
+        {
+          "name": "EnableGroupCreation",
+          "value": "true"
+        }
+      ],
+      "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
+      "displayName": "Group.Unified",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#groupSettings/$entity"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "group",
+  "operation": "restore-soft-deleted",
+  "reason": "restore from deleted items succeeded (group back, same id) but the follow-up update in the same restore got HTTP 404 from Graph replication lag right after the restore, so the outcome is recorded uncertain; a read-back retry on the follow-up update (like the 115 read-back fix) would likely make this pass",
+  "restoreRef": "aa4861fd-90d3-89db-b91d-45d4d9c6bcd0",
+  "decidedAt": "2026-10-11T09:18:38.928Z",
+  "builderSteps": [
+    "remove the restore-soft-deleted registration for group in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: restore-soft-deleted failed live: <reason>\" to TYPE_DECISIONS.group.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

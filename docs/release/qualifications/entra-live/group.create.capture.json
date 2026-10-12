@@ -1,0 +1,29 @@
+{
+  "restoreRef": "b956de04-bd7c-83e8-a447-1bc29f0ed73c",
+  "entry": {
+    "naturalKey": "group:KEEL-RT-148-group",
+    "resourceType": "group",
+    "operation": "create",
+    "targetId": null,
+    "outcome": "failed",
+    "outcomeDetail": "status 400",
+    "recordedAt": "2026-10-11T11:34:16.841Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "d65ff888-60d3-89c8-86d9-97a1f5fadedd",
+      "groupTypes": [],
+      "visibility": null,
+      "displayName": "KEEL-RT-148-group",
+      "mailEnabled": false,
+      "mailNickname": "KEEL-RT-148-group",
+      "membershipRule": null,
+      "createdDateTime": "2026-10-10T20:18:33Z",
+      "securityEnabled": true,
+      "assignedLicenses": [],
+      "isAssignableToRole": null,
+      "onPremisesSyncEnabled": null,
+      "membershipRuleProcessingState": null
+    },
+    "postState": null
+  }
+}

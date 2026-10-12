@@ -1,0 +1,480 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "crossTenantAccessPolicyConfigurationDefault:crossTenantAccessPolicyConfigurationDefault",
+    "resourceType": "crossTenantAccessPolicyConfigurationDefault",
+    "operation": "update",
+    "targetId": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:21:44.868Z",
+    "priorState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "inboundTrust": {
+        "isMfaAccepted": true,
+        "isCompliantDeviceAccepted": false,
+        "isHybridAzureADJoinedDeviceAccepted": false
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/default/$entity",
+      "isServiceDefault": false,
+      "tenantRestrictions": {
+        "devices": null,
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "appServiceConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationInbound": {
+        "users": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationOutbound": {
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "automaticUserConsentSettings": {
+        "inboundAllowed": false,
+        "outboundAllowed": false
+      },
+      "invitationRedemptionIdentityProviderConfiguration": {
+        "fallbackIdentityProvider": "defaultConfiguredIdp",
+        "primaryIdentityProviderPrecedenceOrder": [
+          "azureActiveDirectory",
+          "externalFederation",
+          "socialIdentityProviders"
+        ]
+      }
+    },
+    "intendedState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "inboundTrust": {
+        "isMfaAccepted": false,
+        "isCompliantDeviceAccepted": false,
+        "isHybridAzureADJoinedDeviceAccepted": false
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/default/$entity",
+      "isServiceDefault": true,
+      "tenantRestrictions": {
+        "devices": null,
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "appServiceConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationInbound": {
+        "users": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationOutbound": {
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "automaticUserConsentSettings": {
+        "inboundAllowed": false,
+        "outboundAllowed": false
+      },
+      "invitationRedemptionIdentityProviderConfiguration": {
+        "fallbackIdentityProvider": "defaultConfiguredIdp",
+        "primaryIdentityProviderPrecedenceOrder": [
+          "azureActiveDirectory",
+          "externalFederation",
+          "socialIdentityProviders"
+        ]
+      }
+    },
+    "postState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "inboundTrust": {
+        "isMfaAccepted": false,
+        "isCompliantDeviceAccepted": false,
+        "isHybridAzureADJoinedDeviceAccepted": false
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/default/$entity",
+      "isServiceDefault": false,
+      "tenantRestrictions": {
+        "devices": null,
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "appServiceConnectInbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "b2bCollaborationOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "allowed"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "b2bDirectConnectOutbound": {
+        "applications": {
+          "targets": [
+            {
+              "target": "AllApplications",
+              "targetType": "application"
+            }
+          ],
+          "accessType": "blocked"
+        },
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationInbound": {
+        "users": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "blocked"
+        }
+      },
+      "m365CollaborationOutbound": {
+        "usersAndGroups": {
+          "targets": [
+            {
+              "target": "AllUsers",
+              "targetType": "user"
+            }
+          ],
+          "accessType": "allowed"
+        }
+      },
+      "automaticUserConsentSettings": {
+        "inboundAllowed": false,
+        "outboundAllowed": false
+      },
+      "invitationRedemptionIdentityProviderConfiguration": {
+        "fallbackIdentityProvider": "defaultConfiguredIdp",
+        "primaryIdentityProviderPrecedenceOrder": [
+          "azureActiveDirectory",
+          "externalFederation",
+          "socialIdentityProviders"
+        ]
+      }
+    }
+  }
+}

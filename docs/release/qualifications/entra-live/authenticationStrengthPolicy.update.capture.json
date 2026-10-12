@@ -1,0 +1,55 @@
+{
+  "restoreRef": "b493c906-13c7-8b1b-87ec-ac2a73273ea8",
+  "entry": {
+    "naturalKey": "authenticationStrengthPolicy:KEEL-RT-148-strength",
+    "resourceType": "authenticationStrengthPolicy",
+    "operation": "update",
+    "targetId": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-11T20:00:37.823Z",
+    "priorState": {
+      "id": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+      "policyType": "custom",
+      "description": "KEEL live gate 148 fixture strength - drifted",
+      "displayName": "KEEL-RT-148-strength",
+      "createdDateTime": "2026-10-11T19:44:32.4130979Z",
+      "modifiedDateTime": "2026-10-11T19:45:08.3983036Z",
+      "allowedCombinations": [
+        "fido2"
+      ],
+      "requirementsSatisfied": "mfa",
+      "combinationConfigurations": [],
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('1757be52-9656-8a7d-95d6-74e1bc48a51c')/combinationConfigurations"
+    },
+    "intendedState": {
+      "id": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+      "policyType": "custom",
+      "description": "KEEL live gate 148 fixture strength (unused)",
+      "displayName": "KEEL-RT-148-strength",
+      "createdDateTime": "2026-10-11T19:44:32.4130979Z",
+      "modifiedDateTime": "2026-10-11T19:44:32.4130979Z",
+      "allowedCombinations": [
+        "fido2"
+      ],
+      "requirementsSatisfied": "mfa",
+      "combinationConfigurations": [],
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('1757be52-9656-8a7d-95d6-74e1bc48a51c')/combinationConfigurations"
+    },
+    "postState": {
+      "id": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+      "policyType": "custom",
+      "description": "KEEL live gate 148 fixture strength (unused)",
+      "displayName": "KEEL-RT-148-strength",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies/$entity",
+      "createdDateTime": "2026-10-11T19:44:32.4130979Z",
+      "modifiedDateTime": "2026-10-11T20:00:38.0391759Z",
+      "allowedCombinations": [
+        "fido2"
+      ],
+      "requirementsSatisfied": "mfa",
+      "combinationConfigurations": [],
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('1757be52-9656-8a7d-95d6-74e1bc48a51c')/combinationConfigurations"
+    }
+  }
+}

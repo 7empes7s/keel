@@ -118,7 +118,12 @@ test('approval requests resolve requester, decider, dry run, baseline and change
 
   await requestApproval(client, { tenantRef, action: 'restore', params: { artifactId: plan }, requestedBy: requester, justification: 'ransomware clean-up' });
   await requestApproval(client, { tenantRef, action: 'restore', params: { artifactId: missingPlan }, requestedBy: requester });
-  await requestApproval(client, { tenantRef, action: 'baseline-activate', params: { baselineId: base }, requestedBy: 'scheduler' });
+  // A system actor as requester: written directly, as such rows predate the B11
+  // requester check (requestApproval now refuses a requester that is not a principal).
+  await client.query(
+    `INSERT INTO approval_request (action, params, requested_by, expires_at) VALUES ('baseline-activate', $1, 'scheduler', now() + interval '1 day')`,
+    [{ baselineId: base }],
+  );
   await requestApproval(client, { tenantRef, action: 'baseline-activate', params: { baselineId: foreignBase }, requestedBy: requester });
   await requestApproval(client, { tenantRef, action: 'remediate', params: { driftIds: [change] }, requestedBy: requester });
   await client.query(`UPDATE approval_request SET decided_by = $1 WHERE action = 'remediate'`, [approver]);

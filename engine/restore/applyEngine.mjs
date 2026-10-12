@@ -328,6 +328,9 @@ export async function applyWave(writer, governor, wave, {
   // (authentication methods, security defaults, authorization policy) may be
   // written; engine/safety/lockoutGate.mjs. Without one they are skipped.
   lockoutGate = null,
+  // Gap D3: the content effects whose separate high-impact approval this
+  // promotion already checked (assertContentEffectApproval). Empty otherwise.
+  approvedContentEffects = [],
   // Task-152: { attempts, delayMs } for the restored policy's read-back and
   // follow-up update; injectable so fixtures never wait in real time.
   readAfterWriteOptions = {},
@@ -400,10 +403,13 @@ export async function applyWave(writer, governor, wave, {
 
     // Roadmap task-149: a tenant-wide policy writes only through its operation
     // record, and a lockout-sensitive one only when the lockout gate allows it.
-    const tenantPolicyRefusal = tenantPolicyWriteRefusal(resource, effectiveVerb, { lockoutGate });
-    if (tenantPolicyRefusal) {
+    // Gap D3: a shorter group lifetime is written only with its separate
+    // high-impact approval; a dry run reports it as pending that approval.
+    const tenantPolicyRefusal = tenantPolicyWriteRefusal(resource, effectiveVerb, { lockoutGate, mode, approvedContentEffects });
+    const pendingApproval = tenantPolicyRefusal?.outcome === 'pending-approval' ? tenantPolicyRefusal.completion : null;
+    if (tenantPolicyRefusal && !pendingApproval) {
       (tenantPolicyRefusal.outcome === 'skipped' ? skipped : failed).push(tenantPolicyRefusal.outcome === 'skipped'
-        ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason }
+        ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason, ...(tenantPolicyRefusal.completion ? { completion: tenantPolicyRefusal.completion } : {}) }
         : { naturalKey: resource.naturalKey, error: tenantPolicyRefusal.reason });
       continue;
     }
@@ -471,7 +477,7 @@ export async function applyWave(writer, governor, wave, {
       const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
       });
-      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.applied) applied.push(pendingApproval ? { ...outcome.applied, pendingApproval } : outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
       if (outcome.signInPathSection) intendedSignInSections.add(outcome.signInPathSection);
       continue;

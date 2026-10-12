@@ -227,6 +227,14 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('accountManagerPolicy.accountDeletionPolicy', 'irreversible', becomes('immediately')),
     rule('accountManagerPolicy.inactiveThresholdDays', 'retention-reducing', decreases),
   ] },
+  // Gap D3: a shorter group lifetime expires and deletes Microsoft 365 groups
+  // (and their mail, files and chats) that nobody renews in time. The restore
+  // guard refuses it unless this effect carries its separate high-impact
+  // approval (tenantPolicyOperations.mjs). Which groups are covered and the
+  // notice addresses stay plain refusals of that guard, never approvable here.
+  groupLifecyclePolicy: { reviewed: true, rules: [
+    rule('groupLifetimeInDays', 'retention-reducing', decreases),
+  ] },
   configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
     rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),
   ] },

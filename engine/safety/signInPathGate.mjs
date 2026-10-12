@@ -63,6 +63,65 @@ export function compareSignInPaths(before, after, { intendedSections = [] } = {}
   };
 }
 
+/**
+ * Gap register D1: reads the sign-in path once and keeps the raw reads, so the
+ * state after deleting objects can be replayed without reading again.
+ *
+ *  - `snapshot`: the same result snapshotSignInPath() returns.
+ *  - `without(ids)`: the snapshot with every collected item whose id is in `ids` left out.
+ *  - `holds(id)`: whether a collected item has this id.
+ *  - `usersOf(id, gone)`: what still names this id once `id` and `gone` are left
+ *    out (a policy's display name, or the section of the read).
+ */
+export async function recordSignInPath(reader, { protectedPrincipalIds }) {
+  const seen = new Map();
+  const recording = {
+    async collect(version, path) {
+      const result = await reader.collect(version, path);
+      seen.set(`collect ${path}`, structuredClone(result));
+      return result;
+    },
+    async get(version, path) {
+      const result = await reader.get(version, path);
+      seen.set(`get ${path}`, structuredClone(result));
+      return result;
+    },
+  };
+  const snapshot = await snapshotSignInPath(recording, { protectedPrincipalIds });
+  const lower = (ids) => new Set([...ids].map((id) => String(id).toLowerCase()));
+  const idOf = (item) => String(item?.id ?? '').toLowerCase();
+  const collected = () => [...seen.entries()]
+    .filter(([key, result]) => key.startsWith('collect ') && Array.isArray(result?.items))
+    .flatMap(([key, result]) => result.items.map((item) => ({ path: key.slice('collect '.length), item })));
+  const replay = (ids) => ({
+    async collect(_version, path) {
+      const result = structuredClone(seen.get(`collect ${path}`));
+      if (!Array.isArray(result?.items)) return result;
+      return { ...result, items: result.items.filter((item) => !ids.has(idOf(item))) };
+    },
+    async get(_version, path) {
+      return structuredClone(seen.get(`get ${path}`));
+    },
+  });
+  return Object.freeze({
+    snapshot,
+    without: (ids) => snapshotSignInPath(replay(lower(ids)), { protectedPrincipalIds }),
+    holds: (id) => collected().some(({ item }) => idOf(item) === String(id).toLowerCase()),
+    usersOf(id, gone = []) {
+      const needle = String(id).toLowerCase();
+      const skip = lower([...gone, id]);
+      const named = (value) => JSON.stringify(value ?? null).toLowerCase().includes(needle);
+      const users = collected()
+        .filter(({ item }) => !skip.has(idOf(item)) && named(item))
+        .map(({ path, item }) => item?.displayName ?? path.split('?')[0]);
+      for (const [key, result] of seen.entries()) {
+        if (key.startsWith('get ') && named(result?.body)) users.push(key.slice('get '.length).split('?')[0]);
+      }
+      return [...new Set(users)];
+    },
+  });
+}
+
 async function collect(reader, path) {
   const result = await reader.collect('v1.0', path);
   if (result.error) throw new Error(`sign-in path gate read ${path} failed: ${result.error.error ?? result.error.status}`);

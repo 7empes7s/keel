@@ -20,7 +20,12 @@ function arg(name, fallback, argv = process.argv) {
  * policy's assignments (issue #155) and each group's direct members and owners,
  * so a restore can put a group's membership back.
  */
-export const COLLECT_RELATIONSHIPS = Object.freeze({ families: Object.freeze(['assignment', 'member', 'owner']) });
+export const COLLECT_RELATIONSHIPS = Object.freeze({
+  families: Object.freeze(['assignment', 'member', 'owner']),
+  // Gap D5: nested membership of groups a Conditional Access policy names, read
+  // only for those groups, so break-glass readiness can check exclusions.
+  conditionalAccessTransitive: true,
+});
 
 /**
  * One log line with how many policy assignment reads ended in each outcome

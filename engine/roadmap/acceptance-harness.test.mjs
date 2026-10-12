@@ -19,7 +19,8 @@
  *                                                     fails)
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -30,8 +31,8 @@ import {
   JOURNEYS, UNVERIFIED_STATES, assessJourney, journeyFixtureRecord, runAllJourneys, runJourney,
 } from '../../tools/release/journeys.mjs';
 import {
-  LIVE_ACCEPTANCE_GATES, OBJECTIVE_GAPS_DECISION, RELEASE_OBJECTIVES, buildReleaseLedger, classifyLiveRecord, loadLiveRecords,
-  runLedgerCommand,
+  LIVE_ACCEPTANCE_GATES, OBJECTIVE_GAPS_DECISION, RELEASE_OBJECTIVES, buildReleaseLedger, classifyEntraGate, classifyLiveRecord,
+  loadEntraLiveFiles, loadLiveRecords, runLedgerCommand,
 } from '../../tools/release/acceptanceLedger.mjs';
 import { signEvidence } from '../../tools/release/qualification.mjs';
 
@@ -299,18 +300,25 @@ function passingFixture() {
   })));
 }
 
-test('the checked-in qualification records keep readiness pending and report fixtures separately', () => {
+test('the checked-in qualification records keep readiness from ready and report fixtures separately', () => {
   const live = loadLiveRecords();
   const ledger = buildReleaseLedger({ fixture: journeyFixtureRecord(results), live, hmacKey: null });
-  assert.equal(ledger.readiness.label, 'pending');
+  // The committed Entra demotions (issue #148) are failed live runs, so the honest label is blocked.
+  assert.equal(ledger.readiness.label, 'blocked');
   assert.notEqual(ledger.readiness.label, 'ready');
+  const entra = ledger.live.find((gate) => gate.gate === 'entra-live-acceptance');
+  assert.equal(entra.status, 'failed');
+  assert.ok(entra.operations.some((row) => row.status === 'demoted'), JSON.stringify(entra.failures));
+  assert.ok(entra.operations.every((row) => row.status !== 'live-qualified'), 'nothing qualifies without the key');
+  assert.ok(ledger.readiness.reasons.some((reason) => /entra-live-acceptance \(issue-148\) failed/.test(reason)));
   assert.equal(ledger.fixture.evidenceLevel, 'fixture-tested');
   assert.ok(ledger.fixture.journeys.every((journey) => journey.outcome === 'passed'));
   // Every required live gate is listed, none is qualified, and pending stays pending.
   assert.deepEqual(ledger.live.map((gate) => gate.task).sort(), LIVE_ACCEPTANCE_GATES.map((gate) => gate.task).sort());
   assert.ok(ledger.live.every((gate) => gate.status !== 'live-qualified'), JSON.stringify(ledger.live));
   // Without the key, a committed live capture is 'unverified', never qualified; the rest stay pending.
-  assert.ok(ledger.live.every((gate) => ['missing', 'pending', 'unverified'].includes(gate.status)), JSON.stringify(ledger.live));
+  const others = ledger.live.filter((gate) => gate !== entra);
+  assert.ok(others.every((gate) => ['missing', 'pending', 'unverified'].includes(gate.status)), JSON.stringify(others));
   assert.ok(ledger.live.filter((gate) => ['pending', 'unverified'].includes(gate.status)).length >= 9);
   // Task-123's record: missing before it lands, a pending placeholder, or a committed live capture
   // that is unverified without the key. None of them qualifies.
@@ -480,4 +488,120 @@ test('every D1-D10 and G1-G8 objective maps to an owner, test and evidence, or a
   const d6 = ledger.objectives.find((objective) => objective.id === 'D6');
   assert.equal(d6.status, 'pending');
   assert.ok(d6.evidence.includes('servicenow-live-acceptance'));
+});
+
+// ---------------------------------------------------------------- Entra live gate (issue #148)
+
+const DAY = 24 * 60 * 60 * 1000;
+const NOW = new Date('2026-10-12T12:00:00Z');
+const ENTRA_OPS = [{ resourceType: 'user', operation: 'update' }, { resourceType: 'group', operation: 'create' }];
+
+function entraDir(files) {
+  const dir = mkdtempSync(join(workdir, 'entra-'));
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), typeof content === 'string' ? content : JSON.stringify(content));
+  return dir;
+}
+
+function entraFiles(stem, { ageDays = 1, key = HMAC_KEY, outcome = 'succeeded' } = {}) {
+  const captureLog = `capture log for ${stem}`;
+  const [resourceType, operation] = stem.split('.');
+  const record = signEvidence({
+    contractVersion: 1, kind: 'entra-live-write-capture', gate: 'entra-live-acceptance', issue: 148,
+    tenantRef: 'sha256:f7b3959300856957', resourceType, operation, build: 'b', synthetic: false, evidenceLevel: 'live-qualified',
+    ok: outcome === 'succeeded', outcome, outcomeDetail: null, readBackVerified: outcome === 'succeeded',
+    observedAt: new Date(NOW.getTime() - ageDays * DAY).toISOString(),
+    captureSha256: createHash('sha256').update(captureLog).digest('hex'),
+  }, key, 'keel-release-runner');
+  return { [`${stem}.json`]: record, [`${stem}.capture.json`]: captureLog };
+}
+
+const demotion = (stem, ageDays) => {
+  const [resourceType, operation] = stem.split('.');
+  return { [`${stem}.demotion.json`]: {
+    contractVersion: 1, kind: 'entra-live-demotion', gate: 'entra-live-acceptance', issue: 148, tenantRef: 'sha256:f7b3959300856957',
+    resourceType, operation, reason: 'Graph returned 400 for the create body', decidedAt: new Date(NOW.getTime() - ageDays * DAY).toISOString(),
+  } };
+};
+
+const entraGate = (files, options = {}) => classifyEntraGate(loadEntraLiveFiles(entraDir(files)), { operations: ENTRA_OPS, hmacKey: HMAC_KEY, now: NOW, ...options });
+const rowOf = (gate, resourceType) => gate.operations.find((row) => row.resourceType === resourceType);
+
+test('Entra gate: a fresh verified live record passes its operation; the gate passes only when every write does', () => {
+  const both = entraGate({ ...entraFiles('user.update'), ...entraFiles('group.create', { ageDays: 29 }) });
+  assert.deepEqual(both.operations.map((row) => row.status), ['live-qualified', 'live-qualified']);
+  assert.equal(both.status, 'live-qualified');
+  assert.deepEqual(both.failures, []);
+  // Without the verification key the same records are unverified, never qualified.
+  const noKey = entraGate({ ...entraFiles('user.update'), ...entraFiles('group.create') }, { hmacKey: null });
+  assert.ok(noKey.operations.every((row) => row.status === 'unverified'));
+  assert.equal(noKey.status, 'pending');
+  // A record signed with another key, or whose write did not verify, fails.
+  const forged = entraGate({ ...entraFiles('user.update', { key: 'another-key' }), ...entraFiles('group.create', { outcome: 'uncertain' }) });
+  assert.equal(rowOf(forged, 'user').status, 'failed');
+  assert.match(rowOf(forged, 'user').failures.join(), /signature mismatch/);
+  assert.equal(rowOf(forged, 'group').status, 'failed');
+  assert.match(rowOf(forged, 'group').failures.join(), /not verified by its read-back/);
+  assert.equal(forged.status, 'failed');
+  // A capture log that does not match the record fails.
+  const files = entraFiles('user.update');
+  files['user.update.capture.json'] = 'edited';
+  assert.match(rowOf(entraGate(files), 'user').failures.join(), /capture log does not match/);
+});
+
+test('Entra gate: a record older than 30 days is expired and says so; the gate stays pending', () => {
+  const gate = entraGate({ ...entraFiles('user.update', { ageDays: 31 }), ...entraFiles('group.create') });
+  const user = rowOf(gate, 'user');
+  assert.equal(user.status, 'expired');
+  assert.match(user.failures[0], /older than 30 days; capture it again/);
+  assert.equal(rowOf(gate, 'group').status, 'live-qualified');
+  assert.equal(gate.status, 'pending');
+  assert.ok(gate.failures.some((failure) => /user update is expired/.test(failure)));
+});
+
+test('Entra gate: a demoted write shows why and fails the gate until a newer record verifies', () => {
+  const demoted = entraGate({
+    ...entraFiles('user.update'), ...entraFiles('group.create', { ageDays: 2, outcome: 'failed' }), ...demotion('group.create', 1),
+  });
+  const group = rowOf(demoted, 'group');
+  assert.equal(group.status, 'demoted');
+  assert.match(group.failures[0], /^failed live on 2026-10-11: Graph returned 400 for the create body$/);
+  assert.equal(demoted.status, 'failed');
+  assert.ok(demoted.failures.some((failure) => /group create is demoted: failed live/.test(failure)));
+  // A demotion with no record at all is still demoted.
+  assert.equal(rowOf(entraGate({ ...entraFiles('user.update'), ...demotion('group.create', 1) }), 'group').status, 'demoted');
+  // A fresh capture newer than the demotion clears it.
+  const recaptured = entraGate({ ...entraFiles('user.update'), ...demotion('group.create', 3), ...entraFiles('group.create', { ageDays: 1 }) });
+  assert.equal(rowOf(recaptured, 'group').status, 'live-qualified');
+  assert.equal(recaptured.status, 'live-qualified');
+});
+
+test('Entra gate: a registered write with no record is missing and holds readiness', () => {
+  const gate = entraGate(entraFiles('user.update'));
+  assert.equal(rowOf(gate, 'group').status, 'missing');
+  assert.equal(gate.status, 'pending');
+  assert.equal(gate.failures[0], '2 registered Entra writes: 1 live-qualified, 1 missing');
+  assert.equal(entraGate({}, { operations: [] }).status, 'pending', 'no registered write is never qualified');
+});
+
+test('Entra gate in the ledger: ready only when fresh, pending when expired or missing, blocked when demoted', () => {
+  const others = LIVE_ACCEPTANCE_GATES.filter((gate) => !gate.perOperation)
+    .map((gate) => ({ gate: gate.gate, task: gate.task, status: 'live-qualified', failures: [] }));
+  const ledgerWith = (files) => buildReleaseLedger({
+    fixture: passingFixture(), now: NOW, hmacKey: HMAC_KEY, objectiveGapsAllowed: true,
+    live: [...others, { gate: 'entra-live-acceptance', files: loadEntraLiveFiles(entraDir(files)), operations: ENTRA_OPS }],
+  });
+  const fresh = ledgerWith({ ...entraFiles('user.update'), ...entraFiles('group.create') });
+  assert.equal(fresh.readiness.label, 'ready');
+  assert.equal(fresh.live.find((gate) => gate.gate === 'entra-live-acceptance').operations.length, 2);
+  const expired = ledgerWith({ ...entraFiles('user.update', { ageDays: 40 }), ...entraFiles('group.create') });
+  assert.equal(expired.readiness.label, 'pending');
+  assert.ok(expired.readiness.reasons.some((reason) => /entra-live-acceptance \(issue-148\) is pending: 2 registered Entra writes: 1 live-qualified, 1 expired/.test(reason)));
+  assert.equal(ledgerWith(entraFiles('user.update')).readiness.label, 'pending');
+  const demoted = ledgerWith({ ...entraFiles('user.update'), ...demotion('group.create', 1) });
+  assert.equal(demoted.readiness.label, 'blocked');
+  assert.ok(demoted.live.filter((gate) => gate.gate !== 'entra-live-acceptance').every((gate) => gate.status === 'live-qualified'), 'other gates stay reported');
+  // The ledger command still reports (exit 0) whatever the label.
+  const qualifications = mkdtempSync(join(workdir, 'quals-'));
+  mkdirSync(join(qualifications, 'entra-live'));
+  assert.equal(runLedgerCommand(['node', 'qualification.mjs', 'ledger', '--qualifications', qualifications], { env: {}, logger: { log() {} } }), 0);
 });

@@ -3,13 +3,16 @@
 //
 // node keel-baseline-activate.mjs --baseline-id ID
 //   [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+// node keel-baseline-activate.mjs --baseline-id ID --reinstate [--version N] --actor PRINCIPAL [--reason TEXT]
 //
 // Thin worker-dispatch wrapper around engine/govern/baseline.mjs activateBaseline():
 // activation stays on the one atomic, row-locking implementation — this file only
-// parses argv and connects.
+// parses argv and connects. --reinstate is the rollback path (live gate #148, Q43): a
+// superseded version is never activated again, so reinstateBaseline copies it into a
+// new latest version of the same baseline and activates that one.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { activateBaseline } from '../engine/govern/baseline.mjs';
+import { activateBaseline, reinstateBaseline } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
 
 function arg(name, fallback) {
@@ -36,7 +39,7 @@ function resolveTenantRef() {
 
 async function main() {
   if (process.argv.includes('--help')) {
-    console.log('usage: keel-baseline-activate.mjs --baseline-id ID [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
+    console.log('usage: keel-baseline-activate.mjs --baseline-id ID [--reinstate [--version N] --actor PRINCIPAL [--reason TEXT]] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     return;
   }
 
@@ -45,6 +48,20 @@ async function main() {
 
   const client = await connect(dbUrl);
   try {
+    if (process.argv.includes('--reinstate')) {
+      const versionArg = arg('version');
+      const version = versionArg === undefined ? undefined : Number(versionArg);
+      if (version !== undefined && !Number.isInteger(version)) throw new Error('--version must be an integer');
+      const created = await reinstateBaseline(client, {
+        tenantRef: resolveTenantRef(),
+        baselineId: requireArg('baseline-id'),
+        version,
+        actor: requireArg('actor'),
+        reason: arg('reason'),
+      });
+      console.log(`baseline ${created.reinstatedId} (v${created.reinstatedVersion}) reinstated as ${created.id} (v${created.version}) and activated`);
+      return;
+    }
     await activateBaseline(client, {
       tenantRef: resolveTenantRef(),
       baselineId: requireArg('baseline-id'),

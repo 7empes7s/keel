@@ -57,7 +57,7 @@ const CROSS_TENANT_SETTINGS = Object.freeze([
   'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'inboundTrust', 'tenantRestrictions',
 ]);
 
-const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
+const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, sendable: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
 
 /**
  * Issue #156: the company branding fields that are plain text, colours or
@@ -75,6 +75,44 @@ export const BRANDING_WRITABLE_FIELDS = Object.freeze([
   'customResetItNowText', 'customTermsOfUseText', 'customTermsOfUseUrl', 'headerBackgroundColor',
   'loginPageLayoutConfiguration', 'loginPageTextVisibilitySettings', 'signInPageText', 'usernameHintText',
 ]);
+
+/**
+ * Gap B9: the members of the two nested branding settings that a PATCH may
+ * carry. Anything else Graph returns inside them (a read-only or newer
+ * property, an annotation) is never sent and never compared.
+ */
+export const BRANDING_NESTED_FIELDS = Object.freeze({
+  loginPageLayoutConfiguration: Object.freeze(['isFooterShown', 'isHeaderShown', 'layoutTemplateType']),
+  loginPageTextVisibilitySettings: Object.freeze([
+    'hideAccountResetCredentials', 'hideCannotAccessYourAccount', 'hideForgotMyPassword',
+    'hidePrivacyAndCookies', 'hideResetItNow', 'hideTermsOfUse',
+  ]),
+});
+
+const isEmpty = (value) => value === null || value === undefined || value === '';
+
+/**
+ * Gap B9: the value a branding PATCH may send for one field, or undefined when
+ * there is nothing valid to send. The live update returned HTTP 400; the body
+ * then carried null-valued text and colour fields and nested settings as read.
+ * Now:
+ * - null, undefined and "" are the same "empty" value, and an empty value is
+ *   never sent (an empty colour or text is not a valid Graph value);
+ * - a nested setting carries only its allowlisted, non-empty members;
+ * - an object or array where text, a colour or a URL is expected is never sent.
+ * An empty snapshot value is therefore never written over a live one; the
+ * restore leaves that field as it is.
+ */
+export function brandingSendable(field, value) {
+  if (isEmpty(value)) return undefined;
+  const members = BRANDING_NESTED_FIELDS[field];
+  if (members) {
+    if (typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const kept = members.filter((member) => !isEmpty(value[member]) && typeof value[member] !== 'object');
+    return kept.length > 0 ? Object.fromEntries(kept.map((member) => [member, value[member]])) : undefined;
+  }
+  return typeof value === 'object' ? undefined : value;
+}
 
 // Issue #156: how many groups a group expiration policy covers, narrowest first.
 const MANAGED_GROUP_SCOPE = Object.freeze({ none: 0, selected: 1, all: 2 });
@@ -284,6 +322,7 @@ export const TENANT_POLICY_RECORDS = Object.freeze([
     lockout: false,
     signInPathSection: null,
     writableFields: BRANDING_WRITABLE_FIELDS,
+    sendable: brandingSendable,
   }),
   record({
     resourceType: 'organizationalBrandingLocalization',
@@ -296,6 +335,7 @@ export const TENANT_POLICY_RECORDS = Object.freeze([
     lockout: false,
     signInPathSection: null,
     writableFields: BRANDING_WRITABLE_FIELDS,
+    sendable: brandingSendable,
   }),
   record({
     resourceType: 'groupLifecyclePolicy',
@@ -549,9 +589,24 @@ function sameValue(left, right) {
   return isDeepStrictEqual(comparable(left ?? null) ?? null, comparable(right ?? null) ?? null);
 }
 
+/**
+ * Whether one writable field already holds its desired value. For a record
+ * with a `sendable` shaper (branding, gap B9) only what would be sent is
+ * compared: "" equals null, and a nested setting matches when every member
+ * the snapshot holds matches.
+ */
+function sameField(entry, field, desired, live) {
+  if (!entry.sendable) return sameValue(desired?.[field], live?.[field]);
+  const want = entry.sendable(field, desired?.[field]);
+  if (want === undefined) return true;
+  const got = entry.sendable(field, live?.[field]);
+  if (BRANDING_NESTED_FIELDS[field]) return Object.keys(want).every((member) => isDeepStrictEqual(want[member], got?.[member]));
+  return isDeepStrictEqual(want, got);
+}
+
 /** The writable fields whose desired value differs from the live one. */
 export function changedFields(entry, desired, live) {
-  return entry.writableFields.filter((field) => Object.hasOwn(desired ?? {}, field) && !sameValue(desired[field], live?.[field]));
+  return entry.writableFields.filter((field) => Object.hasOwn(desired ?? {}, field) && !sameField(entry, field, desired, live));
 }
 
 function withoutAnnotations(value) {
@@ -576,7 +631,8 @@ export function tenantPolicyRootWrite(entry, resource, desired, { targetTenant =
     : entry.writableFields.filter((field) => Object.hasOwn(desired, field));
   if (entry.method === 'PATCH' && fields.length === 0) return null;
   if (entry.method === 'PUT' && changedFields(entry, desired, live).length === 0) return null;
-  const body = Object.fromEntries(fields.map((field) => [field, withoutAnnotations(desired[field])]));
+  const value = (field) => (entry.sendable ? entry.sendable(field, desired[field]) : withoutAnnotations(desired[field]));
+  const body = Object.fromEntries(fields.map((field) => [field, value(field)]));
   return { method: entry.method, path: tenantPolicyRoute(entry, resource, { targetTenant }), body, fields };
 }
 
@@ -606,7 +662,7 @@ export function methodConfigurationWrites(resource, desired) {
  * configuration) must read back as desired. Returns the reason, or null.
  */
 export function tenantPolicyPostStateRefusal(entry, desired, live, { fields = [], methods = [] } = {}) {
-  const wrong = fields.filter((field) => !sameValue(desired[field], live?.[field]));
+  const wrong = fields.filter((field) => !sameField(entry, field, desired, live));
   for (const id of methods) {
     const want = (desired.authenticationMethodConfigurations ?? []).find((config) => config.id.toLowerCase() === id.toLowerCase());
     const got = (live?.authenticationMethodConfigurations ?? []).find((config) => String(config?.id ?? '').toLowerCase() === id.toLowerCase());

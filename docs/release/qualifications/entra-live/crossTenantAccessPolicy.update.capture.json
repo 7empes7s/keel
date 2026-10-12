@@ -1,0 +1,37 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "crossTenantAccessPolicy:CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "resourceType": "crossTenantAccessPolicy",
+    "operation": "update",
+    "targetId": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:21:34.956Z",
+    "priorState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "displayName": "CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/$entity",
+      "allowedCloudEndpoints": [
+        "microsoftonline.us",
+        "partner.microsoftonline.cn"
+      ]
+    },
+    "intendedState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "displayName": "CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/$entity",
+      "allowedCloudEndpoints": [
+        "microsoftonline.us"
+      ]
+    },
+    "postState": {
+      "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
+      "displayName": "CrossTenantAccessPolicy for dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/$entity",
+      "allowedCloudEndpoints": [
+        "microsoftonline.us"
+      ]
+    }
+  }
+}

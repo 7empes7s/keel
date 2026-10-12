@@ -89,8 +89,13 @@ snapshot that the principal is a KEEL-RT fixture and the role is `KEEL-RT-148-ro
    **Live-qualified lasts 30 days from the capture.** After that the record is stale, the operation
    reads fixture-tested again, and it needs a fresh capture.
 5. On failure: `entraLive.mjs demote --resource-type T --operation O --reason '...' --out OUT` writes
-   a demotion record. A builder then removes the registration in `capabilities.mjs` and adds the
-   reason to `TYPE_DECISIONS`. `engine/roadmap/entra-live-gate.test.mjs` fails until both are done.
+   a demotion record. A builder then applies it in one of two ways, and
+   `engine/roadmap/entra-live-gate.test.mjs` fails until one is done:
+   - remove the registration in `capabilities.mjs` and add the reason to `TYPE_DECISIONS`; or
+   - when the cause is a KEEL bug with a fix under way, keep the registration and record the failure
+     under `TYPE_DECISIONS.<type>.liveFailures.<operation>` (the demotion's date and its reason,
+     verbatim). The ledger row then shows `live: failed`; the claim stays `fixture-tested`. The note
+     is removed when a fresh capture promotes the operation.
 6. Clean up as the step says.
 
 ## After the run
@@ -102,6 +107,72 @@ snapshot that the principal is a KEEL-RT fixture and the role is `KEEL-RT-148-ro
   `node tools/qualification/operations.mjs --live-evidence docs/release/qualifications/entra-live`.
   It shows each promoted row as `live-qualified`. Without the key nothing verifies, so nothing flips.
   This is the same rule as every other committed record.
+
+## Run 1 result (2026-10-10 to 2026-10-12, queue item Q43)
+
+Builds `eef1019` (#168) and `09e1f00` (#169). Evidence: 51 files under `docs/release/qualifications/entra-live/`
+(16 records with their capture logs, 7 demotions, pseudonymized, secret scan clean). Both decisions D-148a
+and D-148b were answered yes on 2026-10-10. Every restore was approved by Marouane in the portal.
+
+**Promoted to live-qualified (16):** adminConsentRequestPolicy update, administrativeUnit update,
+authenticationStrengthPolicy create and update, conditionalAccessPolicy restore-soft-deleted (same id,
+report-only), configurationPolicy create and update, crossTenantAccessPolicy update,
+crossTenantAccessPolicyConfigurationDefault update, deviceConfiguration update, group delete, groupSetting
+delete and update, roleDefinition create and update, user update. They read `live-qualified` only where the
+records verify, that is on the host with the signing key; everywhere else they stay `fixture-tested`.
+
+**Failed live and demoted (7).** Each cause is a KEEL bug, and each has a fix under way on its own branch, so
+the writes **stay registered** (removing `group create` would also remove the fixture tests the fixes build on)
+and the failure is recorded instead under `TYPE_DECISIONS.<type>.liveFailures` in
+`engine/coverage/qualification.mjs`, dated and in the demotion's own words. The ledger row shows
+`live: failed` and `operations.mjs` prints `supported(live failed <date>)`. The claim never rose: the records
+were refused at promotion because the write was not verified by its read-back. Each is re-run live after
+its fix, and the note is removed when a fresh capture promotes it.
+
+| Operation | Cause (one line) | Fix |
+| --- | --- | --- |
+| group create | `POST /groups` 400: the create body carries read-only fields (`id`, `createdDateTime`, `assignedLicenses`, `onPremisesSyncEnabled`) | strip server-managed fields from create bodies |
+| namedLocation create | `POST` 400: same read-only fields in the body | same |
+| namedLocation update | `PATCH` 400: same read-only fields in the body | same, for update bodies |
+| conditionalAccessPolicy create | `POST` 400: `id`, `createdDateTime`, `modifiedDateTime`, `deletedDateTime`, `@odata.context` in the body; the same body without them gives 201 | same |
+| group restore-soft-deleted | the restore from deleted items worked (same id), but the follow-up update got 404 from replication lag, so the outcome was uncertain | retry the follow-up update after a restore |
+| unifiedRoleManagementPolicy update | the PATCH landed (the rule changed), but the read-back got 400 `CultureNotFoundException` with app tokens | send `Accept-Language` on the PIM read-back |
+| organizationalBranding update | `PATCH` of the default branding returned 400; the default branding existed only as an empty localization created with fr-FR | the branding PATCH body |
+
+**Blocked, not demoted (reported, stay fixture-tested):**
+
+- group update: `keel-collect` does not collect a group's `description`, so the drift was invisible and nothing was written.
+- group member and owner edges (4 steps): the collector reads only the `assignment` relationship family, so no
+  membership edge is in any snapshot. Fixed by #170 after the run.
+- application create, update and restore-soft-deleted; crossTenantAccessPolicyPartner update;
+  deviceCompliancePolicy update: the dry run could not resolve a reference (`createdByAppId`, the foreign tenant,
+  `scheduledActionConfigurations[0].id`).
+- organizationalBrandingLocalization update and authenticationFlowsPolicy update: "no proven deferred reference
+  patch". The authentication flows drift was also refused by Graph (AADB2C90063).
+- groupLifecyclePolicy update: the guard refuses to shorten the lifetime by design, so the runbook's drift cannot be auto-restored.
+- deviceConfiguration create: guard `unclassified-content-effect` (`internetSharingBlocked`, `sharedUserAppDataAllowed`).
+- user restore-soft-deleted: the first plan was refused ("retention deadline unprovable", replication lag) and the replan
+  chose `user create`, which is not registered. The fixture user was restored by hand.
+- roleAssignment create (its own id is planned as a required deferred patch), roleAssignment update (no write planned),
+  roleEligibilitySchedule create (only scope `/` is supported; the step needs the administrative unit).
+- roleAssignment, namedLocation and conditionalAccessPolicy delete: the lockout delete guard needs `simulationPassed`,
+  which no CLI sets.
+- authorizationPolicy, authenticationMethodsPolicy and security defaults update: the break-glass gate (one registered
+  account, policy exclusions unknown); security defaults also because Conditional Access policies are on. See Q44.
+- conditionalAccessPolicy update: the drift renamed the policy and the natural key is the display name, so KEEL planned
+  a create (400) instead of an update.
+- The Conditional Access turn-on step was not run (no snapshot with the policy on).
+
+**Left in the tenant:** `KEEL-RT-148-ca` in Conditional Access deleted items (app-only purge is 403; it ages out in 30
+days). Baseline v3 stays active: the pre-run baseline has no source snapshot, so it cannot be re-activated (code gap).
+Marouane's own break-glass changes stay in place.
+
+**Code gaps found by the run** (each tracked on its own branch or in the queue): read-only fields in create and
+update bodies; no retry after a restore from deleted items; no `Accept-Language` on the PIM read-back; the branding
+PATCH; group members and owners not collected (#170); roleAssignment create plans its own id; the lockout delete guard
+needs `simulationPassed`; roleEligibilitySchedule scope below `/`; a display-name natural key turns a rename into a
+create; a superseded baseline version cannot be re-activated; `pseudonymize.mjs` must cover `securityIdentifier`
+(the first evidence push carried a group SID, so that capture was dropped and only its demotion is kept).
 
 ## Decisions needed (asked once, in the queue entry)
 

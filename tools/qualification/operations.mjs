@@ -562,7 +562,7 @@ function batchTable(report) {
 function table(ledger) {
   const lines = ['type                                   decision   operations'];
   for (const row of ledger.types) {
-    const ops = row.operations.map((op) => `${op.operation}=${op.decision}`).join(' ');
+    const ops = row.operations.map((op) => `${op.operation}=${op.decision}${op.live.result === 'failed' ? `(live failed ${op.live.failedAt})` : ''}`).join(' ');
     lines.push(`${row.resourceType.padEnd(38)} ${row.decision.padEnd(10)} ${ops}`);
   }
   for (const edge of ledger.edges) lines.push(`${edge.resourceType.padEnd(38)} ${'automated'.padEnd(10)} ${edge.operation}=${edge.decision}`);

@@ -1,0 +1,107 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "organizationalBranding:organizationalBranding",
+    "resourceType": "organizationalBranding",
+    "operation": "update",
+    "targetId": "0",
+    "outcome": "failed",
+    "outcomeDetail": "status 400",
+    "recordedAt": "2026-10-10T21:21:58.670Z",
+    "priorState": {
+      "id": "0",
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
+      "signInPageText": "KEEL-RT-148 DRIFTED",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    },
+    "intendedState": {
+      "id": "0",
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
+      "signInPageText": "",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    },
+    "postState": null
+  }
+}

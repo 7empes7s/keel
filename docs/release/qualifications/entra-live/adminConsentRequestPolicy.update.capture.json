@@ -1,0 +1,39 @@
+{
+  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "entry": {
+    "naturalKey": "adminConsentRequestPolicy:adminConsentRequestPolicy",
+    "resourceType": "adminConsentRequestPolicy",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-10T21:21:30.513Z",
+    "priorState": {
+      "version": 0,
+      "isEnabled": true,
+      "reviewers": [],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/adminConsentRequestPolicy/$entity",
+      "notifyReviewers": false,
+      "remindersEnabled": false,
+      "requestDurationInDays": 30
+    },
+    "intendedState": {
+      "version": 0,
+      "isEnabled": true,
+      "reviewers": [],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/adminConsentRequestPolicy/$entity",
+      "notifyReviewers": false,
+      "remindersEnabled": false,
+      "requestDurationInDays": 0
+    },
+    "postState": {
+      "version": 0,
+      "isEnabled": true,
+      "reviewers": [],
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/adminConsentRequestPolicy/$entity",
+      "notifyReviewers": false,
+      "remindersEnabled": false,
+      "requestDurationInDays": 0
+    }
+  }
+}

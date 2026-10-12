@@ -236,6 +236,7 @@ const honouredOrOwned = new Set([
   'resource_version.snapshot_id',
   'resource_reference.from_version',
   'relationship_edge_set.snapshot_id',
+  'branding_asset.snapshot_id',
 ]);
 const { rows: foreignKeys } = await client.query(
   `SELECT k.conrelid::regclass::text AS table_name, a.attname AS column_name

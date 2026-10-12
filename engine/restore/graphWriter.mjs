@@ -78,6 +78,27 @@ export class GraphWriter {
     return result;
   }
 
+  /**
+   * Roadmap M6: upload one binary stream (a company branding image or the
+   * custom stylesheet) with PUT and its own Content-Type. The body is sent as
+   * bytes, never JSON-encoded.
+   */
+  async putStream(version, path, { body, contentType, headers = {} }) {
+    const url = this.url(version, path);
+    if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
+    if (!Buffer.isBuffer(body)) throw new TypeError('putStream needs a Buffer body');
+    if (typeof contentType !== 'string' || contentType.length === 0) throw new TypeError('putStream needs a Content-Type');
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': contentType },
+      body,
+    });
+    const responseBody = await res.json().catch(() => null);
+    const result = { ok: res.ok, status: res.status, body: responseBody };
+    if (!result.ok) result.retryAfter = retryAfterFor(res.status, res.headers, this.clock());
+    return result;
+  }
+
   async read(version, path, { headers = {} } = {}) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) throw new Error(`refused read from non-Graph host: ${url}`);

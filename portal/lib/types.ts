@@ -44,6 +44,22 @@ export interface WriteOperationCapability {
   handler: string | null;
   proofRef: string | null;
   projection: "reviewed-empty" | "unreviewed" | "has-rules";
+  // Gap P2: the committed live record for this operation, checked for this tenant.
+  // Absent when no record was committed; `reason` says why one does not count.
+  liveRecord?: LiveRecordStatus | null;
+}
+
+export interface LiveRecordStatus {
+  live: boolean;
+  observedAt: string | null;
+  expiresAt: string | null;
+  reason: string | null;
+}
+
+// Gap P2: one workload acceptance record (SharePoint, Teams, Exchange, OneDrive and
+// Purview), checked for this tenant.
+export interface WorkloadLiveRecord extends LiveRecordStatus {
+  label: string;
 }
 
 export interface WriteCapabilitySummary {
@@ -175,6 +191,8 @@ export interface CoverageData {
   } | null;
   summary: CoverageSummary;
   types: CoverageType[];
+  // Gap P2: whether the committed live records were checked, and with a key.
+  liveEvidence?: { keyConfigured: boolean; workloads: WorkloadLiveRecord[] } | null;
 }
 
 export interface BaselineRecord {

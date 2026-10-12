@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 
 const DEFAULT_DB_ENV_PATH = "/etc/keel/db.env";
 const DEFAULT_TENANT_CONFIG_PATH = "/etc/keel/tenant.json";
@@ -86,4 +87,47 @@ export function businessTimeZone(): string {
 export function recoveryManifestPath(): string | null {
   const configured = process.env.KEEL_RECOVERY_MANIFEST_PATH;
   return configured && configured.length > 0 ? configured : null;
+}
+
+// Gap P2: the key that verifies the signed live records in docs/release/qualifications.
+// KEEL_QUALIFICATION_HMAC_KEY in the process environment wins; otherwise the same
+// variable is read from KEEL_QUALIFICATION_ENV_PATH (default /etc/keel/qualification.env),
+// which must be mode 600. A missing key, or a file others can read, verifies nothing.
+const DEFAULT_QUALIFICATION_ENV_PATH = "/etc/keel/qualification.env";
+
+export interface QualificationKey {
+  key: string | null;
+  /** Why a key file that exists is not used, in plain words; null otherwise. */
+  problem: string | null;
+}
+
+export function qualificationKey(): QualificationKey {
+  const fromEnv = process.env.KEEL_QUALIFICATION_HMAC_KEY;
+  if (fromEnv && fromEnv.length > 0) return { key: fromEnv, problem: null };
+
+  const path = process.env.KEEL_QUALIFICATION_ENV_PATH ?? DEFAULT_QUALIFICATION_ENV_PATH;
+  let mode: number;
+  try {
+    mode = statSync(/* turbopackIgnore: true */ path).mode;
+  } catch {
+    return { key: null, problem: null };
+  }
+  if ((mode & 0o077) !== 0) {
+    return { key: null, problem: "the key file can be read by other users, so it is not used; set it to mode 600" };
+  }
+  try {
+    const key = envValueFromFile(path, "KEEL_QUALIFICATION_HMAC_KEY");
+    return { key: key && key.length > 0 ? key : null, problem: null };
+  } catch {
+    return { key: null, problem: "the key file cannot be read by the portal" };
+  }
+}
+
+// The committed live records. The portal runs from portal/, so the default is the
+// repository's docs/release/qualifications; KEEL_LIVE_EVIDENCE_DIR overrides it.
+export function liveEvidenceDir(): string {
+  const configured = process.env.KEEL_LIVE_EVIDENCE_DIR;
+  return configured && configured.length > 0
+    ? configured
+    : resolve(/* turbopackIgnore: true */ process.cwd(), "..", "docs", "release", "qualifications");
 }

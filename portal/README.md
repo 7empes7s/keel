@@ -19,6 +19,27 @@ to `/etc/keel/db.env`, and derives the tenant reference from
 `/etc/keel/tenant.json`. Both paths can be overridden with
 `KEEL_DB_ENV_PATH` and `KEEL_TENANT_CONFIG_PATH`.
 
+### Live records (gap P2)
+
+The coverage report loads the signed live records committed under
+`docs/release/qualifications/` (Entra write captures in `entra-live/` and the
+SharePoint, Teams, Exchange, OneDrive and Purview acceptance records) and
+verifies each one for this portal's tenant with the same code the release
+ledger and `tools/qualification/entraLive.mjs promote` use. A verified record
+shows its operation as proven on this tenant; a record that does not verify
+(no key, signature mismatch, another tenant, more than 30 days old) counts as
+not live and the page says why. Records are re-checked at most every 10
+minutes, so an expired record stops counting without a restart.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `KEEL_QUALIFICATION_HMAC_KEY` | unset | The evidence signing key. Prefer the file below over the unit environment. |
+| `KEEL_QUALIFICATION_ENV_PATH` | `/etc/keel/qualification.env` | A file with one line `KEEL_QUALIFICATION_HMAC_KEY=...`. It must be owned by the portal user and mode 600; a file other users can read is ignored and the page says so. |
+| `KEEL_LIVE_EVIDENCE_DIR` | `../docs/release/qualifications` (from `portal/`) | Where the committed records are read from. |
+
+Never commit the key. Without it every record shows as not live, with the
+reason "the key that checks live records is not set up on this server".
+
 `CLOUDFLARE_ACCESS_TEAM_DOMAIN` must be the complete HTTPS team origin with no
 path. `CLOUDFLARE_ACCESS_AUD` is the Application Audience (AUD) tag from the
 Cloudflare Access application. No Cloudflare credential or private key is

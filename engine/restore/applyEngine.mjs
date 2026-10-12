@@ -20,7 +20,8 @@ import {
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
-import { compareSignInPaths, snapshotSignInPath } from '../safety/signInPathGate.mjs';
+import { compareSignInPaths, recordSignInPath, snapshotSignInPath } from '../safety/signInPathGate.mjs';
+import { lockoutDeleteRefusal } from '../safety/lockoutDeleteGate.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -316,6 +317,10 @@ export async function applyWave(writer, governor, wave, {
   // Task-70: the promoted dry-run artifact this run executes; when present every
   // journal entry records its operation, intent and outcome for compensation.
   restoreRef = null,
+  // Gap register D1: fixtures only. No production caller passes it (asserted in
+  // roadmap/policy-simulation.test.mjs); a tenant-lockout delete is otherwise
+  // decided by engine/safety/lockoutDeleteGate.mjs from `lockoutGate` and
+  // `signInPathGate`.
   simulationPassed = false,
   signInPathGate,
   throttleRetryOptions,
@@ -328,6 +333,9 @@ export async function applyWave(writer, governor, wave, {
   // (authentication methods, security defaults, authorization policy) may be
   // written; engine/safety/lockoutGate.mjs. Without one they are skipped.
   lockoutGate = null,
+  // Gap D3: the content effects whose separate high-impact approval this
+  // promotion already checked (assertContentEffectApproval). Empty otherwise.
+  approvedContentEffects = [],
   // Task-152: { attempts, delayMs } for the restored policy's read-back and
   // follow-up update; injectable so fixtures never wait in real time.
   readAfterWriteOptions = {},
@@ -339,9 +347,17 @@ export async function applyWave(writer, governor, wave, {
   const skipped = [];
   const failed = [];
   const notRemediable = [];
-  const signInPathBefore = signInPathGate && await snapshotSignInPath(signInPathGate.reader, {
+  // Gap register D1: the raw reads are kept so a tenant-lockout delete can be
+  // evaluated against the sign-in path as it would be after the delete.
+  const signInPath = signInPathGate ? await recordSignInPath(signInPathGate.reader, {
     protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
-  });
+  }) : null;
+  const signInPathBefore = signInPath?.snapshot;
+  // Lockout deletes this wave allowed (evaluated as already gone for the next
+  // one), and those that verified (left out of the closing comparison's
+  // expected state).
+  const lockoutDeletesPlanned = [];
+  const lockoutDeletesVerified = [];
   // Same three lookup sources resolvePlan() uses in cli/keel-plan.mjs, so a symbol that the
   // pre-flight proved resolvable resolves identically here at write time.
   const referenceContext = { targetIndex: existingTargetIds, mappingTable, runProvenance: appliedIds };
@@ -400,10 +416,13 @@ export async function applyWave(writer, governor, wave, {
 
     // Roadmap task-149: a tenant-wide policy writes only through its operation
     // record, and a lockout-sensitive one only when the lockout gate allows it.
-    const tenantPolicyRefusal = tenantPolicyWriteRefusal(resource, effectiveVerb, { lockoutGate });
-    if (tenantPolicyRefusal) {
+    // Gap D3: a shorter group lifetime is written only with its separate
+    // high-impact approval; a dry run reports it as pending that approval.
+    const tenantPolicyRefusal = tenantPolicyWriteRefusal(resource, effectiveVerb, { lockoutGate, mode, approvedContentEffects });
+    const pendingApproval = tenantPolicyRefusal?.outcome === 'pending-approval' ? tenantPolicyRefusal.completion : null;
+    if (tenantPolicyRefusal && !pendingApproval) {
       (tenantPolicyRefusal.outcome === 'skipped' ? skipped : failed).push(tenantPolicyRefusal.outcome === 'skipped'
-        ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason }
+        ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason, ...(tenantPolicyRefusal.completion ? { completion: tenantPolicyRefusal.completion } : {}) }
         : { naturalKey: resource.naturalKey, error: tenantPolicyRefusal.reason });
       continue;
     }
@@ -471,7 +490,7 @@ export async function applyWave(writer, governor, wave, {
       const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
       });
-      if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.applied) applied.push(pendingApproval ? { ...outcome.applied, pendingApproval } : outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
       if (outcome.signInPathSection) intendedSignInSections.add(outcome.signInPathSection);
       continue;
@@ -497,15 +516,20 @@ export async function applyWave(writer, governor, wave, {
         skipped.push({ naturalKey: resource.naturalKey, reason: deletionCheck.reason });
         continue;
       }
-      if (resource.blastRadius === 'tenant-lockout' && simulationPassed !== true) {
-        skipped.push({
-          naturalKey: resource.naturalKey,
-          reason: 'refusing to delete tenant-lockout resource: simulationPassed must be true',
-        });
-        continue;
+      const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
+      const isLockoutDelete = resource.blastRadius === 'tenant-lockout';
+      if (isLockoutDelete && simulationPassed !== true) {
+        const lockoutRefusal = await lockoutDeleteRefusal(
+          { resourceType: resource.resourceType, naturalKey: resource.naturalKey, targetId },
+          { lockoutGate, signInPath, earlierDeletes: lockoutDeletesPlanned },
+        );
+        if (lockoutRefusal) {
+          skipped.push({ naturalKey: resource.naturalKey, reason: lockoutRefusal });
+          continue;
+        }
+        lockoutDeletesPlanned.push({ resourceType: resource.resourceType, naturalKey: resource.naturalKey, targetId });
       }
 
-      const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
       if (!targetId) {
         failed.push({ naturalKey: resource.naturalKey, error: 'delete has no targetId' });
         continue;
@@ -545,6 +569,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { detail: isAbsent ? 'absent' : 'soft-deleted' });
+      if (isLockoutDelete) lockoutDeletesVerified.push(targetId);
       applied.push({ naturalKey: resource.naturalKey, targetId });
       continue;
     }
@@ -969,7 +994,10 @@ export async function applyWave(writer, governor, wave, {
     const signInPathAfter = await snapshotSignInPath(signInPathGate.reader, {
       protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
     });
-    const gate = compareSignInPaths(signInPathBefore, signInPathAfter, { intendedSections: [...intendedSignInSections] });
+    // Gap register D1: an allowed lockout delete that verified is the one
+    // change expected; everything else must read as before.
+    const expected = lockoutDeletesVerified.length ? await signInPath.without(lockoutDeletesVerified) : signInPathBefore;
+    const gate = compareSignInPaths(expected, signInPathAfter, { intendedSections: [...intendedSignInSections] });
     if (!gate.allowed) {
       failed.push({ naturalKey: 'sign-in-path-gate', error: gate.reason, changed: gate.changed });
     }

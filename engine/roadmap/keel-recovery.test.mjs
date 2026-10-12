@@ -314,10 +314,10 @@ test('empty disposable instance recovers fixture history with writers disabled',
   assert.deepEqual(result.incomplete, []);
 
   // The named fixture history landed in the empty disposable instance.
-  assert.equal(result.recovered.schedules.length, 6);
+  assert.equal(result.recovered.schedules.length, 7);
   assert.deepEqual(
     result.recovered.schedules.map((row) => `${row.job_kind}:${row.tier ?? ''}`).sort(),
-    ['api-drift:', 'collect:tier1', 'collect:tier2', 'collect:tier3', 'offsite:', 'prune:'],
+    ['api-drift:', 'collect:tier1', 'collect:tier2', 'collect:tier3', 'offsite:', 'prune:', 'workload-collect:'],
   );
   assert.equal(result.recovered.approvals.length, 2);
   assert.deepEqual(
@@ -366,7 +366,7 @@ test('empty disposable instance recovers fixture history with writers disabled',
   );
   // Reads still work through the guard.
   const { rows } = await result.access.query('SELECT count(*)::int AS n FROM schedule WHERE tenant_ref = $1', [TENANT]);
-  assert.equal(rows[0].n, 6);
+  assert.equal(rows[0].n, 7);
 
   await result.access.client.end();
 });
@@ -600,7 +600,7 @@ test('reconstructed schedule read is scoped to the requested tenant (multi-tenan
   assert.equal(result.ok, true, JSON.stringify(result.failures));
   // Only the requested tenant's six schedules come back through the
   // recovered-history read...
-  assert.equal(result.recovered.schedules.length, 6);
+  assert.equal(result.recovered.schedules.length, 7);
   assert.ok(result.recovered.schedules.every((row) => row.tenant_ref === TENANT));
   // ...even though the other tenant's six schedules were imported into the
   // very same disposable database from the very same dump. If the tenant_ref
@@ -610,7 +610,7 @@ test('reconstructed schedule read is scoped to the requested tenant (multi-tenan
     'SELECT count(*)::int AS n FROM schedule WHERE tenant_ref = $1',
     [OTHER_TENANT],
   );
-  assert.equal(rows[0].n, 6, "the other tenant's schedules are present in the reconstructed database");
+  assert.equal(rows[0].n, 7, "the other tenant's schedules are present in the reconstructed database");
   await result.access.client.end();
 });
 
@@ -1005,7 +1005,7 @@ test('CLI: full reconstruction, refusal without authenticator, named prerequisit
   });
   assert.equal(exit, 0, JSON.stringify(quiet.errors));
   assert.ok(quiet.lines.some((line) => line.includes('recovered read-only as recovery-officer@example.test (writers disabled)')));
-  assert.ok(quiet.lines.some((line) => line.includes('schedules: 6')));
+  assert.ok(quiet.lines.some((line) => line.includes('schedules: 7')));
   assert.ok(quiet.lines.some((line) => line.includes('approvals: 2')));
   assert.ok(quiet.lines.some((line) => line.includes('grants: 2')));
 
@@ -1106,7 +1106,7 @@ test('CLI imports the verified --dump override rather than the manifest path', a
   const result = await reconstructRecovery(baseOptions({ dumpPath: undefined }));
   try {
     assert.equal(result.ok, true, JSON.stringify(result.failures));
-    assert.equal(result.recovered.schedules.length, 6);
+    assert.equal(result.recovered.schedules.length, 7);
   } finally {
     await result.access?.client.end();
   }
@@ -1176,7 +1176,7 @@ test('CLI with the production signed-assertion authenticator recovers and writes
     assert.equal(record.buildRevision, BUILD_REVISION);
     assert.ok(!Number.isNaN(Date.parse(record.completedAt)));
     assert.deepEqual(record.recovered.evidence, { chainOk: true, ...fixture.checkpoint });
-    assert.equal(record.recovered.counts.schedules, 6);
+    assert.equal(record.recovered.counts.schedules, 7);
     assert.equal(record.identity.authenticator, 'signed-assertion');
     assert.equal(record.identity.credentialRef, assertionPath);
     assert.equal(record.access, undefined, 'the access handle is never persisted');

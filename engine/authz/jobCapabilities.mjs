@@ -19,6 +19,9 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   // Task 62: read-only, anonymous metadata comparison run on the same operator
   // cadence as collection; it writes review candidates, never tenant state.
   'api-drift': 'collect',
+  // Gap W1: read-only workload settings collection (SharePoint, Teams, Exchange,
+  // OneDrive, Purview). It writes workload snapshots to the database, never tenant state.
+  'workload-collect': 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',
   'baseline-activate': 'baseline-create',

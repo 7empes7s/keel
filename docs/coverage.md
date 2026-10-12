@@ -165,10 +165,10 @@ KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore a
   - *You do:* Nothing to restore.
 - **Tenant-wide group settings.** Puts changed tenant-wide group settings back, and removes ones added since the backup.
   - *You do:* A setting that was deleted, and settings on a single group, are recreated by hand from the backup.
-- **Company branding.** Puts the sign-in page text, colours and layout back.
-  - *You do:* Logos, background images, the favicon and custom stylesheets are files that are not restored: upload them again in the Entra admin center. A tenant with no branding gets none from KEEL.
-- **Company branding per language.** Puts the sign-in page text, colours and layout of each existing language back.
-  - *You do:* Images are not restored, and a language that was added or removed is added or removed by hand.
+- **Company branding.** Puts the sign-in page text, colours and layout back, and uploads the background image, banner logo, square logos, favicon and custom stylesheet again when they changed (tested against a simulated tenant only).
+  - *You do:* The header logo, and any file that was not set or was over 1 MB at backup time, are uploaded by hand in the Entra admin center. A tenant with no branding gets none from KEEL.
+- **Company branding per language.** Puts the sign-in page text, colours and layout of each existing language back, and uploads its images and stylesheet again when they changed (tested against a simulated tenant only).
+  - *You do:* The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.
 - **Group expiration policy.** Puts the policy back only when that makes group expiry less aggressive.
   - *You do:* A shorter lifetime, more groups covered or a removed notice address could expire and delete groups, so KEEL leaves that change to a person. A missing policy, and the list of groups it covers, are set by hand.
 - **Administrative units.** Puts the name and description back.

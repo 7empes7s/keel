@@ -137,8 +137,9 @@ IMMUTABLE.set('servicePrincipal', new Set([
 // Issue #156: company branding. The CDN host list is Microsoft's and can change
 // on its own, so it is server-owned. The image and stylesheet paths change only
 // when someone uploads a new logo, background, favicon or stylesheet: that is
-// real drift, but those files are binary uploads KEEL never writes, so the
-// paths are immutable (in the hash, never PATCHed, reported not remediable).
+// real drift, but those files are binary uploads on their own routes, so the
+// paths are immutable (in the hash, never PATCHed). The files themselves are
+// backed up and uploaded separately (gap register M6, engine/restore/brandingAssets.mjs).
 const BRANDING_ASSET_PATHS = [
   'backgroundImageRelativeUrl', 'bannerLogoRelativeUrl', 'customCSSRelativeUrl', 'faviconRelativeUrl',
   'headerLogoRelativeUrl', 'squareLogoRelativeUrl', 'squareLogoDarkRelativeUrl',

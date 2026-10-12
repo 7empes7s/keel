@@ -146,6 +146,14 @@ async function approve(client, artifactId, { requestedBy = 'requester', decidedB
   return approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy });
 }
 
+// Gap B11: a request must come from an enabled principal, so promotions use real ones.
+async function people(client) {
+  const requester = (await client.query(`INSERT INTO principal (email) VALUES ($1) RETURNING id`, [`w2-requester-${crypto.randomUUID()}@example.test`])).rows[0].id;
+  const approver = (await client.query(`INSERT INTO principal (email) VALUES ($1) RETURNING id`, [`w2-approver-${crypto.randomUUID()}@example.test`])).rows[0].id;
+  await grantRole(client, { principalId: approver, role: 'approver', grantedBy: approver, activeFrom: new Date(Date.now() - 60_000) });
+  return { requester, approver };
+}
+
 const promote = (graph, artifactId, options) => runRestore({
   artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies: cliDependencies(graph, options).dependencies, logger: quiet,
 });
@@ -193,18 +201,19 @@ test('--workload is a dry run only, and refuses an unknown workload or a missing
 test('promotion is refused without an approved request; once approved it runs the SharePoint restore', async (t) => {
   const client = await schemaClient(t);
   const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
-  const { graph, artifactId } = await dryRun(client, live);
+  const { requester, approver } = await people(client);
+  const { graph, artifactId } = await dryRun(client, live, { requestedBy: requester });
   reads.length = 0;
 
   // Mutation check: promote the reviewed artifact without approval, then with a self-approval.
   await assert.rejects(promote(graph, artifactId), /needs an approved request/);
-  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId }, requestedBy: 'requester' });
-  await assert.rejects(approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'requester' }), SelfApprovalError);
+  const request = await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId }, requestedBy: requester });
+  await assert.rejects(approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: requester }), SelfApprovalError);
   await assert.rejects(promote(graph, artifactId), /needs an approved request/);
   assert.deepEqual(graph.writes(), [], 'nothing written without the approval');
   assert.deepEqual(reads, [], 'no credential file is read before the approval');
 
-  const approved = await approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'approver' });
+  const approved = await approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: approver });
   assert.deepEqual([approved.job.params.mode, approved.job.params.artifactId], ['enforce', artifactId]);
 
   const deps = cliDependencies(graph);
@@ -219,9 +228,7 @@ test('promotion is refused without an approved request; once approved it runs th
 test('the content-effect guard still holds a widening change after the restore approval', async (t) => {
   const client = await schemaClient(t);
   // The source was more open than today: restoring it widens sharing.
-  const requester = (await client.query(`INSERT INTO principal (email) VALUES ('w2-requester@example.test') RETURNING id`)).rows[0].id;
-  const approver = (await client.query(`INSERT INTO principal (email) VALUES ('w2-approver@example.test') RETURNING id`)).rows[0].id;
-  await grantRole(client, { principalId: approver, role: 'approver', grantedBy: approver, activeFrom: new Date(Date.now() - 60_000) });
+  const { requester, approver } = await people(client);
   const live = { ...SOURCE_SETTINGS, sharingCapability: 'existingExternalUserSharingOnly', sharingAllowedDomainList: [] };
   const { result, graph, artifactId } = await dryRun(client, live, { requestedBy: requester });
   assert.ok(result.workloadRestore.contentEffects.length > 0);
@@ -241,8 +248,9 @@ test('the content-effect guard still holds a widening change after the restore a
 test('an unqualified write sends nothing, and a restorer from another tenant is refused', async (t) => {
   const client = await schemaClient(t);
   const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
-  const { graph, artifactId } = await dryRun(client, live);
-  await approve(client, artifactId);
+  const { requester, approver } = await people(client);
+  const { graph, artifactId } = await dryRun(client, live, { requestedBy: requester });
+  await approve(client, artifactId, { requestedBy: requester, decidedBy: approver });
 
   await assert.rejects(promote(graph, artifactId, { qualifications: () => ({}) }), /SharePoint restore disabled/);
   await assert.rejects(promote(graph, artifactId, {
@@ -257,6 +265,7 @@ test('an unqualified write sends nothing, and a restorer from another tenant is 
 test('promotion dispatches each workload artifact to its own execute function', async (t) => {
   const client = await schemaClient(t);
   const calls = [];
+  const { requester, approver } = await people(client);
   const fakeRestores = Object.fromEntries(Object.entries(WORKLOAD_RESTORES).map(([name, entry]) => [name, {
     ...entry,
     execute: async (_client, { artifactId, tenantId, plan }) => {
@@ -270,13 +279,13 @@ test('promotion dispatches each workload artifact to its own execute function', 
       id, tenantRef: TENANT, snapshotId: null, selection: [workload], closureKeys: [workload], targetTenantId: TENANT_ID,
       collectorConfigPath: `workload:${workload}`, targetConfigPath: `workload:${workload}`, reconciliationResources: null,
       waves: [], patches: [], guardRefusals: [], results: {}, currentStateFingerprint: 'f', digest: 'd', status: 'completed',
-      requestedBy: 'requester', workloadRestore: { workload, operations: [] },
+      requestedBy: requester, workloadRestore: { workload, operations: [] },
     });
     await assert.rejects(runRestore({
       artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet,
       dependencies: { ...cliDependencies(fakeSharePoint({})).dependencies, workloadRestores: fakeRestores },
     }), /needs an approved request/);
-    await approve(client, id);
+    await approve(client, id, { requestedBy: requester, decidedBy: approver });
     const result = await runRestore({
       artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet,
       dependencies: { ...cliDependencies(fakeSharePoint({})).dependencies, workloadRestores: fakeRestores },

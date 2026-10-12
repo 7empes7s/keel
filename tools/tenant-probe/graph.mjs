@@ -136,6 +136,58 @@ export class GraphReader {
   }
 
   /**
+   * Roadmap M6: one binary GET (a company branding image or stylesheet stream),
+   * read only up to `maxBytes`. A body that is larger is never buffered whole:
+   * the read stops and `tooLarge` is set, so a huge or hostile answer cannot
+   * fill memory or the database. Throttling is honoured exactly as in get().
+   * Returns { ok, status, bytes (Buffer), contentType } or { ok: false, status,
+   * error, code }; an empty 200 or a 204 is ok with zero bytes.
+   */
+  async getStream(version, path, { maxBytes, maxRetries = 5, acceptLanguage = 'en-US' } = {}) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new TypeError('getStream needs a positive maxBytes');
+    const url = this.url(version, path);
+    if (!isGraphUrl(url)) {
+      return { ok: false, status: 0, code: 'UnsafeUrl', error: redactSecrets(`refused request to non-Graph host: ${url}`) };
+    }
+    const headers = {
+      Authorization: `Bearer ${await this.getAccessToken()}`,
+      'Accept-Language': acceptLanguage,
+    };
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const started = Date.now();
+      const res = await fetch(url, { method: 'GET', headers });
+      this.stats.requests++;
+      this.stats.statusCounts[res.status] = (this.stats.statusCounts[res.status] ?? 0) + 1;
+      this.#recordLatency(path, Date.now() - started);
+      if (res.status === 429 || res.status === 503) {
+        const retryAfter = Number(res.headers.get('retry-after') ?? 10);
+        this.stats.throttled++;
+        this.stats.retryAfterSeconds.push(retryAfter);
+        this.stats.totalWaitMs += retryAfter * 1000;
+        if (attempt === maxRetries) {
+          return { ok: false, status: res.status, error: `throttled, gave up after ${maxRetries} retries` };
+        }
+        await new Promise((r) => setTimeout(r, retryAfter * 1000));
+        continue;
+      }
+      if (!res.ok) {
+        let body = null;
+        try { body = await res.json(); } catch { body = null; }
+        return { ok: false, status: res.status, error: redactSecrets(body?.error?.message ?? res.statusText), code: body?.error?.code };
+      }
+      const contentType = res.headers.get('content-type') ?? null;
+      const declared = Number(res.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > maxBytes) {
+        await res.body?.cancel?.().catch(() => {});
+        return { ok: true, status: res.status, tooLarge: true, contentType };
+      }
+      const read = await readBounded(res, maxBytes);
+      if (read.tooLarge) return { ok: true, status: res.status, tooLarge: true, contentType };
+      return { ok: true, status: res.status, bytes: read.bytes, contentType };
+    }
+  }
+
+  /**
    * Follow @odata.nextLink. Returns whatever was retrieved even when the walk
    * stops early, with `capped` set, so a bounded read is never mistaken for a
    * complete one. A mid-walk failure keeps the items and page count gathered
@@ -174,4 +226,26 @@ export class GraphReader {
     this.stats.slowest.sort((a, b) => b.ms - a.ms);
     this.stats.slowest.length = Math.min(this.stats.slowest.length, 10);
   }
+}
+
+/** A response body as a Buffer, stopping as soon as it passes maxBytes. */
+async function readBounded(res, maxBytes) {
+  const reader = res.body?.getReader?.();
+  if (!reader) {
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return bytes.length > maxBytes ? { tooLarge: true } : { bytes };
+  }
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return { tooLarge: true };
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return { bytes: Buffer.concat(chunks, size) };
 }

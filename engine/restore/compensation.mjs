@@ -130,6 +130,12 @@ export function planCompensation({ restoreRef, entries, current }) {
       manual.push({ naturalKey, entryIds, reason: 'relationship edge: membership compensation is not a qualified operation — review this edge by hand' });
       continue;
     }
+    // Gap register M6: an uploaded branding file. The journal holds its hashes,
+    // not the bytes, so putting the earlier file back is by hand.
+    if (first.priorState?.kind === 'branding-file') {
+      manual.push({ naturalKey, entryIds, reason: 'branding file: the earlier file is not kept in the journal — put it back by hand, or restore an earlier backup' });
+      continue;
+    }
     if (!last.operation || !resourceType) {
       manual.push({ naturalKey, entryIds, reason: 'journal entry predates operation journaling; its outcome and intent are unknown' });
       continue;

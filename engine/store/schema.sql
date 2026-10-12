@@ -1409,3 +1409,37 @@ CREATE TABLE IF NOT EXISTS itsm_adapter_config (
   updated_at  timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_ref, adapter)
 );
+
+-- Gap register M6: company branding files (background image, banner logo,
+-- square logo and its dark variant, favicon, custom stylesheet) for the default
+-- branding (locale '0') and each language. The bytes are stored once per tenant
+-- and content hash (branding_asset_blob); each snapshot records, per locale and
+-- file, what was observed: 'present' (with its hash, size and content type),
+-- 'absent' (none set), 'too-large' (over the size bound, not stored) or
+-- 'failed'. Additive and retry-safe. Prune deletes a snapshot's rows with it
+-- and then any blob no remaining row of that tenant points at.
+CREATE TABLE IF NOT EXISTS branding_asset_blob (
+  tenant_ref  text NOT NULL,
+  sha256      text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  size_bytes  int NOT NULL CHECK (size_bytes >= 0),
+  content     bytea NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_ref, sha256)
+);
+
+CREATE TABLE IF NOT EXISTS branding_asset (
+  snapshot_id   uuid NOT NULL REFERENCES snapshot(id),
+  tenant_ref    text NOT NULL,
+  locale        text NOT NULL,
+  asset         text NOT NULL,
+  outcome       text NOT NULL CHECK (outcome IN ('present','absent','too-large','failed')),
+  sha256        text,
+  size_bytes    int,
+  content_type  text,
+  http_status   int,
+  error         text,
+  observed_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (snapshot_id, locale, asset),
+  FOREIGN KEY (tenant_ref, sha256) REFERENCES branding_asset_blob (tenant_ref, sha256),
+  CHECK ((outcome = 'present') = (sha256 IS NOT NULL))
+);

@@ -298,6 +298,25 @@ function outcomeDetail(result) {
   return result?.error ? String(result.error).slice(0, 200) : 'no response';
 }
 
+/**
+ * Gap B9: the outcome detail of a failed write, with Graph's error body
+ * appended, so a refused write (the live branding 400) can be diagnosed from
+ * the journal alone. The body is Graph's own error (code, message, request
+ * ids); it is cut to a bounded length.
+ */
+function outcomeDetailWithBody(result) {
+  const detail = outcomeDetail(result);
+  const body = result?.body?.error ?? result?.body;
+  if (body === undefined || body === null || body === '') return detail;
+  let text;
+  try {
+    text = typeof body === 'string' ? body : JSON.stringify(body);
+  } catch {
+    return detail;
+  }
+  return `${detail}: ${text.slice(0, 2000)}`;
+}
+
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -1066,7 +1085,7 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
       method: write.method, body: write.body, ...(entry.requestHeaders ? { headers: entry.requestHeaders } : {}),
     }));
     if (!result.ok) {
-      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      await noteOutcome(rollbackClient, journal, classifyWriteOutcome(result), { detail: outcomeDetailWithBody(result) });
       return { failed: graphFailure(naturalKey, result) };
     }
   }

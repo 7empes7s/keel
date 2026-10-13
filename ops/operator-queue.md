@@ -2025,7 +2025,7 @@ item that needs it stays untouched.
   only).
 ### Q45: Rerun Q43's demoted and blocked steps at the Phase 1 build — issue #148 follow-up
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: doing
+- Status: done
 - Result: Started 2026-10-13 09:52 UTC at live build 2b9d310 (#185 present).
   - Checklist at 2b9d310: "51 registered operations, 52 steps"; every step in the Q45 table is listed. Rerun set: table steps
     plus Q43 steps never reached (11, 13, 14, 20, 23): non-lockout 1, 2, 3, 5–8, 10–14, 20, 21, 23–25, 29–32; lockout 35, 39,
@@ -2086,8 +2086,41 @@ item that needs it stays untouched.
       → `nameOf` strips the text before the first ':' of the reference symbol, so `roleDefinition:<id>` is looked up as a
       bare id, isn't found, and the id is tested against `^KEEL-RT-148-role$` → "the role is not the fixture role". (The
       principal only passes because a bare UPN starts with keel-rt-.) The #179 fix itself works: the plan was a clean create.
-    - 40 namedLocation update: dry run d765cd00 completed; approval 9f82c1d4 pending.
-  - **Live-qualified total so far: 25.**
+    - **40 namedLocation update: failed → demoted.** PATCH 400 "1042: Unexpected type: namedLocationType": the update
+      body (`writableProjection`) drops `@odata.type`. Verified by hand on the fixture: same PATCH without it 400, with it
+      204. #173 keeps `@odata.type` on create bodies only.
+    - **39 namedLocation create: promoted** (5dee600d, approval 751753e9).
+    - **49 conditionalAccessPolicy update: promoted** (9e19ce48, approval 11663254): planned as update (#176 works),
+      renamed back, stayed report-only. The worker job still ended "failed" (wave 2 "applied 1, failed 1", no reason
+      printed) although the only journal entry succeeded. Worth a look.
+    - **48 conditionalAccessPolicy create: failed → demoted** (5c149f0a, approval 41508a19; Marouane purged the deleted
+      policy in the portal first). The POST succeeded (report-only, read back), but post-create verification compared
+      server-managed fields (`id`, `createdDateTime`, nested `@odata.context`) → "created object did not verify".
+    - 44/46/47: not run; still blocked by the break-glass gate (one ready account; see Q44).
+  - **Not rerun:** 45 (PIM, not in the table), 37/41/52 and 38 (Q46 parts B and D), 51.
+  - **Outcome by step:** promoted 2, 10, 12, 20, 21, 23, 24, 25, 30, 39, 49; demoted 1, 3, 40, 48; blocked 5–8 (edge
+    outcomes never journaled), 11/13/14 (publicClient content-effect guard), 29 (default branding write not journaled),
+    31 (content-effect approval unreachable for a CLI dry run), 32 (Graph AADB2C90063), 35 (capture-tool `nameOf` bug;
+    the write succeeded), 44/46/47 (break-glass gate).
+  - **Live-qualified total: 27** on the host (16 from Q43 + 11). In the published set: 26 (group update held back, below).
+  - **Evidence:** branch `claude/live-evidence-q45` commit 71eb8ad (28 files changed under
+    `docs/release/qualifications/entra-live/`, on top of master's Q43 set). Held back: group.update,
+    group.create and group.restore-soft-deleted record + capture, because their captures carry `securityIdentifier` (an
+    Entra SID that encodes the raw object id); their demotions are committed. Secret scan otherwise clean, no raw ids.
+    `operations.mjs --live-evidence`: 26 `fixture-tested -> live-qualified`; not applied: conditionalAccessPolicy.create,
+    group.create, namedLocation.update, organizationalBranding.update, unifiedRoleManagementPolicy.update.
+  - **Cleanup (Restorer):** deleted every KEEL-RT-148 object (role assignment, role, AU, named location, CA policy, CA
+    group, group, compliance policy, restrictions profile), the partner entry, the lifecycle policy and both branding
+    localizations; purged the groups and the leftover SP from deleted items. Every tenant-wide setting in
+    /root/keel-q45/originals.json reads back as original. carla is back and enabled. **Left:** KEEL-RT-148-ca in CA
+    deleted items (app-only purge 403; Marouane can purge it).
+  - **Code gaps for the thread:** (1) edge writer never records outcomes (`relationshipWriter.mjs`); (2) post-write
+    verification and convergence compare server-managed fields (group create/restore, CA create); (3) update bodies drop
+    `@odata.type` (namedLocation); (4) content-effect rule missing for application `publicClient`; (5) Intune policies
+    planned in the same wave as the group their assignment targets; (6) content-effect approval not reachable for a CLI
+    dry run in the portal; (7) default branding write not journaled; (8) capture `nameOf` strips the type prefix from
+    reference symbols; (9) `pseudonymize.mjs` still doesn't cover `securityIdentifier`; (10) restore requester must now
+    be a principal ("keel-operator" refused), so CLI-filed requests need a principal.
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

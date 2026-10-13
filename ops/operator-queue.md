@@ -2072,6 +2072,22 @@ item that needs it stays untouched.
       Intune policies are in the same wave as the group they're assigned to (assignment target not treated as a dependency).
     - Split: D1 = group (1) + partner (20): dry run 8a06277f completed, approval b620b745 pending; D2 = Intune creates after.
   - **Live-qualified total so far: 22.**
+  - **Round D1** (8a06277f, approval b620b745): **20 crossTenantAccessPolicyPartner create promoted.** **1 group create
+    failed → demoted**: the POST now succeeds (#173 works), but post-create verification compares server-managed fields
+    (createdDateTime, renewedDateTime, securityIdentifier) → "created object did not verify", uncertain; edges didn't run.
+  - **Round D2** (bc611507, approval 10a1a2c6): **23 deviceCompliancePolicy create and 25 deviceConfiguration create
+    promoted** (assignments to the recreated group).
+  - **Lockout phase — runbook override by Marouane (2026-10-13):** only "Marouane break-glass" reads ready; the two dedicated
+    accounts read unknown (no phishing-resistant method). Marouane chose to proceed, one step at a time, CA report-only.
+    Fixtures: AU, KEEL-RT-148-role (groups/basic/update) assigned to carla at AU scope, named location, CA group (carla),
+    CA policy report-only excluding marouane.defili + both break-glass accounts. Snapshot SL 497ace77. Order 35, 40, 39,
+    49, 48 (rename/update before delete/create so one snapshot serves all).
+    - **35 roleAssignment create: written live (succeeded), capture blocked by a capture-tool bug:** `byReferenceProblems`
+      → `nameOf` strips the text before the first ':' of the reference symbol, so `roleDefinition:<id>` is looked up as a
+      bare id, isn't found, and the id is tested against `^KEEL-RT-148-role$` → "the role is not the fixture role". (The
+      principal only passes because a bare UPN starts with keel-rt-.) The #179 fix itself works: the plan was a clean create.
+    - 40 namedLocation update: dry run d765cd00 completed; approval 9f82c1d4 pending.
+  - **Live-qualified total so far: 25.**
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

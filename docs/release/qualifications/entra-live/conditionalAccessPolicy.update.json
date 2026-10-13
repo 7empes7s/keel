@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "conditionalAccessPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-13T21:29:07.930Z",
+  "restoreRef": "a4a6d112-5492-89bd-b4dd-25a242c4385b",
+  "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca",
+  "fixtureKind": "named-object",
+  "captureSha256": "913822e3f5ee338b9e32b832e8ec8a57ec73db926e2af892cd1dddd6599a01d0",
+  "proofRef": "docs/release/qualifications/entra-live/conditionalAccessPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "623e261cd702409cb6fdcc51bb377d42e2fae39f69efe5efa5f0dd6de431942c"
+    }
+  }
+}

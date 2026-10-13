@@ -6,12 +6,13 @@
   "tenantRef": "sha256:f7b3959300856957",
   "resourceType": "group",
   "operation": "create",
-  "reason": "Live POST /groups returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, assignedLicenses, onPremisesSyncEnabled).",
-  "restoreRef": "b956de04-bd7c-83e8-a447-1bc29f0ed73c",
-  "decidedAt": "2026-10-11T11:34:41.581Z",
+  "reason": "The group was created (POST succeeded after #173), but the post-create verification reported \"created object did not verify\": it compares server-managed fields the snapshot cannot match (createdDateTime, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain and the member/owner edges did not run",
+  "restoreRef": "d5513312-2b4b-8330-94a4-042d3407d459",
+  "decidedAt": "2026-10-13T13:24:14.489Z",
   "builderSteps": [
     "remove the create registration for group in engine/coverage/capabilities.mjs",
     "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.group.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.group.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
     "commit this file under docs/release/qualifications/entra-live/ in the same PR"
   ]
 }

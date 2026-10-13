@@ -2025,8 +2025,8 @@ item that needs it stays untouched.
   only).
 ### Q45: Rerun Q43's demoted and blocked steps at the Phase 1 build — issue #148 follow-up
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: todo
-- Result:
+- Status: doing
+- Result: Started 2026-10-13 09:52 UTC at live build 2b9d310 (#185 present).
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

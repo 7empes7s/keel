@@ -2056,6 +2056,22 @@ item that needs it stays untouched.
     - Carla's `deletedDateTime` never appeared in 5 min of reads; KEEL still planned `restore-soft-deleted` (the #185 fix).
     - 31 groupLifecyclePolicy: planned as content effect "retention-reducing 400→365" with a manual completion step.
     - Dry run 12cccb71 (group, carla, lifecycle; 2 edges): completed. Approval 54b91a76 pending.
+  - **Round C result:** first job (12cccb71, approval 54b91a76) failed before any write: `blocked-content-effect` — the
+    lifecycle 400→365 needs a separate content-effect approval, which the portal only offers on a portal-made dry run (no way
+    to open a CLI artifact) → **31 blocked (portal gap)**; lifetime set back to 365 by hand. Replanned without it:
+    52d30020, approval 1967acf3:
+    - **10 user restore-soft-deleted: promoted.**
+    - **3 group restore-soft-deleted: failed → demoted** — restored with the same id and read back, but the convergence
+      check flagged "residual drift after update" on server-managed fields absent from the snapshot (`expirationDateTime`,
+      `renewedDateTime`, `securityIdentifier`), outcome uncertain. The #173 strip doesn't cover the convergence check.
+  - **Round D (creates)**, source SC: deleted the group, compliance policy, restrictions profile and partner; purged the
+    group, app and SP. Dry run e4a915b9 failed:
+    - 11 application create and 14 servicePrincipal create: **blocked**, guard `unclassified-content-effect: application
+      changes publicClient`.
+    - 23/25: "assignments cannot be restored: the group group:KEEL-RT-148-group does not exist in the target" — the
+      Intune policies are in the same wave as the group they're assigned to (assignment target not treated as a dependency).
+    - Split: D1 = group (1) + partner (20): dry run 8a06277f completed, approval b620b745 pending; D2 = Intune creates after.
+  - **Live-qualified total so far: 22.**
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

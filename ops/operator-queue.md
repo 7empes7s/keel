@@ -1972,8 +1972,8 @@ item that needs it stays untouched.
 
 ### Q44: Register the two dedicated break-glass accounts — issue #148 follow-up
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12). Marouane named the accounts in that thread at 13:57 UTC.
-- Status: todo
-- Result:
+- Status: doing
+- Result: Started 2026-10-13 09:47 UTC.
 - Needs: nothing. No code change; the live build is fine.
 - Why: Readiness reads one emergency account (Marouane's own), so `MINIMUM_ACCOUNTS = 2` fails and the break-glass gate blocks
   the authentication-methods, security-defaults and authorization-policy restores (Q43 steps 44, 46, 47). The tenant has two

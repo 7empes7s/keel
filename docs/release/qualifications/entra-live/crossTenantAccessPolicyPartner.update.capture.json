@@ -1,0 +1,79 @@
+{
+  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "entry": {
+    "naturalKey": "crossTenantAccessPolicyPartner:efc83404-0842-8940-959a-c048aa123c26",
+    "resourceType": "crossTenantAccessPolicyPartner",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-13T11:52:37.010Z",
+    "priorState": {
+      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "inboundTrust": {
+        "isMfaAccepted": true,
+        "isCompliantDeviceAccepted": null,
+        "isHybridAzureADJoinedDeviceAccepted": null
+      },
+      "isServiceProvider": null,
+      "tenantRestrictions": null,
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "appServiceConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "m365CollaborationInbound": null,
+      "m365CollaborationOutbound": null,
+      "isInMultiTenantOrganization": false,
+      "automaticUserConsentSettings": {
+        "inboundAllowed": null,
+        "outboundAllowed": null
+      }
+    },
+    "intendedState": {
+      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "inboundTrust": {
+        "isMfaAccepted": false,
+        "isCompliantDeviceAccepted": null,
+        "isHybridAzureADJoinedDeviceAccepted": null
+      },
+      "isServiceProvider": null,
+      "tenantRestrictions": null,
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "appServiceConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "m365CollaborationInbound": null,
+      "m365CollaborationOutbound": null,
+      "isInMultiTenantOrganization": false,
+      "automaticUserConsentSettings": {
+        "inboundAllowed": null,
+        "outboundAllowed": null
+      }
+    },
+    "postState": {
+      "tenantId": "efc83404-0842-8940-959a-c048aa123c26",
+      "inboundTrust": {
+        "isMfaAccepted": false,
+        "isCompliantDeviceAccepted": null,
+        "isHybridAzureADJoinedDeviceAccepted": null
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/partners/$entity",
+      "isServiceProvider": null,
+      "tenantRestrictions": null,
+      "b2bCollaborationInbound": null,
+      "b2bDirectConnectInbound": null,
+      "appServiceConnectInbound": null,
+      "b2bCollaborationOutbound": null,
+      "b2bDirectConnectOutbound": null,
+      "m365CollaborationInbound": null,
+      "m365CollaborationOutbound": null,
+      "isInMultiTenantOrganization": false,
+      "automaticUserConsentSettings": {
+        "inboundAllowed": null,
+        "outboundAllowed": null
+      }
+    }
+  }
+}

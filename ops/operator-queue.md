@@ -1972,8 +1972,33 @@ item that needs it stays untouched.
 
 ### Q44: Register the two dedicated break-glass accounts — issue #148 follow-up
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12). Marouane named the accounts in that thread at 13:57 UTC.
-- Status: doing
-- Result: Started 2026-10-13 09:47 UTC.
+- Status: done
+- Result: Done 2026-10-13 09:50 UTC, live build 2b9d310 (all of #170–#202 present), actor = operator principal (marouanedefili@gmail.com).
+  - **Step 1, read-only Graph checks (Collector), per account:**
+    - Emergency access: object id found pass; accountEnabled pass; userType Member pass; onPremisesSyncEnabled null pass;
+      domain authentication Managed pass; CA exclusions pass: the two all-users enabled policies ("Baseline - Require MFA for
+      Risky Sign-ins", "Baseline - Require Password Change for High-risk Users") exclude it directly.
+    - Break glass: same, all pass.
+    - Note: the tenant has **8** enabled CA policies, not 2 (all 8 were already enabled before Q43; none changed). The other
+      6 (G-MFA-BGA-AllApps-AllOS-P, Test - Coreview, four KEEL-RT-20260908 policies) target specific groups/users, and
+      neither account is in their targets (transitive membership checked), so they don't apply.
+  - **Steps 2–4:** registered "Emergency access" and "Break glass" (validation 90 days, rotation default); recorded
+    credential-rotated 2026-10-12 ("password reset by Marouane, 2026-10-12") and validated 2026-10-12T14:10Z ("sign-in test
+    by Marouane") for both. Evidence seq 40474–40479. "Marouane break-glass" untouched.
+  - **Step 5, `keel-breakglass report`: overall `unknown` (reason account-evidence-unknown).**
+    - Marouane break-glass: **ready** — cloudOnlyIdentity pass, phishingResistantCredential pass, policyExclusions pass,
+      privilegedAccessPath pass, lastValidation pass.
+    - Emergency access: unknown — cloudOnlyIdentity pass, **phishingResistantCredential unknown (no-method-evidence)**,
+      policyExclusions pass (excluded-from-every-enforced-policy), privilegedAccessPath pass (active Global Administrator),
+      lastValidation pass.
+    - Break glass: same as Emergency access.
+    - Canary: not-configured. Alerts: none.
+  - **Differs from the expected unknown:** `policyExclusions` now passes (membership is collected at this build).
+    `phishingResistantCredential` is unknown instead, since no `methods-attested` record exists for the two accounts. A
+    read-only Graph check shows **both have only a password registered**, so attesting their methods would make them
+    not-ready, not ready. The gate needs 2 ready accounts; only Marouane's is. **For Marouane:** register a FIDO2 key or
+    passkey on at least one of the two accounts and tell me the methods to attest. Until then Q45 steps 44/46/47 stay
+    blocked at the break-glass gate.
 - Needs: nothing. No code change; the live build is fine.
 - Why: Readiness reads one emergency account (Marouane's own), so `MINIMUM_ACCOUNTS = 2` fails and the break-glass gate blocks
   the authentication-methods, security-defaults and authorization-policy restores (Q43 steps 44, 46, 47). The tenant has two

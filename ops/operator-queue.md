@@ -2038,6 +2038,24 @@ item that needs it stays untouched.
     first; this also covers edge-remove 6/8), app -drifted, partner MFA trust on, compliance length 6, branding texts.
     32: Graph refused the self-service sign-up drift again (500 AADB2C90063) → blocked. Dry run c8401172: 7 resources +
     4 edges planned, 0 refused. Approval e20b2d26 pending.
+  - **Round A result** (approval e20b2d26, executed by the keel-worker job the approval queued; my CLI `--enforce` was then
+    correctly refused because the target had already changed): **promoted 5**: group update (2), application update (12),
+    crossTenantAccessPolicyPartner update (21), deviceCompliancePolicy update (24), organizationalBrandingLocalization
+    update (30).
+    - **Blocked, edges 5–8 (code gap):** member add/remove and owner add worked live (read back), owner remove of ryan
+      failed (likely "last owner" while carla's add replicated). But `relationshipWriter.mjs` journals each edge with
+      `recordPriorState` only and never calls `recordWriteOutcome`, so every edge entry stays `pending` and capture exits 4.
+      No edge step can be captured until the edge writer records outcomes.
+    - **Blocked, 29 organizationalBranding update:** the default branding exists only as localization "0" (`/branding`
+      GET is 404). The wave reported it applied and the text reads back as the original, but no journal entry was written
+      for it, so capture exits 4 (not exercised).
+    - **Blocked, 32:** Graph refuses the self-service sign-up drift (500 AADB2C90063).
+  - **Round C** (snapshot SC 8a087010): soft-deleted the group, app and carla; lifecycle 365→400.
+    - 13 application restore-soft-deleted: **blocked**, guard `unclassified-content-effect: application changes
+      publicClient` (dry run b9b9f46c refused).
+    - Carla's `deletedDateTime` never appeared in 5 min of reads; KEEL still planned `restore-soft-deleted` (the #185 fix).
+    - 31 groupLifecyclePolicy: planned as content effect "retention-reducing 400→365" with a manual completion step.
+    - Dry run 12cccb71 (group, carla, lifecycle; 2 edges): completed. Approval 54b91a76 pending.
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

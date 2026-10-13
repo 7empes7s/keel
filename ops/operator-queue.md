@@ -2149,8 +2149,8 @@ item that needs it stays untouched.
 - **Report:** per step, promoted / failed (demoted, with the reason) / blocked (why), and the new live-qualified total.
 ### Q46: Phase 3 live checks on the test tenant — Exchange org setting, lockout deletes, branding files, PIM admin-unit scope
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: todo
-- Result:
+- Status: doing
+- Result: Started 2026-10-13 21:58 UTC at live build 2b9d310 (#192, #195, #197, #199 all present).
 - Needs: Q45 done first. A live build that contains PRs #192 (Exchange org setting), #195 (PIM admin-unit scope), #197 (lockout
   delete evidence) and #199 (branding files). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run
   only the parts whose PR is live and report the rest as waiting.

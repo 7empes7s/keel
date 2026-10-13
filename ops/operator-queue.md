@@ -2027,6 +2027,17 @@ item that needs it stays untouched.
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
 - Status: doing
 - Result: Started 2026-10-13 09:52 UTC at live build 2b9d310 (#185 present).
+  - Checklist at 2b9d310: "51 registered operations, 52 steps"; every step in the Q45 table is listed. Rerun set: table steps
+    plus Q43 steps never reached (11, 13, 14, 20, 23): non-lockout 1, 2, 3, 5–8, 10–14, 20, 21, 23–25, 29–32; lockout 35, 39,
+    40, 48, 49; gate check on 44, 46, 47.
+  - Approval requests: the live build refuses a requester that isn't an enabled principal ("keel-operator" no longer works).
+    Marouane chose: file as his Entra principal (marouane.defili@techinsiderbytes.com), approve as his Gmail principal.
+  - **Round A** (snapshot SA 9106962e): fixtures recreated (group + carla member/owner, app + SP, compliance + restrictions
+    assigned to the group, partner f8cdef31, fr-FR localization + default text via localization 0, lifecycle 365 days).
+    Drifts: description, member carla→ryan, owner carla→ryan (Entra refuses removing the last owner, so ryan was added
+    first; this also covers edge-remove 6/8), app -drifted, partner MFA trust on, compliance length 6, branding texts.
+    32: Graph refused the self-service sign-up drift again (500 AADB2C90063) → blocked. Dry run c8401172: 7 resources +
+    4 edges planned, 0 refused. Approval e20b2d26 pending.
 - Needs: Q44 done first (it unblocks steps 44, 46 and 47), and a live build that contains PR #185 (the last Phase 1 fix).
   Check with `git -C /opt/keel-live log --oneline | grep -c "#185"` before you start; if it is 0, wait for the next deploy.
 - Why: Phase 1 merged fixes for the causes Q43 found. Each step below should now pass or fail for a new reason.

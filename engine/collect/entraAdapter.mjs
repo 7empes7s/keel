@@ -20,6 +20,11 @@ function graphNativeAdapter(type) {
   async function collectRaw(reader, { tenantId, organizationId } = {}) {
     const entry = byType.get(type);
     if (!entry) throw new Error(`M1 type ${type} not found in tenant-probe CATALOG`);
+    if (entry.parent) {
+      const startedAt = new Date();
+      const result = await collectPerParent(reader, entry);
+      return { entry, path: catalogReadPath(entry), startedAt, completedAt: new Date(), ...result };
+    }
     // Issue #156: the organization id read in this run wins over the configured
     // tenant id, which may be a domain name rather than the directory's id.
     const orgId = organizationId ?? tenantId;
@@ -67,6 +72,46 @@ function graphNativeAdapter(type) {
       return items;
     },
   };
+}
+
+// Wave 1 CAT-ENTRA: objects that exist only under one parent (a partner's
+// sync settings, a service principal's sync jobs, an access package's
+// resource roles). The parent list is read first, then each parent's path,
+// and each object is tagged with its parent's key. Any failed read fails the
+// type, so a denied read is never reported as an empty one; only `pages` of
+// child reads count, so a denial before any child was read is `failed`.
+async function collectPerParent(reader, entry) {
+  const { parent } = entry;
+  const options = { pageCap: entry.pageCap ?? Infinity };
+  const listed = await reader.collect(entry.version, catalogReadPath(parent), options);
+  if (listed?.error || listed?.capped || !Array.isArray(listed?.items)) {
+    return {
+      items: [], pages: 0, status: listed?.error?.status ?? listed?.status ?? null, capped: listed?.capped === true,
+      error: listed?.error ?? (listed?.capped ? null : { error: `listing the parents of ${entry.type} returned no items` }),
+    };
+  }
+  const items = [];
+  let pages = 0;
+  let status = listed.status ?? null;
+  const stop = (error, capped = false) => ({ items, pages, status, capped, error });
+  for (const object of listed.items) {
+    if (parent.requires && !object?.[parent.requires]) continue;
+    const key = object?.[parent.key];
+    if (typeof key !== 'string' || key.length === 0) return stop({ error: `a parent of ${entry.type} has no ${parent.key}` });
+    const result = await reader.collect(entry.version, catalogReadPath(entry, entry.path.replace('{parent}', encodeURIComponent(key))), options);
+    if (entry.absentWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) continue;
+    pages += Number.isSafeInteger(result?.pages) ? result.pages : 0;
+    status = result?.error?.status ?? result?.status ?? status;
+    if (result?.error) return stop(result.error);
+    if (result?.capped) return stop(null, true);
+    if (!Array.isArray(result?.items)) return stop({ error: `reading ${entry.type} under ${key} returned no items` });
+    for (const found of result.items) {
+      const children = entry.childField ? found?.[entry.childField] : [found];
+      if (!Array.isArray(children)) return stop({ error: `reading ${entry.type} under ${key} returned no ${entry.childField}` });
+      for (const child of children) items.push({ ...child, [parent.as]: key });
+    }
+  }
+  return { items, pages, status, capped: false, error: null };
 }
 
 for (const descriptor of DESCRIPTORS) {

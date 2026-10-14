@@ -351,8 +351,9 @@ test('the policy batch runner drives the subset through applyWave and prints the
   for (const op of report.operations) assert.equal(op.result, 'passed', `${op.resourceType} ${op.operation}: ${op.detail}`);
   assert.ok(report.refused.some((entry) => entry.resourceType === 'authenticationStrengthPolicy' && entry.operation === 'delete'));
   // 18 before issue #156 added the authentication flows and device registration policies,
-  // 20 before wave 1 added the app management and multitenant organization types.
-  assert.equal(report.policyLedger.families.length, 23);
+  // 20 before wave 1 added the app management and multitenant organization types,
+  // 23 before the per-partner cross-tenant sync settings.
+  assert.equal(report.policyLedger.families.length, 24);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };

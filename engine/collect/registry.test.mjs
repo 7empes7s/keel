@@ -166,10 +166,12 @@ assert.throws(() => register({ ...widgetDescriptor, type: 'noCollect' }, {}), /c
 
 // --- collectM1 runs through the registry, same external shape -----------------
 const seen = [];
+// The parent fields let a type read per parent object find one parent with
+// one child; every other type ignores them.
 const fakeReader = {
   collect: async (version, path, opts) => {
     seen.push({ version, path, pageCap: opts.pageCap });
-    return { items: [{ id: `${path}#1` }], error: null };
+    return { items: [{ id: `${path}#1`, tenantId: 'fixture-partner', applicationTemplateId: 'fixture-template', resourceRoleScopes: [{ id: 'fixture-scope' }] }], error: null };
   },
 };
 const collected = await collectM1(fakeReader, { tenantId: 'fixture-tenant' });
@@ -178,7 +180,9 @@ assert.deepEqual(collected.map(([type]) => type), M1_TYPES, 'same types, same or
 for (const [type, items] of collected) {
   assert.ok(Array.isArray(items) && items.length === 1, `${type} collected via its registered adapter`);
 }
-assert.equal(seen.length, M1_TYPES.length, 'one reader.collect call per type');
+const perParent = CATALOG.filter((entry) => entry.parent).length;
+assert.ok(perParent > 0);
+assert.equal(seen.length, M1_TYPES.length + perParent, 'one reader.collect call per type, plus the parent list for a type read per parent');
 
 // collectM1 is order-independent against the reader: entries are keyed by type.
 const byType = Object.fromEntries(collected);

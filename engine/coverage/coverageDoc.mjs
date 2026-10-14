@@ -141,7 +141,7 @@ export const TYPE_GUIDE = Object.freeze({
     'The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.',
     'Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.'),
   accessPackage: manual('Access packages', NOT_BUILT,
-    'An access package depends on its catalog, policies and resource roles. The resource roles are not backed up yet.',
+    'An access package depends on its catalog, policies and resource roles, which are backed up but not restored yet.',
     'Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.'),
   connectedOrganization: manual('Connected organizations', NOT_BUILT,
     'These point to other organizations\' tenants, which KEEL cannot check from yours.',
@@ -182,6 +182,12 @@ export const TYPE_GUIDE = Object.freeze({
   identityApiConnector: manual('API connectors for user flows', NOT_BUILT,
     'The password or certificate a connector uses can never be read back.',
     'Recreate the connector using the backup, and enter its password or certificate again.'),
+  accessPackageResourceRoleScope: manual('Access package resource roles', NOT_BUILT,
+    'A role can only be added once its group, app or site is in the package\'s catalog, and access packages are not restored yet.',
+    'Recreate the access package first, then add the same groups, apps and sites with the roles in the backup.'),
+  synchronizationJob: manual('Provisioning and cross-tenant sync jobs', NOT_BUILT,
+    'A job\'s attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.',
+    'Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.'),
 
   // ---- sign-in and security policies
   conditionalAccessPolicy: auto('Conditional Access policies', {
@@ -258,6 +264,9 @@ export const TYPE_GUIDE = Object.freeze({
   multiTenantOrganization: manual('Multitenant organization', NOT_BUILT,
     'Every member tenant must accept again, which cannot be done from your tenant.',
     'Recreate the organization and invite the same tenants using the backup. Each one must accept.'),
+  crossTenantIdentitySyncPolicyPartner: manual('Cross-tenant sync per organization', NOT_BUILT,
+    'These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.',
+    'Set the partner\'s sync settings again in the Entra admin center under cross-tenant access settings, using the backup.'),
 
   // ---- Intune device management
   deviceConfiguration: auto('Device configuration profiles', {

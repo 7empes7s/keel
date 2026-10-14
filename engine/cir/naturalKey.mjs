@@ -41,6 +41,9 @@ export const ID_KEY_TYPES = new Set([
   'lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'attributeSet', 'customSecurityAttributeDefinition',
   'accessPackageCatalog', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'agreement',
   'appManagementPolicy', 'b2xIdentityUserFlow', 'identityApiConnector',
+  // Read per parent: a sync job id embeds its template and service principal,
+  // and a resource role scope id is a GUID.
+  'synchronizationJob', 'accessPackageResourceRoleScope',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -58,11 +61,13 @@ export const CONSTANT_KEY_TYPES = new Set([
   'multiTenantOrganization',
 ]);
 
+const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);
+
 export function naturalKeyFor(type, obj, ctx) {
   if (CONSTANT_KEY_TYPES.has(type)) return type;
   // A partner has no id or name: Graph identifies it by the partner's tenantId
-  // (see canonicalize.mjs's keyFor()).
-  if (type === 'crossTenantAccessPolicyPartner' && typeof obj?.tenantId === 'string') return obj.tenantId;
+  // (see canonicalize.mjs's keyFor()). Its sync settings are the same.
+  if (PARTNER_KEY_TYPES.has(type) && typeof obj?.tenantId === 'string') return obj.tenantId;
   if (ID_KEY_TYPES.has(type)) {
     if (typeof obj.id !== 'string' || obj.id.length === 0) throw new Error(`missing id for ${type}`);
     return obj.id;

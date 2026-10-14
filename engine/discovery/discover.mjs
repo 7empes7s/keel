@@ -183,8 +183,8 @@ export function discoverPowerShell(commands, cataloguedCmdlets) {
 
 /**
  * How each catalogue entry fared: `covered` (its path was read), `under-item` (it sits
- * under one object, such as `/organization/{org}/branding`, and its root collection
- * was read), `unreadable`, or `not-in-metadata`.
+ * under one object, such as `/organization/{org}/branding`, and the collection
+ * that object is listed in was read), `unreadable`, or `not-in-metadata`.
  */
 export function catalogueCoverage(items, catalog = CATALOG) {
   const graphItems = items.filter((item) => item.source.startsWith('graph:'));
@@ -196,7 +196,9 @@ export function catalogueCoverage(items, catalog = CATALOG) {
   }
   return catalog.map((entry) => {
     const path = catalogPath(entry.path);
-    const lookup = isUnderItem(path) ? `/${path.split('/').filter(Boolean)[0]}` : path;
+    // An entry under one object is looked up by the collection that object is
+    // listed in: the path up to its first placeholder.
+    const lookup = isUnderItem(path) ? path.slice(0, path.search(/\/\{/)) : path;
     const seen = byPath.get(lookup.toLowerCase()) ?? [];
     const readable = seen.find((item) => item.status !== 'unreadable');
     let coverage;

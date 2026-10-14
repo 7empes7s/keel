@@ -11,6 +11,7 @@
 // a target that drifted since the dry run ran, forces a new dry run instead of silently
 // promoting stale parameters.
 import { createHash } from 'node:crypto';
+import { scopeReferencePrefix } from '../cir/canonicalize.mjs';
 import { withExplicitReferences } from '../coverage/qualification.mjs';
 
 const TERMINAL_STATUSES = Object.freeze(['completed', 'refused', 'failed']);
@@ -51,13 +52,17 @@ export function canonicalDigest(value) {
  * and roadmap task-92's activation preview computes the same dependency closure from it,
  * so the preview and the dry run can never disagree about what a resource depends on. */
 export function restoreCandidates(versions, references) {
+  const versionById = new Map((versions ?? []).map((v) => [v.id, v]));
   const refsByVersion = new Map();
   for (const r of references ?? []) {
     if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-    // Issue #195: the stored prefix (an administrative-unit scope) travels with the
-    // reference, so the eligibility scope gate and the writer can see it.
+    // Issue #195 and gap register D2: the stored prefix (an administrative-unit
+    // scope) travels with the reference. Snapshots stored before the prefix
+    // column existed get it back from the stored payload, as collection set it.
+    const owner = versionById.get(r.from_version);
+    const prefix = r.prefix ?? (owner ? scopeReferencePrefix(owner.resource_type, r.field_path, owner.payload) : null);
     refsByVersion.get(r.from_version).push({
-      field: r.field_path, symbol: r.to_symbol, required: r.required, ...(r.prefix ? { prefix: r.prefix } : {}),
+      field: r.field_path, symbol: r.to_symbol, required: r.required, ...(prefix ? { prefix } : {}),
     });
   }
   return (versions ?? [])

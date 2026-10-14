@@ -73,12 +73,14 @@ test('#195: an administrative-unit scope read back from a stored snapshot keeps 
   });
 });
 
-test('#195: a stored reference without a prefix (written before the column) is still refused, never misresolved', async () => {
+test('#195: a stored reference without a prefix (written before the column) gets it back from the stored payload', async () => {
   await withDatabase(async (client) => {
     const candidate = await storedEligibility(client, { dropPrefix: true });
     const scopeRef = candidate.references.find((ref) => ref.field === 'directoryScopeId');
-    assert.equal('prefix' in scopeRef, false);
-    assert.match(eligibilityScopeRefusal(candidate.payload.directoryScopeId, candidate.references), /^unresolvable scope: /);
+    // Gap register D2: restoreCandidates rebuilds the prefix from the payload's
+    // administrative-unit path, the same rule collection applies.
+    assert.equal(scopeRef.prefix, '/administrativeUnits/');
+    assert.equal(eligibilityScopeRefusal(candidate.payload.directoryScopeId, candidate.references), null);
   });
 });
 

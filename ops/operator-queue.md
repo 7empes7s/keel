@@ -2527,7 +2527,44 @@ item that needs it stays untouched.
 
 ### Q55: Add the read permissions Keel's apps need, so Marouane can grant admin consent (plan ask 1)
 - Drafted by the "Add API permissions" thread (2026-10-14).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-14 21:44–21:55 UTC. Manifests, an Exchange role and a group only: no appRoleAssignment
+  created and no consent granted. Writes used the Restorer (Graph, and EXO PowerShell in a throwaway `keel-powershell:latest`
+  container); the C check used the Collector. Global admin was not used.
+  - **A. Collector** (KEEL Collector, app object ce48109a…, appId 87aa77c4…, SP f8741600…): one merged PATCH (204).
+    Every existing resource and entry was kept (SharePoint 2, Exchange 1, Graph delegated 1). The 18 Q7 Graph roles were already
+    in the manifest. Added 12: LifecycleWorkflows.Read.All, CustomSecAttributeDefinition.Read.All, Agreement.Read.All,
+    MultiTenantOrganization.Read.All, IdentityUserFlow.Read.All, APIConnectors.Read.All, SharePointTenantSettings.Read.All,
+    Sites.Read.All, TeamSettings.Read.All, TeamMember.Read.All, Team.ReadBasic.All, MailboxSettings.Read. Nothing skipped.
+    Graph application permissions in requiredResourceAccess: now 30.
+  - **B. KEEL Content Reader** created (single tenant, no redirect URI, no secret): app object 4c90022a…, appId 00c7eb61…,
+    SP 9fa46563…. One keyCredential: the public cert only, self-signed RSA 2048, CN=KEEL Content Reader, valid to 2028-10-13.
+    Files: `/etc/keel/content-reader.key` (root:root 600; there is **no `keel` user on Mulinux**, so the owner is root) and
+    `/etc/keel/content-reader.crt` (644). `content-reader.json` and `content.key` were NOT written.
+    All 17 Graph application permissions were added; none was skipped (MailboxFolder.Read.All and MailboxItem.Read.All exist as appRoles).
+  - **C. Exchange:** created the management role `KEEL-RT Address Lists Read` (parent "Address Lists"); all non-`Get-` entries
+    removed. Entries left: Get-AddressBookPolicy, Get-AddressList, Get-GlobalAddressList, Get-OfflineAddressBook. Created the EXO
+    service principal for the Collector (there was none). Created the role group `KEEL-RT-collector-address-lists`
+    (role: KEEL-RT Address Lists Read; member: KEEL Collector). Check as the Collector: `Get-GlobalAddressList` returns 1 row,
+    and `New-AddressList` and `Set-GlobalAddressList` are not available.
+  - **D.** Created security group `KEEL-RT-collector-fabric-readers` (2e66e1b2…, not mail-enabled). Its only member is the KEEL
+    Collector SP (checked through memberOf). No Fabric or Power Platform setting was touched.
+  - **E. Check (read-only):**
+    - Collector: 30 Graph roles in its manifest; 30 assignments held now.
+      - Still to be consented (6): APIConnectors.Read.All, Agreement.Read.All, CustomSecAttributeDefinition.Read.All,
+        IdentityUserFlow.Read.All, LifecycleWorkflows.Read.All, MultiTenantOrganization.Read.All.
+      - The other 6 new ones (SharePointTenantSettings.Read.All, Sites.Read.All, TeamSettings.Read.All, TeamMember.Read.All,
+        Team.ReadBasic.All, MailboxSettings.Read) were already consented, not in the manifest.
+      - No Power BI permission, in the manifest or held.
+    - **Flag for Marouane:** the Collector also holds 2 Graph assignments that are not in its manifest:
+      **Sites.FullControl.All** (a write permission on the read-only app) and GroupMember.Read.All. It also holds 1 SharePoint
+      Online role that is not in its manifest (678536fe…). I did not remove any of them (out of scope); say if they should go.
+    - Content Reader: 17 Graph roles in its manifest; 0 held. Consent adds all 17: Calendars.Read, Channel.ReadBasic.All,
+      ChannelMember.Read.All, ChannelSettings.Read.All, Contacts.Read, Files.Read.All, Group.Read.All, Mail.Read,
+      MailboxFolder.Read.All, MailboxItem.Read.All, MailboxSettings.Read, Sites.Read.All, Tasks.Read.All, Team.ReadBasic.All,
+      TeamsAppInstallation.ReadForTeam.All, TeamsTab.Read.All, User.Read.All.
+  - Waiting on Marouane: admin consent for both apps (Entra > App registrations > API permissions > Grant admin consent).
+    Then the Fabric setting "Service principals can access read-only admin APIs", scoped to KEEL-RT-collector-fabric-readers.
 - Needs: none. Decision: D-Q55 (filled).
 - **Test tenant only. Read permissions only.** Never create an appRoleAssignment or grant consent (Marouane does that).
   Never enable a CA policy; never touch break-glass or `marouane.defili`. Use the Restorer for the writes below

@@ -409,6 +409,60 @@ test('a fixture name is checked anchored, on its own key or prior state only', a
   }), /not a disposable/);
 });
 
+test('an edge is captured by the checklist\'s fixture name although its key carries the typed parent (Q48)', async () => {
+  // keel-restore journals an edge under its typed parent symbol: edge:group:<mail nickname>|...
+  for (const id of ['group#member:edge-add', 'group#member:edge-remove', 'group#owner:edge-add', 'group#owner:edge-remove']) {
+    const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === id);
+    const restore = fixtureRestore(step, { naturalKey: 'group:KEEL-RT-148-g5' });
+    const run = (fixture) => captureLive({
+      client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture,
+      targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+      getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
+    });
+    assert.equal((await run('KEEL-RT-148-g5')).status, 'captured', `${id}: bare fixture name`);
+    assert.equal((await run('group:KEEL-RT-148-g5')).status, 'captured', `${id}: typed fixture name`);
+    assert.equal((await run('KEEL-RT-148-g6')).status, 'not-exercised', `${id}: another group`);
+  }
+  // The type prefix is stripped, not the anchor: a group that only contains the prefix is refused.
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'group#member:edge-add');
+  const restore = fixtureRestore(step, { naturalKey: 'group:prod-KEEL-RT-148-g5' });
+  await assert.rejects(captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: 'prod-KEEL-RT-148-g5',
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
+  }), /not a disposable/);
+});
+
+test('a deleted role assignment is checked by its composed key, which the snapshot never holds (Q48)', async () => {
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'roleAssignment:delete');
+  const roleTemplate = '7b5c1a2e-0d3f-4e6a-9b8c-1d2e3f4a5b6c';
+  const key = (principal, scope = '/') => `roleAssignment:roleDefinition:${roleTemplate}@${principal}@${scope}`;
+  const run = async ({ naturalKey, roleName = 'KEEL-RT-148-role' }) => {
+    const restore = fixtureRestore(step, { naturalKey });
+    const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+    journal[0].outcomeDetail = 'absent';
+    // The delete's snapshot was taken before the assignment existed: only the role and the user.
+    const versions = [
+      { id: 'v-role', natural_key: `roleDefinition:${roleTemplate}`, payload: { displayName: roleName } },
+      { id: 'v-user', natural_key: 'user:keel-rt-20260908-carla@fixture.example', payload: { userPrincipalName: 'keel-rt-20260908-carla@fixture.example' } },
+      { id: 'v-bg', natural_key: 'user:breakglass-one@fixture.example', payload: { userPrincipalName: 'breakglass-one@fixture.example' } },
+    ];
+    return captureLive({
+      client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: naturalKey,
+      targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS, allowByReference: true,
+      getArtifact: restore.getArtifact, getJournal: async () => journal, getSnapshot: async () => ({ versions, references: [] }),
+    });
+  };
+  assert.equal((await run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example') })).status, 'captured');
+  await assert.rejects(run({ naturalKey: key('user:breakglass-one@fixture.example') }), /principal is not a KEEL-RT fixture/);
+  await assert.rejects(run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example'), roleName: 'Global Administrator' }), /role is not the fixture role/);
+  await assert.rejects(run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example', 'administrativeUnit:Finance') }), /scope is not a KEEL-RT fixture/);
+  await assert.rejects(run({ naturalKey: key('unknown:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee') }), /principal is not a KEEL-RT fixture/);
+  // Only a delete may fall back to its key: a create must be in its own snapshot.
+  assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: key('user:x') }), [`the snapshot has no object ${key('user:x')}`]);
+  assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x', deleted: true }), ['the snapshot has no object x']);
+});
+
 test('a target config that is not valid JSON is refused without echoing it', async () => {
   const errors = [];
   const code = await entraLiveMain({

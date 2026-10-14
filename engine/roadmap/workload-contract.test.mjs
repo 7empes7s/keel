@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
-  WORKLOAD_DESCRIPTORS, WorkloadScopeError, buildWorkloadLedger, evidenceFromProbeRows, readGraphConfiguration,
+  WORKLOADS, WORKLOAD_DESCRIPTORS, WorkloadScopeError, buildWorkloadLedger, evidenceFromProbeRows, readGraphConfiguration,
   scopeProblems, validateWorkloadDescriptor, workloadRow,
 } from '../collect/workloadContract.mjs';
 import { HARNESS_PROOF_REF, evidenceFromCaptureText, main, runFixtureHarness } from '../../tools/qualification/workloads.mjs';
@@ -47,7 +47,7 @@ const graphDescriptor = (id, endpoint, workload = 'sharepoint-site-settings') =>
 });
 
 test('every declared operation is in configuration scope and complete', () => {
-  assert.equal(new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.workload)).size, 8, 'all eight workloads are declared');
+  assert.deepEqual([...new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.workload))].sort(), [...WORKLOADS].sort(), 'every workload is declared');
   for (const descriptor of WORKLOAD_DESCRIPTORS) {
     assert.doesNotThrow(() => validateWorkloadDescriptor(descriptor), descriptor.id);
     assert.equal(typeof descriptor.auth.application, 'boolean');
@@ -228,7 +228,7 @@ test('the command line reads supplied captures and never qualifies without a ten
 
 test('the PowerShell probe reads configuration only and records its version', () => {
   const script = readFileSync(new URL('../../ops/powershell/probe-workloads.ps1', import.meta.url), 'utf8');
-  const cmdlets = [...script.matchAll(/-Name '([A-Za-z-]+)'/g), ...script.matchAll(/name = "([^"]+)"/g)].map((match) => match[1]);
+  const cmdlets = [...script.matchAll(/-Name '([A-Za-z0-9 -]+)'/g), ...script.matchAll(/name = "([^"]+)"/g)].map((match) => match[1]);
   for (const descriptor of WORKLOAD_DESCRIPTORS.filter((candidate) => candidate.operation.kind === 'cmdlet')) {
     assert.ok(cmdlets.includes(descriptor.operation.probeName), `the probe runs ${descriptor.operation.probeName}`);
   }

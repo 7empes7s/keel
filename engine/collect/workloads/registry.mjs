@@ -16,6 +16,7 @@
  *   could record one.
  */
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
+import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
 import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
 import { collectPurview, recordPurviewRun } from './purview.mjs';
@@ -29,6 +30,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: 'exchange-mailbox-settings', powershellFamily: 'exchange', record: recordExchangeRun,
     collect: (client, { base, transport, powershell, scope, sleep }) => collectExchange(client, {
       ...base, sleep, transport, powershell, mailboxes: scope.mailboxes ?? [] }) },
+  // exchangeExtended.mjs
+  { workload: 'exchange-extended', powershellFamily: 'exchange', record: recordExchangeExtendedRun,
+    collect: (client, { base, powershell }) => collectExchangeExtended(client, { ...base, powershell }) },
   // mailFlow.mjs
   { workload: 'exchange-mail-flow', powershellFamily: 'exchange', record: recordMailFlowRun,
     collect: (client, { base, powershell }) => collectMailFlow(client, { ...base, powershell }) },

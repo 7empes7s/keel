@@ -56,6 +56,7 @@ const DETAILS = {
   // canonicalize.mjs's keyFor() for the override; naturalKeyStrategy is
   // documented here to match.
   crossTenantAccessPolicyPartner: { naturalKeyStrategy: 'tenantId' },
+  crossTenantIdentitySyncPolicyPartner: { naturalKeyStrategy: 'tenantId' },
   // True Graph singleton (catalog: singleton: true) with no id/displayName/
   // name either. keyFor() in canonicalize.mjs gives it a fixed constant key
   // — safe because a second object of this type can never exist to collide

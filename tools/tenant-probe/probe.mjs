@@ -73,6 +73,10 @@ async function main() {
       results.push({ ...entry, status: 'skipped', reason: 'organization id unavailable', count: 0 });
       continue;
     }
+    if (entry.parent) {
+      results.push({ ...entry, status: 'skipped', reason: 'read per parent object by the snapshot collector', count: 0 });
+      continue;
+    }
     const path = entry.needsOrgId ? entry.path.replace('{org}', orgId) : entry.path;
 
     process.stdout.write(`  ${entry.type.padEnd(42)}`);

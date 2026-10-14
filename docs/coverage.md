@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 70 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 64 are restored by hand from the backup.
+KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 73 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 67 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -54,6 +54,8 @@ KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it 
 | Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -97,8 +99,7 @@ KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it 
 - **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
   - *Not brought back:* past reviews and their decisions (no tool can write it).
   - *You do:* Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.
-- **Access packages** (not built yet). An access package depends on its catalog, policies and resource roles. The resource roles are not backed up yet.
-  - *Not brought back:* its resource roles (stored separately and not in the backup yet).
+- **Access packages** (not built yet). An access package depends on its catalog, policies and resource roles, which are backed up but not restored yet.
   - *You do:* Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.
 - **Connected organizations** (not built yet). These point to other organizations' tenants, which KEEL cannot check from yours.
   - *Not brought back:* internal and external sponsors (stored separately and not in the backup yet).
@@ -136,6 +137,11 @@ KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it 
 - **API connectors for user flows** (not built yet). The password or certificate a connector uses can never be read back.
   - *Not brought back:* password or certificate (Microsoft never returns it).
   - *You do:* Recreate the connector using the backup, and enter its password or certificate again.
+- **Provisioning and cross-tenant sync jobs** (not built yet). A job's attribute mappings are stored separately, its sign-in details can never be read back, and a running job changes accounts in another directory.
+  - *Not brought back:* its attribute mappings (the sync schema) (stored separately and not in the backup yet); the sign-in details for the target app, if it uses any (Microsoft never returns it); run history and current status (no tool can write it).
+  - *You do:* Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.
+- **Access package resource roles** (not built yet). A role can only be added once its group, app or site is in the package's catalog, and access packages are not restored yet.
+  - *You do:* Recreate the access package first, then add the same groups, apps and sites with the roles in the backup.
 
 ## Sign-in and security policies
 
@@ -164,6 +170,7 @@ KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it 
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -215,8 +222,10 @@ KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it 
 - **Default app credential rules** (not built yet). A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.
   - *You do:* Set the default rules again in the Entra admin center using the backup.
 - **Multitenant organization** (not built yet). Every member tenant must accept again, which cannot be done from your tenant.
-  - *Not brought back:* each member tenant's acceptance (no tool can write it); sync settings for each partner tenant (stored separately and not in the backup yet).
+  - *Not brought back:* each member tenant's acceptance (no tool can write it).
   - *You do:* Recreate the organization and invite the same tenants using the backup. Each one must accept.
+- **Cross-tenant sync per organization** (not built yet). These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.
+  - *You do:* Set the partner's sync settings again in the Entra admin center under cross-tenant access settings, using the backup.
 
 ## Tenant settings
 

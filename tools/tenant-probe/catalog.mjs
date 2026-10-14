@@ -10,6 +10,13 @@
  * Where a cap is set the probe still reports the true total via $count, so a
  * capped enumeration yields an accurate size with a sampled payload.
  *
+ * `parent` marks a type read per parent object (wave 1 CAT-ENTRA): its `path`
+ * holds `{parent}`, filled from `parent.key` of each object in the list at
+ * `parent.path` (with `parent.select`/`parent.query`). Parents without
+ * `parent.requires` are skipped, each object read is tagged with the key as
+ * `parent.as`, and `childField` takes the objects from that field of each
+ * response. engine/collect/entraAdapter.mjs performs the reads.
+ *
  * Entries live in catalog.d/, one file per family, so families can change in
  * parallel. CATALOG is the families in the order below; a new family adds one
  * import and one spread.
@@ -22,6 +29,7 @@ import conditionalAccess from './catalog.d/conditional-access.mjs';
 import policies from './catalog.d/policies.mjs';
 import intune from './catalog.d/intune.mjs';
 import entraGovernance from './catalog.d/entra-governance.mjs';
+import entraPerParent from './catalog.d/entra-per-parent.mjs';
 import intuneExtended from './catalog.d/intune-extended.mjs';
 
 export const CATALOG = [
@@ -33,6 +41,7 @@ export const CATALOG = [
   ...policies,
   ...intune,
   ...entraGovernance,
+  ...entraPerParent,
   ...intuneExtended,
 ];
 

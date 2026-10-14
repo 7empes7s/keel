@@ -147,7 +147,7 @@ export const TYPE_DECISIONS = Object.freeze({
   tokenLifetimePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
   featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
-  accessPackage: incomplete('its resource roles are a separate collection not yet collected; its catalog, policies and assignments are their own types'),
+  accessPackage: incomplete('its catalog, policies, assignments and resource roles are their own types, none of which has a writer yet'),
   connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
   // Wave 1 CAT-ENTRA: Entra governance types, backed up in full with no writer yet.
   lifecycleWorkflow: incomplete('a workflow disables or deletes accounts on its own schedule; a restore needs a check that it cannot run against the wrong users'),
@@ -165,6 +165,10 @@ export const TYPE_DECISIONS = Object.freeze({
   multiTenantOrganization: incomplete('every member tenant must accept again, which cannot be done from this tenant'),
   b2xIdentityUserFlow: incomplete('the languages, attributes and API connector bindings of a flow are separate collections not yet collected'),
   identityApiConnector: incomplete('the connector password or certificate is never returned'),
+  // Read per parent object.
+  accessPackageResourceRoleScope: incomplete('a resource role is added through a request once its resource is in the catalog, and access packages have no writer yet'),
+  synchronizationJob: incomplete('its schema is a separate collection, its credentials are never returned, and a started job writes accounts in another directory'),
+  crossTenantIdentitySyncPolicyPartner: incomplete('it lets a partner tenant sync its users into this one, so an update needs a review step'),
   // Issue #155: the first Intune restore subset. Every other Intune type is
   // manual by decision, with its reason; none is left unknown.
   deviceConfiguration: automated('intune-deviceconfig-deviceconfiguration', 'issue-155 subset: create and update with assignments; profiles that carry credentials or certificates (Wi-Fi, VPN, certificate, email) and any value Graph never returns stay manual'),
@@ -721,7 +725,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   accessReviewScheduleDefinition: research('identity-application', 'POST /identityGovernance/accessReviews/definitions', 'AccessReview.ReadWrite.All',
     'review history and decisions cannot be recreated; only the definition could be'),
   accessPackage: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages', 'EntitlementManagement.ReadWrite.All',
-    'depends on catalogs, policies and resource roles that are not collected'),
+    'depends on its catalog, policies and resource roles, none of which is restored yet'),
   connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
     'identity sources reference external tenants that cannot be verified from this tenant'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
@@ -749,6 +753,10 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'the languages, attributes and API connectors a flow uses are separate collections that are not backed up'),
   identityApiConnector: research('identity-application', 'POST /identity/apiConnectors', 'APIConnectors.ReadWrite.All',
     'the connector password or certificate is never readable'),
+  accessPackageResourceRoleScope: research('identity-application', 'POST /identityGovernance/entitlementManagement/accessPackages/{id}/resourceRoleScopes', 'EntitlementManagement.ReadWrite.All',
+    'the resource must be in the catalog first, and access packages are not restored yet'),
+  synchronizationJob: research('identity-application', 'POST /servicePrincipals/{id}/synchronization/jobs', 'Synchronization.ReadWrite.All',
+    'the schema is a separate collection that is not backed up, credentials are never readable, and a started job writes accounts in another directory'),
   // ---- policies (task-108)
   conditionalAccessPolicy: subset('policy', 'POST/PATCH/DELETE /identity/conditionalAccess/policies; POST /identity/conditionalAccess/deletedItems/policies/{id}/restore', 'Policy.ReadWrite.ConditionalAccess',
     'create, update, delete and soft-delete restore are fixture-tested; every write lands report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate (task-152)'),
@@ -803,6 +811,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'a stricter default can block every app from adding a secret or certificate; an update needs a review step that does not exist yet'),
   multiTenantOrganization: research('policy', 'PATCH /tenantRelationships/multiTenantOrganization', 'MultiTenantOrganization.ReadWrite.All',
     'its member tenants must each accept, which cannot be done from this tenant'),
+  crossTenantIdentitySyncPolicyPartner: research('policy', 'PUT /policies/crossTenantAccessPolicy/partners/{tenantId}/identitySynchronization', 'Policy.ReadWrite.CrossTenantAccess',
+    'it turns on user sync from a partner tenant; an update needs a review step that does not exist yet'),
   // ---- administrative configuration (task-109)
   organization: byHand('administrative-configuration', null, 'none', 'the tenant object itself; it is never recreated'),
   domain: byHand('administrative-configuration', 'POST /domains', 'Domain.ReadWrite.All', 'requires DNS ownership verification outside Graph'),

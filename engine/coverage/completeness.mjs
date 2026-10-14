@@ -120,7 +120,7 @@ export const COMPLETENESS = Object.freeze({
   unifiedRoleManagementPolicyAssignment: { managed: true },
   roleAssignmentSchedule: { whole: 'not-written', missing: [part('Activations people made themselves', 'read-only')] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
-  accessPackage: { whole: 'not-written', missing: [part('Its resource roles', 'other-route')] },
+  accessPackage: { whole: 'not-written' },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
   lifecycleWorkflow: { whole: 'not-written', missing: [part('Run history and the users each run processed', 'read-only')] },
@@ -135,6 +135,13 @@ export const COMPLETENESS = Object.freeze({
   agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
   b2xIdentityUserFlow: { whole: 'not-written', missing: [part('Its languages, sign-up attributes and API connector links', 'other-route')] },
   identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
+  // Read per parent object.
+  accessPackageResourceRoleScope: { whole: 'not-written' },
+  synchronizationJob: { whole: 'not-written', missing: [
+    part('Its attribute mappings (the sync schema)', 'other-route'),
+    part('The sign-in details for the target app, if it uses any', 'secret'),
+    part('Run history and current status', 'read-only'),
+  ] },
 
   // ---- sign-in and security policies
   conditionalAccessPolicy: {},
@@ -160,7 +167,8 @@ export const COMPLETENESS = Object.freeze({
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
   appManagementPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tenantAppManagementPolicy: { whole: 'not-written' },
-  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only'), part('Sync settings for each partner tenant', 'other-route')] },
+  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only')] },
+  crossTenantIdentitySyncPolicyPartner: { whole: 'not-written' },
 
   // ---- Intune device management
   deviceConfiguration: { missing: [part('Passwords, keys and certificates in Wi-Fi, VPN, certificate and email profiles', 'secret', credentialProfile)] },

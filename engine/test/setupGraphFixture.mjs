@@ -12,7 +12,9 @@ export const OPERATOR_ID = '33333333-3333-4333-8333-333333333333';
 export const PRIVILEGED_ROLE_ADMIN = 'e8611ab8-c189-46e8-94e1-60213ab1f814';
 
 const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Read.Directory', 'Policy.Read.All',
-  'DeviceManagementConfiguration.Read.All', 'DeviceManagementManagedDevices.Read.All', 'Application.Read.All'];
+  'DeviceManagementConfiguration.Read.All', 'DeviceManagementManagedDevices.Read.All', 'Application.Read.All',
+  'LifecycleWorkflows.Read.All', 'CustomSecAttributeDefinition.Read.All', 'Agreement.Read.All',
+  'MultiTenantOrganization.Read.All', 'IdentityUserFlow.Read.All', 'APIConnectors.Read.All'];
 const RESTORER_SCOPES = ['Group.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'RoleManagement.ReadWrite.Directory'];
 const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All'])];
 

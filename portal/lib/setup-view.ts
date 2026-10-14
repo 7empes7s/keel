@@ -60,6 +60,7 @@ export const SCOPE_TITLES: Record<SetupScope["scope"], string> = {
 export const WORKLOAD_LABELS: Record<string, string> = {
   "entra-collect": "Microsoft Entra settings",
   "intune-collect": "Intune device settings",
+  "entra-governance-collect": "Microsoft Entra identity governance",
   "entra-restore": "Microsoft Entra settings",
 };
 

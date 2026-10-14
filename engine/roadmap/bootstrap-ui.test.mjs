@@ -80,7 +80,7 @@ async function runSetup({ client, owner, tenant, workloads }) {
 }
 
 test('setup scopes keep read and write workloads apart', () => {
-  assert.deepEqual(workloadsForScope('read'), ['entra-collect', 'intune-collect']);
+  assert.deepEqual(workloadsForScope('read'), ['entra-collect', 'intune-collect', 'entra-governance-collect']);
   assert.deepEqual(workloadsForScope('restore'), ['entra-restore']);
   assert.deepEqual(selectWorkloads('read', ['entra-collect']), ['entra-collect']);
   assert.throws(() => selectWorkloads('read', ['entra-restore']), /subset/);

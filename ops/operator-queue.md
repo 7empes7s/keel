@@ -2279,6 +2279,11 @@ item that needs it stays untouched.
   needed). Expected: 4 imported at evidenceBuild fb1493ea, none refused, exit 0. Then `proof` (4 entries, expiring about
   2026-11-06; exit 1 inside the 14-day warning is expected) and one `run` (workloads no longer "disabled").
   Recapture the four workload records before 2026-11-06 (the Part D recaptures above count).
+  - **Scheduled run configs (#225, if live).** The run used to give every PowerShell workload `tenant.json`, which cannot
+    connect to Exchange, OneDrive or Purview. Once #225 is live, add to `/etc/keel/workload-scope.json`:
+    `"powershellConfigs": { "exchange": "/etc/keel/exchange-collector.json", "onedrive": "/etc/keel/purview-collector.json",
+    "purview": "/etc/keel/purview-collector.json" }` (use the collector files the Q46 A captures used). The scope file is
+    read by default, so the schedule needs no change. Then one `run` by hand: report each workload's outcome.
 - **G. Three writes that can pass now** (from the #148 close-out, issue comment 6167331730).
   - 45 unifiedRoleManagementPolicy update: rerun. The Accept-Language fix (d8a67ce) is on master, so the PIM read-back
     should now confirm the write.

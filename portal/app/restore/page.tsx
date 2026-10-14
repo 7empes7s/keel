@@ -5,11 +5,13 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
+import { RestoreFollowUps } from "@/components/restore-follow-ups";
 import { RestoreSelection } from "@/components/restore-selection";
 import { Verdict } from "@/components/verdict";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
   getIncidentSummary,
+  getRestoreFollowUps,
   getRestoreResources,
   type RestoreResourcesData,
 } from "@/lib/portal-data";
@@ -20,6 +22,7 @@ import {
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import type { RestoreFollowUp } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
 const DESCRIPTION = "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.";
@@ -75,6 +78,14 @@ export default async function RestorePage({
     );
   }
 
+  // Secondary: if it cannot be read, the page still works and says so.
+  let followUps: RestoreFollowUp[] | null;
+  try {
+    followUps = await getRestoreFollowUps();
+  } catch {
+    followUps = null;
+  }
+
   const jobsActive = jobs.some(
     (job) => job.status === "queued" || job.status === "running",
   );
@@ -122,6 +133,9 @@ export default async function RestorePage({
       )}
 
       <div data-layer="explanation">
+        {followUps === null
+          ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
+          : <RestoreFollowUps followUps={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
         <JobTable
           headingId="restore-jobs-heading"
           jobs={jobs}

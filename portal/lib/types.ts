@@ -474,6 +474,23 @@ export interface DashboardData {
   // Roadmap task-129: the memorable number, computed by the engine from the coverage
   // reader and restore-drill evidence (engine/coverage/protectionHeadline.mjs).
   headline: ProtectionHeadline;
+  // Work that waits on a person outside the approvals inbox, each counted so the
+  // Overview can point at it: open or reopened alerts, open incidents, and follow-up
+  // steps restores left open. Absent in fixtures that predate it.
+  waiting?: DashboardWaiting;
+}
+
+export interface RestoreFollowUp {
+  restoreRef: string;
+  pending: number;
+  since: string;
+  jobId: string | null;
+}
+
+export interface DashboardWaiting {
+  openAlerts: number;
+  openIncidents: number;
+  restoreFollowUps: number;
 }
 
 export interface ProtectionHeadline {

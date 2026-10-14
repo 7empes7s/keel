@@ -219,6 +219,14 @@ for (let i = 1; i < listed.length; i++) {
   assert.ok(new Date(listed[i - 1].created_at) >= new Date(listed[i].created_at));
 }
 
+// --- listJobs filters by kind in the query, past the newest-N window of other kinds ---
+const onlyPrune = await listJobs(client, { limit: 1, kinds: ['prune'] });
+assert.equal(onlyPrune.length, 1);
+assert.equal(onlyPrune[0].kind, 'prune');
+const restoreOnly = await listJobs(client, { limit: 100, kinds: ['restore'] });
+assert.ok(restoreOnly.length >= 1);
+assert.ok(restoreOnly.every((job) => job.kind === 'restore'));
+
 // --- resetOrphaned never reclaims a fresh heartbeat, even for the SAME worker_id ---
 const ownJob = await enqueue(client, { kind: 'collect', params: {}, requestedBy: 'test-operator' });
 await claimNext(client, { workerId: 'worker-recover-me' });

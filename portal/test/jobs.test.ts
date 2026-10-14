@@ -80,10 +80,10 @@ test("existing guarded job handlers serve the requested history limit and job de
   assert.deepEqual({ ...listed, references: undefined }, { ...normalizeJob(row), references: undefined });
   assert.equal(listed.references.people.requested_by.name, "operator");
   assert.match(queries[0].sql, /ORDER BY created_at DESC/);
-  assert.deepEqual(queries[0].values, [50]);
+  assert.deepEqual(queries[0].values, [50, null]);
   for (const limit of ["-1", "invalid", "1.5", "0"]) {
     await guardedJobList(deps)(new Request(`http://localhost/api/jobs?limit=${limit}`, { headers }));
-    assert.deepEqual(queries.at(-1)?.values, [100]);
+    assert.deepEqual(queries.at(-1)?.values, [100, null]);
   }
   const show = await guardedJobShow(deps)(new Request(`http://localhost/api/jobs/${row.id}`, { headers }));
   assert.equal(show.status, 200);

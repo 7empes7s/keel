@@ -11,6 +11,7 @@ import {
   storageResidency,
 } from "../../engine/govern/baselineCompliance.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
+import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
   getActiveBaseline,
   listOpenDrift,
@@ -52,6 +53,7 @@ import type {
   CoverageType,
   DashboardAlert,
   DashboardData,
+  DashboardWaiting,
   DeclaredEndpoint,
   DiagnosisState,
   LiveRecordStatus,
@@ -65,6 +67,7 @@ import type {
   ProtectionHeadline,
   QualificationDecision,
   Ref,
+  RestoreFollowUp,
   RestoreScope,
   SemanticChange,
   SemanticSummary,
@@ -1013,6 +1016,26 @@ export function buildAlerts({
   return alerts;
 }
 
+export async function waitingFor(client: KeelClient, ref: string): Promise<DashboardWaiting> {
+  const { rows: [row] } = await client.query(
+    `SELECT (SELECT count(*)::int FROM alert WHERE tenant_ref = $1 AND state IN ('open','reopened')) AS open_alerts,
+            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents,
+            (SELECT count(*)::int FROM recovery_completion_item WHERE tenant_ref = $1 AND state = 'pending') AS follow_ups`,
+    [ref],
+  );
+  return {
+    openAlerts: Number(row?.open_alerts ?? 0),
+    openIncidents: Number(row?.open_incidents ?? 0),
+    restoreFollowUps: Number(row?.follow_ups ?? 0),
+  };
+}
+
+// Restores that still have follow-up steps open, with the job page each is finished on.
+export async function getRestoreFollowUps(): Promise<RestoreFollowUp[]> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await listOpenCompletionWork(client, { tenantRef: ref })) as RestoreFollowUp[]);
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   const ref = tenantRef();
   return withClient(async (client) => {
@@ -1068,6 +1091,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       },
       alerts: [],
       headline,
+      waiting: await waitingFor(client, ref),
     };
 
     data.alerts = buildAlerts(data);

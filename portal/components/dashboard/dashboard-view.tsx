@@ -7,7 +7,13 @@ import { OverviewVerdict } from "@/components/dashboard/status-hero";
 import { PageHeader } from "@/components/page-header";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
-import type { DashboardData } from "@/lib/types";
+import type { DashboardData, DashboardWaiting } from "@/lib/types";
+
+export const WAITING_CARDS: { key: keyof DashboardWaiting; href: string; title: string; one: string; many: string; note: string; link: string }[] = [
+  { key: "openAlerts", href: "/alerts", title: "Alerts", one: "alert not acknowledged", many: "alerts not acknowledged", note: "Each one needs an owner to acknowledge it.", link: "Open alerts" },
+  { key: "openIncidents", href: "/incidents", title: "Incidents", one: "incident open", many: "incidents open", note: "Recovery from each one is still in progress.", link: "Open incidents" },
+  { key: "restoreFollowUps", href: "/restore#follow-up", title: "Restore follow-up", one: "step still open", many: "steps still open", note: "Restores left work KEEL cannot do itself, such as new secrets or a service check.", link: "Finish follow-up" },
+];
 
 // The Overview's markup, separate from its data loading so the same view renders for
 // the live page and for fixtures. pendingApprovals is null when the viewer cannot
@@ -133,6 +139,25 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
               <span className="dash-card-link">Open approvals <span aria-hidden="true">→</span></span>
             </Link>
           ) : null}
+
+          {/* Work outside the approvals inbox that waits on a person; shown only while something waits. */}
+          {WAITING_CARDS.filter((card) => (data.waiting?.[card.key] ?? 0) > 0).map((card) => {
+            const count = data.waiting![card.key];
+            return (
+              <Link className="dash-card dash-card-attention" href={card.href} key={card.key}>
+                <header>
+                  <p className="section-kicker">Waiting on you</p>
+                  <h2>{card.title}</h2>
+                </header>
+                <p className="dash-metric">
+                  <strong>{count}</strong>
+                  <span>{count === 1 ? card.one : card.many}</span>
+                </p>
+                <p className="dash-card-note">{card.note}</p>
+                <span className="dash-card-link">{card.link} <span aria-hidden="true">→</span></span>
+              </Link>
+            );
+          })}
         </section>
       </div>
 

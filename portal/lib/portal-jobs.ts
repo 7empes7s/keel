@@ -51,16 +51,14 @@ async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Pro
   }
 }
 
-// Recent jobs of the given kinds, newest first. listJobs reads the newest 100; the
-// kind filter and limit narrow that window per surface.
+// Recent jobs of the given kinds, newest first.
 export async function getRecentJobs(
   kinds: string[],
   limit = 25,
 ): Promise<JobRecord[]> {
   return withClient(async (client) => {
-    const rows = ((await listJobs(client, { limit: 100 })) as UnknownRecord[])
-      .filter((row) => kinds.includes(String(row.kind)))
-      .slice(0, limit);
+    // Filtered in the query: newer jobs of other kinds never push these out of the list.
+    const rows = (await listJobs(client, { limit, kinds })) as UnknownRecord[];
     // Task-130: requester, plan, baseline and changes resolved to names.
     return ((await summarizeJobs(client, { tenantRef: tenantRef(), jobs: rows })) as UnknownRecord[]).map(normalizeJob);
   });

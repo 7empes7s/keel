@@ -258,6 +258,33 @@ export async function listCompletionItems(client, { tenantRef, restoreRef }) {
   return rows.map(normalize);
 }
 
+/**
+ * Restores that still have open follow-up steps, newest first, each with the job that
+ * ran it, so the portal can list them instead of leaving them on a job page that has
+ * scrolled out of every recent-jobs list. A compensation (undo) job is never the match.
+ */
+export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) {
+  const { rows } = await client.query(
+    `SELECT i.restore_ref, count(*)::int AS pending, min(i.created_at) AS since,
+            (SELECT j.id::text FROM job j
+              WHERE j.kind = 'restore' AND j.params->>'artifactId' = i.restore_ref
+                AND j.params->>'compensates' IS NULL
+              ORDER BY j.created_at DESC LIMIT 1) AS job_id
+       FROM recovery_completion_item i
+      WHERE i.tenant_ref = $1 AND i.state = 'pending'
+      GROUP BY i.restore_ref
+      ORDER BY min(i.created_at) DESC
+      LIMIT $2`,
+    [tenantRef, limit],
+  );
+  return rows.map((row) => ({
+    restoreRef: row.restore_ref,
+    pending: row.pending,
+    since: row.since instanceof Date ? row.since.toISOString() : String(row.since),
+    jobId: row.job_id ?? null,
+  }));
+}
+
 /** Per-resource summary for a restore: state plus its items. */
 export function summarizeCompletion(items) {
   const byResource = new Map();

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "roleAssignment",
+  "operation": "delete",
+  "fieldProjectionContractVersion": 1,
+  "build": "860ec69536ff9e2e3f1c595e61b9906d717d555b",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": "absent",
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T19:12:37.691Z",
+  "restoreRef": "5c0d23af-02c5-8ca5-9f68-97379da498ac",
+  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-20260908-ryan@techinsiderbytes.com@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+  "fixtureKind": "by-reference",
+  "captureSha256": "fbdf0f7d6639485a7045f694c67be5e9ce24cd4550898aee779ea6d88e6288e7",
+  "proofRef": "docs/release/qualifications/entra-live/roleAssignment.delete.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "451c407155510a1aa09057a90d9e35bc62348f0937fd791d49a4b0cf0103e563"
+    }
+  }
+}

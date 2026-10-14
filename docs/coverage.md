@@ -4,56 +4,65 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore at least in part, 21 that are restored by hand, and 14 not yet investigated.
+KEEL tracks 62 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 41 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 35 are restored by hand from the backup.
 
 ## How to read this page
 
 - **Backed up:** every kind listed here is backed up. The tier sets how often, on the default schedule (an operator can change it).
-- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not yet investigated" means KEEL has not yet checked whether a safe automatic restore is possible.
+- **Coverage:** one of four states.
+  - *Full:* KEEL restores it on its own and nothing is missing.
+  - *Incomplete:* the backup holds everything KEEL can read, but some parts cannot be brought back automatically. It is recreated from the backup, by KEEL or by hand, and the missing parts are listed below the table as follow-up steps. Each backup flags the incomplete objects it holds.
+  - *Microsoft-managed:* Microsoft owns it, so there is nothing to restore.
+  - *Not readable:* KEEL cannot read it, for the reason given.
+- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.
 - **Proof:** "Tested against a simulated tenant" means the restore code has passed tests against a fake Microsoft service. It is not yet proven on a live tenant. A failed live test is listed with its date until a fix passes.
 - **Microsoft limit:** Microsoft offers no way for any tool to do this. KEEL cannot work around it; the steps say what to do instead.
 - **KEEL choice:** KEEL could write it, but leaves it to a person for safety or because part of it is not backed up.
 
 ## Users, groups, apps and admin roles
 
-| Setting | Backed up | KEEL can restore | Proof |
-| --- | --- | --- | --- |
-| Users | Yes (Tier 2, important, daily) | Yes: put changed settings back; bring back from deleted items | Tested against a simulated tenant |
-| Groups | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress; live test of bringing back from deleted items failed on 2026-10-13, fix in progress |
-| Organizational contacts | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| App registrations | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
-| Enterprise apps | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted | Tested against a simulated tenant |
-| Delegated app consents | Yes (Tier 1, critical, every hour) | Not yet investigated | None |
-| External identity providers | Yes (Tier 2, important, daily) | By hand (Microsoft limit) | None |
-| Certificate sign-in settings | Yes (Tier 1, critical, every hour) | Not yet investigated | None |
-| Built-in admin roles | Yes (Tier 1, critical, every hour) | By hand (Microsoft limit) | None |
-| Custom admin roles | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Admin role templates | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| Admin role assignments | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Eligible admin roles | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted | Tested against a simulated tenant |
-| Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Not yet investigated | None |
-| Admin role activation settings | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-11, fix in progress |
-| Role-to-settings links | Yes (Tier 1, critical, every hour) | By hand (Microsoft limit) | None |
-| Access reviews | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Access packages | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Connected organizations | Yes (Tier 2, important, daily) | Not yet investigated | None |
+| Setting | Backed up | Coverage | KEEL can restore | Proof |
+| --- | --- | --- | --- | --- |
+| Users | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back; bring back from deleted items | Tested against a simulated tenant |
+| Groups | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress; live test of bringing back from deleted items failed on 2026-10-13, fix in progress |
+| Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
+| Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
+| Delegated app consents | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| External identity providers | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Certificate sign-in settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Built-in admin roles | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
+| Custom admin roles | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Admin role templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
+| Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
+| Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-11, fix in progress |
+| Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
+| Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Connected organizations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
 - **Users.** Puts reviewed user details back, brings deleted users back from the recycle bin, and adds missing licences.
+  - *Not brought back:* password (Microsoft never returns it); registered sign-in methods, such as MFA (Microsoft never returns it); details synced from on-premises Active Directory (no tool can write it).
   - *You do:* A permanently deleted user is recreated by hand: Microsoft never lets anyone read passwords or sign-in methods, so the person needs a new password and must register MFA again. Users synced from on-premises Active Directory are restored there.
 - **Groups.** Recreates groups, puts their settings back, removes groups added since the backup, brings deleted groups back, and restores members and owners.
 - **Organizational contacts** (Microsoft limit). These contacts come from directory sync, and Microsoft makes them read-only for every tool.
   - *You do:* Restore them at their source, usually on-premises Active Directory or Exchange, and let sync bring them back.
 - **App registrations.** Recreates app registrations, puts their settings back, and brings deleted ones back from the recycle bin.
+  - *Not brought back:* client secrets (Microsoft never returns it); certificates (Microsoft never returns it).
   - *You do:* Microsoft never lets anyone read client secrets or certificates, so after a recreate create new ones and update every service that used them. KEEL lists these as follow-up items. Removing extra apps is done by hand.
 - **Enterprise apps.** Recreates an enterprise app for its app registration.
+  - *Not brought back:* client secrets (Microsoft never returns it); certificates (Microsoft never returns it); changed settings on an existing enterprise app (in the backup, but KEEL does not write it yet).
   - *You do:* Changed settings on an existing enterprise app, and deleted ones, are restored by hand.
-- **Delegated app consents** (Not yet investigated). A consent is a decision someone made to trust an app. KEEL has not yet built a safe way to grant it again.
+- **Delegated app consents** (not built yet). A consent is a decision someone made to trust an app. KEEL has not yet built a safe way to grant it again.
   - *You do:* Use the backup to see which apps had consent, then grant it again in the Entra admin center after review.
 - **External identity providers** (Microsoft limit). Microsoft never lets anyone read the client secret of an identity provider.
+  - *Not brought back:* client secret (Microsoft never returns it).
   - *You do:* Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.
-- **Certificate sign-in settings** (Not yet investigated). A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.
+- **Certificate sign-in settings** (not built yet). A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.
   - *You do:* Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.
 - **Built-in admin roles** (Microsoft limit). Microsoft provides the built-in roles. They are switched on from Microsoft's templates, never written.
   - *You do:* Nothing to restore. Who holds each role is restored with role assignments.
@@ -63,53 +72,60 @@ KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore a
   - *You do:* Nothing to restore.
 - **Admin role assignments.** Recreates admin role assignments, changes them back and removes ones added since the backup.
 - **Eligible admin roles.** Makes people eligible for an admin role again, keeping the original end date.
+  - *Not brought back:* changing or removing an eligibility, and ones inherited through a group (in the backup, but KEEL does not write it yet).
   - *You do:* Expired eligibilities and ones inherited through a group are not restored. Changing or removing an eligibility is done by hand.
-- **Time-limited active admin roles** (Not yet investigated). Restoring a time-limited active role safely needs an expiry check and a guard against replaying a past activation. That is not built yet. Permanent assignments are covered by admin role assignments.
+- **Time-limited active admin roles** (not built yet). Restoring a time-limited active role safely needs an expiry check and a guard against replaying a past activation. That is not built yet. Permanent assignments are covered by admin role assignments.
+  - *Not brought back:* activations people made themselves (no tool can write it).
   - *You do:* Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.
 - **Admin role activation settings.** Puts activation rules back: how long a role lasts, what activation needs, and who approves.
+  - *Not brought back:* a change that weakens protection (in the backup, but KEEL does not write it yet).
   - *You do:* A restore that would weaken protection is not written: KEEL lists it for a person to decide. Approvers must still exist.
 - **Role-to-settings links** (Microsoft limit). Entra links exactly one settings policy to each role itself. Nobody writes the link.
   - *You do:* Nothing to restore. The settings are restored with admin role activation settings.
-- **Access reviews** (Not yet investigated). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
+- **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
+  - *Not brought back:* past reviews and their decisions (no tool can write it).
   - *You do:* Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.
-- **Access packages** (Not yet investigated). An access package depends on catalogs, policies and resource roles that KEEL does not back up yet.
+- **Access packages** (not built yet). An access package depends on catalogs, policies and resource roles that KEEL does not back up yet.
+  - *Not brought back:* its catalog, assignment policies and resource roles (stored separately and not in the backup yet); who holds the package now (no tool can write it).
   - *You do:* Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.
-- **Connected organizations** (Not yet investigated). These point to other organizations' tenants, which KEEL cannot check from yours.
+- **Connected organizations** (not built yet). These point to other organizations' tenants, which KEEL cannot check from yours.
+  - *Not brought back:* internal and external sponsors (stored separately and not in the backup yet).
   - *You do:* Recreate them by hand in Entra ID Governance using the backup.
 
 ## Sign-in and security policies
 
-| Setting | Backed up | KEEL can restore | Proof |
-| --- | --- | --- | --- |
-| Conditional Access policies | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress |
-| Authentication strengths | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Named locations | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of putting settings back failed on 2026-10-13, fix in progress |
-| Authentication contexts | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Authentication methods | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
-| Security defaults | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
-| User and guest permissions | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
-| Cross-tenant access | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
-| Cross-tenant access defaults | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
-| Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Device join and registration settings | Yes (Tier 1, critical, every hour) | By hand (KEEL choice) | None |
-| External user self sign-up | Yes (Tier 2, important, daily) | Yes: put changed settings back | Tested against a simulated tenant |
-| App consent policies | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Admin consent requests | Yes (Tier 2, important, daily) | Yes: put changed settings back | Tested against a simulated tenant |
-| Idle sign-out policy | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Token claims mapping | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Not yet investigated | None |
-| Token issuance policy | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Token lifetime policy | Yes (Tier 2, important, daily) | Not yet investigated | None |
-| Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Not yet investigated | None |
+| Setting | Backed up | Coverage | KEEL can restore | Proof |
+| --- | --- | --- | --- | --- |
+| Conditional Access policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress |
+| Authentication strengths | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of putting settings back failed on 2026-10-13, fix in progress |
+| Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Authentication methods | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| User and guest permissions | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Cross-tenant access | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Cross-tenant access defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Device join and registration settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| App consent policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Token claims mapping | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
 - **Conditional Access policies.** Recreates policies, puts their settings back, removes ones added since the backup, and brings deleted ones back. Every write lands in report-only mode.
   - *You do:* Turning a restored policy on is a separate, approved step that first checks the break-glass accounts can still sign in.
 - **Authentication strengths.** Recreates custom authentication strengths and puts their settings back.
+  - *Not brought back:* a change to the allowed sign-in method combinations (in the backup, but KEEL does not write it yet).
   - *You do:* Built-in strengths cannot be changed by anyone. A change to the allowed sign-in method combinations is reported, not restored: set it by hand. Removing extra strengths is done by hand.
 - **Named locations.** Recreates named locations, puts their settings back and removes ones added since the backup.
-- **Authentication contexts** (Not yet investigated). Each context has a fixed slot that Conditional Access policies and SharePoint labels point to. KEEL cannot yet check what uses a slot before changing it.
+- **Authentication contexts** (not built yet). Each context has a fixed slot that Conditional Access policies and SharePoint labels point to. KEEL cannot yet check what uses a slot before changing it.
   - *You do:* Restore the name and description by hand in the Entra admin center, keeping each one in the same slot as in the backup.
 - **Authentication methods.** Puts the authentication methods policy and each method's settings back, only when the break-glass accounts can still sign in afterwards.
   - *You do:* A method that no longer exists in your tenant is not added back.
@@ -123,103 +139,126 @@ KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore a
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
   - *You do:* The sign-up user flows themselves are not backed up.
-- **App consent policies** (Not yet investigated). Microsoft's built-in policies cannot be changed, and the rules inside custom ones are stored separately. KEEL has not built a safe writer for them.
+- **App consent policies** (not built yet). Microsoft's built-in policies cannot be changed, and the rules inside custom ones are stored separately. KEEL has not built a safe writer for them.
+  - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet).
   - *You do:* Recreate custom consent policies by hand using the backup.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
-- **Idle sign-out policy** (Not yet investigated). KEEL does not yet read the policy's settings in detail, or tell a tenant-wide policy from one set on a single app.
+- **Idle sign-out policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup.
-- **Token claims mapping** (Not yet investigated). The policy's link to each app is stored separately and KEEL does not yet read the policy's settings in detail.
+- **Token claims mapping** (not built yet). The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup, then assign it to the same apps.
-- **Sign-in routing (home realm discovery)** (Not yet investigated). This decides where federated users are sent to sign in, so a wrong write breaks sign-in. Its link to each app is stored separately.
+- **Sign-in routing (home realm discovery)** (not built yet). This decides where federated users are sent to sign in, so a wrong write breaks sign-in. Its link to each app is stored separately.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup, assign it to the same apps, and test a federated sign-in.
-- **Token issuance policy** (Not yet investigated). Its link to each app is stored separately and KEEL does not yet read the policy's settings in detail.
+- **Token issuance policy** (not built yet). The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup, then assign it to the same apps.
-- **Token lifetime policy** (Not yet investigated). KEEL does not yet read the policy's settings in detail, or tell a tenant-wide policy from one set on a single app.
+- **Token lifetime policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup.
-- **Staged rollout of sign-in features** (Not yet investigated). Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.
+- **Staged rollout of sign-in features** (not built yet). Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.
+  - *Not brought back:* which groups the rollout covers (stored separately and not in the backup yet).
   - *You do:* Recreate the rollout by hand using the backup, then add the same groups.
 
 ## Tenant settings
 
-| Setting | Backed up | KEEL can restore | Proof |
-| --- | --- | --- | --- |
-| Tenant profile | Yes (Tier 1, critical, every hour) | By hand (Microsoft limit) | None |
-| Domains | Yes (Tier 1, critical, every hour) | By hand (Microsoft limit) | None |
-| Licence subscriptions | Yes (Tier 1, critical, every hour) | By hand (Microsoft limit) | None |
-| Group setting templates | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| Tenant-wide group settings | Yes (Tier 2, important, daily) | Yes: put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Company branding | Yes (Tier 3, low impact, weekly) | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-10, fix in progress |
-| Company branding per language | Yes (Tier 3, low impact, weekly) | Yes: put changed settings back | Tested against a simulated tenant |
-| Group expiration policy | Yes (Tier 2, important, daily) | Yes: put changed settings back | Tested against a simulated tenant |
-| Administrative units | Yes (Tier 2, important, daily) | Yes: put changed settings back | Tested against a simulated tenant |
+| Setting | Backed up | Coverage | KEEL can restore | Proof |
+| --- | --- | --- | --- | --- |
+| Tenant profile | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
+| Domains | Yes (Tier 1, critical, every hour) | Incomplete | By hand (Microsoft limit) | None |
+| Licence subscriptions | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
+| Group setting templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
+| Tenant-wide group settings | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Company branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-10, fix in progress |
+| Company branding per language | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Group expiration policy | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Administrative units | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 
 ### Details and what you do
 
 - **Tenant profile** (Microsoft limit). This is the tenant itself. Microsoft does not let any tool recreate or replace it.
   - *You do:* Nothing to restore. Use the backup as a record of the tenant details at that time.
 - **Domains** (Microsoft limit). Adding a domain needs proof that you own it, through a DNS record that only you can publish.
+  - *Not brought back:* proof that you own the domain (a DNS record you publish) (stored separately and not in the backup yet).
   - *You do:* Add the domain in the Microsoft 365 admin center, publish the DNS record it asks for, and verify it. Domains must be back before users and mail that use them.
 - **Licence subscriptions** (Microsoft limit). Licences are bought from Microsoft, not configured.
   - *You do:* Use the backup to see which licences you had and how many. Buy or reactivate them before restoring users, because a user restore can only assign licences you hold.
 - **Group setting templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant and nobody can edit them.
   - *You do:* Nothing to restore.
 - **Tenant-wide group settings.** Puts changed tenant-wide group settings back, and removes ones added since the backup.
+  - *Not brought back:* settings on a single group (stored separately and not in the backup yet); a deleted tenant-wide setting (in the backup, but KEEL does not write it yet).
   - *You do:* A setting that was deleted, and settings on a single group, are recreated by hand from the backup.
 - **Company branding.** Puts the sign-in page text, colours and layout back, and uploads the background image, banner logo, square logos, favicon and custom stylesheet again when they changed (tested against a simulated tenant only).
+  - *Not brought back:* header logo (a file the backup does not hold); content customization files (in the backup, but KEEL does not write it yet).
   - *You do:* The header logo, and any file that was not set or was over 1 MB at backup time, are uploaded by hand in the Entra admin center. A tenant with no branding gets none from KEEL.
 - **Company branding per language.** Puts the sign-in page text, colours and layout of each existing language back, and uploads its images and stylesheet again when they changed (tested against a simulated tenant only).
+  - *Not brought back:* header logo of each language (a file the backup does not hold); adding or removing a language (in the backup, but KEEL does not write it yet).
   - *You do:* The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.
 - **Group expiration policy.** Puts the policy back only when that makes group expiry less aggressive.
+  - *Not brought back:* the list of groups a selected-groups policy covers (stored separately and not in the backup yet); a change that makes expiry more aggressive (in the backup, but KEEL does not write it yet).
   - *You do:* A shorter lifetime, more groups covered or a removed notice address could expire and delete groups, so KEEL leaves that change to a person. A missing policy, and the list of groups it covers, are set by hand.
 - **Administrative units.** Puts the name and description back.
+  - *Not brought back:* members and admins scoped to the unit (stored separately and not in the backup yet); dynamic membership rules and a deleted unit (in the backup, but KEEL does not write it yet).
   - *You do:* Members, admins scoped to the unit, dynamic membership rules and a deleted unit are restored by hand from the backup.
 
 ## Intune device management
 
-| Setting | Backed up | KEEL can restore | Proof |
-| --- | --- | --- | --- |
-| Device configuration profiles | Yes (Tier 2, important, daily) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Device compliance policies | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Settings catalog policies | Yes (Tier 2, important, daily) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Enrollment restrictions | Yes (Tier 2, important, daily) | By hand (Microsoft limit) | None |
-| Intune admin roles | Yes (Tier 1, critical, every hour) | By hand (KEEL choice) | None |
-| Device categories | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| Terms and conditions | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| Windows Autopilot profiles | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
-| Security baselines (older format) | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
-| Enrolled devices | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
-| Apps | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
-| App protection policies | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
-| Managed app configuration | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
-| App configuration for managed devices | Yes (Tier 2, important, daily) | By hand (KEEL choice) | None |
+| Setting | Backed up | Coverage | KEEL can restore | Proof |
+| --- | --- | --- | --- | --- |
+| Device configuration profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Device compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Settings catalog policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Enrollment restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
+| Apps | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| App protection policies | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Managed app configuration | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| App configuration for managed devices | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 
 ### Details and what you do
 
 - **Device configuration profiles.** Recreates profiles and puts their settings and assignments back.
+  - *Not brought back:* passwords, keys and certificates in Wi-Fi, VPN, certificate and email profiles (Microsoft never returns it).
   - *You do:* Profiles that carry passwords or certificates (Wi-Fi, VPN, certificate, email), and any value Microsoft never returns, are finished by hand. Removing extra profiles is done by hand.
 - **Device compliance policies.** Recreates policies, with their actions for noncompliant devices, and puts their settings and assignments back.
   - *You do:* Removing extra policies is done by hand.
 - **Settings catalog policies.** Recreates policies and puts their settings and assignments back.
+  - *Not brought back:* secret settings (Microsoft never returns it).
   - *You do:* Secret settings are never returned by Microsoft, so enter them again by hand. Removing extra policies is done by hand.
 - **Enrollment restrictions** (Microsoft limit). The default restrictions exist in every tenant and cannot be created by anyone, and the order of custom ones is set by a separate action KEEL does not write.
   - *You do:* Restore by hand in the Intune admin center from the backup, which includes each restriction's assignments and order.
 - **Intune admin roles** (KEEL choice). These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is not backed up.
+  - *Not brought back:* who holds each role (stored separately and not in the backup yet).
   - *You do:* Review the roles in the backup and recreate them in the Intune admin center, then assign them again.
 - **Device categories** (Microsoft limit). A category is only a name. Devices are put in a category when they enroll, which no restore can redo.
+  - *Not brought back:* which devices are in the category (no tool can write it).
   - *You do:* Recreate the category by hand. Devices pick it up at their next enrollment, or an admin sets it on each device.
 - **Terms and conditions** (Microsoft limit). Who accepted cannot be recreated: a recreated policy asks every user to accept again.
+  - *Not brought back:* who accepted the terms (no tool can write it).
   - *You do:* Recreate the terms by hand from the backup and tell users they will be asked to accept again.
 - **Windows Autopilot profiles** (KEEL choice). Microsoft offers these only through a preview API, and a profile applies to registered device hardware that KEEL does not back up.
+  - *Not brought back:* the registered device hardware it applies to (stored separately and not in the backup yet).
   - *You do:* Recreate the profile by hand from the backup, which includes its assignments.
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
+  - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
 - **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.
 - **Apps** (KEEL choice). App packages are content, not configuration, and KEEL does not back them up.
+  - *Not brought back:* the app package (a file the backup does not hold).
   - *You do:* Add the apps again in the Intune admin center from their store or package, using the backup as the list.
 - **App protection policies** (KEEL choice). Each platform has its own way to write these, and the list of protected apps is not backed up.
+  - *Not brought back:* the list of protected apps (stored separately and not in the backup yet).
   - *You do:* Recreate the policies by hand from the backup, which includes their assignments, then add the protected apps.
 - **Managed app configuration** (KEEL choice). The apps it targets are set by a separate action whose list is not backed up.
+  - *Not brought back:* the apps it targets (stored separately and not in the backup yet).
   - *You do:* Recreate it by hand from the backup, then choose the apps it targets.
 - **App configuration for managed devices** (KEEL choice). It configures one specific app, and apps are not restored.
   - *You do:* Recreate it by hand after the app is back.

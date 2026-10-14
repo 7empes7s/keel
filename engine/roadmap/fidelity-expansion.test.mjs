@@ -113,7 +113,9 @@ test('scopes are derived from registered operations only; no new family is fully
   assert.equal(restoreScopeFor('roleEligibilitySchedule'), 'partial', 'task-151: create only');
   assert.equal(restoreScopeFor('roleAssignmentSchedule'), 'none');
   const unit = qualificationFor('roleAssignmentSchedule');
-  assert.equal(unit.decision, 'unknown');
+  // Coverage plan v3: no longer 'unknown'; restored by hand until a writer exists.
+  assert.equal(unit.decision, 'manual');
+  assert.equal(unit.completeness.state, 'incomplete');
   assert.deepEqual({ status: unit.expansion.status, restoreScope: unit.expansion.restoreScope }, { status: 'research-needed', restoreScope: 'none' });
   assert.equal(qualificationFor('application').expansion.restoreScope, 'partial');
 });
@@ -133,7 +135,8 @@ test('adversarial inventory edits are refused: a research-needed family cannot b
   const noRoute = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, api: null } };
   assert.throws(() => buildExpansionInventory({ inventory: noRoute }), /must name the API route/);
   const manualMismatch = { ...EXPANSION_INVENTORY, oauth2PermissionGrant: { ...EXPANSION_INVENTORY.oauth2PermissionGrant, status: 'manual' } };
-  assert.throws(() => buildExpansionInventory({ inventory: manualMismatch }), /oauth2PermissionGrant is manual in its batch but unknown/);
+  assert.throws(() => buildExpansionInventory({ inventory: manualMismatch, decisions: { ...TYPE_DECISIONS, oauth2PermissionGrant: { decision: 'automated', reason: 'x' } } }),
+    /oauth2PermissionGrant is manual in its batch but automated/);
   assert.throws(() => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, roleAssignmentSchedule: { decision: 'automated', reason: 'x' } } }),
     /roleAssignmentSchedule is marked automated but has no registered write capability/);
 });

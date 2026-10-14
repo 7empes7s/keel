@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { grantRole, revokeRole, disablePrincipal, SelfLockoutError, PrincipalNotFoundError } from './administration.mjs';
 import { listPrincipals, capabilitiesForPrincipal, resolvePrincipal } from './principals.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 test('principal administration: live grants, self-lockout, windows, and disabled consistency', async () => {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+    const schema = schemaSql();
     await client.query(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS principal'), schema.indexOf('-- §3.3 approvals')));
     // listPrincipals reads the task-43 system identity column, added later in the schema.
     await client.query(schema.slice(schema.indexOf('ALTER TABLE principal ADD COLUMN IF NOT EXISTS system_kind'), schema.indexOf('WHERE system_kind IS NOT NULL;') + 'WHERE system_kind IS NOT NULL;'.length));

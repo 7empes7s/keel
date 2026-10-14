@@ -34,6 +34,7 @@ import {
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Global constraint 6: the test database only ever comes from KEEL_DB_TEST_URL, isolated
 // into its own schema. The routes under test read KEEL_DB_URL via runtime-config, so the
@@ -77,10 +78,7 @@ before(async () => {
 
   const admin = await database.connect();
   try {
-    const schema = readFileSync(
-      new URL("../../engine/store/schema.sql", import.meta.url),
-      "utf8",
-    );
+    const schema = schemaSql();
     await admin.query(schema);
   } finally {
     await admin.end();

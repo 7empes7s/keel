@@ -10,7 +10,6 @@
  * - Ignore evidence expiry.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { createFixtureCmdbAdapter } from '../identity/adapters/cmdb.mjs';
@@ -24,6 +23,7 @@ import {
 import { recordLineage, tombstoneMissingLineages } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { runOwnershipCommand } from '../../cli/keel-worker.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const TENANT = 'fixture-tenant';
 const OTHER_TENANT = 'other-tenant';
@@ -51,7 +51,7 @@ async function setup(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema);
   await client.query(schema); // retry-safe migration
   const principal = async (email, roles) => {

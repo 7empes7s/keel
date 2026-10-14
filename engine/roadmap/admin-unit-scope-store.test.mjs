@@ -13,7 +13,6 @@
  * Microsoft Graph is the in-memory fake only; no tenant is read or written.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
@@ -25,6 +24,7 @@ import {
   completeSnapshot, createSnapshot, getReferences, getResourceVersions, insertReferences, insertResourceVersion,
 } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const NOW = new Date('2026-10-14T00:00:00Z');
@@ -48,7 +48,7 @@ let stored;
 
 before(async () => {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const canonical = canonicalizeAll([['administrativeUnit', [unit]], ['roleEligibilitySchedule', [unitScoped, directoryWide]]]);
   const snapshotId = await createSnapshot(client, { tenantRef: 'sha256:admin-unit-scope-store-test' });
   // The same writes collectSnapshot makes for every canonical resource.

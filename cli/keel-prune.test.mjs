@@ -1,12 +1,13 @@
 import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { createBaseline, seedBaselineFromSnapshot } from '../engine/store/governance.mjs';
 import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const url = database.url;
@@ -30,7 +31,7 @@ let client;
 try {
   const admin = await database.connect();
   try {
-    await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+    await admin.query(schemaSql());
   } finally {
     await admin.end();
   }

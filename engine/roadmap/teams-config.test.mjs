@@ -13,7 +13,6 @@
 // Everything runs against the isolated test database and an in-memory fake Graph.
 // No tenant is read or written.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
@@ -32,6 +31,7 @@ import {
 } from '../restore/workloads/teams.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -41,7 +41,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

@@ -18,6 +18,7 @@ import { verifyFreshManifest, recordShippedManifest } from '../engine/schedules/
 import { localTimeToUTC, utcTimeToLocal } from '../engine/schedules/timeOfDay.mjs';
 import { JOB_HANDLERS, runJob } from './keel-worker.mjs';
 import { seedSchedules } from '../engine/store/scheduleSeed.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const exec = promisify(execFile);
 // Child commands use repo-relative paths (cli/..., ops/...): run them from the checkout, wherever it lives.
@@ -26,7 +27,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
 const directory = await mkdtemp(join(tmpdir(), 'keel-scheduler-'));
 try {
-  await client.query(await readFile(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const principal = await schedulerPrincipal(client);
   const due = new Date('2026-09-14T00:00:00Z');
   const row = (await client.query(`INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at)
@@ -224,7 +225,7 @@ try {
       onInFlightChange: (value) => { if (value) signal(); } });
     try {
       await started;
-      await otherClient.query(await readFile(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+      await otherClient.query(schemaSql());
       const otherOperator = (await otherClient.query("INSERT INTO principal (email) VALUES ('store-lock@fixture.invalid') RETURNING *")).rows[0];
       await otherClient.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'operator')", [otherOperator.id]);
       const job = await enqueue(otherClient, { kind: 'collect', requestedBy: otherOperator.id });

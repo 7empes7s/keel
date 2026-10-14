@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import {
   acceptDrift, seedFromSnapshot, listBaselines, getBaselineByLabel, activateBaseline,
   resnapshotBaseline, reinstateBaseline,
@@ -9,13 +8,14 @@ import { recordDrift } from '../store/governance.mjs';
 import { POLICY_EVALUATION_EVIDENCE_KIND } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 const tenantRef = 'sha256:baseline-test';
 
 async function createFullSnapshot(tenant) {

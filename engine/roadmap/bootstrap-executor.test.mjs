@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -8,6 +8,7 @@ import { planBootstrap } from '../bootstrap/plan.mjs';
 import { BootstrapJournal, migrateBootstrapJournal } from '../bootstrap/journal.mjs';
 import { approveBootstrapPlan, executeBootstrap } from '../bootstrap/execute.mjs';
 import { runBootstrap } from '../../cli/keel-bootstrap.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const tenantRef = 'sha256:bootstrap-executor-fixture';
 const credentials = {
@@ -21,7 +22,7 @@ async function fixture(t, workloads = ['entra-collect']) {
   const database = await createIsolatedTestDatabase(import.meta.url);
   const client = await database.connect();
   t.after(async () => { await client.end(); await database.cleanup(); });
-  const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS principal'), schema.indexOf('-- §3.3 approvals')));
   const { rows: [principal] } = await client.query("INSERT INTO principal(email, display_name) VALUES ('bootstrap@example.test', 'Fixture') RETURNING *");
   await client.query("INSERT INTO role_grant(principal_id, role, granted_by, reason) VALUES ($1, 'admin', 'fixture', 'fixture'), ($1, 'approver', 'fixture', 'fixture')", [principal.id]);

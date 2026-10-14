@@ -1,17 +1,17 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import {
   createSnapshot, completeSnapshot, insertResourceVersion,
   insertReferences, getLatestSnapshot, getResourceVersions, getReferences,
 } from './db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from './loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
 const snapshotId = await createSnapshot(client, { tenantRef: 'sha256:test' });
 assert.ok(snapshotId);

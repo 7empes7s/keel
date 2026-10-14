@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,13 +9,14 @@ import { appendEvidence, verifyChain } from '../govern/evidence.mjs';
 import { publishCheckpoint, verifyAnchoredChain, checkpointBytes, rotationBytes } from '../govern/anchor.mjs';
 import { createLocalStorageAdapter } from '../storage/local.mjs';
 import { assertIndependentAnchorStorage } from '../storage/adapter.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 async function fixture(fn) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   const root = await mkdtemp(join(tmpdir(), 'keel-anchor-'));
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const key = generateKeyPairSync('ed25519');
     const storage = createLocalStorageAdapter({ root });
     const context = { tenantRef: 'fixture', build: 'build-78', storage,

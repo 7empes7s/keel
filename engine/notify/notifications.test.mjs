@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import {
   DeliveryAttemptError,
   attemptDelivery,
@@ -12,6 +11,7 @@ import {
 } from './notifications.mjs';
 import { claimNext } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 // The matching rule is deliberately pure so subscription semantics cannot depend on
 // a particular database or transport.
@@ -43,7 +43,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const requester = '11111111-1111-1111-1111-111111111111';
   await client.query(

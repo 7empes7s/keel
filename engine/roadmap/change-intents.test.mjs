@@ -17,7 +17,7 @@
  *                                                       still-drifted one acts on the newest drift)
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -37,6 +37,7 @@ import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runRemediate } from '../../cli/keel-remediate.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const noopLogger = { log() {}, error() {} };
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -49,7 +50,7 @@ after(async () => {
   await database.cleanup();
 });
 
-const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const schema = schemaSql();
 await client.query(schema);
 await client.query(schema); // additive and retry-safe
 

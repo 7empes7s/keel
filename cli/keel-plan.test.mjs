@@ -1,10 +1,10 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { completeSnapshot, connect, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
 import { main, runPlan } from './keel-plan.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const noopLogger = { log() {}, error() {} };
 
@@ -36,7 +36,7 @@ assert.match(tenantRef, /^sha256:[0-9a-f]{16}$/);
   try {
     const admin = await database.connect();
     try {
-      await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+      await admin.query(schemaSql());
     } finally {
       await admin.end();
     }

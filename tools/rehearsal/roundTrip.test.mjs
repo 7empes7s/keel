@@ -8,6 +8,7 @@ import {
   getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
+import { schemaSql } from '../../engine/store/loadSchema.mjs';
 
 // Separate Collector and Restorer configs for one fixture tenant, written to a temp dir.
 const fixtureConfigDir = mkdtempSync(join(tmpdir(), 'keel-roundtrip-'));
@@ -346,7 +347,7 @@ assert.throws(
 {
   const isolated = await createIsolatedTestDatabase(import.meta.url);
   const client = await isolated.connect();
-  await client.query(readFileSync(new URL('../../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const collectorConfigPath = new URL('./fixtures/roundTrip-collector.json', import.meta.url);
   const restorerConfigPath = new URL('./fixtures/roundTrip-restorer.json', import.meta.url);

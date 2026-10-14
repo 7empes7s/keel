@@ -34,6 +34,7 @@ import { evaluatePromotion, proposedPolicyGate } from '../safety/simulationGate.
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { main as policyScenarioCli } from '../../cli/keel-policy-scenario.mjs';
 import { checkWhatIfEvidence, runBenchmark } from '../../tools/qualification/conditionalAccess.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const BG = 'b9500000-0000-4000-8000-000000000001';
 const BG2 = 'b9500000-0000-4000-8000-000000000002';
@@ -320,7 +321,7 @@ test('CLI evaluates a proposal against collected state and registered emergency 
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema);
   const unique = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
   const { rows: [admin] } = await client.query('INSERT INTO principal(email) VALUES ($1) RETURNING *', [`scenario-admin-${unique}@example.invalid`]);

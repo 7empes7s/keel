@@ -17,7 +17,6 @@
  */
 import { strict as assert } from 'node:assert';
 import { createHmac } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
@@ -31,6 +30,7 @@ import { requestApproval } from '../govern/approvals.mjs';
 import { verifyChain } from '../govern/evidence.mjs';
 import { checkServiceNowConfig } from '../../tools/qualification/servicenow.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
@@ -39,7 +39,7 @@ after(async () => {
   await database.cleanup();
 });
 
-const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const schema = schemaSql();
 await client.query(schema);
 await client.query(schema); // additive and retry-safe
 

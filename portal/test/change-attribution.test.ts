@@ -15,6 +15,7 @@ import { attributionSentence, routeSentence } from "@/components/change-attribut
 import { getDriftData } from "@/lib/portal-data";
 import { tenantRef } from "@/lib/runtime-config";
 import type { ChangeAttribution, DriftRecord } from "@/lib/types";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Roadmap task-91, portal boundary: the Changes reader attributes each open change from
 // the audit evidence task 88 ingested, routes its roll back from current ownership, and
@@ -46,7 +47,7 @@ before(async () => {
   }
   database = (await createIsolatedTestDatabase(import.meta.url)) as typeof database;
   client = await database.connect();
-  await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query(schemaSql());
   const dir = mkdtempSync(join(tmpdir(), "keel-portal-attribution-test-"));
   writeFileSync(join(dir, "tenant.json"), JSON.stringify({ tenantId: "task-91-attribution-portal-test" }));
   process.env.KEEL_DB_URL = database.url;

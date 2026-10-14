@@ -11,7 +11,6 @@
  * - Invent fixed hours per event.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, before, test } from 'node:test';
 
 import { main as valueReportCli } from '../../cli/keel-value-report.mjs';
@@ -22,6 +21,7 @@ import {
   valueReportCsv,
 } from '../reports/value.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const NOW = new Date('2026-10-03T12:00:00.000Z');
 const FROM = new Date('2026-09-03T12:00:00.000Z');
@@ -33,7 +33,7 @@ let client;
 before(async () => {
   database = await createIsolatedTestDatabase(import.meta.url);
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 });
 
 after(async () => {

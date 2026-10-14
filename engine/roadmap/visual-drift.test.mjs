@@ -12,7 +12,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -32,6 +32,7 @@ import { resolveOwnership } from '../identity/ownership.mjs';
 import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -47,7 +48,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+    const schema = schemaSql();
     await client.query(schema);
     await client.query(schema); // retry-safe
     schemaReady = true;

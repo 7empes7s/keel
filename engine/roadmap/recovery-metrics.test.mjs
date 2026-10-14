@@ -12,7 +12,7 @@
  *   portal/test/resilience-view.test.ts).
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,6 +31,7 @@ import { appendEvidence } from '../govern/evidence.mjs';
 import { buildRecoveryManifest, currentSchemaPin } from '../storage/recoveryManifest.mjs';
 import { insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const NOW = new Date('2026-10-03T12:00:00.000Z');
 const HOUR = 60 * 60 * 1000;
@@ -44,7 +45,7 @@ let tmp;
 before(async () => {
   database = await createIsolatedTestDatabase(import.meta.url);
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   tmp = mkdtempSync(join(tmpdir(), 'keel-recovery-metrics-'));
 });
 

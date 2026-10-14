@@ -14,6 +14,7 @@ import { RestoreFollowUps } from "@/components/restore-follow-ups";
 import { getRestoreFollowUps, waitingFor } from "@/lib/portal-data";
 import { tenantRef } from "@/lib/runtime-config";
 import type { DashboardData } from "@/lib/types";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Work that waits on a person outside the approvals inbox is counted on the Overview
 // and listed where it is done, so none of it is reachable only by a direct link.
@@ -31,7 +32,7 @@ before(async () => {
   }
   database = (await createIsolatedTestDatabase(import.meta.url)) as typeof database;
   client = await database.connect();
-  await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query(schemaSql());
   const dir = mkdtempSync(join(tmpdir(), "keel-portal-waiting-test-"));
   writeFileSync(join(dir, "tenant.json"), JSON.stringify({ tenantId: "waiting-work-portal-test" }));
   process.env.KEEL_DB_URL = database.url;

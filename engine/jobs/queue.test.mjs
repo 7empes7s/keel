@@ -1,10 +1,10 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import {
   claimNext, complete, enqueue, fail, listJobs, ORPHANED_HEARTBEAT_STALE_MS,
   resetOrphaned,
 } from './queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
@@ -13,7 +13,7 @@ try {
   const admin = await database.connect();
   try {
     await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-    const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+    const schema = schemaSql();
     await admin.query(schema);
   } finally {
     await admin.end();

@@ -14,7 +14,6 @@
  * - A language that does not exist live is not created.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { GraphReader } from '../../tools/tenant-probe/graph.mjs';
@@ -36,10 +35,11 @@ import { listJournal } from '../restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../store/brandingAssets.mjs';
 import { pruneSnapshots } from '../store/retention.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const PROOF = 'engine/roadmap/branding-files.test.mjs';
 const ORG = '11111111-1111-4111-8111-111111111111';
-const SCHEMA = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const SCHEMA = schemaSql();
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });

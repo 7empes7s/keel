@@ -34,6 +34,7 @@ import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runRemediate } from '../../cli/keel-remediate.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const noopLogger = { log() {}, error() {} };
 
@@ -41,7 +42,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const tenantRef = 'sha256:closure-ceiling-test';
   const adminPrincipalId = '11111111-1111-1111-1111-111111111111';

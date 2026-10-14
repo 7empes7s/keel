@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { canonicalHash } from './cir/canonicalHash.mjs';
 import { diffSnapshots } from './govern/diffSnapshots.mjs';
 import { isSuppressed } from './govern/disposition.mjs';
@@ -9,6 +8,7 @@ import { ThrottleGovernor } from './restore/throttleGovernor.mjs';
 import { planDeletionWaves } from './restore/wavePlanner.mjs';
 import { refuseUnsafeDeletion } from './safety/deletionGuard.mjs';
 import { createIsolatedTestDatabase } from './test/dbTestHelper.mjs';
+import { schemaSql } from './store/loadSchema.mjs';
 
 function governor() {
   return new ThrottleGovernor({
@@ -232,7 +232,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let evidenceClient;
 try {
   evidenceClient = await database.connect();
-  await evidenceClient.query(readFileSync(new URL('./store/schema.sql', import.meta.url), 'utf8'));
+  await evidenceClient.query(schemaSql());
 const evidenceTenantRef = 'sha256:contract-m2-evidence';
 await appendEvidence(evidenceClient, {
   tenantRef: evidenceTenantRef,

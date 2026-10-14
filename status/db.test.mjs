@@ -5,6 +5,7 @@ import { connect } from './db.mjs';
 import {
   createIsolatedTestDatabase, quoteIdentifier,
 } from '../engine/test/dbTestHelper.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const TEST_STATUS_PASSWORD = 'status-test-only-not-a-real-secret';
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -14,7 +15,7 @@ let client;
 
 try {
   admin = await database.connect();
-  await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await admin.query(schemaSql());
   const roleSql = readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8')
     .replaceAll('keel_status', role)
     .replace('SCHEMA public', `SCHEMA ${quoteIdentifier(database.schema)}`);

@@ -10,7 +10,6 @@
  * - Drop recovery provenance requirement.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
@@ -27,6 +26,7 @@ import {
   loadRecoveryContext,
 } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const GA_TEMPLATE = '62e90394-69f5-4237-9190-012177145e10'; // real Global Administrator template id
 const U1 = '11111111-1111-1111-1111-111111111111';
@@ -43,7 +43,7 @@ after(async () => { await database.cleanup(); });
 async function freshSchema(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   return client;
 }
 

@@ -35,6 +35,7 @@ import {
   loadEntraLiveFiles, loadLiveRecords, runLedgerCommand,
 } from '../../tools/release/acceptanceLedger.mjs';
 import { signEvidence } from '../../tools/release/qualification.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const workdir = mkdtempSync(join(tmpdir(), 'keel-acceptance-'));
@@ -45,7 +46,7 @@ let results;
 
 before(async () => {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   ctx = {
     dbUrl: database.url,
     workdir,

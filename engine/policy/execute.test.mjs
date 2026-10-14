@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AUTOMATION_EXECUTION_EVIDENCE_KIND, executeAutoRemediation } from './execute.mjs';
@@ -10,12 +10,13 @@ import { completeSnapshot, createSnapshot, insertResourceVersion } from '../stor
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runJob } from '../../cli/keel-worker.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const tenantRef = 'sha256:policy-execute-test';
   // The admin remains audit provenance only. A separate restorer principal is the
@@ -168,13 +169,13 @@ try {
      RETURNING *`,
     [tenantRef, adminPrincipalId],
   );
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const { rows: migratedRows } = await client.query('SELECT * FROM policy WHERE id = $1', [legacyRows[0].id]);
   assert.equal(migratedRows[0].enabled, false);
   assert.equal(migratedRows[0].run_as_repair_required, true);
   assert.ok(migratedRows[0].paused_at, 'legacy automatic policy is paused pending repair');
   const pausedAt = migratedRows[0].paused_at.toISOString();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const { rows: remigratedRows } = await client.query('SELECT * FROM policy WHERE id = $1', [legacyRows[0].id]);
   assert.equal(remigratedRows[0].paused_at.toISOString(), pausedAt, 'migration is idempotent');
 

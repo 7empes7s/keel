@@ -23,7 +23,7 @@
  * (tools/release/acceptanceLedger.mjs) keeps them apart from live acceptance.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +57,7 @@ import { fakeGraph } from '../qualification/operations.mjs';
 import { createDisposableTarget, reconstructRecovery } from '../recovery/reconstruct.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
 import { JOB_HANDLERS, runJob } from '../../cli/keel-worker.mjs';
+import { schemaSql } from '../../engine/store/loadSchema.mjs';
 
 export const JOURNEY_CONTRACT_VERSION = 1;
 const HOUR = 60 * 60 * 1000;
@@ -887,7 +888,7 @@ async function main() {
   const targets = [];
   const client = await connect(scoped.toString());
   try {
-    await client.query(readFileSync(new URL('../../engine/store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const results = await runAllJourneys(client, {
       dbUrl: scoped.toString(), workdir,
       createTargetDatabase: async () => { const target = await createDisposableTarget({ targetUrl: url }); targets.push(target); return target; },

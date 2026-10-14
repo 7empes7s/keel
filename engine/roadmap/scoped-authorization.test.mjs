@@ -11,7 +11,6 @@
  * - Use stale ownership for approval.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { InvalidRoleGrantError, grantRole, revokeRole } from '../authz/administration.mjs';
@@ -39,6 +38,7 @@ import { createFixtureCmdbAdapter } from '../identity/adapters/cmdb.mjs';
 import { resolveOwnership } from '../identity/ownership.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const TENANT = 'fixture-tenant';
 const HOUR = 60 * 60 * 1000;
@@ -77,7 +77,7 @@ async function setup(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema);
   await client.query(schema); // retry-safe migration
 

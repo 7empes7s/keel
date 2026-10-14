@@ -11,7 +11,6 @@
  * restoreCandidates (as cli/keel-restore.mjs does). Fixtures only; no tenant.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
@@ -21,8 +20,9 @@ import {
   completeSnapshot, createSnapshot, getReferences, getResourceVersions, insertReferences, insertResourceVersion,
 } from './db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from './loadSchema.mjs';
 
-const SCHEMA = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
+const SCHEMA = schemaSql();
 const UNIT_ID = 'a1b2c3d4-0000-4000-8000-00000000a001';
 const SCOPE = `/administrativeUnits/${UNIT_ID}`;
 const unit = { id: UNIT_ID, displayName: 'KEEL-RT-148-unit', description: 'fixture', visibility: null };

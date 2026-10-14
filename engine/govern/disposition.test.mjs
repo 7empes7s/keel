@@ -1,11 +1,11 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { applyDisposition, isSuppressed } from './disposition.mjs';
 import { seedFromSnapshot } from './baseline.mjs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { recordDrift } from '../store/governance.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const now = new Date('2026-09-04T12:00:00.000Z');
 const drift = { naturalKey: 'group:disposition-test', afterHash: 'changed-hash' };
@@ -29,7 +29,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
 const tenantRef = 'sha256:disposition-test';
 const baselineSnapshotId = await createSnapshot(client, { tenantRef });

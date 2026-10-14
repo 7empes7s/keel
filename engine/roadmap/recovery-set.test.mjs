@@ -32,6 +32,7 @@ import { STORAGE_LIVE_GATE } from '../storage/storageLiveEvidence.mjs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const KEY = 'test-only-recovery-set-key';
@@ -51,6 +52,7 @@ function fixtureCheckout() {
   const checkout = join(tmp, 'checkout');
   mkdirSync(join(checkout, 'engine', 'store'), { recursive: true });
   cpSync(join(ROOT, 'engine', 'store', 'schema.sql'), join(checkout, 'engine', 'store', 'schema.sql'));
+  cpSync(join(ROOT, 'engine', 'store', 'schema.d'), join(checkout, 'engine', 'store', 'schema.d'), { recursive: true });
   return checkout;
 }
 
@@ -67,7 +69,7 @@ async function fixtureBackup() {
 
 before(async () => {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   snapshotId = await createSnapshot(client, { tenantRef });
   await insertResourceVersion(client, {
     snapshotId,

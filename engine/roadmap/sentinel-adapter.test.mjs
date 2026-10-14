@@ -30,8 +30,9 @@ import {
 } from '../telemetry/adapters/sentinel.mjs';
 import { SIEM_ADAPTERS } from '../../cli/keel-worker.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
-const SCHEMA = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const SCHEMA = schemaSql();
 const OPS_SCHEMA = JSON.parse(readFileSync(new URL('../../ops/sentinel-schema.json', import.meta.url), 'utf8'));
 const DEDUP_KQL = readFileSync(new URL('../../ops/sentinel-dedup.kql', import.meta.url), 'utf8');
 

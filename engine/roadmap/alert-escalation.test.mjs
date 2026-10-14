@@ -12,7 +12,7 @@
 //  - allow a read-only resolve.
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -26,6 +26,7 @@ import {
 } from '../notify/escalation.mjs';
 import { attemptDelivery, createChannel } from '../notify/notifications.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -35,7 +36,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

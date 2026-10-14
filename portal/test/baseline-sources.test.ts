@@ -14,6 +14,7 @@ import {
   hasCompletedSnapshots,
 } from "@/lib/portal-jobs";
 import { tenantRef } from "@/lib/runtime-config";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 let database: Awaited<ReturnType<typeof createIsolatedTestDatabase>>;
 let client: Awaited<ReturnType<typeof database.connect>>;
@@ -31,7 +32,7 @@ before(async () => {
   database = await createIsolatedTestDatabase(import.meta.url);
   client = await database.connect();
   await client.query(
-    readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"),
+    schemaSql(),
   );
   const tenantConfigDir = mkdtempSync(join(tmpdir(), "keel-baseline-sources-test-"));
   const tenantConfigPath = join(tenantConfigDir, "tenant.json");

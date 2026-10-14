@@ -1,11 +1,11 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { completeSnapshot, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { seedFromSnapshot } from '../engine/govern/baseline.mjs';
 import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../engine/test/fullSuccessfulCoverage.mjs';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { main, resolveRestoreScope, runCli, runRemediate } from './keel-remediate.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const noopLogger = { log() {}, error() {} };
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
@@ -17,7 +17,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
   let client;
   try {
     client = await database.connect();
-    await client.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const tenantRef = 'sha256:keel-remediate-test';
 
     const baselineSnapshotId = await createSnapshot(client, { tenantRef });
@@ -376,7 +376,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
   let client;
   try {
     client = await database.connect();
-    await client.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const tenantRef = 'sha256:keel-remediate-e2e';
     const baselineSnapshotId = await createSnapshot(client, { tenantRef });
     for (const resource of [

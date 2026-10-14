@@ -10,7 +10,6 @@
  * - Discard edge with unseen target.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -24,6 +23,7 @@ import { diffRelationships } from '../govern/diffSnapshots.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { createSnapshot, completeSnapshot } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const G1 = '11111111-1111-1111-1111-111111111111';
 const U1 = 'aaaaaaaa-0000-0000-0000-000000000001';
@@ -36,7 +36,7 @@ after(async () => { await database.cleanup(); });
 async function freshSchema(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   return client;
 }
 

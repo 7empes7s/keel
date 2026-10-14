@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { defineEvent } from '../telemetry/events.mjs';
 import {
   RECEIVER_DEDUP_CONTRACT,
@@ -18,8 +17,9 @@ import {
 } from '../telemetry/outbox.mjs';
 import { SIEM_ADAPTERS, drainSiemOutbox } from '../../cli/keel-worker.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
-const SCHEMA = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const SCHEMA = schemaSql();
 // Envelope source times are fixed fixture instants; the drain clock must sit AFTER the
 // database's real now() so freshly enqueued rows (next_attempt_at = now()) are due.
 const T0 = '2026-09-15T10:00:00.000Z';

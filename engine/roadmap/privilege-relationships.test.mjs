@@ -11,7 +11,6 @@
  * - Ignore last child page.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -27,6 +26,7 @@ import { diffRelationships } from '../govern/diffSnapshots.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { createSnapshot, completeSnapshot } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const APP = '11111111-aaaa-aaaa-aaaa-000000000001';
 const SP = '22222222-bbbb-bbbb-bbbb-000000000002';
@@ -46,7 +46,7 @@ after(async () => { await database.cleanup(); });
 async function freshSchema(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   return client;
 }
 

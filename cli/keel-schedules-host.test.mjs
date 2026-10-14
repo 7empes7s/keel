@@ -1,18 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
 import { seedSchedules } from '../engine/store/scheduleSeed.mjs';
 import { complete, fail } from '../engine/jobs/queue.mjs';
 import { processCollectionCompletions } from '../engine/schedules/completions.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
 import { preflight, runNow, health, cancel, TIERS } from './keel-schedules-host.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const TENANT = 'sha256:00000000000000aa';
 const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
 try {
-  await client.query(await readFile(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   await test('preflight passes on an empty store and blocks on a job backlog or another tenant', async () => {
     assert.equal((await preflight(client, { tenantRef: TENANT })).ok, true);

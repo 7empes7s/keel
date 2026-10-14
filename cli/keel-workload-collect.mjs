@@ -9,10 +9,9 @@
 //
 // Gap W1: scheduled workload settings collection (the `workload-collect` job kind).
 //   run     rebuilds the task-101 workload ledger from the live proof stored in the
-//           database, then runs every workload collector in its gated order (SharePoint,
-//           Teams, Exchange, OneDrive, Purview labels, mail flow, Teams org policies,
-//           Purview retention and DLP). A workload the ledger does not enable records a
-//           `disabled` run and sends nothing. Every request is a read: the Graph
+//           database, then runs every workload collector registered in
+//           engine/collect/workloads/registry.mjs, in its order. A workload the ledger
+//           does not enable records a `disabled` run and sends nothing. Every request is a read: the Graph
 //           transport refuses anything but GET, and each collector keeps its own
 //           read-only allowlist. Each run is a workload snapshot a restore can use.
 //   import  reads the four signed live acceptance records (SharePoint, Teams, Exchange,
@@ -43,14 +42,7 @@ import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
-import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from '../engine/collect/workloads/sharepoint.mjs';
-import { collectTeams, recordTeamsRun } from '../engine/collect/workloads/teams.mjs';
-import { collectExchange, recordExchangeRun } from '../engine/collect/workloads/exchange.mjs';
-import { collectOneDrive, recordOneDriveRun } from '../engine/collect/workloads/onedrive.mjs';
-import { collectPurview, recordPurviewRun } from '../engine/collect/workloads/purview.mjs';
-import { collectMailFlow, recordMailFlowRun } from '../engine/collect/workloads/mailFlow.mjs';
-import { collectTeamsPolicies, recordTeamsPolicyRun } from '../engine/collect/workloads/teamsPolicies.mjs';
-import { collectRetentionDlp, recordRetentionDlpRun } from '../engine/collect/workloads/purviewRetentionDlp.mjs';
+import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -83,19 +75,9 @@ export function readOnlyGraphTransport(tokenSource, fetchImpl = globalThis.fetch
   };
 }
 
-/**
- * The collectors in their gated order. Each later workload's activation requires the
- * earlier ones, so the order only decides the order of the log, never what may run.
- */
 // Which PowerShell config family each PowerShell workload connects with.
-export const POWERSHELL_FAMILY = {
-  'exchange-mailbox-settings': 'exchange',
-  'exchange-mail-flow': 'exchange',
-  'onedrive-site-settings': 'onedrive',
-  'purview-labels': 'purview',
-  'purview-retention-dlp': 'purview',
-  'teams-org-policies': 'teams',
-};
+export const POWERSHELL_FAMILY = Object.fromEntries(WORKLOAD_COLLECTORS
+  .filter((entry) => entry.powershellFamily).map((entry) => [entry.workload, entry.powershellFamily]));
 const POWERSHELL_FAMILIES = new Set(Object.values(POWERSHELL_FAMILY));
 const CONFIG_DIR = '/etc/keel/';
 
@@ -120,29 +102,28 @@ export function powershellConfigPaths(scope, { config, readFile }) {
   return { ...paths };
 }
 
-/** The PowerShell options one workload runs with: its family's config, else the default. */
-export function powershellFor(workload, { scope = {}, powershell = {} }) {
-  const path = scope.powershellConfigs?.[POWERSHELL_FAMILY[workload]];
+function powershellForFamily(family, { scope = {}, powershell = {} }) {
+  const path = family ? scope.powershellConfigs?.[family] : undefined;
   return path ? { ...powershell, tenantConfigPath: path } : powershell;
 }
 
-export function workloadSteps({ config, scope, transport, powershell }) {
-  const common = { sleep };
-  const shellFor = (workload) => powershellFor(workload, { scope, powershell });
-  return [
-    { workload: SHAREPOINT_WORKLOAD, record: recordSharePointRun,
-      collect: (client, base) => collectSharePointSites(client, { ...base, ...common, transport, tenantHost: scope.sharepointHost }) },
-    { workload: 'teams-settings', record: recordTeamsRun,
-      collect: (client, base) => collectTeams(client, { ...base, ...common, transport, tenantId: config.tenantId }) },
-    { workload: 'exchange-mailbox-settings', record: recordExchangeRun,
-      collect: (client, base) => collectExchange(client, { ...base, ...common, transport, powershell: shellFor('exchange-mailbox-settings'), mailboxes: scope.mailboxes ?? [] }) },
-    { workload: 'onedrive-site-settings', record: recordOneDriveRun,
-      collect: (client, base) => collectOneDrive(client, { ...base, powershell: shellFor('onedrive-site-settings'), sites: scope.onedriveSites ?? [], myHost: scope.onedriveHost }) },
-    { workload: 'purview-labels', record: recordPurviewRun, collect: (client, base) => collectPurview(client, { ...base, powershell: shellFor('purview-labels') }) },
-    { workload: 'exchange-mail-flow', record: recordMailFlowRun, collect: (client, base) => collectMailFlow(client, { ...base, powershell: shellFor('exchange-mail-flow') }) },
-    { workload: 'teams-org-policies', record: recordTeamsPolicyRun, collect: (client, base) => collectTeamsPolicies(client, { ...base, powershell: shellFor('teams-org-policies') }) },
-    { workload: 'purview-retention-dlp', record: recordRetentionDlpRun, collect: (client, base) => collectRetentionDlp(client, { ...base, powershell: shellFor('purview-retention-dlp') }) },
-  ];
+/** The PowerShell options one workload runs with: its family's config, else the default. */
+export function powershellFor(workload, { scope = {}, powershell = {} }) {
+  return powershellForFamily(POWERSHELL_FAMILY[workload], { scope, powershell });
+}
+
+/**
+ * The collectors from engine/collect/workloads/registry.mjs, each bound to this run's
+ * config, scope, transport and its family's PowerShell options.
+ */
+export function workloadSteps({ config, scope, transport, powershell, collectors = WORKLOAD_COLLECTORS }) {
+  return collectors.map((entry) => ({
+    workload: entry.workload,
+    record: entry.record,
+    collect: (client, base) => entry.collect(client, {
+      base, config, scope, transport, sleep, powershell: powershellForFamily(entry.powershellFamily, { scope, powershell }),
+    }),
+  }));
 }
 
 /**
@@ -150,10 +131,10 @@ export function workloadSteps({ config, scope, transport, powershell }) {
  * would not start) is recorded as a `failed` run with the reason, and the next
  * workload still runs.
  */
-export async function runWorkloadCollection(client, { tenantRef, config, scope = {}, transport, powershell = {}, now = () => new Date(), logger = console }) {
+export async function runWorkloadCollection(client, { tenantRef, config, scope = {}, transport, powershell = {}, now = () => new Date(), logger = console, collectors }) {
   const { ledger, inputs } = await loadWorkloadLedger(client, { tenantRef, now: now() });
   const runs = [];
-  for (const step of workloadSteps({ config, scope, transport, powershell })) {
+  for (const step of workloadSteps({ config, scope, transport, powershell, collectors })) {
     const base = { tenantRef, ledger, now };
     let run;
     let reasons = [];

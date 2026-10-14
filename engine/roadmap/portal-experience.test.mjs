@@ -6,7 +6,6 @@
 // reader fails this file — every count below is derived from a real report built
 // over a collected snapshot, not from a fixture of the sentence.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { collectSnapshot } from '../collect/snapshot.mjs';
@@ -16,6 +15,7 @@ import { formatHeadlineDate, protectionHeadline } from '../coverage/protectionHe
 import { appendEvidence } from '../govern/evidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -25,7 +25,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

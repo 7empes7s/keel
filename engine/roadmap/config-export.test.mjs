@@ -11,7 +11,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { readdir, readFile, readlink, rename, stat, symlink, writeFile, appendFile, mkdir } from 'node:fs/promises';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -28,6 +28,7 @@ import { completeSnapshot, connect, createSnapshot, insertResourceVersion } from
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runCli } from '../../cli/keel-export.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const tmp = mkdtempSync(join(tmpdir(), 'keel-config-export-'));
@@ -35,7 +36,7 @@ let client;
 
 before(async () => {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 });
 
 after(async () => {

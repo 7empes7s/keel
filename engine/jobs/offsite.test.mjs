@@ -1,12 +1,12 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { enqueue } from './queue.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
 try {
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const { rows: [viewer] } = await client.query("INSERT INTO principal (email) VALUES ('viewer@fixture.invalid') RETURNING *");
   const { rows: [admin] } = await client.query("INSERT INTO principal (email) VALUES ('admin@fixture.invalid') RETURNING *");
   await client.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'viewer'), ($2, 'admin')", [viewer.id, admin.id]);

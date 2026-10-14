@@ -17,6 +17,7 @@ import { buildCoverageReport, reportObservationWindows } from '../coverage/repor
 import { assertSimultaneous } from '../contracts/observation.mjs';
 import { SERVER_OWNED, SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -56,7 +57,7 @@ const reader = {
 test('coverage report: declared endpoint, irrecoverable fields and relationship completeness for the six M1 types', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:coverage-ui-m1';
 
   await collectSnapshot(client, { reader, tenantRef, tenantId: 'fixture-tenant', tier: 'tier1' });
@@ -152,7 +153,7 @@ test('coverage report: declared endpoint, irrecoverable fields and relationship 
 test('coverage report: cross-tier observation windows are surfaced as an explicit mismatch, never merged silently', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:coverage-ui-mismatch';
 
   const setSnapshotTimes = async (id, startedAt, completedAt) => client.query(
@@ -211,7 +212,7 @@ test('coverage report: cross-tier observation windows are surfaced as an explici
 test('coverage portal: report survives normalization, authorization and page rendering', async (t) => {
   const client = await database.connect();
   t.after(() => client.end());
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantId = 'coverage-portal-fixture';
   const tenantRef = `sha256:${createHash('sha256').update(tenantId).digest('hex').slice(0, 16)}`;
   const collected = await collectSnapshot(client, { reader, tenantRef, tenantId, tier: 'tier1' });

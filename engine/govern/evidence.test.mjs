@@ -1,16 +1,16 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { appendEvidence, verifyChain } from './evidence.mjs';
 import { canonicalize } from '../cir/canonicalHash.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
 const tenantRef = 'sha256:evidence-truncation-test';
 

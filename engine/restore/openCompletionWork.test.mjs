@@ -1,12 +1,12 @@
 // Restores with open follow-up steps are listed with the job that ran them, so the
 // portal can show every one of them, not only those still in a recent-jobs window.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { emitCompletionItems, listOpenCompletionWork } from './completion.mjs';
 import { enqueue } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -18,7 +18,7 @@ test('open follow-up work lists each restore with its pending count and restore 
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const restoreRef = '71000000-0000-4000-8000-000000000001';
   const job = await enqueue(client, { kind: 'restore', params: { artifactId: restoreRef, mode: 'enforce' }, requestedBy: 'op' });

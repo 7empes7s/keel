@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { createSnapshot, insertResourceVersion } from './db.mjs';
 import {
   createBaseline, seedBaselineFromSnapshot, getActiveBaseline, recordDrift,
@@ -7,13 +6,14 @@ import {
 } from './governance.mjs';
 import { createPolicy } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from './loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 const tenantRef = 'sha256:governance-test';
 const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');
 const unexpiredIgnoreAt = new Date('2099-01-01T00:00:00.000Z');

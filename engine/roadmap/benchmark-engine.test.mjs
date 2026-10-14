@@ -9,7 +9,6 @@
  * - Erase underlying finding under exception.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
@@ -22,6 +21,7 @@ import {
 } from '../benchmarks/evaluate.mjs';
 import { CrossTenantObservationError, defineObservation } from '../contracts/observation.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const TENANT = 'sha256:benchmark-test';
 const OTHER_TENANT = 'sha256:benchmark-other';
@@ -440,7 +440,7 @@ after(async () => { await database.cleanup(); });
 async function freshClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   return client;
 }
 

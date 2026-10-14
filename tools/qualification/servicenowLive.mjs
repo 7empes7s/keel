@@ -69,6 +69,7 @@ import {
   SERVICENOW_LIVE_SCENARIOS, SERVICENOW_MIN_TEST_USERS, SERVICENOW_PRODUCTION_PROPERTY, SERVICENOW_RELAY_FIELDS,
   serviceNowWorkflowIsDefault,
 } from './servicenowAcceptance.mjs';
+import { schemaSql } from '../../engine/store/loadSchema.mjs';
 
 export const SERVICENOW_DEFAULT_RELAY_TABLE = 'u_keel_callback_relay';
 const CREDENTIAL_REF = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
@@ -527,7 +528,7 @@ export async function main(argv = process.argv.slice(2), {
   let record;
   let captureLog;
   try {
-    await client.query(readFileSync(new URL('../../engine/store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     ({ record, captureLog } = await captureServiceNowAcceptance({
       client, fetchImpl, tenantRef: options.tenantRef, build, config, testUsers,
       declaredHost: options.declaredHost, declaredBy: options.declaredBy, relayTable,

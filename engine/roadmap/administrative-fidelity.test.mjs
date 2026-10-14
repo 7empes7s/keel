@@ -15,7 +15,6 @@
  * - Delete from partial observation.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { fakeGraph, main as operationsMain, runExpansionBatch } from '../../tools/qualification/operations.mjs';
@@ -31,6 +30,7 @@ import {
   administrativePostStateRefusal, administrativeWriteRefusal, buildAdministrativeFamilyLedger,
 } from '../restore/administrativeOperations.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const SETTINGS = '/groupSettings';
@@ -336,7 +336,7 @@ after(async () => { await database.cleanup(); });
 test('the restore CLI reads delete evidence from the source snapshot of its own tenant only', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const insert = async (tenantRef, digest) => (await client.query(
     `INSERT INTO snapshot (tenant_ref, status, coverage_digest, completed_at) VALUES ($1, 'complete', $2, now()) RETURNING id`,
     [tenantRef, digest],

@@ -61,6 +61,7 @@ import {
 import { sha256Hex } from '../../engine/export/manifest.mjs';
 import { verifyChain } from '../../engine/govern/evidence.mjs';
 import { connect } from '../../engine/store/db.mjs';
+import { schemaBytes as fullSchemaBytes } from '../../engine/store/loadSchema.mjs';
 import { importDump } from './dumpImport.mjs';
 import { migrateBootstrapJournal } from '../../engine/bootstrap/journal.mjs';
 import { migrateAuditIngestion } from '../../engine/identity/auditIngest.mjs';
@@ -68,7 +69,7 @@ import { assertTenantRef } from '../../engine/store/tenantRef.mjs';
 import { verifyRecoveryManifest } from '../../engine/storage/recoveryManifest.mjs';
 
 /**
- * Tables KEEL creates at runtime rather than in schema.sql. A live database has
+ * Tables KEEL creates at runtime rather than in the schema (schema.sql and schema.d/). A live database has
  * them once the feature has run (Setup, audit ingestion), so its dumps carry
  * their rows. Each is additive and idempotent, and comes from this build.
  */
@@ -85,8 +86,8 @@ function refusal(stage, failures, extra = {}) {
   };
 }
 
-async function defaultSchemaBytes({ readFile }) {
-  return readFile(new URL('../../engine/store/schema.sql', import.meta.url));
+async function defaultSchemaBytes() {
+  return fullSchemaBytes();
 }
 
 /**
@@ -251,7 +252,7 @@ export async function reconstructRecovery({
   }
 
   // 4. The schema we are about to apply must be exactly the pinned schema.
-  const schemaBytes = dependencies.schemaBytes ?? await defaultSchemaBytes({ readFile });
+  const schemaBytes = dependencies.schemaBytes ?? await defaultSchemaBytes();
   const schemaPin = sha256Hex(schemaBytes);
   if (schemaPin !== manifest.build.schemaPin) {
     return refusal('schema', [

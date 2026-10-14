@@ -2370,3 +2370,21 @@ item that needs it stays untouched.
   reaches a user from that snapshot. Expected: the organization plans as unchanged and the dry run does not fail on it.
   Do not file it for approval; the dry run alone is the check.
 - **Report:** per part, passed / failed (with the error) / waiting (#226 not live).
+### Q50: Recapture OneDrive/Purview (gate 123) before 2026-11-06
+- Drafted by the "Q48 and Q49 operator results" thread (2026-10-14), at Marouane's request.
+- Status: todo
+- Result:
+- Needs: Q49 done or blocked. Must finish before 2026-11-06, when the current OneDrive/Purview proof expires.
+- **Test tenant only.** Same hard rules as Q45.
+- **Why.** In Q48 part E the OneDrive/Purview proof import was refused: its record is at build fb1493ea, while the
+  SharePoint, Teams and Exchange records it depends on were recaptured at 95c3a33. All four must be at one build.
+- **A. Capture.** If `/opt/keel-live` is still at the build of the Q48 SharePoint, Teams and Exchange records, capture only
+  123 `onedrive-purview-live-acceptance` as in Q39 step 7: a fresh unpublished `KEEL-RT-<date>-label<n>` and
+  `--fixture-site` alice's OneDrive. If the live build has moved since, recapture 120 → 121 → 122 → 123 in one sitting
+  at the new build. After each capture run `qualification.mjs verify --require-live --gate <gate> --build B --tenant <ref>`
+  and record the exit code; a refusal is a result, so stop the chain and report it.
+- **B. Evidence.** Commit to `claude/live-evidence-q50`, branched from `origin/master`, with the usual public-repo scans.
+- **C. Proofs.** `node cli/keel-workload-collect.mjs import`, then `proof`. Expected: all four workloads proven, none
+  refused, expiring about 4 weeks out. Then one `run` and report each workload's outcome.
+- **Cleanup.** Delete the fresh label and anything else the capture created; report what reads back as original.
+- **Report:** per part, passed / failed (with the error), plus the new expiry dates.

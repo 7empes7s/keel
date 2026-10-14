@@ -28,7 +28,6 @@ const CASES = [
   ['appManagementPolicy', '/policies/appManagementPolicies', false],
   ['tenantAppManagementPolicy', '/policies/defaultAppManagementPolicy', true],
   ['multiTenantOrganization', '/tenantRelationships/multiTenantOrganization', true],
-  ['multiTenantOrganizationIdentitySyncPolicyTemplate', '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', true],
   ['b2xIdentityUserFlow', '/identity/b2xUserFlows', false],
   ['identityApiConnector', '/identity/apiConnectors', false],
 ];

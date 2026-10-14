@@ -34,11 +34,10 @@ export default [
   // principals. The tenant default is a singleton.
   { type: 'appManagementPolicy', path: '/policies/appManagementPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'tenantAppManagementPolicy', path: '/policies/defaultAppManagementPolicy', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
-  // Cross-tenant synchronization, tenant level: the multitenant organization
-  // and the sync template it applies to new members. Per-partner sync
-  // settings sit under each partner entry.
+  // Cross-tenant synchronization, tenant level: the multitenant organization.
+  // Per-partner sync settings sit under each partner entry, and the sync
+  // template is four segments deep, past what discovery walks.
   { type: 'multiTenantOrganization', path: '/tenantRelationships/multiTenantOrganization', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
-  { type: 'multiTenantOrganizationIdentitySyncPolicyTemplate', path: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', version: 'v1.0', singleton: true, criticality: 'tier2', blastRadius: 'access-affecting' },
   // Self-service sign-up user flows for guests, and the API connectors they call.
   { type: 'b2xIdentityUserFlow', path: '/identity/b2xUserFlows', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'identityApiConnector', path: '/identity/apiConnectors', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',

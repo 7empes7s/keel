@@ -160,8 +160,7 @@ export const COMPLETENESS = Object.freeze({
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
   appManagementPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tenantAppManagementPolicy: { whole: 'not-written' },
-  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only')] },
-  multiTenantOrganizationIdentitySyncPolicyTemplate: { whole: 'not-written', missing: [part('Sync settings for each partner tenant', 'other-route')] },
+  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only'), part('Sync settings for each partner tenant', 'other-route')] },
 
   // ---- Intune device management
   deviceConfiguration: { missing: [part('Passwords, keys and certificates in Wi-Fi, VPN, certificate and email profiles', 'secret', credentialProfile)] },

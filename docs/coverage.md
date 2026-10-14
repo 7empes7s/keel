@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 92 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 71 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 65 are restored by hand from the backup.
+KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 70 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 64 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -164,7 +164,6 @@ KEEL tracks 92 kinds of Entra ID and Intune settings and backs up everything it 
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Multitenant user sync template | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -216,11 +215,8 @@ KEEL tracks 92 kinds of Entra ID and Intune settings and backs up everything it 
 - **Default app credential rules** (not built yet). A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.
   - *You do:* Set the default rules again in the Entra admin center using the backup.
 - **Multitenant organization** (not built yet). Every member tenant must accept again, which cannot be done from your tenant.
-  - *Not brought back:* each member tenant's acceptance (no tool can write it).
+  - *Not brought back:* each member tenant's acceptance (no tool can write it); sync settings for each partner tenant (stored separately and not in the backup yet).
   - *You do:* Recreate the organization and invite the same tenants using the backup. Each one must accept.
-- **Multitenant user sync template** (not built yet). KEEL has not built a restore for this template yet, and the sync settings for each partner are not backed up yet.
-  - *Not brought back:* sync settings for each partner tenant (stored separately and not in the backup yet).
-  - *You do:* Set the template again in the Entra admin center using the backup.
 
 ## Tenant settings
 

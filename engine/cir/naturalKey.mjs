@@ -55,7 +55,7 @@ export const CONSTANT_KEY_TYPES = new Set([
   'organizationalBranding', 'deviceRegistrationPolicy', 'authenticationFlowsPolicy',
   // Wave 1 CAT-ENTRA: Entra governance singletons.
   'lifecycleManagementSettings', 'entitlementManagementSettings', 'tenantAppManagementPolicy',
-  'multiTenantOrganization', 'multiTenantOrganizationIdentitySyncPolicyTemplate',
+  'multiTenantOrganization',
 ]);
 
 export function naturalKeyFor(type, obj, ctx) {

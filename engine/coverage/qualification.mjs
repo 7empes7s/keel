@@ -163,7 +163,6 @@ export const TYPE_DECISIONS = Object.freeze({
   appManagementPolicy: incomplete('the apps and service principals a policy applies to are a separate edge not yet collected'),
   tenantAppManagementPolicy: incomplete('a stricter default can block every app from adding a secret or certificate, so an update needs a review step'),
   multiTenantOrganization: incomplete('every member tenant must accept again, which cannot be done from this tenant'),
-  multiTenantOrganizationIdentitySyncPolicyTemplate: incomplete('a tenant singleton with no update writer yet; per-partner sync settings are not yet collected'),
   b2xIdentityUserFlow: incomplete('the languages, attributes and API connector bindings of a flow are separate collections not yet collected'),
   identityApiConnector: incomplete('the connector password or certificate is never returned'),
   // Issue #155: the first Intune restore subset. Every other Intune type is
@@ -804,8 +803,6 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'a stricter default can block every app from adding a secret or certificate; an update needs a review step that does not exist yet'),
   multiTenantOrganization: research('policy', 'PATCH /tenantRelationships/multiTenantOrganization', 'MultiTenantOrganization.ReadWrite.All',
     'its member tenants must each accept, which cannot be done from this tenant'),
-  multiTenantOrganizationIdentitySyncPolicyTemplate: research('policy', 'PATCH /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', 'Policy.ReadWrite.CrossTenantAccess',
-    'a tenant singleton; an update contract has not been built, and per-partner sync settings are not backed up'),
   // ---- administrative configuration (task-109)
   organization: byHand('administrative-configuration', null, 'none', 'the tenant object itself; it is never recreated'),
   domain: byHand('administrative-configuration', 'POST /domains', 'Domain.ReadWrite.All', 'requires DNS ownership verification outside Graph'),

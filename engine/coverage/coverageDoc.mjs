@@ -258,9 +258,6 @@ export const TYPE_GUIDE = Object.freeze({
   multiTenantOrganization: manual('Multitenant organization', NOT_BUILT,
     'Every member tenant must accept again, which cannot be done from your tenant.',
     'Recreate the organization and invite the same tenants using the backup. Each one must accept.'),
-  multiTenantOrganizationIdentitySyncPolicyTemplate: manual('Multitenant user sync template', NOT_BUILT,
-    'KEEL has not built a restore for this template yet, and the sync settings for each partner are not backed up yet.',
-    'Set the template again in the Entra admin center using the backup.'),
 
   // ---- Intune device management
   deviceConfiguration: auto('Device configuration profiles', {

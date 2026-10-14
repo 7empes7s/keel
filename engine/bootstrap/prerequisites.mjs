@@ -306,15 +306,43 @@ registerWorkloadPrerequisite({
     'Mail.Read',
     'Calendars.Read',
     'Contacts.Read',
+    // Mailbox discovery: the user list, mailbox purpose and Exchange settings.
+    'MailboxSettings.Read',
+    'User.Read.All',
+    // Archive mailboxes (beta /admin/exchange/mailboxes).
+    'MailboxFolder.Read.All',
+    'MailboxItem.Read.All',
     'Files.Read.All',
     'Sites.Read.All',
     'Group.Read.All',
     'Team.ReadBasic.All',
     'Channel.ReadBasic.All',
     'ChannelSettings.Read.All',
+    // Members of private and shared channels.
+    'ChannelMember.Read.All',
     'TeamsTab.Read.All',
     'TeamsAppInstallation.ReadForTeam.All',
     'Tasks.Read.All',
+  ],
+  keelAppPermissions: ['keel.collect'],
+  source: {
+    url: 'https://learn.microsoft.com/en-us/graph/permissions-reference',
+    retrievedAt: '2026-10-14',
+  },
+});
+
+// Wave 1 CAT-ENTRA: identity governance reads (lifecycle workflows, custom security
+// attributes, terms of use, multitenant organization, user flows, API connectors).
+registerWorkloadPrerequisite({
+  workload: 'entra-governance-collect',
+  identity: 'collector',
+  graphPermissions: [
+    'LifecycleWorkflows.Read.All',
+    'CustomSecAttributeDefinition.Read.All',
+    'Agreement.Read.All',
+    'MultiTenantOrganization.Read.All',
+    'IdentityUserFlow.Read.All',
+    'APIConnectors.Read.All',
   ],
   keelAppPermissions: ['keel.collect'],
   source: {

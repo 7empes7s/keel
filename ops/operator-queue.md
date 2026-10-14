@@ -2388,3 +2388,27 @@ item that needs it stays untouched.
   refused, expiring about 4 weeks out. Then one `run` and report each workload's outcome.
 - **Cleanup.** Delete the fresh label and anything else the capture created; report what reads back as original.
 - **Report:** per part, passed / failed (with the error), plus the new expiry dates.
+### Q51: Recapture the Q48 steps the #230 fixes unblock
+- Drafted by the "Q48 and Q49 operator results" thread (2026-10-14).
+- Status: todo
+- Result:
+- Needs: Q49 done or blocked, and a live build containing #230 (`git -C /opt/keel-live log --oneline | grep -c "#230"`).
+  Run before or after Q50, whichever is first in line; they don't share fixtures.
+- **Test tenant only.** Same hard rules and requester/approver split as Q45.
+- **Why.** #230 fixed the four capture and restore bugs Q48 found. The Q48 fixtures were all deleted in its cleanup,
+  so recreate fresh `KEEL-RT-*` fixtures (a new date prefix is fine) and redo each write before capturing it.
+- **A. Steps 5–8, group member and owner edges.** Redo the four edge add/remove restores as in Q48 B and capture each.
+  `--fixture` now matches with either the bare group name or `group:<name>`.
+- **B. Step 37, role-assignment delete.** Redo it through the lockout delete path as in Q48 G, with a KEEL-RT principal,
+  role and scope (not a break-glass account's), and capture it. A delete is now checked by its own composed key.
+- **C. Step 35, role-assignment create.** Recapture with `--allow-by-reference`. Role-assignment ids are now
+  pseudonymized. The Q48 capture holds the raw id: never publish it.
+- **D. Step 11, application create.** Rerun the restore. The create body no longer sends `createdByAppId`. If it is
+  verified, capture and promote it; if it fails again, keep the demotion and report the error verbatim.
+- **E. Steps 1 and 3, held-back group records.** Run `node tools/qualification/pseudonymize.mjs check <file>...` on the
+  held-back step 1 and 3 captures. Exit 0 means every id is a pseudonym: then commit them. Otherwise keep holding them
+  back and report what the check printed.
+- Evidence on `claude/live-evidence-q51`, branched from `origin/master`, adding or updating files only; run the
+  public-repo scans and `pseudonymize.mjs check` on every file before committing.
+- **Cleanup.** Delete and purge every fixture created here; report what reads back as original.
+- **Report:** per part, promoted / demoted (with the reason) / blocked, plus the evidence commit.

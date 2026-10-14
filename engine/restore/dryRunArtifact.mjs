@@ -11,6 +11,7 @@
 // a target that drifted since the dry run ran, forces a new dry run instead of silently
 // promoting stale parameters.
 import { createHash } from 'node:crypto';
+import { scopeReferencePrefix } from '../cir/canonicalize.mjs';
 import { withExplicitReferences } from '../coverage/qualification.mjs';
 
 const TERMINAL_STATUSES = Object.freeze(['completed', 'refused', 'failed']);
@@ -51,10 +52,18 @@ export function canonicalDigest(value) {
  * and roadmap task-92's activation preview computes the same dependency closure from it,
  * so the preview and the dry run can never disagree about what a resource depends on. */
 export function restoreCandidates(versions, references) {
+  const versionById = new Map((versions ?? []).map((v) => [v.id, v]));
   const refsByVersion = new Map();
   for (const r of references ?? []) {
     if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-    refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
+    // Gap register D2: the store keeps no prefix, so a scope reference held
+    // inside a path (an administrative-unit scope) gets it back from the
+    // stored payload, as collection set it.
+    const owner = versionById.get(r.from_version);
+    const prefix = owner ? scopeReferencePrefix(owner.resource_type, r.field_path, owner.payload) : null;
+    refsByVersion.get(r.from_version).push({
+      field: r.field_path, symbol: r.to_symbol, required: r.required, ...(prefix ? { prefix } : {}),
+    });
   }
   return (versions ?? [])
     // Roadmap task-108: authentication strengths are not filtered out; applyWave

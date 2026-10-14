@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
+import { usePoll } from "@/lib/use-poll";
+
 // Portal experience contract, "Information architecture": seven entries, one map.
 // Each entry absorbs existing pages, which stay reachable at their own routes and show
 // as tabs inside the entry (SectionTabs). A page's eyebrow is the entry it sits in and
@@ -131,6 +133,25 @@ export function NavLinks({
   const navRef = useRef<HTMLElement>(null);
   const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
   const [open, setOpen] = useState(false);
+  const [livePending, setLivePending] = useState<{ from: number | null; count: number | null }>({ from: pendingApprovals, count: pendingApprovals });
+  // A server render (navigation or refresh) brings a fresh count; it replaces the polled one.
+  if (livePending.from !== pendingApprovals) setLivePending({ from: pendingApprovals, count: pendingApprovals });
+  const waiting = livePending.count;
+
+  // Approvers only: keep the badge current without a reload. A failed read keeps the
+  // last count.
+  usePoll(async () => {
+    try {
+      const response = await fetch("/api/approvals", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json() as { pending?: unknown[]; awaitingContentEffects?: unknown[] };
+      if (!Array.isArray(data.pending)) return;
+      const count = data.pending.length + (Array.isArray(data.awaitingContentEffects) ? data.awaitingContentEffects.length : 0);
+      setLivePending((current) => ({ ...current, count }));
+    } catch {
+      // Keep the last count.
+    }
+  }, 10_000, pendingApprovals !== null);
 
   // The active marker is one element that glides between links rather than each link
   // drawing its own, so a route change reads as movement from where you were.
@@ -174,9 +195,9 @@ export function NavLinks({
               key={entry.group}
             >
               <span>{entry.label}</span>
-              {entry.group === "Approvals" && pendingApprovals ? (
-                <span className="nav-badge" title={`${pendingApprovals} requests waiting for a decision`}>
-                  {pendingApprovals > 99 ? "99+" : pendingApprovals}
+              {entry.group === "Approvals" && waiting ? (
+                <span className="nav-badge" title={`${waiting} requests waiting for a decision`}>
+                  {waiting > 99 ? "99+" : waiting}
                   <span className="visually-hidden"> waiting</span>
                 </span>
               ) : null}

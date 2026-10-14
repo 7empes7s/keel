@@ -6128,3 +6128,10 @@ section.wizard-panel {
 .change-intent-fields { border: 1px solid var(--line); padding: var(--space-sm); margin: 0; }
 .change-intent-fields legend { color: var(--text-muted); font-size: 0.6875rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
 .change-intent-form .checkbox { display: flex; gap: var(--space-xs); align-items: center; }
+
+/* Approvals: a request that arrived while the page was open fades in with a brief
+   accent outline (reduced motion makes it instant, above). */
+.approval-new {
+  --tone: var(--accent);
+  animation: rise-in var(--duration-slow) var(--ease-out), tone-ring 1.6s ease-out 2;
+}

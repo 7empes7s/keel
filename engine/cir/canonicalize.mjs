@@ -261,6 +261,19 @@ const SCOPE_REFERENCE_FIELDS = new Map([['roleEligibilitySchedule', ['directoryS
 const ADMINISTRATIVE_UNIT_SCOPE = /^\/administrativeUnits\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 export const ADMINISTRATIVE_UNIT_SCOPE_PREFIX = '/administrativeUnits/';
 
+/**
+ * The path prefix of a scope reference, rebuilt from what the store keeps.
+ * resource_reference holds field, symbol and required only, so a reference
+ * read back from Postgres has lost `prefix`; it is derived again from the
+ * resource type, the field and the stored payload's value at that field.
+ * Returns the prefix, or null when the field is not a scope path.
+ */
+export function scopeReferencePrefix(type, field, payload) {
+  if (!(SCOPE_REFERENCE_FIELDS.get(type) ?? []).includes(field)) return null;
+  const value = payload?.[field];
+  return typeof value === 'string' && ADMINISTRATIVE_UNIT_SCOPE.test(value) ? ADMINISTRATIVE_UNIT_SCOPE_PREFIX : null;
+}
+
 function* scopeReferenceValues(type, obj) {
   for (const field of SCOPE_REFERENCE_FIELDS.get(type) ?? []) {
     const match = typeof obj?.[field] === 'string' ? ADMINISTRATIVE_UNIT_SCOPE.exec(obj[field]) : null;

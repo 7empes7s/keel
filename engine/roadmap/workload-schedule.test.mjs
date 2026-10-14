@@ -31,7 +31,8 @@ import { nextDueAt, validateSchedule } from '../schedules/cadence.mjs';
 import { initialSchedules } from '../store/scheduleSeed.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import {
-  importLedgerInputs, importSeams, main, readOnlyGraphTransport, runWorkloadCollection,
+  POWERSHELL_FAMILY, importLedgerInputs, importSeams, main, powershellConfigPaths, powershellFor, readOnlyGraphTransport,
+  runWorkloadCollection,
 } from '../../cli/keel-workload-collect.mjs';
 import { JOB_HANDLERS } from '../../cli/keel-worker.mjs';
 
@@ -229,6 +230,42 @@ test('a collector that throws is recorded as failed, and the next workload still
   assert.equal(result.exitCode, 1);
   const report = await buildCoverageReport(client, { tenantRef, catalog: [], descriptors: [], now: NOW });
   assert.equal(report.workloads.find((item) => item.workload === 'sharepoint-site-settings').status, 'failed');
+});
+
+test('each PowerShell workload connects with its own family config from the scope file', () => {
+  // Every workload but the two Graph ones runs PowerShell, and each has a family.
+  const graphOnly = new Set(['sharepoint-site-settings', 'teams-settings']);
+  assert.deepEqual(Object.keys(POWERSHELL_FAMILY).sort(), WORKLOADS.filter((id) => !graphOnly.has(id)).sort());
+
+  const files = {
+    '/etc/keel/exchange-collector.json': JSON.stringify({ tenantId: TENANT_ID, organization: 'contoso.onmicrosoft.com' }),
+    '/etc/keel/purview-collector.json': JSON.stringify({ organization: 'contoso.onmicrosoft.com' }),
+    '/etc/keel/other-tenant.json': JSON.stringify({ tenantId: '99999999-2222-4333-8444-555555555555' }),
+  };
+  const readFile = (path) => files[path];
+  const config = { tenantId: TENANT_ID };
+  const scope = {
+    powershellConfigs: powershellConfigPaths({
+      powershellConfigs: { exchange: '/etc/keel/exchange-collector.json', purview: '/etc/keel/purview-collector.json' },
+    }, { config, readFile }),
+  };
+  const base = { tenantConfigPath: '/etc/keel/tenant.json', image: 'keel-ps' };
+  assert.equal(powershellFor('exchange-mailbox-settings', { scope, powershell: base }).tenantConfigPath, '/etc/keel/exchange-collector.json');
+  assert.equal(powershellFor('exchange-mail-flow', { scope, powershell: base }).tenantConfigPath, '/etc/keel/exchange-collector.json');
+  assert.equal(powershellFor('purview-labels', { scope, powershell: base }).tenantConfigPath, '/etc/keel/purview-collector.json');
+  assert.equal(powershellFor('purview-retention-dlp', { scope, powershell: base }).image, 'keel-ps');
+  // A family the scope file leaves out keeps the tenant config, as before.
+  assert.equal(powershellFor('onedrive-site-settings', { scope, powershell: base }).tenantConfigPath, '/etc/keel/tenant.json');
+  assert.equal(powershellFor('teams-org-policies', { scope: {}, powershell: base }).tenantConfigPath, '/etc/keel/tenant.json');
+
+  // Misconfigured hosts fail loudly instead of connecting elsewhere.
+  const check = (powershellConfigs) => () => powershellConfigPaths({ powershellConfigs }, { config, readFile });
+  assert.throws(check({ exchange: '/etc/keel/other-tenant.json' }), /another tenant/);
+  assert.throws(check({ exchange: '/home/keel/exchange.json' }), /under \/etc\/keel\//);
+  assert.throws(check({ exchange: '/etc/keel/../shadow' }), /under \/etc\/keel\//);
+  assert.throws(check({ sharepoint: '/etc/keel/exchange-collector.json' }), /not a PowerShell family/);
+  assert.throws(check(['/etc/keel/exchange-collector.json']), /must be an object/);
+  assert.deepEqual(powershellConfigPaths({}, { config, readFile }), {});
 });
 
 test('the Graph transport refuses writes and other hosts before sending', async () => {

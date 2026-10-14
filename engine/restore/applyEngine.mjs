@@ -2,7 +2,7 @@ import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
-import { createBodyProjection, immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { createBodyProjection, immutableDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
@@ -719,7 +719,12 @@ export async function applyWave(writer, governor, wave, {
       }
       // A policy that could not be re-read is still written report-only below.
       let live = reRead?.ok === false ? null : (reRead?.body ?? reRead);
-      if (live && canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+      // Verification compares what a write can set: server-owned fields, OData
+      // annotations and nulls are left out on both sides (verificationView).
+      const desiredView = verificationView(desired, resource.resourceType);
+      const matchesDesired = (object) => canonicalHash(verificationView(object, resource.resourceType), resource.resourceType)
+        === canonicalHash(desiredView, resource.resourceType);
+      if (live && matchesDesired(live)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
@@ -742,7 +747,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation, ...readAfterWriteOptions });
+        isNotFound(r) || (r?.ok === true && !matchesDesired(r.body)), { retryOperation, ...readAfterWriteOptions });
       if (updateReRead?.ok === false) {
         if (isPolicy) {
           await policyMayBeOn('the policy could not be read back after the report-only update', live, updateReRead);
@@ -757,15 +762,16 @@ export async function applyWave(writer, governor, wave, {
         await policyMayBeOn(`it reads back as ${live?.state ?? 'an unknown state'}`, live);
         continue;
       }
-      if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
-        const residual = residualDiff(desired, live, resource.resourceType);
+      if (!matchesDesired(live)) {
+        const liveView = verificationView(live, resource.resourceType);
+        const residual = residualDiff(desiredView, liveView, resource.resourceType);
         if (residual.length === 0) {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
           applied.push({ naturalKey: resource.naturalKey, targetId });
           continue;
         }
-        const immutable = immutableDrift(desired, live, resource.resourceType);
+        const immutable = immutableDrift(desiredView, liveView, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
         ))) {
@@ -804,7 +810,9 @@ export async function applyWave(writer, governor, wave, {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         continue;
       }
-      const normalisedDesired = withoutNulls(desired);
+      // Verification compares what a write can set: server-owned fields, OData
+      // annotations and nulls are left out on both sides (verificationView).
+      const normalisedDesired = verificationView(desired, resource.resourceType);
       const payload = writableProjection(desired, resource.resourceType);
       const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload)
         : isAdministrativeGoverned(resource.resourceType) ? administrativePatchRefusal(resource.resourceType, payload) : null;
@@ -849,13 +857,13 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(forVerification(withoutNulls(r.body), resource), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
+        isNotFound(r) || (r?.ok === true && canonicalHash(verificationView(forVerification(r.body, resource), resource.resourceType), resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)), { retryOperation });
       if (reRead?.ok === false) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
         continue;
       }
-      const live = forVerification(withoutNulls(reRead?.body ?? reRead), resource);
+      const live = verificationView(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
       // Roadmap task-109: a governed update also verifies its own post-state
       // (every written value, and a setting still bound to its template) before
       // the hash comparison, so a template that changed under the write fails
@@ -984,12 +992,19 @@ export async function applyWave(writer, governor, wave, {
       failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
-    const createdLive = forVerification(reRead?.body ?? reRead, resource);
-    const actualHash = canonicalHash(createExcluded ? onlyFields(createdLive, createBody) : createdLive, resource.resourceType);
-    const desiredHash = canonicalHash(createBody, resource.resourceType);
-    if (actualHash !== desiredHash) {
+    // A create verifies the fields it wrote: what Graph assigns or defaults on
+    // its own (server-owned fields, OData annotations, nulls, any property the
+    // body did not carry) is not compared. A written value that reads back
+    // different still fails; an empty array or object meeting an absent field
+    // does not.
+    const desiredView = verificationView(createBody, resource.resourceType);
+    const createdLive = onlyFields(verificationView(forVerification(reRead?.body ?? reRead, resource), resource.resourceType), desiredView);
+    const residual = residualDiff(desiredView, createdLive, resource.resourceType);
+    if (residual.length > 0) {
+      const actualHash = canonicalHash(createdLive, resource.resourceType);
+      const desiredHash = canonicalHash(desiredView, resource.resourceType);
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
-      failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}` });
+      failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}`, residual });
       continue;
     }
 
@@ -1659,10 +1674,11 @@ async function applyUserWrite(writer, resource, verb, {
 
 /** The collector projects group/user through a $select; the verify re-read has none, so Graph
  * returns its full default projection with uncaptured properties set to null. For restore purposes
- * a null-valued property is unset, so absent-vs-null is a projection artifact, not drift. Applied
- * symmetrically to both sides so it cannot blind drift in either direction; NOT applied to
- * canonicalHash, whose output is persisted as payload_hash. Top-level only — canonicalize()
- * already strips server-owned fields recursively. */
+ * a null-valued property is unset, so absent-vs-null is a projection artifact, not drift. That,
+ * and leaving out server-owned fields and OData annotations, is verificationView() in
+ * engine/reconcile/writableProjection.mjs, applied symmetrically to both sides so it cannot
+ * blind drift in either direction; NOT applied to canonicalHash, whose output is persisted as
+ * payload_hash. */
 // Roadmap task-71: a field an incident assessment excluded as malicious is never
 // written, so post-write verification compares only what the plan writes: those exact
 // paths are left out of the live side. Every other field still verifies, and the
@@ -1709,15 +1725,6 @@ function withoutPath(value, [head, ...rest]) {
   if (rest.length === 0) delete copy[head];
   else copy[head] = withoutPath(copy[head], rest);
   return copy;
-}
-
-function withoutNulls(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const out = {};
-  for (const key of Object.keys(value)) {
-    if (value[key] !== null && value[key] !== undefined) out[key] = value[key];
-  }
-  return out;
 }
 
 function residualDiff(desired, live, resourceType) {

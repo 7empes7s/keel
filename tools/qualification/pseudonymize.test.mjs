@@ -99,3 +99,29 @@ test('the capture guard refuses output that still holds a raw SID of the tenant\
   const safe = JSON.stringify(pseudonymizer('sha256:aaaa').walk({ id: GROUP, securityIdentifier: GROUP_SID }));
   assert.doesNotThrow(() => assertSafeText(safe, { rawTenantId: TENANT, rawIds, label: 'the capture log' }));
 });
+
+test('a securityIdentifier field never reaches a capture raw, whatever its shape', () => {
+  const a = pseudonymizer('sha256:aaaa');
+  const sid = a.text(GROUP_SID);
+  // The Entra form, as Graph returns it on a group, and a lower-cased copy, map the same way.
+  assert.equal(a.walk({ securityIdentifier: GROUP_SID }).securityIdentifier, sid);
+  assert.equal(a.walk({ securityIdentifier: GROUP_SID.toLowerCase() }).securityIdentifier, sid);
+  assert.equal(a.text(`group ${GROUP_SID.toLowerCase()}`), `group ${sid}`);
+  assert.deepEqual(rawIdentifiers(GROUP_SID.toLowerCase()), [GROUP_SID.toLowerCase()]);
+  // An on-premises SID under the on-premises key.
+  assert.equal(a.walk({ onPremisesSecurityIdentifier: ONPREM_SID }).onPremisesSecurityIdentifier, a.text(ONPREM_SID));
+  // A shape the text patterns do not know is still replaced, stably, when it sits under the key.
+  const odd = 'S-1-12-1-2863311530-1288485819-4008631693';
+  const walked = a.walk({ securityIdentifier: odd, nested: [{ securityIdentifier: odd }] });
+  assert.match(walked.securityIdentifier, /^S-1-12-1(-\d+){4}$/);
+  assert.notEqual(walked.securityIdentifier, odd);
+  assert.equal(walked.nested[0].securityIdentifier, walked.securityIdentifier);
+  assert.ok(!JSON.stringify(walked).includes('2863311530'));
+  // Null and non-SID values are left alone.
+  assert.deepEqual(a.walk({ securityIdentifier: null, onPremisesSecurityIdentifier: 'none' }), { securityIdentifier: null, onPremisesSecurityIdentifier: 'none' });
+  // A group read-back as Q45 captured it keeps no raw id, and its SID still encodes its id.
+  const capture = a.walk({ postState: { id: GROUP, securityIdentifier: GROUP_SID, displayName: 'KEEL-RT-148-group' } });
+  const raw = rawIdentifiers(JSON.stringify({ id: GROUP, securityIdentifier: GROUP_SID }));
+  assert.doesNotThrow(() => assertSafeText(JSON.stringify(capture), { rawTenantId: TENANT, rawIds: raw, label: 'the capture log' }));
+  assert.equal(capture.postState.securityIdentifier, guidToCloudSid(capture.postState.id));
+});

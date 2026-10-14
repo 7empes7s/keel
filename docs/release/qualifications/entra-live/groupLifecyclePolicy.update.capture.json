@@ -1,0 +1,31 @@
+{
+  "restoreRef": "38863090-3c90-8558-ad90-ae4229d75f13",
+  "entry": {
+    "naturalKey": "groupLifecyclePolicy:d2d8b3c9-4c24-8802-8339-62280318617e",
+    "resourceType": "groupLifecyclePolicy",
+    "operation": "update",
+    "targetId": "d2d8b3c9-4c24-8802-8339-62280318617e",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T13:17:31.699Z",
+    "priorState": {
+      "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
+      "managedGroupTypes": "Selected",
+      "groupLifetimeInDays": 400,
+      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+    },
+    "intendedState": {
+      "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
+      "managedGroupTypes": "Selected",
+      "groupLifetimeInDays": 365,
+      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+    },
+    "postState": {
+      "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#groupLifecyclePolicies/$entity",
+      "managedGroupTypes": "Selected",
+      "groupLifetimeInDays": 365,
+      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+    }
+  }
+}

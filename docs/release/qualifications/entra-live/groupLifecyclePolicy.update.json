@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "groupLifecyclePolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "e13eaf6bafdbdcbfa2d7bb756c2b3135e601b920",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T13:17:31.699Z",
+  "restoreRef": "38863090-3c90-8558-ad90-ae4229d75f13",
+  "naturalKey": "groupLifecyclePolicy:d2d8b3c9-4c24-8802-8339-62280318617e",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "9fc8cef17d0538689dad498d18f0660e52c328d702fccd024cd6bf766abc0adc",
+  "proofRef": "docs/release/qualifications/entra-live/groupLifecyclePolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b78386703fe557472d0aa94ef4fcd7c77819f20d34e93ef3514ce415a349aff4"
+    }
+  }
+}

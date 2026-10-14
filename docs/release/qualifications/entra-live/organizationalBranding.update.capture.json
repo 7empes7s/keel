@@ -1,21 +1,20 @@
 {
-  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
   "entry": {
-    "naturalKey": "organizationalBranding:organizationalBranding",
-    "resourceType": "organizationalBranding",
+    "naturalKey": "organizationalBrandingLocalization:0",
+    "resourceType": "organizationalBrandingLocalization",
     "operation": "update",
     "targetId": "0",
-    "outcome": "failed",
-    "outcomeDetail": "status 400",
-    "recordedAt": "2026-10-10T21:21:58.670Z",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T14:19:30.799Z",
     "priorState": {
       "id": "0",
       "cdnList": [
         "aadcdn.msftauthimages.net",
         "aadcdn.msauthimages.net"
       ],
-      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
-      "signInPageText": "KEEL-RT-148 DRIFTED",
+      "signInPageText": "KEEL-RT-148 drift",
       "backgroundColor": "",
       "usernameHintText": "",
       "faviconRelativeUrl": null,
@@ -61,8 +60,7 @@
         "aadcdn.msftauthimages.net",
         "aadcdn.msauthimages.net"
       ],
-      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
-      "signInPageText": "",
+      "signInPageText": "KEEL-RT-148 default",
       "backgroundColor": "",
       "usernameHintText": "",
       "faviconRelativeUrl": null,
@@ -102,6 +100,53 @@
       "customCannotAccessYourAccountUrl": null,
       "customCannotAccessYourAccountText": null
     },
-    "postState": null
+    "postState": {
+      "id": "0",
+      "cdnList": [
+        "aadcdn.msftauthimages.net",
+        "aadcdn.msauthimages.net"
+      ],
+      "@odata.type": "#microsoft.graph.organizationalBrandingProperties",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/localizations/$entity",
+      "signInPageText": "KEEL-RT-148 default",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    }
   }
 }

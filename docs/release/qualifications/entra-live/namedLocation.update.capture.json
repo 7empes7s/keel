@@ -1,15 +1,15 @@
 {
-  "restoreRef": "49036ff9-690c-89d3-882f-0590cd64f1e9",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
   "entry": {
     "naturalKey": "namedLocation:KEEL-RT-148-location",
     "resourceType": "namedLocation",
     "operation": "update",
-    "targetId": "3625a91e-68c8-88a3-8b4d-989d146324d2",
-    "outcome": "failed",
-    "outcomeDetail": "status 400",
-    "recordedAt": "2026-10-13T21:23:07.899Z",
+    "targetId": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T14:19:12.061Z",
     "priorState": {
-      "id": "3625a91e-68c8-88a3-8b4d-989d146324d2",
+      "id": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -23,12 +23,12 @@
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
       "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-13T14:39:32.2306668Z",
+      "createdDateTime": "2026-10-14T12:25:19.8349135Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-13T21:21:30.1952457Z"
+      "modifiedDateTime": "2026-10-14T12:29:28.8423468Z"
     },
     "intendedState": {
-      "id": "3625a91e-68c8-88a3-8b4d-989d146324d2",
+      "id": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -38,10 +38,18 @@
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
       "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-13T14:39:32.2306668Z",
+      "createdDateTime": "2026-10-14T12:25:19.8349135Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-13T14:39:32.2306668Z"
+      "modifiedDateTime": "2026-10-14T12:25:19.8349135Z"
     },
-    "postState": null
+    "postState": {
+      "ipRanges": [
+        {
+          "cidrAddress": "203.0.113.0/24"
+        }
+      ],
+      "isTrusted": false,
+      "displayName": "KEEL-RT-148-location"
+    }
   }
 }

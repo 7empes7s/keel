@@ -1,16 +1,16 @@
 {
-  "restoreRef": "279c828a-0122-8702-ab85-1a72ce4a93a9",
+  "restoreRef": "281f7279-fa09-847b-aa7d-b53e5d8be79f",
   "entry": {
     "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca",
     "resourceType": "conditionalAccessPolicy",
     "operation": "create",
-    "targetId": "766af3de-5b8c-8a67-aa8b-0c1670b17e5a",
-    "outcome": "uncertain",
-    "outcomeDetail": "created object did not verify",
-    "recordedAt": "2026-10-13T21:32:21.104Z",
+    "targetId": "6e182943-eeaf-88dc-aa65-e7ef07793194",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T13:02:11.242Z",
     "priorState": null,
     "intendedState": {
-      "id": "2c7274d1-c906-8891-9d6b-0f9aa9d4004f",
+      "id": "be1eb62a-fd0e-8b42-9026-18b3a2976271",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
@@ -24,7 +24,7 @@
           "includeUsers": [],
           "excludeGroups": [],
           "includeGroups": [
-            "c048e341-26de-8a2c-a836-cec1170b75a4"
+            "436700f1-f645-8d86-820f-72169983fe98"
           ],
           "excludeGuestsOrExternalUsers": null,
           "includeGuestsOrExternalUsers": null
@@ -61,15 +61,15 @@
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('2c7274d1-c906-8891-9d6b-0f9aa9d4004f')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('be1eb62a-fd0e-8b42-9026-18b3a2976271')/grantControls/authenticationStrength/$entity"
       },
-      "createdDateTime": "2026-10-13T14:39:49.3959877Z",
+      "createdDateTime": "2026-10-14T12:25:21.2509776Z",
       "deletedDateTime": null,
       "sessionControls": null,
       "modifiedDateTime": null
     },
     "postState": {
-      "id": "766af3de-5b8c-8a67-aa8b-0c1670b17e5a",
+      "id": "6e182943-eeaf-88dc-aa65-e7ef07793194",
       "state": "enabledForReportingButNotEnforced",
       "conditions": {
         "users": {
@@ -83,7 +83,7 @@
           "includeUsers": [],
           "excludeGroups": [],
           "includeGroups": [
-            "c048e341-26de-8a2c-a836-cec1170b75a4"
+            "436700f1-f645-8d86-820f-72169983fe98"
           ],
           "excludeGuestsOrExternalUsers": null,
           "includeGuestsOrExternalUsers": null
@@ -120,10 +120,10 @@
         ],
         "authenticationStrength": null,
         "customAuthenticationFactors": [],
-        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('766af3de-5b8c-8a67-aa8b-0c1670b17e5a')/grantControls/authenticationStrength/$entity"
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('6e182943-eeaf-88dc-aa65-e7ef07793194')/grantControls/authenticationStrength/$entity"
       },
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies/$entity",
-      "createdDateTime": "2026-10-13T21:32:21.4104309Z",
+      "createdDateTime": "2026-10-14T13:02:11.7156875Z",
       "deletedDateTime": null,
       "sessionControls": null,
       "modifiedDateTime": null

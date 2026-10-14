@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "application",
+  "operation": "create",
+  "reason": "application create sends the read-only property createdByAppId; Graph answers 400 'Property createdByAppId is read-only and cannot be set' and nothing is created",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "decidedAt": "2026-10-14T14:23:12.288Z",
+  "builderSteps": [
+    "remove the create registration for application in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.application.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.application.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

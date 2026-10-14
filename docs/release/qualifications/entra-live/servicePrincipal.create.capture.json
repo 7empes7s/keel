@@ -1,0 +1,80 @@
+{
+  "restoreRef": "9127a467-bb6b-8140-8c5e-96bb200fa078",
+  "entry": {
+    "naturalKey": "servicePrincipal:6a907d73-017c-80ae-ba45-0637e136847e",
+    "resourceType": "servicePrincipal",
+    "operation": "create",
+    "targetId": "100f92c5-1870-84ab-87bd-5ddedd255cc1",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T14:21:54.515Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "448b5808-a023-8a08-adbc-829c29a5b2ab",
+      "tags": [],
+      "appId": "6a907d73-017c-80ae-ba45-0637e136847e",
+      "notes": null,
+      "appRoles": [],
+      "description": null,
+      "displayName": "KEEL-RT-148-app14",
+      "accountEnabled": true,
+      "signInAudience": "AzureADMyOrg",
+      "servicePrincipalType": "Application",
+      "oauth2PermissionScopes": [],
+      "appRoleAssignmentRequired": false
+    },
+    "postState": {
+      "id": "100f92c5-1870-84ab-87bd-5ddedd255cc1",
+      "info": {
+        "logoUrl": null,
+        "supportUrl": null,
+        "marketingUrl": null,
+        "termsOfServiceUrl": null,
+        "privacyStatementUrl": null
+      },
+      "tags": [],
+      "appId": "6a907d73-017c-80ae-ba45-0637e136847e",
+      "notes": null,
+      "addIns": [],
+      "appRoles": [],
+      "homepage": null,
+      "loginUrl": null,
+      "logoutUrl": null,
+      "replyUrls": [],
+      "isDisabled": null,
+      "description": null,
+      "displayName": "KEEL-RT-148-app14",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#servicePrincipals/$entity",
+      "accountEnabled": true,
+      "appDescription": null,
+      "appDisplayName": "KEEL-RT-148-app14",
+      "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
+      "keyCredentials": [],
+      "signInAudience": "AzureADMyOrg",
+      "createdDateTime": "2026-10-14T14:21:54Z",
+      "deletedDateTime": null,
+      "alternativeNames": [],
+      "verifiedPublisher": {
+        "displayName": null,
+        "addedDateTime": null,
+        "verifiedPublisherId": null
+      },
+      "passwordCredentials": [],
+      "servicePrincipalType": "Application",
+      "tokenEncryptionKeyId": null,
+      "applicationTemplateId": null,
+      "servicePrincipalNames": [
+        "6a907d73-017c-80ae-ba45-0637e136847e"
+      ],
+      "appOwnerOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+      "oauth2PermissionScopes": [],
+      "samlSingleSignOnSettings": null,
+      "appRoleAssignmentRequired": false,
+      "disabledByMicrosoftStatus": null,
+      "preferredSingleSignOnMode": null,
+      "notificationEmailAddresses": [],
+      "preferredTokenSigningKeyThumbprint": null,
+      "resourceSpecificApplicationPermissions": []
+    }
+  }
+}

@@ -164,7 +164,9 @@ function looksDisposable(entry, snapshotPayload) {
   return namesOf(entry.priorState ?? snapshotPayload ?? null).some((name) => DISPOSABLE.test(name));
 }
 
-const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
+// Any KEEL-RT custom role: queue items recreate fixtures under a fresh prefix.
+// A built-in role is refused by its payload, whatever its name.
+const FIXTURE_ROLE = /^KEEL-RT-/i;
 
 /**
  * The references a role assignment's composed natural key names
@@ -187,8 +189,8 @@ export function composedKeyReferences(naturalKey) {
 /**
  * For an object with no name of its own (a role assignment or eligibility), the
  * names of what it points at, read from the restore's snapshot: the principal
- * must be a fixture, the role must be the fixture role (never a built-in
- * privileged role), and a scope, if any, must be a fixture.
+ * must be a fixture, the role must be a KEEL-RT custom role (never a built-in
+ * role), and a scope, if any, must be a fixture.
  */
 export function byReferenceProblems({ versions, references, naturalKey, deleted = false }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
@@ -201,11 +203,24 @@ export function byReferenceProblems({ versions, references, naturalKey, deleted 
   // first. The untyped key is only a fallback, and the name it stands for
   // when the object is not in the snapshot (a UPN names its user; a role
   // template id never matches the fixture role).
-  const nameOf = (symbol) => {
+  // A deleted assignment's scope is the raw directory path from its key
+  // (`/administrativeUnits/<object id>`), so it is found by the object id in the
+  // snapshot's payloads instead.
+  const targetOf = (symbol) => {
     const text = String(symbol ?? '');
+    if (text.startsWith('/')) {
+      const id = text.slice(text.lastIndexOf('/') + 1).toLowerCase();
+      return { key: text, target: id ? versions.find((version) => String(version.payload?.id ?? '').toLowerCase() === id) : undefined };
+    }
     const key = text.slice(text.indexOf(':') + 1);
-    const target = versions.find((version) => version.natural_key === text)
-      ?? versions.find((version) => version.natural_key === key);
+    return {
+      key,
+      target: versions.find((version) => version.natural_key === text)
+        ?? versions.find((version) => version.natural_key === key),
+    };
+  };
+  const nameOf = (symbol) => {
+    const { key, target } = targetOf(symbol);
     return target ? (namesOf(target.payload)[0] ?? key) : key;
   };
   const refs = keyRefs ?? references.filter((ref) => ref.from_version === own.id);
@@ -217,7 +232,9 @@ export function byReferenceProblems({ versions, references, naturalKey, deleted 
   if (!principal) problems.push('no principal reference');
   else if (!DISPOSABLE.test(nameOf(principal.to_symbol))) problems.push('the principal is not a KEEL-RT fixture');
   if (!role) problems.push('no role reference');
-  else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol))) problems.push('the role is not the fixture role');
+  else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol)) || targetOf(role.to_symbol).target?.payload?.isBuiltIn === true) {
+    problems.push('the role is not the fixture role');
+  }
   if (scope && !DISPOSABLE.test(nameOf(scope.to_symbol))) problems.push('the scope is not a KEEL-RT fixture');
   return problems;
 }

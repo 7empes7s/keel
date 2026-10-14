@@ -350,8 +350,9 @@ test('the restore must have written to the test tenant, and a by-reference objec
   await assert.rejects(capture(assignment, { allowByReference: false }), /--allow-by-reference/);
   await assert.rejects(capture(assignment, { principalName: 'breakglass-one@fixture.example' }), /principal is not a KEEL-RT fixture/);
   await assert.rejects(capture(assignment, { roleName: 'Global Administrator' }), /role is not the fixture role/);
-  await assert.rejects(capture(assignment, { roleName: 'KEEL-RT-other-role' }), /role is not the fixture role/);
   assert.equal((await capture(assignment)).status, 'captured');
+  // Any KEEL-RT custom role is a fixture role, as fixtures are recreated under a fresh prefix (#232).
+  assert.equal((await capture(assignment, { roleName: 'KEEL-RT-Q51-role' })).status, 'captured');
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x' }), ['the snapshot has no object x']);
 });
 
@@ -391,6 +392,12 @@ test('a by-reference object resolves typed reference symbols to the referenced o
   const builtIn = snapshot();
   builtIn.references[0].to_symbol = 'global:62e90394-69f5-4237-9190-012177145e10';
   assert.deepEqual(byReferenceProblems(builtIn), ['the role is not the fixture role']);
+
+  // Any KEEL-RT custom role passes (#232), but never one the snapshot marks built in.
+  assert.deepEqual(byReferenceProblems(snapshot({ roleName: 'KEEL-RT-Q51-role' })), []);
+  const markedBuiltIn = snapshot({ roleName: 'KEEL-RT-Q51-role' });
+  markedBuiltIn.versions[1].payload.isBuiltIn = true;
+  assert.deepEqual(byReferenceProblems(markedBuiltIn), ['the role is not the fixture role']);
 });
 
 test('a fixture name is checked anchored, on its own key or prior state only', async () => {
@@ -437,7 +444,7 @@ test('a deleted role assignment is checked by its composed key, which the snapsh
   const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'roleAssignment:delete');
   const roleTemplate = '7b5c1a2e-0d3f-4e6a-9b8c-1d2e3f4a5b6c';
   const key = (principal, scope = '/') => `roleAssignment:roleDefinition:${roleTemplate}@${principal}@${scope}`;
-  const run = async ({ naturalKey, roleName = 'KEEL-RT-148-role' }) => {
+  const run = async ({ naturalKey, roleName = 'KEEL-RT-148-role', extraVersions = [] }) => {
     const restore = fixtureRestore(step, { naturalKey });
     const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
     journal[0].outcomeDetail = 'absent';
@@ -446,6 +453,7 @@ test('a deleted role assignment is checked by its composed key, which the snapsh
       { id: 'v-role', natural_key: `roleDefinition:${roleTemplate}`, payload: { displayName: roleName } },
       { id: 'v-user', natural_key: 'user:keel-rt-20260908-carla@fixture.example', payload: { userPrincipalName: 'keel-rt-20260908-carla@fixture.example' } },
       { id: 'v-bg', natural_key: 'user:breakglass-one@fixture.example', payload: { userPrincipalName: 'breakglass-one@fixture.example' } },
+      ...extraVersions,
     ];
     return captureLive({
       client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: naturalKey,
@@ -458,6 +466,14 @@ test('a deleted role assignment is checked by its composed key, which the snapsh
   await assert.rejects(run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example'), roleName: 'Global Administrator' }), /role is not the fixture role/);
   await assert.rejects(run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example', 'administrativeUnit:Finance') }), /scope is not a KEEL-RT fixture/);
   await assert.rejects(run({ naturalKey: key('unknown:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee') }), /principal is not a KEEL-RT fixture/);
+  // A role under a fresh fixture prefix is accepted (#232).
+  assert.equal((await run({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example'), roleName: 'KEEL-RT-Q51-role' })).status, 'captured');
+  // An administrative-unit scope is a raw path in the key, resolved by the unit's object id (#232).
+  const unit = (name) => [{ id: 'v-au', natural_key: `administrativeUnit:${name}`, payload: { id: 'C0FFEE00-1111-4222-8333-444455556666', displayName: name } }];
+  const auKey = key('user:keel-rt-20260908-carla@fixture.example', '/administrativeUnits/c0ffee00-1111-4222-8333-444455556666');
+  assert.equal((await run({ naturalKey: auKey, extraVersions: unit('KEEL-RT-Q51-unit') })).status, 'captured');
+  await assert.rejects(run({ naturalKey: auKey, extraVersions: unit('Finance') }), /scope is not a KEEL-RT fixture/);
+  await assert.rejects(run({ naturalKey: auKey }), /scope is not a KEEL-RT fixture/);
   // Only a delete may fall back to its key: a create must be in its own snapshot.
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: key('user:x') }), [`the snapshot has no object ${key('user:x')}`]);
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x', deleted: true }), ['the snapshot has no object x']);

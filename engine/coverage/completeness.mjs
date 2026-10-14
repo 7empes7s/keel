@@ -120,8 +120,21 @@ export const COMPLETENESS = Object.freeze({
   unifiedRoleManagementPolicyAssignment: { managed: true },
   roleAssignmentSchedule: { whole: 'not-written', missing: [part('Activations people made themselves', 'read-only')] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
-  accessPackage: { whole: 'not-written', missing: [part('Its catalog, assignment policies and resource roles', 'other-route'), part('Who holds the package now', 'read-only')] },
+  accessPackage: { whole: 'not-written', missing: [part('Its resource roles', 'other-route')] },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
+  // Wave 1 CAT-ENTRA: Entra governance.
+  lifecycleWorkflow: { whole: 'not-written', missing: [part('Run history and the users each run processed', 'read-only')] },
+  lifecycleWorkflowCustomTaskExtension: { whole: 'not-written', missing: [part('The Logic App it calls', 'other-route')] },
+  lifecycleManagementSettings: { whole: 'not-written' },
+  attributeSet: { whole: 'not-written' },
+  customSecurityAttributeDefinition: { whole: 'not-written', missing: [part('The values assigned to users and apps', 'other-route')] },
+  accessPackageCatalog: { whole: 'not-written', missing: [part('The groups, apps and sites in the catalog', 'other-route')] },
+  accessPackageAssignmentPolicy: { whole: 'not-written', missing: [part('Approval and request history', 'read-only')] },
+  accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
+  entitlementManagementSettings: { whole: 'not-written' },
+  agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
+  b2xIdentityUserFlow: { whole: 'not-written', missing: [part('Its languages, sign-up attributes and API connector links', 'other-route')] },
+  identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
 
   // ---- sign-in and security policies
   conditionalAccessPolicy: {},
@@ -144,6 +157,11 @@ export const COMPLETENESS = Object.freeze({
   tokenIssuancePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tokenLifetimePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
   featureRolloutPolicy: { whole: 'not-written', missing: [part('Which groups the rollout covers', 'other-route')] },
+  // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
+  appManagementPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
+  tenantAppManagementPolicy: { whole: 'not-written' },
+  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only')] },
+  multiTenantOrganizationIdentitySyncPolicyTemplate: { whole: 'not-written', missing: [part('Sync settings for each partner tenant', 'other-route')] },
 
   // ---- Intune device management
   deviceConfiguration: { missing: [part('Passwords, keys and certificates in Wi-Fi, VPN, certificate and email profiles', 'secret', credentialProfile)] },

@@ -72,7 +72,13 @@ export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directo
 // configuration-policy setting value) a reference to the localization, which
 // pulled it into unrelated restore closures. Nothing references a localization
 // by id, so these ids never resolve references; the resources keep their keys.
-const VOCABULARY_ID_TYPES = new Set(['organizationalBrandingLocalization']);
+// Wave 1 CAT-ENTRA: the same holds for ids an admin types as plain words. An
+// attribute set's id is its name ("Engineering", also a department value), a
+// custom security attribute's is set_name, and a user flow's is B2X_1_<name>.
+const VOCABULARY_ID_TYPES = new Set([
+  'organizationalBrandingLocalization',
+  'attributeSet', 'customSecurityAttributeDefinition', 'b2xIdentityUserFlow',
+]);
 
 function idKey(obj, type) {
   // Global templates can share ids with active role definitions. Collecting

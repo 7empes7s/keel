@@ -16,7 +16,7 @@
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { FIDELITY } from '../cir/canonicalize.mjs';
-import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
+import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../cir/naturalKey.mjs';
 
 // Per-type descriptor details the catalog does not carry. Only non-default
 // values are listed:
@@ -28,6 +28,7 @@ import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
 //     remapped at apply time; when unsure, understate.
 const DETAILS = {
   ...Object.fromEntries([...ID_KEY_TYPES].map((type) => [type, { naturalKeyStrategy: 'id' }])),
+  ...Object.fromEntries([...CONSTANT_KEY_TYPES].map((type) => [type, { naturalKeyStrategy: 'constant' }])),
   certificateBasedAuthConfiguration: { naturalKeyStrategy: 'constant' },
   // UPN is tenant-bound and passwords are never readable — a user cannot be
   // remapped into another tenant as the same principal.

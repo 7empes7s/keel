@@ -35,6 +35,12 @@ export const ID_KEY_TYPES = new Set([
   'assignmentFilter', 'roleScopeTag', 'windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile',
   'windowsDriverUpdateProfile', 'groupPolicyConfiguration', 'groupPolicyUploadedDefinitionFile',
   'notificationMessageTemplate', 'windowsAutopilotDeviceIdentity', 'deviceManagementRoleAssignment',
+  // Wave 1 CAT-ENTRA: Entra governance collections. An attribute set's id is
+  // its name and a custom security attribute's id is set_name, both chosen by
+  // the admin; the others are tenant-assigned ids.
+  'lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'attributeSet', 'customSecurityAttributeDefinition',
+  'accessPackageCatalog', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'agreement',
+  'appManagementPolicy', 'b2xIdentityUserFlow', 'identityApiConnector',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -47,6 +53,9 @@ export const CONSTANT_KEY_TYPES = new Set([
   // Issue #156: the default company branding, device registration and
   // authentication flows policies.
   'organizationalBranding', 'deviceRegistrationPolicy', 'authenticationFlowsPolicy',
+  // Wave 1 CAT-ENTRA: Entra governance singletons.
+  'lifecycleManagementSettings', 'entitlementManagementSettings', 'tenantAppManagementPolicy',
+  'multiTenantOrganization', 'multiTenantOrganizationIdentitySyncPolicyTemplate',
 ]);
 
 export function naturalKeyFor(type, obj, ctx) {

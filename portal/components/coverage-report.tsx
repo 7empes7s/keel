@@ -17,7 +17,42 @@ import {
   workloadLiveLines,
   type RestoreStanding,
 } from "@/lib/protect-view";
-import type { CoverageData, CoverageType, TypeExpansion } from "@/lib/types";
+import type { CoverageData, CoverageType, TypeExpansion, TypeQualification } from "@/lib/types";
+
+// Coverage plan v3: the coverage state of a type and the parts a restore cannot
+// bring back (engine/coverage/completeness.mjs, through qualificationFor). Older
+// reports carry none and show nothing.
+type CoverageState = "full" | "incomplete" | "microsoft-managed" | "not-readable";
+interface TypeCompleteness {
+  state: CoverageState;
+  recreate: "keel" | "by-hand" | "none";
+  why?: string;
+  missing: { part: string; reason: string; perObject: boolean }[];
+}
+
+const STATE_SENTENCE: Record<CoverageState, string> = {
+  full: "Full coverage: KEEL restores this on its own and nothing is missing.",
+  incomplete: "Incomplete: the backup holds everything KEEL can read, but some parts must be finished by hand after a restore.",
+  "microsoft-managed": "Microsoft-managed: Microsoft owns this, so there is nothing to restore.",
+  "not-readable": "Not readable: KEEL cannot read this.",
+};
+
+const REASON_WORDS: Record<string, string> = {
+  secret: "Microsoft never returns it",
+  "read-only": "no tool can write it",
+  "binary-route": "a file the backup does not hold",
+  "other-route": "stored separately and not in the backup yet",
+  "microsoft-managed": "set by Microsoft",
+  "not-written": "in the backup, but KEEL does not write it yet",
+};
+
+function completenessOf(item: CoverageType): TypeCompleteness | null {
+  return (item.qualification as (TypeQualification & { completeness?: TypeCompleteness }) | null | undefined)?.completeness ?? null;
+}
+
+function missingWords(completeness: TypeCompleteness): string[] {
+  return completeness.missing.map((part) => `${part.part} (${REASON_WORDS[part.reason] ?? part.reason})${part.perObject ? ", listed per object in each backup" : ""}`);
+}
 
 // Roadmap task-131 (superseding task-54's matrix layout): one drawer per configuration
 // type. Its summary and explanation answer "can KEEL put this back?" in one sentence;
@@ -63,9 +98,15 @@ function TypeRecord({ item }: { item: CoverageType }) {
   const irrecoverable = item.irrecoverableFields ?? null;
   const detail = item.detail;
   const decision = item.qualification;
+  const completeness = completenessOf(item);
   return (
     <TechnicalDetails>
       <RecordField label="Configuration type" value={item.type} />
+      <RecordField
+        label="Coverage state"
+        value={completeness ? `${completeness.state} · recreate ${completeness.recreate}${completeness.missing.length ? ` · missing ${completeness.missing.map((part) => `${part.part} [${part.reason}]`).join(", ")}` : ""}` : "not recorded"}
+        copy={false}
+      />
       <RecordField label="Protection state" value={`${item.protectionState} · report ${item.reportStatus} · outcome ${item.outcome ?? "none"}`} copy={false} />
       <RecordField label="Serving adapter" value={item.adapter} />
       <RecordField label="Declared endpoint" value={endpointValue(item.declaredEndpoint?.path, item.declaredEndpoint?.apiVersion, "declared") ?? "unknown"} copy={false} />
@@ -156,6 +197,8 @@ export function TypeDrawer({ item, now }: { item: CoverageType; now: string }) {
   const operations = restoreOperations(item);
   const decision = recoveryDecisionSentence(item);
   const irrecoverable = item.irrecoverableFields?.length ?? 0;
+  const completeness = completenessOf(item);
+  const missing = completeness ? missingWords(completeness) : [];
   return (
     <details className={`capability-matrix type-drawer standing-${standing} health-${health}`}>
       <summary>
@@ -169,6 +212,12 @@ export function TypeDrawer({ item, now }: { item: CoverageType; now: string }) {
           <li>{item.criticality ? `${tierLabel(item.criticality)}.` : "Not in a backup tier."}</li>
           {item.blastRadius ? <li>Impact if it changes: {displayEnum("blastRadius", item.blastRadius).toLowerCase()}.</li> : null}
           {irrecoverable > 0 ? <li>{irrecoverable} {irrecoverable === 1 ? "field" : "fields"} Microsoft sets itself and KEEL cannot restore.</li> : null}
+          {completeness ? <li className={`coverage-state coverage-${completeness.state}`}>{completeness.why ? `${STATE_SENTENCE[completeness.state]} ${completeness.why}` : STATE_SENTENCE[completeness.state]}</li> : null}
+          {missing.length ? (
+            <li className="coverage-missing">Not brought back by a restore:
+              <ul>{missing.map((line) => <li key={line}>{line}</li>)}</ul>
+            </li>
+          ) : null}
           {decision ? <li className={`decision-${item.qualification?.decision ?? "unknown"}`}>{decision}</li> : null}
           {operations.map((line) => <li key={line}>{line}</li>)}
           {item.lastCollectedAt ? <li>Collected <time dateTime={item.lastCollectedAt} title={formatTimestamp(item.lastCollectedAt)}>{ago(item.lastCollectedAt, now)}</time>.</li> : null}

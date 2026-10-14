@@ -4,7 +4,8 @@
  * What is DERIVED from code (never typed here):
  *  - which configuration types exist and their family (buildOperationLedger,
  *    EXPANSION_INVENTORY);
- *  - each type's decision: automated, manual or not yet investigated (TYPE_DECISIONS);
+ *  - each type's decision, automated or manual (TYPE_DECISIONS), and its coverage
+ *    state and missing parts (completeness.mjs);
  *  - its backup tier and the default schedule of that tier (CATALOG, initialSchedules);
  *  - which restore operations are registered and the proof behind each, including
  *    recorded live failures (capabilities.mjs through the ledger);
@@ -12,7 +13,7 @@
  *    (workloadContract.mjs, WORKLOAD_WRITE_OPERATIONS).
  *
  * What is WRITTEN here, by hand: the plain-English name of each type and, for
- * manual, not-yet-investigated and partial types, why and what the reader should do.
+ * manual and partial types, why and what the reader should do.
  * The code's own reasons carry task numbers, API field names and HTTP details, so
  * they are not shown to readers. Each guide entry names the decision it was written
  * for; renderCoverageDoc() throws when the code's decision differs, or when a type
@@ -25,14 +26,20 @@
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { WORKLOADS, WORKLOAD_DESCRIPTORS } from '../collect/workloadContract.mjs';
 import { initialSchedules } from '../store/scheduleSeed.mjs';
+import { COVERAGE_STATES, REASON_WORDS } from './completeness.mjs';
 import { EXPANSION_BATCHES, EXPANSION_INVENTORY, WORKLOAD_WRITE_OPERATIONS, buildOperationLedger } from './qualification.mjs';
 
 const MS = 'microsoft';
 const KEEL = 'keel';
+// Coverage plan v3: backed up in full, but the best-effort writer is not built yet.
+const NOT_BUILT = 'not-built';
+const LIMIT_WORDS = Object.freeze({ [MS]: 'Microsoft limit', [KEEL]: 'KEEL choice', [NOT_BUILT]: 'not built yet' });
+const STATE_WORDS = Object.freeze({
+  full: 'Full', incomplete: 'Incomplete', 'microsoft-managed': 'Microsoft-managed', 'not-readable': 'Not readable',
+});
 
 const auto = (name, { keeps, todo = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo });
 const manual = (name, limit, why, todo) => Object.freeze({ decision: 'manual', name, limit, why, todo });
-const unknown = (name, why, todo) => Object.freeze({ decision: 'unknown', name, why, todo });
 
 /**
  * One entry per configuration type. `limit` says whose limit makes a manual type
@@ -94,13 +101,13 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates an enterprise app for its app registration.',
     todo: 'Changed settings on an existing enterprise app, and deleted ones, are restored by hand.',
   }),
-  oauth2PermissionGrant: unknown('Delegated app consents',
+  oauth2PermissionGrant: manual('Delegated app consents', NOT_BUILT,
     'A consent is a decision someone made to trust an app. KEEL has not yet built a safe way to grant it again.',
     'Use the backup to see which apps had consent, then grant it again in the Entra admin center after review.'),
   identityProvider: manual('External identity providers', MS,
     'Microsoft never lets anyone read the client secret of an identity provider.',
     'Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.'),
-  certificateBasedAuthConfiguration: unknown('Certificate sign-in settings',
+  certificateBasedAuthConfiguration: manual('Certificate sign-in settings', NOT_BUILT,
     'A wrong certificate trust setting can lock everyone out, and KEEL has no safe way to test the change first.',
     'Restore the certificate authorities by hand in the Entra admin center using the backup, and test sign-in before closing the session.'),
   directoryRole: manual('Built-in admin roles', MS,
@@ -120,7 +127,7 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Makes people eligible for an admin role again, keeping the original end date.',
     todo: 'Expired eligibilities and ones inherited through a group are not restored. Changing or removing an eligibility is done by hand.',
   }),
-  roleAssignmentSchedule: unknown('Time-limited active admin roles',
+  roleAssignmentSchedule: manual('Time-limited active admin roles', NOT_BUILT,
     'Restoring a time-limited active role safely needs an expiry check and a guard against replaying a past activation. That is not built yet. Permanent assignments are covered by admin role assignments.',
     'Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.'),
   unifiedRoleManagementPolicy: auto('Admin role activation settings', {
@@ -130,13 +137,13 @@ export const TYPE_GUIDE = Object.freeze({
   unifiedRoleManagementPolicyAssignment: manual('Role-to-settings links', MS,
     'Entra links exactly one settings policy to each role itself. Nobody writes the link.',
     'Nothing to restore. The settings are restored with admin role activation settings.'),
-  accessReviewScheduleDefinition: unknown('Access reviews',
+  accessReviewScheduleDefinition: manual('Access reviews', NOT_BUILT,
     'The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.',
     'Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.'),
-  accessPackage: unknown('Access packages',
+  accessPackage: manual('Access packages', NOT_BUILT,
     'An access package depends on catalogs, policies and resource roles that KEEL does not back up yet.',
     'Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.'),
-  connectedOrganization: unknown('Connected organizations',
+  connectedOrganization: manual('Connected organizations', NOT_BUILT,
     'These point to other organizations\' tenants, which KEEL cannot check from yours.',
     'Recreate them by hand in Entra ID Governance using the backup.'),
 
@@ -152,7 +159,7 @@ export const TYPE_GUIDE = Object.freeze({
   namedLocation: auto('Named locations', {
     keeps: 'Recreates named locations, puts their settings back and removes ones added since the backup.',
   }),
-  authenticationContextClassReference: unknown('Authentication contexts',
+  authenticationContextClassReference: manual('Authentication contexts', NOT_BUILT,
     'Each context has a fixed slot that Conditional Access policies and SharePoint labels point to. KEEL cannot yet check what uses a slot before changing it.',
     'Restore the name and description by hand in the Entra admin center, keeping each one in the same slot as in the backup.'),
   authenticationMethodsPolicy: auto('Authentication methods', {
@@ -182,28 +189,28 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts back whether external users may sign themselves up.',
     todo: 'The sign-up user flows themselves are not backed up.',
   }),
-  permissionGrantPolicy: unknown('App consent policies',
+  permissionGrantPolicy: manual('App consent policies', NOT_BUILT,
     'Microsoft\'s built-in policies cannot be changed, and the rules inside custom ones are stored separately. KEEL has not built a safe writer for them.',
     'Recreate custom consent policies by hand using the backup.'),
   adminConsentRequestPolicy: auto('Admin consent requests', {
     keeps: 'Puts the admin consent request workflow back, including who reviews requests.',
   }),
-  activityBasedTimeoutPolicy: unknown('Idle sign-out policy',
-    'KEEL does not yet read the policy\'s settings in detail, or tell a tenant-wide policy from one set on a single app.',
+  activityBasedTimeoutPolicy: manual('Idle sign-out policy', NOT_BUILT,
+    'The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.',
     'Recreate the policy by hand using the backup.'),
-  claimsMappingPolicy: unknown('Token claims mapping',
-    'The policy\'s link to each app is stored separately and KEEL does not yet read the policy\'s settings in detail.',
+  claimsMappingPolicy: manual('Token claims mapping', NOT_BUILT,
+    'The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.',
     'Recreate the policy by hand using the backup, then assign it to the same apps.'),
-  homeRealmDiscoveryPolicy: unknown('Sign-in routing (home realm discovery)',
+  homeRealmDiscoveryPolicy: manual('Sign-in routing (home realm discovery)', NOT_BUILT,
     'This decides where federated users are sent to sign in, so a wrong write breaks sign-in. Its link to each app is stored separately.',
     'Recreate the policy by hand using the backup, assign it to the same apps, and test a federated sign-in.'),
-  tokenIssuancePolicy: unknown('Token issuance policy',
-    'Its link to each app is stored separately and KEEL does not yet read the policy\'s settings in detail.',
+  tokenIssuancePolicy: manual('Token issuance policy', NOT_BUILT,
+    'The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.',
     'Recreate the policy by hand using the backup, then assign it to the same apps.'),
-  tokenLifetimePolicy: unknown('Token lifetime policy',
-    'KEEL does not yet read the policy\'s settings in detail, or tell a tenant-wide policy from one set on a single app.',
+  tokenLifetimePolicy: manual('Token lifetime policy', NOT_BUILT,
+    'The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.',
     'Recreate the policy by hand using the backup.'),
-  featureRolloutPolicy: unknown('Staged rollout of sign-in features',
+  featureRolloutPolicy: manual('Staged rollout of sign-in features', NOT_BUILT,
     'Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.',
     'Recreate the rollout by hand using the backup, then add the same groups.'),
 
@@ -344,20 +351,27 @@ function typeRow(ledgerType, entry, { cadence, edges }) {
     restore = `Yes: ${words.join('; ')}`;
     proof = proofText([...supported, ...typeEdges]);
   } else {
-    restore = entry.decision === 'manual' ? `By hand (${entry.limit === MS ? 'Microsoft limit' : 'KEEL choice'})` : 'Not yet investigated';
+    restore = ledgerType.completeness.state === 'microsoft-managed' ? 'Nothing to restore' : `By hand (${LIMIT_WORDS[entry.limit]})`;
     proof = 'None';
   }
-  return `| ${cell(entry.name)} | ${cell(backup)} | ${cell(restore)} | ${cell(proof)} |`;
+  const coverage = STATE_WORDS[ledgerType.completeness.state];
+  return `| ${cell(entry.name)} | ${cell(backup)} | ${cell(coverage)} | ${cell(restore)} | ${cell(proof)} |`;
+}
+
+/** The parts a restore cannot bring back, with why, after the setting itself. */
+function missingLines(ledgerType) {
+  const parts = ledgerType.completeness.missing.filter((item) => item.part !== 'The whole setting');
+  if (parts.length === 0) return [];
+  return [`  - *Not brought back:* ${parts.map((item) => `${item.part.charAt(0).toLowerCase()}${item.part.slice(1)} (${REASON_WORDS[item.reason]})`).join('; ')}.`];
 }
 
 function notesFor(ledgerType, entry) {
   if (entry.decision === 'automated') {
-    const lines = [`- **${entry.name}.** ${entry.keeps}`];
+    const lines = [`- **${entry.name}.** ${entry.keeps}`, ...missingLines(ledgerType)];
     if (entry.todo) lines.push(`  - *You do:* ${entry.todo}`);
     return lines;
   }
-  const label = entry.decision === 'unknown' ? 'Not yet investigated' : entry.limit === MS ? 'Microsoft limit' : 'KEEL choice';
-  return [`- **${entry.name}** (${label}). ${entry.why}`, `  - *You do:* ${entry.todo}`];
+  return [`- **${entry.name}** (${LIMIT_WORDS[entry.limit]}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
 }
 
 /** The workload section: settings read, writes declared, and what is left to the reader. */
@@ -417,8 +431,12 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
   const extraWorkloads = Object.keys(workloadGuide).filter((workload) => !WORKLOADS.includes(workload));
   if (extraWorkloads.length > 0) throw new Error(`docs/coverage.md: WORKLOAD_GUIDE has text for unknown workloads: ${extraWorkloads.join(', ')}`);
 
-  const counts = { automated: 0, manual: 0, unknown: 0 };
-  for (const row of ledger.types) counts[row.decision] += 1;
+  const counts = { automated: 0, manual: 0 };
+  const states = Object.fromEntries(COVERAGE_STATES.map((state) => [state, 0]));
+  for (const row of ledger.types) {
+    counts[row.decision] += 1;
+    states[row.completeness.state] += 1;
+  }
 
   const lines = [
     '# What KEEL covers',
@@ -427,12 +445,17 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
-    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings: ${counts.automated} that KEEL can restore at least in part, ${counts.manual} that are restored by hand, and ${counts.unknown} not yet investigated.`,
+    `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',
     '',
     '- **Backed up:** every kind listed here is backed up. The tier sets how often, on the default schedule (an operator can change it).',
-    '- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not yet investigated" means KEEL has not yet checked whether a safe automatic restore is possible.',
+    '- **Coverage:** one of four states.',
+    '  - *Full:* KEEL restores it on its own and nothing is missing.',
+    '  - *Incomplete:* the backup holds everything KEEL can read, but some parts cannot be brought back automatically. It is recreated from the backup, by KEEL or by hand, and the missing parts are listed below the table as follow-up steps. Each backup flags the incomplete objects it holds.',
+    '  - *Microsoft-managed:* Microsoft owns it, so there is nothing to restore.',
+    '  - *Not readable:* KEEL cannot read it, for the reason given.',
+    '- **KEEL can restore:** what a KEEL restore does. "By hand" means a person restores it from the backup, for the reason given below the table. "Not built yet" means KEEL backs it up in full and will recreate it on its own once that restore is built.',
     '- **Proof:** "Tested against a simulated tenant" means the restore code has passed tests against a fake Microsoft service. It is not yet proven on a live tenant. A failed live test is listed with its date until a fix passes.',
     '- **Microsoft limit:** Microsoft offers no way for any tool to do this. KEEL cannot work around it; the steps say what to do instead.',
     '- **KEEL choice:** KEEL could write it, but leaves it to a person for safety or because part of it is not backed up.',
@@ -444,7 +467,7 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     if (!heading) throw new Error(`docs/coverage.md: no heading for family ${batch.id}; add one to FAMILY_HEADINGS`);
     const rows = ledger.types.filter((row) => EXPANSION_INVENTORY[row.resourceType]?.batch === batch.id);
     if (rows.length === 0) continue;
-    lines.push(`## ${heading}`, '', '| Setting | Backed up | KEEL can restore | Proof |', '| --- | --- | --- | --- |');
+    lines.push(`## ${heading}`, '', '| Setting | Backed up | Coverage | KEEL can restore | Proof |', '| --- | --- | --- | --- | --- |');
     const notes = [];
     for (const row of rows) {
       const entry = guideFor(row.resourceType, row.decision, typeGuide);

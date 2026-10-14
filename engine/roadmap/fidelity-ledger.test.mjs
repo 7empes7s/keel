@@ -190,8 +190,13 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
     /deviceCategory is marked automated but has no registered write capability/,
   );
   assert.throws(
+    () => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, group: { decision: 'manual', reason: 'hide it' } } }),
+    /group has a registered write capability but is marked manual/,
+  );
+  // Coverage plan v3: 'unknown' is no longer a decision at all.
+  assert.throws(
     () => buildOperationLedger({ decisions: { ...TYPE_DECISIONS, group: { decision: 'unknown', reason: 'hide it' } } }),
-    /group has a registered write capability but is marked unknown/,
+    /group: invalid decision unknown/,
   );
   assert.equal(capabilityFor('deviceCategory', 'update').claim, 'unsupported');
   const ledger = buildOperationLedger();
@@ -250,10 +255,11 @@ test('a same-tenant update stays valid with remappable=false: references that re
 });
 
 test('a declared-only registration stays declared, and the ledger then refuses its unchanged decision', () => {
-  // roleAssignmentSchedule has no registration and an 'unknown' decision (since
-  // task-151 the eligibility schedule is a registered subset).
+  // roleAssignmentSchedule has no registration and a 'manual' decision (since
+  // task-151 the eligibility schedule is a registered subset; since coverage plan
+  // v3 no type is 'unknown').
   registerOperationCapability({ resourceType: 'roleAssignmentSchedule', operation: 'create', path: '/roleManagement/directory/roleAssignmentScheduleRequests', handler: 'engine/restore/applyEngine.mjs#applyWave', idOutcome: 'server-assigned' });
   assert.equal(capabilityFor('roleAssignmentSchedule', 'create').claim, 'declared');
   assert.throws(() => recordFixtureProof('roleAssignmentSchedule', 'update', 'x'));
-  assert.throws(() => buildOperationLedger(), /has a registered write capability but is marked unknown/);
+  assert.throws(() => buildOperationLedger(), /has a registered write capability but is marked manual/);
 });

@@ -2484,3 +2484,27 @@ item that needs it stays untouched.
   (adding or updating files only). Replace the held-back Q52 files on the host; do not publish those.
 - **Report:** captured / promoted / refused, both check exit codes, and the evidence commit. Then set Q51 and Q52 to done
   if this passes.
+
+### Q54: Recapture and republish the step 10 user restore-soft-deleted record after the #237 fix
+- Drafted by the "published capture raw id" thread (2026-10-14).
+- Status: todo
+- Result:
+- Needs: a live build containing #237 (`git -C /opt/keel-live log --oneline | grep -c "#237"` is 1 or more). Independent
+  of Q53; run it right after Q53 or before it, whichever is first in line.
+- **Test tenant only.** No new restore and no tenant writes: this only reads the journal, artifact and snapshot of the
+  Q45 round C restore that already ran (restore ref `aabeac39-e68d-8728-a0cd-69d3b0796364`, job 52d30020).
+- **Why.** The published `docs/release/qualifications/entra-live/user.restore-soft-deleted.capture.json` (Q45 step 10)
+  holds one real object id: the deleted user's `priorState.userPrincipalName` starts with the user's object id written
+  without dashes (Entra's soft-delete UPN prefix). #237 now maps a dashless GUID like its dashed form, and
+  `pseudonymize.mjs check` flags this file on master. The record is signed over the capture log's sha256, so the file
+  cannot be edited by hand; it has to be recaptured and re-signed.
+- **A. Capture.** `entraLive capture --resource-type user --operation restore-soft-deleted --restore-ref
+  aabeac39-e68d-8728-a0cd-69d3b0796364 --fixture user:keel-rt-20260908-carla@techinsiderbytes.com`. Expected: captured.
+  A refusal (journal or snapshot gone, or anything else) is a result: report it verbatim and stop; do not redo the restore.
+- **B. Check.** `node tools/qualification/pseudonymize.mjs check` on the new record and capture log: expected exit 0.
+  Expected `priorState.userPrincipalName` prefix: `a0fcb2f8b0c38a889b94319165913d40` (the same pseudonym as
+  `priorState.id`). Also repeat your known-id scan: no fixture object id found.
+- **C. Promote and publish.** `promote` it, run the usual public-repo scans, then commit the two files
+  (`user.restore-soft-deleted.json` and `.capture.json`) to a new branch `claude/live-evidence-q54` from `origin/master`,
+  replacing the published pair (updating files only). No PR needed; the drafting thread opens it.
+- **Report:** captured / promoted / refused, the check exit code, and the evidence commit.

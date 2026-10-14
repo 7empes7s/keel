@@ -2274,6 +2274,13 @@ item that needs it stays untouched.
   needed). Expected: 4 imported at evidenceBuild fb1493ea, none refused, exit 0. Then `proof` (4 entries, expiring about
   2026-11-06; exit 1 inside the 14-day warning is expected) and one `run` (workloads no longer "disabled").
   Recapture the four workload records before 2026-11-06 (the Part D recaptures above count).
+- **G. Three writes that can pass now** (from the #148 close-out, issue comment 6167331730).
+  - 45 unifiedRoleManagementPolicy update: rerun. The Accept-Language fix (d8a67ce) is on master, so the PIM read-back
+    should now confirm the write.
+  - 37 roleAssignment delete and 52 conditionalAccessPolicy delete: use the lockout delete path that proved
+    namedLocation delete in Q46 B (`--delete <type>:<KEEL-RT name>` dry run, approval, `--artifact <id> --enforce`).
+    Use a KEEL-RT role assignment that is not a break-glass account's, and a KEEL-RT report-only policy. Readiness
+    is ready, so both should be allowed and verified. If either is refused, report the reason verbatim.
 - **F. api-drift schedule.** `node cli/keel-schedules-migrate.mjs --kinds api-drift`; report the schedule row.
 - Capture and promote as in Q43; commit evidence to `claude/live-evidence-q48`. Every demotion file you add needs a
   matching `liveFailures` entry in code; leave that to the thread and say so in the Result.

@@ -8,3 +8,12 @@ run at a fixed `2026-09-29T10:00:00Z`. The load forecast it checks reads only th
 | --- | --- |
 | A test fixture that a time-windowed reader must see was given a fixed calendar date. | A fixture a windowed query must include is dated from `Date.now()` (for example, 6 hours ago), and the test asserts against that value, not a literal. |
 | The failure appeared on unrelated PRs and looked like their bug. | When a PR's check fails in code it does not touch, run the same test on `master` first; a red `master` means fix `master`, on its own branch. |
+
+## Same day: live evidence merged without its code half
+
+`engine/roadmap/entra-live-gate.test.mjs` also failed on `master` after the Q45 evidence PR (#203) added four
+`*.demotion.json` records, because `TYPE_DECISIONS.*.liveFailures` still quoted run 1.
+
+| Mistake | Rule now |
+| --- | --- |
+| An evidence-only PR added demotions without updating `engine/coverage/qualification.mjs` and `docs/coverage.md`. | A PR that commits a `*.demotion.json` also updates that type's `liveFailures` entry (date and reason quoted exactly) and regenerates `docs/coverage.md`; the operator states this in the handoff when it cannot make the code change itself. |

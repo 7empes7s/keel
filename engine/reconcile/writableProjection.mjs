@@ -67,6 +67,43 @@ function withoutServerOwned(value, resourceType, path) {
 }
 
 /**
+ * What post-write verification compares: `live` (a read-back) cut down to the
+ * shape of `written` (the body or snapshot KEEL wrote), recursively. A read-back
+ * without a $select carries everything Graph returns: properties the snapshot
+ * never held (a group's `description: null`, a policy's `conditions.platforms`)
+ * and property annotations such as `grantControls.authenticationStrength@odata.context`,
+ * whose value names the new object. Neither was written, so neither can verify
+ * or fail a write. Every path `written` holds is kept, so a written field that
+ * reads back different, or not at all, still fails. Server-owned paths are left
+ * to canonicalize(), which strips them through fieldClass(). Pass `written` as
+ * both arguments to strip its own annotations symmetrically.
+ */
+export function verificationView(live, written) {
+  if (Array.isArray(live) && Array.isArray(written)) {
+    return live.map((item, index) => (index < written.length ? verificationView(item, written[index]) : item));
+  }
+  if (isPlainObject(live) && isPlainObject(written)) {
+    const view = {};
+    for (const key of Object.keys(written)) {
+      if (isPropertyAnnotation(key) || !Object.hasOwn(live, key)) continue;
+      view[key] = verificationView(live[key], written[key]);
+    }
+    return view;
+  }
+  return live;
+}
+
+// `name@odata.context`, `name@odata.navigationLink`: an annotation Graph adds to
+// a property. A bare `@odata.*` key is already serverOwned in fieldClass().
+function isPropertyAnnotation(key) {
+  return key.indexOf('@odata.') > 0;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
  * Top-level fields of `payload` that a reviewed type's known-field list does
  * not name — excluded from writableProjection's output above and surfaced
  * here so a caller can flag them for review instead of the field silently

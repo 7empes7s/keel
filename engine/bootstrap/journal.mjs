@@ -96,12 +96,14 @@ export class BootstrapJournal {
     lockedClients.add(this.client);
     let locked = false;
     try {
-      const { rows: [row] } = await this.client.query('SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked', [`bootstrap:${this.tenantRef}`]);
+      // Advisory locks are database-wide: the key names the schema too, so one
+      // run per tenant per store, and separate stores never contend.
+      const { rows: [row] } = await this.client.query('SELECT pg_try_advisory_lock(hashtextextended($1 || current_schema(), 0)) AS locked', [`bootstrap:${this.tenantRef}:`]);
       locked = row.locked;
       if (!locked) throw new Error('bootstrap execution already running');
       return await fn();
     } finally {
-      if (locked) await this.client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [`bootstrap:${this.tenantRef}`]);
+      if (locked) await this.client.query('SELECT pg_advisory_unlock(hashtextextended($1 || current_schema(), 0))', [`bootstrap:${this.tenantRef}:`]);
       lockedClients.delete(this.client);
     }
   }

@@ -2295,3 +2295,16 @@ item that needs it stays untouched.
 - Capture and promote as in Q43; commit evidence to `claude/live-evidence-q48`. Every demotion file you add needs a
   matching `liveFailures` entry in code; leave that to the thread and say so in the Result.
 - **Report:** per step, promoted / demoted (with the reason) / blocked / waiting, and every tenant setting read back as original.
+### Q49: Rerun Q48 step 46 and check the organization fix (#226)
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
+- Status: todo
+- Result:
+- Needs: Q48 done or blocked, and a live build containing #226 (`git -C /opt/keel-live log --oneline | grep -c "#226"`).
+- **Test tenant only.** Same hard rules and requester/approver split as Q45.
+- **A. Step 46 authentication methods policy.** Rerun it from a snapshot taken before the Software OATH change. Expected:
+  no "has no known type" refusal for QRCodePin or VerifiableCredentials; the policy is written, read back and captured.
+- **B. No false organization change.** Delete `KEEL-RT-148-pad1` and `KEEL-RT-148-pad2` (and create or delete any other
+  KEEL-RT object) so the directory object count differs from snapshot `f5a789c4`. Then dry-run a restore whose closure
+  reaches a user from that snapshot. Expected: the organization plans as unchanged and the dry run does not fail on it.
+  Do not file it for approval; the dry run alone is the check.
+- **Report:** per part, passed / failed (with the error) / waiting (#226 not live).

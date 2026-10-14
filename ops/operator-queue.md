@@ -2300,7 +2300,7 @@ item that needs it stays untouched.
   - Every KEEL-RT-148-* fixture is deleted and purged.
   - authorizationPolicy, authenticationMethodsPolicy, security defaults and group lifecycle policies (none) all read back the same as originals.json.
   - The 8 enabled CA policies are unchanged.
-  - Left for the operator: the fr-FR branding localization (Graph refuses the delete; default "0" goes with it), and purging KEEL-RT-148-ca and KEEL-RT-148-ca-delete from CA deleted items.
+  - Operator follow-up 2026-10-14 14:33 UTC: the operator deleted the fr-FR branding and purged both CA policies. Graph now shows no branding localizations (the original state) and no KEEL-RT-148 CA policies in deleted items. **Nothing left in the tenant.**
 - Needs: Q47 done or blocked. A live build containing #207 (capture tool), #209 (demotion records), #212 (verification
   ignores server-managed fields), #213 (assignment target ordering), #215 (workload proof build), #216 (update body
   @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and

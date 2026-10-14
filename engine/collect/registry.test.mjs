@@ -43,8 +43,8 @@ assert.deepEqual(
 );
 assert.deepEqual([...M1_TYPES].sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
 
-assert.equal(CATALOG.length, 62);
-assert.equal(list().length, 62);
+assert.ok(CATALOG.length >= 62, 'the catalogue never shrinks below the 62 types of issue #156');
+assert.equal(list().length, CATALOG.length);
 assert.deepEqual(list().map((d) => d.type).sort(), [...ENABLED_TYPES].sort(), 'registry-vs-catalogue diff is empty');
 for (const entry of CATALOG) {
   assert.equal(get(entry.type).descriptor.type, entry.type);

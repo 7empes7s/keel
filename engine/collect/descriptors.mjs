@@ -1,5 +1,5 @@
 /**
- * Graph-native ResourceTypeDescriptors (spec §7.1) for all 62 catalogue types.
+ * Graph-native ResourceTypeDescriptors (spec §7.1) for every catalogue type.
  * Registration is static; the adapter id is a declaration, never a fallback.
  * criticality / blastRadius come from CATALOG and fidelity from FIDELITY.
  *
@@ -17,8 +17,6 @@
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { FIDELITY } from '../cir/canonicalize.mjs';
 import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
-
-const CATALOG_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
 // Per-type descriptor details the catalog does not carry. Only non-default
 // values are listed:
@@ -94,8 +92,8 @@ const DETAILS = {
   mobileApp: { naturalKeyStrategy: 'displayName' },
 };
 
-function describe(type) {
-  const entry = CATALOG_BY_TYPE.get(type);
+function describe(type, catalogByType) {
+  const entry = catalogByType.get(type);
   if (!entry) throw new Error(`no catalog entry for resource type ${type}`);
   const details = DETAILS[type] ?? {};
   return {
@@ -206,10 +204,24 @@ const BASIC_SETTINGS_2026_10_09 = [
   'authenticationFlowsPolicy',
 ];
 
-export const DESCRIPTORS = [
+const LISTED = [
   ...LIVE_SINCE_M1, ...WIDENED_2026_09_08, ...PHASE3_TYPES, ...WIDENED_2026_10_09, ...WIDENED_2026_10_09_ROLES,
   ...BASIC_SETTINGS_2026_10_09,
-].map(describe);
+];
+
+// Full-coverage Wave 1: every other catalogue type (tools/tenant-probe/catalog.d)
+// is described too, after the listed ones and in catalogue order, so adding a
+// catalogue entry is enough to collect it. Such a type is read-only, not
+// remappable and keyed by the displayName fallback until a DETAILS entry says
+// otherwise.
+export function descriptorsFor(catalog) {
+  const catalogByType = new Map(catalog.map((entry) => [entry.type, entry]));
+  const listed = new Set(LISTED);
+  const unlisted = catalog.map((entry) => entry.type).filter((type) => !listed.has(type));
+  return [...LISTED, ...unlisted].map((type) => describe(type, catalogByType));
+}
+
+export const DESCRIPTORS = descriptorsFor(CATALOG);
 
 // Retain the metadata export used by coverage consumers. Every type is now collected.
 export const ALL_DESCRIPTORS = DESCRIPTORS;

@@ -26,7 +26,7 @@ You also need:
 - The task-67 recovery manifest (`keel-dump-manifest.mjs --recovery …`), the
   SQL dump it checksums, and the configuration export directory it references.
 - The current build revision and schema pin of the environment doing the
-  recovery (`git rev-parse HEAD`; `sha256` of `engine/store/schema.sql` — the
+  recovery (`git rev-parse HEAD`; `sha256` of the full schema, `node engine/store/loadSchema.mjs | sha256sum` — the
   CLI prints what it was given, the verifier compares, it never trusts).
 - The current evidence chain head (`evidence_head`: `SEQ:HASH:COUNT`) if you
   have an external anchor for it; without it the manifest checkpoint is still
@@ -56,7 +56,7 @@ You also need:
      --manifest /secure/artifacts/recovery.json \
      --tenant-ref sha256:… \
      --build-revision "$(git rev-parse HEAD)" \
-     --schema-pin "$(sha256sum engine/store/schema.sql | cut -d' ' -f1)" \
+     --schema-pin "$(node engine/store/loadSchema.mjs | sha256sum | cut -d' ' -f1)" \
      --config-export-dir /secure/artifacts/export \
      --evidence-head SEQ:HASH:COUNT \
      --target-url postgres://localhost/keel_scratch \

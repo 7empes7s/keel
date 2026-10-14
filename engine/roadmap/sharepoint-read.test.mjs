@@ -11,7 +11,6 @@
 //  - label a partial field read complete;
 //  - trust an arbitrary site URL's tenant.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { listWorkloads, registerWorkload } from '../collect/registry.mjs';
@@ -22,6 +21,7 @@ import {
 } from '../collect/workloads/sharepoint.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -31,7 +31,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

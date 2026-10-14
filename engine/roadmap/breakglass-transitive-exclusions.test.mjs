@@ -9,7 +9,6 @@
  * Fixture reader and isolated test database only; no tenant is read or written.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
@@ -17,6 +16,7 @@ import { collectSnapshot, conditionalAccessGroupIds } from '../collect/snapshot.
 import { loadBreakGlassReadiness, registerBreakGlassAccount } from '../safety/breakGlassReadiness.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { COLLECT_RELATIONSHIPS } from '../../cli/keel-collect.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -76,7 +76,7 @@ function fixtureReader(exclusion) {
 async function exclusionAfterCollect(t, exclusion) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = `sha256:bg-transitive-${exclusion}`;
   const { rows: [admin] } = await client.query('INSERT INTO principal(email) VALUES ($1) RETURNING *', [`bg-d5-${exclusion}-${process.pid}-${Date.now()}@example.invalid`]);
   await grantRole(client, { principalId: admin.id, role: 'admin', grantedBy: 'fixture', activeFrom: new Date(Date.now() - 60_000) });

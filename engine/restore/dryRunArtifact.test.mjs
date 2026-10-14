@@ -1,5 +1,4 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   classifyDryRunStatus,
@@ -12,6 +11,7 @@ import {
 } from './dryRunArtifact.mjs';
 import { createSnapshot } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 // --- computePlanDigest: the plan's identity, reproducible from the snapshot alone ---
 
@@ -142,7 +142,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const tenantRef = 'sha256:dry-run-artifact-test';
   const snapshotId = await createSnapshot(client, { tenantRef });

@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { migrateAuditIngestion, ingestAudit, readAuditEvidence, createFixtureAuditAdapter } from '../identity/auditIngest.mjs';
 import { auditSizing } from '../identity/auditSizing.mjs';
 import { runAuditIngestion } from '../../cli/keel-worker.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const from = '2026-09-01T00:00:00.000Z';
 const until = '2026-09-25T00:00:00.000Z';
@@ -13,7 +13,7 @@ async function setup(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   await migrateAuditIngestion(client);
   await migrateAuditIngestion(client);
   const { rows: [principal] } = await client.query("INSERT INTO principal(email) VALUES ('audit-fixture@example.invalid') RETURNING *");

@@ -1,17 +1,17 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { completeSnapshot, connect, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
 import { seedFromSnapshot } from '../engine/govern/baseline.mjs';
 import { createIsolatedTestDatabase } from '../engine/test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../engine/test/fullSuccessfulCoverage.mjs';
 import { runCli } from './keel-baseline-create.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const tenantRef = 'sha256:keel-baseline-create-cli-test';
 

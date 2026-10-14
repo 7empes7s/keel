@@ -7,7 +7,6 @@
 // A reference that cannot be read comes back readable: false — never a bare id.
 // Mutation check: returning run_as_principal_id without the resolved reference fails.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
@@ -16,6 +15,7 @@ import { requestApproval, summarizeApprovalRequests, listApprovalRequests } from
 import { enqueue, listJobs, summarizeJobs } from '../jobs/queue.mjs';
 import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -25,7 +25,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

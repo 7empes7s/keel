@@ -4,7 +4,7 @@
  * A recovery manifest is the single document that links everything needed to
  * recover a tenant after a disaster:
  *
- * - the build revision and the schema pin (sha256 of engine/store/schema.sql)
+ * - the build revision and the schema pin (sha256 of the full schema from engine/store/loadSchema.mjs)
  *   that produced the artifacts, so a restore against an incompatible
  *   build/schema is refused rather than attempted;
  * - the SQL dump checksum over the actual compressed dump bytes (the same
@@ -35,6 +35,7 @@ import { readFile as fsReadFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256Hex, verifyManifest } from '../export/manifest.mjs';
+import { schemaBytes } from '../store/loadSchema.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { assertNoEmbeddedCredential } from './adapter.mjs';
 
@@ -60,9 +61,13 @@ function assertReferenceString(value, name) {
   return assertNoEmbeddedCredential(value, name);
 }
 
-/** sha256 of the schema source of truth — the schema pin for this build. */
-export async function currentSchemaPin({ readFileFn = fsReadFile } = {}) {
-  return sha256Hex(await readFileFn(new URL('../store/schema.sql', import.meta.url)));
+/**
+ * sha256 of the full schema (schema.sql then schema.d/*.sql, see
+ * engine/store/loadSchema.mjs) — the schema pin for this build. storeDir points
+ * at another checkout's engine/store.
+ */
+export async function currentSchemaPin({ storeDir } = {}) {
+  return sha256Hex(schemaBytes(storeDir === undefined ? {} : { storeDir }));
 }
 
 /**

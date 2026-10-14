@@ -4,7 +4,7 @@
  * database URL and tenant config are replaced. No live Microsoft calls or writers.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -15,6 +15,7 @@ import { grantRole } from '../authz/administration.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
 import { seedSchedules } from '../store/scheduleSeed.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -68,7 +69,7 @@ function inPortal(script, env) {
 test('Protect: the verdict comes from the coverage reader, tier cards from the schedules, and only words are outside the record', async (t) => {
   const client = await database.connect();
   t.after(() => client.end());
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantId = 'protect-page-fixture';
   const tenantRef = `sha256:${createHash('sha256').update(tenantId).digest('hex').slice(0, 16)}`;
   await collectSnapshot(client, { reader, tenantRef, tenantId, tier: 'tier1' });

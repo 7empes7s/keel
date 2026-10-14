@@ -6,7 +6,6 @@
  * Fixture reader and isolated test database only; no tenant is read or written.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { collectSnapshot } from '../collect/snapshot.mjs';
@@ -14,6 +13,7 @@ import { loadSnapshotRelationships } from '../collect/relationships.mjs';
 import { planRelationshipOperations } from '../restore/relationshipWriter.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { COLLECT_RELATIONSHIPS, describeGroupMembershipReads, runCollect } from '../../cli/keel-collect.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -62,7 +62,7 @@ test('every scheduled backup reads group members and owners beside policy assign
 test('a backup records each group\'s members and owners by natural key, and a restore re-adds a removed member', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:group-membership-backup';
   const reader = fixtureReader();
 
@@ -101,7 +101,7 @@ test('a backup records each group\'s members and owners by natural key, and a re
 test('a failed owner read is kept as failed, never as an empty owner list, and does not change the group\'s outcome', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:group-membership-owner-failure';
 
   const result = await collectSnapshot(client, { reader: fixtureReader({ ownersFail: true }), tenantRef, tenantId: 'tid', relationships: COLLECT_RELATIONSHIPS });

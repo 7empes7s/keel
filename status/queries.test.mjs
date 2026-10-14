@@ -12,6 +12,7 @@ import { POLICY_EVALUATION_EVIDENCE_KIND } from '../engine/policy/evaluate.mjs';
 import {
   createIsolatedTestDatabase, quoteIdentifier,
 } from '../engine/test/dbTestHelper.mjs';
+import { schemaSql } from '../engine/store/loadSchema.mjs';
 
 const TEST_STATUS_PASSWORD = 'status-test-only-not-a-real-secret';
 const tenantRef = 'sha256:status-query-test';
@@ -23,7 +24,7 @@ let client;
 
 try {
   admin = await database.connect();
-  await admin.query(readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+  await admin.query(schemaSql());
   const roleSql = readFileSync(new URL('./setupRole.sql', import.meta.url), 'utf8')
     .replaceAll('keel_status', role)
     .replace('SCHEMA public', `SCHEMA ${quoteIdentifier(database.schema)}`);

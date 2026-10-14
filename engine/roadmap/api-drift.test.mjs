@@ -16,7 +16,6 @@
  */
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
@@ -35,6 +34,7 @@ import { apiDriftIdempotencyKey, enqueueApiDriftRun } from '../jobs/queue.mjs';
 import { JOB_HANDLERS } from '../../cli/keel-worker.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 // A minimal explicit catalog: two mappings the fixture metadata carries, one
 // (widget) the fixture lacks, all under the v1.0 source version.
@@ -355,7 +355,7 @@ after(async () => { await database.cleanup(); });
 
 async function freshSchema() {
   const client = await database.connect();
-  const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema);
   await client.query(schema); // re-application is idempotent and legacy-safe
   return client;
@@ -695,7 +695,7 @@ test('CLI main end-to-end: exit code reflects source health through the real run
 
   // Fresh schema in the shared database: main() needs the task-62 tables.
   const setup = await database.connect();
-  await setup.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await setup.query(schemaSql());
   await setup.end();
 
   assert.equal(await runMain(async () => okResponse(CSDL_V1)), 0, 'a healthy pass exits zero');

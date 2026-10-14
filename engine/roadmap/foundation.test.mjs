@@ -34,6 +34,7 @@ import {
   verifyEvidence,
 } from '../../tools/release/qualification.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const QUALIFICATION_CLI = join(ROOT, 'tools/release/qualification.mjs');
@@ -231,7 +232,7 @@ const setDigestWindow = async (id, startedAt, completedAt) => {
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   // Legacy digest rows keep their exact old reading, with the snapshot run
   // bounds as the observation window and an unknown evidence level.

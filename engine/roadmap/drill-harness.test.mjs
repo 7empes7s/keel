@@ -26,6 +26,7 @@ import {
 } from '../coverage/recoveryReadiness.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const PRODUCTION_URL = 'postgres://keel@db.internal:5432/keel';
 const collector = JSON.parse(readFileSync(new URL('../../tools/rehearsal/fixtures/roundTrip-collector.json', import.meta.url), 'utf8'));
@@ -47,7 +48,7 @@ before(async () => {
   writeFileSync(restorerPath, JSON.stringify(restorer));
   database = await createIsolatedTestDatabase(import.meta.url);
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 });
 
 after(async () => {
@@ -343,7 +344,7 @@ test('an offline pass recorded as evidence never counts as a live recovery', asy
   const fresh = await createIsolatedTestDatabase(import.meta.url);
   const other = await fresh.connect();
   try {
-    await other.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await other.query(schemaSql());
     // A forged "passing" record that is offline but otherwise looks perfect.
     await appendEvidence(other, {
       tenantRef,

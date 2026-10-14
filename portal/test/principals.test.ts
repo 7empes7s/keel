@@ -1,6 +1,5 @@
 import "./next-async-storage";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,6 +10,7 @@ import { guardedPrincipalList, guardedPrincipalWrite, type PrincipalView } from 
 import { resolveIdentity, CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { PrincipalDetails } from "@/components/principal-details";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 
 const id = "00000000-0000-0000-0000-000000000001";
@@ -42,7 +42,7 @@ test("live portal requests see role writes immediately and display the engine ca
   const client = await db.connect();
   const previous = process.env.KEEL_DB_URL;
   try {
-    await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+    await client.query(schemaSql());
     await client.query("INSERT INTO principal(id,email) VALUES ($1,'portal@test')", [id]);
     process.env.KEEL_DB_URL = db.url;
     const deps = { connect: () => db.connect(), databaseUrl: () => db.url, tenantRef: () => "test" };

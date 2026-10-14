@@ -39,6 +39,7 @@ import {
 } from '../../tools/qualification/servicenowLive.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const KEY = 'test-only';
@@ -89,7 +90,7 @@ after(async () => {
   await database.cleanup();
   rmSync(dir, { recursive: true, force: true });
 });
-const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const schema = schemaSql();
 await client.query(schema);
 
 /**

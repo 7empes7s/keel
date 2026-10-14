@@ -9,7 +9,6 @@
 // minimum cadence floor or the current authorization.
 import { strict as assert } from 'node:assert';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole, revokeRole } from '../authz/administration.mjs';
@@ -25,6 +24,7 @@ import { collectionCostMetrics, graphRequestObservation } from '../telemetry/eve
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { tick } from '../../cli/keel-scheduler.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const PATH = new Map(CATALOG.map((entry) => [entry.type, entry.path]));
 
@@ -128,7 +128,7 @@ async function insertRun(client, { tenantRef, tier, kind = 'collect', finishedAt
 async function fixture(t, name) {
   const client = await database.connect();
   t.after(() => client.end());
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = tenantRefOf(`${name}-${randomUUID()}`);
   await seedSchedules(client, { tenantRef, now: NOW });
   const person = async (email, role) => {

@@ -18,6 +18,7 @@ import { visibleNavEntries, visibleNavLinks } from "@/components/nav-links";
 import { getIncidentRecoveryData, type IncidentDetail } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // ------------------------------------------------------------------ rendering
 
@@ -156,7 +157,7 @@ before(async () => {
   }
   database = (await createIsolatedTestDatabase(import.meta.url)) as typeof database;
   client = await database.connect();
-  await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query(schemaSql());
   const dir = mkdtempSync(join(tmpdir(), "keel-portal-incident-test-"));
   writeFileSync(join(dir, "tenant.json"), JSON.stringify({ tenantId: "task-71-incident-portal-test" }));
   process.env.KEEL_DB_URL = database.url;

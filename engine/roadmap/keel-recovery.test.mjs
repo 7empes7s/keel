@@ -57,6 +57,7 @@ import {
 } from '../../tools/recovery/reconstruct.mjs';
 import { signRecoveryAssertion } from '../../tools/recovery/recovery-assertion.mjs';
 import { copyColumnNames, decodeCopyField, DumpImportError, importDump, parseDump } from '../../tools/recovery/dumpImport.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const source = await createIsolatedTestDatabase(`${import.meta.url}#source`);
 const tmp = mkdtempSync(join(tmpdir(), 'keel-recovery-'));
@@ -120,7 +121,7 @@ async function renderDumpSql(client, { corruptEvidenceHash = false, omitTables =
 /** Populates the source tenant history: schedules, approvals, grants, evidence. */
 async function buildSourceFixture() {
   sourceClient = await source.connect();
-  await sourceClient.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await sourceClient.query(schemaSql());
 
   // Grants: an operator (requester) and an approver.
   const { rows: [requester] } = await sourceClient.query(
@@ -522,7 +523,7 @@ test('every table KEEL creates at runtime is created by a reconstruction runtime
   const target = await newTarget();
   const client = await target.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     for (const migrate of RUNTIME_MIGRATIONS) await migrate(client);
     const { rows } = await client.query(`SELECT tablename FROM pg_tables WHERE schemaname = current_schema()`);
     const present = new Set(rows.map((row) => row.tablename));

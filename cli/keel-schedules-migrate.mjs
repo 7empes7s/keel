@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One-time migration, run by the orchestrator against the configured local store.
-// Apply schema.sql first. No service units are changed or restarted.
+// Apply the schema first (node engine/store/loadSchema.mjs | psql). No service units are changed or restarted.
 //
 // node keel-schedules-migrate.mjs --tenant-ref REF [--kinds collect,api-drift]
 // --kinds seeds only those job kinds; re-running with more kinds adds the rest and keeps

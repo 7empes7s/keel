@@ -11,7 +11,6 @@
  */
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { readFileSync } from 'node:fs';
 
 import {
   CAPABILITY_CONTRACT_VERSION, CLAIM_LEVELS, CREDENTIAL_MODES, OPERATIONS,
@@ -27,6 +26,7 @@ import { buildCoverageReport } from '../coverage/report.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const REGISTERED = Object.freeze({
   group: ['create', 'update', 'delete', 'restore-soft-deleted'],
@@ -522,7 +522,7 @@ test('buildCoverageReport surfaces evidence-backed writeCapability per type, ind
   let client;
   try {
     client = await database.connect();
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const tenantRef = 'sha256:capability-report-test';
     const reader = { async collect() { return { items: [], error: null }; } };
     await collectSnapshot(client, { reader, tenantRef, tenantId: 'fixture-tenant' });

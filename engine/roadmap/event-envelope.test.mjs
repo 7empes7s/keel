@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defineEvent, envelopeForEvidence, envelopeForDrift, envelopeForJob, jobCorrelationId, sourceSequenceGaps, structuredEventLine } from '../telemetry/events.mjs';
@@ -8,6 +8,7 @@ import { appendEvidence, verifyChain } from '../govern/evidence.mjs';
 import { enqueue, claimNext, resetOrphaned, emitJobEvent } from '../jobs/queue.mjs';
 import { runJob } from '../../cli/keel-worker.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 const instant = '2026-09-15T10:00:00.000Z';
 const base = { tenantRef: 'fixture', eventType: 'fixture.observed', source: { component: 'fixture' }, correlationId: 'fixture:1', sourceSequence: 1, observedAt: instant };
 
@@ -96,7 +97,7 @@ test('real queue retry, worker authorization and durable evidence correlation', 
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const queued = await enqueue(client, { kind: 'collect', params: { tenantRef: 'fixture' }, requestedBy: 'missing', idempotencyKey: 'once' });
     assert.equal((await enqueue(client, { kind: 'collect', requestedBy: 'missing', idempotencyKey: 'once' })).id, queued.id);
     const first = await claimNext(client, { workerId: 'fixture-worker' });
@@ -145,7 +146,7 @@ test('claimNext emits job.claimed through the sink, and only when it actually cl
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const emptyQueueEvents = [];
     assert.equal(
       await claimNext(client, { workerId: 'fixture-worker', eventSink: e => emptyQueueEvents.push(e) }),
@@ -167,7 +168,7 @@ test('runJob emits job.running through the sink, and only once execution actuall
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     // A job that fails before dispatch — here its requester resolves to no
     // principal — must not claim to be running: only job.failed is emitted.
     await enqueue(client, { kind: 'collect', params: { tenantRef: 'fixture' }, requestedBy: 'missing' });
@@ -208,7 +209,7 @@ test('a throwing event sink cannot roll back or hide already-committed evidence'
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const throwingSink = () => { throw new Error('sink boom'); };
     const record = await appendEvidence(client, {
       tenantRef: 'fixture', kind: 'fixture', subject: {}, actor: 'fixture', eventSink: throwingSink,
@@ -229,7 +230,7 @@ test('secret-bearing job failure is redacted in the stored error, console output
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   try {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     const { rows: [admin] } = await client.query("INSERT INTO principal (email) VALUES ('fail-redact@example.invalid') RETURNING *");
     await client.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'operator')", [admin.id]);
     await enqueue(client, { kind: 'collect', params: { tenantRef: 'fixture' }, requestedBy: admin.id });

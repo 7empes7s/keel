@@ -130,13 +130,13 @@ export async function resolveKeyMetadata({ file, flags = {}, readFileFn = readFi
 /**
  * The build revision and the schema pin of the deployed checkout. The schema
  * pin is derived exactly as the verifiers derive theirs (currentSchemaPin:
- * sha256 of engine/store/schema.sql), from the checkout's own schema file. An
+ * sha256 of the full schema from engine/store/loadSchema.mjs), from the checkout's own schema files. An
  * explicit --build must agree with the checkout when the checkout is a git
  * repository: a pin from one build recorded against another is refused.
  */
 const quietGit = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
-export async function resolveBuild({ build, checkout = REPO_ROOT, execFn = quietGit, readFileFn = readFile }) {
+export async function resolveBuild({ build, checkout = REPO_ROOT, execFn = quietGit }) {
   const head = currentBuildRevision({ repoPath: checkout, execFn });
   if (build !== undefined) {
     if (typeof build !== 'string' || !/^\S+$/.test(build)) throw new Error('--build must be a single revision token');
@@ -148,10 +148,11 @@ export async function resolveBuild({ build, checkout = REPO_ROOT, execFn = quiet
   }
   const revision = build ?? head;
   if (!revision) throw new Error(`no build revision: ${checkout} is not a git checkout and --build was not given`);
-  const schemaPath = join(resolve(checkout), 'engine', 'store', 'schema.sql');
+  const storeDir = join(resolve(checkout), 'engine', 'store');
+  const schemaPath = join(storeDir, 'schema.sql');
   let schemaPin;
   try {
-    schemaPin = await currentSchemaPin({ readFileFn: () => readFileFn(schemaPath) });
+    schemaPin = await currentSchemaPin({ storeDir });
   } catch {
     throw new Error(`cannot read the schema to pin at ${schemaPath}`);
   }

@@ -14,6 +14,7 @@ import { intentStateSentence } from "@/components/change-intent";
 import { changeIntentsVerdict, type ChangeIntent } from "@/lib/change-intents-view";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Roadmap task-93: the approved emergency change routes. Approving, revoking and reading
 // require a central approve grant; the engine re-checks the approver and refuses an
@@ -35,7 +36,7 @@ before(async () => {
   }
   database = await createIsolatedTestDatabase(import.meta.url) as typeof database;
   client = await database.connect();
-  await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query(schemaSql());
   const directory = mkdtempSync(join(tmpdir(), "keel-portal-change-intent-"));
   writeFileSync(join(directory, "tenant.json"), JSON.stringify({ tenantId: "task-93-change-intent-test" }));
   process.env.KEEL_DB_URL = database.url;

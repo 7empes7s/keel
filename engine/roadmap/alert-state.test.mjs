@@ -12,7 +12,6 @@
 //  - apply a stale resolution to a newer occurrence.
 import { strict as assert } from 'node:assert';
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -24,6 +23,7 @@ import {
 } from '../notify/alerts.mjs';
 import { createChannel, createSubscription } from '../notify/notifications.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const exec = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -36,7 +36,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

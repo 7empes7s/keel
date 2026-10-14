@@ -1,6 +1,5 @@
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import {
   APPROVAL_DECISION_EVIDENCE_KIND,
   APPROVAL_REQUEST_EVIDENCE_KIND,
@@ -22,13 +21,14 @@ import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
 import { createSnapshot } from '../store/db.mjs';
 import { verifyChain } from './evidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
   const tenantRef = 'sha256:approvals-test';
   // Gap B11: a request's requester must resolve to an enabled principal.

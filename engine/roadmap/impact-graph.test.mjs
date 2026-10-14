@@ -11,7 +11,6 @@
  * - Label stale graph exact.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
@@ -20,6 +19,7 @@ import {
 import { collectRelationships, recordRelationships, loadRelationshipState } from '../collect/relationships.mjs';
 import { createSnapshot, completeSnapshot } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -247,7 +247,7 @@ test('assessDeletePlan refuses a live dependent the plan neither deletes nor rew
 test('edges recorded by the relationship store feed the impact graph', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:impact-int';
   const GID = '11111111-1111-1111-1111-111111111111';
   const UID = 'aaaaaaaa-0000-0000-0000-000000000001';

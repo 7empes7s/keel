@@ -12,6 +12,7 @@ import { remediationSelection } from "@/lib/remediation-preview";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { POST } from "@/app/api/actions/remediate/selection/route";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 interface Client {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -91,7 +92,7 @@ before(async () => {
   }
   database = await createIsolatedTestDatabase(import.meta.url) as Database;
   client = await database.connect();
-  await client.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+  await client.query(schemaSql());
   await client.query("INSERT INTO principal (id, email) VALUES ($1, 'operator@remediation-preview.test')", [OPERATOR]);
   const snapshot = (await client.query("INSERT INTO snapshot (tenant_ref, status) VALUES ($1, 'complete') RETURNING id", [tenant])).rows[0].id;
   const baseline = (await client.query("INSERT INTO baseline (tenant_ref, set_by) VALUES ($1, 'test') RETURNING id", [tenant])).rows[0].id;

@@ -15,7 +15,6 @@
  * - Create a compliance policy without its actions for noncompliance.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { fakeGraph, runFixtureHarness } from '../../tools/qualification/operations.mjs';
@@ -38,6 +37,7 @@ import {
 import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
 import { planWaves } from '../restore/wavePlanner.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const PROOF = 'engine/roadmap/intune-restore.test.mjs';
@@ -252,7 +252,7 @@ after(async () => { await database.cleanup(); });
 test('a backup records each policy\'s assignments with group, filter and kind, ready for restore', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:intune-backup';
   const reader = {
     async collect(version, path) {

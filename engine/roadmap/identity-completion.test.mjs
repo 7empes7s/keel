@@ -10,7 +10,6 @@
  * - Persist supplied secret value.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole, revokeRole, disablePrincipal } from '../authz/administration.mjs';
@@ -23,6 +22,7 @@ import { createSnapshot, completeSnapshot, insertResourceVersion } from '../stor
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -36,7 +36,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+    await client.query(schemaSql());
     schemaReady = true;
   }
   return client;

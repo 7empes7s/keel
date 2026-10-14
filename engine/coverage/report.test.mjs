@@ -1,11 +1,11 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { getResourceVersions } from '../store/db.mjs';
 import { buildCoverageReport } from './report.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
@@ -22,7 +22,7 @@ const reader = {
 
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   // Exercise the actual collector -> persistence -> report path. Most types
   // are completed empty reads; one fails, and a distinct type is then omitted
   // from the persisted digest to model silence (e.g. an older collector).

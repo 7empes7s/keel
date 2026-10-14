@@ -9,7 +9,6 @@
  * - Rewrite unavailable outcome to complete-empty.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { GraphReader, redactSecrets } from '../../tools/tenant-probe/graph.mjs';
@@ -23,6 +22,7 @@ import { readObservation } from '../contracts/observation.mjs';
 import { isEligibleBaselineSource } from '../govern/baseline.mjs';
 import { main as collectMain, runCollect } from '../../cli/keel-collect.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 // The well-known jwt.io example token: structurally a JWT, not a credential.
 const JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c';
@@ -324,7 +324,7 @@ after(async () => { await database.cleanup(); });
 test('structured outcomes persist, report and never shadow older evidence', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:outcomes-test';
   const reader = {
     async collect(version, path) {
@@ -432,7 +432,7 @@ test('structured outcomes persist, report and never shadow older evidence', asyn
 test('legacy digests remain readable without inventing evidence', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:outcomes-legacy';
   await client.query(
     `INSERT INTO snapshot (tenant_ref, started_at, completed_at, status, coverage_digest)

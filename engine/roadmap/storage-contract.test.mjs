@@ -12,7 +12,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { appendFile, chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -43,6 +43,7 @@ import { completeSnapshot, createSnapshot, insertResourceVersion } from '../stor
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import { runCli, writeDumpManifest } from '../../ops/keel-dump-manifest.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const tmp = mkdtempSync(join(tmpdir(), 'keel-storage-contract-'));
@@ -50,7 +51,7 @@ let client;
 
 before(async () => {
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 });
 
 after(async () => {

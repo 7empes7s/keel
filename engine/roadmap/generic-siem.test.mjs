@@ -7,7 +7,6 @@
 // steer delivery, and a receiver that never confirms acceptance.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import dgram from 'node:dgram';
 
 import { defineEvent } from '../telemetry/events.mjs';
@@ -40,8 +39,9 @@ import {
 } from '../telemetry/outbox.mjs';
 import { SIEM_ADAPTERS } from '../../cli/keel-worker.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
-const SCHEMA = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+const SCHEMA = schemaSql();
 const T0 = '2026-09-15T10:00:00.000Z';
 const NOW = new Date(Date.now() + 60 * 1000);
 

@@ -10,7 +10,6 @@
  * - Leak diagnosis into raw complete status.
  */
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import {
@@ -23,6 +22,7 @@ import { assertTenantRef, tenantRefFor } from '../store/tenantRef.mjs';
 import { CATALOG, catalogEntryFor } from '../../tools/tenant-probe/catalog.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const TENANT = 'sha256:diagnosis-test';
 const NOW = new Date('2026-09-22T12:00:00.000Z');
@@ -405,7 +405,7 @@ const structured = (outcome, extra = {}) => ({
 test('report: a failed PIM read is diagnosed missing-license from SKU payloads, raw outcome untouched', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-report';
   await seedSnapshot(client, {
     tenantRef,
@@ -461,7 +461,7 @@ test('report: a failed PIM read is diagnosed missing-license from SKU payloads, 
 test('report: missing-scope and missing-role are diagnosed from consent and role payloads', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-scope-role';
   await seedSnapshot(client, {
     tenantRef,
@@ -510,7 +510,7 @@ test('report: missing-scope and missing-role are diagnosed from consent and role
 test('report: a newer failed SKU read supersedes the older successful payloads', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-supersede';
 
   // Older run: SKU read succeeded and the plan was missing — payloads that
@@ -563,7 +563,7 @@ test('report: a newer failed SKU read supersedes the older successful payloads',
 test('report: legacy digests stay readable — failed entries read unknown, nothing invented', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-legacy';
   await client.query(
     `INSERT INTO snapshot (tenant_ref, started_at, completed_at, status, coverage_digest)
@@ -604,7 +604,7 @@ test('report: legacy digests stay readable — failed entries read unknown, noth
 test('report: an ambiguous 403 with all prerequisites satisfied stays unknown', async (t) => {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-ambiguous';
   await seedSnapshot(client, {
     tenantRef,
@@ -647,7 +647,7 @@ test('report: diagnosis is failed-only — never-collected and not-covered entri
   // non-covered shapes beside a genuinely failed, diagnosable entry.
   const client = await database.connect();
   t.after(async () => { await client.end(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const tenantRef = 'sha256:diagnosis-trigger';
   await seedSnapshot(client, {
     tenantRef,

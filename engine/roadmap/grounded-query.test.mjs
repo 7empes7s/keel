@@ -26,6 +26,7 @@ import { ANSWER_VERSION, TEMPLATE_INTENTS, answerQuestion, executePlan, readOnly
 import { BUDGET, INTENTS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -39,7 +40,7 @@ async function schemaClient(t) {
   const client = await database.connect();
   t.after(async () => { await client.end(); });
   if (!schemaReady) {
-    const schema = readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8');
+    const schema = schemaSql();
     await client.query(schema);
     await client.query(schema); // retry-safe
     schemaReady = true;

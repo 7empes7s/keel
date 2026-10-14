@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { publishCheckpoint } from "../../engine/govern/anchor.mjs";
 import { createLocalStorageAdapter } from "../../engine/storage/local.mjs";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -16,6 +15,7 @@ import { ChainIndicator, EvidenceTimeline } from "@/components/evidence-timeline
 import { GET as listRoute } from "@/app/api/evidence/route";
 import { GET as verifyRoute } from "@/app/api/evidence/verify/route";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 function request(query = "", capabilities = "read") {
   return new Request(`http://localhost/api/evidence${query}`, { headers: {
@@ -50,7 +50,7 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     authorize: async () => true, signer: (bytes: Buffer) => sign(null, bytes, key.privateKey), checkpointRef: "" };
   const verify = guardedEvidenceVerify(deps, async () => options);
   try {
-    await fixture.query(readFileSync(new URL("../../engine/store/schema.sql", import.meta.url), "utf8"));
+    await fixture.query(schemaSql());
     for (let index = 0; index < 5; index++) {
       await appendEvidence(fixture, { tenantRef: tenant, kind: index === 0 ? "action-attempt" : "policy-evaluation", subject: { index, decision: "<safe>" }, actor: "operator" });
     }

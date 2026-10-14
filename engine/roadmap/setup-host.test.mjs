@@ -4,7 +4,7 @@
  * Nothing here is live evidence.
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -19,6 +19,7 @@ import { createGraphSetupHost, parseSetupOperations } from '../bootstrap/graphHo
 import {
   COLLECTOR_APP_ID, OPERATOR_ID, RESTORER_APP_ID, TENANT_ID, fakeGetToken, fixtureTenant, installFixtureGraph, writesIn,
 } from '../test/setupGraphFixture.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const tenantRef = 'sha256:setup-host-fixture';
 const missingKillSwitch = join(tmpdir(), 'keel-setup-host-no-kill-switch');
@@ -45,7 +46,7 @@ async function database(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const { rows: [owner] } = await client.query("INSERT INTO principal(email, display_name) VALUES ('owner@example.test', 'Setup Owner') RETURNING *");
   await client.query("INSERT INTO role_grant(principal_id, role, granted_by, reason) VALUES ($1, 'admin', 'fixture', 'fixture'), ($1, 'approver', 'fixture', 'fixture')", [owner.id]);
   await migrateBootstrapJournal(client);

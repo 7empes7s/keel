@@ -1,12 +1,12 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { initialSchedules, seedSchedules } from './scheduleSeed.mjs';
+import { schemaSql } from './loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const client = await database.connect();
 try {
-  const schema = readFileSync(new URL('./schema.sql', import.meta.url), 'utf8');
+  const schema = schemaSql();
   await client.query(schema);
   await client.query(schema); // schema re-application must preserve existing tables
   // Exercise the actual index independently of the seed's ON CONFLICT inference.

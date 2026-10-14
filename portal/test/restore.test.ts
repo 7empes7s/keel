@@ -13,6 +13,7 @@ import { GET as dryRunArtifactRoute } from "@/app/api/actions/restore/dry-run/[i
 import { POST as selectionPreviewRoute } from "@/app/api/actions/restore/selection/route";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Global constraint 6: the isolated schema is created only from KEEL_DB_TEST_URL.
 // KEEL_DB_URL below is a process-local route override pointing at that isolated test
@@ -52,10 +53,7 @@ before(async () => {
   database = (await createIsolatedTestDatabase(import.meta.url)) as IsolatedDatabase;
   const admin = await database.connect();
   try {
-    const schema = readFileSync(
-      new URL("../../engine/store/schema.sql", import.meta.url),
-      "utf8",
-    );
+    const schema = schemaSql();
     await admin.query(schema);
   } finally {
     await admin.end();

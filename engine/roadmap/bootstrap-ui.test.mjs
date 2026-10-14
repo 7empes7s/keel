@@ -5,7 +5,7 @@
  * call is made and nothing here is live evidence.
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -18,6 +18,7 @@ import { approveBootstrapPlan, executeBootstrap } from '../bootstrap/execute.mjs
 import {
   firstCollectReadiness, loadSetupState, selectWorkloads, stepProgress, workloadsForScope,
 } from '../bootstrap/onboarding.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const tenantRef = 'sha256:bootstrap-ui-fixture';
 const credentials = {
@@ -61,7 +62,7 @@ async function database(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   t.after(async () => { await client.end(); await db.cleanup(); });
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const { rows: [owner] } = await client.query("INSERT INTO principal(email, display_name) VALUES ('owner@example.test', 'Setup Owner') RETURNING *");
   await client.query("INSERT INTO role_grant(principal_id, role, granted_by, reason) VALUES ($1, 'admin', 'fixture', 'fixture'), ($1, 'approver', 'fixture', 'fixture')", [owner.id]);
   return { db, client, owner };

@@ -7,6 +7,7 @@ import { JOB_KIND_CAPABILITIES } from '../engine/authz/jobCapabilities.mjs';
 import {
   isProcessGroupAlive, JOB_HANDLERS, JOB_TIMEOUT_MS, runJob, signalProcessGroup, startJobChild,
 } from './keel-worker.mjs';
+import { schemaSql as loadSchemaSql } from '../engine/store/loadSchema.mjs';
 
 function acceptedJobKindsFromSchema(schema) {
   const match = schema.match(
@@ -29,7 +30,7 @@ function assertSchemaJobKindCoverage(schema, handlers, capabilities) {
   }
 }
 
-const schemaSql = readFileSync(new URL('../engine/store/schema.sql', import.meta.url), 'utf8');
+const schemaSql = loadSchemaSql();
 
 const fixtureDir = mkdtempSync(join(tmpdir(), 'keel-worker-test-'));
 const grandchildPidPath = join(fixtureDir, 'grandchild.pid');

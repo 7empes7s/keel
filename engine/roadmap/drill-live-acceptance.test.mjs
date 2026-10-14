@@ -31,6 +31,7 @@ import { buildDrillManifest, runBoundedDrill, validateDrillPlan } from '../../to
 import { tenantRefFor } from '../../tools/rehearsal/roundTrip.mjs';
 import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const KEY = 'test-only-drill-key';
@@ -185,7 +186,7 @@ before(async () => {
   writeFileSync(restorerPath, JSON.stringify(restorer));
   database = await createIsolatedTestDatabase(import.meta.url);
   client = await database.connect();
-  await client.query(readFileSync(new URL('../store/schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
   const record = await liveDrill(fakeTenant());
   assert.equal(record.countsAsRecoveryDrill, true, record.error ?? '');
   drillRow = await loadLatestDrillEvidence(client, { tenantRef });

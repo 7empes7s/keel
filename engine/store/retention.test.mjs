@@ -1,9 +1,9 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { createSnapshot, insertResourceVersion } from './db.mjs';
 import { recordDisposition, recordDrift } from './governance.mjs';
 import { isPrunable, listPrunableSnapshots, pruneSnapshots } from './retention.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from './loadSchema.mjs';
 
 const now = new Date('2026-09-04T12:00:00.000Z');
 const policy = { tier1: 7, tier2: 90, tier3: 365 };
@@ -28,7 +28,7 @@ const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
 try {
   client = await database.connect();
-  await client.query(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  await client.query(schemaSql());
 
 const tenantRef = 'sha256:retention-test';
 const expiredIgnoreAt = new Date('2000-01-01T00:00:00.000Z');

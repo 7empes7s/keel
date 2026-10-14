@@ -70,6 +70,7 @@ export function compareSignInPaths(before, after, { intendedSections = [] } = {}
  *  - `snapshot`: the same result snapshotSignInPath() returns.
  *  - `without(ids)`: the snapshot with every collected item whose id is in `ids` left out.
  *  - `holds(id)`: whether a collected item has this id.
+ *  - `itemOf(id)`: a copy of the collected item with this id, or null.
  *  - `usersOf(id, gone)`: what still names this id once `id` and `gone` are left
  *    out (a policy's display name, or the section of the read).
  */
@@ -107,6 +108,8 @@ export async function recordSignInPath(reader, { protectedPrincipalIds }) {
     snapshot,
     without: (ids) => snapshotSignInPath(replay(lower(ids)), { protectedPrincipalIds }),
     holds: (id) => collected().some(({ item }) => idOf(item) === String(id).toLowerCase()),
+    /** The raw collected item with this id, or null. */
+    itemOf: (id) => structuredClone(collected().find(({ item }) => idOf(item) === String(id).toLowerCase())?.item ?? null),
     usersOf(id, gone = []) {
       const needle = String(id).toLowerCase();
       const skip = lower([...gone, id]);

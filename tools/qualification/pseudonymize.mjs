@@ -4,7 +4,8 @@
  * id, app (client) ids, object ids or its SharePoint / onmicrosoft host name.
  *
  * Every GUID becomes a GUID-shaped pseudonym, every security identifier (`S-1-12-1-…`, which
- * encodes the object GUID, and on-premises `S-1-5-21-…`) a SID-shaped one, every immutable id a
+ * encodes the object GUID, and on-premises `S-1-5-21-…`, plus any value of a `securityIdentifier`
+ * or `onPremisesSecurityIdentifier` field whatever its shape) a SID-shaped one, every immutable id a
  * base64-shaped one, and every tenant host prefix (`<prefix>[-my|-admin].sharepoint.com`,
  * `<prefix>.onmicrosoft.com`) a host-shaped one. All are derived from the record's tenantRef,
  * so the same id maps to the same pseudonym in every gate captured for that tenant: equality
@@ -27,8 +28,13 @@ const BASE64_TOKEN = /[A-Za-z0-9+_=-]{40,}/g;
 
 // Security identifiers. A cloud SID (`S-1-12-1-a-b-c-d`) is the object's GUID encoded as four
 // 32-bit words; an on-premises SID (`S-1-5-21-a-b-c[-rid]`) names the domain and the object.
-const CLOUD_SID = /S-1-12-1(?:-\d{1,10}){4}(?!\d)/g;
-const ONPREM_SID = /S-1-5-21(?:-\d{1,10}){3,4}(?!\d)/g;
+// Case-insensitive: Graph writes `S-`, but a lower-cased copy must not slip through either.
+const CLOUD_SID = /S-1-12-1(?:-\d{1,10}){4}(?!\d)/gi;
+const ONPREM_SID = /S-1-5-21(?:-\d{1,10}){3,4}(?!\d)/gi;
+// A security identifier field (an Entra group's `securityIdentifier` encodes its object id) is
+// pseudonymized whole, whatever its shape, so a form the patterns above miss is never published.
+const SID_KEYS = new Set(['securityIdentifier', 'onPremisesSecurityIdentifier']);
+const ANY_SID = /^S(?:-\d+){2,}$/i;
 // An immutable id (`onPremisesImmutableId`) is the base64 of an AD objectGUID's 16 bytes.
 const IMMUTABLE_ID_KEYS = new Set(['onPremisesImmutableId', 'immutableId']);
 const IMMUTABLE_ID = /^[A-Za-z0-9+/]{22}==$/;
@@ -83,7 +89,7 @@ export function pseudonymizer(tenantRef) {
   };
   // An on-premises SID keeps its domain part stable across the domain's objects.
   const onPremSid = (sid) => {
-    const parts = sid.split('-');
+    const parts = sid.toUpperCase().split('-');
     const domain = parts.slice(0, 7).join('-');
     const out = [...words('sid-domain', domain, 3)];
     if (parts.length > 7) out.push(words('sid-rid', sid, 1)[0]);
@@ -93,6 +99,16 @@ export function pseudonymizer(tenantRef) {
     if (typeof value !== 'string' || !IMMUTABLE_ID.test(value)) return value;
     const bytes = Buffer.from(value, 'base64');
     return bytes.length === 16 ? guidToBytes(guid(bytesToGuid(bytes))).toString('base64') : value;
+  };
+  // A value under a security identifier key: a recognized SID maps as above; any other SID
+  // shape becomes a cloud-SID-shaped pseudonym of the whole value.
+  const securityIdentifier = (value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (new RegExp(`^${CLOUD_SID.source}$`, 'i').test(trimmed)) return cloudSid(trimmed);
+    if (new RegExp(`^${ONPREM_SID.source}$`, 'i').test(trimmed)) return onPremSid(trimmed);
+    if (ANY_SID.test(trimmed)) return `S-1-12-1-${words('sid', trimmed, 4).join('-')}`;
+    return text(value);
   };
   const plain = (value) => value.replace(GUID, guid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
   const encoded = (token) => {
@@ -112,11 +128,15 @@ export function pseudonymizer(tenantRef) {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);
     if (value && typeof value === 'object') {
-      return Object.fromEntries(Object.entries(value).map(([key, item]) => [text(key), IMMUTABLE_ID_KEYS.has(key) ? walk(immutableId(item)) : walk(item)]));
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+        if (IMMUTABLE_ID_KEYS.has(key)) return [text(key), walk(immutableId(item))];
+        if (SID_KEYS.has(key) && typeof item === 'string') return [text(key), securityIdentifier(item)];
+        return [text(key), walk(item)];
+      }));
     }
     return value;
   };
-  return { guid, host, cloudSid, onPremSid, immutableId, text, walk };
+  return { guid, host, cloudSid, onPremSid, immutableId, securityIdentifier, text, walk };
 }
 
 /**

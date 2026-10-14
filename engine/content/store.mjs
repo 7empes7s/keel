@@ -222,8 +222,14 @@ export function createContentStore({ index, storage, key, chunking = CHUNKING })
       await storage.publish(name, blob);
     } catch (error) {
       // Publish-once adapters refuse a second write. A chunk published by a run that
-      // died before indexing it is the same plaintext under the same key: keep it.
+      // died before indexing it is the same plaintext under the same key: keep it, but
+      // only once it decrypts to exactly these bytes (a crash can leave a torn file).
       if (!/already published/.test(String(error?.message))) throw error;
+      let held = null;
+      try { held = decryptChunk(keys, id, await storage.read(name)); } catch { held = null; }
+      if (!held?.equals(plaintext)) {
+        throw new Error(`content chunk ${id} is already in storage but does not read back; remove ${name} and run again`);
+      }
     }
     await index.addChunk({ id, keyId: keys.keyId, objectName: name, plainBytes: plaintext.length, storedBytes: blob.length });
     return blob.length;
@@ -289,12 +295,20 @@ export function createContentStore({ index, storage, key, chunking = CHUNKING })
       return Readable.from(plaintext(), { objectMode: false, highWaterMark: 1 });
     },
 
-    async listItems({ container, since, tenantRef, workload, limit = 1000 } = {}) {
+    // `since` is inclusive, so an item stored in that same millisecond is listed again
+    // rather than missed. To page exactly, pass the last item listed as `after`.
+    async listItems({ container, since, after, tenantRef, workload, limit = 1000 } = {}) {
       requireText(container, 'container');
-      const after = since === undefined || since === null ? null : new Date(since);
-      if (after && !Number.isFinite(after.valueOf())) throw new TypeError('since must be a date');
+      const from = since === undefined || since === null ? null : new Date(since);
+      if (from && !Number.isFinite(from.valueOf())) throw new TypeError('since must be a date');
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000) throw new TypeError('limit must be 1..10000');
-      return (await index.listItems({ container, since: after, tenantRef, workload, limit })).map(publicItem);
+      let cursor = null;
+      if (after !== undefined && after !== null) {
+        const createdAt = new Date(after.createdAt);
+        if (!Number.isFinite(createdAt.valueOf())) throw new TypeError('after must be an item from listItems');
+        cursor = { createdAt, id: idFromRef(after.ref) };
+      }
+      return (await index.listItems({ container, since: from, after: cursor, tenantRef, workload, limit })).map(publicItem);
     },
   });
 }

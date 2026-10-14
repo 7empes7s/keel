@@ -47,6 +47,9 @@ export const JOB_TIMEOUT_MS = Object.freeze({
   default: 30 * 60 * 1000,
   restore: 6 * 60 * 60 * 1000,
   remediate: 6 * 60 * 60 * 1000,
+  // Wave 1 CONT: a night's content delta (mail, files, sites) streams through throttled
+  // Graph reads; the run resumes from its delta state, so the ceiling only bounds a hang.
+  'content-collect': 6 * 60 * 60 * 1000,
 });
 const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
 const PROCESS_GROUP_POLL_MS = 25;
@@ -292,6 +295,25 @@ export const JOB_HANDLERS = {
       }
       const args = ['run'];
       if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
+      if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
+      if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
+      return args;
+    },
+  },
+  // Wave 1 CONT: scheduled content backup as the content-reader identity. Read-only: the
+  // script reads through a GET-only Graph transport and writes encrypted chunks and the
+  // item index. Params can only point it at operator-written files under /etc/keel;
+  // tenantRef is what the scheduler sends and is checked against the config.
+  'content-collect': {
+    script: join(__dirname, 'keel-content-collect.mjs'),
+    argsFor(params = {}) {
+      if (params === null || typeof params !== 'object' || Array.isArray(params)
+          || Object.keys(params).some((key) => !['config', 'reader', 'scope', 'tenantRef'].includes(key))) {
+        throw new Error('content-collect params may contain only config, reader, scope and tenantRef');
+      }
+      const args = ['run'];
+      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
+      if (params.reader !== undefined) args.push('--reader', requireString(params.reader, 'params.reader'));
       if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       return args;

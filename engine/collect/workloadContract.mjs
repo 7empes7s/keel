@@ -47,6 +47,10 @@ export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-te
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
 export const PAGING = Object.freeze(['none', 'odata-nextLink', 'cmdlet-unbounded']);
 export const LIVE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// Wave 1 CONT: the separate identity that backs up content (mail, files, list items,
+// pages, Teams and Planner). Rule 1 still holds for every configuration workload; only
+// a read made as this identity may address content, and it is still read-only.
+export const CONTENT_READER_IDENTITY = 'content-reader';
 
 const GRAPH = 'https://graph.microsoft.com';
 const LEARN = 'https://learn.microsoft.com';
@@ -327,8 +331,14 @@ function graphSegments(endpoint) {
   return { segments, expanded };
 }
 
-/** Why an endpoint or cmdlet is outside configuration scope; empty when it is in scope. */
-export function scopeProblems(operation) {
+/**
+ * Why an endpoint or cmdlet is outside configuration scope; empty when it is in scope.
+ * `identity: 'content-reader'` lifts the content exclusion and nothing else: a read
+ * verb is still required, and no configuration workload descriptor can claim it.
+ */
+export function scopeProblems(operation, { identity = null } = {}) {
+  if (identity !== null && identity !== CONTENT_READER_IDENTITY) return [`unknown read identity ${identity}`];
+  const contentReader = identity === CONTENT_READER_IDENTITY;
   const problems = [];
   if (operation?.kind === 'graph') {
     if (operation.method !== 'GET') problems.push(`${operation.method} is not a read`);
@@ -343,11 +353,11 @@ export function scopeProblems(operation) {
     const sitePermissions = segments.length === 3 && segments[0] === 'sites' && segments[2] === 'permissions';
     const content = [...segments, ...expanded]
       .filter((segment, index) => CONTENT_SEGMENTS.has(segment) && !(sitePermissions && index === 2));
-    if (content.length) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
+    if (content.length && !contentReader) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
   } else if (operation?.kind === 'cmdlet') {
     const [verb, noun = ''] = String(operation.cmdlet ?? '').split('-');
     if (verb !== 'Get') problems.push(`${operation.cmdlet} is not a read cmdlet`);
-    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun)) problems.push(`${operation.cmdlet} reads content, not configuration`);
+    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun) && !contentReader) problems.push(`${operation.cmdlet} reads content, not configuration`);
   } else {
     problems.push('operation must be a Graph endpoint or a cmdlet');
   }

@@ -2241,8 +2241,8 @@ item that needs it stays untouched.
 
 ### Q48: Rerun the Q45–Q47 failures after the 2026-10-14 fixes
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: Started 2026-10-14 12:25 UTC. Step 0: live build cd61e29 = origin/master; #207 #209 #211 #212 #213 #215 #216 #218 #219 #222 all live; no deploy reset needed.
 - Needs: Q47 done or blocked. A live build containing #207 (capture tool), #209 (demotion records), #212 (verification
   ignores server-managed fields), #213 (assignment target ordering), #215 (workload proof build), #216 (update body
   @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and

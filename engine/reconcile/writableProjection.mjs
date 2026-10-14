@@ -67,6 +67,43 @@ function withoutServerOwned(value, resourceType, path) {
 }
 
 /**
+ * What post-write verification compares, on both sides: the desired body and
+ * the object Graph reads back. Uses the same fieldClass() as the hash and the
+ * write bodies, recursively, and additionally drops:
+ *   - every OData annotation at any depth, including a property annotation
+ *     such as `authenticationStrength@odata.context` (Graph returns one that
+ *     embeds the object's own id, so a created object can never match the
+ *     snapshot on it);
+ *   - null values at any depth: a read without $select returns uncaptured
+ *     properties as null, and for a write a null property is an unset one.
+ * Server-owned fields (`id`, `createdDateTime`, a group's `securityIdentifier`,
+ * `expirationDateTime`, ...) are gone; immutable and writable fields stay, so
+ * a real mismatch of a written value still fails verification. Not used for
+ * hashing: stored payload hashes are unchanged.
+ */
+export function verificationView(value, resourceType) {
+  fieldClass('', resourceType);
+  return toVerificationView(value, resourceType, '');
+}
+
+function toVerificationView(value, resourceType, path) {
+  if (Array.isArray(value)) {
+    return value.map((item) => toVerificationView(item, resourceType, path));
+  }
+  if (value && typeof value === 'object') {
+    const view = {};
+    for (const key of Object.keys(value)) {
+      if (value[key] === null || value[key] === undefined || key.includes('@odata.')) continue;
+      const dottedPath = path ? `${path}.${key}` : key;
+      if (fieldClass(dottedPath, resourceType) === 'serverOwned') continue;
+      view[key] = toVerificationView(value[key], resourceType, dottedPath);
+    }
+    return view;
+  }
+  return value;
+}
+
+/**
  * Top-level fields of `payload` that a reviewed type's known-field list does
  * not name — excluded from writableProjection's output above and surfaced
  * here so a caller can flag them for review instead of the field silently

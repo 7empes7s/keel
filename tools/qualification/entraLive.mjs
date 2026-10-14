@@ -112,6 +112,27 @@ function journalIdentity(entry, { enforcement }) {
 
 const matchesFixture = (entry, fixture) => entry.naturalKey === fixture || String(entry.naturalKey).startsWith(`edge:${fixture}|`);
 
+/**
+ * Q45 (live run 2026-10-13): a tenant whose GET /organization/{id}/branding
+ * answers 404 keeps its default branding only as language '0' (Graph's id for
+ * the default branding). Keel backs it up and restores it at
+ * /branding/localizations/0 and journals it under that language. That write is
+ * the default-branding update, so it is captured for organizationalBranding
+ * too; the capture log keeps the type and key it was journaled under.
+ */
+const DEFAULT_BRANDING_LANGUAGE_KEY = 'organizationalBrandingLocalization:0';
+const DEFAULT_BRANDING_FIXTURES = Object.freeze(['organizationalBranding', 'organizationalBranding:organizationalBranding']);
+const isDefaultBrandingLanguage = (entry) => entry.resourceType === 'organizationalBrandingLocalization'
+  && entry.naturalKey === DEFAULT_BRANDING_LANGUAGE_KEY;
+
+/** Whether a journal entry is the write this capture asks for. */
+function isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }) {
+  const identity = journalIdentity(entry, { enforcement });
+  if (identity.operation !== operation) return false;
+  if (identity.key === resourceType && matchesFixture(entry, fixture)) return true;
+  return resourceType === 'organizationalBranding' && isDefaultBrandingLanguage(entry) && DEFAULT_BRANDING_FIXTURES.includes(fixture);
+}
+
 const namesOf = (state) => (state && typeof state === 'object'
   ? NAME_FIELDS.map((field) => state[field]).filter((value) => typeof value === 'string')
   : []);
@@ -258,11 +279,7 @@ export async function captureLive({
 
   const guidance = guidanceFor(resourceType);
   const entries = (await getJournal(client, { restoreRef }))
-    .filter((entry) => matchesFixture(entry, fixture))
-    .filter((entry) => {
-      const identity = journalIdentity(entry, { enforcement });
-      return identity.key === resourceType && identity.operation === operation;
-    });
+    .filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
   if (entries.length === 0) {
     return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}${await brandingFileHint(client, { restoreRef, resourceType, getJournal })}` };
   }

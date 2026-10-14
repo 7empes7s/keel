@@ -162,7 +162,7 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',
     drift: 'change its sign-in page text; write the original text down first',
-    note: 'If the tenant has no branding, Graph answers 404 and there is nothing to update: report this step as blocked.',
+    note: 'If GET /organization/{id}/branding answers 404 but the tenant has language 0, that language is the default branding: back it up, drift and restore it, and capture with --fixture organizationalBranding. If there is no language 0 either, there is nothing to update: report this step as blocked.',
   },
   organizationalBrandingLocalization: {
     kind: 'tenant-setting', fixture: 'one existing branding localization; if there is none, add fr-FR with sign-in page text KEEL-RT-148 before the snapshot',

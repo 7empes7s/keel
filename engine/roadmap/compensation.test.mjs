@@ -309,7 +309,8 @@ async function failedForwardRun(client) {
   graph.write = async (version, path, request) => (path === '/groups/ops-id' && request.method === 'PATCH'
     ? { ok: false, status: 400, body: { error: { code: 'Request_BadRequest' } } }
     : write(version, path, request));
-  await assert.rejects(promote(forwardId, graph), /wave had failures/);
+  // Q45: the error that stops the run names each failure and its reason.
+  await assert.rejects(promote(forwardId, graph), /wave had failures .*: group:ops: \{"error":\{"code":"Request_BadRequest"\}\}$/);
   graph.write = write;
   assert.equal(graph.objects.get('/groups/board-id').displayName, 'Board (restored)');
   assert.equal(graph.objects.get('/groups/ops-id').displayName, 'Ops');

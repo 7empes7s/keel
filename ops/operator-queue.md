@@ -2204,8 +2204,8 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error) / waiting (PR not live), and every tenant setting read back as original.
 ### Q47: Turn on scheduled workload backups and the portal's live-record check
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: Started 2026-10-14 09:35 UTC at live build 2b9d310 (#200, #201, #202 live).
 - Needs: a live build containing PRs #200 (portal live records), #201 (workload schedule) and #202 (scheduler api-drift fix).
   Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; do only the parts whose PR is live.
 - **No tenant writes.** Everything here is host setup and read-only collection.

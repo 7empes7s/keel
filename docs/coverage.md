@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 55 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 49 are restored by hand from the backup.
+KEEL tracks 91 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 70 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 64 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -42,6 +42,18 @@ KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it 
 | Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Lifecycle workflow settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Custom security attribute sets | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access package catalogs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access package policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Access package assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Entitlement management settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Terms of use | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Guest sign-up user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -85,12 +97,45 @@ KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it 
 - **Access reviews** (not built yet). The history and decisions of past reviews cannot be recreated by anyone. Only the review setup could be, and KEEL has not built that yet.
   - *Not brought back:* past reviews and their decisions (no tool can write it).
   - *You do:* Recreate the review in the Entra admin center using the setup in the backup. Keep the backup as the record of past decisions.
-- **Access packages** (not built yet). An access package depends on catalogs, policies and resource roles that KEEL does not back up yet.
-  - *Not brought back:* its catalog, assignment policies and resource roles (stored separately and not in the backup yet); who holds the package now (no tool can write it).
+- **Access packages** (not built yet). An access package depends on its catalog, policies and resource roles. The resource roles are not backed up yet.
+  - *Not brought back:* its resource roles (stored separately and not in the backup yet).
   - *You do:* Recreate the package in Entra ID Governance using the backup as a guide, starting with its catalog.
 - **Connected organizations** (not built yet). These point to other organizations' tenants, which KEEL cannot check from yours.
   - *Not brought back:* internal and external sponsors (stored separately and not in the backup yet).
   - *You do:* Recreate them by hand in Entra ID Governance using the backup.
+- **Lifecycle workflows** (not built yet). A workflow can disable or delete accounts on its own schedule. KEEL has not built a check that a restored workflow cannot run against the wrong people.
+  - *Not brought back:* run history and the users each run processed (no tool can write it).
+  - *You do:* Recreate the workflow and its tasks in Entra ID Governance using the backup, and keep it off until you have checked who it applies to.
+- **Lifecycle workflow extensions** (not built yet). An extension calls a Logic App in an Azure subscription, which KEEL cannot check from your tenant.
+  - *Not brought back:* the Logic App it calls (stored separately and not in the backup yet).
+  - *You do:* Make sure the Logic App still exists, then recreate the extension in Entra ID Governance using the backup.
+- **Lifecycle workflow settings** (not built yet). KEEL has not built a restore for these settings yet.
+  - *You do:* Set them again in Entra ID Governance using the backup.
+- **Custom security attribute sets** (not built yet). An attribute set can never be deleted once it exists, so KEEL will not create one without a review step, which is not built yet.
+  - *You do:* Recreate the set in the Entra admin center using the backup.
+- **Custom security attributes** (not built yet). An attribute can never be deleted once it exists, only turned off, so KEEL will not create one without a review step, which is not built yet.
+  - *Not brought back:* the values assigned to users and apps (stored separately and not in the backup yet).
+  - *You do:* Recreate the attribute and its allowed values in the Entra admin center using the backup, inside its attribute set.
+- **Access package catalogs** (not built yet). The groups, apps and sites a catalog holds are not backed up yet.
+  - *Not brought back:* the groups, apps and sites in the catalog (stored separately and not in the backup yet).
+  - *You do:* Recreate the catalog in Entra ID Governance using the backup, then add its resources again.
+- **Access package policies** (not built yet). A policy belongs to an access package, and access packages are not restored yet.
+  - *Not brought back:* approval and request history (no tool can write it).
+  - *You do:* Recreate the access package first, then its policies, using the backup.
+- **Access package assignments** (not built yet). Access is granted through a request against a policy, never copied, and access packages are not restored yet.
+  - *Not brought back:* the original request and its approval (no tool can write it).
+  - *You do:* Use the backup to see who held which access package, then assign it again in Entra ID Governance.
+- **Entitlement management settings** (not built yet). KEEL has not built a restore for these settings yet.
+  - *You do:* Set them again in Entra ID Governance using the backup.
+- **Terms of use** (not built yet). The agreement documents are files that are not backed up yet, and nobody can recreate who accepted them.
+  - *Not brought back:* the agreement documents (a file the backup does not hold); who accepted the terms (no tool can write it).
+  - *You do:* Upload the documents again and recreate the terms of use in the Entra admin center using the backup. Users will be asked to accept again.
+- **Guest sign-up user flows** (not built yet). The languages, attributes and API connectors a flow uses are not backed up yet.
+  - *Not brought back:* its languages, sign-up attributes and API connector links (stored separately and not in the backup yet).
+  - *You do:* Recreate the user flow in the Entra admin center using the backup.
+- **API connectors for user flows** (not built yet). The password or certificate a connector uses can never be read back.
+  - *Not brought back:* password or certificate (Microsoft never returns it).
+  - *You do:* Recreate the connector using the backup, and enter its password or certificate again.
 
 ## Sign-in and security policies
 
@@ -116,6 +161,9 @@ KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it 
 | Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| App credential policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -138,7 +186,7 @@ KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it 
 - **Device join and registration settings** (KEEL choice). These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
-  - *You do:* The sign-up user flows themselves are not backed up.
+  - *You do:* The sign-up user flows themselves are restored by hand (see guest sign-up user flows).
 - **App consent policies** (not built yet). Microsoft's built-in policies cannot be changed, and the rules inside custom ones are stored separately. KEEL has not built a safe writer for them.
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet).
   - *You do:* Recreate custom consent policies by hand using the backup.
@@ -161,6 +209,14 @@ KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it 
 - **Staged rollout of sign-in features** (not built yet). Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.
   - *Not brought back:* which groups the rollout covers (stored separately and not in the backup yet).
   - *You do:* Recreate the rollout by hand using the backup, then add the same groups.
+- **App credential policies** (not built yet). Which apps a policy applies to is stored separately, and KEEL has not built a safe writer for it.
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the policy by hand using the backup, then apply it to the same apps.
+- **Default app credential rules** (not built yet). A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.
+  - *You do:* Set the default rules again in the Entra admin center using the backup.
+- **Multitenant organization** (not built yet). Every member tenant must accept again, which cannot be done from your tenant.
+  - *Not brought back:* each member tenant's acceptance (no tool can write it); sync settings for each partner tenant (stored separately and not in the backup yet).
+  - *You do:* Recreate the organization and invite the same tenants using the backup. Each one must accept.
 
 ## Tenant settings
 

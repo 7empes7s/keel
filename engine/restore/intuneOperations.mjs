@@ -529,6 +529,21 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
 }
 
 /**
+ * The `resolve` attachIntuneAssignments uses when planning: an object already
+ * in the target, or one this same run restores or creates. The wave planner
+ * puts such an object before the policies assigned to it, and applyWave then
+ * resolves it from the run's own results. A restored object keeps its id; a
+ * created one has none yet, so it stands in as "planned" (never written).
+ */
+export function assignmentTargetResolver(resources, existingTargetIds) {
+  const comingBack = new Map((resources ?? [])
+    .filter((resource) => resource.verb === 'restore-soft-deleted' || resource.verb === 'create')
+    .map((resource) => [resource.naturalKey, (resource.verb === 'restore-soft-deleted'
+      ? resource.targetId ?? resource.live?.targetId : null) ?? `planned:${resource.naturalKey}`]));
+  return (naturalKey) => existingTargetIds.get(naturalKey) ?? comingBack.get(naturalKey) ?? null;
+}
+
+/**
  * Plain words for what /assign does to a policy: `liveCount` is how many
  * assignments it has now (null when unknown, e.g. a create).
  */

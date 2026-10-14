@@ -287,6 +287,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL does not restore these yet. Change them by hand in the Teams admin center using the backup.' }),
   'purview-retention-dlp': Object.freeze({ name: 'Purview retention and data loss prevention',
     todo: 'KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant\'s licence includes it.' }),
+  'exchange-extended': Object.freeze({ name: 'Exchange protection rules, address lists, mobile and retention settings',
+    todo: 'KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({

@@ -19,7 +19,7 @@
 
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
-  engine/roadmap/teams-org-policies.test.mjs and
+  engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs and
   engine/roadmap/purview-retention-dlp.test.mjs (which play this contract); it has not
   been run against a tenant.
 #>
@@ -88,6 +88,34 @@ $AllowedPurviewRetentionDlp = @{
     'Get-DlpComplianceRule'         = @()
 }
 
+# READ-EXO: the Exchange and Defender settings mail flow does not read, in the
+# Exchange Online session. Reads only; the one parameter is the global quarantine
+# settings' fixed -QuarantinePolicyType.
+$AllowedExchangeExtended = @{
+    'Get-HostedOutboundSpamFilterPolicy' = @()
+    'Get-HostedOutboundSpamFilterRule'   = @()
+    'Get-HostedConnectionFilterPolicy'   = @()
+    'Get-HostedContentFilterRule'        = @()
+    'Get-AntiPhishRule'                  = @()
+    'Get-MalwareFilterRule'              = @()
+    'Get-EOPProtectionPolicyRule'        = @()
+    'Get-QuarantinePolicy'               = @('QuarantinePolicyType')
+    'Get-JournalRule'                    = @()
+    'Get-MobileDeviceMailboxPolicy'      = @()
+    'Get-ActiveSyncDeviceAccessRule'     = @()
+    'Get-ActiveSyncOrganizationSettings' = @()
+    'Get-AddressList'                    = @()
+    'Get-GlobalAddressList'              = @()
+    'Get-OfflineAddressBook'             = @()
+    'Get-AddressBookPolicy'              = @()
+    'Get-RetentionPolicyTag'             = @()
+    'Get-RetentionPolicy'                = @()
+    'Get-SafeLinksRule'                  = @()
+    'Get-SafeAttachmentRule'             = @()
+    'Get-ATPProtectionPolicyRule'        = @()
+    'Get-AtpPolicyForO365'               = @()
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -132,6 +160,7 @@ $module = [string]$job['module']
 # Each cmdlet belongs to exactly one session, and the job's module must match it.
 if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
+elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }

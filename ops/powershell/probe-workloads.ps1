@@ -281,6 +281,30 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-DkimSigningConfig' -Block { Get-DkimSigningConfig }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeLinksPolicy' -Block { Get-SafeLinksPolicy }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentPolicy' -Block { Get-SafeAttachmentPolicy }
+        # READ-EXO (engine/collect/workloads/exchangeExtended.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-HostedOutboundSpamFilterPolicy' -Block { Get-HostedOutboundSpamFilterPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-HostedOutboundSpamFilterRule' -Block { Get-HostedOutboundSpamFilterRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-HostedConnectionFilterPolicy' -Block { Get-HostedConnectionFilterPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-HostedContentFilterRule' -Block { Get-HostedContentFilterRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AntiPhishRule' -Block { Get-AntiPhishRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MalwareFilterRule' -Block { Get-MalwareFilterRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-EOPProtectionPolicyRule' -Block { Get-EOPProtectionPolicyRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-QuarantinePolicy' -Block { Get-QuarantinePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy' -Block { Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-JournalRule' -Block { Get-JournalRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MobileDeviceMailboxPolicy' -Block { Get-MobileDeviceMailboxPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ActiveSyncDeviceAccessRule' -Block { Get-ActiveSyncDeviceAccessRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ActiveSyncOrganizationSettings' -Block { Get-ActiveSyncOrganizationSettings }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AddressList' -Block { Get-AddressList }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-GlobalAddressList' -Block { Get-GlobalAddressList }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OfflineAddressBook' -Block { Get-OfflineAddressBook }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AddressBookPolicy' -Block { Get-AddressBookPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RetentionPolicyTag' -Block { Get-RetentionPolicyTag }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RetentionPolicy' -Block { Get-RetentionPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeLinksRule' -Block { Get-SafeLinksRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentRule' -Block { Get-SafeAttachmentRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPProtectionPolicyRule' -Block { Get-ATPProtectionPolicyRule }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AtpPolicyForO365' -Block { Get-AtpPolicyForO365 }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

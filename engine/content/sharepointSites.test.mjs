@@ -3,7 +3,7 @@
 // Done-test: a fixture site with a list, a page and a library is fully captured.
 // Also: every request is a GET on an allow-listed path, a denied read is partial
 // coverage, a site on another host is never read, a second run stores nothing new,
-// and a library without the drive backup is recorded as waiting, not as backed up.
+// and a library's files go through the drive backup (syncDrive) into the site's container.
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
@@ -88,8 +88,8 @@ function fixtureRoutes() {
 // A fake Graph: answers from the routes; a route that is an array is paged by $skiptoken.
 function fakeGraph(routes, { override = {} } = {}) {
   const requests = [];
-  const transport = async (url, { method } = {}) => {
-    requests.push({ url, method });
+  const transport = async (url, { method, headers } = {}) => {
+    requests.push({ url, method, headers });
     const parsed = new URL(url);
     const path = decodeURIComponent(parsed.pathname.slice('/v1.0'.length));
     if (override[path]) return override[path](parsed);
@@ -201,17 +201,74 @@ test('a second run of an unchanged site stores nothing new', async () => {
   assert.equal(second.counters.deduped, second.counters.stored);
 });
 
-test('without the drive backup a library is recorded as waiting and the run is partial', async () => {
-  const library = await defaultLibraryBackup();
-  const { transport } = fakeGraph(fixtureRoutes());
-  const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: library });
+// A fixture library drive: a root folder and one file, answered by Graph drive delta.
+const DRIVE = 'b!drive-1';
+const DELTA_LINK = `${G}/drives/${DRIVE}/root/delta?token=KEEL-RT-1`;
+function driveRoutes(routes = fixtureRoutes()) {
+  return {
+    ...routes,
+    [`/drives/${DRIVE}/root/delta`]: { value: [
+      { id: 'root', name: 'root', root: {}, folder: { childCount: 1 } },
+      { id: 'f1', name: 'KEEL-RT-a.docx', cTag: 'c1', size: 5, file: { mimeType: 'application/msword' }, parentReference: { id: 'root' } },
+    ], '@odata.deltaLink': DELTA_LINK },
+    [`/drives/${DRIVE}/items/f1/versions`]: { value: [] },
+    [`/drives/${DRIVE}/items/f1/content`]: 'hello',
+    [`/drives/${DRIVE}/items/f1/permissions`]: { value: [{ id: 'p1', roles: ['read'] }] },
+  };
+}
+
+test('library files go through the drive backup into the site container, and its delta state is kept', async () => {
+  const store = memoryStore();
+  const saved = new Map();
+  const libraryState = {
+    async load({ driveId }) { return saved.get(driveId) ?? null; },
+    async save({ siteId, listId, driveId, state }) { assert.equal(siteId, ROOT); assert.equal(listId, LIB); saved.set(driveId, state); },
+  };
+  const first = fakeGraph(driveRoutes());
+  const result = await backupSharePointSites({ transport: first.transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, libraryState });
+  assert.equal(result.outcome, 'complete');
   const entry = result.sites[0].lists.find((list) => list.listId === LIB);
-  // Once drive.mjs merges this becomes the real backup; either way it is never silently "complete".
-  if (entry.library.result.outcome === 'waiting') {
-    assert.equal(entry.library.status, 'waiting');
-    assert.equal(result.outcome, 'partial');
-  }
-  assert.equal(entry.library.driveId, 'b!drive-1');
+  assert.equal(entry.library.status, 'observed');
+  assert.equal(entry.library.result.stats.files, 1);
+  const files = store.items.filter((item) => item.metadata?.kind === 'drive-content');
+  assert.equal(files.length, 1);
+  assert.equal(files[0].container, `site:${ROOT}`);
+  assert.equal(files[0].workload, 'sharepoint-sites');
+  assert.equal(files[0].itemKey, 'f1');
+  // Every library request was a GET, and the delta request carried the drive backup's Prefer header.
+  assert.ok(first.requests.every((request) => request.method === 'GET'));
+  const delta = first.requests.find((request) => request.url.includes('/root/delta'));
+  assert.match(delta.headers.Prefer, /deltashowremovedasdeleted/);
+  assert.equal(saved.get(DRIVE).deltaLink, DELTA_LINK);
+
+  // The next run resumes from the saved delta link and stores nothing new.
+  const routes = driveRoutes();
+  const second = fakeGraph(routes, { override: { [`/drives/${DRIVE}/root/delta`]: () => ({ status: 200, headers: {}, body: { value: [], '@odata.deltaLink': DELTA_LINK } }) } });
+  const driveItems = () => store.items.filter((item) => item.metadata?.kind?.startsWith('drive-')).length;
+  const before = driveItems();
+  const again = await backupSharePointSites({ transport: second.transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, libraryState });
+  assert.equal(again.outcome, 'complete');
+  assert.ok(second.requests.some((request) => request.url === DELTA_LINK));
+  assert.equal(driveItems(), before);
+});
+
+test('a denied library is recorded as denied and the run is partial', async () => {
+  const { transport } = fakeGraph(driveRoutes(), { override: { [`/drives/${DRIVE}/root/delta`]: () => ({ status: 403, headers: {}, body: { error: { code: 'accessDenied' } } }) } });
+  const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: defaultLibraryBackup() });
+  const entry = result.sites[0].lists.find((list) => list.listId === LIB);
+  assert.equal(entry.library.status, 'denied');
+  assert.equal(entry.reads.library.status, 'denied');
+  assert.equal(entry.library.driveId, DRIVE);
+  assert.equal(result.outcome, 'partial');
+});
+
+test('a file Graph will not hand over makes the library partial', async () => {
+  const { transport } = fakeGraph(driveRoutes(), { override: { [`/drives/${DRIVE}/items/f1/content`]: () => ({ status: 404, headers: {}, body: {} }) } });
+  const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt });
+  const entry = result.sites[0].lists.find((list) => list.listId === LIB);
+  assert.equal(entry.library.result.outcome, 'partial');
+  assert.equal(entry.library.status, 'partial');
+  assert.equal(result.outcome, 'partial');
 });
 
 test('throttling honours Retry-After', async () => {
@@ -255,9 +312,9 @@ test('the library backup gets a transport that refuses anything except a Graph G
   const attempts = [];
   const library = async ({ transport: libraryTransport }) => {
     for (const [url, method] of [[`${G}/drives/b!drive-1/items/x`, 'DELETE'], ['https://evil.example/x', 'GET']]) {
-      try { await libraryTransport(url, { method }); attempts.push('sent'); } catch { attempts.push('refused'); }
+      try { await libraryTransport({ method, url }); attempts.push('sent'); } catch { attempts.push('refused'); }
     }
-    const ok = await libraryTransport(`${G}/sites/${encodeURIComponent(ROOT)}`);
+    const ok = await libraryTransport({ method: 'GET', url: `${G}/sites/${encodeURIComponent(ROOT)}` });
     return { outcome: ok.status === 200 ? 'complete' : 'failed' };
   };
   const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: library });

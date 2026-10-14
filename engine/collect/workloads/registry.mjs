@@ -21,9 +21,11 @@ import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
 import { POWER_PLATFORM_WORKLOAD, collectPowerPlatform, powerPlatformTransportFor, recordPowerPlatformRun } from './powerPlatform.mjs';
 import { collectPurview, recordPurviewRun } from './purview.mjs';
+import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExtended.mjs';
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
+import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
 
 export const WORKLOAD_COLLECTORS = Object.freeze([
@@ -47,6 +49,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // purview.mjs
   { workload: 'purview-labels', powershellFamily: 'purview', record: recordPurviewRun,
     collect: (client, { base, powershell }) => collectPurview(client, { ...base, powershell }) },
+  // purviewExtended.mjs
+  { workload: 'purview-governance', powershellFamily: 'purview', record: recordPurviewExtendedRun,
+    collect: (client, { base, powershell }) => collectPurviewExtended(client, { ...base, powershell }) },
   // purviewRetentionDlp.mjs
   { workload: 'purview-retention-dlp', powershellFamily: 'purview', record: recordRetentionDlpRun,
     collect: (client, { base, powershell }) => collectRetentionDlp(client, { ...base, powershell }) },
@@ -58,6 +63,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {
       ...base, sleep, transport, tenantId: config.tenantId }) },
+  // teamsExtended.mjs
+  { workload: 'teams-voice-policies', powershellFamily: 'teams', record: recordTeamsExtendedRun,
+    collect: (client, { base, powershell }) => collectTeamsExtended(client, { ...base, powershell }) },
   // teamsPolicies.mjs
   { workload: 'teams-org-policies', powershellFamily: 'teams', record: recordTeamsPolicyRun,
     collect: (client, { base, powershell }) => collectTeamsPolicies(client, { ...base, powershell }) },

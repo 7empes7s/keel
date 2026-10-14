@@ -25,9 +25,9 @@ try {
   const now = new Date();
   await seedSchedules(client, { tenantRef: 'seed-test', now });
   const { rows } = await client.query('SELECT * FROM schedule WHERE tenant_ref = $1 ORDER BY job_kind, tier', ['seed-test']);
-  assert.equal(rows.length, 7);
+  assert.equal(rows.length, 8);
   assert.deepEqual(rows.map((row) => [row.job_kind, row.tier]), [
-    ['api-drift', null], ['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3'], ['offsite', null], ['prune', null], ['workload-collect', null],
+    ['api-drift', null], ['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3'], ['content-collect', null], ['offsite', null], ['prune', null], ['workload-collect', null],
   ]);
   for (const row of rows) assert.ok(row.next_due_at > now);
   await seedSchedules(client, { tenantRef: 'seed-test', now: new Date(now.valueOf() + 86400000) });
@@ -37,7 +37,7 @@ try {
   const partial = (await client.query('SELECT job_kind, tier FROM schedule WHERE tenant_ref = $1 ORDER BY tier', ['seed-partial'])).rows;
   assert.deepEqual(partial.map((row) => [row.job_kind, row.tier]), [['collect', 'tier1'], ['collect', 'tier2'], ['collect', 'tier3']]);
   await seedSchedules(client, { tenantRef: 'seed-partial', now });
-  assert.equal((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1', ['seed-partial'])).rows.length, 7);
+  assert.equal((await client.query('SELECT * FROM schedule WHERE tenant_ref = $1', ['seed-partial'])).rows.length, 8);
   for (const jobKinds of [[], ['backup'], 'collect']) {
     await assert.rejects(() => seedSchedules(client, { tenantRef: 'seed-bad', now, jobKinds }), /jobKinds must be/);
   }
@@ -45,12 +45,13 @@ try {
   assert.deepEqual(boundary.map((row) => row.nextDueAt.toISOString()), [
     '2026-09-14T01:00:00.000Z', '2026-09-15T00:00:00.000Z', '2026-09-21T00:00:00.000Z',
     '2026-09-15T00:00:00.000Z', '2026-09-14T05:00:00.000Z', '2026-09-21T03:00:00.000Z', '2026-09-14T02:00:00.000Z',
+    '2026-09-14T01:00:00.000Z',
   ]);
   assert.deepEqual(boundary.map((row) => row.cadence), [
     { every: 'hour', n: 1, atTime: null }, { every: 'day', n: 1, atTime: '00:00' },
     { every: 'week', n: 1, atTime: '00:00' }, { every: 'day', n: 1, atTime: '00:00' },
     { every: 'day', n: 1, atTime: '05:00' }, { every: 'week', n: 1, atTime: '03:00' },
-    { every: 'day', n: 1, atTime: '02:00' },
+    { every: 'day', n: 1, atTime: '02:00' }, { every: 'day', n: 1, atTime: '01:00' },
   ]);
   assert.equal(boundary[2].cronOverride, '0 0 * * 1');
   assert.equal(boundary[5].cronOverride, '0 3 * * 1');
@@ -60,7 +61,11 @@ try {
   assert.equal(initialSchedules(new Date('2026-09-14T02:00:00Z'))[6].nextDueAt.toISOString(), '2026-09-15T02:00:00.000Z');
   assert.equal(boundary[6].jobKind, 'workload-collect');
   assert.equal(boundary[6].tier, null);
-  console.log('schedule.test.mjs — all assertions passed (seven future seed rows incl. weekly api-drift and daily workload-collect, duplicate NULL tiers rejected, offsite CHECK accepted)');
+  // Wave 1 CONT: the nightly content backup at 01:00 UTC, never due in the past.
+  assert.equal(initialSchedules(new Date('2026-09-14T01:00:00Z'))[7].nextDueAt.toISOString(), '2026-09-15T01:00:00.000Z');
+  assert.equal(boundary[7].jobKind, 'content-collect');
+  assert.equal(boundary[7].tier, null);
+  console.log('schedule.test.mjs — all assertions passed (eight future seed rows incl. weekly api-drift, daily workload-collect and nightly content-collect, duplicate NULL tiers rejected, offsite CHECK accepted)');
 } finally {
   await client.end();
   await database.cleanup();

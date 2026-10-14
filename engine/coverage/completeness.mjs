@@ -150,7 +150,7 @@ export const COMPLETENESS = Object.freeze({
   deviceCompliancePolicy: {},
   configurationPolicy: { missing: [part('Secret settings', 'secret', secretSettings)] },
   deviceEnrollmentConfiguration: { whole: 'not-written' },
-  deviceManagementRoleDefinition: { whole: 'not-written', missing: [part('Who holds each role', 'other-route')] },
+  deviceManagementRoleDefinition: { whole: 'not-written' },
   deviceCategory: { whole: 'not-written', missing: [part('Which devices are in the category', 'read-only')] },
   termsAndConditions: { whole: 'not-written', missing: [part('Who accepted the terms', 'read-only')] },
   windowsAutopilotDeploymentProfile: { whole: 'not-written', missing: [part('The registered device hardware it applies to', 'other-route')] },
@@ -160,6 +160,21 @@ export const COMPLETENESS = Object.freeze({
   managedAppPolicy: { whole: 'not-written', missing: [part('The list of protected apps', 'other-route')] },
   targetedManagedAppConfiguration: { whole: 'not-written', missing: [part('The apps it targets', 'other-route')] },
   mobileAppConfiguration: { whole: 'not-written' },
+  // Wave 1 CAT-INTUNE. Assignments of these types are on a separate route.
+  deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
+  deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
+  deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Who the remediation is assigned to', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
+  deviceComplianceScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
+  assignmentFilter: { whole: 'not-written' },
+  roleScopeTag: { whole: 'not-written', missing: [part('The built-in Default tag', 'microsoft-managed')] },
+  windowsFeatureUpdateProfile: { whole: 'not-written', missing: [part('Who the profile is assigned to', 'other-route')] },
+  windowsQualityUpdateProfile: { whole: 'not-written', missing: [part('Who the profile is assigned to', 'other-route')] },
+  windowsDriverUpdateProfile: { whole: 'not-written', missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
+  groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route'), part('Who the template is assigned to', 'other-route')] },
+  groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
+  notificationMessageTemplate: { whole: 'not-written' },
+  windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
+  deviceManagementRoleAssignment: { whole: 'not-written' },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

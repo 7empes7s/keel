@@ -21,8 +21,14 @@
  *    returns and listed under `incomplete` with the reason.
  *  - Errors are structured. A failed group discovery means the group set is
  *    unknown, never empty. A 401 or 403 is `denied`, any other failure is
- *    `failed`, and a section with some failed reads is `partial`.
+ *    `failed`, and a section with some failed reads is `partial`. A list that hits
+ *    the page cap keeps what it read and makes its section `partial`. A named
+ *    group that can't be read is listed under `unreachable`. A run in which no
+ *    section read anything is `failed`.
+ *  - An object whose id KEEL won't put in a path is still stored, and its
+ *    children are listed under `incomplete`.
  */
+import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 
 export const PLANNER_WORKLOAD = 'planner';
@@ -61,7 +67,7 @@ export const PLANNER_REQUEST_SHAPES = Object.freeze([
 ].map((shape) => Object.freeze({
   ...shape,
   segments: Object.freeze(shape.segments.map((part) => (typeof part === 'string' ? literal(part) : part))),
-  query: Object.freeze(shape.query),
+  query: Object.freeze(shape.query.map((key) => key.toLowerCase())),
 })));
 
 export class PlannerScopeError extends Error {
@@ -88,12 +94,17 @@ export function assertPlannerRequest(url, method = 'GET') {
   const shape = PLANNER_REQUEST_SHAPES.find((candidate) => candidate.segments.length === segments.length
     && candidate.segments.every((matches, index) => matches(segments[index])));
   if (!shape) throw new PlannerScopeError(`GET ${parsed.pathname} is not a Planner or Group conversation read`);
-  for (const key of parsed.searchParams.keys()) {
+  // Graph spells paging keys either way ($skiptoken, $skipToken); match without case.
+  const keys = [...parsed.searchParams.keys()].map((key) => key.toLowerCase());
+  for (const key of keys) {
     if (!shape.query.includes(key)) throw new PlannerScopeError(`GET ${parsed.pathname}: query ${key} is not allowed`);
   }
-  if (shape.id === 'groups.discovery' && parsed.searchParams.has('$filter')
-    && parsed.searchParams.get('$filter') !== UNIFIED_FILTER) {
-    throw new PlannerScopeError(`GET ${parsed.pathname}: only the Microsoft 365 group filter is allowed`);
+  if (new Set(keys).size !== keys.length) throw new PlannerScopeError(`GET ${parsed.pathname}: a query key repeats`);
+  if (shape.id === 'groups.discovery') {
+    const filter = [...parsed.searchParams].find(([key]) => key.toLowerCase() === '$filter');
+    if (filter && filter[1] !== UNIFIED_FILTER) {
+      throw new PlannerScopeError(`GET ${parsed.pathname}: only the Microsoft 365 group filter is allowed`);
+    }
   }
   return shape.id;
 }
@@ -171,23 +182,36 @@ export async function backupPlannerAndConversations({
     }
   }
 
+  // Reads every page. At the page cap it returns what it read with capped: true,
+  // never throws it away. A next page outside the allowlist is a read failure
+  // (the items already read are lost to that read only), not a run-ending error:
+  // a PlannerScopeError is kept for requests this code builds itself.
   async function getAll(url) {
     const items = [];
     let next = url;
     let pages = 0;
     while (next) {
-      if (pages >= maxPages) throw new Error(`GET ${new URL(url).pathname}: more than ${maxPages} pages`);
+      if (pages >= maxPages) return { items, pages, capped: true };
       const body = await getPage(next);
       pages += 1;
       if (Array.isArray(body.value)) items.push(...body.value);
       const link = body['@odata.nextLink'];
       if (!link) break;
-      if (decodeURIComponent(new URL(link).pathname) !== decodeURIComponent(new URL(url).pathname)) {
-        throw new PlannerScopeError(`refused a next page outside ${new URL(url).pathname}`);
+      let refused = null;
+      try {
+        if (decodeURIComponent(new URL(link).pathname) !== decodeURIComponent(new URL(url).pathname)) refused = `it leaves ${new URL(url).pathname}`;
+        else assertPlannerRequest(link, 'GET');
+      } catch (error) {
+        refused = error.message;
+      }
+      if (refused) {
+        const error = new Error(`GET ${new URL(url).pathname}: refused a next page: ${refused}`);
+        error.code = 'REFUSED_NEXT_PAGE';
+        throw error;
       }
       next = link;
     }
-    return { items, pages };
+    return { items, pages, capped: false };
   }
 
   async function put({ workload, container, itemKey, version, metadata, bytes }) {
@@ -205,29 +229,38 @@ export async function backupPlannerAndConversations({
   // Group discovery. A failed discovery means the group set is unknown, never empty.
   let candidates;
   let discovery;
+  const unreachable = [];
   try {
     if (groupIds) {
-      candidates = [];
       for (const id of groupIds) {
         if (typeof id !== 'string' || !GUID_RE.test(id)) throw new TypeError(`${id} is not a group id`);
-        candidates.push(await getPage(`${BASE}/groups/${seg(id)}?$select=id,displayName`));
+      }
+      // A named group that can't be read is that group's failure, not the run's.
+      candidates = [];
+      for (const id of groupIds) {
+        try {
+          candidates.push(await getPage(`${BASE}/groups/${seg(id)}?$select=id,displayName`));
+        } catch (error) {
+          if (error instanceof PlannerScopeError) throw error;
+          unreachable.push({ groupId: id.toLowerCase(), ...failure(error) });
+        }
       }
       discovery = { status: 'observed', mode: 'named', pages: groupIds.length };
     } else {
       const query = new URLSearchParams({ $filter: UNIFIED_FILTER, $select: 'id,displayName' });
-      const { items, pages } = await getAll(`${BASE}/groups?${query}`);
+      const { items, pages, capped: discoveryCapped } = await getAll(`${BASE}/groups?${query}`);
       candidates = items;
-      discovery = { status: 'observed', mode: 'all-unified-groups', pages };
+      discovery = { status: 'observed', mode: 'all-unified-groups', pages, capped: discoveryCapped };
     }
   } catch (error) {
-    if (error instanceof TypeError) throw error;
+    if (error instanceof TypeError || error instanceof PlannerScopeError) throw error;
     candidates = null;
     discovery = { ...failure(error), mode: groupIds ? 'named' : 'all-unified-groups', pages: null };
   }
 
   const groups = [];
   const outOfScope = [];
-  let capped = false;
+  let capped = discovery.capped === true;
   const seen = new Set();
   for (const group of candidates ?? []) {
     const id = String(group?.id ?? '').toLowerCase();
@@ -261,9 +294,23 @@ export async function backupPlannerAndConversations({
         return null;
       }
     };
+    const list = async (scope, url) => {
+      const { items, capped: listCapped } = await getAll(url);
+      if (listCapped) errors.push({ scope, status: 'capped', httpStatus: null, error: `more than ${maxPages} pages; the rest was not read` });
+      return items;
+    };
+    // An object whose id KEEL won't put in a path is still stored, and its
+    // children are recorded as not read.
+    const unsafe = async (entry, kind, object, missing) => {
+      const key = `${kind}:unsafe-id:${createHash('sha256').update(String(object?.id ?? '')).digest('hex').slice(0, 16)}`;
+      await putJson(entry(key, null, { kind, unsafeId: String(object?.id ?? '') }), object);
+      count(`${kind}s`);
+      incomplete.push({ itemKey: key, missing, reason: 'the id is not one KEEL will put in a path' });
+      errors.push({ scope: key, status: 'unsafe-id', httpStatus: null, error: `${missing.join(', ')} not read` });
+    };
     let top = null;
     try {
-      await work({ count, attempt });
+      await work({ count, attempt, list, unsafe });
     } catch (error) {
       if (error instanceof PlannerScopeError) throw error;
       top = failure(error);
@@ -274,10 +321,10 @@ export async function backupPlannerAndConversations({
 
   async function backupPlanner(groupId, container) {
     const entry = (itemKey, version, metadata) => ({ workload: PLANNER_WORKLOAD, container, itemKey, version, metadata });
-    return section(async ({ count, attempt }) => {
-      const { items: plans } = await getAll(`${BASE}/groups/${seg(groupId)}/planner/plans`);
+    return section(async ({ count, attempt, list, unsafe }) => {
+      const plans = await list(`group:${groupId}/plans`, `${BASE}/groups/${seg(groupId)}/planner/plans`);
       for (const plan of plans) {
-        if (!PLANNER_ID_RE.test(String(plan?.id ?? ''))) continue;
+        if (!PLANNER_ID_RE.test(String(plan?.id ?? ''))) { await unsafe(entry, 'plan', plan, ['details', 'buckets', 'tasks']); continue; }
         const planId = plan.id;
         await putJson(entry(`plan:${planId}`, plan['@odata.etag'], { kind: 'plan', title: plan.title ?? null }), plan);
         count('plans');
@@ -287,16 +334,16 @@ export async function backupPlannerAndConversations({
           count('planDetails');
         });
         await attempt(`plan:${planId}/buckets`, async () => {
-          const { items: buckets } = await getAll(`${BASE}/planner/plans/${seg(planId)}/buckets`);
+          const buckets = await list(`plan:${planId}/buckets`, `${BASE}/planner/plans/${seg(planId)}/buckets`);
           for (const bucket of buckets) {
             await putJson(entry(`bucket:${bucket.id}`, bucket['@odata.etag'], { kind: 'bucket', planId, name: bucket.name ?? null }), bucket);
             count('buckets');
           }
         });
         await attempt(`plan:${planId}/tasks`, async () => {
-          const { items: tasks } = await getAll(`${BASE}/planner/plans/${seg(planId)}/tasks`);
+          const tasks = await list(`plan:${planId}/tasks`, `${BASE}/planner/plans/${seg(planId)}/tasks`);
           for (const task of tasks) {
-            if (!PLANNER_ID_RE.test(String(task?.id ?? ''))) continue;
+            if (!PLANNER_ID_RE.test(String(task?.id ?? ''))) { await unsafe(entry, 'task', task, ['details']); continue; }
             await putJson(entry(`task:${task.id}`, task['@odata.etag'], { kind: 'task', planId, bucketId: task.bucketId ?? null, title: task.title ?? null }), task);
             count('tasks');
             await attempt(`task:${task.id}/details`, async () => {
@@ -313,31 +360,31 @@ export async function backupPlannerAndConversations({
   async function backupConversations(groupId, container) {
     const entry = (itemKey, version, metadata) => ({ workload: CONVERSATIONS_WORKLOAD, container, itemKey, version, metadata });
     const g = `${BASE}/groups/${seg(groupId)}`;
-    return section(async ({ count, attempt }) => {
-      const { items: conversations } = await getAll(`${g}/conversations`);
+    return section(async ({ count, attempt, list, unsafe }) => {
+      const conversations = await list(`group:${groupId}/conversations`, `${g}/conversations`);
       for (const conversation of conversations) {
         const cid = String(conversation?.id ?? '');
-        if (!MAIL_ID_RE.test(cid)) continue;
+        if (!MAIL_ID_RE.test(cid)) { await unsafe(entry, 'conversation', conversation, ['threads']); continue; }
         await putJson(entry(`conversation:${cid}`, conversation.lastDeliveredDateTime, { kind: 'conversation', topic: conversation.topic ?? null }), conversation);
         count('conversations');
         await attempt(`conversation:${cid}/threads`, async () => {
-          const { items: threads } = await getAll(`${g}/conversations/${seg(cid)}/threads`);
+          const threads = await list(`conversation:${cid}/threads`, `${g}/conversations/${seg(cid)}/threads`);
           for (const thread of threads) {
             const tid = String(thread?.id ?? '');
-            if (!MAIL_ID_RE.test(tid)) continue;
+            if (!MAIL_ID_RE.test(tid)) { await unsafe(entry, 'thread', thread, ['posts']); continue; }
             await putJson(entry(`thread:${cid}/${tid}`, thread.lastDeliveredDateTime, { kind: 'thread', conversationId: cid, topic: thread.topic ?? null }), thread);
             count('threads');
             await attempt(`thread:${cid}/${tid}/posts`, async () => {
-              const { items: posts } = await getAll(`${g}/conversations/${seg(cid)}/threads/${seg(tid)}/posts`);
+              const posts = await list(`thread:${cid}/${tid}/posts`, `${g}/conversations/${seg(cid)}/threads/${seg(tid)}/posts`);
               for (const post of posts) {
                 const pid = String(post?.id ?? '');
-                if (!MAIL_ID_RE.test(pid)) continue;
+                if (!MAIL_ID_RE.test(pid)) { await unsafe(entry, 'post', post, ['attachments']); continue; }
                 const postKey = `post:${cid}/${tid}/${pid}`;
                 await putJson(entry(postKey, post.changeKey ?? post.lastModifiedDateTime, { kind: 'post', conversationId: cid, threadId: tid, receivedDateTime: post.receivedDateTime ?? null }), post);
                 count('posts');
                 if (post.hasAttachments !== true) continue;
                 await attempt(`${postKey}/attachments`, async () => {
-                  const { items: attachments } = await getAll(`${g}/conversations/${seg(cid)}/threads/${seg(tid)}/posts/${seg(pid)}/attachments`);
+                  const attachments = await list(`${postKey}/attachments`, `${g}/conversations/${seg(cid)}/threads/${seg(tid)}/posts/${seg(pid)}/attachments`);
                   for (const attachment of attachments) await storeAttachment(attachment, postKey, entry, count);
                 });
               }
@@ -349,8 +396,8 @@ export async function backupPlannerAndConversations({
   }
 
   async function storeAttachment(attachment, postKey, entry, count) {
-    const aid = String(attachment?.id ?? '');
-    if (!aid) return;
+    // The attachment id never goes into a path, so any id (or none) is stored.
+    const aid = String(attachment?.id ?? '') || `no-id:${createHash('sha256').update(JSON.stringify(attachment ?? null)).digest('hex').slice(0, 16)}`;
     const key = `attachment:${postKey.slice('post:'.length)}/${aid}`;
     const type = attachment['@odata.type'] ?? null;
     const metadata = { kind: 'attachment', attachmentType: type, name: attachment.name ?? null, contentType: attachment.contentType ?? null, size: attachment.size ?? null };
@@ -372,8 +419,11 @@ export async function backupPlannerAndConversations({
 
   const statuses = groups.flatMap((group) => [group.planner.status, group.conversations.status]);
   let outcome;
+  const anyRead = statuses.some((status) => status === 'observed' || status === 'partial');
   if (discovery.status !== 'observed') outcome = 'failed';
-  else if (capped || statuses.some((status) => status !== 'observed')) outcome = 'partial';
+  // Every group failed (for example, no consent): the run read nothing, so it failed.
+  else if ((statuses.length > 0 || unreachable.length > 0) && !anyRead) outcome = 'failed';
+  else if (capped || unreachable.length > 0 || statuses.some((status) => status !== 'observed')) outcome = 'partial';
   else outcome = groups.length === 0 ? 'complete-empty' : 'complete';
 
   return {
@@ -385,6 +435,7 @@ export async function backupPlannerAndConversations({
     discovery,
     groups,
     outOfScope,
+    unreachable,
     capped,
     stored,
     incomplete,

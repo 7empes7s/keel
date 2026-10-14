@@ -5,10 +5,12 @@ import { GET as loadSchedules } from "@/app/api/schedules/route";
 import { BackupControls, ProblemList } from "@/components/backup-controls";
 import { CoverageReport } from "@/components/coverage-report";
 import { DataUnavailable } from "@/components/data-unavailable";
+import { DiscoveryInventory } from "@/components/discovery-inventory";
 import { JobRefresher } from "@/components/job-refresher";
 import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
+import { getDiscoveryInventory } from "@/lib/discovery";
 import { getCoverageData } from "@/lib/portal-data";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
 import { protectProblems, protectVerdict, tierSummaries } from "@/lib/protect-view";
@@ -42,13 +44,14 @@ export default async function ProtectPage() {
   }
 
   const requestHeaders = await headers();
-  const [schedulesResult, jobsResult] = await Promise.allSettled([
+  const [schedulesResult, jobsResult, discoveryResult] = await Promise.allSettled([
     loadSchedules(new Request("http://localhost/api/schedules", { headers: requestHeaders }))
       .then(async (response) => {
         if (!response.ok) throw new Error("Schedules unavailable");
         return ((await response.json()) as { schedules: Schedule[] }).schedules;
       }),
     getRecentJobs(BACKUP_JOB_KINDS, 10),
+    getDiscoveryInventory(),
   ]);
   const schedules = schedulesResult.status === "fulfilled" ? schedulesResult.value : null;
   const jobs: JobRecord[] = jobsResult.status === "fulfilled" ? jobsResult.value : [];
@@ -69,6 +72,7 @@ export default async function ProtectPage() {
         {schedules === null ? <p className="action-error">KEEL could not read the schedules, so next run times are missing. Reload in a minute.</p> : null}
         <ProblemList disabled={!canBackup} problems={protectProblems(data, now)} />
         <CoverageReport data={data} now={now} />
+        <DiscoveryInventory data={discoveryResult.status === "fulfilled" ? discoveryResult.value : undefined} now={now} />
         {jobsResult.status === "fulfilled" ? (
           <JobTable headingId="backup-jobs-heading" jobs={jobs} kicker="Recent" now={now} title="On-demand backups" />
         ) : <p className="action-error">KEEL could not read recent backups. Reload in a minute.</p>}

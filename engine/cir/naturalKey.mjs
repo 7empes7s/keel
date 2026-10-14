@@ -29,6 +29,12 @@ export const ID_KEY_TYPES = new Set([
   // id is stable for the tenant's lifetime. A restore into another tenant
   // finds no policy under that key and is refused (policies are never created).
   'unifiedRoleManagementPolicy', 'unifiedRoleManagementPolicyAssignment', 'roleAssignmentSchedule',
+  // Wave 1 CAT-INTUNE: names are unmeasured, and the built-in Default scope tag
+  // and Microsoft-published remediations carry the same name in every tenant.
+  'deviceManagementScript', 'deviceShellScript', 'deviceHealthScript', 'deviceComplianceScript',
+  'assignmentFilter', 'roleScopeTag', 'windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile',
+  'windowsDriverUpdateProfile', 'groupPolicyConfiguration', 'groupPolicyUploadedDefinitionFile',
+  'notificationMessageTemplate', 'windowsAutopilotDeviceIdentity', 'deviceManagementRoleAssignment',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the

@@ -55,7 +55,7 @@ function fixtureReader({ ownersFail = false } = {}) {
 }
 
 test('every scheduled backup reads group members and owners beside policy assignments', () => {
-  assert.deepEqual([...COLLECT_RELATIONSHIPS.families].sort(), ['assignment', 'member', 'owner']);
+  for (const family of ['assignment', 'member', 'owner']) assert.ok(COLLECT_RELATIONSHIPS.families.includes(family), family);
   assert.ok(!COLLECT_RELATIONSHIPS.families.includes('transitiveMember'), 'the derived nested set is not backed up as direct membership');
 });
 

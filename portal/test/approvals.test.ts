@@ -338,14 +338,18 @@ test("the approval inbox declares approve guards on every read surface", () => {
 
   assert.deepEqual(
     surfaces.map((surface) => surface.source),
-    ["api/approvals/route.ts", "approvals/page.tsx"],
+    ["api/approvals/route.ts", "approvals/content-effects/[id]/page.tsx", "approvals/page.tsx"],
     "approval read surfaces are closed around the approve capability",
   );
 
   for (const surface of surfaces) {
-    const guard = surface.source.endsWith("page.tsx")
-      ? "requireApprovalInboxAccess"
-      : "guardedApprovalInbox(";
+    // Q45: the content-effects page admits tenant-wide approvers only, the audience of
+    // the content-effect approval route.
+    const guard = surface.source === "approvals/content-effects/[id]/page.tsx"
+      ? "await requireContentEffectReviewAccess()"
+      : surface.source.endsWith("page.tsx")
+        ? "requireApprovalInboxAccess"
+        : "guardedApprovalInbox(";
     assert.ok(
       surface.content.includes(guard),
       `${surface.source} must declare the approve-only inbox guard`,

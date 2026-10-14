@@ -263,6 +263,35 @@ test("an opened change and the decision summary fit a phone without sideways scr
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
+// Q45: a restore planned with the command line carries a content effect. The inbox
+// says so and links to its review; the review approves it. Both fit a phone.
+test("a CLI-planned restore's content effects are linked from the inbox and approvable on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  const axe = async () => (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations.map((violation) => violation.id);
+
+  await open(page, "/approvals/cli-restore", "light");
+  const note = page.locator(".approval-content-effects");
+  await expect(note).toContainText("1 change in this restore affects content. It needs its own approval by someone other than the requester");
+  await expect(note.getByRole("link", { name: "Review content effects" })).toHaveAttribute("href", "/approvals/content-effects/7f3c0000-0000-4000-8000-000000000045");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  expect(await axe()).toEqual([]);
+
+  for (const theme of ["light", "dark"] as const) {
+    await open(page, "/approvals/content-effects", theme);
+    await expect(page.locator(".content-effects")).toContainText("Shortens retention");
+    await expect(page.locator(".content-effects")).toContainText("Not yet approved");
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    expect(await axe()).toEqual([]);
+  }
+  const effects = page.locator(".content-effects");
+  await effects.getByPlaceholder("Why are these content effects acceptable?").fill("Policy review agreed 365 days");
+  await effects.getByRole("button", { name: "Approve content effects" }).click();
+  await expect(effects).toContainText("Approved for exactly these effects by Marouane Defili");
+  expect(await overflow()).toBeLessThanOrEqual(0);
+});
+
 // Task-131 (was task-54/63's coverage matrix): a type's drawer answers in one sentence
 // and keeps the recovery decision, remapping proof and proof reference in its record.
 test("a type drawer states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {

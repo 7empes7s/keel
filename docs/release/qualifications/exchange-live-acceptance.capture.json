@@ -7,7 +7,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:40.092Z"
+      "at": "2026-10-14T19:00:12.126Z"
     },
     {
       "credential": "collector",
@@ -15,7 +15,7 @@
       "cmdlet": "Get-OrganizationConfig",
       "parameters": {},
       "outcome": "ok",
-      "at": "2026-10-07T11:33:40.092Z"
+      "at": "2026-10-14T19:00:12.127Z"
     },
     {
       "credential": "collector",
@@ -25,7 +25,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:33:46.498Z"
+      "at": "2026-10-14T19:00:19.789Z"
     },
     {
       "credential": "collector",
@@ -35,17 +35,17 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:33:49.863Z"
+      "at": "2026-10-14T19:00:23.738Z"
     },
     {
       "credential": "collector",
       "transport": "powershell-cmdlet-job",
       "cmdlet": "Get-Mailbox",
       "parameters": {
-        "Identity": "keel-rt-absent-fa3430557b93@techinsiderbytes.com"
+        "Identity": "keel-rt-absent-3d0ee6e64c54@techinsiderbytes.com"
       },
       "outcome": "failed",
-      "at": "2026-10-07T11:33:53.082Z",
+      "at": "2026-10-14T19:00:27.166Z",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "[],Write-ErrorMessage"
@@ -58,7 +58,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:56.476Z"
+      "at": "2026-10-14T19:00:30.744Z"
     },
     {
       "credential": "restorer",
@@ -67,7 +67,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:56.752Z"
+      "at": "2026-10-14T19:00:30.886Z"
     },
     {
       "credential": "restorer",
@@ -76,7 +76,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:56.859Z"
+      "at": "2026-10-14T19:00:30.971Z"
     },
     {
       "credential": "restorer",
@@ -85,7 +85,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:56.937Z"
+      "at": "2026-10-14T19:00:31.024Z"
     },
     {
       "credential": "restorer",
@@ -94,7 +94,7 @@
       "version": "v1.0",
       "path": "/users/keel-rt-20260908-alice%40techinsiderbytes.com/mailboxSettings",
       "status": 200,
-      "at": "2026-10-07T11:33:57.043Z"
+      "at": "2026-10-14T19:00:31.102Z"
     },
     {
       "credential": "restorer",
@@ -104,7 +104,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:33:57.044Z"
+      "at": "2026-10-14T19:00:31.102Z"
     },
     {
       "credential": "restorer",
@@ -115,7 +115,7 @@
         "PopEnabled": false
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:02.375Z"
+      "at": "2026-10-14T19:00:37.144Z"
     },
     {
       "credential": "restorer",
@@ -125,7 +125,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:06.594Z"
+      "at": "2026-10-14T19:00:41.539Z"
     },
     {
       "credential": "restorer",
@@ -136,7 +136,7 @@
         "PopEnabled": true
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:09.780Z"
+      "at": "2026-10-14T19:00:44.822Z"
     },
     {
       "credential": "restorer",
@@ -146,7 +146,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:13.216Z"
+      "at": "2026-10-14T19:00:48.474Z"
     },
     {
       "credential": "restorer",
@@ -156,7 +156,7 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:16.391Z"
+      "at": "2026-10-14T19:00:51.933Z"
     },
     {
       "credential": "restorer",
@@ -164,10 +164,10 @@
       "cmdlet": "Set-Mailbox",
       "parameters": {
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com",
-        "RetainDeletedItemsFor": "21.00:00:00"
+        "RetainDeletedItemsFor": "23.00:00:00"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:19.607Z"
+      "at": "2026-10-14T19:00:56.486Z"
     },
     {
       "credential": "restorer",
@@ -177,13 +177,59 @@
         "Identity": "keel-rt-20260908-alice@techinsiderbytes.com"
       },
       "outcome": "ok",
-      "at": "2026-10-07T11:34:23.114Z"
+      "at": "2026-10-14T19:01:00.825Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-OrganizationConfig",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-14T19:01:04.368Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Set-OrganizationConfig",
+      "parameters": {
+        "MailTipsLargeAudienceThreshold": 26
+      },
+      "outcome": "ok",
+      "at": "2026-10-14T19:01:07.889Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-OrganizationConfig",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-14T19:01:11.722Z"
+    },
+    {
+      "credential": "restorer",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Set-OrganizationConfig",
+      "parameters": {
+        "MailTipsLargeAudienceThreshold": 25
+      },
+      "outcome": "ok",
+      "at": "2026-10-14T19:01:15.675Z"
+    },
+    {
+      "credential": "collector",
+      "transport": "powershell-cmdlet-job",
+      "cmdlet": "Get-OrganizationConfig",
+      "parameters": {},
+      "outcome": "ok",
+      "at": "2026-10-14T19:01:19.272Z"
     }
   ],
   "values": {
     "originalTimeZone": "UTC",
     "settingsWritten": true,
     "originalClientAccess": true,
-    "clientAccessWritten": true
+    "clientAccessWritten": true,
+    "originalLargeAudienceThreshold": 25,
+    "organizationWritten": true
   }
 }

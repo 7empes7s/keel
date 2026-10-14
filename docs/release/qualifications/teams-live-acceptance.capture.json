@@ -6,7 +6,7 @@
       "version": "v1.0",
       "path": "/teams",
       "status": 200,
-      "at": "2026-10-07T11:28:41.185Z"
+      "at": "2026-10-14T18:59:11.473Z"
     },
     {
       "credential": "collector",
@@ -14,7 +14,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 200,
-      "at": "2026-10-07T11:28:41.504Z"
+      "at": "2026-10-14T18:59:11.825Z"
     },
     {
       "credential": "collector",
@@ -22,7 +22,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:42.096Z"
+      "at": "2026-10-14T18:59:12.411Z"
     },
     {
       "credential": "collector",
@@ -30,7 +30,7 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:42.199Z"
+      "at": "2026-10-14T18:59:12.510Z"
     },
     {
       "credential": "collector",
@@ -38,7 +38,7 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
       "status": 200,
-      "at": "2026-10-07T11:28:42.294Z"
+      "at": "2026-10-14T18:59:12.595Z"
     },
     {
       "credential": "restorer",
@@ -46,7 +46,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 200,
-      "at": "2026-10-07T11:28:42.593Z"
+      "at": "2026-10-14T18:59:12.793Z"
     },
     {
       "credential": "restorer",
@@ -54,7 +54,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 204,
-      "at": "2026-10-07T11:28:43.189Z"
+      "at": "2026-10-14T18:59:13.177Z"
     },
     {
       "credential": "restorer",
@@ -62,7 +62,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 200,
-      "at": "2026-10-07T11:28:43.556Z"
+      "at": "2026-10-14T18:59:13.375Z"
     },
     {
       "credential": "restorer",
@@ -70,7 +70,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 204,
-      "at": "2026-10-07T11:28:43.969Z"
+      "at": "2026-10-14T18:59:13.770Z"
     },
     {
       "credential": "restorer",
@@ -78,7 +78,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a",
       "status": 200,
-      "at": "2026-10-07T11:28:44.204Z"
+      "at": "2026-10-14T18:59:13.975Z"
     },
     {
       "credential": "restorer",
@@ -86,7 +86,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:44.531Z"
+      "at": "2026-10-14T18:59:14.285Z"
     },
     {
       "credential": "restorer",
@@ -94,7 +94,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 201,
-      "at": "2026-10-07T11:28:45.779Z",
+      "at": "2026-10-14T18:59:15.573Z",
       "memberUserId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40"
     },
     {
@@ -103,7 +103,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:46.173Z"
+      "at": "2026-10-14T18:59:15.868Z"
     },
     {
       "credential": "restorer",
@@ -111,7 +111,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
       "status": 200,
-      "at": "2026-10-07T11:28:47.473Z"
+      "at": "2026-10-14T18:59:17.060Z"
     },
     {
       "credential": "restorer",
@@ -119,7 +119,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:47.807Z"
+      "at": "2026-10-14T18:59:17.448Z"
     },
     {
       "credential": "restorer",
@@ -127,7 +127,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
       "status": 200,
-      "at": "2026-10-07T11:28:49.224Z"
+      "at": "2026-10-14T18:59:18.935Z"
     },
     {
       "credential": "restorer",
@@ -135,7 +135,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:49.796Z"
+      "at": "2026-10-14T18:59:19.275Z"
     },
     {
       "credential": "restorer",
@@ -143,7 +143,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/MCMjMSMjZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4IyNiY2UxNTZiZi04ZWEyLTg5YWQtODZmOS1lMDlhMzc1ZDI5OGEjI2EwZmNiMmY4LWIwYzMtOGE4OC05Yjk0LTMxOTE2NTkxM2Q0MA==",
       "status": 204,
-      "at": "2026-10-07T11:28:51.551Z"
+      "at": "2026-10-14T18:59:20.701Z"
     },
     {
       "credential": "restorer",
@@ -151,7 +151,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:51.890Z"
+      "at": "2026-10-14T18:59:21.069Z"
     },
     {
       "credential": "restorer",
@@ -159,7 +159,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:52.280Z"
+      "at": "2026-10-14T18:59:21.340Z"
     },
     {
       "credential": "collector",
@@ -167,7 +167,7 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
       "status": 200,
-      "at": "2026-10-07T11:28:52.366Z"
+      "at": "2026-10-14T18:59:21.400Z"
     },
     {
       "credential": "collector",
@@ -175,15 +175,23 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:52.449Z"
+      "at": "2026-10-14T18:59:21.472Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners/a0fcb2f8-b0c3-8a88-9b94-319165913d40/$ref",
+      "status": 204,
+      "at": "2026-10-14T18:59:21.629Z"
     },
     {
       "credential": "restorer",
       "method": "DELETE",
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/a0fcb2f8-b0c3-8a88-9b94-319165913d40/$ref",
-      "status": 400,
-      "at": "2026-10-07T11:28:52.586Z"
+      "status": 404,
+      "at": "2026-10-14T18:59:21.725Z"
     },
     {
       "credential": "restorer",
@@ -191,7 +199,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:57.991Z"
+      "at": "2026-10-14T18:59:27.098Z"
     },
     {
       "credential": "collector",
@@ -199,7 +207,7 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
       "status": 200,
-      "at": "2026-10-07T11:28:58.080Z"
+      "at": "2026-10-14T18:59:27.156Z"
     },
     {
       "credential": "collector",
@@ -207,7 +215,15 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:28:58.173Z"
+      "at": "2026-10-14T18:59:27.230Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "DELETE",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members/a0fcb2f8-b0c3-8a88-9b94-319165913d40/$ref",
+      "status": 404,
+      "at": "2026-10-14T18:59:27.316Z"
     },
     {
       "credential": "restorer",
@@ -215,7 +231,7 @@
       "version": "v1.0",
       "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:29:18.480Z"
+      "at": "2026-10-14T18:59:32.723Z"
     },
     {
       "credential": "collector",
@@ -223,7 +239,7 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
       "status": 200,
-      "at": "2026-10-07T11:29:18.564Z"
+      "at": "2026-10-14T18:59:32.790Z"
     },
     {
       "credential": "collector",
@@ -231,7 +247,55 @@
       "version": "v1.0",
       "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
       "status": 200,
-      "at": "2026-10-07T11:29:18.658Z"
+      "at": "2026-10-14T18:59:32.856Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+      "status": 200,
+      "at": "2026-10-14T18:59:38.183Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+      "status": 200,
+      "at": "2026-10-14T18:59:38.277Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+      "status": 200,
+      "at": "2026-10-14T18:59:38.363Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/teams/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+      "status": 200,
+      "at": "2026-10-14T18:59:58.746Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/owners",
+      "status": 200,
+      "at": "2026-10-14T18:59:58.826Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "version": "v1.0",
+      "path": "/groups/bce156bf-8ea2-89ad-86f9-e09a375d298a/members",
+      "status": 200,
+      "at": "2026-10-14T18:59:58.911Z"
     }
   ],
   "values": {
@@ -245,6 +309,7 @@
     ],
     "originalToggle": true,
     "settingsWritten": true,
+    "teamKeysChanged": [],
     "memberAdded": true
   }
 }

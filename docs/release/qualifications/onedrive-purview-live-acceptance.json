@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "onedrive-purview-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
+  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
   "operation": "onedrive-purview.configuration-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-07T11:37:15.386Z",
+  "observedAt": "2026-10-14T19:04:17.135Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "exchangeQualification": {
       "gate": "exchange-live-acceptance",
       "evidence": "exchange-live-acceptance.json",
-      "captureLogSha256": "5392b6d801bbe8841059660d3ee5e9eea8b888f5ee86823210d1dabb13c4a95b"
+      "captureLogSha256": "dab8a143fdd231271aba40043166f5579627228388cb279d9e582c8f0c677053"
     },
     "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
     "fixtureSite": {
@@ -25,8 +25,8 @@
       "lockState": "Unlock"
     },
     "fixtureLabel": {
-      "id": "33b2fc93-62d1-82bf-bf6b-75aa479ad847",
-      "name": "KEEL-RT-20261007-label",
+      "id": "4528cb9a-c54f-87fd-babe-30aa9a9b7127",
+      "name": "KEEL-RT-20261014-label1",
       "lock": "not-reported"
     },
     "fixturePolicy": {
@@ -120,7 +120,7 @@
       {
         "operationId": "onedrive.site-settings",
         "version": "3.4.1",
-        "capturedAt": "2026-10-07T11:34:31.003Z",
+        "capturedAt": "2026-10-14T19:01:50.844Z",
         "ok": true,
         "synthetic": false,
         "form": "Get-PnPTenantSite -Identity"
@@ -128,14 +128,14 @@
       {
         "operationId": "purview.label-definitions",
         "version": "3.10.1",
-        "capturedAt": "2026-10-07T11:34:50.432Z",
+        "capturedAt": "2026-10-14T19:02:09.417Z",
         "ok": true,
         "synthetic": false
       },
       {
         "operationId": "purview.label-publication",
         "version": "3.10.1",
-        "capturedAt": "2026-10-07T11:34:50.432Z",
+        "capturedAt": "2026-10-14T19:02:09.417Z",
         "ok": true,
         "synthetic": false
       }
@@ -227,22 +227,23 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "preFingerprint": "5b36465cbc9af423bbc4428e508df146dd6496bf37fd0336048b29dc3d4a32d3",
-        "finalFingerprint": "5b36465cbc9af423bbc4428e508df146dd6496bf37fd0336048b29dc3d4a32d3",
-        "capturedAt": "2026-10-07T11:36:27.490Z"
+        "preFingerprint": "840b7a4794d06b6b1237c224e60818d092762326a48dd3d32a959d4eeb7fac40",
+        "finalFingerprint": "840b7a4794d06b6b1237c224e60818d092762326a48dd3d32a959d4eeb7fac40",
+        "capturedAt": "2026-10-14T19:03:28.469Z"
       },
       "policy": {
         "operationId": "purview.label-policy.update",
         "version": "3.10.1",
         "synthetic": false,
         "writeMode": "add-only",
-        "addedLabel": "KEEL-RT-20261007-label",
+        "addedLabel": "KEEL-RT-20261014-label1",
         "ok": true,
         "readBackVerified": true,
         "before": {
           "Labels": [
             "KEEL-RT-20261005-label2",
             "KEEL-RT-20261005-anchor",
+            "KEEL-RT-20261007-label",
             "KEEL-RT-20261005-label",
             "KEEL-RT-20261005-label3"
           ]
@@ -252,20 +253,21 @@
             "KEEL-RT-20261005-label2",
             "KEEL-RT-20261005-anchor",
             "KEEL-RT-20261007-label",
+            "KEEL-RT-20261014-label1",
             "KEEL-RT-20261005-label",
             "KEEL-RT-20261005-label3"
           ]
         },
         "preFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
         "finalFingerprint": "4fff8820207819d93895f9d731949c4aba98697f11b5bf358fab162f65e27f8b",
-        "capturedAt": "2026-10-07T11:37:15.385Z"
+        "capturedAt": "2026-10-14T19:04:17.135Z"
       }
     },
     "tenantDefinitions": {
-      "labels": 19,
+      "labels": 20,
       "policies": 2,
-      "otherFingerprint": "8fbe27105a8c4208aa12d5736ec47abe1bba3031e6845633ee7250845e86b683",
-      "finalOtherFingerprint": "8fbe27105a8c4208aa12d5736ec47abe1bba3031e6845633ee7250845e86b683"
+      "otherFingerprint": "181624eb58465b2d13a7452d65a46938fbcdf61b38ffe6ccefe763427dbed640",
+      "finalOtherFingerprint": "181624eb58465b2d13a7452d65a46938fbcdf61b38ffe6ccefe763427dbed640"
     },
     "refusals": {
       "protectionWeakening": {
@@ -309,13 +311,13 @@
       }
     },
     "platformError": {
-      "site": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-e1d58554f108",
+      "site": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-7fcc056962ca",
       "status": "failed",
       "error": {
         "code": "CMDLET_ERROR",
         "errorId": "PnP.PowerShell.Commands.GetTenantSite",
         "category": "NotSpecified",
-        "message": "Cannot get site https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-e1d58554f108."
+        "message": "Cannot get site https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-7fcc056962ca."
       }
     },
     "requests": [
@@ -351,7 +353,7 @@
         "module": "PnP.PowerShell",
         "cmdlet": "Get-PnPTenantSite",
         "parameters": {
-          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-e1d58554f108"
+          "Identity": "https://ta036f59837f-my.sharepoint.com/personal/keel-rt-absent-7fcc056962ca"
         },
         "outcome": "failed",
         "error": {
@@ -381,8 +383,8 @@
         "module": "ExchangeOnlineManagement",
         "cmdlet": "Set-Label",
         "parameters": {
-          "Identity": "33b2fc93-62d1-82bf-bf6b-75aa479ad847",
-          "Comment": "KEEL-RT qualification 2026-10-07T11:34:55.284Z"
+          "Identity": "4528cb9a-c54f-87fd-babe-30aa9a9b7127",
+          "Comment": "KEEL-RT qualification 2026-10-14T19:02:14.174Z"
         },
         "outcome": "ok"
       },
@@ -408,8 +410,8 @@
         "module": "ExchangeOnlineManagement",
         "cmdlet": "Set-Label",
         "parameters": {
-          "Identity": "33b2fc93-62d1-82bf-bf6b-75aa479ad847",
-          "Comment": "KEEL gate 123 fixture"
+          "Identity": "4528cb9a-c54f-87fd-babe-30aa9a9b7127",
+          "Comment": "KEEL gate 123 fixture (Q50)"
         },
         "outcome": "ok"
       },
@@ -453,7 +455,7 @@
         "parameters": {
           "Identity": "92ca8095-9cc5-8acf-8c45-04d71b7037ad",
           "AddLabels": [
-            "KEEL-RT-20261007-label"
+            "KEEL-RT-20261014-label1"
           ]
         },
         "outcome": "ok"
@@ -478,35 +480,35 @@
     "documentation": [
       {
         "url": "https://pnp.github.io/powershell/cmdlets/Get-PnPTenantSite.html",
-        "retrievedAt": "2026-10-07T11:34:26.627Z"
+        "retrievedAt": "2026-10-14T19:01:45.652Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-label",
-        "retrievedAt": "2026-10-07T11:34:27.204Z"
+        "retrievedAt": "2026-10-14T19:01:46.414Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/get-labelpolicy",
-        "retrievedAt": "2026-10-07T11:34:27.699Z"
+        "retrievedAt": "2026-10-14T19:01:47.059Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-label",
-        "retrievedAt": "2026-10-07T11:34:28.207Z"
+        "retrievedAt": "2026-10-14T19:01:47.836Z"
       },
       {
         "url": "https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy",
-        "retrievedAt": "2026-10-07T11:34:28.860Z"
+        "retrievedAt": "2026-10-14T19:01:48.486Z"
       }
     ],
-    "captureLogSha256": "c2e4ef6862294b9e161b0e1ab5adbf14656821ee59333fc47f1506714770f3b8"
+    "captureLogSha256": "61867d3441833b06b174f279cf32345923ed850961af40259ac16b08825e2796"
   },
   "proof": {
     "artifact": {
       "path": "onedrive-purview-live-acceptance.capture.json",
-      "sha256": "c2e4ef6862294b9e161b0e1ab5adbf14656821ee59333fc47f1506714770f3b8"
+      "sha256": "61867d3441833b06b174f279cf32345923ed850961af40259ac16b08825e2796"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "36f6f53cbf4e4c4ace2b5e56d9082b766b25f8ed752b70ffa1d742ff3e152992"
+      "signature": "db038cd9b39f1d40281550a2351c19084ab5b9df1594b92ad8e5cc147d4b0a64"
     }
   }
 }

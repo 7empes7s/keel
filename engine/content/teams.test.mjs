@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
 import {
-  MESSAGES_WAITING, TEAMS_CONTENT_WORKLOAD, TeamsContentScopeError, assertTeamsContentRequest, backupTeams, readTeamContainers,
+  MESSAGES_WAITING, SITE_LIBRARY_COVERAGE, TEAMS_CONTENT_WORKLOAD, TeamsContentScopeError, assertTeamsContentRequest, backupTeams, readTeamContainers,
 } from './teams.mjs';
 
 const TENANT = '00000000-0000-4000-8000-0000000000c1';
@@ -183,7 +183,7 @@ test('the scope guard refuses writes, messages, chats and widened queries', () =
 test('backup stores one item per team, unchanged teams dedupe, and channel folders go to the sites module', async () => {
   const store = fakeStore();
   const folders = [];
-  const sites = { async backupDriveFolder(location) { folders.push(location); return { items: 3 }; } };
+  const sites = { async backupDriveFolder(location) { folders.push(location); return SITE_LIBRARY_COVERAGE.backupDriveFolder(location); } };
   const first = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store, sites, now: NOW });
 
   assert.equal(first.items.length, 2);
@@ -205,15 +205,34 @@ test('backup stores one item per team, unchanged teams dedupe, and channel folde
     return Buffer.concat(chunks).toString('utf8');
   })());
   assert.equal(doc.schema, 'keel.teams.team/v1');
-  assert.ok(doc.channels.items.every((item) => item.messages.status === 'waiting-on-microsoft' && item.files.status === 'backed-up'));
+  assert.ok(doc.channels.items.every((item) => item.messages.status === 'waiting-on-microsoft' && item.files.status === 'covered-by-site' && item.files.coveredBy === `site:site-${item.files.location.driveId}`));
 
   const second = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store, sites, now: NOW });
   assert.deepEqual(second.items.map((item) => item.deduped), [true, true]);
   assert.deepEqual(second.items.map((item) => item.version), first.items.map((item) => item.version));
 });
 
-test('without a sites module, channel folders are recorded as waiting on SharePoint', async () => {
-  const result = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store: fakeStore(), now: NOW });
+test('by default, channel folders point at the team site backup and are not copied twice', async () => {
+  const store = fakeStore();
+  const result = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: NOW });
+  const files = result.teams[0].channels.items.map((item) => item.files);
+  assert.deepEqual(files.map((file) => file.status), ['covered-by-site', 'covered-by-site', 'covered-by-site']);
+  for (const file of files) {
+    assert.deepEqual(file.backup, { coveredBy: `site:${file.location.siteId}`, driveId: file.location.driveId, itemId: file.location.itemId });
+  }
+  assert.ok(store.index.every((item) => item.itemKey === 'team.json'));
+});
+
+test('a folder is never backed-up without a pointer to the backup that covers it', async () => {
+  const sites = { async backupDriveFolder() { return { items: 3 }; } };
+  const result = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store: fakeStore(), sites, now: NOW });
+  const statuses = result.teams[0].channels.items.map((item) => item.files.status);
+  assert.deepEqual(statuses, ['unconfirmed', 'unconfirmed', 'unconfirmed']);
+  assert.equal(await SITE_LIBRARY_COVERAGE.backupDriveFolder({ siteId: null, driveId: 'drive-main', itemId: 'x' }), null);
+});
+
+test('with the sites module turned off, channel folders are recorded as waiting on SharePoint', async () => {
+  const result = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store: fakeStore(), sites: null, now: NOW });
   const statuses = result.teams[0].channels.items.map((item) => item.files.status);
   assert.deepEqual(statuses, ['waiting-on-sites', 'waiting-on-sites', 'waiting-on-sites']);
 });

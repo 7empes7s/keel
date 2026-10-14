@@ -10,7 +10,8 @@
  *  - Purview label definitions and their publication;
  *  - Exchange organization-wide mail flow and protection settings (issue #153);
  *  - Teams organization-wide policies and configuration (issue #154);
- *  - Purview retention and DLP policies and their rules (issue #157).
+ *  - Purview retention and DLP policies and their rules (issue #157);
+ *  - the Exchange and Defender settings mail flow does not read (READ-EXO).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -40,6 +41,7 @@ export const WORKLOAD_CONTRACT_VERSION = 1;
 export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
   'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
+  'exchange-extended',
   'power-platform-settings',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
@@ -281,6 +283,43 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     operation: cmdlet(name, 'ExchangeOnlineManagement'),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // READ-EXO: the Exchange and Defender settings mail flow does not read, in the
+  // Exchange Online session with no parameters (the global quarantine settings take a
+  // fixed -QuarantinePolicyType). The last four need Microsoft Defender for Office 365;
+  // engine/collect/workloads/exchangeExtended.mjs treats them as optional.
+  ...[
+    ['exchange-extended.outbound-spam-policies', 'Outbound spam policies', 'Get-HostedOutboundSpamFilterPolicy'],
+    ['exchange-extended.outbound-spam-rules', 'Outbound spam rules', 'Get-HostedOutboundSpamFilterRule'],
+    ['exchange-extended.connection-filter-policies', 'Connection filter policies', 'Get-HostedConnectionFilterPolicy'],
+    ['exchange-extended.anti-spam-rules', 'Anti-spam rules (who each policy applies to)', 'Get-HostedContentFilterRule'],
+    ['exchange-extended.anti-phish-rules', 'Anti-phishing rules (who each policy applies to)', 'Get-AntiPhishRule'],
+    ['exchange-extended.anti-malware-rules', 'Anti-malware rules (who each policy applies to)', 'Get-MalwareFilterRule'],
+    ['exchange-extended.eop-preset-rules', 'Standard and Strict preset policy rules', 'Get-EOPProtectionPolicyRule'],
+    ['exchange-extended.quarantine-policies', 'Quarantine policies', 'Get-QuarantinePolicy'],
+    ['exchange-extended.quarantine-global-settings', 'Quarantine notification settings', 'Get-QuarantinePolicy',
+      { parameters: ['-QuarantinePolicyType'], probeName: 'Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy' }],
+    ['exchange-extended.journal-rules', 'Journal rules', 'Get-JournalRule'],
+    ['exchange-extended.mobile-device-policies', 'Mobile device mailbox policies', 'Get-MobileDeviceMailboxPolicy'],
+    ['exchange-extended.device-access-rules', 'Mobile device access rules', 'Get-ActiveSyncDeviceAccessRule'],
+    ['exchange-extended.activesync-settings', 'Mobile device access settings', 'Get-ActiveSyncOrganizationSettings'],
+    ['exchange-extended.address-lists', 'Address lists', 'Get-AddressList'],
+    ['exchange-extended.global-address-lists', 'Global address lists', 'Get-GlobalAddressList'],
+    ['exchange-extended.offline-address-books', 'Offline address books', 'Get-OfflineAddressBook'],
+    ['exchange-extended.address-book-policies', 'Address book policies', 'Get-AddressBookPolicy'],
+    ['exchange-extended.retention-policy-tags', 'Mailbox retention tags', 'Get-RetentionPolicyTag'],
+    ['exchange-extended.retention-policies', 'Mailbox retention policies', 'Get-RetentionPolicy'],
+    ['exchange-extended.safe-links-rules', 'Safe Links rules', 'Get-SafeLinksRule'],
+    ['exchange-extended.safe-attachment-rules', 'Safe Attachments rules', 'Get-SafeAttachmentRule'],
+    ['exchange-extended.defender-preset-rules', 'Defender preset policy rules', 'Get-ATPProtectionPolicyRule'],
+    ['exchange-extended.defender-office-apps', 'Safe Attachments for SharePoint, OneDrive and Teams', 'Get-AtpPolicyForO365'],
+  ].map(([id, resource, name, options]) => ({
+    id, workload: 'exchange-extended', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),

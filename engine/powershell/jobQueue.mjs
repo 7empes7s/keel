@@ -187,7 +187,8 @@ export async function runJob(job, options = {}) {
 // read as an empty successful result.
 
 const PARAMETER_NAME = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
-const CMDLET_NAME = /^[A-Z][a-z]+-[A-Za-z]+$/;
+// Letters, then digits allowed after the first (Get-AtpPolicyForO365). Nothing else.
+const CMDLET_NAME = /^[A-Z][a-z]+-[A-Za-z][A-Za-z0-9]*$/;
 const MAX_PARAMETER_LENGTH = 1024;
 const MAX_DETAIL_TEXT = 2000;
 

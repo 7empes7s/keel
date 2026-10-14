@@ -15,9 +15,12 @@
  *  - Messages are never read. Until Microsoft approves the Teams export API for the tenant
  *    (ask 2), each channel carries `messages: { status: 'waiting-on-microsoft' }`, so the
  *    gap is flagged on every backup and never silently missing.
- *  - Channel files belong to SharePoint. This module only finds the folder and hands it to
- *    the SharePoint sites module (`sites.backupDriveFolder`). Without one, the folder is
- *    recorded with status `waiting-on-sites`.
+ *  - Channel files belong to SharePoint. This module only finds the folder and asks the
+ *    injected `sites.backupDriveFolder` who covers it. The default, SITE_LIBRARY_COVERAGE,
+ *    points at the team's site: backupSharePointSites backs up that library whole, so the
+ *    folder is recorded `covered-by-site` with `coveredBy: 'site:<siteId>'`, never as a second
+ *    copy. An answer without that pointer is recorded `unconfirmed`, never `backed-up`.
+ *    With `sites: null`, the folder is recorded `waiting-on-sites`.
  *  - Content goes through the content store interface (section 2 of the coverage plan):
  *    `putItem(stream, { tenantRef, workload, container, itemKey, version, metadata })`.
  *    Each team is one item: a canonical JSON document keyed by the team id, versioned by
@@ -320,14 +323,26 @@ export async function readTeamContainers({ transport, tenantId, maxTeams = DEFAU
 }
 
 /**
- * Backs up every team: reads the containers, hands each channel folder to the SharePoint
- * sites module, and stores one item per team through the content store.
+ * Channel files live in the team site's document library, which backupSharePointSites
+ * stores whole under container `site:<siteId>`. This adapter copies nothing: it answers
+ * with a pointer to that site, or null when the folder's site or drive is unknown.
+ */
+export const SITE_LIBRARY_COVERAGE = Object.freeze({
+  async backupDriveFolder({ siteId, driveId, itemId }) {
+    if (!siteId || !driveId) return null;
+    return { coveredBy: `site:${siteId}`, driveId, itemId: itemId ?? null };
+  },
+});
+
+/**
+ * Backs up every team: reads the containers, asks the sites module who covers each
+ * channel folder, and stores one item per team through the content store.
  *
  *  - `store.putItem(stream, meta)` resolves `{ ref, sha256, bytes, deduped }`.
- *  - `sites.backupDriveFolder({ tenantRef, driveId, siteId, itemId, container })` is
- *    optional; it resolves whatever the sites module reports for that folder.
+ *  - `sites.backupDriveFolder({ tenantRef, driveId, siteId, itemId, container })` resolves
+ *    `{ coveredBy, driveId, itemId }` for a covered folder. Defaults to SITE_LIBRARY_COVERAGE.
  */
-export async function backupTeams({ transport, tenantId, tenantRef, store, sites = null, maxTeams, maxPages, sleep, now = () => new Date() }) {
+export async function backupTeams({ transport, tenantId, tenantRef, store, sites = SITE_LIBRARY_COVERAGE, maxTeams, maxPages, sleep, now = () => new Date() }) {
   if (typeof store?.putItem !== 'function') throw new TypeError('store.putItem is required');
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const result = await readTeamContainers({ transport, tenantId, maxTeams, maxPages, sleep, now });
@@ -344,7 +359,9 @@ export async function backupTeams({ transport, tenantId, tenantRef, store, sites
       }
       try {
         const backup = await sites.backupDriveFolder({ tenantRef, ...item.files.location, container: `${container}/channel:${item.channelId}` });
-        item.files = { ...item.files, status: 'backed-up', backup: backup ?? null };
+        item.files = typeof backup?.coveredBy === 'string' && backup.coveredBy
+          ? { ...item.files, status: 'covered-by-site', coveredBy: backup.coveredBy, backup }
+          : { ...item.files, status: 'unconfirmed', reason: 'the sites module did not say which backup covers this folder', backup: backup ?? null };
       } catch (error) {
         item.files = { ...item.files, ...failure(error) };
       }

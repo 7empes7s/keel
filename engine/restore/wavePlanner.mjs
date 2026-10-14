@@ -114,6 +114,8 @@ export const WORKLOAD_RESOURCE_TYPES = Object.freeze([
   'teamsOrgPolicy',
   // Issue #157: Purview retention and DLP policies and rules (read-only for now).
   'purviewRetentionDlp',
+  // READ-EXO: the Exchange and Defender settings mail flow does not read (read-only for now).
+  'exchangeExtended',
   // READ-PP: Power Platform environments, DLP policies, connectors and Power BI tenant settings (read-only for now).
   'powerPlatformSettings',
 ]);

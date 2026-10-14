@@ -396,6 +396,38 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
 
+### Exchange protection rules, address lists, mobile and retention settings
+
+**Backed up:**
+
+- Outbound spam policies
+- Outbound spam rules
+- Connection filter policies
+- Anti-spam rules (who each policy applies to)
+- Anti-phishing rules (who each policy applies to)
+- Anti-malware rules (who each policy applies to)
+- Standard and Strict preset policy rules
+- Quarantine policies
+- Quarantine notification settings
+- Journal rules
+- Mobile device mailbox policies
+- Mobile device access rules
+- Mobile device access settings
+- Address lists
+- Global address lists
+- Offline address books
+- Address book policies
+- Mailbox retention tags
+- Mailbox retention policies
+- Safe Links rules
+- Safe Attachments rules
+- Defender preset policy rules
+- Safe Attachments for SharePoint, OneDrive and Teams
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
+
 ### Power Platform and Power BI settings
 
 **Backed up:**

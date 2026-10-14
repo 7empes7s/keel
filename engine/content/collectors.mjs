@@ -17,8 +17,9 @@
  * Teams has no name filter and reads every team. tenantHost is found from /sites/root
  * when it is not given.
  *
- * SharePoint sites run before Teams in the same run: Teams records channel files as
- * covered by their team site's backup, which only holds when that backup ran.
+ * SharePoint sites run before Teams in the same run. Teams records a channel's files as
+ * covered by its team site only when the sites collector has read that site's library in
+ * full (a `covered:` marker in the sync state, with when); otherwise as unconfirmed.
  */
 import { backupMailboxes, discoverMailboxes } from './mailboxes.mjs';
 import { backupOneDrives } from './onedrives.mjs';
@@ -127,18 +128,51 @@ async function collectSites(client, context) {
       ...Object.entries(site.reads ?? {}),
       ...(site.lists ?? []).flatMap((list) => Object.entries(list.reads ?? {}).map(([name, read]) => [`${list.displayName ?? list.listId} ${name}`, read])),
     ].filter(([, read]) => read?.status !== 'observed');
+    // A library sync that finished with file warnings reads as observed but is partial.
+    for (const list of site.lists ?? []) {
+      if (list.library && list.library.status !== 'observed' && list.reads?.library?.status === 'observed') {
+        const warning = list.library.result?.stats?.warnings?.[0];
+        parts.push([`${list.displayName ?? list.listId} library files`, { status: list.library.status, error: warning ? `${list.library.result.stats.warnings.length} file warning(s), first: ${warning.warning}` : null }]);
+      }
+    }
     if (parts.length) {
       const [name, read] = parts[0];
       reasons.push(`${site.displayName ?? site.webUrl ?? site.siteId}: ${parts.length} part(s) not fully read, first ${name}: ${read?.status}${read?.error ? ` (${read.error})` : ''}`);
+    }
+    // Record which libraries this run read in full, so Teams can point at them.
+    for (const list of site.lists ?? []) {
+      if (list.library?.status === 'observed' && list.library.driveId) {
+        await syncState.save({ ...coverageKey(tenantRef, site.siteId, list.library.driveId), state: { lastSyncedAt: now().toISOString() } });
+      }
     }
   }
   return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
 }
 
+// The marker the sites collector saves for a library it read in full.
+const coverageKey = (tenantRef, siteId, driveId) => ({ tenantRef, workload: 'sharepoint-sites', key: `covered:${siteId}/${driveId}` });
+
+/**
+ * Teams channel folders live in their team site's library. A folder is recorded as
+ * covered by the site only when the sites collector has read that library in full;
+ * otherwise the answer is null and Teams records the folder as unconfirmed.
+ */
+function siteCoverage(tenantRef, syncState) {
+  return Object.freeze({
+    async backupDriveFolder({ siteId, driveId, itemId }) {
+      if (!siteId || !driveId) return null;
+      const covered = await syncState.load(coverageKey(tenantRef, siteId, driveId));
+      if (!covered?.lastSyncedAt) return null;
+      return { coveredBy: `site:${siteId}`, driveId, itemId: itemId ?? null, lastSyncedAt: covered.lastSyncedAt };
+    },
+  });
+}
+
 async function collectTeams(client, context) {
   const { tenantRef, tenantId, transport, sleep, now } = context;
   const { store, tally } = counted(context.store);
-  const result = await backupTeams({ transport: graphTransport(transport), tenantId, tenantRef, store, sleep, now });
+  const sites = siteCoverage(tenantRef, stateFor(client, context));
+  const result = await backupTeams({ transport: graphTransport(transport), tenantId, tenantRef, store, sites, sleep, now });
   const reasons = [];
   if (result.discovery?.status !== 'observed') reasons.push(`team discovery: ${result.discovery?.error ?? result.discovery?.status}`);
   if (result.discovery?.capped) reasons.push('more teams than one run reads; the rest was not read');

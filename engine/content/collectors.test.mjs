@@ -13,6 +13,9 @@ const TENANT_ID = '00000000-0000-0000-0000-0000000000c1';
 const HOST = 'keelrt.sharepoint.com';
 const SITE = `${HOST},11111111-1111-1111-1111-111111111111,22222222-2222-2222-2222-222222222222`;
 const LIST = '55555555-5555-5555-5555-555555555555';
+const TEAM_COVERED = '66666666-6666-6666-6666-666666666666';
+const TEAM_OTHER = '77777777-7777-7777-7777-777777777777';
+const CHANNEL = '19:KEEL-RT-general@thread.tacv2';
 const OTHER = `${HOST},33333333-3333-3333-3333-333333333333,44444444-4444-4444-4444-444444444444`;
 const quiet = { log: () => {} };
 
@@ -24,7 +27,7 @@ const deltaDone = (url) => json({ value: [], '@odata.deltaLink': `${url.split('?
  * mailbox, one without either), one user outside the prefix, one KEEL-RT- site with a
  * document library. Every other list answers empty and every other delta answers done.
  */
-function fixtureTenant() {
+function fixtureTenant({ librarySize = 14 } = {}) {
   const calls = [];
   const fetchImpl = async (href, init) => {
     calls.push({ url: href, headers: init.headers });
@@ -47,7 +50,7 @@ function fixtureTenant() {
         return json({
           value: [
             { id: `${driveId}-root`, root: {}, name: 'root' },
-            { id: `${driveId}-f1`, name: file, file: {}, size: 14, cTag: 'c1', eTag: 'e1', parentReference: { id: `${driveId}-root` } },
+            { id: `${driveId}-f1`, name: file, file: {}, size: driveId === 'KEEL-RT-libdrive' ? librarySize : 14, cTag: 'c1', eTag: 'e1', parentReference: { id: `${driveId}-root` } },
           ],
           '@odata.deltaLink': `${GRAPH}/v1.0/drives/${driveId}/root/delta?$deltatoken=KEEL-RT-1`,
         });
@@ -76,6 +79,13 @@ function fixtureTenant() {
     if (path === `/v1.0/sites/${SITE}`) return json({ id: SITE, displayName: 'KEEL-RT-site', lastModifiedDateTime: '2026-10-14T00:00:00Z' });
     if (path === `/v1.0/sites/${SITE}/lists`) return json({ value: [{ id: LIST, displayName: 'KEEL-RT-docs', list: { template: 'documentLibrary' } }] });
     if (path === `/v1.0/sites/${SITE}/lists/${LIST}/drive`) return json({ id: 'KEEL-RT-libdrive', driveType: 'documentLibrary' });
+    if (path === '/v1.0/teams') return json({ value: [{ id: TEAM_COVERED }, { id: TEAM_OTHER }] });
+    for (const [team, siteId, driveId] of [[TEAM_COVERED, SITE, 'KEEL-RT-libdrive'], [TEAM_OTHER, OTHER, 'other-drive']]) {
+      if (path === `/v1.0/teams/${team}`) return json({ id: team, displayName: team === TEAM_COVERED ? 'KEEL-RT-team' : 'other team', tenantId: TENANT_ID });
+      if (path === `/v1.0/teams/${team}/channels`) return json({ value: [{ id: CHANNEL, membershipType: 'standard' }] });
+      if (path === `/v1.0/teams/${team}/channels/${CHANNEL}`) return json({ id: CHANNEL, membershipType: 'standard', displayName: 'General' });
+      if (path === `/v1.0/teams/${team}/channels/${CHANNEL}/filesFolder`) return json({ id: 'folder-general', name: 'General', parentReference: { driveId, siteId } });
+    }
     if (path.endsWith('/delta')) return deltaDone(href);
     return json({ value: [] });
   };
@@ -113,13 +123,25 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   const site = await store.listItems({ container: `site:${SITE}` });
   assert.ok(site.some((item) => item.workload === 'sharepoint-sites' && item.metadata.kind === 'drive-content'), 'the library file is stored with the site');
 
-  // Delta state is saved per mailbox, per OneDrive and per library.
+  // Delta state is saved per mailbox, per OneDrive and per library, plus which libraries were read in full.
   const keys = [...syncState.rows.keys()].map((key) => JSON.parse(key).slice(1));
   assert.deepEqual(keys.sort(), [
     ['exchange-mail', 'mailbox/u-alice'],
     ['onedrive', 'drive:KEEL-RT-drive-alice'],
+    ['sharepoint-sites', `covered:${SITE}/KEEL-RT-libdrive`],
     ['sharepoint-sites', `library:${SITE}/${LIST}/KEEL-RT-libdrive`],
-  ]);
+  ].sort());
+
+  // A channel folder is covered by its site only when that site's library was read in full.
+  const filesOf = async (team) => {
+    const [item] = await store.listItems({ container: `team:${team}` });
+    const document = JSON.parse(Buffer.concat(await (await store.getItem(item.ref)).toArray()).toString());
+    return document.channels.items[0].files;
+  };
+  const covered = await filesOf(TEAM_COVERED);
+  assert.equal(covered.status, 'covered-by-site');
+  assert.equal(covered.coveredBy, `site:${SITE}`);
+  assert.equal((await filesOf(TEAM_OTHER)).status, 'unconfirmed', 'the other team site was outside the prefix and never backed up');
 
   // The second run resumes from the saved delta links instead of reading everything again.
   tenant.calls.length = 0;
@@ -134,6 +156,19 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   // The drive delta carries its Prefer options through the read-only transport.
   const driveDelta = tenant.calls.find((call) => call.url.includes('/drives/KEEL-RT-drive-alice/root/delta'));
   assert.match(driveDelta.headers.prefer, /deltashowremovedasdeleted/);
+});
+
+test('a library that finished with file warnings makes the sites run partial and says why', async () => {
+  const tenant = fixtureTenant({ librarySize: 99 });
+  const sites = CONTENT_COLLECTORS.find((entry) => entry.workload === 'sharepoint-sites');
+  const syncState = createMemorySyncState();
+  const result = await sites.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: tenant.transport, scope: { namePrefix: 'KEEL-RT-' },
+    sleep: async () => {}, now: () => new Date(), syncState,
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.match(result.reasons.join('\n'), /KEEL-RT-docs library files: partial \(1 file warning\(s\), first: size-mismatch\)/);
+  assert.ok(![...syncState.rows.keys()].some((key) => key.includes('covered:')), 'a partial library is not recorded as covering its Teams folders');
 });
 
 test('OneDrive backup reports users without a drive as skipped and fails only when nothing synced', async () => {
@@ -173,5 +208,9 @@ test('the adapters keep every request a Graph GET and only pass read headers', a
   assert.equal((await reader.getStream('v1.0', '/users/u/messages/m/$value', { maxBytes: 10 })).tooLarge, true);
   assert.equal((await reader.getStream('v1.0', '/users/u/messages/m/$value', { maxBytes: 1000 })).bytes.length, 100);
   assert.equal((await reader.getStream('v1.0', '/users/missing/$value', { maxBytes: 1000 })).status, 404);
+  // A failed download answers Graph's JSON error, and its stream is read and closed.
+  const drive = driveTransport(contentReadTransport(async () => 'KEEL-RT-token', async () => json({ error: { code: 'resourceLocked' } }, 423)));
+  const locked = await drive({ method: 'GET', url: `${GRAPH}/v1.0/drives/d/items/i/content` });
+  assert.deepEqual([locked.status, locked.body], [423, { error: { code: 'resourceLocked' } }]);
   assert.ok(seen.every((call) => call.init.method === 'GET'));
 });

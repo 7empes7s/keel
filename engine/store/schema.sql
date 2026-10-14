@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS resource_reference (
   PRIMARY KEY (from_version, field_path)
 );
 
+-- Issue #195: a reference held inside a path (a PIM eligibility scoped to
+-- "/administrativeUnits/{id}") keeps the path's prefix, so the writer can put the
+-- target's id back into the same path. NULL for every other reference and for
+-- rows stored before this column existed; such an administrative-unit scope is
+-- refused rather than misresolved.
+ALTER TABLE resource_reference ADD COLUMN IF NOT EXISTS prefix text;
+
 CREATE INDEX IF NOT EXISTS resource_version_key_idx ON resource_version (natural_key, snapshot_id);
 CREATE INDEX IF NOT EXISTS resource_reference_symbol_idx ON resource_reference (to_symbol);
 

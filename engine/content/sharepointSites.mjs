@@ -26,6 +26,8 @@
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 
+import { syncDrive } from './drive.mjs';
+
 export const SITES_WORKLOAD = 'sharepoint-sites';
 export const DEFAULT_MAX_SITES = 5000;
 export const DEFAULT_MAX_DEPTH = 10;
@@ -171,13 +173,19 @@ const enc = encodeURIComponent;
  *
  * - transport(url, { method }) -> { status, headers, body }
  * - store: the content store interface (putItem(stream, meta) -> { ref, sha256, bytes, deduped }).
- * - backupLibrary({ driveId, siteId, listId, tenantRef, container, store, transport, sleep })
- *   backs up one library's files. Defaults to engine/content/drive.mjs's backupDrive when
- *   that module exists; until then each library is recorded as waiting on the drive backup.
+ * - backupLibrary({ driveId, siteId, listId, tenantRef, container, store, transport, sleep, state, checkpoint })
+ *   backs up one library's files and returns { outcome, ... }. Defaults to the drive backup
+ *   (syncDrive in engine/content/drive.mjs). Its transport takes the drive backup's shape,
+ *   transport({ method, url, headers }), and is passed on to the sites transport as
+ *   transport(url, { method: 'GET', headers }); the sites transport must follow Graph's
+ *   download redirect for file content.
+ * - libraryState: { load({ siteId, listId, driveId }) -> state | null, save({ siteId, listId, driveId, state }) }
+ *   keeps each library's delta state between runs. Without it every run is a full pass
+ *   (correct, since the store deduplicates, but slower).
  * - siteFilter(site) narrows the run (for example to `KEEL-RT-` sites for a live check).
  */
 export async function backupSharePointSites({
-  transport, store, tenantRef, tenantHost, backupLibrary, siteFilter = () => true,
+  transport, store, tenantRef, tenantHost, backupLibrary, libraryState = null, siteFilter = () => true,
   sleep = async () => {}, now = () => new Date(),
   maxSites = DEFAULT_MAX_SITES, maxDepth = DEFAULT_MAX_DEPTH, maxPages = DEFAULT_MAX_PAGES,
 }) {
@@ -186,16 +194,20 @@ export async function backupSharePointSites({
   }
   if (typeof store?.putItem !== 'function') throw new TypeError('store must implement putItem');
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
-  const library = backupLibrary ?? await defaultLibraryBackup();
+  const library = backupLibrary ?? defaultLibraryBackup();
   const counters = { requests: 0, throttled: 0, stored: 0, deduped: 0, bytes: 0 };
   const reader = createReader({ transport, sleep, maxPages, counters });
   const startedAt = now().toISOString();
   // The drive backup reads its own paths, but it gets a transport that still refuses
-  // anything except a Graph GET.
-  const libraryTransport = (url, { method = 'GET', ...rest } = {}) => {
+  // anything except a Graph GET. Response headers reach it as a plain object with
+  // lower-case keys, so it can read Retry-After from a fetch-style Headers too.
+  const libraryTransport = async ({ method = 'GET', url, headers = {} } = {}) => {
     if (method !== 'GET') throw new Error(`sharepoint sites: refused ${method} from the library backup: this backup is read-only`);
     if (new URL(url).origin !== 'https://graph.microsoft.com') throw new Error(`sharepoint sites: refused ${new URL(url).origin} from the library backup`);
-    return transport(url, { ...rest, method: 'GET' });
+    const response = await transport(url, { method: 'GET', headers });
+    const answered = response?.headers;
+    if (typeof answered?.entries !== 'function' || typeof answered?.get !== 'function') return response;
+    return { ...response, headers: Object.fromEntries([...answered.entries()].map(([key, value]) => [key.toLowerCase(), value])) };
   };
 
   const put = async (container, itemKey, value, version) => {
@@ -342,11 +354,20 @@ export async function backupSharePointSites({
       await read('library', async () => {
         const drive = await reader.get(`${listBase}/drive?$select=id,driveType,name,webUrl`);
         entry.library = { driveId: drive.id ?? null };
-        const result = await library({
-          driveId: drive.id, siteId, listId: list.id, tenantRef, container, store, transport: libraryTransport, sleep,
-        });
+        const key = { siteId, listId: list.id, driveId: drive.id };
+        let result;
+        try {
+          result = await library({
+            ...key, tenantRef, container, store, transport: libraryTransport, sleep,
+            state: libraryState ? await libraryState.load(key) : null,
+            checkpoint: async (state) => { if (libraryState) await libraryState.save({ ...key, state }); },
+          });
+        } catch (error) {
+          entry.library.status = failure(error).status;
+          throw error;
+        }
         entry.library.result = result;
-        entry.library.status = result?.outcome === 'waiting' ? 'waiting' : (['complete', 'complete-empty'].includes(result?.outcome) ? 'observed' : 'partial');
+        entry.library.status = ['complete', 'complete-empty'].includes(result?.outcome) ? 'observed' : 'partial';
       });
     }
     return entry;
@@ -376,17 +397,16 @@ export async function backupSharePointSites({
 }
 
 /**
- * The drive backup from engine/content/drive.mjs when it exists. Until it merges, each
- * library is recorded as `waiting` (the run is then `partial`), never as backed up.
+ * The drive backup (syncDrive) adapted to one document library. Files land in the
+ * site's own container under the sites workload. A file Graph would not hand over is a
+ * warning from syncDrive and makes the library `partial`; a failed or denied read throws
+ * (DriveSyncError carries the HTTP status) and is recorded where it happened.
  */
-export async function defaultLibraryBackup() {
-  let drive = null;
-  try {
-    drive = await import('./drive.mjs');
-  } catch (error) {
-    // Only a missing drive.mjs itself means "not merged yet"; any other failure is real.
-    if (error?.code !== 'ERR_MODULE_NOT_FOUND' || !String(error.url ?? error.message).includes('content/drive.mjs')) throw error;
-  }
-  if (typeof drive?.backupDrive === 'function') return (options) => drive.backupDrive(options);
-  return async () => ({ outcome: 'waiting', reason: 'library files wait on the drive backup (engine/content/drive.mjs), which is not merged yet' });
+export function defaultLibraryBackup({ sync = syncDrive } = {}) {
+  return async ({ driveId, tenantRef, container, store, transport, sleep, state, checkpoint }) => {
+    const { stats } = await sync({
+      transport, store, driveId, tenantRef, workload: SITES_WORKLOAD, container, state, checkpoint, sleep,
+    });
+    return { outcome: stats.warnings.length ? 'partial' : 'complete', stats };
+  };
 }

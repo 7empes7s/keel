@@ -199,13 +199,46 @@ test('authentication methods: each changed method is PATCHed with its @odata.typ
 
 test('authentication methods: an unknown or missing method is refused before any write', async () => {
   const graph = recordingGraph();
-  const unknown = { ...methods, authenticationMethodConfigurations: [{ id: 'QRCodePin', state: 'enabled' }] };
+  const unknown = { ...methods, authenticationMethodConfigurations: [{ id: 'FutureMethod', state: 'enabled' }] };
   let result = await run(graph, [plannedUpdate(graph, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', unknown, methods)], { lockoutGate: ALLOW });
-  assert.match(result.failed[0].error, /has no known type/);
+  assert.match(result.failed[0].error, /FutureMethod has no known type/);
   const live = { ...methods, authenticationMethodConfigurations: methods.authenticationMethodConfigurations.filter((config) => config.id !== 'Sms') };
   result = await run(graph, [plannedUpdate(graph, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', methods, live)], { lockoutGate: ALLOW });
   assert.match(result.failed[0].error, /Sms does not exist in the live policy/);
   assert.equal(graph.bodies.length, 0);
+});
+
+test('authentication methods: QRCodePin and VerifiableCredentials are written, and an unchanged unknown method does not block (Q48 step 46)', async () => {
+  const graph = recordingGraph();
+  const extra = [
+    { id: 'QRCodePin', state: 'disabled', includeTargets: [], excludeTargets: [] },
+    { id: 'VerifiableCredentials', state: 'disabled', includeTargets: [], excludeTargets: [] },
+    { id: 'FutureMethod', state: 'enabled', includeTargets: [] },
+  ];
+  const desired = { ...methods, authenticationMethodConfigurations: [...methods.authenticationMethodConfigurations, ...extra] };
+  const live = {
+    ...methods,
+    authenticationMethodConfigurations: [
+      ...methods.authenticationMethodConfigurations,
+      ...extra.map((config) => (config.id === 'FutureMethod' ? config : { ...config, state: 'enabled' })),
+    ],
+  };
+  const result = await run(graph, [plannedUpdate(graph, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', desired, live)], { lockoutGate: ALLOW });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map(({ method, path }) => `${method} ${path}`), [
+    'PATCH /policies/authenticationMethodsPolicy/authenticationMethodConfigurations/QRCodePin',
+    'PATCH /policies/authenticationMethodsPolicy/authenticationMethodConfigurations/VerifiableCredentials',
+  ]);
+  assert.equal(graph.bodies[0].body['@odata.type'], '#microsoft.graph.qrCodePinAuthenticationMethodConfiguration');
+  assert.equal(graph.bodies[1].body['@odata.type'], '#microsoft.graph.verifiableCredentialsAuthenticationMethodConfiguration');
+  assert.equal(graph.bodies[0].body.state, 'disabled');
+
+  // The same unknown method, changed in the snapshot, is still refused before any write.
+  const changed = { ...desired, authenticationMethodConfigurations: desired.authenticationMethodConfigurations.map((config) => (config.id === 'FutureMethod' ? { ...config, state: 'disabled' } : config)) };
+  const refused = recordingGraph();
+  const second = await run(refused, [plannedUpdate(refused, 'authenticationMethodsPolicy', '/policies/authenticationMethodsPolicy', changed, live)], { lockoutGate: ALLOW });
+  assert.match(second.failed[0].error, /FutureMethod has no known type and differs from the live policy/);
+  assert.equal(refused.bodies.length, 0);
 });
 
 test('admin consent requests: a PUT carries every writable field and nothing else', async () => {

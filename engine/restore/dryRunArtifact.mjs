@@ -11,6 +11,7 @@
 // a target that drifted since the dry run ran, forces a new dry run instead of silently
 // promoting stale parameters.
 import { createHash } from 'node:crypto';
+import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { scopeReferencePrefix } from '../cir/canonicalize.mjs';
 import { withExplicitReferences } from '../coverage/qualification.mjs';
 
@@ -72,8 +73,12 @@ export function restoreCandidates(versions, references) {
     // out either; applyWave writes only their reviewed attributes and add-only
     // licences, and never creates or deletes one.
     .map((v) => ({
+      // The desired hash is recomputed from the stored payload rather than read
+      // from payload_hash, so a field classified server-owned after the snapshot
+      // was taken (Q48: organization.directorySizeQuota) is excluded on both sides
+      // of the comparison with the live object.
       naturalKey: v.natural_key, resourceType: v.resource_type, payload: v.payload,
-      payloadHash: v.payload_hash,
+      payloadHash: v.payload == null ? v.payload_hash : canonicalHash(v.payload, v.resource_type),
       // Roadmap task-107: explicit references (a service principal's appId)
       // join the snapshot's, so wave ordering puts the application first.
       references: withExplicitReferences({ resourceType: v.resource_type, payload: v.payload, references: refsByVersion.get(v.id) ?? [] }),

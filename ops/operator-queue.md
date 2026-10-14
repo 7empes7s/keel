@@ -2376,8 +2376,8 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error) / waiting (#226 not live).
 ### Q50: Recapture OneDrive/Purview (gate 123) before 2026-11-06
 - Drafted by the "Q48 and Q49 operator results" thread (2026-10-14), at Marouane's request.
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: Started 2026-10-14 19:05 UTC at live build be3d299 (moved since Q48), so recapturing 120 -> 121 -> 122 -> 123 in one sitting.
 - Needs: Q49 done or blocked. Must finish before 2026-11-06, when the current OneDrive/Purview proof expires.
 - **Test tenant only.** Same hard rules as Q45.
 - **Why.** In Q48 part E the OneDrive/Purview proof import was refused: its record is at build fb1493ea, while the
@@ -2394,8 +2394,8 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error), plus the new expiry dates.
 ### Q51: Recapture the Q48 steps the #230 fixes unblock
 - Drafted by the "Q48 and Q49 operator results" thread (2026-10-14).
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: Started 2026-10-14 19:05 UTC at live build be3d299 (#230 live). Running in parallel with Q50 (no shared fixtures).
 - Needs: Q49 done or blocked, and a live build containing #230 (`git -C /opt/keel-live log --oneline | grep -c "#230"`).
   Run before or after Q50, whichever is first in line; they don't share fixtures.
 - **Test tenant only.** Same hard rules and requester/approver split as Q45.

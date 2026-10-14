@@ -249,3 +249,29 @@ test('the site cap makes the run partial', async () => {
 test('canonicalJson gives the same bytes for the same object in any key order', () => {
   assert.equal(canonicalJson({ b: 1, a: { d: [1, { f: 1, e: 2 }], c: 3 } }), canonicalJson({ a: { c: 3, d: [1, { e: 2, f: 1 }] }, b: 1 }));
 });
+
+test('the library backup gets a transport that refuses anything except a Graph GET', async () => {
+  const { transport } = fakeGraph(fixtureRoutes());
+  const attempts = [];
+  const library = async ({ transport: libraryTransport }) => {
+    for (const [url, method] of [[`${G}/drives/b!drive-1/items/x`, 'DELETE'], ['https://evil.example/x', 'GET']]) {
+      try { await libraryTransport(url, { method }); attempts.push('sent'); } catch { attempts.push('refused'); }
+    }
+    const ok = await libraryTransport(`${G}/sites/${encodeURIComponent(ROOT)}`);
+    return { outcome: ok.status === 200 ? 'complete' : 'failed' };
+  };
+  const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: library });
+  assert.deepEqual(attempts, ['refused', 'refused']);
+  assert.equal(result.outcome, 'complete');
+});
+
+test('Retry-After is read from a fetch-style Headers object too', async () => {
+  let calls = 0;
+  const waits = [];
+  const routes = fixtureRoutes();
+  const { transport } = fakeGraph(routes, {
+    override: { [`/sites/${ROOT}/columns`]: () => (calls++ === 0 ? { status: 429, headers: new Headers({ 'Retry-After': '3' }), body: {} } : { status: 200, headers: {}, body: routes[`/sites/${ROOT}/columns`] }) },
+  });
+  await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), sleep: async (ms) => { waits.push(ms); } });
+  assert.deepEqual(waits, [3000]);
+});

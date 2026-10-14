@@ -120,7 +120,8 @@ function createReader({ transport, sleep, maxPages, maxRetries = 3, counters }) 
           error.status = response.status;
           throw error;
         }
-        const seconds = Number(response.headers?.['retry-after']);
+        const header = typeof response.headers?.get === 'function' ? response.headers.get('retry-after') : response.headers?.['retry-after'];
+        const seconds = Number(header);
         await sleep(Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 2 ** attempt * 1000);
         continue;
       }
@@ -189,6 +190,13 @@ export async function backupSharePointSites({
   const counters = { requests: 0, throttled: 0, stored: 0, deduped: 0, bytes: 0 };
   const reader = createReader({ transport, sleep, maxPages, counters });
   const startedAt = now().toISOString();
+  // The drive backup reads its own paths, but it gets a transport that still refuses
+  // anything except a Graph GET.
+  const libraryTransport = (url, { method = 'GET', ...rest } = {}) => {
+    if (method !== 'GET') throw new Error(`sharepoint sites: refused ${method} from the library backup: this backup is read-only`);
+    if (new URL(url).origin !== 'https://graph.microsoft.com') throw new Error(`sharepoint sites: refused ${new URL(url).origin} from the library backup`);
+    return transport(url, { ...rest, method: 'GET' });
+  };
 
   const put = async (container, itemKey, value, version) => {
     const bytes = Buffer.from(canonicalJson(value));
@@ -311,7 +319,9 @@ export async function backupSharePointSites({
         if (error.capped) { capped = true; entry.reads[name] = { status: 'capped', error: String(error.message) }; } else entry.reads[name] = failure(error);
       }
     };
-    entry.refs.list = await put(container, `list/${list.id}`, list, list.lastModifiedDateTime);
+    await read('list', async () => {
+      entry.refs.list = await put(container, `list/${list.id}`, list, list.lastModifiedDateTime);
+    });
     await read('columns', async () => {
       entry.refs.columns = await put(container, `list/${list.id}/columns`, await reader.all(`${listBase}/columns`));
     });
@@ -333,7 +343,7 @@ export async function backupSharePointSites({
         const drive = await reader.get(`${listBase}/drive?$select=id,driveType,name,webUrl`);
         entry.library = { driveId: drive.id ?? null };
         const result = await library({
-          driveId: drive.id, siteId, listId: list.id, tenantRef, container, store, transport, sleep,
+          driveId: drive.id, siteId, listId: list.id, tenantRef, container, store, transport: libraryTransport, sleep,
         });
         entry.library.result = result;
         entry.library.status = result?.outcome === 'waiting' ? 'waiting' : (['complete', 'complete-empty'].includes(result?.outcome) ? 'observed' : 'partial');

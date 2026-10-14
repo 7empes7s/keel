@@ -24,3 +24,10 @@ server-owned. The real differences were the nulls and the annotation.
 | A create compared the whole read-back with the body. | A create verifies the fields it wrote. Graph's defaults for fields the body did not carry are not drift. |
 | Fixture fakes echoed the body back, so verification passed locally and failed live. | A verification test reads back the full Graph default projection: server-set values, annotations and nulls. It also has a negative case where a written value comes back different. |
 | A demotion reason that names fields was taken as the cause. | Reproduce the demotion from the capture. The named fields may already be excluded. |
+
+## Fix
+
+PR #212 (`claude/verify-ignores-server-fields`): `verificationView()` in
+`engine/reconcile/writableProjection.mjs`, used by the create, update and restore-from-deleted-items
+checks in `applyWave`. Tests: `engine/restore/verifyServerFields.test.mjs` and
+`engine/restore/verifyServerManaged.test.mjs`.

@@ -22,7 +22,7 @@ import {
 import {
   FIXTURE_GUIDANCE, buildLiveGatePlan, guidanceFor, main as planMain, renderMarkdown,
 } from '../../tools/qualification/live-gate-plan.mjs';
-import { guidToCloudSid } from '../../tools/qualification/pseudonymize.mjs';
+import { guidToCloudSid, unpseudonymizedIds } from '../../tools/qualification/pseudonymize.mjs';
 
 // The three break-glass lines every lockout-sensitive step shares.
 const BREAK_GLASS_COMMON_COUNT = 3;
@@ -474,6 +474,33 @@ test('a deleted role assignment is checked by its composed key, which the snapsh
   assert.equal((await run({ naturalKey: auKey, extraVersions: unit('KEEL-RT-Q51-unit') })).status, 'captured');
   await assert.rejects(run({ naturalKey: auKey, extraVersions: unit('Finance') }), /scope is not a KEEL-RT fixture/);
   await assert.rejects(run({ naturalKey: auKey }), /scope is not a KEEL-RT fixture/);
+  // The deleted assignment's own id never reaches the log raw, whatever suffix Graph gives it (#235).
+  const guidBytes = (value) => {
+    const be = Buffer.from(value.replace(/-/g, ''), 'hex');
+    return Buffer.from([be[3], be[2], be[1], be[0], be[5], be[4], be[7], be[6], ...be.subarray(8)]);
+  };
+  const principal = 'c1a2b3c4-d5e6-4f70-8192-a3b4c5d6e7f8';
+  const assignmentId = `${Buffer.concat([guidBytes(roleTemplate), guidBytes(principal)]).toString('base64url')}-1-e`;
+  const withId = (id) => async ({ naturalKey }) => {
+    const restore = fixtureRestore(step, { naturalKey });
+    const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+    Object.assign(journal[0], { outcomeDetail: 'absent', targetId: id, priorState: { id, principalId: principal, directoryScopeId: '/' }, postState: null });
+    const versions = [
+      { id: 'v-role', natural_key: `roleDefinition:${roleTemplate}`, payload: { displayName: 'KEEL-RT-148-role' } },
+      { id: 'v-user', natural_key: 'user:keel-rt-20260908-carla@fixture.example', payload: { userPrincipalName: 'keel-rt-20260908-carla@fixture.example' } },
+    ];
+    return captureLive({
+      client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: naturalKey,
+      targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS, allowByReference: true,
+      getArtifact: restore.getArtifact, getJournal: async () => journal, getSnapshot: async () => ({ versions, references: [] }),
+    });
+  };
+  const deleted = await withId(assignmentId)({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example') });
+  assert.equal(deleted.status, 'captured');
+  assert.ok(!deleted.captureLog.includes(assignmentId.slice(0, 43)), 'the assignment id is pseudonymized');
+  assert.deepEqual(unpseudonymizedIds(deleted.captureLog), []);
+  // An id of a shape the pseudonymizer does not know is refused, never published.
+  await assert.rejects(withId('Zm9vYmFyYmF6cXV4cXV1eHF1dXo')({ naturalKey: key('user:keel-rt-20260908-carla@fixture.example') }), /still holds the target's raw id \(27 characters\)/);
   // Only a delete may fall back to its key: a create must be in its own snapshot.
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: key('user:x') }), [`the snapshot has no object ${key('user:x')}`]);
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x', deleted: true }), ['the snapshot has no object x']);

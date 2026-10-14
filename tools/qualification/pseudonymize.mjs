@@ -30,10 +30,17 @@ const TENANT_HOST = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9%-]|%[0-9a-f]))([a-z0-9]+)(
 const BASE64_TOKEN = /[A-Za-z0-9+_=-]{40,}/g;
 
 // A directory role assignment id (`lAPpYvVpN0KRkAEhdxReEJC2sEqbR_9OmXWfOUQ7FJM-1`) is the
-// base64url of the role definition's and the principal's GUID bytes, with an optional `-<n>`
-// suffix. Its bytes are not text, so the token rule above cannot see the GUIDs inside it.
-const ROLE_ASSIGNMENT_ID = /^([A-Za-z0-9_-]{43})(-\d{1,3})?$/;
-const ROLE_ASSIGNMENT_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?:-\d{1,3})?(?![A-Za-z0-9_-])/g;
+// base64url of the role definition's and the principal's GUID bytes (43 characters), or of three
+// GUIDs (64 characters), with optional `-<suffix>` parts such as `-1` or `-1-e`. Its bytes are not
+// text, so the token rule above cannot see the GUIDs inside it.
+const ROLE_ASSIGNMENT_ID = /^([A-Za-z0-9_-]{64}|[A-Za-z0-9_-]{43})((?:-[A-Za-z0-9]{1,8})*)$/;
+const ROLE_ASSIGNMENT_TOKEN = /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9_-]{64}|[A-Za-z0-9_-]{43})(?:-[A-Za-z0-9]{1,8})*(?![A-Za-z0-9_-])/g;
+
+// A GUID written without dashes. Only one that reads as an RFC 4122 GUID (a version 1-8 nibble
+// and the RFC variant) counts, so most 32-digit hashes are left alone; longer hex runs never match.
+const HEX_GUID = /(?<![0-9a-f])[0-9a-f]{12}[1-8][0-9a-f]{3}[89ab][0-9a-f]{15}(?![0-9a-f])/gi;
+const HEX_GUID_ONLY = new RegExp(`^${HEX_GUID.source}$`, 'i');
+const dashed = (hex) => `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 
 // Security identifiers. A cloud SID (`S-1-12-1-a-b-c-d`) is the object's GUID encoded as four
 // 32-bit words; an on-premises SID (`S-1-5-21-a-b-c[-rid]`) names the domain and the object.
@@ -74,26 +81,26 @@ export const cloudSidToGuid = (sid) => {
 };
 
 /**
- * The two GUIDs a role assignment id encodes, or null. Each half must read as an RFC 4122
- * GUID (a version 1-8 and the RFC variant), so an arbitrary 32-byte token rarely qualifies.
+ * The GUIDs a role assignment id encodes (two, or three), or null. Each must read as an RFC 4122
+ * GUID (a version 1-8 and the RFC variant), so an arbitrary 32- or 48-byte token rarely qualifies.
  */
 export function roleAssignmentIdGuids(token) {
   const match = ROLE_ASSIGNMENT_ID.exec(token);
   if (!match) return null;
   const bytes = Buffer.from(match[1], 'base64url');
-  if (bytes.length !== 32 || bytes.toString('base64url') !== match[1]) return null;
-  const halves = [bytes.subarray(0, 16), bytes.subarray(16)];
+  if (bytes.length % 16 !== 0 || bytes.toString('base64url') !== match[1]) return null;
+  const parts = Array.from({ length: bytes.length / 16 }, (_, i) => bytes.subarray(i * 16, i * 16 + 16));
   const guidLike = (le) => (le[7] >> 4) >= 1 && (le[7] >> 4) <= 8 && (le[8] & 0xc0) === 0x80;
-  return halves.every(guidLike) ? halves.map((half) => bytesToGuid(half)) : null;
+  return parts.every(guidLike) ? parts.map((part) => bytesToGuid(part)) : null;
 }
 
 /**
- * Every GUID, SID and role assignment id in `text`, lower-cased and deduplicated: the ids a
- * capture must lose.
+ * Every GUID (dashed or not), SID and role assignment id in `text`, lower-cased and
+ * deduplicated: the ids a capture must lose.
  */
 export function rawIdentifiers(text) {
   const roleAssignmentIds = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].filter((m) => roleAssignmentIdGuids(m[0]));
-  return [...new Set([...text.matchAll(GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
+  return [...new Set([...text.matchAll(GUID), ...text.matchAll(HEX_GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
     .map((m) => m[0].toLowerCase()))];
 }
 
@@ -108,6 +115,7 @@ export function unpseudonymizedIds(text) {
   const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value);
   return rawIdentifiers(text).filter((id) => {
     if (GUID_ONLY.test(id)) return !isPseudonym(id);
+    if (HEX_GUID_ONLY.test(id)) return !isPseudonym(dashed(id));
     if (/^s-1-12-1-/i.test(id)) return !isPseudonym(cloudSidToGuid(id) ?? '');
     if (/^s-1-5-21-/i.test(id)) return true;
     // A role assignment id, lower-cased by rawIdentifiers: decode the original spelling.
@@ -157,7 +165,8 @@ export function pseudonymizer(tenantRef) {
     if (ANY_SID.test(trimmed)) return `S-1-12-1-${words('sid', trimmed, 4).join('-')}`;
     return text(value);
   };
-  const plain = (value) => value.replace(GUID, guid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
+  const hexGuid = (value) => guid(dashed(value)).replace(/-/g, '');
+  const plain = (value) => value.replace(GUID, guid).replace(HEX_GUID, hexGuid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
   // A role assignment id maps through the two GUIDs it encodes, like a cloud SID.
   const roleAssignmentId = (token) => {
     const guids = roleAssignmentIdGuids(token);

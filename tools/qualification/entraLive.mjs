@@ -383,6 +383,12 @@ export async function captureLive({
   const log = walk(rawLog);
   const captureLog = `${JSON.stringify(log, null, 2)}\n`;
   assertSafeText(captureLog, { rawTenantId, rawIds, label: 'the capture log' });
+  // A by-reference object's id is opaque: whatever its shape, it must not survive unchanged.
+  if (guidance.kind === 'by-reference') {
+    const targetIds = [entry.targetId, entry.priorState?.id].filter((id) => typeof id === 'string' && id.length >= 16);
+    const kept = targetIds.find((id) => captureLog.toLowerCase().includes(id.toLowerCase()));
+    if (kept) throw new LiveGateRefusal(`refusing: the capture log still holds the target's raw id (${kept.length} characters) after pseudonymization`);
+  }
 
   const stem = evidenceStem(resourceType, operation);
   const unsigned = {

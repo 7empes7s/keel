@@ -43,7 +43,7 @@ import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../../engine/contracts/fieldProjection.mjs';
-import { capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
+import { BRANDING_FILE_CAPABILITY, capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
 import { TYPE_DECISIONS } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { getDryRunArtifactById } from '../../engine/restore/dryRunArtifact.mjs';
@@ -139,10 +139,16 @@ const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
 export function byReferenceProblems({ versions, references, naturalKey }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
   if (!own) return [`the snapshot has no object ${naturalKey}`];
+  // A reference symbol is the referenced object's own natural key, typed
+  // (`roleDefinition:<template id>`, `user:<upn>`), so it is looked up whole
+  // first. The untyped key is only a fallback, and the name it stands for
+  // when the object is not in the snapshot (a UPN names its user; a role
+  // template id never matches the fixture role).
   const nameOf = (symbol) => {
     const text = String(symbol ?? '');
     const key = text.slice(text.indexOf(':') + 1);
-    const target = versions.find((version) => version.natural_key === key);
+    const target = versions.find((version) => version.natural_key === text)
+      ?? versions.find((version) => version.natural_key === key);
     return target ? (namesOf(target.payload)[0] ?? key) : key;
   };
   const refs = references.filter((ref) => ref.from_version === own.id);
@@ -157,6 +163,20 @@ export function byReferenceProblems({ versions, references, naturalKey }) {
   else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol))) problems.push('the role is not the fixture role');
   if (scope && !DISPOSABLE.test(nameOf(scope.to_symbol))) problems.push('the scope is not a KEEL-RT fixture');
   return problems;
+}
+
+/**
+ * A branding restore journals each uploaded file apart from the branding
+ * object's own update. When the operator asked for the object and the
+ * restore only uploaded files, name the file captures to run instead.
+ */
+async function brandingFileHint(client, { restoreRef, resourceType, getJournal }) {
+  if (!/^organizationalBranding(?:Localization)?$/.test(resourceType)) return '';
+  const keys = (await getJournal(client, { restoreRef }))
+    .filter((entry) => entry.resourceType === BRANDING_FILE_CAPABILITY && entry.operation === 'update')
+    .map((entry) => entry.naturalKey);
+  if (keys.length === 0) return '';
+  return `; it did upload branding files, which are their own write: capture each with --resource-type '${BRANDING_FILE_CAPABILITY}' --operation update --allow-tenant-setting --fixture one of ${[...new Set(keys)].map((key) => `'${key}'`).join(', ')}`;
 }
 
 async function snapshotRows(client, snapshotId) {
@@ -244,7 +264,7 @@ export async function captureLive({
       return identity.key === resourceType && identity.operation === operation;
     });
   if (entries.length === 0) {
-    return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}` };
+    return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}${await brandingFileHint(client, { restoreRef, resourceType, getJournal })}` };
   }
   const entry = entries[entries.length - 1];
 

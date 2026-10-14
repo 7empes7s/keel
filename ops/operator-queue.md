@@ -2359,8 +2359,8 @@ item that needs it stays untouched.
 - **Report:** per step, promoted / demoted (with the reason) / blocked / waiting, and every tenant setting read back as original.
 ### Q49: Rerun Q48 step 46 and check the organization fix (#226)
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: Started 2026-10-14 14:42 UTC at live build 95c3a33 (#226 live).
 - Needs: Q48 done or blocked, and a live build containing #226 (`git -C /opt/keel-live log --oneline | grep -c "#226"`).
 - **Test tenant only.** Same hard rules and requester/approver split as Q45.
 - **A. Step 46 authentication methods policy.** Rerun it from a snapshot taken before the Software OATH change. Expected:

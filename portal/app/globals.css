@@ -3188,6 +3188,9 @@ section.item-card + section.item-card {
 }
 
 .session-action {
+  display: inline-flex;
+  min-height: 1.5rem;
+  align-items: center;
   padding: 0;
   border: 0;
   background: transparent;

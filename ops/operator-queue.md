@@ -2606,3 +2606,23 @@ item that needs it stays untouched.
   Power BI permission.
 - **Report:** what was created or changed (app, SP, cert path, role, role group, group), the requiredResourceAccess
   names per app, anything skipped and why. Short ids only (first 8 characters), as in Q7.
+
+### Q56: Add the remaining read permissions to the Collector (discovery, Intune scripts, audit context)
+- Drafted by the "Add API permissions" thread (2026-10-14). Same decision as Q55 (D-Q55); Marouane then added
+  "all the necessary permissions" (project chat, 2026-10-14 21:38 UTC), so this covers every read discovery and the plan's
+  backups probe, not only ask 1.
+- Status: todo
+- Needs: Q55 done.
+- **Same rules as Q55:** test tenant, manifest only (GET the KEEL Collector application, MERGE, one PATCH), read permissions
+  only, no appRoleAssignment, no consent. Resolve names from the Graph service principal's appRoles (type Role); skip and
+  report any name that has no appRole.
+- **Add to the Collector's Graph `requiredResourceAccess`** (from `engine/discovery/grants.mjs` and the Intune catalogue):
+  `AuditLog.Read.All`, `ServiceHealth.Read.All`, `CustomAuthenticationExtension.Read.All`, `ExternalConnection.Read.All`,
+  `IdentityRiskEvent.Read.All`, `InformationProtectionPolicy.Read.All`, `Place.Read.All`, `Printer.Read.All`,
+  `Reports.Read.All`, `RoleManagement.Read.All`, `SecurityEvents.Read.All`, `TeamworkTag.Read.All`,
+  `DeviceManagementScripts.Read.All`.
+- Also add `GroupMember.Read.All` and `Sites.FullControl.All`, which the Collector already holds but its manifest lacks
+  (Q55 E), so the manifest matches what is held. Do not remove anything.
+- Not added on purpose: `CallRecords.Read.All`, `Bookings.Read.All`, `SubjectRightsRequest.Read.All` (they read people's
+  data, not configuration) and any Power BI permission.
+- **Report:** names added, names skipped and why, and the list still waiting for consent (manifest minus held).

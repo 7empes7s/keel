@@ -197,6 +197,17 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   conditionalAccessPolicy: { reviewed: true, rules: [] },
   namedLocation: { reviewed: true, rules: [] },
   roleAssignment: { reviewed: true, rules: [] },
+  // Live gate Q45 steps 11, 13, 14: application create and restore were refused
+  // by the field-name heuristic for `publicClient` and `isFallbackPublicClient`.
+  // Reviewed (every field in the application field projection) and found to be
+  // sign-in configuration only, with no content effect: publicClient and spa/web
+  // redirect URIs, isFallbackPublicClient (token flows without a secret),
+  // signInAudience (who may sign in to the app, never who sees this tenant's
+  // content), identifierUris, api scopes, appRoles, optionalClaims and
+  // requiredResourceAccess (declared permissions; nothing is granted until a
+  // separate consent). Credentials never reach a write body (fieldProjection).
+  // The restore keeps its own access-affecting approval, as before.
+  application: { reviewed: true, rules: [] },
   // Issue #155: Intune policies. These rules land on DEVICE content, which a
   // policy reaches as soon as it is assigned, whether the policy is new or
   // changed, so these three types judge creates too (judgesCreates). Reviewed

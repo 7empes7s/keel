@@ -11,3 +11,7 @@ create of an unreviewed type is refused by its field names.
 | Intune restore (#155) made `deviceCompliancePolicy`, `deviceConfiguration` and `configurationPolicy` writable without an entry in `CONTENT_EFFECT_RULES`. | Every type that gains a write capability gets a reviewed entry in `engine/safety/contentEffects.mjs` in the same PR, with its real content effects as rules and a comment naming the fields reviewed and found benign. |
 | The type's fixtures were tested only through `applyWave`, which never runs the guard, so the refusal appeared live. | A new writable type adds a `classifyContentEffects` case to `engine/roadmap/content-effects.test.mjs` with a create and an update of its real fixture payload. |
 | "Creates are benign" was applied to a policy whose effect lands on devices, not on the object. | A type whose effects reach content outside the object (devices) sets `judgesCreates: true`; its rules run on creates against an empty before. |
+
+**Repeated (live gate Q45, 2026-10-14):** `application` (writable since task-107) had no entry either, so
+its create and soft-delete restore were refused for `publicClient` and `isFallbackPublicClient`. Rule:
+before shipping a write path, grep `CONTENT_EFFECT_RULES` for the type; an absent entry is a release blocker.

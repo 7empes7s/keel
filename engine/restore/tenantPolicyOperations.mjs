@@ -385,9 +385,11 @@ export const METHOD_CONFIGURATION_TYPES = Object.freeze({
   fido2: '#microsoft.graph.fido2AuthenticationMethodConfiguration',
   hardwareoath: '#microsoft.graph.hardwareOathAuthenticationMethodConfiguration',
   microsoftauthenticator: '#microsoft.graph.microsoftAuthenticatorAuthenticationMethodConfiguration',
+  qrcodepin: '#microsoft.graph.qrCodePinAuthenticationMethodConfiguration',
   sms: '#microsoft.graph.smsAuthenticationMethodConfiguration',
   softwareoath: '#microsoft.graph.softwareOathAuthenticationMethodConfiguration',
   temporaryaccesspass: '#microsoft.graph.temporaryAccessPassAuthenticationMethodConfiguration',
+  verifiablecredentials: '#microsoft.graph.verifiableCredentialsAuthenticationMethodConfiguration',
   voice: '#microsoft.graph.voiceAuthenticationMethodConfiguration',
   x509certificate: '#microsoft.graph.x509CertificateAuthenticationMethodConfiguration',
 });
@@ -406,16 +408,23 @@ export const METHOD_CONFIGURATION_FIELDS = Object.freeze(Object.fromEntries(Obje
   fido2: ['isAttestationEnforced', 'isSelfServiceRegistrationAllowed', 'keyRestrictions'],
   hardwareoath: [],
   microsoftauthenticator: ['featureSettings', 'isSoftwareOathEnabled'],
+  qrcodepin: [],
   sms: [],
   softwareoath: [],
   temporaryaccesspass: ['defaultLength', 'defaultLifetimeInMinutes', 'isUsableOnce', 'maximumLifetimeInMinutes', 'minimumLifetimeInMinutes'],
+  verifiablecredentials: [],
   voice: ['isOfficePhoneAllowed'],
   x509certificate: ['authenticationModeConfiguration', 'certificateUserBindings'],
 }).map(([id, fields]) => [id, Object.freeze([...METHOD_COMMON_FIELDS, ...fields])])));
 
-/** The allowlisted part of one method configuration, without annotations. */
+/**
+ * The allowlisted part of one method configuration, without annotations. A
+ * method with no known type still compares on the common fields, so an
+ * unknown method that matches the live one is not drift (Q48 step 46: a
+ * tenant that lists a newer method must not block every other method).
+ */
 function methodFields(config) {
-  const allowed = METHOD_CONFIGURATION_FIELDS[String(config?.id ?? '').toLowerCase()] ?? [];
+  const allowed = METHOD_CONFIGURATION_FIELDS[String(config?.id ?? '').toLowerCase()] ?? METHOD_COMMON_FIELDS;
   const clean = withoutAnnotations(config ?? {});
   return Object.fromEntries(allowed.filter((field) => Object.hasOwn(clean, field)).map((field) => [field, clean[field]]));
 }
@@ -533,11 +542,19 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null, m
     return refusal('failed', 'dependency: the partner configuration names no tenantId');
   }
   if (entry.methodConfigurations) {
+    // An unknown method is refused only when it would need a write; one that
+    // already matches the live policy is left alone.
+    const liveConfigs = resource.live.payload.authenticationMethodConfigurations ?? [];
     const unknown = (resource.payload.authenticationMethodConfigurations ?? [])
-      .map((config) => config?.id)
-      .filter((id) => typeof id !== 'string' || !METHOD_CONFIGURATION_TYPES[id.toLowerCase()]);
+      .filter((config) => typeof config?.id !== 'string' || !METHOD_CONFIGURATION_TYPES[config.id.toLowerCase()])
+      .filter((config) => {
+        const current = typeof config?.id === 'string'
+          && liveConfigs.find((entry) => String(entry?.id ?? '').toLowerCase() === config.id.toLowerCase());
+        return !current || !sameMethod(config, current);
+      })
+      .map((config) => config?.id);
     if (unknown.length > 0) {
-      return refusal('failed', `unsupported: authentication method configuration ${unknown.join(', ')} has no known type, so it cannot be written`);
+      return refusal('failed', `unsupported: authentication method configuration ${unknown.join(', ')} has no known type and differs from the live policy, so it cannot be written`);
     }
     const liveIds = new Set((resource.live.payload.authenticationMethodConfigurations ?? []).map((config) => String(config?.id ?? '').toLowerCase()));
     const missing = (resource.payload.authenticationMethodConfigurations ?? []).filter((config) => !liveIds.has(config.id.toLowerCase()));

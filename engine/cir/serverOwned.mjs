@@ -92,6 +92,11 @@ SERVER_OWNED.set('configurationPolicy', new Set([
   'creationSource', 'isAssigned', 'priorityMetaData', 'settingCount', 'settings.id',
 ]));
 
+// Q48: the directory's object quota counter moves with every create or delete
+// anywhere in the tenant, so it is never configuration. Kept in the hash, it made
+// every restore whose closure reaches the organization fail on a false change.
+SERVER_OWNED.set('organization', new Set(['directorySizeQuota']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

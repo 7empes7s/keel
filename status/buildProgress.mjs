@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-export const M1_LAST_COMMIT = '2e35c575d33b5f005c3f768dd7512b3e63ec419e';
+export const M1_LAST_COMMIT = '9f610bd13f52bcc7b3a6ee21734d16e48886e6b1';
 export const M1_TOTAL_TASKS = 23;
 export const M2_TOTAL_TASKS = 28;
 

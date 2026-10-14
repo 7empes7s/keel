@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   APPROVAL_DECISION_EVIDENCE_KIND,
@@ -16,6 +17,7 @@ import {
 } from "../../engine/govern/approvals.mjs";
 import { verifyChain } from "../../engine/govern/evidence.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
+import { contentEffectsDigest } from "../../engine/safety/contentEffects.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
@@ -23,7 +25,7 @@ import { GET as inboxRoute } from "@/app/api/approvals/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { POST as rejectRoute } from "@/app/api/approvals/[id]/reject/route";
 import { ApprovalInbox } from "@/components/approval-inbox";
-import { guardedApprovalInbox } from "@/lib/approval-inbox";
+import { getApprovalInboxData, getPendingApprovalCount, guardedApprovalInbox } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
@@ -398,6 +400,62 @@ test("an approver can list and decide another principal's request", async () => 
       .status,
     "approved",
   );
+});
+
+test("an approved restore whose content effects still need approval waits for a decision", async () => {
+  const id = await createRestoreRequest();
+  const { rows } = await client.query(`SELECT params->>'artifactId' AS artifact_id FROM approval_request WHERE id = $1`, [id]);
+  const artifactId = String(rows[0].artifact_id);
+  const effects = [{
+    naturalKey: "groupLifecyclePolicy:default", resourceType: "groupLifecyclePolicy", field: "groupLifetimeInDays",
+    effect: "retention-reducing", before: 400, after: 365,
+  }];
+  await client.query(`UPDATE restore_dry_run SET content_effects = $2 WHERE id = $1`, [artifactId, JSON.stringify(effects)]);
+  const central = { central: true, entities: [] };
+  const countBefore = await getPendingApprovalCount(central);
+
+  // The restore itself is approved, as in the field: it leaves the request list but its
+  // content effects still need their own approval, so it must stay in the waiting list.
+  assert.equal((await approveRoute(post(`/api/approvals/${id}/approve`, approver))).status, 202);
+  const waiting = await (await inboxRoute(get("/api/approvals", approver))).json();
+  const listed = waiting.awaitingContentEffects.find((candidate: { id: string }) => candidate.id === id);
+  assert.ok(listed, "the approved restore is listed as waiting on its content effects");
+  assert.equal(listed.status, "approved");
+  assert.equal(listed.references.plan.contentEffects, 1);
+  assert.equal(waiting.history.some((candidate: { id: string }) => candidate.id === id), false, "not filed as decided");
+  assert.equal(await getPendingApprovalCount(central), countBefore, "the waiting count still includes it");
+
+  // The page shows it under "Waiting for a decision" with the way to approve the effects.
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const html = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
+    React.createElement(ApprovalInbox, { pending: [], awaitingContentEffects: [listed], history: [], now: "2026-10-14T13:00:00.000Z" })));
+  const waitingSection = html.slice(html.indexOf("Waiting for a decision"), html.indexOf("Decided and expired"));
+  assert.match(waitingSection, /1 request</);
+  assert.match(waitingSection, new RegExp(`href="/approvals/content-effects/${artifactId}"`));
+  assert.doesNotMatch(waitingSection, /Nothing is waiting/);
+  // And it leads back to the restore run itself.
+  assert.ok(listed.references.plan.dryRunJobId, "the portal-planned dry run has its job");
+  assert.match(waitingSection, new RegExp(`href="/jobs/${listed.references.plan.dryRunJobId}"`));
+
+  // Only tenant-wide approvers can approve content effects, so only they see it.
+  const entityApprover = { central: false, entities: ["SALES"] };
+  assert.deepEqual((await getApprovalInboxData(entityApprover)).awaitingContentEffects, []);
+
+  // Once someone other than the requester approves exactly these effects, it is decided.
+  await client.query(
+    `INSERT INTO content_effect_approval (tenant_ref, artifact_id, effects_digest, approved_by, justification)
+     VALUES ($1, $2, $3, 'principal-approver', 'reviewed')`,
+    [tenantRef(), artifactId, contentEffectsDigest(effects)],
+  );
+  const decided = await (await inboxRoute(get("/api/approvals", approver))).json();
+  assert.equal(decided.awaitingContentEffects.some((candidate: { id: string }) => candidate.id === id), false);
+  const filed = decided.history.find((candidate: { id: string }) => candidate.id === id);
+  assert.ok(filed);
+  // Once decided, the restore run stays one link away.
+  const historyHtml = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
+    React.createElement(ApprovalInbox, { pending: [], history: [filed], now: "2026-10-14T13:00:00.000Z" })));
+  assert.match(historyHtml, new RegExp(`href="/jobs/${filed.references.plan.dryRunJobId}"`));
+  assert.equal(await getPendingApprovalCount(central), countBefore - 1);
 });
 
 test("viewers and unregistered principals are refused before an approval loader runs", async () => {

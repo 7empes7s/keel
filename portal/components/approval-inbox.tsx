@@ -22,6 +22,12 @@ function subjectLink(request: ApprovalRequestRecord): { href: string; label: str
   return null;
 }
 
+/** Where a request leads back to what it concerns, such as the restore run, even once decided. */
+function SubjectLink({ request }: { request: ApprovalRequestRecord }) {
+  const link = subjectLink(request);
+  return link ? <a className="text-link" href={link.href}>{link.label}</a> : null;
+}
+
 /**
  * Q45: a restore whose dry run carries content effects needs a separate approval of
  * them, whether the dry run was made in the portal or with the command line.
@@ -66,15 +72,39 @@ function RequestRecord({ request }: { request: ApprovalRequestRecord }) {
   );
 }
 
+/**
+ * An approved restore that cannot run yet: its content effects still need their own
+ * approval. It waits for a decision like any request, with the way to make it.
+ */
+function AwaitingContentEffectsCard({ request, now }: { request: ApprovalRequestRecord; now: string }) {
+  return (
+    <li className="item-card approval-card approval-content-effects-pending">
+      <h3>{approvalSentence(request)}</h3>
+      <p>
+        Approved by {refLabel(request.references?.people.decided_by, "an unknown person")}{" "}
+        <time dateTime={request.decidedAt ?? undefined} title={formatTimestamp(request.decidedAt)}>{ago(request.decidedAt, now)}</time>.
+        {" "}Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}.
+        {" "}The restore cannot run until its content effects are approved too.
+      </p>
+      <SubjectLink request={request} />
+      <ContentEffectsNote request={request} />
+      <RequestRecord request={request} />
+    </li>
+  );
+}
+
 export function ApprovalInbox({
   pending,
+  awaitingContentEffects = [],
   history,
   now = new Date().toISOString(),
 }: {
   pending: ApprovalRequestRecord[];
+  awaitingContentEffects?: ApprovalRequestRecord[];
   history: ApprovalRequestRecord[];
   now?: string;
 }) {
+  const waiting = pending.length + awaitingContentEffects.length;
   const router = useRouter();
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -129,13 +159,13 @@ export function ApprovalInbox({
             <h2 id="pending-approvals-heading">Waiting for a decision</h2>
           </div>
           <span className="result-count">
-            {pending.length} {pending.length === 1 ? "request" : "requests"}
+            {waiting} {waiting === 1 ? "request" : "requests"}
           </span>
         </div>
 
-        {pending.length ? (
+        {waiting ? (
           <ul className="item-list approval-list">
-            {pending.map((request) => {
+            {[...pending.map((request) => {
               const submitting = submittingId === request.id;
               const impact = approvalImpact(request);
               const link = subjectLink(request);
@@ -192,7 +222,9 @@ export function ApprovalInbox({
                   <RequestRecord request={request} />
                 </li>
               );
-            })}
+            }), ...awaitingContentEffects.map((request) => (
+              <AwaitingContentEffectsCard key={request.id} now={now} request={request} />
+            ))]}
           </ul>
         ) : (
           <p className="empty-state">Nothing is waiting for a decision.</p>
@@ -222,6 +254,7 @@ export function ApprovalInbox({
                       {request.reason ? <>: “{request.reason}”</> : "."}</>}
                   {" "}Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}.
                 </p>
+                {request.action === "restore" ? <SubjectLink request={request} /> : null}
                 {request.status === "approved" ? <ContentEffectsNote request={request} /> : null}
                 <RequestRecord request={request} />
               </li>

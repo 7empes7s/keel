@@ -865,6 +865,25 @@ being triggered by queue updates.
   - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
   Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
 
+### Q53: Recapture and publish step 37 after the #235 fix
+- Drafted by the "step 37 capture id leak" thread (2026-10-14).
+- Status: todo
+- Result:
+- Needs: PR #237 merged and a live build containing it (`git -C /opt/keel-live log --oneline | grep -c "#237"` is 1 or more).
+- **Test tenant only.** No new restore and no tenant writes: this only reads the journal and snapshot of restore ref
+  923132e0, as Q52 did.
+- **Why.** #237 (fixes #235) pseudonymizes the deleted role assignment's id in `targetId` and `priorState.id`, and
+  `pseudonymize.mjs check` now flags it raw. A by-reference capture also refuses if its target's own id survives.
+- **A. Capture.** `entraLive capture` for step 37 (roleAssignment delete, `--allow-by-reference`) from restore ref
+  923132e0 with the same fixture key as Q52 A. Expected: captured. A refusal is a result: report it verbatim (it names
+  the id's length, never the id) and stop.
+- **B. Check.** Run `node tools/qualification/pseudonymize.mjs check` on the new record and capture log (expected exit 0)
+  and repeat your known-id scan from Q52 (expected: no fixture object id found).
+- **C. Promote and publish.** `promote` it, run the usual public-repo scans, then commit to `claude/live-evidence-q51`
+  (adding or updating files only). Replace the held-back Q52 files on the host; do not publish those.
+- **Report:** captured / promoted / refused, both check exit codes, and the evidence commit. Then set Q51 and Q52 to done
+  if this passes.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

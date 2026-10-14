@@ -34,7 +34,7 @@
 import { collectRelationships } from '../collect/relationships.mjs';
 import { capabilityFor, edgeCapabilityKey, isSupportedClaim } from '../coverage/capabilities.mjs';
 import { decideEdgeVerb } from '../reconcile/verb.mjs';
-import { recordPriorState } from './rollbackJournal.mjs';
+import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
 /** The only families with a write path. Everything else is observed, never written. */
 export const RELATIONSHIP_RESTORE_FAMILIES = Object.freeze(['member', 'owner']);
@@ -206,6 +206,32 @@ async function readEdgeSet(reader, parentTargetId, family) {
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Q45 (2026-10-13): how one journaled edge write ended, the same as an object
+ * write in applyEngine. Without it every edge entry stayed 'pending', so the
+ * live capture saw no outcome. Never fails the run: an outcome that cannot be
+ * recorded stays 'pending', which compensation treats as uncertain.
+ */
+async function noteEdgeOutcome(rollbackClient, entryId, outcome, extras = {}) {
+  if (!rollbackClient || !entryId) return;
+  try {
+    await recordWriteOutcome(rollbackClient, { entryId, outcome, ...extras });
+  } catch {
+    // left pending
+  }
+}
+
+function edgeOutcomeDetail(result) {
+  const status = Number.isInteger(result?.status) ? `status ${result.status}` : (result?.error ? String(result.error).slice(0, 200) : 'no response');
+  const body = result?.body?.error ?? result?.body;
+  if (body === undefined || body === null || body === '') return status;
+  try {
+    return `${status}: ${(typeof body === 'string' ? body : JSON.stringify(body)).slice(0, 2000)}`;
+  } catch {
+    return status;
+  }
+}
+
+/**
  * Executes planned edge operations. `mode` other than exactly 'dry-run' writes
  * (the same fail-closed rule as applyWave). Returns { applied, skipped, failed }.
  */
@@ -281,9 +307,10 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       }
 
       let journaled = true;
+      let entryId = null;
       if (rollbackClient) {
         try {
-          await recordPriorState(rollbackClient, {
+          entryId = await recordPriorState(rollbackClient, {
             runId,
             naturalKey,
             priorState: { kind: 'relationship-edge', parentNaturalKey, parentTargetId, family, targetId, present: !wantPresent },
@@ -332,7 +359,7 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       }
 
       if (result?.ok) {
-        expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: null });
+        expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: null, entryId });
         continue;
       }
       // Ambiguous or refused: the edge set itself decides. Never re-send.
@@ -340,10 +367,15 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       if (isComplete(after.outcome)) {
         current = new Set(after.targets.map((t) => t.targetId));
         if (current.has(targetId) === wantPresent) {
-          expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: 'lost-response' });
+          expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: 'lost-response', entryId, response: result });
           continue;
         }
       }
+      // A definite rejection is 'failed'; anything the read could not settle is 'uncertain'.
+      await noteEdgeOutcome(rollbackClient, entryId, isComplete(after.outcome) ? classifyWriteOutcome(result) : 'uncertain', {
+        postState: isComplete(after.outcome) ? { present: current.has(targetId) } : undefined,
+        detail: `${edgeOutcomeDetail(result)}${isComplete(after.outcome) ? '' : ` (reconciliation read ${after.outcome})`}`,
+      });
       failed.push({
         naturalKey,
         error: `${op.action} ${family} failed: ${JSON.stringify(result?.body ?? result?.error ?? null)}${isComplete(after.outcome) ? '' : ` (reconciliation read ${after.outcome})`}`,
@@ -368,11 +400,25 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       if (attempt < verifyAttempts) await sleep(verifyDelayMs);
     }
     for (const expectation of expectations) {
+      // An edge that was already in place had no write and no journal entry.
+      const { entryId } = expectation;
       if (verified === null) {
-        failed.push({ naturalKey: expectation.naturalKey, error: `post-write verification refused: the ${family} read for ${parentNaturalKey} never completed` });
+        const error = `post-write verification refused: the ${family} read for ${parentNaturalKey} never completed`;
+        await noteEdgeOutcome(rollbackClient, entryId, 'uncertain', { detail: error });
+        failed.push({ naturalKey: expectation.naturalKey, error });
       } else if (verified.has(expectation.targetId) !== expectation.wantPresent) {
-        failed.push({ naturalKey: expectation.naturalKey, error: `post-write verification failed: ${expectation.targetId} is ${expectation.wantPresent ? 'still absent from' : 'still present in'} ${parentNaturalKey} ${family}s` });
+        const error = `post-write verification failed: ${expectation.targetId} is ${expectation.wantPresent ? 'still absent from' : 'still present in'} ${parentNaturalKey} ${family}s`;
+        await noteEdgeOutcome(rollbackClient, entryId, 'uncertain', { postState: { present: !expectation.wantPresent }, detail: error });
+        failed.push({ naturalKey: expectation.naturalKey, error });
       } else {
+        // Verified by re-reading the edge set. A write whose response was lost
+        // but whose edge reads back as intended converged by that read.
+        await noteEdgeOutcome(rollbackClient, entryId, 'succeeded', {
+          postState: { present: expectation.wantPresent },
+          detail: expectation.reconciled === 'lost-response'
+            ? `converged: the ${family} set read back as intended after an unclear response (${edgeOutcomeDetail(expectation.response)})`
+            : null,
+        });
         applied.push({
           naturalKey: expectation.naturalKey,
           edge: expectation.op,

@@ -30,6 +30,7 @@ const deferral = "drift-detect deferred: collection snapshot has failed or missi
 const ids: string[] = [];
 let foreignId: string;
 let failedJobId: string;
+let failedStartedAt: Date;
 const originalUrl = process.env.KEEL_DB_URL;
 const originalConfig = process.env.KEEL_TENANT_CONFIG_PATH;
 
@@ -58,10 +59,12 @@ before(async () => {
   foreignId = String((await client.query(
     "INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at) VALUES ('foreign', 'collect', 'tier1', $1, now()) RETURNING id", [cadence],
   )).rows[0].id);
+  // Relative to now: the load forecast reads the last 14 days, so a fixed date ages out.
+  failedStartedAt = new Date(Date.now() - 6 * 3_600_000);
   failedJobId = String((await client.query(
     `INSERT INTO job (kind, status, params, requested_by, error, started_at, finished_at)
-     VALUES ('collect', 'failed', $1, $2, $3, '2026-09-29T10:00:00Z', '2026-09-29T10:01:00Z') RETURNING id`,
-    [{ tenantRef: tenant, tier: "tier1" }, admin, failure],
+     VALUES ('collect', 'failed', $1, $2, $3, $4, $5) RETURNING id`,
+    [{ tenantRef: tenant, tier: "tier1" }, admin, failure, failedStartedAt, new Date(failedStartedAt.valueOf() + 60_000)],
   )).rows[0].id);
   await client.query("UPDATE schedule SET last_job_id = $2 WHERE id = $1", [ids[0], failedJobId]);
   for (const [scope, retried, error] of [[tenant, false, deferral], [tenant, true, "drift-detect deferred: already retried"], ["foreign", false, "drift-detect deferred: foreign secret"]]) {
@@ -107,7 +110,7 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.deepEqual(new Set(data.schedules.map((s) => s.id)), new Set(ids));
   const failed = data.schedules.find((s) => s.id === ids[0])!;
   assert.equal(failed.last_error, failure);
-  assert.equal(failed.last_run_at, "2026-09-29T10:00:00.000Z");
+  assert.equal(failed.last_run_at, failedStartedAt.toISOString());
   assert.deepEqual(data.deferrals.map((d) => d.error), [deferral]);
   const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
   // Task-131: the failure is kept verbatim, in the schedule's record layer.

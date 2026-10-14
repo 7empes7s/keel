@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-command environment setup for a fresh Ubuntu cloud container (Claude Code cloud
-# sessions run it from the SessionStart hook in .claude/settings.json).
+# One-command environment setup for a fresh Ubuntu cloud container (cloud sessions
+# run it from the SessionStart hook in .claude/settings.json).
 #
 # It mirrors what .github/workflows/portal.yml prepares for the "Portal tests (Postgres)" job:
 #   - Postgres 16 on localhost:5432, superuser role "keel", database "keel_test",
@@ -123,6 +123,6 @@ for dir in engine portal; do
   fi
 done
 
-log "ready. In a shell outside Claude Code, set:"
+log "ready. In a shell outside the cloud session, set:"
 log "  export KEEL_DB_TEST_URL=${KEEL_DB_TEST_URL}"
 log "  export KEEL_TENANT_CONFIG_PATH=${KEEL_TENANT_CONFIG_PATH}"

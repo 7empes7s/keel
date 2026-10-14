@@ -77,10 +77,10 @@ export const TYPE_DECISIONS = Object.freeze({
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered', {
     liveFailures: {
-      create: failedLive('2026-10-11', 'Live POST /groups returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, assignedLicenses, onPremisesSyncEnabled).',
-        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
-      'restore-soft-deleted': failedLive('2026-10-11', 'restore from deleted items succeeded (group back, same id) but the follow-up update in the same restore got HTTP 404 from Graph replication lag right after the restore, so the outcome is recorded uncertain; a read-back retry on the follow-up update (like the 115 read-back fix) would likely make this pass',
-        'retry the follow-up update after a restore from deleted items; live gate #148 run 1, to be re-run after the fix'),
+      create: failedLive('2026-10-13', 'The group was created (POST succeeded after #173), but the post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (createdDateTime, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain and the member/owner edges did not run',
+        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
+      'restore-soft-deleted': failedLive('2026-10-13', 'The restore from deleted items worked (same id, read back), but the post-write convergence check reported "residual drift after update" on server-managed fields absent from the snapshot (expirationDateTime set by the group expiration policy, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain',
+        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
     },
   }),
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
@@ -106,8 +106,8 @@ export const TYPE_DECISIONS = Object.freeze({
   roleAssignmentSchedule: unknown(),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate', {
     liveFailures: {
-      create: failedLive('2026-10-12', 'Graph returned 400: the create body carries server-managed read-only fields (id, createdDateTime, modifiedDateTime, deletedDateTime, @odata.context) from the snapshot; the same body without them is accepted (201)',
-        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
+      create: failedLive('2026-10-13', 'The policy was created (POST succeeded after #173; report-only, read back), but post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (id, createdDateTime, grantControls.authenticationStrength@odata.context), so the outcome was recorded as uncertain',
+        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
     },
   }),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
@@ -115,8 +115,8 @@ export const TYPE_DECISIONS = Object.freeze({
     liveFailures: {
       create: failedLive('2026-10-11', 'Live POST /identity/conditionalAccess/namedLocations returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime).',
         'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
-      update: failedLive('2026-10-11', 'Live PATCH of the named location returned HTTP 400. The update body is the collected snapshot shape, which includes read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime); same cause as namedLocation create.',
-        'strip server-managed read-only fields from update bodies; live gate #148 run 1, to be re-run after the fix'),
+      update: failedLive('2026-10-13', 'PATCH returned 400 "1042: Unexpected type: namedLocationType for NamedLocations": the update body (writableProjection) drops @odata.type, which Graph requires to pick the namedLocation subtype. Verified by hand on the fixture: the same PATCH without @odata.type gives 400, with it 204. #173 keeps @odata.type on create bodies only',
+        'keep @odata.type on update bodies so Graph can pick the namedLocation subtype; live gate #148 run 2, to be re-run after the fix'),
     },
   }),
   authenticationContextClassReference: unknown(),

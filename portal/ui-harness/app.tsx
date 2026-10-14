@@ -31,6 +31,7 @@ import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
+import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentRecovery } from "@/components/incident-recovery";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
@@ -561,6 +562,29 @@ const ACKNOWLEDGED: ScheduleForecast = { ...FORECASTS[1], status: "warning",
   acknowledgement: { codes: ["overlap"], acknowledgedBy: "a11c0000-0000-4000-8000-0000000000a1", acknowledgedByName: "ops@contoso.com", acknowledgedAt: "2026-10-01T08:30:00Z", samples: 14 } };
 const SCHEDULE_FORECASTS = [FORECASTS[0], ACKNOWLEDGED, FORECASTS[2]];
 
+// Q45: a restore planned with the command line (no portal job) whose dry run shortens
+// group expiry. Its content effects are reviewed and approved on their own page.
+const CLI_PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000045", name: null, readable: true, status: "completed", undo: false, resources: 1, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: null, contentEffects: 1 };
+const GROUP_EXPIRY_EFFECT: ContentEffect = {
+  naturalKey: "groupLifecyclePolicy:default", resourceType: "groupLifecyclePolicy", field: "groupLifetimeInDays", effect: "retention-reducing", before: 400, after: 365,
+  disclosure: "Content older than the new retention period can be permanently deleted. KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.",
+};
+function ContentEffectsReviewHarness() {
+  const [approvals, setApprovals] = useState<{ approvedBy: string; approvedAt: string | null }[]>([]);
+  return (
+    <>
+      <Verdict text={approvals.length ? "These content effects are approved. The restore can run once its own request is approved." : "Waiting for you: approve these content effects before the restore can run."} tone={approvals.length ? "good" : "attention"} />
+      <a className="text-link back-link" href="#/approvals"><span aria-hidden="true">←</span> All approvals</a>
+      <section aria-labelledby="content-effects-plan-heading" className="report-section">
+        <h2 id="content-effects-plan-heading">The dry run</h2>
+        <p>A restore of 1 resource, planned 2 Oct 2026, 09:12, asked for by ops@contoso.com. An approval here covers exactly the effects listed. If the dry run is planned again with different effects, it no longer counts.</p>
+        <ContentEffectsPanel approvals={approvals} artifactId={CLI_PLAN_REF.id} canApprove effects={[GROUP_EXPIRY_EFFECT]} effectsDigest="digest-q45"
+          onApproved={() => setApprovals([{ approvedBy: "Marouane Defili", approvedAt: now }])} />
+      </section>
+    </>
+  );
+}
+
 const header = (section: NavSection, title: string, description: string, marker?: string) =>
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
 
@@ -1078,6 +1102,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         { id: "a9e10000-0000-4000-8000-000000000102", action: "baseline-activate", params: { baselineId: BASELINES[0].id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Post-migration golden state", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T12:00:00Z",
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, baseline: { kind: "baseline", id: BASELINES[0].id, name: "Post-migration golden state", readable: true } } },
       ]} /></div></>;
+    case "/approvals/cli-restore": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
+      <Verdict text="1 request is waiting for you." tone="attention" />
+      <div data-layer="explanation"><ApprovalInbox history={[]} now={now} pending={[
+        { id: "a9e10000-0000-4000-8000-000000000145", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the baseline", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli",
+          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: CLI_PLAN_REF } },
+      ]} /></div></>;
+    case "/approvals/content-effects": return <>{header("Approvals", "Content effects", "Changes in a dry run that shorten retention, release a hold, widen sharing or destroy content need their own approval.")}
+      <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
       <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />
       <div data-layer="explanation">

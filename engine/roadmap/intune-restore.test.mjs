@@ -30,11 +30,13 @@ import {
 import { collectSnapshot } from '../collect/snapshot.mjs';
 import { OPERATIONS, capabilityFor } from '../coverage/capabilities.mjs';
 import { TYPE_DECISIONS, buildExpansionInventory, buildOperationLedger, qualificationFor } from '../coverage/qualification.mjs';
+import { recordAppliedIds } from '../../cli/keel-restore.mjs';
 import { applyWave } from '../restore/applyEngine.mjs';
 import {
-  INTUNE_RECORDS, assignmentPlan, attachIntuneAssignments, buildIntuneLedger, intuneSecretFields, intuneWriteBody,
+  INTUNE_RECORDS, assignmentPlan, assignmentTargetResolver, attachIntuneAssignments, buildIntuneLedger, intuneSecretFields, intuneWriteBody,
 } from '../restore/intuneOperations.mjs';
 import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
+import { planWaves } from '../restore/wavePlanner.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
@@ -505,6 +507,41 @@ test('a group created earlier in the same run is assigned by its new id', async 
   assert.equal(graph.bodies.at(-1).body.assignments[0].target.groupId, 'created-group-id');
 });
 
+test('a group restored in the same run is planned in an earlier wave than the policies assigned to it, and the dry run completes', async () => {
+  // Live operator run Q45: a deleted group and the compliance policy and device
+  // configuration assigned to it, restored together in one run.
+  const SOURCE_GROUP = '6f6f6f6f-0000-4000-8000-000000000006';
+  const group = {
+    naturalKey: 'group:KEEL-RT-148-group', resourceType: 'group', verb: 'restore-soft-deleted',
+    payload: { displayName: 'KEEL-RT-148-group', mailEnabled: false, securityEnabled: true }, references: [],
+    blastRadius: 'access-affecting', targetId: SOURCE_GROUP, live: { state: 'deleted', targetId: SOURCE_GROUP, deletedItemId: SOURCE_GROUP },
+  };
+  const assigned = { assignments: { outcome: 'complete', targets: [groupAssignment(SOURCE_GROUP, group.naturalKey)] } };
+  const policies = [plannedCreate('deviceCompliancePolicy', compliance, assigned), plannedCreate('deviceConfiguration', restrictions, assigned)];
+  const resources = [...policies, group];
+
+  const { waves, patches } = planWaves(resources);
+  assert.deepEqual(patches, []);
+  assert.deepEqual(waves, [[group.naturalKey], policies.map((policy) => policy.naturalKey).sort()]);
+
+  const graph = recordingGraph();
+  const appliedIds = new Map();
+  const failed = [];
+  for (const keys of waves) {
+    const outcome = await run(graph, resources.filter((resource) => keys.includes(resource.naturalKey)), { mode: 'dry-run', appliedIds });
+    failed.push(...outcome.failed);
+    recordAppliedIds(appliedIds, outcome.applied);
+  }
+  assert.deepEqual(failed, [], 'the assignment resolves to the group this run restores');
+  assert.deepEqual(graph.bodies, [], 'a dry run writes nothing');
+
+  // A group neither restored by this run nor in the target is still refused, in the same words.
+  assert.equal(planWaves(policies).waves.length, 1);
+  const outcome = await run(recordingGraph(), policies, { mode: 'dry-run' });
+  assert.equal(outcome.failed.length, 2);
+  for (const entry of outcome.failed) assert.match(entry.error, /assignments cannot be restored: the group group:KEEL-RT-148-group does not exist in the target/);
+});
+
 test('an incomplete assignment read leaves live assignments untouched, never cleared', async () => {
   for (const assignments of [undefined, { outcome: 'partial', targets: [] }, { outcome: 'failed', targets: [] }, { outcome: 'unsupported', targets: [] }]) {
     const graph = recordingGraph();
@@ -582,6 +619,28 @@ test('planning: a policy whose only change is its assignments becomes an update;
   const [missing] = attachIntuneAssignments([base], { desired, live: liveOf(TARGET_FINANCE), resolve: () => null, recoveryFor });
   assert.equal(missing.verb, 'update', 'a missing group is surfaced as a refusal in the dry run, not hidden as a no-op');
   assert.equal(assignmentPlan(missing, () => null).state, 'refused');
+});
+
+test('planning: a group this run restores or creates counts as present for a policy\'s assignments; any other missing group still refuses', () => {
+  const policy = {
+    naturalKey: 'deviceConfiguration:Windows restrictions', resourceType: 'deviceConfiguration', verb: 'noop', payload: restrictions,
+    live: { state: 'present', targetId: 'target-policy', payload: restrictions },
+  };
+  const restored = { naturalKey: 'group:restored', resourceType: 'group', verb: 'restore-soft-deleted', targetId: 'restored-id', references: [] };
+  const created = { naturalKey: 'group:created', resourceType: 'group', verb: 'create', references: [] };
+  const resolve = assignmentTargetResolver([policy, restored, created], new Map(TARGETS));
+  assert.equal(resolve('group:finance'), TARGET_FINANCE);
+  assert.equal(resolve('group:restored'), 'restored-id');
+  assert.equal(resolve('group:created'), 'planned:group:created');
+  assert.equal(resolve('group:contractors'), null);
+
+  const desiredFor = (naturalKey) => new Map([[`${policy.naturalKey}|assignment`, { outcome: 'complete', targets: [groupAssignment(SOURCE_FINANCE, naturalKey)] }]]);
+  const live = new Map([[`${policy.naturalKey}|assignment`, { outcome: 'complete', targets: [] }]]);
+  const [withRestored] = attachIntuneAssignments([policy], { desired: desiredFor('group:restored'), live, resolve });
+  assert.match(withRestored.verbReason, /assignments differ/, 'not reported as a missing group');
+  assert.equal(assignmentPlan(withRestored, resolve).state, 'ready');
+  const [withMissing] = attachIntuneAssignments([policy], { desired: desiredFor('group:contractors'), live, resolve });
+  assert.match(withMissing.verbReason, /^assignments cannot be restored: the group group:contractors does not exist in the target/);
 });
 
 // ------------------------------------------------- review fixes (issue #155)

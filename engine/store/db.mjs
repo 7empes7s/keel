@@ -41,9 +41,9 @@ export async function insertResourceVersion(client, { snapshotId, resource }) {
 export async function insertReferences(client, { fromVersion, references }) {
   for (const ref of references) {
     await client.query(
-      `INSERT INTO resource_reference (from_version, field_path, to_symbol, required)
-       VALUES ($1,$2,$3,$4)`,
-      [fromVersion, ref.field, ref.symbol, ref.required],
+      `INSERT INTO resource_reference (from_version, field_path, to_symbol, required, prefix)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [fromVersion, ref.field, ref.symbol, ref.required, ref.prefix ?? null],
     );
   }
 }

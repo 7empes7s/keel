@@ -6,8 +6,10 @@
  * references canonicalization returns in memory. The live restore reads them
  * back from resource_reference, which stores field, symbol and required only,
  * so the scope's path prefix was lost and the restore refused the scope as
- * unnamed. This test goes through the real store: canonicalize, insert as
- * collectSnapshot does, read back, build the restore candidates and apply.
+ * unnamed. The `prefix` column (#221) fixes new snapshots; this test covers a
+ * snapshot stored before it. It goes through the real store: canonicalize,
+ * insert as collectSnapshot does, clear the stored prefix as an older snapshot
+ * has none, read back, build the restore candidates and apply.
  * Microsoft Graph is the in-memory fake only; no tenant is read or written.
  */
 import { strict as assert } from 'node:assert';
@@ -57,6 +59,13 @@ before(async () => {
     await insertReferences(client, { fromVersion: versionId, references: resource.references });
   }
   await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: {} });
+  // A snapshot stored before the prefix column existed: its references carry none.
+  const kept = await client.query(
+    `UPDATE resource_reference SET prefix = NULL
+      WHERE from_version IN (SELECT id FROM resource_version WHERE snapshot_id = $1) AND prefix IS NOT NULL`,
+    [snapshotId],
+  );
+  assert.equal(kept.rowCount, 1, 'today the store keeps the scope prefix');
   stored = {
     versions: await getResourceVersions(client, { snapshotId }),
     references: await getReferences(client, { snapshotId }),
@@ -71,10 +80,10 @@ after(async () => {
 const candidate = (naturalKeyPart) => restoreCandidates(stored.versions, stored.references)
   .find((resource) => resource.resourceType === 'roleEligibilitySchedule' && resource.payload.id === naturalKeyPart);
 
-test('the store keeps no prefix; the restore candidate gets the scope prefix back from the stored payload', () => {
+test('a stored reference with no prefix gets the scope prefix back from the stored payload', () => {
   const row = stored.references.find((ref) => ref.field_path === 'directoryScopeId');
   assert.equal(row.to_symbol, 'administrativeUnit:EU Region');
-  assert.equal('prefix' in row, false, 'resource_reference has no prefix column; the fix must not depend on one');
+  assert.equal(row.prefix, null, 'stored as an older snapshot, without the prefix');
 
   const scoped = candidate('schedule-old');
   const scope = scoped.references.find((ref) => ref.field === 'directoryScopeId');

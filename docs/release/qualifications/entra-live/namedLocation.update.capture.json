@@ -1,15 +1,15 @@
 {
-  "restoreRef": "e8040fd4-dd67-88df-b5e3-c2845dbf828d",
+  "restoreRef": "49036ff9-690c-89d3-882f-0590cd64f1e9",
   "entry": {
     "naturalKey": "namedLocation:KEEL-RT-148-location",
     "resourceType": "namedLocation",
     "operation": "update",
-    "targetId": "fa3621e6-9eb3-877e-ade8-4451ea0322a1",
+    "targetId": "3625a91e-68c8-88a3-8b4d-989d146324d2",
     "outcome": "failed",
     "outcomeDetail": "status 400",
-    "recordedAt": "2026-10-11T19:08:05.365Z",
+    "recordedAt": "2026-10-13T21:23:07.899Z",
     "priorState": {
-      "id": "fa3621e6-9eb3-877e-ade8-4451ea0322a1",
+      "id": "3625a91e-68c8-88a3-8b4d-989d146324d2",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -23,12 +23,12 @@
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
       "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-11T18:53:14.2993717Z",
+      "createdDateTime": "2026-10-13T14:39:32.2306668Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-11T18:54:18.1421946Z"
+      "modifiedDateTime": "2026-10-13T21:21:30.1952457Z"
     },
     "intendedState": {
-      "id": "fa3621e6-9eb3-877e-ade8-4451ea0322a1",
+      "id": "3625a91e-68c8-88a3-8b4d-989d146324d2",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -38,9 +38,9 @@
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
       "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-11T18:53:14.2993717Z",
+      "createdDateTime": "2026-10-13T14:39:32.2306668Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-11T18:53:14.2993717Z"
+      "modifiedDateTime": "2026-10-13T14:39:32.2306668Z"
     },
     "postState": null
   }

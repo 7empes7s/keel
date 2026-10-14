@@ -19,7 +19,7 @@ KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore a
 | Setting | Backed up | KEEL can restore | Proof |
 | --- | --- | --- | --- |
 | Users | Yes (Tier 2, important, daily) | Yes: put changed settings back; bring back from deleted items | Tested against a simulated tenant |
-| Groups | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of bringing back from deleted items failed on 2026-10-11, fix in progress |
+| Groups | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress; live test of bringing back from deleted items failed on 2026-10-13, fix in progress |
 | Organizational contacts | Yes (Tier 3, low impact, weekly) | By hand (Microsoft limit) | None |
 | App registrations | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted | Tested against a simulated tenant |
@@ -81,9 +81,9 @@ KEEL tracks 62 kinds of Entra ID and Intune settings: 27 that KEEL can restore a
 
 | Setting | Backed up | KEEL can restore | Proof |
 | --- | --- | --- | --- |
-| Conditional Access policies | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-12, fix in progress |
+| Conditional Access policies | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress |
 | Authentication strengths | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Named locations | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of putting settings back failed on 2026-10-11, fix in progress |
+| Named locations | Yes (Tier 1, critical, every hour) | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of putting settings back failed on 2026-10-13, fix in progress |
 | Authentication contexts | Yes (Tier 2, important, daily) | Not yet investigated | None |
 | Authentication methods | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |
 | Security defaults | Yes (Tier 1, critical, every hour) | Yes: put changed settings back | Tested against a simulated tenant |

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "organizationalBrandingLocalization",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-13T11:53:00.436Z",
+  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "naturalKey": "organizationalBrandingLocalization:fr-FR",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "e20e92aa4dd55683a2ec475b1101ecf8c7b256bee70ff79f5fed73350defa851",
+  "proofRef": "docs/release/qualifications/entra-live/organizationalBrandingLocalization.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "7ba8cc1c82a539981b63e7c2f61d09645f092ccdb7bf572ca9e2ab3e3c9df078"
+    }
+  }
+}

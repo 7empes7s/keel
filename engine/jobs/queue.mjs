@@ -117,10 +117,18 @@ export async function summarizeJobs(client, { tenantRef, jobs }) {
   return resolveRowReferences(client, { tenantRef, rows: jobs, people: ['requested_by'] });
 }
 
-export async function listJobs(client, { limit = 50 } = {}) {
+// kinds narrows the list in the query, so a page about one kind (restores) never loses
+// its rows to a busier kind (scheduled backups) crowding the newest-N window.
+/**
+ * @param {any} client
+ * @param {{ limit?: number, kinds?: string[] | null }} [options]
+ */
+export async function listJobs(client, { limit = 50, kinds = null } = {}) {
   const { rows } = await client.query(
-    `SELECT *, started_at::text AS event_started_at FROM job ORDER BY created_at DESC LIMIT $1`,
-    [limit],
+    `SELECT *, started_at::text AS event_started_at FROM job
+      WHERE ($2::text[] IS NULL OR kind = ANY($2))
+      ORDER BY created_at DESC LIMIT $1`,
+    [limit, kinds],
   );
   return rows;
 }

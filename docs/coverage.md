@@ -427,3 +427,42 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
+
+### Teams calling, voice and live event policies
+
+**Backed up:**
+
+- Teams calling policies
+- Teams voice routing policies
+- Teams dial plans
+- Teams emergency calling policies
+- Teams emergency call routing policies
+- Teams call park policies
+- Teams caller ID policies
+- Teams voicemail policies
+- Teams live event policies
+- Teams town hall and webinar policies
+- Teams live event configuration
+- Teams policies assigned to each user
+- Teams policies assigned to groups
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Change them, and the policies assigned to users and groups, by hand in the Teams admin center using the backup. A live event video provider's API token is never backed up: enter it again.
+
+### Purview retention labels, auto-labeling and eDiscovery
+
+**Backed up:**
+
+- Retention labels
+- Adaptive scopes
+- Auto-labeling policies
+- Auto-labeling rules
+- eDiscovery (Standard) cases
+- eDiscovery (Premium) cases
+- eDiscovery case holds
+- eDiscovery case hold queries
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Recreate them by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.

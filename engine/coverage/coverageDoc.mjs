@@ -289,6 +289,10 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant\'s licence includes it.' }),
   'exchange-extended': Object.freeze({ name: 'Exchange protection rules, address lists, mobile and retention settings',
     todo: 'KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.' }),
+  'teams-voice-policies': Object.freeze({ name: 'Teams calling, voice and live event policies',
+    todo: 'KEEL does not restore these yet. Change them, and the policies assigned to users and groups, by hand in the Teams admin center using the backup. A live event video provider\'s API token is never backed up: enter it again.' }),
+  'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
+    todo: 'KEEL does not restore these yet. Recreate them by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({

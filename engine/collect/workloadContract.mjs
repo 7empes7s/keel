@@ -11,7 +11,10 @@
  *  - Exchange organization-wide mail flow and protection settings (issue #153);
  *  - Teams organization-wide policies and configuration (issue #154);
  *  - Purview retention and DLP policies and their rules (issue #157);
- *  - the Exchange and Defender settings mail flow does not read (READ-EXO).
+ *  - the Exchange and Defender settings mail flow does not read (READ-EXO);
+ *  - Teams calling, voice and live event policies and policy assignments, and Purview
+ *    retention labels, adaptive scopes, auto-labeling and eDiscovery cases and holds
+ *    (Wave 1 READ-TEAMS-PV).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -42,6 +45,7 @@ export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
   'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
   'exchange-extended',
+  'teams-voice-policies', 'purview-governance',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -309,6 +313,52 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     operation: cmdlet(name, 'ExchangeOnlineManagement', options),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies, and the
+  // policies assigned to users and groups, in the MicrosoftTeams session.
+  // engine/collect/workloads/teamsExtended.mjs holds the fields and identities.
+  ...[
+    ['teams.calling-policies', 'Teams calling policies', 'Get-CsTeamsCallingPolicy', 'cmdlet-unbounded'],
+    ['teams.voice-routing-policies', 'Teams voice routing policies', 'Get-CsOnlineVoiceRoutingPolicy', 'cmdlet-unbounded'],
+    ['teams.dial-plans', 'Teams dial plans', 'Get-CsTenantDialPlan', 'cmdlet-unbounded'],
+    ['teams.emergency-calling-policies', 'Teams emergency calling policies', 'Get-CsTeamsEmergencyCallingPolicy', 'cmdlet-unbounded'],
+    ['teams.emergency-call-routing-policies', 'Teams emergency call routing policies', 'Get-CsTeamsEmergencyCallRoutingPolicy', 'cmdlet-unbounded'],
+    ['teams.call-park-policies', 'Teams call park policies', 'Get-CsTeamsCallParkPolicy', 'cmdlet-unbounded'],
+    ['teams.caller-id-policies', 'Teams caller ID policies', 'Get-CsCallingLineIdentity', 'cmdlet-unbounded'],
+    ['teams.voicemail-policies', 'Teams voicemail policies', 'Get-CsOnlineVoicemailPolicy', 'cmdlet-unbounded'],
+    ['teams.live-events-policies', 'Teams live event policies', 'Get-CsTeamsMeetingBroadcastPolicy', 'cmdlet-unbounded'],
+    ['teams.events-policies', 'Teams town hall and webinar policies', 'Get-CsTeamsEventsPolicy', 'cmdlet-unbounded'],
+    ['teams.live-events-configuration', 'Teams live event configuration', 'Get-CsTeamsMeetingBroadcastConfiguration', 'none'],
+    ['teams.user-policy-assignments', 'Teams policies assigned to each user', 'Get-CsOnlineUser', 'cmdlet-unbounded', { parameters: ['-ResultSize'] }],
+    ['teams.group-policy-assignments', 'Teams policies assigned to groups', 'Get-CsGroupPolicyAssignment', 'cmdlet-unbounded'],
+  ].map(([id, resource, name, paging, options]) => ({
+    id, workload: 'teams-voice-policies', resource,
+    operation: cmdlet(name, 'MicrosoftTeams', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: [], roles: ['Teams Administrator'] },
+    paging, throttle: 'module-managed', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/teams/${name.toLowerCase()}`),
+  })),
+  // Wave 1 READ-TEAMS-PV: Purview retention labels, adaptive scopes, auto-labeling and
+  // eDiscovery cases with their holds, in the Security & Compliance session.
+  // engine/collect/workloads/purviewExtended.mjs holds the fields, parents and licences.
+  ...[
+    ['purview.retention-labels', 'Retention labels', 'Get-ComplianceTag', {}, ['Compliance Administrator']],
+    ['purview.adaptive-scopes', 'Adaptive scopes', 'Get-AdaptiveScope', {}, ['Compliance Administrator']],
+    ['purview.auto-label-policies', 'Auto-labeling policies', 'Get-AutoSensitivityLabelPolicy', {}, ['Compliance Administrator']],
+    ['purview.auto-label-rules', 'Auto-labeling rules', 'Get-AutoSensitivityLabelRule', {}, ['Compliance Administrator']],
+    ['purview.ediscovery-cases', 'eDiscovery (Standard) cases', 'Get-ComplianceCase', {}, ['eDiscovery Manager']],
+    ['purview.ediscovery-premium-cases', 'eDiscovery (Premium) cases', 'Get-ComplianceCase',
+      { parameters: ['-CaseType AdvancedEdiscovery'], probeName: 'Get-ComplianceCase -CaseType AdvancedEdiscovery' }, ['eDiscovery Manager']],
+    ['purview.case-holds', 'eDiscovery case holds', 'Get-CaseHoldPolicy', { parameters: ['-Case'], probeName: 'Get-CaseHoldPolicy -Case' }, ['eDiscovery Manager']],
+    ['purview.case-hold-rules', 'eDiscovery case hold queries', 'Get-CaseHoldRule', { parameters: ['-Policy'], probeName: 'Get-CaseHoldRule -Policy' }, ['eDiscovery Manager']],
+  ].map(([id, resource, name, options, roles]) => ({
+    id, workload: 'purview-governance', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles },
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),

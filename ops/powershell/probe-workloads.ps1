@@ -339,6 +339,22 @@ if (($Workloads -contains 'scc' -or $Workloads -contains 'defender')) {
                 # cmdlet not found.
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-RetentionComplianceRule' -Block { Get-RetentionComplianceRule }
                 Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-DlpComplianceRule' -Block { Get-DlpComplianceRule }
+                # Wave 1 READ-TEAMS-PV: retention labels, adaptive scopes, auto-labeling and
+                # eDiscovery cases and holds (configuration only, never case evidence). The
+                # hold reads run against the first case and hold, if there is one.
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ComplianceTag' -Block { Get-ComplianceTag }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-AdaptiveScope' -Block { Get-AdaptiveScope }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-AutoSensitivityLabelPolicy' -Block { Get-AutoSensitivityLabelPolicy }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-AutoSensitivityLabelRule' -Block { Get-AutoSensitivityLabelRule }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ComplianceCase' -Block { Get-ComplianceCase }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-ComplianceCase -CaseType AdvancedEdiscovery' -Block { Get-ComplianceCase -CaseType AdvancedEdiscovery }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-CaseHoldPolicy -Case' -Block {
+                    @(Get-ComplianceCase) | Select-Object -First 1 | ForEach-Object { Get-CaseHoldPolicy -Case $_.Identity }
+                }
+                Invoke-ProbeCmdlet -Workload 'scc' -Name 'Get-CaseHoldRule -Policy' -Block {
+                    @(Get-ComplianceCase) | Select-Object -First 1 | ForEach-Object { @(Get-CaseHoldPolicy -Case $_.Identity) } |
+                        Select-Object -First 1 | ForEach-Object { Get-CaseHoldRule -Policy $_.Guid }
+                }
             }
             if ($Workloads -contains 'defender') {
                 Add-Result -Workload 'defender' -Connected $true -Cmdlet $null -Ok $true -Count $null -ErrorText $null
@@ -378,6 +394,21 @@ if ($Workloads -contains 'teams') {
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestMeetingConfiguration' -Block { Get-CsTeamsGuestMeetingConfiguration }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestMessagingConfiguration' -Block { Get-CsTeamsGuestMessagingConfiguration }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsGuestCallingConfiguration' -Block { Get-CsTeamsGuestCallingConfiguration }
+        # Wave 1 READ-TEAMS-PV: calling, voice and live event policies and policy
+        # assignments (read only; the user read is bounded).
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsCallingPolicy' -Block { Get-CsTeamsCallingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineVoiceRoutingPolicy' -Block { Get-CsOnlineVoiceRoutingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTenantDialPlan' -Block { Get-CsTenantDialPlan }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsEmergencyCallingPolicy' -Block { Get-CsTeamsEmergencyCallingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsEmergencyCallRoutingPolicy' -Block { Get-CsTeamsEmergencyCallRoutingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsCallParkPolicy' -Block { Get-CsTeamsCallParkPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsCallingLineIdentity' -Block { Get-CsCallingLineIdentity }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineVoicemailPolicy' -Block { Get-CsOnlineVoicemailPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingBroadcastPolicy' -Block { Get-CsTeamsMeetingBroadcastPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsEventsPolicy' -Block { Get-CsTeamsEventsPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingBroadcastConfiguration' -Block { Get-CsTeamsMeetingBroadcastConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineUser' -Block { Get-CsOnlineUser -ResultSize 10 }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsGroupPolicyAssignment' -Block { Get-CsGroupPolicyAssignment }
     } catch {
         Add-Result -Workload 'teams' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "teams connect FAILED: $($_.Exception.Message)"

@@ -116,6 +116,39 @@ $AllowedExchangeExtended = @{
     'Get-AtpPolicyForO365'               = @()
 }
 
+# Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
+# assignments, read in the MicrosoftTeams session. Only Get-CsOnlineUser takes a
+# parameter (-ResultSize, a bound). Reads only.
+$AllowedTeamsExtended = @{
+    'Get-CsTeamsCallingPolicy'                 = @()
+    'Get-CsOnlineVoiceRoutingPolicy'           = @()
+    'Get-CsTenantDialPlan'                     = @()
+    'Get-CsTeamsEmergencyCallingPolicy'        = @()
+    'Get-CsTeamsEmergencyCallRoutingPolicy'    = @()
+    'Get-CsTeamsCallParkPolicy'                = @()
+    'Get-CsCallingLineIdentity'                = @()
+    'Get-CsOnlineVoicemailPolicy'              = @()
+    'Get-CsTeamsMeetingBroadcastPolicy'        = @()
+    'Get-CsTeamsEventsPolicy'                  = @()
+    'Get-CsTeamsMeetingBroadcastConfiguration' = @()
+    'Get-CsOnlineUser'                         = @('ResultSize')
+    'Get-CsGroupPolicyAssignment'              = @()
+}
+
+# Wave 1 READ-TEAMS-PV: Purview retention labels, adaptive scopes, auto-labeling and
+# eDiscovery cases and holds, read in the Security & Compliance session. -Case and
+# -Policy take ids KEEL read in the same run. Reads only: nothing that reads a search,
+# its results, an export or a review set.
+$AllowedPurviewExtended = @{
+    'Get-ComplianceTag'              = @()
+    'Get-AdaptiveScope'              = @()
+    'Get-AutoSensitivityLabelPolicy' = @()
+    'Get-AutoSensitivityLabelRule'   = @()
+    'Get-ComplianceCase'             = @('CaseType')
+    'Get-CaseHoldPolicy'             = @('Case')
+    'Get-CaseHoldRule'               = @('Policy')
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -165,6 +198,8 @@ elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManag
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
+elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
+elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
 $params = @{}
 if ($null -ne $job['parameters']) {

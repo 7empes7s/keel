@@ -24,11 +24,6 @@ export function graphTransport(transport) {
   });
 }
 
-export function driveTransport(transport) {
-  const send = graphTransport(transport);
-  return ({ method = 'GET', url, headers = {} } = {}) => send(url, { method, headers });
-}
-
 function discard(body) {
   if (typeof body?.destroy === 'function') body.destroy();
 }
@@ -46,6 +41,23 @@ async function readBounded(body, maxBytes) {
     parts.push(chunk);
   }
   return { bytes: Buffer.concat(parts) };
+}
+
+// A failed download's body is Graph's JSON error, not file bytes: read it (bounded)
+// and close the stream, so a skipped, throttled or failed download holds no socket.
+async function errorBody(stream) {
+  const read = await readBounded(stream, 64 * 1024);
+  try { return JSON.parse(read.bytes?.toString('utf8') ?? ''); } catch { return null; }
+}
+
+export function driveTransport(transport) {
+  const send = graphTransport(transport);
+  return async ({ method = 'GET', url, headers = {} } = {}) => {
+    const response = await send(url, { method, headers });
+    if (response?.status >= 200 && response.status < 300) return response;
+    if (typeof response?.body?.[Symbol.asyncIterator] !== 'function') return response;
+    return { ...response, body: await errorBody(response.body) };
+  };
 }
 
 function failure(response, body = response?.body) {
@@ -91,12 +103,7 @@ export function mailReader(transport, { sleep = async () => {}, maxRetries = 5 }
         return refused(error);
       }
       const contentType = response.headers?.['content-type'] ?? null;
-      if (response.status < 200 || response.status >= 300) {
-        const read = await readBounded(response.body, 64 * 1024);
-        let body = null;
-        try { body = JSON.parse(read.bytes?.toString('utf8') ?? ''); } catch { body = null; }
-        return failure(response, body);
-      }
+      if (response.status < 200 || response.status >= 300) return failure(response, await errorBody(response.body));
       const declared = Number(response.headers?.['content-length']);
       if (Number.isFinite(declared) && declared > maxBytes) {
         discard(response.body);

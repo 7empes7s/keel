@@ -155,6 +155,14 @@ qualified. Builders must not run them.
      --evidence docs/release/qualifications/sharepoint-live-acceptance.json
    ```
    The record is valid for 30 days, and only for the build it names.
+8. **Import** for the scheduled collection (gap W1):
+   `KEEL_QUALIFICATION_HMAC_KEY=... node cli/keel-workload-collect.mjs import`.
+   The import checks each of the four workload records at the build it names, not at
+   the running build, so an unrelated deploy does not void it. It still checks each
+   record against the code running now: every read and write it proved must still be
+   declared at the same API or module version, endpoint, written fields and grants. A
+   changed write, another tenant or a record older than 30 days is refused. The release
+   ledger is unchanged: it still asks whether one candidate build is qualified.
 
 ## Proof
 

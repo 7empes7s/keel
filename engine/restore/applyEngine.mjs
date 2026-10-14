@@ -20,7 +20,7 @@ import {
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
 import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
-import { compareSignInPaths, recordSignInPath, snapshotSignInPath } from '../safety/signInPathGate.mjs';
+import { compareSignInPaths, recordSignInPath } from '../safety/signInPathGate.mjs';
 import { lockoutDeleteRefusal } from '../safety/lockoutDeleteGate.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
@@ -388,6 +388,11 @@ export async function applyWave(writer, governor, wave, {
     operationClass: 'write',
     ...throttleRetryOptions,
   });
+
+  // Q45: the Conditional Access policies this wave writes (never a noop or a delete).
+  const restoredPolicyKeys = new Set(wave
+    .filter((resource) => resource.resourceType === 'conditionalAccessPolicy' && resource.verb !== 'noop' && resource.verb !== 'delete')
+    .map((resource) => resource.naturalKey));
 
   for (const resource of wave) {
     if (resource.verb === 'noop') {
@@ -1012,12 +1017,27 @@ export async function applyWave(writer, governor, wave, {
   }
 
   if (signInPathGate) {
-    const signInPathAfter = await snapshotSignInPath(signInPathGate.reader, {
+    const after = await recordSignInPath(signInPathGate.reader, {
       protectedPrincipalIds: signInPathGate.protectedPrincipalIds,
     });
+    // Q45 (live run 2026-10-13): a Conditional Access policy this wave wrote
+    // and verified is a change the run made on purpose. Every restored policy
+    // is written report-only, so once it reads back report-only or off it
+    // enforces nothing and cannot lock anyone out: only that policy is left out
+    // of the comparison. Before, any policy restore failed this gate, so the
+    // wave counted a failure its journal never showed.
+    const restoredPolicies = mode === 'dry-run' ? [] : applied
+      .filter((entry) => restoredPolicyKeys.has(entry.naturalKey) && typeof entry.targetId === 'string' && entry.targetId.length > 0)
+      .map((entry) => entry.targetId)
+      .filter((id) => {
+        const item = after.itemOf(id);
+        return item !== null && item.state !== 'enabled';
+      });
+    const signInPathAfter = restoredPolicies.length ? await after.without(restoredPolicies) : after.snapshot;
     // Gap register D1: an allowed lockout delete that verified is the one
     // change expected; everything else must read as before.
-    const expected = lockoutDeletesVerified.length ? await signInPath.without(lockoutDeletesVerified) : signInPathBefore;
+    const leftOut = [...lockoutDeletesVerified, ...restoredPolicies];
+    const expected = leftOut.length ? await signInPath.without(leftOut) : signInPathBefore;
     const gate = compareSignInPaths(expected, signInPathAfter, { intendedSections: [...intendedSignInSections] });
     if (!gate.allowed) {
       failed.push({ naturalKey: 'sign-in-path-gate', error: gate.reason, changed: gate.changed });

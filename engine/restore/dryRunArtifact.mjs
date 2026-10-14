@@ -54,7 +54,11 @@ export function restoreCandidates(versions, references) {
   const refsByVersion = new Map();
   for (const r of references ?? []) {
     if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-    refsByVersion.get(r.from_version).push({ field: r.field_path, symbol: r.to_symbol, required: r.required });
+    // Issue #195: the stored prefix (an administrative-unit scope) travels with the
+    // reference, so the eligibility scope gate and the writer can see it.
+    refsByVersion.get(r.from_version).push({
+      field: r.field_path, symbol: r.to_symbol, required: r.required, ...(r.prefix ? { prefix: r.prefix } : {}),
+    });
   }
   return (versions ?? [])
     // Roadmap task-108: authentication strengths are not filtered out; applyWave

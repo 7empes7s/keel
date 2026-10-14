@@ -81,7 +81,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recoveryMechanism.mjs';
-import { attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
+import { assignmentTargetResolver, attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
@@ -196,6 +196,17 @@ export async function lockoutGateFor(client, resources, {
 // A deleted policy that was report-only or off needs no gate: with no gate,
 // deletedPolicyRestoreRefusal refuses only one that would come back on.
 const offWhenDeleted = (resource) => deletedPolicyRestoreRefusal(resource, null) === null;
+
+// Q45 (live run 2026-10-13): a wave said "failed 1" and the job failed with no
+// reason anywhere. Every failure a run counts is printed with its reason, and
+// the error that stops the run carries them, so a worker job's output says why.
+const failureReason = (entry) => entry?.error ?? entry?.reason ?? 'no reason was recorded';
+export function failureSummary(failed) {
+  return failed.map((entry) => `${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`).join('; ');
+}
+function logFailures(logger, failed) {
+  for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
+}
 
 export async function observedCoverageFor(client, { resources, snapshotId, tenantRef }) {
   if (!resources.some((resource) => resource.verb === 'delete' && isAdministrativeGoverned(resource.resourceType))) return null;
@@ -641,7 +652,7 @@ export async function runRestore({
         resources = attachIntuneAssignments(resources, {
           desired: desiredAssignments,
           live: new Map(liveAssignments.map((obs) => [`${obs.parentNaturalKey}|${obs.family}`, obs])),
-          resolve: (naturalKey) => existingTargetIds.get(naturalKey) ?? null,
+          resolve: assignmentTargetResolver(resources, existingTargetIds),
           recoveryFor: (resource) => selectRecoveryMechanism(resource),
         });
       }
@@ -987,6 +998,7 @@ export async function runRestore({
         approvedContentEffects,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+      logFailures(logger, result.failed);
       for (const entry of [...result.applied, ...result.skipped]) {
         const step = entry.pendingApproval ?? entry.completion;
         if (step) logger.log(`completion step: ${entry.naturalKey} — ${step.description}`);
@@ -999,7 +1011,7 @@ export async function runRestore({
       if (result.failed.length) {
         await reportPoliciesThatMayBeOn(result.failed);
         if (persistArtifactId === undefined) {
-          throw new Error('wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+          throw new Error(`wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3): ${failureSummary(result.failed)}`);
         }
         break;
       }
@@ -1010,10 +1022,11 @@ export async function runRestore({
         targetTenant: targetConfig.tenantId, mode, appliedIds,
       });
       logger.log(`patched ${patchResult.applied.length}, patchFailed ${patchResult.failed.length}`);
+      logFailures(logger, patchResult.failed);
       results.applied.push(...patchResult.applied);
       results.failed.push(...patchResult.failed);
       if (patchResult.failed.length && persistArtifactId === undefined) {
-        throw new Error('deferred patch had failures — stopping run');
+        throw new Error(`deferred patch had failures — stopping run: ${failureSummary(patchResult.failed)}`);
       }
     }
 
@@ -1034,11 +1047,12 @@ export async function runRestore({
         restoreRef: mode === 'enforce' ? (artifact?.id ?? artifactId ?? null) : null,
       });
       logger.log(`edges: applied ${edgeResult.applied.length}, skipped ${edgeResult.skipped.length}, failed ${edgeResult.failed.length}`);
+      logFailures(logger, edgeResult.failed);
       results.applied.push(...edgeResult.applied);
       results.skipped.push(...edgeResult.skipped);
       results.failed.push(...edgeResult.failed);
       if (edgeResult.failed.length && persistArtifactId === undefined) {
-        throw new Error('relationship edge operations had failures — stopping run (each edge is re-read before any retry, so a retry never adds a member twice)');
+        throw new Error(`relationship edge operations had failures — stopping run (each edge is re-read before any retry, so a retry never adds a member twice): ${failureSummary(edgeResult.failed)}`);
       }
     }
 
@@ -1054,10 +1068,11 @@ export async function runRestore({
         governor,
       });
       logger.log(`branding files: uploaded ${fileResult.applied.length}, failed ${fileResult.failed.length}`);
+      logFailures(logger, fileResult.failed);
       results.applied.push(...fileResult.applied);
       results.failed.push(...fileResult.failed);
       if (fileResult.failed.length && persistArtifactId === undefined) {
-        throw new Error('branding file uploads had failures — stopping run (each file is compared by hash before any retry, so a retry uploads only what still differs)');
+        throw new Error(`branding file uploads had failures — stopping run (each file is compared by hash before any retry, so a retry uploads only what still differs): ${failureSummary(fileResult.failed)}`);
       }
     }
 
@@ -1079,6 +1094,7 @@ export async function runRestore({
           lockoutGate,
         });
         logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
+        logFailures(logger, result.failed);
         results.applied.push(...result.applied);
         results.skipped.push(...result.skipped);
         results.failed.push(...result.failed);
@@ -1086,7 +1102,7 @@ export async function runRestore({
         recordAppliedIds(appliedIds, result.applied);
         if (result.failed.length) {
           if (persistArtifactId === undefined) {
-            throw new Error('delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3)');
+            throw new Error(`delete wave had failures — stopping run (retry is safe: applies are idempotent by natural key, spec §9.3): ${failureSummary(result.failed)}`);
           }
           break;
         }

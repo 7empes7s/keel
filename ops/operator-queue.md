@@ -2248,6 +2248,11 @@ item that needs it stays untouched.
   @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and
   #222 (PIM admin-unit scope). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run only the parts
   whose PR is live and report the rest as waiting.
+- **Step 0: master history was rewritten (2026-10-14).** Master was force-pushed with the same file contents and new
+  commit IDs, so old SHAs no longer match; check PRs by the `#<n>` in commit titles as above. If keel-deploy refuses the
+  non-fast-forward master (`--ff-only`) and the live build stays old, reset the deploy checkout to `origin/master` and
+  let the next deploy run (with its live check). If you cannot, set Status to blocked with the deploy log lines and stop.
+  Do not merge master into this queue branch.
 - **Test tenant only.** Same hard rules and requester/approver split as Q45 (file as the Entra principal, approve as Gmail).
 - **A. Q45 demoted steps (#212, #216).** Rerun 1 group create, 3 group restore-soft-deleted, 48 CA policy create (lands
   report-only) and 40 namedLocation update. Expected: verified and captured. The held-back group evidence is captured again.

@@ -2359,8 +2359,12 @@ item that needs it stays untouched.
 - **Report:** per step, promoted / demoted (with the reason) / blocked / waiting, and every tenant setting read back as original.
 ### Q49: Rerun Q48 step 46 and check the organization fix (#226)
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
-- Status: in-progress
-- Result: Started 2026-10-14 14:42 UTC at live build 95c3a33 (#226 live).
+- Status: done
+- Result: Started 2026-10-14 14:42 UTC at live build 95c3a33 (#226 live); A captured at be3d299 (live build at capture time).
+  **A (step 46, authenticationMethodsPolicy update): promoted.** Snapshot 0db6375c (SoftwareOath disabled), drifted SoftwareOath to enabled. Dry run 8c4d3cc3 completed with no unknown-method-type refusal (#226 fix confirmed). Approval 771e04c8 approved by the operator 18:55 UTC; worker job succeeded 18:55:23. Journal: update succeeded. Graph read-back: SoftwareOath disabled. `entraLive capture --allow-tenant-setting` then `promote`: fixture-tested -> live-qualified. Pseudonymize check passed; secret scan clean.
+  **B (organization directorySizeQuota false diff, #229): passed.** Live quota used 1088 vs 1095 in the snapshot; organization was in the closure and was planned without failing (dry run 9d3e0d3f; its overall failure is unrelated: AU and branding creates unsupported).
+  Evidence: branch `claude/live-evidence-q49` @ fc1797a (docs/release/qualifications/entra-live/authenticationMethodsPolicy.update{,.capture}.json). No PR.
+  Tenant: SoftwareOath back to its original disabled state; no fixtures left.
 - Needs: Q48 done or blocked, and a live build containing #226 (`git -C /opt/keel-live log --oneline | grep -c "#226"`).
 - **Test tenant only.** Same hard rules and requester/approver split as Q45.
 - **A. Step 46 authentication methods policy.** Rerun it from a snapshot taken before the Software OATH change. Expected:

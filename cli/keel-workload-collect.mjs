@@ -19,6 +19,9 @@
 //           OneDrive and Purview), verifies each through its own import seam, and stores
 //           the evidence rows, the collector and restorer grants and the module versions.
 //           A record that does not verify stores nothing. Run it after every recapture.
+//           Each record is verified at the build it was captured on, not the running
+//           build (see importLedgerInputs). --build, when given, names the running build
+//           for the report only.
 //   proof   (gap W3) prints when each stored live proof expires. Exits 1 when any proof
 //           has expired or expires within 14 days, so a monthly check can raise it.
 //
@@ -155,19 +158,32 @@ const union = (list) => {
 
 /**
  * Imports every record that verifies. `seams` is [{ file, seam }]; `verify` is passed
- * to each seam (tenantRef, build, hmacKey, evidenceDir, now). Records that fail store
- * nothing and are listed with their failures.
+ * to each seam (hmacKey, now). Records that fail store nothing and are listed with
+ * their failures.
+ *
+ * Which build a record is checked against: the build it names (the build the capture
+ * ran on), never the running build. Master deploys many times a day, so requiring the
+ * running build would void every workload proof on the next unrelated deploy. The
+ * record still has to hold for the code running now, because each gate validator
+ * checks it against this build's declarations: every read and write is still
+ * declared, at the same API or module version, with the same method, endpoint,
+ * written fields and grants, so a changed write is refused with its own reason. The
+ * signature, the same-tenant rule and the 30-day limit apply as before. This is the
+ * rule the Entra live records and the portal's live records view already use.
+ * `verify.build` (the running build) is only reported.
  */
 export async function importLedgerInputs(client, { tenantRef, dir, seams, verify = {}, readFile = (path) => readFileSync(path, 'utf8') }) {
+  const { build: runningBuild = null, ...checks } = verify;
   const imported = [];
   const refused = [];
   for (const { file, seam } of seams) {
     const path = join(dir, file);
     let record;
     try { record = JSON.parse(readFile(path)); } catch (error) { refused.push({ file, failures: [`unreadable: ${error.message}`] }); continue; }
-    const result = seam(record, { ...verify, tenantRef, evidenceDir: dir });
-    if (!result.ok) { refused.push({ file, failures: result.failures }); continue; }
-    imported.push({ file, ...result });
+    const evidenceBuild = typeof record?.build === 'string' && record.build ? record.build : null;
+    const result = seam(record, { ...checks, build: evidenceBuild, tenantRef, evidenceDir: dir });
+    if (!result.ok) { refused.push({ file, evidenceBuild, failures: result.failures }); continue; }
+    imported.push({ file, evidenceBuild, ...result });
   }
   const evidence = imported.flatMap((item) => [...item.reads, ...item.writes]);
   const grants = union(imported.map((item) => item.grants));
@@ -176,7 +192,8 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
   if (imported.length) await saveLedgerInputs(client, { tenantRef, evidence, grants, restorerGrants, runtime });
   return {
     tenantRef,
-    imported: imported.map((item) => ({ file: item.file, reads: item.reads.length, writes: item.writes.length })),
+    runningBuild,
+    imported: imported.map((item) => ({ file: item.file, evidenceBuild: item.evidenceBuild, reads: item.reads.length, writes: item.writes.length })),
     refused,
     exitCode: refused.length ? 1 : 0,
   };

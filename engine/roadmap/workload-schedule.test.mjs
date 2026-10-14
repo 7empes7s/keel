@@ -304,8 +304,8 @@ test('import stores only records that verify; the committed records need the sig
     { file: 'bad.json', seam: () => ({ ok: false, failures: ['signature does not verify'], reads: [], writes: [], grants: null }) },
   ];
   const result = await importLedgerInputs(client, { tenantRef, dir: '/nowhere', seams, readFile: () => '{}' });
-  assert.deepEqual(result.imported, [{ file: 'ok.json', reads: SHAREPOINT_OPERATIONS.length, writes: 1 }]);
-  assert.deepEqual(result.refused, [{ file: 'bad.json', failures: ['signature does not verify'] }]);
+  assert.deepEqual(result.imported, [{ file: 'ok.json', evidenceBuild: null, reads: SHAREPOINT_OPERATIONS.length, writes: 1 }]);
+  assert.deepEqual(result.refused, [{ file: 'bad.json', evidenceBuild: null, failures: ['signature does not verify'] }]);
   assert.equal(result.exitCode, 1);
   const stored = await loadLedgerInputs(client, { tenantRef });
   assert.equal(stored.reads.length, SHAREPOINT_OPERATIONS.length);

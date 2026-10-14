@@ -322,3 +322,50 @@ test('the capture tool is offline by default, refuses non-fixture sites and wide
   assert.match(failed.record.subject.write.error, /PUTTING THE SETTING BACK FAILED/);
   assert.equal(stuck.settings[TOGGLE_FIELD], false);
 });
+
+// Q47: a record is checked at the build it was captured on, and against the code running
+// now, so an unrelated deploy no longer voids it. A changed write or an old record still fails.
+test('import: a record from an older build imports while its write is unchanged; a changed write or a 31-day-old record is refused', async () => {
+  const { importLedgerInputs } = await import('../../cli/keel-workload-collect.mjs');
+  const stored = [];
+  const client = { query: async (sql, params) => { if (/INSERT INTO workload_ledger_evidence/.test(sql)) stored.push(params); return { rows: [] }; } };
+  const { evidence } = await capturedFiles();
+  assert.equal(evidence.build, build);
+  const file = (name, record) => { writeFileSync(join(dir, name), JSON.stringify(record)); return name; };
+  const importOne = (name, { now = verifyNow, tenant = tenantRef } = {}) => importLedgerInputs(client, {
+    tenantRef: tenant, dir, seams: [{ file: name, seam: ledgerEvidenceFromAcceptance }],
+    verify: { build: 'a-newer-running-build', hmacKey: KEY, now },
+  });
+
+  // Same write code, newer running build: imported, and the report names both builds.
+  const same = await importOne(file('q47-same.json', evidence));
+  assert.deepEqual(same.refused, []);
+  assert.equal(same.runningBuild, 'a-newer-running-build');
+  assert.deepEqual(same.imported, [{ file: 'q47-same.json', evidenceBuild: build, reads: SHAREPOINT_LIVE_READS.length, writes: 1 }]);
+  assert.equal(stored.length, SHAREPOINT_LIVE_READS.length + 1);
+
+  // The write the record proved is not the write this build performs: refused, with the reason.
+  stored.length = 0;
+  const otherVersion = resign(evidence, (e) => { e.subject.write.version = 'beta'; return e; });
+  const versionResult = await importOne(file('q47-version.json', otherVersion));
+  assert.deepEqual(versionResult.imported, []);
+  assert.equal(versionResult.refused[0].evidenceBuild, build);
+  assert.match(versionResult.refused[0].failures.join('\n'), /write: captured at beta, not v1\.0/);
+  const otherEndpoint = resign(evidence, (e) => {
+    for (const request of e.subject.requests) if (request.method === 'PATCH') request.path = '/admin/sharepoint/settings/v2';
+    return e;
+  });
+  const endpointResult = await importOne(file('q47-endpoint.json', otherEndpoint));
+  assert.deepEqual(endpointResult.imported, []);
+  assert.match(endpointResult.refused[0].failures.join('\n'), /not an allowed write/);
+
+  // More than 30 days after capture: refused, whatever the build.
+  const stale = await importOne('q47-same.json', { now: new Date(observed.getTime() + 31 * 24 * 60 * 60 * 1000) });
+  assert.deepEqual(stale.imported, []);
+  assert.match(stale.refused[0].failures.join('\n'), /stale/);
+
+  // Another tenant is still refused.
+  const otherTenant = await importOne('q47-same.json', { tenant: tenantRefFor('another-tenant') });
+  assert.match(otherTenant.refused[0].failures.join('\n'), /cross-tenant/);
+  assert.equal(stored.length, 0, 'nothing refused was stored');
+});

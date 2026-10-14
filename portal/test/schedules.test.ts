@@ -215,11 +215,6 @@ test("Schedules primary navigation is visible exactly with read", () => {
 });
 
 test("roadmap task-110: GET carries measured load forecasts; acknowledging a warning needs configuration and changes no cadence", async () => {
-  // The setup's failed run has a fixed date that ages out of the 14-day forecast window; move it inside the window.
-  await client.query(
-    "UPDATE job SET started_at = now() - interval '4 hours 1 minute', finished_at = now() - interval '4 hours' WHERE id = $1",
-    [failedJobId],
-  );
   // Three measured tier 1 runs: 10 requests a run (900 resources each), 2 of them throttled.
   for (const hoursAgo of [1, 2, 3]) {
     const finished = new Date(Date.now() - hoursAgo * 3_600_000);

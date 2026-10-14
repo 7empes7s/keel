@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 62 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 41 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 35 are restored by hand from the backup.
+KEEL tracks 76 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 14 are full, 55 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 27 at least in part; the other 49 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -221,6 +221,20 @@ KEEL tracks 62 kinds of Entra ID and Intune settings and backs up everything it 
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Managed app configuration | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Windows PowerShell scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| macOS shell scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Remediations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Custom compliance scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Assignment filters | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Scope tags | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Windows feature update profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Windows quality update profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Windows driver update profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Administrative templates | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Compliance notification emails | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Intune admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
 
 ### Details and what you do
 
@@ -234,8 +248,7 @@ KEEL tracks 62 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Secret settings are never returned by Microsoft, so enter them again by hand. Removing extra policies is done by hand.
 - **Enrollment restrictions** (Microsoft limit). The default restrictions exist in every tenant and cannot be created by anyone, and the order of custom ones is set by a separate action KEEL does not write.
   - *You do:* Restore by hand in the Intune admin center from the backup, which includes each restriction's assignments and order.
-- **Intune admin roles** (KEEL choice). These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is not backed up.
-  - *Not brought back:* who holds each role (stored separately and not in the backup yet).
+- **Intune admin roles** (KEEL choice). These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is backed up as Intune admin role assignments.
   - *You do:* Review the roles in the backup and recreate them in the Intune admin center, then assign them again.
 - **Device categories** (Microsoft limit). A category is only a name. Devices are put in a category when they enroll, which no restore can redo.
   - *Not brought back:* which devices are in the category (no tool can write it).
@@ -262,6 +275,45 @@ KEEL tracks 62 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Recreate it by hand from the backup, then choose the apps it targets.
 - **App configuration for managed devices** (KEEL choice). It configures one specific app, and apps are not restored.
   - *You do:* Recreate it by hand after the app is back.
+- **Windows PowerShell scripts** (not built yet). KEEL backs these up but does not restore them yet.
+  - *Not brought back:* the script itself (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it again.
+- **macOS shell scripts** (not built yet). KEEL backs these up but does not restore them yet.
+  - *Not brought back:* the script itself (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it again.
+- **Remediations** (not built yet). KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.
+  - *Not brought back:* the detection and remediation scripts (stored separately and not in the backup yet); who the remediation is assigned to (stored separately and not in the backup yet); remediations published by Microsoft (set by Microsoft).
+  - *You do:* Recreate your own remediations in the Intune admin center from the backup, then assign them again.
+- **Custom compliance scripts** (not built yet). KEEL backs these up but does not restore them yet.
+  - *Not brought back:* the script itself (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.
+- **Assignment filters** (not built yet). KEEL backs these up but does not restore them yet. A filter changes which devices every assignment that uses it reaches.
+  - *You do:* Recreate the filters in the Intune admin center from the backup before restoring the policies and apps that use them.
+- **Scope tags** (not built yet). KEEL backs these up but does not restore them yet. The built-in Default tag exists in every tenant.
+  - *Not brought back:* the built-in Default tag (set by Microsoft).
+  - *You do:* Recreate your own tags in the Intune admin center from the backup before restoring Intune admin roles.
+- **Windows feature update profiles** (not built yet). KEEL backs these up but does not restore them yet.
+  - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the profile in the Intune admin center from the backup, then assign it again.
+- **Windows quality update profiles** (not built yet). KEEL backs these up but does not restore them yet.
+  - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the profile in the Intune admin center from the backup, then assign it again.
+- **Windows driver update profiles** (not built yet). KEEL backs these up but does not restore them yet. Driver approvals are not backed up.
+  - *Not brought back:* approved drivers (stored separately and not in the backup yet); who the profile is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the profile in the Intune admin center from the backup, approve the drivers again and assign it.
+- **Administrative templates** (not built yet). KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.
+  - *Not brought back:* the values entered for each setting (stored separately and not in the backup yet); who the template is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the template in the Intune admin center, using the backup for which settings were turned on.
+- **Imported administrative template files** (not built yet). KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.
+  - *Not brought back:* the template file content (a file the backup does not hold).
+  - *You do:* Import the files again in the Intune admin center from your own copy.
+- **Compliance notification emails** (not built yet). KEEL backs these up, with their text in each language, but does not restore them yet.
+  - *You do:* Recreate the email in the Intune admin center from the backup.
+- **Windows Autopilot devices** (Microsoft limit). Microsoft never returns the hardware hash that registers a device, so no tool can register it again from a backup.
+  - *Not brought back:* the device hardware hash (Microsoft never returns it).
+  - *You do:* Use the backup as the list of devices. Import each device again from its hardware hash, taken on the device or from your vendor.
+- **Intune admin role assignments** (KEEL choice). These decide who can manage devices, so a change needs a person to review it.
+  - *You do:* Review who held each Intune admin role in the backup and assign the roles again in the Intune admin center.
 
 ## Microsoft 365 workloads
 

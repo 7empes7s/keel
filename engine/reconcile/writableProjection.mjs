@@ -8,6 +8,20 @@ import { classifyForOperation, reviewStateFor } from '../contracts/fieldProjecti
  * source of truth and additionally narrows a writable field outside a reviewed
  * type's known-field list to 'unknown' (excluded here, reported by unknownFields()
  * below) instead of letting an unrecognized field silently become writable. */
+/**
+ * Types whose PATCH body must carry `@odata.type`, at every depth it was
+ * collected. Graph refuses a namedLocation PATCH without it (live Q45,
+ * 2026-10-13: 400 "1042: Unexpected type: namedLocationType"; the same body with
+ * `@odata.type` returns 204), because the collection holds derived types
+ * (ipNamedLocation, countryNamedLocation) and each ipRanges entry is an
+ * abstract ipRange (iPv4CidrRange, iPv6CidrRange). The other polymorphic types
+ * KEEL updates build their own PATCH body and already send it: Intune policies
+ * (intuneOperations.mjs), authentication method configurations
+ * (tenantPolicyOperations.mjs) and PIM policy rules (adminRoleOperations.mjs).
+ * Every other annotation (`@odata.etag`, `@odata.context`, ...) stays dropped.
+ */
+export const UPDATE_KEEPS_ODATA_TYPE = Object.freeze(new Set(['namedLocation']));
+
 export function writableProjection(payload, resourceType) {
   // Validate the type even for an empty payload: unknown types must not be
   // allowed to reach Graph with a pass-through PATCH body.
@@ -24,7 +38,8 @@ function project(value, resourceType, path = '') {
     const projected = {};
     for (const key of Object.keys(value)) {
       const dottedPath = path ? `${path}.${key}` : key;
-      if (classifyForOperation('update', dottedPath, resourceType) !== 'writable') continue;
+      const keepType = key === '@odata.type' && UPDATE_KEEPS_ODATA_TYPE.has(resourceType);
+      if (!keepType && classifyForOperation('update', dottedPath, resourceType) !== 'writable') continue;
       projected[key] = project(value[key], resourceType, dottedPath);
     }
     return projected;

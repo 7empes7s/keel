@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS content_item (
   chunks      jsonb NOT NULL,
   key_id      text NOT NULL,
   new_bytes   bigint NOT NULL DEFAULT 0,
-  -- Milliseconds, so a `since` taken from a listed item's createdAt (a JS Date) is exact.
+  -- Milliseconds, so a listed item's createdAt (a JS Date) is the exact stored value and
+  -- the (created_at, id) paging cursor compares equal to it.
   created_at  timestamptz NOT NULL DEFAULT date_trunc('milliseconds', clock_timestamp()),
   UNIQUE (tenant_ref, workload, container, item_key, version)
 );

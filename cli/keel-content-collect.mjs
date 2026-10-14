@@ -109,7 +109,7 @@ export async function main(argv = process.argv.slice(2), {
     const store = createContentStore({
       index: createPgContentIndex(client), storage: storageFor(reader.storage), key: parseContentKey(readFile(reader.contentKeyFile)),
     });
-    const transport = contentReadTransport(async () => (await getTokenFn(reader)).accessToken, fetchImpl);
+    const transport = contentReadTransport(() => getTokenFn(reader), fetchImpl);
     const result = await runContentCollection(client, { tenantRef, store, transport, scope, collectors, logger });
     return result.exitCode;
   } finally {

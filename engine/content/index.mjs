@@ -8,7 +8,10 @@
  *   findItem({ tenantRef, workload, container, itemKey, version }) -> row | null
  *   insertItem(row) -> the stored row (the existing one when that version is already held)
  *   getItem(id) -> row | null
- *   listItems({ container, since, tenantRef, workload, limit }) -> rows, oldest first
+ *   listItems({ container, since, after, tenantRef, workload, limit }) -> rows, oldest first
+ *     `since` is inclusive (an item stored in that millisecond is listed again, never
+ *     dropped). `after` is an exact cursor: the { createdAt, id } of the last row read;
+ *     rows sort by (createdAt, id), so paging with it neither repeats nor skips.
  * A row is { id, tenantRef, workload, container, itemKey, version, metadata, sha256,
  * bytes, chunks: [[chunkId, plainBytes], ...], keyId, newBytes, createdAt }.
  */
@@ -57,13 +60,14 @@ export function createPgContentIndex(client) {
     async getItem(id) {
       return fromRow((await client.query(`SELECT ${ITEM_COLUMNS} FROM content_item WHERE id = $1`, [id])).rows[0]);
     },
-    async listItems({ container, since = null, tenantRef = null, workload = null, limit = 1000 }) {
+    async listItems({ container, since = null, after = null, tenantRef = null, workload = null, limit = 1000 }) {
       const { rows } = await client.query(
         `SELECT ${ITEM_COLUMNS} FROM content_item
-          WHERE container = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
+          WHERE container = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)
             AND ($3::text IS NULL OR tenant_ref = $3) AND ($4::text IS NULL OR workload = $4)
+            AND ($6::timestamptz IS NULL OR (created_at, id) > ($6, $7::uuid))
           ORDER BY created_at, id LIMIT $5`,
-        [container, since, tenantRef, workload, limit],
+        [container, since, tenantRef, workload, limit, after?.createdAt ?? null, after?.id ?? null],
       );
       return rows.map(fromRow);
     },
@@ -95,9 +99,11 @@ export function createMemoryContentIndex({ now = () => new Date() } = {}) {
       return stored;
     },
     async getItem(id) { return items.get(id) ?? null; },
-    async listItems({ container, since = null, tenantRef = null, workload = null, limit = 1000 }) {
+    async listItems({ container, since = null, after = null, tenantRef = null, workload = null, limit = 1000 }) {
+      const past = (row) => !after || row.createdAt > after.createdAt || (+row.createdAt === +after.createdAt && row.id > after.id);
       return [...items.values()]
-        .filter((row) => row.container === container && (!since || row.createdAt > since)
+        .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .filter((row) => row.container === container && (!since || row.createdAt >= since) && past(row)
           && (!tenantRef || row.tenantRef === tenantRef) && (!workload || row.workload === workload))
         .slice(0, limit);
     },

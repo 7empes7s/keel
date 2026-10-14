@@ -2248,6 +2248,10 @@ item that needs it stays untouched.
   @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and
   #222 (PIM admin-unit scope). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run only the parts
   whose PR is live and report the rest as waiting.
+- **Thread note (2026-10-14 12:51 UTC).** Marouane replied "approved" to the list of your portal asks (e51afedd main
+  batch with its content effects, 3821eeba step 37 delete, the step 48 CA purge, the step 31 lifecycle restore). Check
+  in the portal which approvals actually went through and whether the purge and the lifecycle restore were done before
+  continuing; run only what is approved, and report anything still pending.
 - **Step 0: master history was rewritten (2026-10-14).** Master was force-pushed with the same file contents and new
   commit IDs, so old SHAs no longer match; check PRs by the `#<n>` in commit titles as above. If keel-deploy refuses the
   non-fast-forward master (`--ff-only`) and the live build stays old, reset the deploy checkout to `origin/master` and

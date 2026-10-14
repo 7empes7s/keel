@@ -22,6 +22,10 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   // Gap W1: read-only workload settings collection (SharePoint, Teams, Exchange,
   // OneDrive, Purview). It writes workload snapshots to the database, never tenant state.
   'workload-collect': 'collect',
+  // Wave 1 CONT: read-only content backup as the content-reader identity. It writes
+  // encrypted chunks and the item index, never tenant state. Wave 2 RBAC adds a
+  // narrower content-backup capability.
+  'content-collect': 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',
   'baseline-activate': 'baseline-create',

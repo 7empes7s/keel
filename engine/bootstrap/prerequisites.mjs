@@ -27,7 +27,9 @@
  * 2. Collector and restorer identities never share grants (Global
  *    Constraint: read/write credential separation). identity is one of
  *    engine/coverage/capabilities.mjs's CREDENTIAL_MODES, and a collector
- *    registration refuses any ReadWrite scope at the boundary.
+ *    registration refuses any ReadWrite scope at the boundary. Content is
+ *    read by a third identity, the content reader, which alone may hold
+ *    content-read scopes and holds nothing but read scopes.
  * 3. Every entry cites its documentation source URL and retrieval date
  *    (Global Constraint #8). These are declared prerequisites — fixture-
  *    tested code behavior, not live qualification (Global Constraint #6).
@@ -36,6 +38,7 @@
  * journal are task-75's lane. Nothing here provisions anything.
  */
 
+import { CONTENT_READER_IDENTITY } from '../collect/workloadContract.mjs';
 import { CREDENTIAL_MODES } from '../coverage/capabilities.mjs';
 import { ROLE_TEMPLATES } from '../coverage/diagnosis.mjs';
 
@@ -87,6 +90,17 @@ export const FORBIDDEN_BROAD_GRANTS = Object.freeze([
   'full_access_as_app',
 ]);
 
+// Wave 1 CONT: content backup runs as its own app registration, the content reader.
+// Content-read scopes are plannable for that identity only (never for the collector or
+// the restorer), and the content reader takes read scopes only.
+export const PREREQUISITE_IDENTITIES = Object.freeze([...CREDENTIAL_MODES, CONTENT_READER_IDENTITY]);
+// Sites.Read.All is not listed: configuration reads (site discovery and properties)
+// need it too. These scopes read nothing but content.
+export const CONTENT_READ_SCOPES = Object.freeze([
+  'Mail.Read', 'Calendars.Read', 'Contacts.Read', 'Files.Read.All',
+  'ChannelMessage.Read.All', 'Chat.Read.All', 'Tasks.Read.All', 'Notes.Read.All',
+]);
+
 export const WORKLOAD_ROLE_RESOLUTIONS = Object.freeze([
   // Resolved against a Microsoft-global directory role template id.
   'directory-role-template',
@@ -122,8 +136,8 @@ export function registerWorkloadPrerequisite({
   if (REGISTRY.has(workload)) {
     throw new Error(`${workload}: prerequisite already registered — extend the existing entry, never a parallel one`);
   }
-  if (!CREDENTIAL_MODES.includes(identity)) {
-    throw new TypeError(`${workload}: identity must be one of ${CREDENTIAL_MODES.join('/')} — collector and restorer credentials stay separate`);
+  if (!PREREQUISITE_IDENTITIES.includes(identity)) {
+    throw new TypeError(`${workload}: identity must be one of ${PREREQUISITE_IDENTITIES.join('/')} — collector and restorer credentials stay separate`);
   }
   assertStringList(`${workload}: graphPermissions`, graphPermissions);
   for (const scope of graphPermissions) {
@@ -132,6 +146,12 @@ export function registerWorkloadPrerequisite({
     }
     if (identity === 'collector' && scope.split('.').includes('ReadWrite')) {
       throw new TypeError(`${workload}: '${scope}' is a write scope — the collector identity is read-only, write grants belong to the restorer identity`);
+    }
+    if (identity === CONTENT_READER_IDENTITY && (/Write/.test(scope) || !scope.split('.').some((part) => part.startsWith('Read')))) {
+      throw new TypeError(`${workload}: '${scope}' is not a read scope — the content reader only reads`);
+    }
+    if (identity !== CONTENT_READER_IDENTITY && CONTENT_READ_SCOPES.includes(scope)) {
+      throw new TypeError(`${workload}: '${scope}' reads content — only the ${CONTENT_READER_IDENTITY} identity may hold it`);
     }
   }
   if (!Array.isArray(workloadRoles) || workloadRoles.some((r) => typeof r?.displayName !== 'string' || r.displayName.length === 0
@@ -272,5 +292,33 @@ registerWorkloadPrerequisite({
   source: {
     url: 'https://learn.microsoft.com/en-us/graph/permissions-reference',
     retrievedAt: '2026-09-25',
+  },
+});
+
+// Wave 1 CONT: the content reader (ask 1). Admin consent on the tenant for a separate
+// app registration that reads mail, calendars, contacts, files and sites, Teams
+// containers and Planner. Teams channel messages (ChannelMessage.Read.All) wait for
+// Microsoft's approval of the export API (ask 2) and are not requested here.
+registerWorkloadPrerequisite({
+  workload: 'content-backup',
+  identity: CONTENT_READER_IDENTITY,
+  graphPermissions: [
+    'Mail.Read',
+    'Calendars.Read',
+    'Contacts.Read',
+    'Files.Read.All',
+    'Sites.Read.All',
+    'Group.Read.All',
+    'Team.ReadBasic.All',
+    'Channel.ReadBasic.All',
+    'ChannelSettings.Read.All',
+    'TeamsTab.Read.All',
+    'TeamsAppInstallation.ReadForTeam.All',
+    'Tasks.Read.All',
+  ],
+  keelAppPermissions: ['keel.collect'],
+  source: {
+    url: 'https://learn.microsoft.com/en-us/graph/permissions-reference',
+    retrievedAt: '2026-10-14',
   },
 });

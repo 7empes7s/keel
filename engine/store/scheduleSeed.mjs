@@ -22,6 +22,11 @@ export function initialSchedules(now = new Date()) {
   const workload = new Date(now);
   workload.setUTCHours(2, 0, 0, 0);
   if (workload <= now) workload.setUTCDate(workload.getUTCDate() + 1);
+  // Wave 1 CONT: content backup nightly at 01:00 UTC, between the midnight tier-2
+  // collection and the 02:00 workload settings run, and done before the off-site copy.
+  const content = new Date(now);
+  content.setUTCHours(1, 0, 0, 0);
+  if (content <= now) content.setUTCDate(content.getUTCDate() + 1);
   return [
     { jobKind: 'collect', tier: 'tier1', cadence: { every: 'hour', n: 1, atTime: null }, nextDueAt: hourly },
     { jobKind: 'collect', tier: 'tier2', cadence: { every: 'day', n: 1, atTime: '00:00' }, nextDueAt: daily },
@@ -30,6 +35,7 @@ export function initialSchedules(now = new Date()) {
     { jobKind: 'offsite', tier: null, cadence: { every: 'day', n: 1, atTime: '05:00' }, nextDueAt: offsite },
     { jobKind: 'api-drift', tier: null, cadence: { every: 'week', n: 1, atTime: '03:00' }, cronOverride: '0 3 * * 1', nextDueAt: weeklyMetadata },
     { jobKind: 'workload-collect', tier: null, cadence: { every: 'day', n: 1, atTime: '02:00' }, nextDueAt: workload },
+    { jobKind: 'content-collect', tier: null, cadence: { every: 'day', n: 1, atTime: '01:00' }, nextDueAt: content },
   ];
 }
 

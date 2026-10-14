@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -366,7 +366,7 @@ IF to_regclass('schedule') IS NULL THEN
 CREATE TABLE schedule (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_ref    text NOT NULL,
-  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift' | 'workload-collect'
+  job_kind      text NOT NULL,       -- 'collect' | 'backup' | 'prune' | 'drift-detect' | 'offsite' | 'api-drift' | 'workload-collect' | 'content-collect'
   tier          text,                -- 'tier1' | 'tier2' | 'tier3' | null (job kinds with no tier concept)
   cadence       jsonb NOT NULL,      -- { "every": "hour"|"day"|"week", "n": 1, "atTime": "05:00" | null }
   cron_override text,                -- raw cron expression; when set, takes precedence over `cadence`

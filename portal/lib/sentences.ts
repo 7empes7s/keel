@@ -20,6 +20,8 @@ export interface PlanRef extends EngineRef {
   resources?: number;
   snapshotAt?: string | null;
   dryRunJobId?: string | null;
+  // Q45: content effects that need their own approval, whichever surface planned it.
+  contentEffects?: number;
 }
 
 export interface ChangeRef extends EngineRef {

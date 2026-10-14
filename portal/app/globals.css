@@ -5333,6 +5333,18 @@ section.wizard-panel {
 .content-effect-approved { color: var(--protected); }
 .content-effect-pending { font-weight: 600; }
 
+.approval-content-effects {
+  display: grid;
+  gap: var(--space-xs);
+  justify-items: start;
+}
+
+.approval-content-effects p {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 /* Polish pass 1: one status pill for every recovery surface (mechanism,
    decision, completion state, content effect). Tones map to the existing
    protection tokens so both themes stay in step. */

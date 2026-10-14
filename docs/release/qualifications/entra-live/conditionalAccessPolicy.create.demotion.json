@@ -6,12 +6,13 @@
   "tenantRef": "sha256:f7b3959300856957",
   "resourceType": "conditionalAccessPolicy",
   "operation": "create",
-  "reason": "Graph returned 400: the create body carries server-managed read-only fields (id, createdDateTime, modifiedDateTime, deletedDateTime, @odata.context) from the snapshot; the same body without them is accepted (201)",
-  "restoreRef": "41eef8de-20ea-86bd-88c9-89102b837d07",
-  "decidedAt": "2026-10-12T11:16:09.390Z",
+  "reason": "The policy was created (POST succeeded after #173; report-only, read back), but post-create verification reported \"created object did not verify\": it compares server-managed fields the snapshot cannot match (id, createdDateTime, grantControls.authenticationStrength@odata.context), so the outcome was recorded as uncertain",
+  "restoreRef": "279c828a-0122-8702-ab85-1a72ce4a93a9",
+  "decidedAt": "2026-10-13T21:32:42.857Z",
   "builderSteps": [
     "remove the create registration for conditionalAccessPolicy in engine/coverage/capabilities.mjs",
     "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.conditionalAccessPolicy.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.conditionalAccessPolicy.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
     "commit this file under docs/release/qualifications/entra-live/ in the same PR"
   ]
 }

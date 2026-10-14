@@ -49,6 +49,10 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : job.status === "succeeded" ? "good" : "attention"} />
       <Link className="text-link back-link" href="/activity"><span aria-hidden="true">←</span> All activity</Link>
       <JobDetail job={job} now={now} />
+      {restoreRef && job.status === "failed" && String(job.error ?? "").includes("blocked-content-effect") ? (
+        // Q45: the refusal names where its content effects are approved; link straight there.
+        <Link className="text-link" href={`/approvals/content-effects/${encodeURIComponent(restoreRef)}`}>Review content effects</Link>
+      ) : null}
       {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}
       {enforced && restoreRef ? (
         <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canComplete} failed={job.status === "failed"} restoreArtifactId={restoreRef} />

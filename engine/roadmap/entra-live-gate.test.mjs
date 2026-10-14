@@ -355,6 +355,44 @@ test('the restore must have written to the test tenant, and a by-reference objec
   assert.deepEqual(byReferenceProblems({ versions: [], references: [], naturalKey: 'x' }), ['the snapshot has no object x']);
 });
 
+test('a by-reference object resolves typed reference symbols to the referenced object (Q45)', () => {
+  // As the collector stores them: every natural key and reference symbol is
+  // typed, and a role is keyed by its template id, not its name.
+  const roleTemplate = '7b5c1a2e-0d3f-4e6a-9b8c-1d2e3f4a5b6c';
+  const appId = '3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f';
+  const own = `roleAssignment:roleDefinition:${roleTemplate}@servicePrincipal:${appId}@/`;
+  const snapshot = ({ roleName = 'KEEL-RT-148-role', principalName = 'KEEL-RT-148-app' } = {}) => ({
+    naturalKey: own,
+    versions: [
+      { id: 'v-own', natural_key: own, payload: {} },
+      { id: 'v-role', natural_key: `roleDefinition:${roleTemplate}`, payload: { displayName: roleName } },
+      { id: 'v-sp', natural_key: `servicePrincipal:${appId}`, payload: { displayName: principalName } },
+      { id: 'v-user', natural_key: 'user:keel-rt-20260908-carla@fixture.example', payload: { userPrincipalName: 'keel-rt-20260908-carla@fixture.example' } },
+    ],
+    references: [
+      { from_version: 'v-own', field_path: 'roleDefinitionId', to_symbol: `roleDefinition:${roleTemplate}` },
+      { from_version: 'v-own', field_path: 'principalId', to_symbol: `servicePrincipal:${appId}` },
+    ],
+  });
+  assert.deepEqual(byReferenceProblems(snapshot()), []);
+  assert.deepEqual(byReferenceProblems(snapshot({ roleName: 'Global Administrator' })), ['the role is not the fixture role']);
+  assert.deepEqual(byReferenceProblems(snapshot({ principalName: 'Payroll app' })), ['the principal is not a KEEL-RT fixture']);
+
+  // A user principal, by its typed key.
+  const user = snapshot();
+  user.references[1] = { from_version: 'v-own', field_path: 'principalId', to_symbol: 'user:keel-rt-20260908-carla@fixture.example' };
+  assert.deepEqual(byReferenceProblems(user), []);
+  user.versions[3].payload = { userPrincipalName: 'breakglass-one@fixture.example' };
+  user.versions[3].natural_key = 'user:breakglass-one@fixture.example';
+  user.references[1].to_symbol = 'user:breakglass-one@fixture.example';
+  assert.deepEqual(byReferenceProblems(user), ['the principal is not a KEEL-RT fixture']);
+
+  // A role the snapshot does not hold (a built-in role) is never the fixture role.
+  const builtIn = snapshot();
+  builtIn.references[0].to_symbol = 'global:62e90394-69f5-4237-9190-012177145e10';
+  assert.deepEqual(byReferenceProblems(builtIn), ['the role is not the fixture role']);
+});
+
 test('a fixture name is checked anchored, on its own key or prior state only', async () => {
   const group = buildLiveGatePlan().steps.find((step) => step.id === 'group:update');
   // The prefix must start the name, not appear inside it.
@@ -490,4 +528,55 @@ test('a newly registered write appears in the plan with no edit to the generator
   const added = after.steps.find((step) => step.id === 'servicePrincipal:update');
   assert.ok(added);
   assert.match(added.promote, /servicePrincipal\.update\.json/);
+});
+
+// Q46: a branding file upload (#199, gap M6) is its own write, journaled
+// under organizationalBranding#file. Last too: promotion changes the registry.
+test('a branding file upload is captured and promoted as its own tenant-setting write', async () => {
+  const naturalKey = 'organizationalBranding#file:fr-FR/favicon';
+  const restoreRef = '0f0e0d0c-0b0a-4908-8706-050403020100';
+  const snapshotId = 'snapshot-fixture';
+  const before = 'a'.repeat(64);
+  const after = 'b'.repeat(64);
+  const entry = {
+    id: 7, runId: `run-${restoreRef}`, naturalKey, restoreRef, resourceType: 'organizationalBranding#file', operation: 'update',
+    targetId: null, blastRadius: 'cosmetic',
+    priorState: { kind: 'branding-file', locale: 'fr-FR', asset: 'favicon', sha256: before },
+    intendedState: { kind: 'branding-file', locale: 'fr-FR', asset: 'favicon', sha256: after, size: 1150, contentType: 'image/x-icon' },
+    postState: { kind: 'branding-file', locale: 'fr-FR', asset: 'favicon', sha256: after, outcome: 'present' },
+    outcome: 'succeeded', outcomeDetail: null, recordedAt: new Date(NOW.getTime() - 60_000),
+  };
+  const fixtures = {
+    getArtifact: async (_client, { id }) => (id === restoreRef
+      ? { id, tenantRef: FIXTURE_TENANT_REF, targetTenantId: FIXTURE_TENANT_ID, snapshotId, conditionalAccessEnforcement: null }
+      : null),
+    getJournal: async (_client, { restoreRef: ref }) => (ref === restoreRef ? [entry] : []),
+    getSnapshot: async () => ({ versions: [], references: [] }),
+  };
+  const run = (options) => captureLive({
+    client: {}, restoreRef, operation: 'update', targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY,
+    testTenantRefs: TEST_REFS, ...fixtures, ...options,
+  });
+
+  assert.equal(guidanceFor('organizationalBranding#file').kind, 'tenant-setting');
+  // Without the tenant-setting allowance it is refused, never captured.
+  await assert.rejects(run({ resourceType: 'organizationalBranding#file', fixture: naturalKey }), /--allow-tenant-setting/);
+
+  // Asked for as the localization, the capture says where the upload is.
+  const asLocalization = await run({ resourceType: 'organizationalBrandingLocalization', fixture: 'fr-FR', allowTenantSetting: true });
+  assert.equal(asLocalization.status, 'not-exercised');
+  assert.match(asLocalization.reason, /--resource-type 'organizationalBranding#file' --operation update --allow-tenant-setting --fixture one of 'organizationalBranding#file:fr-FR\/favicon'/);
+
+  const result = await run({ resourceType: 'organizationalBranding#file', fixture: naturalKey, allowTenantSetting: true });
+  assert.equal(result.status, 'captured');
+  assert.equal(result.record.fixtureKind, 'tenant-setting');
+  assert.equal(result.record.naturalKey, naturalKey);
+  assert.equal(result.record.proofRef, 'docs/release/qualifications/entra-live/organizationalBranding.file.update.json');
+  assert.ok(!`${JSON.stringify(result.record)}${result.captureLog}`.includes(FIXTURE_TENANT_ID));
+
+  assert.equal(capabilityFor('organizationalBranding#file', 'update').claim, 'fixture-tested');
+  const promoted = promote(result);
+  assert.deepEqual(promoted.failures, []);
+  assert.equal(promoted.promoted, true);
+  assert.equal(capabilityFor('organizationalBranding#file', 'update').claim, 'live-qualified');
 });

@@ -56,11 +56,11 @@ export function restoreCandidates(versions, references) {
   const refsByVersion = new Map();
   for (const r of references ?? []) {
     if (!refsByVersion.has(r.from_version)) refsByVersion.set(r.from_version, []);
-    // Gap register D2: the store keeps no prefix, so a scope reference held
-    // inside a path (an administrative-unit scope) gets it back from the
-    // stored payload, as collection set it.
+    // Issue #195 and gap register D2: the stored prefix (an administrative-unit
+    // scope) travels with the reference. Snapshots stored before the prefix
+    // column existed get it back from the stored payload, as collection set it.
     const owner = versionById.get(r.from_version);
-    const prefix = owner ? scopeReferencePrefix(owner.resource_type, r.field_path, owner.payload) : null;
+    const prefix = r.prefix ?? (owner ? scopeReferencePrefix(owner.resource_type, r.field_path, owner.payload) : null);
     refsByVersion.get(r.from_version).push({
       field: r.field_path, symbol: r.to_symbol, required: r.required, ...(prefix ? { prefix } : {}),
     });

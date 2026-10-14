@@ -76,6 +76,7 @@ export async function resolveDryRuns(client, { tenantRef, ids }) {
     const { rows } = await client.query(
       `SELECT d.id::text AS id, d.status, d.compensation IS NOT NULL AS is_undo,
               jsonb_array_length(d.closure_keys) AS resources, s.completed_at AS snapshot_at,
+              jsonb_array_length(COALESCE(d.content_effects, '[]'::jsonb)) AS content_effects,
               (SELECT j.id::text FROM job j
                 WHERE j.kind = 'restore' AND j.params->>'artifactId' = d.id::text
                   AND (j.params->>'mode') IS NULL
@@ -88,6 +89,8 @@ export async function resolveDryRuns(client, { tenantRef, ids }) {
       result.set(row.id, {
         kind: 'dry-run', id: row.id, name: null, readable: true, status: row.status, undo: row.is_undo,
         resources: Number(row.resources), snapshotAt: row.snapshot_at, dryRunJobId: row.dry_run_job_id,
+        // Q45: how many content effects need their own approval, whichever surface planned it.
+        contentEffects: Number(row.content_effects),
       });
     }
   }

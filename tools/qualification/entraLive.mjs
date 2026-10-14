@@ -43,7 +43,7 @@ import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../../engine/contracts/fieldProjection.mjs';
-import { capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
+import { BRANDING_FILE_CAPABILITY, capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
 import { TYPE_DECISIONS } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { getDryRunArtifactById } from '../../engine/restore/dryRunArtifact.mjs';
@@ -112,6 +112,27 @@ function journalIdentity(entry, { enforcement }) {
 
 const matchesFixture = (entry, fixture) => entry.naturalKey === fixture || String(entry.naturalKey).startsWith(`edge:${fixture}|`);
 
+/**
+ * Q45 (live run 2026-10-13): a tenant whose GET /organization/{id}/branding
+ * answers 404 keeps its default branding only as language '0' (Graph's id for
+ * the default branding). Keel backs it up and restores it at
+ * /branding/localizations/0 and journals it under that language. That write is
+ * the default-branding update, so it is captured for organizationalBranding
+ * too; the capture log keeps the type and key it was journaled under.
+ */
+const DEFAULT_BRANDING_LANGUAGE_KEY = 'organizationalBrandingLocalization:0';
+const DEFAULT_BRANDING_FIXTURES = Object.freeze(['organizationalBranding', 'organizationalBranding:organizationalBranding']);
+const isDefaultBrandingLanguage = (entry) => entry.resourceType === 'organizationalBrandingLocalization'
+  && entry.naturalKey === DEFAULT_BRANDING_LANGUAGE_KEY;
+
+/** Whether a journal entry is the write this capture asks for. */
+function isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }) {
+  const identity = journalIdentity(entry, { enforcement });
+  if (identity.operation !== operation) return false;
+  if (identity.key === resourceType && matchesFixture(entry, fixture)) return true;
+  return resourceType === 'organizationalBranding' && isDefaultBrandingLanguage(entry) && DEFAULT_BRANDING_FIXTURES.includes(fixture);
+}
+
 const namesOf = (state) => (state && typeof state === 'object'
   ? NAME_FIELDS.map((field) => state[field]).filter((value) => typeof value === 'string')
   : []);
@@ -139,10 +160,16 @@ const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
 export function byReferenceProblems({ versions, references, naturalKey }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
   if (!own) return [`the snapshot has no object ${naturalKey}`];
+  // A reference symbol is the referenced object's own natural key, typed
+  // (`roleDefinition:<template id>`, `user:<upn>`), so it is looked up whole
+  // first. The untyped key is only a fallback, and the name it stands for
+  // when the object is not in the snapshot (a UPN names its user; a role
+  // template id never matches the fixture role).
   const nameOf = (symbol) => {
     const text = String(symbol ?? '');
     const key = text.slice(text.indexOf(':') + 1);
-    const target = versions.find((version) => version.natural_key === key);
+    const target = versions.find((version) => version.natural_key === text)
+      ?? versions.find((version) => version.natural_key === key);
     return target ? (namesOf(target.payload)[0] ?? key) : key;
   };
   const refs = references.filter((ref) => ref.from_version === own.id);
@@ -157,6 +184,20 @@ export function byReferenceProblems({ versions, references, naturalKey }) {
   else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol))) problems.push('the role is not the fixture role');
   if (scope && !DISPOSABLE.test(nameOf(scope.to_symbol))) problems.push('the scope is not a KEEL-RT fixture');
   return problems;
+}
+
+/**
+ * A branding restore journals each uploaded file apart from the branding
+ * object's own update. When the operator asked for the object and the
+ * restore only uploaded files, name the file captures to run instead.
+ */
+async function brandingFileHint(client, { restoreRef, resourceType, getJournal }) {
+  if (!/^organizationalBranding(?:Localization)?$/.test(resourceType)) return '';
+  const keys = (await getJournal(client, { restoreRef }))
+    .filter((entry) => entry.resourceType === BRANDING_FILE_CAPABILITY && entry.operation === 'update')
+    .map((entry) => entry.naturalKey);
+  if (keys.length === 0) return '';
+  return `; it did upload branding files, which are their own write: capture each with --resource-type '${BRANDING_FILE_CAPABILITY}' --operation update --allow-tenant-setting --fixture one of ${[...new Set(keys)].map((key) => `'${key}'`).join(', ')}`;
 }
 
 async function snapshotRows(client, snapshotId) {
@@ -238,13 +279,9 @@ export async function captureLive({
 
   const guidance = guidanceFor(resourceType);
   const entries = (await getJournal(client, { restoreRef }))
-    .filter((entry) => matchesFixture(entry, fixture))
-    .filter((entry) => {
-      const identity = journalIdentity(entry, { enforcement });
-      return identity.key === resourceType && identity.operation === operation;
-    });
+    .filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
   if (entries.length === 0) {
-    return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}` };
+    return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}${await brandingFileHint(client, { restoreRef, resourceType, getJournal })}` };
   }
   const entry = entries[entries.length - 1];
 

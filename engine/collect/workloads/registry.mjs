@@ -19,6 +19,7 @@ import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
 import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
+import { POWER_PLATFORM_WORKLOAD, collectPowerPlatform, powerPlatformTransportFor, recordPowerPlatformRun } from './powerPlatform.mjs';
 import { collectPurview, recordPurviewRun } from './purview.mjs';
 import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExtended.mjs';
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
@@ -42,6 +43,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: 'onedrive-site-settings', powershellFamily: 'onedrive', record: recordOneDriveRun,
     collect: (client, { base, powershell, scope }) => collectOneDrive(client, {
       ...base, powershell, sites: scope.onedriveSites ?? [], myHost: scope.onedriveHost }) },
+  // powerPlatform.mjs: its own admin API transport, not the Graph one.
+  { workload: POWER_PLATFORM_WORKLOAD, powershellFamily: null, record: recordPowerPlatformRun,
+    collect: (client, { base, config, sleep }) => collectPowerPlatform(client, { ...base, sleep, transport: powerPlatformTransportFor(config) }) },
   // purview.mjs
   { workload: 'purview-labels', powershellFamily: 'purview', record: recordPurviewRun,
     collect: (client, { base, powershell }) => collectPurview(client, { ...base, powershell }) },

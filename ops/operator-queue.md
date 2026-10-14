@@ -2376,8 +2376,24 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error) / waiting (#226 not live).
 ### Q50: Recapture OneDrive/Purview (gate 123) before 2026-11-06
 - Drafted by the "Q48 and Q49 operator results" thread (2026-10-14), at Marouane's request.
-- Status: in-progress
-- Result: Started 2026-10-14 19:05 UTC at live build be3d299 (moved since Q48), so recapturing 120 -> 121 -> 122 -> 123 in one sitting.
+- Status: done
+- Result: Ran 2026-10-14 18:59–19:08 UTC at live build be3d299 (moved since Q48), so I recaptured 120 → 121 → 122 → 123 in one sitting.
+  **A. Capture: passed.** Each capture exited 0, and `qualification.mjs verify --require-live --gate <g> --build be3d299` exited 0 for all four.
+  - 120 SharePoint: the widening toggle was written, read back and restored.
+  - 121 Teams: both reversible writes were restored.
+  - 122 Exchange (alice's mailbox):
+    - timeZone and PopEnabled restored.
+    - RetainDeletedItemsFor 22 → 23. It is extend-only, so it stays at 23 by design.
+    - Step 9 MailTipsLargeAudienceThreshold 25 → 26 → 25, read back.
+  - 123 OneDrive/Purview: fresh unpublished `KEEL-RT-20261014-label1`, `--fixture-site` alice's OneDrive, `--fixture-policy KEEL-RT-20261005-policy`. The label update was restored.
+  **B. Evidence:** branch `claude/live-evidence-q50` @ e47495b, 8 files in docs/release/qualifications/*-live-acceptance{,.capture}.json, all evidenceBuild be3d299. The secret/SID/tenant/lxtj scan is clean and `pseudonymize.mjs check` exited 0. No PR.
+  **C. Proofs: passed.** import exited 0, all four imported, refused [].
+  - proof exited 0: all four workloads now prove to **2026-11-13**.
+  - run exited 1:
+    - complete: sharepoint-site-settings, exchange-mailbox-settings, onedrive-site-settings, purview-labels.
+    - partial: teams-settings (165 observed, 11 unknown; identical to Q48).
+    - disabled (not qualified): exchange-mail-flow, teams-org-policies, purview-retention-dlp.
+  **Cleanup:** I removed `KEEL-RT-20261014-label1` from the policy and ran Remove-Label on it, so it reads back as PendingDeletion. The policy's labels read back as before. Q39's `KEEL-RT-20261007-label` was already in that policy before Q50 and was left alone. Original values were read back as listed above.
 - Needs: Q49 done or blocked. Must finish before 2026-11-06, when the current OneDrive/Purview proof expires.
 - **Test tenant only.** Same hard rules as Q45.
 - **Why.** In Q48 part E the OneDrive/Purview proof import was refused: its record is at build fb1493ea, while the

@@ -962,6 +962,13 @@ item that needs it stays untouched.
     - leave it in place afterwards, set back to the values written down. No new partner entry is created, and the
       other existing entries are not touched.
 
+- D-Q55 (Q55): may keel-operator add the read permissions below to the KEEL apps, create the content-reader app,
+  and give the Collector the read-only Exchange address-list role, so that Marouane can grant admin consent?
+  - Decision: yes (Marouane, "Add API permissions" project thread, 2026-10-14 21:38 UTC; recorded verbatim by the
+    coordinator): "add the permissions to the apps, i'll consent". Also covered by D-93a ("add any the tool needs
+    to move along"). Consent itself stays with Marouane: keel-operator adds permissions to the app manifests only and
+    never creates app role assignments or grants consent.
+
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
   the tenant or master, so it can run while Q10 waits.
@@ -2517,3 +2524,48 @@ item that needs it stays untouched.
   (`user.restore-soft-deleted.json` and `.capture.json`) to a new branch `claude/live-evidence-q54` from `origin/master`,
   replacing the published pair (updating files only). No PR needed; the drafting thread opens it.
 - **Report:** captured / promoted / refused, the check exit code, and the evidence commit.
+
+### Q55: Add the read permissions Keel's apps need, so Marouane can grant admin consent (plan ask 1)
+- Drafted by the "Add API permissions" thread (2026-10-14).
+- Status: todo
+- Needs: none. Decision: D-Q55 (filled).
+- **Test tenant only. Read permissions only.** Never create an appRoleAssignment or grant consent (Marouane does that).
+  Never enable a CA policy; never touch break-glass or `marouane.defili`. Use the Restorer for the writes below
+  (Application.ReadWrite.All, Group.ReadWrite.All, Exchange Administrator). No secret is printed or committed.
+- **A. Collector (KEEL Collector, appId 87aa77c4…): add to `requiredResourceAccess`.** GET the application first and
+  MERGE: keep every existing resource and entry, add only what is missing, PATCH once. Resolve each name to its id from
+  the Microsoft Graph service principal's `appRoles` (type Role). Graph application permissions:
+  - Entra governance reads (PR #259): `LifecycleWorkflows.Read.All`, `CustomSecAttributeDefinition.Read.All`,
+    `Agreement.Read.All`, `MultiTenantOrganization.Read.All`, `IdentityUserFlow.Read.All`, `APIConnectors.Read.All`.
+  - Workload reads declared in `engine/collect/workloadContract.mjs` that Q7 did not list: `SharePointTenantSettings.Read.All`,
+    `Sites.Read.All` (Graph), `TeamSettings.Read.All`, `TeamMember.Read.All`, `Team.ReadBasic.All`, `MailboxSettings.Read`.
+  - Also make sure every Graph permission the Collector already holds (Q7 list) is in `requiredResourceAccess`, so one
+    consent covers the whole set. Add nothing else. Do NOT add `Sites.FullControl.All` or any Power BI permission.
+- **B. Content reader: create a new app registration `KEEL Content Reader`** (single tenant, no redirect URI, no secret).
+  - Credential: a new certificate generated on Mulinux, key at `/etc/keel/content-reader.key` and cert at
+    `/etc/keel/content-reader.crt` (owner keel, mode 600 for the key). Upload the public cert only as a keyCredential.
+  - Create its service principal. Do NOT write `/etc/keel/content-reader.json` or `/etc/keel/content.key` (the nightly
+    content job keeps saying it waits on ask 1 until the live-check thread sets those up).
+  - `requiredResourceAccess`, Microsoft Graph application permissions (17), read only:
+    `Mail.Read`, `Calendars.Read`, `Contacts.Read`, `MailboxSettings.Read`, `Tasks.Read.All`, `User.Read.All`,
+    `Group.Read.All`, `Files.Read.All`, `Sites.Read.All`, `Team.ReadBasic.All`, `Channel.ReadBasic.All`,
+    `ChannelSettings.Read.All`, `ChannelMember.Read.All`, `TeamsTab.Read.All`, `TeamsAppInstallation.ReadForTeam.All`,
+    `MailboxFolder.Read.All`, `MailboxItem.Read.All`.
+  - If a name has no matching Graph appRole (the last two are new beta permissions), skip it and report which.
+  - Do NOT add `ChannelMessage.Read.All` (waits on Microsoft, ask 2) or anything with Write/FullControl.
+- **C. Exchange: read-only address-list role for the Collector** (`Get-GlobalAddressList` needs the "Address Lists" role,
+  which also holds write cmdlets). In EXO PowerShell as the Restorer:
+  1. `New-ManagementRole -Parent "Address Lists" -Name "KEEL-RT Address Lists Read"`, then remove every entry whose
+     name does not start with `Get-` (`Get-ManagementRoleEntry "KEEL-RT Address Lists Read\*" | Where-Object Name -notlike 'Get-*' | Remove-ManagementRoleEntry -Confirm:$false`).
+  2. Make sure an EXO service principal exists for the Collector (`Get-ServicePrincipal`; if absent,
+     `New-ServicePrincipal -AppId <Collector appId> -ObjectId <Collector SP object id> -DisplayName "KEEL Collector"`).
+  3. `New-RoleGroup -Name "KEEL-RT-collector-address-lists" -Roles "KEEL-RT Address Lists Read" -Members <Collector SP object id>`.
+  4. Check: as the Collector, `Get-GlobalAddressList` returns rows and `New-AddressList` is not available.
+- **D. Power BI read-only admin APIs: prepare the group only.** Create security group `KEEL-RT-collector-fabric-readers`
+  (not mail-enabled) with the Collector's service principal as its only member. Marouane turns on the Fabric tenant
+  setting for it; don't try to change Fabric or Power Platform settings.
+- **E. Check, read-only:** list the Collector's and the Content Reader's `requiredResourceAccess` names, and the names of
+  the appRoleAssignments each SP holds now (the gap is what Marouane's consent will add). Confirm the Collector holds no
+  Power BI permission.
+- **Report:** what was created or changed (app, SP, cert path, role, role group, group), the requiredResourceAccess
+  names per app, anything skipped and why. Short ids only (first 8 characters), as in Q7.

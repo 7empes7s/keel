@@ -26,6 +26,7 @@ const PAGES = [
   { name: "policy", hash: "/policies/p1" },
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
+  { name: "approvals-cli", hash: "/approvals/cli" },
   { name: "baselines", hash: "/baselines" },
   { name: "benchmarks", hash: "/benchmarks" },
   { name: "principals", hash: "/principals" },
@@ -108,6 +109,18 @@ test("reject shows the spinner on Reject only", async ({ page }) => {
   await row.getByRole("button", { name: "Reject" }).click();
   await expect(row.getByRole("button", { name: "Reject" })).toHaveAttribute("aria-busy", "true");
   await expect(row.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
+});
+
+test("live step 31: a CLI dry run's content effects are approved from its approval request", async ({ page }) => {
+  await open(page, "/approvals/cli");
+  const row = page.locator("li.approval-card").first();
+  await expect(row).toContainText("planned from the command line");
+  const effects = row.locator(".content-effects");
+  await expect(effects).toContainText("Shortens retention");
+  await expect(effects).toContainText("Not yet approved");
+  await effects.getByPlaceholder("Why are these content effects acceptable?").fill("Lifetime was 365 days before the drift");
+  await effects.getByRole("button", { name: "Approve content effects" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Content effects approved");
 });
 
 test("destructive writes ask for confirmation with Cancel focused", async ({ page }) => {

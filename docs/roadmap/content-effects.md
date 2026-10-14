@@ -107,6 +107,16 @@ How a change is judged:
   (capability `approve`, attempt recorded).
 - The dry-run artifact read returns the effects digest and the matching
   approvals.
+- The approval inbox shows the same panel on every pending restore request
+  whose dry run has content effects, whoever planned it. A dry run planned with
+  `cli/keel-restore.mjs` has no portal page, so this is where its effects are
+  approved (live step 31): the operator files the restore request
+  (`POST /api/actions/restore` with the `artifactId`), and another approver
+  approves the restore and, separately, its content effects in **Approvals**.
+- "The requester" is everyone who asked for the dry run: its own
+  `requested_by` plus every principal who filed a restore request for it. None
+  of them can record the content-effect approval, and an approval one of them
+  recorded earlier does not count at promotion.
 
 ## Migration and legacy reads
 

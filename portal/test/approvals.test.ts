@@ -14,11 +14,15 @@ import {
   approveRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
+import { grantRole } from "../../engine/authz/administration.mjs";
 import { verifyChain } from "../../engine/govern/evidence.mjs";
+import { assertContentEffectApproval, classifyContentEffects } from "../../engine/safety/contentEffects.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
+import { POST as contentEffectsRoute } from "@/app/api/actions/restore/content-effects/route";
+import { ContentEffectsPanel } from "@/components/content-effects";
 import { GET as inboxRoute } from "@/app/api/approvals/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { POST as rejectRoute } from "@/app/api/approvals/[id]/reject/route";
@@ -854,4 +858,96 @@ test("the evidence chain contains both the request and the decision", async () =
   assert.deepEqual(await verifyChain(client, { tenantRef: tenantRef() }), {
     ok: true,
   });
+});
+
+// Live step 31: a dry run planned with the CLI has no portal page, so its content
+// effects are reviewed and approved from the approval inbox. Whoever asked for the
+// restore still cannot approve them; another approver can.
+test("live step 31: a CLI dry run's content effects are approved from the inbox by another principal, never by the requester", async () => {
+  const operator = randomUUID();
+  const reviewer = randomUUID();
+  await client.query(
+    `INSERT INTO principal (id, email, display_name) VALUES ($1, 'operator31@approvals.test', 'Omar Operator'), ($2, 'reviewer31@approvals.test', 'Rana Reviewer')`,
+    [operator, reviewer],
+  );
+  // Both hold approve, so only the separate-approver rule can refuse the operator.
+  for (const id of [operator, reviewer]) await grantRole(client, { principalId: id, role: "approver", grantedBy: id });
+
+  const effects = classifyContentEffects([{
+    naturalKey: "group:board", resourceType: "group", verb: "update",
+    payload: { visibility: "Public" }, live: { state: "present", payload: { visibility: "Private" }, targetId: "board-id" },
+  }]).effects;
+  assert.equal(effects.length, 1);
+  const { rows } = await client.query(
+    `INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now()) RETURNING id`,
+    [tenantRef()],
+  );
+  // Planned with the CLI: no worker job, and the artifact names no principal.
+  const artifact = await createDryRunArtifact(client, {
+    id: randomUUID(), tenantRef: tenantRef(), snapshotId: String(rows[0].id),
+    selection: ["group:board"], closureKeys: ["group:board"], targetTenantId: "task-14-approval-target",
+    collectorConfigPath: "/fixtures/collector.json", targetConfigPath: "/fixtures/restorer.json",
+    reconciliationResources: null, waves: [["group:board"]], patches: [], guardRefusals: [],
+    results: { applied: [{ naturalKey: "group:board", targetId: null }], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: `fingerprint-${randomUUID()}`, digest: `digest-${randomUUID()}`,
+    status: "completed", requestedBy: "unknown", contentEffects: effects as unknown as null, // the JSDoc default (null) types this param as null
+  });
+  const filed = await restoreRoute(post("/api/actions/restore", {
+    principalId: operator, capabilities: ["restore"], body: { artifactId: artifact.id, justification: "step 31" },
+  }));
+  assert.equal(filed.status, 202);
+  const { approvalRequest } = await filed.json();
+  assert.equal(approvalRequest.executor, "cli");
+
+  const inboxFor = async (principalId: string) => {
+    const listed = await inboxRoute(get("/api/approvals", { principalId, capabilities: ["approve"] }));
+    assert.equal(listed.status, 200);
+    return (await listed.json()).pending.find((candidate: { id: string }) => candidate.id === approvalRequest.id);
+  };
+  const listed = await inboxFor(reviewer);
+  assert.equal(listed.contentEffects.artifactId, artifact.id);
+  assert.deepEqual(listed.contentEffects.effects.map((e: { effect: string }) => e.effect), ["externally-sharing"]);
+  assert.deepEqual(listed.contentEffects.approvals, []);
+
+  const approveEffects = (principalId: string) => contentEffectsRoute(post("/api/actions/restore/content-effects", {
+    principalId, capabilities: ["approve"],
+    body: { artifactId: artifact.id, effectsDigest: listed.contentEffects.effectsDigest, justification: "Board site was public" },
+  }));
+
+  const own = await approveEffects(operator);
+  assert.equal(own.status, 409);
+  assert.match((await own.json()).message, /someone other than the requester/);
+  await assert.rejects(
+    assertContentEffectApproval(client, { artifact, effects }),
+    /blocked-content-effect/,
+    "the restore stays blocked after the requester's attempt",
+  );
+
+  const other = await approveEffects(reviewer);
+  assert.equal(other.status, 200);
+  assert.equal((await assertContentEffectApproval(client, { artifact, effects })).approved_by, reviewer);
+  // Named, never by id.
+  assert.deepEqual((await inboxFor(reviewer)).contentEffects.approvals.map((a: { approvedBy: string }) => a.approvedBy), ["Rana Reviewer"]);
+
+  // The inbox card offers the separate approval for this request.
+  const internals = (React as unknown as {
+    __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: { H: unknown };
+  }).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+  const original = internals.H;
+  let contexts = 0;
+  internals.H = {
+    useState<T>(initial: T) { return [initial, () => {}]; },
+    useContext() { return contexts++ === 0 ? { refresh() {} } : { parentCacheNode: { bfcacheId: 0 } }; },
+    useMemo<T>(create: () => T) { return create(); },
+  };
+  try {
+    const tree = ApprovalInbox({ pending: [listed], history: [] }) as unknown as FormElement;
+    const panels = findFormElements(tree, (element) => element.type === ContentEffectsPanel);
+    assert.equal(panels.length, 1);
+    assert.equal(panels[0].props.artifactId, artifact.id);
+    assert.equal(panels[0].props.effectsDigest, listed.contentEffects.effectsDigest);
+    assert.equal(panels[0].props.canApprove, true);
+  } finally {
+    internals.H = original;
+  }
 });

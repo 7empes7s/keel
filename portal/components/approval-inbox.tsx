@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { ContentEffectsPanel } from "@/components/content-effects";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp, fromNow } from "@/lib/presentation";
 import { approvalImpact, approvalSentence, refLabel } from "@/lib/sentences";
@@ -125,6 +126,19 @@ export function ApprovalInbox({
                     Expires <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{fromNow(request.expiresAt, now)}</time>. Nothing changes until someone other than the requester approves.
                   </p>
                   {link ? <a className="text-link" href={link.href}>{link.label}</a> : null}
+                  {/* Live step 31: content effects need their own approval, offered here for
+                      every dry run, including one planned with the CLI. The engine refuses
+                      anyone who asked for this restore. */}
+                  {request.contentEffects ? (
+                    <ContentEffectsPanel
+                      approvals={request.contentEffects.approvals}
+                      artifactId={request.contentEffects.artifactId}
+                      canApprove
+                      effects={request.contentEffects.effects}
+                      effectsDigest={request.contentEffects.effectsDigest}
+                      onApproved={() => router.refresh()}
+                    />
+                  ) : null}
                   <div className="decision-controls">
                     <button
                       aria-busy={(submitting && submittingDecision === "approve") || undefined}

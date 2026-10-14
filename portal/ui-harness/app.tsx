@@ -1067,6 +1067,22 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    // Live step 31: a restore planned with the CLI whose content effects still need their
+    // separate approval, offered on the request itself (the dry run has no portal page).
+    case "/approvals/cli": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
+      <Verdict text="1 request is waiting for you." tone="attention" />
+      <div data-layer="explanation"><ApprovalInbox now={now} history={[]}
+      pending={[
+        { id: "a9e10000-0000-4000-8000-000000000131", action: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000031" }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to 365 days", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli",
+          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000031", resources: 3, dryRunJobId: null } },
+          contentEffects: {
+            artifactId: "7f3c0000-0000-4000-8000-000000000031", effectsDigest: "31".repeat(32), approvals: contentEffectsApproved ? [{ approvedBy: "Rana Reviewer", approvedAt: now }] : [],
+            effects: [{
+              naturalKey: "groupLifecyclePolicy:default", resourceType: "groupLifecyclePolicy", field: "groupLifetimeInDays", effect: "retention-reducing", before: 400, after: 365,
+              disclosure: "Content older than the new retention period can be permanently deleted. KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.",
+            }],
+          } },
+      ]} /></div></>;
     case "/approvals": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
       <Verdict text="2 requests are waiting for you." tone="attention" />
       <div data-layer="explanation"><ApprovalInbox now={now}

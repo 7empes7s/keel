@@ -21,8 +21,9 @@ import { applyWave } from '../restore/applyEngine.mjs';
 import { createDryRunArtifact, getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
 import {
   CONTENT_EFFECTS, ContentEffectApprovalError, approveContentEffects, assertContentEffectApproval, classifyContentEffects,
-  contentEffectsDigest, disclosureFor, isPreservationLockFailure,
+  contentEffectReviews, contentEffectsDigest, disclosureFor, isPreservationLockFailure,
 } from '../safety/contentEffects.mjs';
+import { requestApproval } from '../govern/approvals.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
@@ -339,6 +340,47 @@ test('a sharing-widening restore is refused at promotion until separately approv
   assert.equal(graph.writes.length, 0, 'nothing is written without the separate approval');
 
   await approveContentEffects(client, { tenantRef: TENANT, artifactId, approverId: approver.id, effectsDigest: contentEffectsDigest(artifact.contentEffects), justification: 'Board site was public before the incident' });
+  const result = await promote(artifactId, graph);
+  assert.deepEqual(result.results.failed, []);
+  assert.equal(graph.objects.get('/groups/board-id').visibility, 'Public');
+});
+
+test('live step 31: a CLI dry run\'s content effects are approvable by another principal, never by whoever asked for the restore', async (t) => {
+  const client = await schemaClient(t);
+  // The operator holds approve too, so only the separate-approver rule can refuse them.
+  const operator = await principal(client, 'operator31@contoso.example', 'approver');
+  const approver = await principal(client, 'appr31@contoso.example', 'approver');
+  const snapshotId = await seedGroup(client, { ...board, visibility: 'Public' });
+  const graph = fakeGraph();
+  graph.objects.set('/groups/board-id', { ...board, id: 'board-id', visibility: 'Private' });
+
+  // Planned from the CLI without --requested-by: the artifact names no principal.
+  const artifactId = crypto.randomUUID();
+  await dryRun(snapshotId, graph, artifactId, undefined);
+  const artifact = await getDryRunArtifactById(client, { id: artifactId });
+  assert.equal(artifact.requestedBy, 'unknown');
+  const digest = contentEffectsDigest(artifact.contentEffects);
+
+  // A content-effect approval the operator recorded BEFORE filing the restore
+  // request never counts once they file it: they are its requester.
+  await approveContentEffects(client, { tenantRef: TENANT, artifactId, approverId: operator.id, effectsDigest: digest, justification: 'early' });
+  await requestApproval(client, { tenantRef: TENANT, action: 'restore', params: { artifactId }, requestedBy: operator.id, executor: 'cli' });
+  await assert.rejects(promote(artifactId, graph), /blocked-content-effect/);
+  await assert.rejects(
+    approveContentEffects(client, { tenantRef: TENANT, artifactId, approverId: operator.id, effectsDigest: digest, justification: 'mine' }),
+    /someone other than the requester/,
+  );
+  assert.equal(graph.writes.length, 0, 'nothing is written on the requester\'s own approval');
+
+  // The review the approval inbox shows for it: effects, digest, current approvals.
+  const review = (await contentEffectReviews(client, { tenantRef: TENANT, artifactIds: [artifactId, crypto.randomUUID()] })).get(artifactId);
+  assert.equal(review.effectsDigest, digest);
+  assert.deepEqual(review.effects.map((e) => e.effect), ['externally-sharing']);
+  assert.equal((await contentEffectReviews(client, { tenantRef: 'sha256:other', artifactIds: [artifactId] })).size, 0, 'another tenant sees nothing');
+
+  await approveContentEffects(client, { tenantRef: TENANT, artifactId, approverId: approver.id, effectsDigest: digest, justification: 'Board site was public' });
+  const used = await assertContentEffectApproval(client, { artifact, effects: artifact.contentEffects });
+  assert.equal(used.approved_by, approver.id);
   const result = await promote(artifactId, graph);
   assert.deepEqual(result.results.failed, []);
   assert.equal(graph.objects.get('/groups/board-id').visibility, 'Public');

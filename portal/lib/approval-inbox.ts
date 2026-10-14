@@ -2,11 +2,14 @@ import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
 import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/govern/approvals.mjs";
+import { resolvePrincipals } from "../../engine/govern/references.mjs";
+import { contentEffectReviews } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
-import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
+import type { ContentEffect } from "@/components/content-effects";
+import { EMPTY_REFERENCES, refLabel, type RowReferences } from "@/lib/sentences";
 
 export const APPROVAL_INBOX_CAPABILITY = "approve";
 export const APPROVAL_INBOX_LIMIT = 100;
@@ -44,6 +47,17 @@ export interface ApprovalRequestRecord {
   // Roadmap task-130: requester, decider, dry run, baseline and changes resolved to
   // names by the engine (one query per kind). Absent on rows read without it.
   references?: RowReferences;
+  // Live step 31: the dry run's content effects and their separate approval, so an
+  // approver can review and approve them here whoever planned it (a CLI dry run has
+  // no portal page of its own). Present only on a pending restore with effects.
+  contentEffects?: ContentEffectReview;
+}
+
+export interface ContentEffectReview {
+  artifactId: string;
+  effects: ContentEffect[];
+  effectsDigest: string;
+  approvals: { approvedBy: string; approvedAt: string | null }[];
 }
 
 export interface ApprovalInboxData {
@@ -148,12 +162,43 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
     });
     // One query per reference kind for both lists together.
     const summarized = await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] });
+    const pendingRecords = summarized.slice(0, pending.length).map(normalizeApprovalRequest);
+    await attachContentEffects(client, pendingRecords);
     return {
       generatedAt: new Date().toISOString(),
-      pending: summarized.slice(0, pending.length).map(normalizeApprovalRequest),
+      pending: pendingRecords,
       history: summarized.slice(pending.length).map(normalizeApprovalRequest),
     };
   });
+}
+
+function restoreArtifactId(request: ApprovalRequestRecord): string | null {
+  const params = request.params as UnknownRecord | null;
+  return request.action === "restore" && typeof params?.artifactId === "string" ? params.artifactId : null;
+}
+
+// Live step 31: one query for the effects, one for their approvals, one for the
+// approvers' names, for every pending restore together.
+async function attachContentEffects(client: KeelClient, requests: ApprovalRequestRecord[]): Promise<void> {
+  const artifactIds = requests.map(restoreArtifactId).filter((id): id is string => id !== null);
+  if (artifactIds.length === 0) return;
+  const reviews = await contentEffectReviews(client, { tenantRef: tenantRef(), artifactIds });
+  if (reviews.size === 0) return;
+  const people = await resolvePrincipals(client, [...reviews.values()].flatMap((review) => review.approvals.map((a) => a.approvedBy)));
+  for (const request of requests) {
+    const artifactId = restoreArtifactId(request);
+    const review = artifactId ? reviews.get(artifactId) : undefined;
+    if (!artifactId || !review) continue;
+    request.contentEffects = {
+      artifactId,
+      effects: review.effects as ContentEffect[],
+      effectsDigest: review.effectsDigest,
+      approvals: review.approvals.map((approval) => ({
+        approvedBy: refLabel(people.get(approval.approvedBy), "an unknown person"),
+        approvedAt: iso(approval.approvedAt),
+      })),
+    };
+  }
 }
 
 // The sidebar badge: how many requests wait on an approver. Callers check

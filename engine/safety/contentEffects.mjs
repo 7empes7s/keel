@@ -358,6 +358,24 @@ async function databaseNow(client) {
   return rows[0].now;
 }
 
+/**
+ * Everyone who asked for this artifact: the dry run's own requester plus every
+ * principal who filed an approval request to restore it. A dry run planned with
+ * the CLI records whatever `--requested-by` said (often nothing), so the person
+ * who files its restore request in the portal is its requester too. None of them
+ * may approve its content effects.
+ */
+async function artifactRequesters(client, artifact) {
+  const { rows } = await client.query(
+    `SELECT DISTINCT requested_by FROM approval_request WHERE params->>'artifactId' = $1`,
+    [String(artifact.id)],
+  );
+  const requesters = new Set(rows.map((row) => String(row.requested_by)));
+  const own = artifact.requested_by ?? artifact.requestedBy;
+  if (own !== null && own !== undefined) requesters.add(String(own));
+  return requesters;
+}
+
 export async function approveContentEffects(client, { tenantRef, artifactId, approverId, effectsDigest, justification, at: requestedAt = undefined }) {
   const at = requestedAt ?? await databaseNow(client);
   const { rows: artifacts } = await client.query(
@@ -378,7 +396,7 @@ export async function approveContentEffects(client, { tenantRef, artifactId, app
   if (!approver || !(await can(client, approver, 'approve', at))) {
     throw new ContentEffectApprovalError('only a principal currently holding approve can approve content effects');
   }
-  if (String(artifact.requested_by) === String(approverId)) {
+  if ((await artifactRequesters(client, artifact)).has(String(approverId))) {
     throw new ContentEffectApprovalError('content effects must be approved by someone other than the requester');
   }
   const { rows } = await client.query(
@@ -411,12 +429,48 @@ export async function assertContentEffectApproval(client, { artifact, effects, a
       ORDER BY approved_at DESC`,
     [artifact.id, digest],
   );
+  const requesters = rows.length ? await artifactRequesters(client, artifact) : new Set();
   for (const approval of rows) {
-    if (String(approval.approved_by) === String(artifact.requestedBy)) continue;
+    if (requesters.has(String(approval.approved_by))) continue;
     const approver = await findPrincipalById(client, approval.approved_by);
     if (approver && await can(client, approver, 'approve', at)) return approval;
   }
   throw new ContentEffectApprovalError(
     `blocked-content-effect: ${effects.length} content effect(s) (${[...new Set(effects.map((e) => e.effect))].join(', ')}) need a separate, current high-impact approval of exactly these effects`,
   );
+}
+
+/**
+ * The content-effect review of several dry runs at once, for a reviewer who did
+ * not plan them (the approval inbox; a CLI dry run has no portal page of its
+ * own). Per artifact with effects: the effects, the digest an approval binds to,
+ * and the current approvals of exactly that digest. Tenant-scoped: an artifact
+ * of another tenant is absent.
+ * @returns {Promise<Map<string, { effects: object[], effectsDigest: string, approvals: { approvedBy: string, approvedAt: Date | string | null }[] }>>}
+ */
+export async function contentEffectReviews(client, { tenantRef, artifactIds }) {
+  const wanted = [...new Set(artifactIds.filter((id) => typeof id === 'string'))];
+  const reviews = new Map();
+  if (wanted.length === 0) return reviews;
+  const { rows } = await client.query(
+    `SELECT id::text AS id, content_effects FROM restore_dry_run
+      WHERE tenant_ref = $1 AND id::text = ANY($2::text[]) AND jsonb_array_length(COALESCE(content_effects, '[]'::jsonb)) > 0`,
+    [tenantRef, wanted],
+  );
+  for (const row of rows) {
+    reviews.set(row.id, { effects: row.content_effects, effectsDigest: contentEffectsDigest(row.content_effects), approvals: [] });
+  }
+  if (reviews.size === 0) return reviews;
+  const { rows: approvals } = await client.query(
+    `SELECT artifact_id::text AS artifact_id, effects_digest, approved_by, approved_at FROM content_effect_approval
+      WHERE artifact_id::text = ANY($1::text[]) AND revoked_at IS NULL ORDER BY approved_at`,
+    [[...reviews.keys()]],
+  );
+  for (const approval of approvals) {
+    const review = reviews.get(approval.artifact_id);
+    if (review && review.effectsDigest === approval.effects_digest) {
+      review.approvals.push({ approvedBy: String(approval.approved_by), approvedAt: approval.approved_at });
+    }
+  }
+  return reviews;
 }

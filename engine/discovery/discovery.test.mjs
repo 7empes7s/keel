@@ -142,6 +142,21 @@ test('the metadata walk reaches every catalogue path and skips /me', () => {
   assert.ok(!seen.has('/print') && !seen.has('/policies'));
 });
 
+test('the walk reaches four segments deep by default', () => {
+  const xml = `<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"><edmx:DataServices>
+<Schema Namespace="microsoft.graph" Alias="graph">
+<EntityType Name="policyRoot"><NavigationProperty Name="crossTenantAccessPolicy" Type="graph.ctap" ContainsTarget="true" /></EntityType>
+<EntityType Name="ctap"><Property Name="displayName" Type="Edm.String" /><NavigationProperty Name="templates" Type="graph.templates" ContainsTarget="true" /></EntityType>
+<EntityType Name="templates"><NavigationProperty Name="multiTenantOrganizationIdentitySynchronization" Type="graph.mtoSync" ContainsTarget="true" /></EntityType>
+<EntityType Name="mtoSync"><Property Name="userSyncInbound" Type="Edm.String" /><NavigationProperty Name="deeper" Type="graph.mtoSync" ContainsTarget="true" /></EntityType>
+<EntityContainer Name="GraphService"><Singleton Name="policies" Type="graph.policyRoot" /></EntityContainer>
+</Schema></edmx:DataServices></edmx:Edmx>`;
+  const parsed = parseMetadata(xml);
+  const deep = '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization';
+  assert.deepEqual(discoverablePaths(parsed).map((entry) => entry.path), ['/policies/crossTenantAccessPolicy', deep]);
+  assert.ok(!discoverablePaths(parsed, { maxDepth: 3 }).some((entry) => entry.path === deep));
+});
+
 test('on the fixture tenant every catalogued type is covered and the planted type is flagged', async () => {
   const tenant = fixtureTenant();
   const graph = readOnlyGraph(async () => 'fixture-token', { fetchImpl: tenant.fetchImpl, sleep: async () => {} });

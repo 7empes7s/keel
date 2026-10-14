@@ -4,9 +4,11 @@
  * A root entity set (`/users`) is a collection. A root singleton (`/deviceManagement`)
  * is one object, and its containment navigation properties are the types under it
  * (`/deviceManagement/deviceConfigurations`). Single-valued containment children are
- * walked the same way, to `maxDepth` path segments, which reaches every catalogued
- * path (the deepest is three segments, such as
- * `/identity/conditionalAccess/policies`). Non-containment navigation properties
+ * walked the same way, to `maxDepth` path segments. Four reaches every catalogued
+ * path, the deepest being
+ * `/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization`;
+ * against Microsoft's published metadata it adds about 20 v1.0 and 40 beta paths over
+ * three, and a fifth segment adds two more. Non-containment navigation properties
  * point at objects held elsewhere, so they are not types of their own.
  *
  * This reads the flat, well-known shape of a Graph $metadata document; it is not a
@@ -15,7 +17,7 @@
  * (built for field diffs) does not need.
  */
 
-export const DEFAULT_MAX_DEPTH = 3;
+export const DEFAULT_MAX_DEPTH = 4;
 
 // Signed-in-user roots: an application identity cannot address them, and what lies
 // under /me and /drive is one user's mail, files and chats, which discovery never lists.

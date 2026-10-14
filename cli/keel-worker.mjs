@@ -565,10 +565,13 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
 
   // Both entry points run the same collection. Hold the session lock until
   // the child exits, even if a stale heartbeat requeues its job in the meantime.
+  // Advisory locks are database-wide, so the key names the schema the job store
+  // lives in: one collection per store, and separate stores (each test file's
+  // schema) never contend.
   const collection = ['collect', 'backup'].includes(job.kind);
   if (collection) {
     const { rows: [lock] } = await client.query(
-      "SELECT pg_try_advisory_lock(hashtext(current_database()), hashtext('keel:collection')) AS acquired",
+      "SELECT pg_try_advisory_lock(hashtext(current_database()), hashtext('keel:collection:' || current_schema())) AS acquired",
     );
     if (!lock.acquired) {
       await client.query(
@@ -615,7 +618,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     }
   } finally {
     if (collection) await client.query(
-      "SELECT pg_advisory_unlock(hashtext(current_database()), hashtext('keel:collection'))",
+      "SELECT pg_advisory_unlock(hashtext(current_database()), hashtext('keel:collection:' || current_schema()))",
     );
   }
 }

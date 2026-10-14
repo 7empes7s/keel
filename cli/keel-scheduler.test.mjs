@@ -199,6 +199,50 @@ try {
     }
   });
 
+  await test('the worker lock is per store: a collection in another schema of the same database still runs', async () => {
+    // Advisory locks are database-wide. Test files run in parallel, each in its own
+    // schema of one database; a database-wide key made one file's collection requeue
+    // another's (event-envelope.test.mjs failed intermittently in CI).
+    await clearJobs();
+    const operator = (await client.query("INSERT INTO principal (email) VALUES ('store-lock@fixture.invalid') RETURNING *")).rows[0];
+    await client.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'operator')", [operator.id]);
+    // This store's collection holds its lock until the test writes the release file.
+    const release = join(directory, 'store-lock-release');
+    const holding = join(directory, 'store-lock-holding.mjs');
+    await writeFile(holding, `import { existsSync } from 'node:fs';
+      const wait = setInterval(() => { if (existsSync(${JSON.stringify(release)})) clearInterval(wait); }, 20);\n`);
+    const quick = join(directory, 'store-lock-quick.mjs');
+    await writeFile(quick, "console.log('fixture collected');\n");
+    const held = await enqueue(client, { kind: 'collect', requestedBy: operator.id });
+    const heldClaim = await claimNext(client, { workerId: 'fixture-a' });
+    assert.equal(heldClaim.id, held.id);
+    const otherStore = await createIsolatedTestDatabase(import.meta.url);
+    const otherClient = await otherStore.connect();
+    let signal;
+    const started = new Promise((resolve) => { signal = resolve; });
+    const running = runJob(client, heldClaim, { dbUrl: database.url, handlers: { collect: { script: holding, argsFor: () => [] } },
+      onInFlightChange: (value) => { if (value) signal(); } });
+    try {
+      await started;
+      await otherClient.query(await readFile(new URL('../engine/store/schema.sql', import.meta.url), 'utf8'));
+      const otherOperator = (await otherClient.query("INSERT INTO principal (email) VALUES ('store-lock@fixture.invalid') RETURNING *")).rows[0];
+      await otherClient.query("INSERT INTO role_grant (principal_id, role) VALUES ($1, 'operator')", [otherOperator.id]);
+      const job = await enqueue(otherClient, { kind: 'collect', requestedBy: otherOperator.id });
+      const claim = await claimNext(otherClient, { workerId: 'fixture-b' });
+      let ran = false;
+      await runJob(otherClient, claim, { dbUrl: otherStore.url, handlers: { collect: { script: quick, argsFor: () => [] } },
+        onInFlightChange: (value) => { if (value) ran = true; } });
+      assert.equal(ran, true, 'the other store\'s collection was held back by this store\'s lock');
+      assert.equal((await otherClient.query('SELECT status FROM job WHERE id = $1', [job.id])).rows[0].status, 'succeeded');
+    } finally {
+      await writeFile(release, '');
+      await running;
+      await otherClient.end();
+      await otherStore.cleanup();
+    }
+    assert.equal((await client.query('SELECT status FROM job WHERE id = $1', [held.id])).rows[0].status, 'succeeded');
+  });
+
   await test('partial complete snapshot visibly defers drift; next successful collect retries exact snapshot once', async () => {
     await clearJobs();
     const snapshot = async (outcome) => (await client.query(`INSERT INTO snapshot (tenant_ref, status, coverage_digest)

@@ -15,8 +15,9 @@
  *
  * 1. Every catalogue type has an EXPLICIT decision in TYPE_DECISIONS below:
  *    'automated' (writes registered in capabilities.mjs), 'manual' (recovery
- *    stays a refusal plus human steps, by design) or 'unknown' (not
- *    investigated). buildOperationLedger() throws if a catalogue type is
+ *    stays a refusal plus human steps until a writer exists). Each type also
+ *    has a completeness record (completeness.mjs) giving its coverage state
+ *    and what is missing. buildOperationLedger() throws if a catalogue type is
  *    missing, so a new type can never be silently treated as either.
  * 2. descriptor.remappable is NOT a write gate. Remapping is qualified per
  *    (resourceType, operation), and only where an operation actually rewrites
@@ -29,6 +30,7 @@
  *    capabilities.mjs's explicit registration and qualifyLiveEvidence() can.
  */
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { COMPLETENESS, completenessFor } from './completeness.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { reviewStateFor } from '../contracts/fieldProjection.mjs';
 import {
@@ -36,14 +38,19 @@ import {
 } from './capabilities.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
-export const TYPE_DECISION_VALUES = Object.freeze(['automated', 'manual', 'unknown']);
+// Coverage plan v3: no type is left 'unknown'. A type with no writer is
+// 'manual', and engine/coverage/completeness.mjs says what is missing and why.
+export const TYPE_DECISION_VALUES = Object.freeze(['automated', 'manual']);
 
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const automated = (resource, reason, { view = 'graph-rest-1.0', liveFailures = null } = {}) => ({
   decision: 'automated', docs: `${DOCS}/resources/${resource}?view=${view}`, reason, ...(liveFailures ? { liveFailures: Object.freeze(liveFailures) } : {}),
 });
 const manual = (reason, extra = {}) => ({ decision: 'manual', reason, ...extra });
-const unknown = (extra = {}) => ({ decision: 'unknown', reason: 'not yet investigated for automated recovery', ...extra });
+// Coverage plan v3 (package INCOMPLETE): read in full and backed up as an
+// incomplete configuration; recreated by hand from the backup until a
+// best-effort writer is registered (Wave 2).
+const incomplete = (reason) => manual(`incomplete configuration, backed up in full and recreated by hand from the backup until a best-effort writer is registered: ${reason}`);
 // Issue #148: a registered write that failed its live run. `reason` quotes the
 // committed demotion record verbatim (tools/qualification/entraLive.mjs checks
 // that), `failedAt` is the day it was decided and `fix` names what is being
@@ -87,9 +94,9 @@ export const TYPE_DECISIONS = Object.freeze({
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create only, bound to its application by appId'),
-  oauth2PermissionGrant: unknown(),
+  oauth2PermissionGrant: incomplete('a consent is a trust decision; granting it again needs an approval contract'),
   identityProvider: manual('client secrets are never readable'),
-  certificateBasedAuthConfiguration: unknown(),
+  certificateBasedAuthConfiguration: incomplete('a wrong certificate trust setting can lock every user out, and there is no simulation gate for it yet'),
   directoryRole: manual('built-in roles are activated from templates, never authored'),
   roleDefinition: automated('unifiedroledefinition', 'task-151 subset: create and update of custom roles; built-in roles are immutable and refused, delete is not registered'),
   directoryRoleTemplate: manual('Microsoft-published template catalogue'),
@@ -103,7 +110,7 @@ export const TYPE_DECISIONS = Object.freeze({
     },
   }),
   unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
-  roleAssignmentSchedule: unknown(),
+  roleAssignmentSchedule: incomplete('a time-bound active assignment needs the eligibility expiry contract plus a check that an activation is not replayed'),
   conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate', {
     liveFailures: {
       create: failedLive('2026-10-13', 'The policy was created (POST succeeded after #173; report-only, read back), but post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (id, createdDateTime, grantControls.authenticationStrength@odata.context), so the outcome was recorded as uncertain',
@@ -119,29 +126,29 @@ export const TYPE_DECISIONS = Object.freeze({
         'keep @odata.type on update bodies so Graph can pick the namedLocation subtype; live gate #148 run 2, to be re-run after the fix'),
     },
   }),
-  authenticationContextClassReference: unknown(),
+  authenticationContextClassReference: incomplete('ids c1..c99 are fixed per tenant and referenced by Conditional Access policies and SharePoint labels'),
   authenticationMethodsPolicy: automated('authenticationmethodspolicy', 'task-149: update of the policy and its method configurations, only behind the break-glass lockout gate'),
   identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate'),
   authorizationPolicy: automated('authorizationpolicy', 'task-149: update of guest, consent and default user permission settings, only behind the break-glass lockout gate'),
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
   crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
   crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
-  permissionGrantPolicy: unknown(),
+  permissionGrantPolicy: incomplete('built-in policies are immutable, and the include and exclude rules of custom ones are separate collections not yet collected'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
   authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
   deviceRegistrationPolicy: manual('backed up, never written: these settings decide who may register and join devices and whether joining needs MFA, so a wrong write could block admins from joining devices or silently drop the MFA requirement, so it is changed by hand', {
     docs: `${DOCS}/resources/deviceregistrationpolicy?view=graph-rest-1.0`,
   }),
-  activityBasedTimeoutPolicy: unknown(),
-  claimsMappingPolicy: unknown(),
-  homeRealmDiscoveryPolicy: unknown(),
-  tokenIssuancePolicy: unknown(),
-  tokenLifetimePolicy: unknown(),
-  featureRolloutPolicy: unknown(),
-  accessReviewScheduleDefinition: unknown(),
-  accessPackage: unknown(),
-  connectedOrganization: unknown(),
+  activityBasedTimeoutPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  claimsMappingPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  homeRealmDiscoveryPolicy: incomplete('it routes federated sign-in, and the app assignments are a separate edge not yet collected'),
+  tokenIssuancePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  tokenLifetimePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
+  accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
+  accessPackage: incomplete('its catalog, policies and resource roles are separate types not yet collected'),
+  connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
   // Issue #155: the first Intune restore subset. Every other Intune type is
   // manual by decision, with its reason; none is left unknown.
   deviceConfiguration: automated('intune-deviceconfig-deviceconfiguration', 'issue-155 subset: create and update with assignments; profiles that carry credentials or certificates (Wi-Fi, VPN, certificate, email) and any value Graph never returns stay manual'),
@@ -242,7 +249,7 @@ function rowFor(resourceType, operation, { capabilityKey = resourceType, decisio
     resourceType: capabilityKey,
     operation,
     // A row is 'supported' only through a registered capability; otherwise the
-    // type's explicit decision ('manual' or 'unknown') stands for the operation.
+    // type's explicit decision ('manual') stands for the operation.
     decision: supported ? 'supported' : decision.decision === 'automated' ? 'unsupported' : decision.decision,
     claim: capability.claim,
     credentialMode: capability.credentialMode,
@@ -270,6 +277,8 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
   for (const [type, decision] of Object.entries(decisions)) {
     if (!TYPE_DECISION_VALUES.includes(decision.decision)) throw new Error(`${type}: invalid decision ${decision.decision}`);
   }
+  const extraRecords = Object.keys(COMPLETENESS).filter((type) => !types.includes(type));
+  if (extraRecords.length > 0) throw new Error(`completeness records for types not in the catalogue: ${extraRecords.join(', ')}`);
 
   const rows = types.map((type) => {
     const decision = decisions[type];
@@ -298,6 +307,7 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
       decision: decision.decision,
       reason: decision.reason,
       softRestoreCandidate: decision.softRestoreCandidate === true,
+      completeness: completenessFor(type, decision),
       source: sourceFor(type, decision),
       operations: Object.freeze(operations),
     });
@@ -308,6 +318,15 @@ export function buildOperationLedger({ decisions = TYPE_DECISIONS } = {}) {
   })));
 
   return Object.freeze({ contractVersion: LEDGER_CONTRACT_VERSION, types: Object.freeze(rows), edges: Object.freeze(edges) });
+}
+
+/** The type's completeness without the per-object item extractors (safe to serialise). */
+function plainCompleteness(resourceType, decision) {
+  const { state, recreate, missing, why } = completenessFor(resourceType, decision);
+  return Object.freeze({
+    state, recreate, ...(why ? { why } : {}),
+    missing: Object.freeze(missing.map((item) => Object.freeze({ part: item.part, reason: item.reason, perObject: typeof item.items === 'function' }))),
+  });
 }
 
 /** The compact per-type decision the coverage report and portal show. */
@@ -323,6 +342,8 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
     reason: decision.reason,
     softRestoreCandidate: decision.softRestoreCandidate === true,
     remapping: Object.freeze(remapping),
+    // Coverage plan v3: the coverage state and the parts a restore cannot bring back.
+    completeness: plainCompleteness(resourceType, decision),
     // Roadmap task-107: the type's expansion batch and its derived restore scope.
     expansion: expansionFor(resourceType),
   });

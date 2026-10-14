@@ -2448,7 +2448,11 @@ item that needs it stays untouched.
 - **Report:** per part, promoted / demoted (with the reason) / blocked, plus the evidence commit.
 ### Q52: Recapture Q51 step 37 from its existing restore after the #232 fix
 - Drafted by the "step 37 fixture role check" thread (2026-10-14).
-- Status: open
+- Status: blocked
+- Result: Ran 2026-10-14 19:37 UTC at live build a171d47 (contains #233). No new restore and no tenant writes.
+  **A. Capture: captured.** Step 37 roleAssignment delete from restore ref 923132e0 (`--allow-by-reference`). The "fixture role" and "scope" refusals are gone, so #233 works.
+  **B. Promote: promoted** (fixture-tested -> live-qualified). **Publish: held back.** The capture log contains the deleted assignment's raw object id in `targetId` and `priorState.id`, and `pseudonymize.mjs check` still exits 0 on it; my own known-id scan caught it. Filed https://github.com/7empes7s/keel/issues/235 and commented on #233. Nothing committed for step 37; the files stay on the host (/root/keel-q51/out/roleAssignment.delete*.json).
+  Next: once #235 is fixed, recapture from the same restore ref and commit to claude/live-evidence-q51.
 - Needs: a live build containing #233 (`git -C /opt/keel-live log --oneline | grep -c "#233"` is 1 or more).
 - **Test tenant only.** No new restore: this only reads the journal and snapshot of a restore that already ran.
 - **Why.** #233 (fixes #232) accepts any `KEEL-RT-` custom role in place of the exact name `KEEL-RT-148-role`, and

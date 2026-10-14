@@ -2446,3 +2446,18 @@ item that needs it stays untouched.
   public-repo scans and `pseudonymize.mjs check` on every file before committing.
 - **Cleanup.** Delete and purge every fixture created here; report what reads back as original.
 - **Report:** per part, promoted / demoted (with the reason) / blocked, plus the evidence commit.
+### Q52: Recapture Q51 step 37 from its existing restore after the #232 fix
+- Drafted by the "step 37 fixture role check" thread (2026-10-14).
+- Status: open
+- Needs: a live build containing #233 (`git -C /opt/keel-live log --oneline | grep -c "#233"` is 1 or more).
+- **Test tenant only.** No new restore: this only reads the journal and snapshot of a restore that already ran.
+- **Why.** #233 (fixes #232) accepts any `KEEL-RT-` custom role in place of the exact name `KEEL-RT-148-role`, and
+  resolves an administrative-unit scope (`/administrativeUnits/<id>`) on a role-assignment delete by the unit's object id
+  in the restore's snapshot. Both were why the Q51 step 37 capture was refused.
+- **A. Capture.** `entraLive capture` for step 37 (roleAssignment delete, `--allow-by-reference`) from restore ref
+  923132e0 (D37 in `/root/keel-q51/artifacts.env`), with the same fixture key as in Q51 B. Expected: captured, no
+  "role is not the fixture role" or "scope is not a KEEL-RT fixture" refusal. Any other refusal is a result: report it
+  verbatim and stop.
+- **B. Promote and publish.** `promote` it, run `pseudonymize.mjs check` and the usual public-repo scans, then commit to
+  `claude/live-evidence-q51` (adding or updating files only).
+- **Report:** captured / promoted / refused (with the error), plus the evidence commit. Then set Q51 to done if this passes.

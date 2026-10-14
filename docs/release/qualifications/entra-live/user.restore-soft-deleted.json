@@ -7,7 +7,7 @@
   "resourceType": "user",
   "operation": "restore-soft-deleted",
   "fieldProjectionContractVersion": 1,
-  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "build": "860ec69536ff9e2e3f1c595e61b9906d717d555b",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
@@ -18,12 +18,12 @@
   "restoreRef": "aabeac39-e68d-8728-a0cd-69d3b0796364",
   "naturalKey": "user:keel-rt-20260908-carla@techinsiderbytes.com",
   "fixtureKind": "named-object",
-  "captureSha256": "0d3fc9b39d10810fa6ed836e5b4a044e0679d25c1c9a406173d9b420b0296ed1",
+  "captureSha256": "2fa2b78c26749373c6b235b5e4faa97e99011e4f7285321b036db8ede23ced7e",
   "proofRef": "docs/release/qualifications/entra-live/user.restore-soft-deleted.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "fd459c8ae326836c2030d7449a9c773efab286b83789824e2ede4b91977d778d"
+      "signature": "3ec4283d7a66095ad164abb9abe823a45a1afd85c077732afbdec9a71c2cb516"
     }
   }
 }

@@ -2410,7 +2410,7 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error), plus the new expiry dates.
 ### Q51: Recapture the Q48 steps the #230 fixes unblock
 - Drafted by the "Q48 and Q49 operator results" thread (2026-10-14).
-- Status: blocked
+- Status: done
 - Result: Ran 2026-10-14 19:00–19:25 UTC at live build be3d299 (#230 live), in parallel with Q50. Fresh fixtures: groups KEEL-RT-Q51-g5..g8, app KEEL-RT-Q51-app11, AU KEEL-RT-Q51-unit, custom role KEEL-RT-Q51-role (renamed KEEL-RT-148-role for C, see B), principals keel-rt-20260908-carla and -ryan. Break-glass readiness read "ready".
   **A. Steps 5–8 (group member/owner edge add/remove): promoted (4).** One batch restore 905a03a6 (approval 976658ad), journal 4 edges succeeded. Captured with both fixture forms (bare name and `group:<name>`); all four promoted.
   **B. Step 37 (roleAssignment delete): blocked by capture-tool bug, filed as https://github.com/7empes7s/keel/issues/232.** The restore worked: delete dry run 923132e0 (approval 1a34a72c), job succeeded, journal `delete | succeeded` for ryan @ KEEL-RT-Q51-unit. The capture refused: "the role is not the fixture role; the scope is not a KEEL-RT fixture".
@@ -2426,6 +2426,7 @@ item that needs it stays untouched.
   Evidence: `claude/live-evidence-q51` @ 72859a7 (E at f25caf9): 12 + 4 files in docs/release/qualifications/entra-live. Secret, SID, tenant, lxtj and raw-fixture-id scans are clean; pseudonymize check exit 0 for every file. No PR.
   Cleanup: role assignments, role, AU, groups g5–g8 and the recreated app were deleted, and groups and app were purged from deleted items. Read-back shows 0 KEEL-RT-Q51 objects and 0 KEEL-RT custom roles.
   Waiting on: #232 fix, then recapture step 37 from restore 923132e0.
+  **Update 20:05 UTC (Q53):** B step 37 promoted and published after #233 and #237, on claude/live-evidence-q51 @ 0b0cacc. All parts done.
 - Needs: Q49 done or blocked, and a live build containing #230 (`git -C /opt/keel-live log --oneline | grep -c "#230"`).
   Run before or after Q50, whichever is first in line; they don't share fixtures.
 - **Test tenant only.** Same hard rules and requester/approver split as Q45.
@@ -2448,11 +2449,12 @@ item that needs it stays untouched.
 - **Report:** per part, promoted / demoted (with the reason) / blocked, plus the evidence commit.
 ### Q52: Recapture Q51 step 37 from its existing restore after the #232 fix
 - Drafted by the "step 37 fixture role check" thread (2026-10-14).
-- Status: blocked
+- Status: done
 - Result: Ran 2026-10-14 19:37 UTC at live build a171d47 (contains #233). No new restore and no tenant writes.
   **A. Capture: captured.** Step 37 roleAssignment delete from restore ref 923132e0 (`--allow-by-reference`). The "fixture role" and "scope" refusals are gone, so #233 works.
   **B. Promote: promoted** (fixture-tested -> live-qualified). **Publish: held back.** The capture log contains the deleted assignment's raw object id in `targetId` and `priorState.id`, and `pseudonymize.mjs check` still exits 0 on it; my own known-id scan caught it. Filed https://github.com/7empes7s/keel/issues/235 and commented on #233. Nothing committed for step 37; the files stay on the host (/root/keel-q51/out/roleAssignment.delete*.json).
   Next: once #235 is fixed, recapture from the same restore ref and commit to claude/live-evidence-q51.
+  **Update 20:05 UTC (Q53):** published after the #237 fix, on claude/live-evidence-q51 @ 0b0cacc.
 - Needs: a live build containing #233 (`git -C /opt/keel-live log --oneline | grep -c "#233"` is 1 or more).
 - **Test tenant only.** No new restore: this only reads the journal and snapshot of a restore that already ran.
 - **Why.** #233 (fixes #232) accepts any `KEEL-RT-` custom role in place of the exact name `KEEL-RT-148-role`, and
@@ -2468,8 +2470,12 @@ item that needs it stays untouched.
 
 ### Q53: Recapture and publish step 37 after the #235 fix
 - Drafted by the "step 37 capture id leak" thread (2026-10-14).
-- Status: todo
-- Result:
+- Status: done
+- Result: Ran 2026-10-14 20:04 UTC at live build 860ec69 (contains #237). No new restore and no tenant writes.
+  **A. Capture: captured.** Step 37 roleAssignment delete from restore ref 923132e0 (`--allow-by-reference`), with the same fixture key as Q52.
+  **B. Check: passed.** `pseudonymize.mjs check` exited 0 on both the record and the capture log. My known-id scan (Q45/Q48/Q51 fixture ids, dashed and dashless, plus carla's id) found 0. The marker scan (SID, lxtj, tenant id, JWT, operator principals) found 0.
+  **C. Promote and publish: promoted** (fixture-tested -> live-qualified). Committed to `claude/live-evidence-q51` @ 0b0cacc (roleAssignment.delete{,.capture}.json, added). I deleted the held-back Q52 files on the host without publishing them.
+  Q51 and Q52 are set to done.
 - Needs: PR #237 merged and a live build containing it (`git -C /opt/keel-live log --oneline | grep -c "#237"` is 1 or more).
 - **Test tenant only.** No new restore and no tenant writes: this only reads the journal and snapshot of restore ref
   923132e0, as Q52 did.
@@ -2487,8 +2493,11 @@ item that needs it stays untouched.
 
 ### Q54: Recapture and republish the step 10 user restore-soft-deleted record after the #237 fix
 - Drafted by the "published capture raw id" thread (2026-10-14).
-- Status: todo
-- Result:
+- Status: done
+- Result: Ran 2026-10-14 20:04 UTC at live build 860ec69 (contains #237). No new restore and no tenant writes.
+  **A. Capture: captured, using the real restore ref.** With the ref the item gives (`aabeac39-e68d-8728-…`), the capture refused verbatim: "no restore artifact <id>". That value is the pseudonym printed in the published record (version nibble 8), not a DB id. The journal entry for `user:keel-rt-20260908-carla… restore-soft-deleted` is under restore ref `52d30020-b03c-4957-8c55-7974c4093145`, the value the item called "job 52d30020". Capturing with that ref succeeded.
+  **B. Check: passed.** `pseudonymize.mjs check` exited 0 on the record and the capture log. `priorState.userPrincipalName` prefix is `a0fcb2f8b0c38a889b94319165913d40`, as expected. The known-id scan (dashed and dashless) found 0 and the marker scan found 0.
+  **C. Promote and publish: promoted** (fixture-tested -> live-qualified). New branch `claude/live-evidence-q54` @ b8e1d28 from origin/master, replacing the published pair (user.restore-soft-deleted{,.capture}.json, both modified). No PR.
 - Needs: a live build containing #237 (`git -C /opt/keel-live log --oneline | grep -c "#237"` is 1 or more). Independent
   of Q53; run it right after Q53 or before it, whichever is first in line.
 - **Test tenant only.** No new restore and no tenant writes: this only reads the journal, artifact and snapshot of the

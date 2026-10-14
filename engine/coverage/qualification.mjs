@@ -933,7 +933,9 @@ export function qualifiedSubtypesFor(resourceType) {
  * identifiers Entra assigns and credential material KEEL cannot read back.
  */
 export const CREATE_EXCLUDED_FIELDS = Object.freeze({
-  application: Object.freeze(['appId', 'publisherDomain', 'passwordCredentials', 'keyCredentials']),
+  // createdByAppId names the app that created the object; Graph sets it and refuses
+  // a create that sends it (live Q48, 2026-10-14).
+  application: Object.freeze(['appId', 'publisherDomain', 'passwordCredentials', 'keyCredentials', 'createdByAppId']),
   // Roadmap task-108: computed by Entra from allowedCombinations; never sent.
   authenticationStrengthPolicy: Object.freeze(['policyType', 'requirementsSatisfied']),
   servicePrincipal: Object.freeze([

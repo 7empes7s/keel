@@ -140,6 +140,20 @@ test('application update: createdByAppId never reaches the body and the update s
   assert.ok(!JSON.stringify(graph.bodies).includes(UNKNOWN_APP));
 });
 
+test('application create: createdByAppId never reaches the body, which Graph refuses (Q48)', async () => {
+  const resource = byType(canonicalizeAll(collected), 'application');
+  const graph = recordingGraph();
+  const outcome = await run(graph, [{ ...resource, verb: 'create', blastRadius: 'access-affecting' }]);
+  assert.deepEqual(outcome.failed, []);
+  assert.equal(outcome.applied.length, 1);
+  const [post] = graph.bodies;
+  assert.equal(post.method, 'POST');
+  assert.equal(post.path, '/applications');
+  assert.equal(post.body.displayName, 'Payroll connector');
+  assert.ok(!('createdByAppId' in post.body), 'createdByAppId is never written');
+  assert.ok(!JSON.stringify(graph.bodies).includes(UNKNOWN_APP));
+});
+
 test('partner create and update carry the foreign tenant id verbatim', async () => {
   const resource = byType(canonicalizeAll(collected), 'crossTenantAccessPolicyPartner');
   let graph = recordingGraph();

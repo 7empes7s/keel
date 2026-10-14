@@ -110,7 +110,23 @@ function journalIdentity(entry, { enforcement }) {
   return { key: entry.resourceType, operation };
 }
 
-const matchesFixture = (entry, fixture) => entry.naturalKey === fixture || String(entry.naturalKey).startsWith(`edge:${fixture}|`);
+/**
+ * An edge's natural key is `edge:<parent symbol>|<family>|<action>|<target>`, and the
+ * parent symbol is typed (`group:KEEL-RT-148-group`). The parent's own name is the
+ * symbol without its type, so the checklist's bare fixture name matches it too.
+ */
+const edgeParent = (naturalKey) => {
+  const key = String(naturalKey ?? '');
+  if (!key.startsWith('edge:')) return null;
+  const symbol = key.slice(5).split('|')[0];
+  return { symbol, name: symbol.replace(/^[A-Za-z]+:/, '') };
+};
+
+const matchesFixture = (entry, fixture) => {
+  if (entry.naturalKey === fixture) return true;
+  const parent = edgeParent(entry.naturalKey);
+  return parent !== null && (parent.symbol === fixture || parent.name === fixture);
+};
 
 /**
  * Q45 (live run 2026-10-13): a tenant whose GET /organization/{id}/branding
@@ -143,8 +159,7 @@ const namesOf = (state) => (state && typeof state === 'object'
  * the object stands in for it. Never the intended or post-write state.
  */
 function looksDisposable(entry, snapshotPayload) {
-  const key = String(entry.naturalKey ?? '');
-  const own = key.startsWith('edge:') ? key.slice(5).split('|')[0] : key;
+  const own = edgeParent(entry.naturalKey)?.name ?? String(entry.naturalKey ?? '');
   if (DISPOSABLE.test(own)) return true;
   return namesOf(entry.priorState ?? snapshotPayload ?? null).some((name) => DISPOSABLE.test(name));
 }
@@ -152,14 +167,35 @@ function looksDisposable(entry, snapshotPayload) {
 const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
 
 /**
+ * The references a role assignment's composed natural key names
+ * (`roleAssignment:<role>@<principal>@<scope>`, engine/cir/naturalKey.mjs), shaped
+ * like snapshot reference rows. The role symbol holds no `@` and the scope is the
+ * last part; the principal (a user principal name has its own `@`) is what lies
+ * between. A tenant-wide scope ('/') is no reference. Null for any other key.
+ */
+export function composedKeyReferences(naturalKey) {
+  const match = /^roleAssignment:([^@]+)@(.+)@([^@]+)$/.exec(String(naturalKey ?? ''));
+  if (!match) return null;
+  const [, role, principal, scope] = match;
+  return [
+    { field_path: 'roleDefinitionId', to_symbol: role },
+    { field_path: 'principalId', to_symbol: principal },
+    ...(scope === '/' ? [] : [{ field_path: 'directoryScopeId', to_symbol: scope }]),
+  ];
+}
+
+/**
  * For an object with no name of its own (a role assignment or eligibility), the
  * names of what it points at, read from the restore's snapshot: the principal
  * must be a fixture, the role must be the fixture role (never a built-in
  * privileged role), and a scope, if any, must be a fixture.
  */
-export function byReferenceProblems({ versions, references, naturalKey }) {
+export function byReferenceProblems({ versions, references, naturalKey, deleted = false }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
-  if (!own) return [`the snapshot has no object ${naturalKey}`];
+  // A delete removes an object the snapshot was taken without, so its references
+  // come from its own composed key instead (role, principal and scope symbols).
+  const keyRefs = !own && deleted ? composedKeyReferences(naturalKey) : null;
+  if (!own && !keyRefs) return [`the snapshot has no object ${naturalKey}`];
   // A reference symbol is the referenced object's own natural key, typed
   // (`roleDefinition:<template id>`, `user:<upn>`), so it is looked up whole
   // first. The untyped key is only a fallback, and the name it stands for
@@ -172,7 +208,7 @@ export function byReferenceProblems({ versions, references, naturalKey }) {
       ?? versions.find((version) => version.natural_key === key);
     return target ? (namesOf(target.payload)[0] ?? key) : key;
   };
-  const refs = references.filter((ref) => ref.from_version === own.id);
+  const refs = keyRefs ?? references.filter((ref) => ref.from_version === own.id);
   const find = (pattern) => refs.find((ref) => pattern.test(String(ref.field_path)));
   const problems = [];
   const principal = find(/principal/i);
@@ -298,7 +334,7 @@ export async function captureLive({
     if (!allowByReference) {
       throw new LiveGateRefusal(`${resourceType} has no name of its own: pass --allow-by-reference; the capture then checks that its principal and role are fixtures`);
     }
-    const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey });
+    const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey, deleted: operation === 'delete' });
     if (problems.length > 0) throw new LiveGateRefusal(`refusing ${resourceType} ${fixture}: ${problems.join('; ')}`);
   } else {
     const snapshotPayload = entry.priorState ? null

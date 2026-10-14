@@ -3,7 +3,9 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
 import { LiveGateRefusal, assertSafeText } from './entraLive.mjs';
-import { cloudSidToGuid, guidToCloudSid, pseudonymizeCapture, pseudonymizer, rawIdentifiers } from './pseudonymize.mjs';
+import {
+  cloudSidToGuid, guidToCloudSid, main, pseudonymizeCapture, pseudonymizer, rawIdentifiers, roleAssignmentIdGuids, unpseudonymizedIds,
+} from './pseudonymize.mjs';
 
 const TENANT = '73b6beef-0000-4000-8000-000000000001';
 const APP = '87aa77c4-0000-4000-8000-000000000002';
@@ -124,4 +126,53 @@ test('a securityIdentifier field never reaches a capture raw, whatever its shape
   const raw = rawIdentifiers(JSON.stringify({ id: GROUP, securityIdentifier: GROUP_SID }));
   assert.doesNotThrow(() => assertSafeText(JSON.stringify(capture), { rawTenantId: TENANT, rawIds: raw, label: 'the capture log' }));
   assert.equal(capture.postState.securityIdentifier, guidToCloudSid(capture.postState.id));
+});
+
+// Graph's id for a directory role assignment: base64url of the role definition's and the
+// principal's GUID bytes, then `-1`. Built here from two made-up GUIDs.
+const ROLE = '62e90394-69f5-4237-9190-012177145e10';
+const toBytes = (value) => {
+  const be = Buffer.from(value.replace(/-/g, ''), 'hex');
+  return Buffer.from([be[3], be[2], be[1], be[0], be[5], be[4], be[7], be[6], ...be.subarray(8)]);
+};
+const ASSIGNMENT = `${Buffer.concat([toBytes(ROLE), toBytes(GROUP)]).toString('base64url')}-1`;
+
+test('a role assignment id is pseudonymized through the two GUIDs it encodes (Q48 step 35)', () => {
+  assert.deepEqual(roleAssignmentIdGuids(ASSIGNMENT), [ROLE, GROUP]);
+  const a = pseudonymizer('sha256:aaaa');
+  const out = a.text(ASSIGNMENT);
+  assert.notEqual(out, ASSIGNMENT);
+  assert.match(out, /^[A-Za-z0-9_-]{43}-1$/, 'keeps its shape and suffix');
+  assert.deepEqual(roleAssignmentIdGuids(out), [a.guid(ROLE), a.guid(GROUP)], 'consistent with the GUIDs it names');
+  assert.equal(a.text(`/roleManagement/directory/roleAssignments/${ASSIGNMENT}`), `/roleManagement/directory/roleAssignments/${out}`);
+  assert.equal(a.walk({ id: ASSIGNMENT, targetId: ASSIGNMENT }).targetId, out);
+  // The form without a suffix maps the same way.
+  assert.equal(a.text(ASSIGNMENT.slice(0, -2)), out.slice(0, -2));
+  // The capture guard knows it as a raw id and refuses it unchanged.
+  const raw = rawIdentifiers(JSON.stringify({ id: ASSIGNMENT }));
+  assert.deepEqual(raw, [ASSIGNMENT.toLowerCase()]);
+  assert.throws(() => assertSafeText(JSON.stringify({ id: ASSIGNMENT }), { rawIds: raw, label: 'the capture log' }), /raw object id/);
+  assert.doesNotThrow(() => assertSafeText(JSON.stringify(a.walk({ id: ASSIGNMENT })), { rawIds: raw, label: 'the capture log' }));
+  // A 43-character token that does not hold two GUIDs is left alone.
+  const hash = createHash('sha256').update('x').digest('base64url');
+  assert.equal(roleAssignmentIdGuids(hash), null);
+  assert.equal(a.text(hash), hash);
+});
+
+test('the check tells pseudonyms from raw ids without the tenant, SIDs included (Q48 steps 1 and 3)', () => {
+  const rawCapture = JSON.stringify({ id: GROUP, securityIdentifier: GROUP_SID, assignment: ASSIGNMENT });
+  assert.deepEqual(unpseudonymizedIds(rawCapture), [GROUP, GROUP_SID.toLowerCase(), ASSIGNMENT.toLowerCase()]);
+  // A pseudonymized group still carries a SID-shaped value, but it encodes the pseudonym id.
+  const published = JSON.stringify(pseudonymizer('sha256:aaaa').walk(JSON.parse(rawCapture)));
+  assert.match(published, /S-1-12-1-/);
+  assert.deepEqual(unpseudonymizedIds(published), []);
+  assert.deepEqual(unpseudonymizedIds(ONPREM_SID), [ONPREM_SID.toLowerCase()], 'an on-premises SID cannot be told apart');
+
+  const files = { 'raw.json': rawCapture, 'published.json': published };
+  const lines = [];
+  const options = { read: (path) => files[path], log: (line) => lines.push(line) };
+  assert.equal(main(['check', 'published.json'], options), 0);
+  assert.equal(main(['check', 'published.json', 'raw.json'], options), 1);
+  assert.match(lines.at(-1), /raw\.json: 3 id\(s\) that are not pseudonyms/);
+  assert.equal(main([], options), 2);
 });

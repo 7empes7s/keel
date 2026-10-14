@@ -14,9 +14,12 @@
  * Only the capture tools call this; validators never need to reverse it.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 // No word boundaries: ids also appear after URL escapes such as `%2C`.
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const GUID_ONLY = new RegExp(`^${GUID.source}$`, 'i');
 // A prefix starts after a non-label character or right after a %XX escape (`a%40contoso…`),
 // never inside the escape itself.
 const TENANT_HOST = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9%-]|%[0-9a-f]))([a-z0-9]+)(?=(?:-my|-admin)?\.(?:sharepoint\.com|onmicrosoft\.com)\b)/gi;
@@ -25,6 +28,12 @@ const TENANT_HOST = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9%-]|%[0-9a-f]))([a-z0-9]+)(
 // (`0##<tenant>##<team>##<user>`).
 // No `/` in the alphabet: such ids sit inside URL paths, and the capture refuses ids holding one.
 const BASE64_TOKEN = /[A-Za-z0-9+_=-]{40,}/g;
+
+// A directory role assignment id (`lAPpYvVpN0KRkAEhdxReEJC2sEqbR_9OmXWfOUQ7FJM-1`) is the
+// base64url of the role definition's and the principal's GUID bytes, with an optional `-<n>`
+// suffix. Its bytes are not text, so the token rule above cannot see the GUIDs inside it.
+const ROLE_ASSIGNMENT_ID = /^([A-Za-z0-9_-]{43})(-\d{1,3})?$/;
+const ROLE_ASSIGNMENT_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?:-\d{1,3})?(?![A-Za-z0-9_-])/g;
 
 // Security identifiers. A cloud SID (`S-1-12-1-a-b-c-d`) is the object's GUID encoded as four
 // 32-bit words; an on-premises SID (`S-1-5-21-a-b-c[-rid]`) names the domain and the object.
@@ -64,9 +73,47 @@ export const cloudSidToGuid = (sid) => {
   return bytesToGuid(bytes);
 };
 
-/** Every GUID and SID in `text`, lower-cased and deduplicated: the ids a capture must lose. */
+/**
+ * The two GUIDs a role assignment id encodes, or null. Each half must read as an RFC 4122
+ * GUID (a version 1-8 and the RFC variant), so an arbitrary 32-byte token rarely qualifies.
+ */
+export function roleAssignmentIdGuids(token) {
+  const match = ROLE_ASSIGNMENT_ID.exec(token);
+  if (!match) return null;
+  const bytes = Buffer.from(match[1], 'base64url');
+  if (bytes.length !== 32 || bytes.toString('base64url') !== match[1]) return null;
+  const halves = [bytes.subarray(0, 16), bytes.subarray(16)];
+  const guidLike = (le) => (le[7] >> 4) >= 1 && (le[7] >> 4) <= 8 && (le[8] & 0xc0) === 0x80;
+  return halves.every(guidLike) ? halves.map((half) => bytesToGuid(half)) : null;
+}
+
+/**
+ * Every GUID, SID and role assignment id in `text`, lower-cased and deduplicated: the ids a
+ * capture must lose.
+ */
 export function rawIdentifiers(text) {
-  return [...new Set([...text.matchAll(GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID)].map((m) => m[0].toLowerCase()))];
+  const roleAssignmentIds = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].filter((m) => roleAssignmentIdGuids(m[0]));
+  return [...new Set([...text.matchAll(GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
+    .map((m) => m[0].toLowerCase()))];
+}
+
+/**
+ * The ids in `text` that are not pseudonyms. Every GUID the pseudonymizer writes is RFC 9562
+ * version 8, and a cloud SID or role assignment id it writes encodes version 8 GUIDs, whereas
+ * Entra assigns version 4. So a published capture can be checked without the tenant's raw ids:
+ * a SID-shaped value is not a leak when it encodes a pseudonym. An on-premises SID cannot be
+ * told apart this way and is always listed.
+ */
+export function unpseudonymizedIds(text) {
+  const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value);
+  return rawIdentifiers(text).filter((id) => {
+    if (GUID_ONLY.test(id)) return !isPseudonym(id);
+    if (/^s-1-12-1-/i.test(id)) return !isPseudonym(cloudSidToGuid(id) ?? '');
+    if (/^s-1-5-21-/i.test(id)) return true;
+    // A role assignment id, lower-cased by rawIdentifiers: decode the original spelling.
+    const original = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].map((m) => m[0]).find((token) => token.toLowerCase() === id);
+    return !(roleAssignmentIdGuids(original ?? '') ?? []).every(isPseudonym);
+  });
 }
 
 export function pseudonymizer(tenantRef) {
@@ -111,6 +158,13 @@ export function pseudonymizer(tenantRef) {
     return text(value);
   };
   const plain = (value) => value.replace(GUID, guid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
+  // A role assignment id maps through the two GUIDs it encodes, like a cloud SID.
+  const roleAssignmentId = (token) => {
+    const guids = roleAssignmentIdGuids(token);
+    if (!guids) return token;
+    const bytes = Buffer.concat(guids.map((value) => guidToBytes(guid(value))));
+    return `${bytes.toString('base64url')}${ROLE_ASSIGNMENT_ID.exec(token)[2] ?? ''}`;
+  };
   const encoded = (token) => {
     const url = /[-_]/.test(token);
     const decoded = Buffer.from(token, url ? 'base64url' : 'base64');
@@ -123,7 +177,7 @@ export function pseudonymizer(tenantRef) {
     if (reencode(decoded) !== token || !/^[\x20-\x7e]+$/.test(inner) || !inner.match(GUID)) return token;
     return reencode(Buffer.from(plain(inner), 'latin1'));
   };
-  const text = (value) => plain(value.replace(BASE64_TOKEN, encoded));
+  const text = (value) => plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded));
   const walk = (value) => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);
@@ -136,7 +190,7 @@ export function pseudonymizer(tenantRef) {
     }
     return value;
   };
-  return { guid, host, cloudSid, onPremSid, immutableId, securityIdentifier, text, walk };
+  return { guid, host, cloudSid, onPremSid, immutableId, roleAssignmentId, securityIdentifier, text, walk };
 }
 
 /**
@@ -152,3 +206,24 @@ export function pseudonymizeCapture({ record, log }) {
   }
   return { record: safe, captureLog };
 }
+
+/**
+ * `node tools/qualification/pseudonymize.mjs check FILE...` lists every id in the files that
+ * is not a pseudonym and exits 1 if there is one. Run it on a capture before publishing it.
+ */
+export function main(argv = process.argv.slice(2), { read = (path) => readFileSync(path, 'utf8'), log = console.log } = {}) {
+  const [command, ...files] = argv;
+  if (command !== 'check' || files.length === 0) {
+    log('usage: node tools/qualification/pseudonymize.mjs check FILE...');
+    return 2;
+  }
+  let found = 0;
+  for (const file of files) {
+    const ids = unpseudonymizedIds(read(file));
+    found += ids.length;
+    log(ids.length === 0 ? `${file}: every id is a pseudonym` : `${file}: ${ids.length} id(s) that are not pseudonyms: ${ids.join(', ')}`);
+  }
+  return found === 0 ? 0 : 1;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exitCode = main();

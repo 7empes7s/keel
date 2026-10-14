@@ -2410,8 +2410,22 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error), plus the new expiry dates.
 ### Q51: Recapture the Q48 steps the #230 fixes unblock
 - Drafted by the "Q48 and Q49 operator results" thread (2026-10-14).
-- Status: in-progress
-- Result: Started 2026-10-14 19:05 UTC at live build be3d299 (#230 live). Running in parallel with Q50 (no shared fixtures).
+- Status: blocked
+- Result: Ran 2026-10-14 19:00–19:25 UTC at live build be3d299 (#230 live), in parallel with Q50. Fresh fixtures: groups KEEL-RT-Q51-g5..g8, app KEEL-RT-Q51-app11, AU KEEL-RT-Q51-unit, custom role KEEL-RT-Q51-role (renamed KEEL-RT-148-role for C, see B), principals keel-rt-20260908-carla and -ryan. Break-glass readiness read "ready".
+  **A. Steps 5–8 (group member/owner edge add/remove): promoted (4).** One batch restore 905a03a6 (approval 976658ad), journal 4 edges succeeded. Captured with both fixture forms (bare name and `group:<name>`); all four promoted.
+  **B. Step 37 (roleAssignment delete): blocked by capture-tool bug, filed as https://github.com/7empes7s/keel/issues/232.** The restore worked: delete dry run 923132e0 (approval 1a34a72c), job succeeded, journal `delete | succeeded` for ryan @ KEEL-RT-Q51-unit. The capture refused: "the role is not the fixture role; the scope is not a KEEL-RT fixture".
+  - The delete path resolves the scope from the composed key's raw `/administrativeUnits/<id>`, which never maps to the AU name.
+  - `FIXTURE_ROLE` is hard-coded to `KEEL-RT-148-role`.
+  The restore is journaled and can be recaptured from restore ref 923132e0 once #232 is fixed, with no new restore needed. Comment left on #230.
+  **C. Step 35 (roleAssignment create): promoted** (`--allow-by-reference`, id pseudonymized). To pass the hard-coded role check I renamed the role to KEEL-RT-148-role and took a fresh snapshot (ced73acb). There were two "target has changed since the dry run" refusals before it ran:
+  - dcdb0725: the batch in A changed carla first.
+  - 9a…/525a25cf: the dry run read Graph seconds after I deleted the assignment (replication lag; two later dry runs gave identical fingerprints).
+  Final run: dry run under approval d32e6111, job succeeded, captured and promoted. The stale request fbe8b270 was superseded. The Q48 raw-id capture was not published.
+  **D. Step 11 (application create): promoted.** The create no longer sends createdByAppId; journal `create | succeeded`, captured and promoted.
+  **E. Steps 1 and 3 held-back group records: committed.** `pseudonymize.mjs check` exit 0 for all four files. Their securityIdentifier SIDs decode to the pseudonymized object ids, not real ones.
+  Evidence: `claude/live-evidence-q51` @ 72859a7 (E at f25caf9): 12 + 4 files in docs/release/qualifications/entra-live. Secret, SID, tenant, lxtj and raw-fixture-id scans are clean; pseudonymize check exit 0 for every file. No PR.
+  Cleanup: role assignments, role, AU, groups g5–g8 and the recreated app were deleted, and groups and app were purged from deleted items. Read-back shows 0 KEEL-RT-Q51 objects and 0 KEEL-RT custom roles.
+  Waiting on: #232 fix, then recapture step 37 from restore 923132e0.
 - Needs: Q49 done or blocked, and a live build containing #230 (`git -C /opt/keel-live log --oneline | grep -c "#230"`).
   Run before or after Q50, whichever is first in line; they don't share fixtures.
 - **Test tenant only.** Same hard rules and requester/approver split as Q45.

@@ -2527,7 +2527,7 @@ item that needs it stays untouched.
 
 ### Q55: Add the read permissions Keel's apps need, so Marouane can grant admin consent (plan ask 1)
 - Drafted by the "Add API permissions" thread (2026-10-14).
-- Status: todo
+- Status: in-progress
 - Needs: none. Decision: D-Q55 (filled).
 - **Test tenant only. Read permissions only.** Never create an appRoleAssignment or grant consent (Marouane does that).
   Never enable a CA policy; never touch break-glass or `marouane.defili`. Use the Restorer for the writes below

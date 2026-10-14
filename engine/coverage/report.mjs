@@ -54,6 +54,8 @@ import '../collect/workloads/mailFlow.mjs';
 import '../collect/workloads/teamsPolicies.mjs';
 // Registers the Purview retention and DLP adapter (issue #157), read-only and disabled behind Exchange.
 import '../collect/workloads/purviewRetentionDlp.mjs';
+// Registers the Power Platform and Power BI settings adapter (READ-PP), read-only and disabled until qualified.
+import '../collect/workloads/powerPlatform.mjs';
 
 const DRILL_EVIDENCE_KIND = 'fidelity-drill';
 const STALE_AFTER_MS = {

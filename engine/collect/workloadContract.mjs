@@ -40,10 +40,11 @@ export const WORKLOAD_CONTRACT_VERSION = 1;
 export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
   'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
+  'power-platform-settings',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
-export const PAGING = Object.freeze(['none', 'odata-nextLink', 'cmdlet-unbounded']);
+export const PAGING = Object.freeze(['none', 'odata-nextLink', 'cmdlet-unbounded', 'next-link']);
 export const LIVE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const GRAPH = 'https://graph.microsoft.com';
@@ -67,6 +68,16 @@ const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient 
 const doc = (path) => Object.freeze({ url: `${LEARN}${path}`, retrievedAt: null });
 const graph = (endpoint, version = 'v1.0') => Object.freeze({ kind: 'graph', method: 'GET', endpoint, version });
 const cmdlet = (name, module, { parameters = [], probeName = name } = {}) => Object.freeze({ kind: 'cmdlet', cmdlet: name, parameters, module, probeName });
+// A read from a Microsoft admin REST API outside Graph (Power Platform, Fabric). Only the
+// hosts in REST_HOSTS are in scope. `items` names the array the answer lists objects in.
+const rest = (host, endpoint, version, { audience, items = 'value' }) => Object.freeze({ kind: 'rest', method: 'GET', host, endpoint, version, audience, items });
+export const REST_HOSTS = Object.freeze(['api.bap.microsoft.com', 'api.powerapps.com', 'api.fabric.microsoft.com']);
+// Path segments of those APIs that address apps, flows, user connections or Power BI
+// content rather than tenant configuration.
+const REST_CONTENT_SEGMENTS = new Set([
+  'apps', 'flows', 'connections', 'workspaces', 'groups', 'datasets', 'reports', 'dashboards', 'dataflows', 'items',
+  'content', 'export', 'runs', 'tables', 'rows',
+]);
 
 /**
  * The declared operations. Every fact here was declared from Microsoft's published
@@ -273,6 +284,30 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
+  // READ-PP: Power Platform environments, DLP policies and connectors, and Power BI
+  // (Fabric) tenant settings, from the admin REST APIs. App-only access to the Power
+  // Platform admin API needs the app registered as a Power Platform management app.
+  // engine/collect/workloads/powerPlatform.mjs holds the fields and identities.
+  ...[
+    ['powerplatform.environments', 'Power Platform environments',
+      rest('api.bap.microsoft.com', '/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01', '2020-10-01', { audience: 'https://service.powerapps.com/' }),
+      'next-link', [], ['Power Platform Administrator'], '/en-us/connectors/powerplatformforadmins/'],
+    ['powerplatform.dlp-policies', 'Power Platform data loss prevention (DLP) policies',
+      rest('api.bap.microsoft.com', '/providers/PowerPlatform.Governance/v2/policies', 'v2', { audience: 'https://service.powerapps.com/' }),
+      'next-link', [], ['Power Platform Administrator'], '/en-us/power-platform/admin/wp-data-loss-prevention'],
+    ['powerplatform.connectors', 'Power Platform connectors in each environment',
+      rest('api.powerapps.com', '/providers/Microsoft.PowerApps/scopes/admin/environments/{environment-name}/apis?api-version=2016-11-01', '2016-11-01', { audience: 'https://service.powerapps.com/' }),
+      'next-link', [], ['Power Platform Administrator'], '/en-us/connectors/powerappsforadmins/'],
+    ['powerbi.tenant-settings', 'Power BI tenant settings',
+      rest('api.fabric.microsoft.com', '/v1/admin/tenantsettings', 'v1', { audience: 'https://api.fabric.microsoft.com/', items: 'tenantSettings' }),
+      'next-link', ['Tenant.Read.All'], ['Fabric Administrator'], '/en-us/rest/api/fabric/admin/tenants/list-tenant-settings'],
+  ].map(([id, resource, operation, paging, permissions, roles, path]) => ({
+    id, workload: 'power-platform-settings', resource, operation,
+    auth: { application: true, delegated: true },
+    rbac: { permissions, roles },
+    paging, throttle: 'rest-429-retry-after', consistency: 'eventual',
+    source: doc(path),
+  })),
 ].map((descriptor) => Object.freeze(descriptor)));
 
 function graphSegments(endpoint) {
@@ -305,12 +340,22 @@ export function scopeProblems(operation) {
     const content = [...segments, ...expanded]
       .filter((segment, index) => CONTENT_SEGMENTS.has(segment) && !(sitePermissions && index === 2));
     if (content.length) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
+  } else if (operation?.kind === 'rest') {
+    if (operation.method !== 'GET') problems.push(`${operation.method} is not a read`);
+    if (!REST_HOSTS.includes(operation.host)) problems.push(`${operation.host} is not an admin API KEEL reads`);
+    if (typeof operation.endpoint !== 'string' || !operation.endpoint.startsWith('/')) {
+      problems.push('a REST endpoint must be a path starting with /');
+      return problems;
+    }
+    const content = operation.endpoint.split('?')[0].split('/').filter(Boolean)
+      .map((segment) => decodeURIComponent(segment).toLowerCase()).filter((segment) => REST_CONTENT_SEGMENTS.has(segment));
+    if (content.length) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
   } else if (operation?.kind === 'cmdlet') {
     const [verb, noun = ''] = String(operation.cmdlet ?? '').split('-');
     if (verb !== 'Get') problems.push(`${operation.cmdlet} is not a read cmdlet`);
     if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun)) problems.push(`${operation.cmdlet} reads content, not configuration`);
   } else {
-    problems.push('operation must be a Graph endpoint or a cmdlet');
+    problems.push('operation must be a Graph endpoint, an admin REST endpoint or a cmdlet');
   }
   return problems;
 }
@@ -323,6 +368,9 @@ export function descriptorProblems(descriptor) {
     problems.push('a Graph operation must name its API version (v1.0 or beta)');
   }
   if (descriptor?.operation?.kind === 'cmdlet' && !descriptor.operation.module) problems.push('a cmdlet must name its module');
+  if (descriptor?.operation?.kind === 'rest' && (!descriptor.operation.version || !descriptor.operation.audience)) {
+    problems.push('a REST operation must name its API version and token audience');
+  }
   if (typeof descriptor?.auth?.application !== 'boolean' || typeof descriptor?.auth?.delegated !== 'boolean') {
     problems.push('auth must say whether app-only and delegated access are supported');
   }
@@ -353,7 +401,7 @@ export function validateWorkloadDescriptor(descriptor) {
  * module version the latest capture reported (`runtime.modules`). Null when unknown.
  */
 export function currentVersion(descriptor, runtime = {}) {
-  if (descriptor.operation.kind === 'graph') return descriptor.operation.version;
+  if (descriptor.operation.kind === 'graph' || descriptor.operation.kind === 'rest') return descriptor.operation.version;
   return runtime.modules?.[descriptor.operation.module] ?? null;
 }
 
@@ -532,6 +580,61 @@ export async function readGraphConfiguration(descriptor, { transport, sleep = as
     }
     const scope = scopeProblems({ kind: 'graph', method: 'GET', endpoint: `${url.pathname.replace(`/${descriptor.operation.version}`, '')}${url.search}` });
     if (scope.length) throw new Error(`${descriptor.id}: refused a next page: ${scope.join('; ')}`);
+    next = url.href;
+  }
+  return { items, observed };
+}
+
+const REST_NEXT_LINKS = Object.freeze(['nextLink', '@odata.nextLink', 'continuationUri']);
+
+/**
+ * Reads one admin REST configuration operation (Power Platform, Fabric) through an
+ * injected transport, following its next link and honouring Retry-After, like
+ * readGraphConfiguration. A next link that leaves the operation's host and path, or
+ * that would read content, is refused rather than followed.
+ *   transport(url) -> { status, headers: { 'retry-after'? }, body }
+ */
+export async function readRestConfiguration(descriptor, { transport, sleep = async () => {}, maxPages = 100, maxRetries = 3, substitute = {} }) {
+  validateWorkloadDescriptor(descriptor);
+  const { operation } = descriptor;
+  if (operation.kind !== 'rest') throw new TypeError(`${descriptor.id} is not an admin REST operation`);
+  const path = operation.endpoint.replace(/\{([^}]+)\}/g, (_, name) => {
+    if (typeof substitute[name] !== 'string' || !substitute[name]) throw new TypeError(`${descriptor.id}: ${name} is required`);
+    return encodeURIComponent(substitute[name]);
+  });
+  const first = new URL(`https://${operation.host}${path}`);
+  const items = [];
+  const observed = { pages: 0, throttled: 0, retryAfterHonouredMs: 0 };
+  let next = first.href;
+  while (next) {
+    if (observed.pages >= maxPages) throw new Error(`${descriptor.id}: more than ${maxPages} pages`);
+    let response;
+    for (let attempt = 0; ; attempt += 1) {
+      response = await transport(next);
+      if (response.status !== 429 && response.status !== 503) break;
+      observed.throttled += 1;
+      if (attempt >= maxRetries) throw new Error(`${descriptor.id}: still throttled after ${maxRetries} retries`);
+      const seconds = Number(response.headers?.['retry-after']);
+      const waitMs = Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : 2 ** attempt * 1000;
+      observed.retryAfterHonouredMs += waitMs;
+      await sleep(waitMs);
+    }
+    if (response.status < 200 || response.status >= 300) {
+      const error = new Error(`${descriptor.id}: HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    observed.pages += 1;
+    const body = response.body ?? {};
+    const list = body[operation.items];
+    if (!Array.isArray(list)) throw new Error(`${descriptor.id}: the answer has no ${operation.items} list`);
+    items.push(...list);
+    const link = REST_NEXT_LINKS.map((key) => body[key]).find((value) => typeof value === 'string' && value);
+    if (!link) break;
+    const url = new URL(link, first);
+    if (url.origin !== first.origin || decodeURIComponent(url.pathname) !== decodeURIComponent(first.pathname)) {
+      throw new Error(`${descriptor.id}: refused a next page outside ${first.pathname}`);
+    }
     next = url.href;
   }
   return { items, observed };

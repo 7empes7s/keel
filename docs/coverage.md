@@ -356,3 +356,16 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
+
+### Power Platform and Power BI settings
+
+**Backed up:**
+
+- Power Platform environments
+- Power Platform data loss prevention (DLP) policies
+- Power Platform connectors in each environment
+- Power BI tenant settings
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.

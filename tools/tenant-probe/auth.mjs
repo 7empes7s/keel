@@ -51,10 +51,11 @@ function clientAssertion({ tenantId, clientId, certPath, keyPath }) {
   return `${signingInput}.${b64url(signature)}`;
 }
 
-export async function getToken({ tenantId, clientId, certPath, keyPath }) {
+/** `scope` defaults to Microsoft Graph; the Power Platform reads ask for their own API. */
+export async function getToken({ tenantId, clientId, certPath, keyPath }, { scope = 'https://graph.microsoft.com/.default' } = {}) {
   const body = new URLSearchParams({
     client_id: clientId,
-    scope: 'https://graph.microsoft.com/.default',
+    scope,
     client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
     client_assertion: clientAssertion({ tenantId, clientId, certPath, keyPath }),
     grant_type: 'client_credentials',

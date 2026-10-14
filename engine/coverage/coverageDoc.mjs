@@ -280,6 +280,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL does not restore these yet. Change them by hand in the Teams admin center using the backup.' }),
   'purview-retention-dlp': Object.freeze({ name: 'Purview retention and data loss prevention',
     todo: 'KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant\'s licence includes it.' }),
+  'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
+    todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({

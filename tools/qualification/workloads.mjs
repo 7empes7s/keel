@@ -27,7 +27,7 @@ import { pathToFileURL } from 'node:url';
 
 import {
   WORKLOAD_DESCRIPTORS, buildWorkloadLedger, currentVersion, descriptorProblems, evidenceFromProbeRows,
-  readGraphConfiguration,
+  readGraphConfiguration, readRestConfiguration,
 } from '../../engine/collect/workloadContract.mjs';
 
 export const HARNESS_PROOF_REF = 'tools/qualification/workloads.mjs#harness';
@@ -41,7 +41,9 @@ const SAMPLE = Object.freeze({
   'teams.group-membership': [{ id: 'user-1' }, { id: 'user-2' }],
   'exchange.mailbox-settings': { timeZone: 'UTC', automaticRepliesSetting: { status: 'disabled' } },
 });
-const SUBSTITUTE = Object.freeze({ 'site-id': 'fixture-site', 'team-id': 'fixture-team', 'group-id': 'fixture-team', 'user-id': 'fixture-user' });
+const SUBSTITUTE = Object.freeze({
+  'site-id': 'fixture-site', 'team-id': 'fixture-team', 'group-id': 'fixture-team', 'user-id': 'fixture-user', 'environment-name': 'fixture-environment',
+});
 
 /**
  * A fake Graph for one operation: the first request is throttled (Retry-After: 2),
@@ -70,6 +72,29 @@ export function fixtureGraph(descriptor) {
 }
 
 /**
+ * A fake admin REST API for one operation: throttled once, then two pages joined by a
+ * next link.
+ */
+export function fixtureRest(descriptor) {
+  const requests = [];
+  let throttled = false;
+  return {
+    requests,
+    async transport(url) {
+      requests.push(url);
+      if (!throttled) {
+        throttled = true;
+        return { status: 429, headers: { 'retry-after': '2' }, body: null };
+      }
+      const key = descriptor.operation.items;
+      return new URL(url).searchParams.get('$skiptoken')
+        ? { status: 200, headers: {}, body: { [key]: [{ name: 'KEEL-RT-fixture-2' }] } }
+        : { status: 200, headers: {}, body: { [key]: [{ name: 'KEEL-RT-fixture-1' }], nextLink: `${url}${url.includes('?') ? '&' : '?'}$skiptoken=fixture` } };
+    },
+  };
+}
+
+/**
  * Fixture evidence for every in-scope operation. Graph operations run through the
  * production reader against fixtureGraph; cmdlet operations go through the capture
  * mapping with a canned, explicitly synthetic probe row. All of it is synthetic.
@@ -85,6 +110,9 @@ export async function runFixtureHarness({ descriptors = WORKLOAD_DESCRIPTORS, ru
       if (descriptor.operation.kind === 'graph') {
         const graph = fixtureGraph(descriptor);
         ({ observed } = await readGraphConfiguration(descriptor, { transport: graph.transport, substitute: SUBSTITUTE }));
+      } else if (descriptor.operation.kind === 'rest') {
+        const api = fixtureRest(descriptor);
+        ({ observed } = await readRestConfiguration(descriptor, { transport: api.transport, substitute: SUBSTITUTE }));
       } else {
         const { evidence: mapped } = evidenceFromProbeRows([{
           workload: descriptor.workload, connected: true, cmdlet: descriptor.operation.probeName, ok: true, count: 1, error: null,

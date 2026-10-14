@@ -34,7 +34,7 @@
 import { collectRelationships } from '../collect/relationships.mjs';
 import { capabilityFor, edgeCapabilityKey, isSupportedClaim } from '../coverage/capabilities.mjs';
 import { decideEdgeVerb } from '../reconcile/verb.mjs';
-import { recordPriorState } from './rollbackJournal.mjs';
+import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
 /** The only families with a write path. Everything else is observed, never written. */
 export const RELATIONSHIP_RESTORE_FAMILIES = Object.freeze(['member', 'owner']);
@@ -203,6 +203,23 @@ async function readEdgeSet(reader, parentTargetId, family) {
   return observation;
 }
 
+// Task-70: what a journalled edge write actually did, recorded the same way
+// applyEngine.mjs records object writes. Never fails the run: an outcome that
+// could not be recorded stays 'pending', which compensation reconciles by reading.
+async function noteOutcome(rollbackClient, entryId, outcome, extras = {}) {
+  if (!rollbackClient || !entryId) return;
+  try {
+    await recordWriteOutcome(rollbackClient, { entryId, outcome, ...extras });
+  } catch {
+    // left pending
+  }
+}
+
+function outcomeDetail(result) {
+  if (result?.status !== undefined && result?.status !== null) return `status ${result.status}`;
+  return result?.error ? String(result.error).slice(0, 200) : 'no response';
+}
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -281,9 +298,10 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       }
 
       let journaled = true;
+      let entryId = null;
       if (rollbackClient) {
         try {
-          await recordPriorState(rollbackClient, {
+          entryId = await recordPriorState(rollbackClient, {
             runId,
             naturalKey,
             priorState: { kind: 'relationship-edge', parentNaturalKey, parentTargetId, family, targetId, present: !wantPresent },
@@ -332,7 +350,7 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       }
 
       if (result?.ok) {
-        expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: null });
+        expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: null, entryId });
         continue;
       }
       // Ambiguous or refused: the edge set itself decides. Never re-send.
@@ -340,10 +358,11 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       if (isComplete(after.outcome)) {
         current = new Set(after.targets.map((t) => t.targetId));
         if (current.has(targetId) === wantPresent) {
-          expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: 'lost-response' });
+          expectations.push({ op, naturalKey, targetId, wantPresent, reconciled: 'lost-response', entryId, writeDetail: outcomeDetail(result) });
           continue;
         }
       }
+      await noteOutcome(rollbackClient, entryId, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
       failed.push({
         naturalKey,
         error: `${op.action} ${family} failed: ${JSON.stringify(result?.body ?? result?.error ?? null)}${isComplete(after.outcome) ? '' : ` (reconciliation read ${after.outcome})`}`,
@@ -368,11 +387,23 @@ export async function applyRelationshipOperations(writer, governor, operations, 
       if (attempt < verifyAttempts) await sleep(verifyDelayMs);
     }
     for (const expectation of expectations) {
+      const { entryId, op: edge } = expectation;
+      const edgeState = (present) => ({
+        kind: 'relationship-edge', parentNaturalKey, parentTargetId, family, targetId: expectation.targetId, present,
+      });
       if (verified === null) {
+        await noteOutcome(rollbackClient, entryId, 'uncertain', { detail: `${edge.action} could not be re-read` });
         failed.push({ naturalKey: expectation.naturalKey, error: `post-write verification refused: the ${family} read for ${parentNaturalKey} never completed` });
       } else if (verified.has(expectation.targetId) !== expectation.wantPresent) {
+        await noteOutcome(rollbackClient, entryId, 'uncertain', {
+          postState: edgeState(!expectation.wantPresent), detail: `${edge.action} did not verify on re-read`,
+        });
         failed.push({ naturalKey: expectation.naturalKey, error: `post-write verification failed: ${expectation.targetId} is ${expectation.wantPresent ? 'still absent from' : 'still present in'} ${parentNaturalKey} ${family}s` });
       } else {
+        await noteOutcome(rollbackClient, entryId, 'succeeded', {
+          postState: edgeState(expectation.wantPresent),
+          ...(expectation.reconciled === 'lost-response' ? { detail: `verified on re-read after ${expectation.writeDetail}` } : {}),
+        });
         applied.push({
           naturalKey: expectation.naturalKey,
           edge: expectation.op,

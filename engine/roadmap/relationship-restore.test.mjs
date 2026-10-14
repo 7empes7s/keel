@@ -31,6 +31,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
   refRequestFor, relationshipOperationKey,
 } from '../restore/relationshipWriter.mjs';
+import { listJournal } from '../restore/rollbackJournal.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
@@ -253,6 +254,49 @@ test('an edge already in the desired state is reconciled without a write, and ev
   });
   assert.equal(failingJournal.writes.length, 0);
   assert.match(refused.failed[0].error, /rollback journal write failed/);
+});
+
+test('every journalled edge write records its outcome: no edge entry is left pending', async (t) => {
+  const client = await schemaClient(t);
+  const restoreRef = crypto.randomUUID();
+  const tenant = fakeTenant({ 'target-eng|member': ['target-mallory', 'target-ryan'] });
+  // carol: Graph refuses (400, definite). ryan: Graph claims success but the
+  // read-back still shows him (unverified). bob and mallory land.
+  tenant.failures.write = ({ path, body }) => {
+    if (body?.['@odata.id']?.endsWith('/target-carol')) return { ok: false, status: 400, body: { error: { code: 'Request_BadRequest' } } };
+    if (path.includes('/target-ryan/')) return { ok: true, status: 204, body: null };
+    return null;
+  };
+  const result = await applyRelationshipOperations(tenant.writer, governor, [
+    op('add', 'user:bob', 'target-bob'), op('add', 'user:carol', 'target-carol'),
+    op('remove', 'user:mallory', 'target-mallory'), op('remove', 'user:ryan', 'target-ryan'),
+  ], {
+    reader: tenant.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]),
+    rollbackClient: client, runId: `run-${restoreRef}`, restoreRef, verifyAttempts: 2, sleep: noSleep,
+  });
+  assert.deepEqual(result.applied.map((entry) => entry.edge.targetId).sort(), ['target-bob', 'target-mallory']);
+  assert.deepEqual(result.failed.map((entry) => entry.naturalKey).sort(), [
+    'edge:group:eng|member|add|user:carol', 'edge:group:eng|member|remove|user:ryan',
+  ]);
+
+  const journal = await listJournal(client, { restoreRef });
+  assert.equal(journal.length, 4, 'every write is journalled under the promoted artifact');
+  const outcomes = Object.fromEntries(journal.map((entry) => [entry.naturalKey, entry.outcome]));
+  assert.deepEqual(outcomes, {
+    'edge:group:eng|member|add|user:bob': 'succeeded',
+    'edge:group:eng|member|add|user:carol': 'failed',
+    'edge:group:eng|member|remove|user:mallory': 'succeeded',
+    'edge:group:eng|member|remove|user:ryan': 'uncertain',
+  });
+  for (const entry of journal) {
+    assert.notEqual(entry.outcome, 'pending', `${entry.naturalKey} left pending`);
+    assert.equal(entry.operation, entry.naturalKey.includes('|add|') ? 'edge-add' : 'edge-remove');
+  }
+  const byKey = new Map(journal.map((entry) => [entry.naturalKey, entry]));
+  assert.equal(byKey.get('edge:group:eng|member|add|user:bob').postState.present, true);
+  assert.equal(byKey.get('edge:group:eng|member|remove|user:mallory').postState.present, false);
+  assert.equal(byKey.get('edge:group:eng|member|add|user:carol').outcomeDetail, 'status 400');
+  assert.equal(byKey.get('edge:group:eng|member|remove|user:ryan').postState.present, true, 'ryan is still a member');
 });
 
 test('post-write verification fails an edge the read-back does not show', async () => {

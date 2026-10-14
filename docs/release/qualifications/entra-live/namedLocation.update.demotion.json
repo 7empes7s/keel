@@ -6,12 +6,13 @@
   "tenantRef": "sha256:f7b3959300856957",
   "resourceType": "namedLocation",
   "operation": "update",
-  "reason": "Live PATCH of the named location returned HTTP 400. The update body is the collected snapshot shape, which includes read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime); same cause as namedLocation create.",
-  "restoreRef": "e8040fd4-dd67-88df-b5e3-c2845dbf828d",
-  "decidedAt": "2026-10-11T19:08:16.253Z",
+  "reason": "PATCH returned 400 \"1042: Unexpected type: namedLocationType for NamedLocations\": the update body (writableProjection) drops @odata.type, which Graph requires to pick the namedLocation subtype. Verified by hand on the fixture: the same PATCH without @odata.type gives 400, with it 204. #173 keeps @odata.type on create bodies only",
+  "restoreRef": "49036ff9-690c-89d3-882f-0590cd64f1e9",
+  "decidedAt": "2026-10-13T21:23:45.723Z",
   "builderSteps": [
     "remove the update registration for namedLocation in engine/coverage/capabilities.mjs",
     "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.namedLocation.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.namedLocation.liveFailures['update'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
     "commit this file under docs/release/qualifications/entra-live/ in the same PR"
   ]
 }

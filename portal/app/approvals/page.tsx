@@ -7,6 +7,7 @@ import { Verdict } from "@/components/verdict";
 import {
   getApprovalInboxData,
   requireApprovalInboxAccess,
+  waitingCount,
 } from "@/lib/approval-inbox";
 
 export default async function ApprovalsPage() {
@@ -18,6 +19,7 @@ export default async function ApprovalsPage() {
 
   try {
     const data = await getApprovalInboxData(scope);
+    const waiting = waitingCount(data);
     return (
       <>
         <PageHeader
@@ -27,13 +29,18 @@ export default async function ApprovalsPage() {
           title="Approvals"
         />
         <Verdict
-          text={data.pending.length === 0
+          text={waiting === 0
             ? "Nothing is waiting for your decision."
-            : `${data.pending.length} ${data.pending.length === 1 ? "request is" : "requests are"} waiting for you.`}
-          tone={data.pending.length ? "attention" : "good"}
+            : `${waiting} ${waiting === 1 ? "request is" : "requests are"} waiting for you.`}
+          tone={waiting ? "attention" : "good"}
         />
         <div data-layer="explanation">
-          <ApprovalInbox history={data.history} now={data.generatedAt} pending={data.pending} />
+          <ApprovalInbox
+            awaitingContentEffects={data.awaitingContentEffects}
+            history={data.history}
+            now={data.generatedAt}
+            pending={data.pending}
+          />
         </div>
       </>
     );

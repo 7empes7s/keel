@@ -476,3 +476,38 @@ export async function loadContentEffectReview(client, { tenantRef, artifactId })
     approvals: approvals.map((row) => ({ approvedBy: String(row.approved_by), approvedAt: row.approved_at })),
   };
 }
+
+const ARTIFACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Which of these dry runs still wait on their content-effect approval: they carry
+ * content effects and no unrevoked approval of exactly those effects by someone other
+ * than the requester. The same test the review page applies. Tenant-scoped, two
+ * queries whatever the number of dry runs. Lets the approval inbox list an approved
+ * restore whose content effects nobody has approved yet as still waiting.
+ */
+export async function dryRunsAwaitingContentEffectApproval(client, { tenantRef, artifactIds }) {
+  const wanted = [...new Set(artifactIds)].filter((id) => typeof id === 'string' && ARTIFACT_ID.test(id));
+  const waiting = new Set();
+  if (wanted.length === 0) return waiting;
+  const { rows: artifacts } = await client.query(
+    `SELECT id::text AS id, requested_by, content_effects FROM restore_dry_run
+      WHERE tenant_ref = $1 AND id::text = ANY($2::text[])
+        AND jsonb_array_length(COALESCE(content_effects, '[]'::jsonb)) > 0`,
+    [tenantRef, wanted],
+  );
+  if (artifacts.length === 0) return waiting;
+  const { rows: approvals } = await client.query(
+    `SELECT artifact_id::text AS artifact_id, effects_digest, approved_by FROM content_effect_approval
+      WHERE artifact_id::text = ANY($1::text[]) AND revoked_at IS NULL`,
+    [artifacts.map((artifact) => artifact.id)],
+  );
+  for (const artifact of artifacts) {
+    const digest = contentEffectsDigest(artifact.content_effects);
+    const approved = approvals.some((approval) => approval.artifact_id === artifact.id
+      && approval.effects_digest === digest
+      && String(approval.approved_by) !== String(artifact.requested_by));
+    if (!approved) waiting.add(artifact.id);
+  }
+  return waiting;
+}

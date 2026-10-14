@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
 import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/govern/approvals.mjs";
+import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
@@ -49,7 +50,15 @@ export interface ApprovalRequestRecord {
 export interface ApprovalInboxData {
   generatedAt: string;
   pending: ApprovalRequestRecord[];
+  // Approved restores whose content effects still need their own approval. They wait
+  // for a decision too, so they are listed and counted with `pending`, not in history.
+  awaitingContentEffects: ApprovalRequestRecord[];
   history: ApprovalRequestRecord[];
+}
+
+/** Everything waiting for an approver: requests and content effects alike. */
+export function waitingCount(data: Pick<ApprovalInboxData, "pending" | "awaitingContentEffects">): number {
+  return data.pending.length + data.awaitingContentEffects.length;
 }
 
 function iso(value: unknown): string | null {
@@ -131,6 +140,28 @@ async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Pro
   }
 }
 
+function artifactIdOf(row: UnknownRecord): string | null {
+  const params = row.params as { artifactId?: unknown } | null | undefined;
+  return typeof params?.artifactId === "string" ? params.artifactId : null;
+}
+
+// An approved restore whose dry run carries content effects nobody has approved yet
+// cannot run, so it still waits on an approver. Only tenant-wide approvers can approve
+// content effects, so only they are shown these.
+async function awaitingContentEffectIds(
+  client: KeelClient,
+  scope: EntityScope,
+  decided: UnknownRecord[],
+): Promise<Set<string>> {
+  if (!scope.central) return new Set();
+  const restores = decided.filter((row) => row.action === "restore" && String(row.effective_status ?? row.status) === "approved");
+  const waiting = await dryRunsAwaitingContentEffectApproval(client, {
+    tenantRef: tenantRef(),
+    artifactIds: restores.map(artifactIdOf).filter((id): id is string => id !== null),
+  });
+  return new Set(restores.filter((row) => waiting.has(artifactIdOf(row) ?? "")).map((row) => String(row.id)));
+}
+
 // This loader is intentionally separate from the guard. API and page callers invoke it
 // only after the approval capability is admitted, and it exposes the engine's narrow
 // review projection rather than credentials or any other database columns.
@@ -146,18 +177,22 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
       limit: APPROVAL_INBOX_LIMIT,
       approverScope: scope,
     });
+    const awaiting = await awaitingContentEffectIds(client, scope, history);
     // One query per reference kind for both lists together.
     const summarized = await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] });
+    const decided: ApprovalRequestRecord[] = summarized.slice(pending.length).map(normalizeApprovalRequest);
     return {
       generatedAt: new Date().toISOString(),
       pending: summarized.slice(0, pending.length).map(normalizeApprovalRequest),
-      history: summarized.slice(pending.length).map(normalizeApprovalRequest),
+      awaitingContentEffects: decided.filter((request) => awaiting.has(request.id)),
+      history: decided.filter((request) => !awaiting.has(request.id)),
     };
   });
 }
 
-// The sidebar badge: how many requests wait on an approver. Callers check
-// approvalInboxAccess first; this reads only the count, never request detail.
+// The sidebar badge and the Overview: how many requests and content effects wait on an
+// approver. Callers check approvalInboxAccess first; this reads only the count, never
+// request detail.
 export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE): Promise<number> {
   return withClient(async (client) => {
     const pending = await listApprovalRequests(client, {
@@ -165,6 +200,10 @@ export async function getPendingApprovalCount(scope: EntityScope = CENTRAL_SCOPE
       limit: APPROVAL_INBOX_LIMIT,
       approverScope: scope,
     });
-    return pending.length;
+    // The same window the inbox lists, so the badge and the page agree.
+    const decided = scope.central
+      ? await listApprovalRequests(client, { statuses: ["approved", "rejected", "expired"], limit: APPROVAL_INBOX_LIMIT, approverScope: scope })
+      : [];
+    return pending.length + (await awaitingContentEffectIds(client, scope, decided)).size;
   });
 }

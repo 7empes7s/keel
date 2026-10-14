@@ -27,8 +27,14 @@
 //
 // The scope file names what the collectors may read beyond tenant-wide settings:
 //   { "sharepointHost": "contoso.sharepoint.com", "mailboxes": ["user@contoso.com"],
-//     "onedriveHost": "contoso-my.sharepoint.com", "onedriveSites": ["https://contoso-my.sharepoint.com/personal/..."] }
+//     "onedriveHost": "contoso-my.sharepoint.com", "onedriveSites": ["https://contoso-my.sharepoint.com/personal/..."],
+//     "powershellConfigs": { "exchange": "/etc/keel/exchange-collector.json", "onedrive": "/etc/keel/purview-collector.json",
+//                            "purview": "/etc/keel/purview-collector.json", "teams": "/etc/keel/teams-collector.json" } }
 // It is optional; without it SharePoint cannot run and Exchange reads organization settings only.
+// powershellConfigs names the certificate config each PowerShell module connects with (the
+// Graph tenant config has no `organization` or certificate, so Exchange, OneDrive and Purview
+// cannot connect with it). A family it leaves out uses --config. Each file must be under
+// /etc/keel (the container mounts only that) and name the same tenant as --config.
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -81,21 +87,61 @@ export function readOnlyGraphTransport(tokenSource, fetchImpl = globalThis.fetch
  * The collectors in their gated order. Each later workload's activation requires the
  * earlier ones, so the order only decides the order of the log, never what may run.
  */
+// Which PowerShell config family each PowerShell workload connects with.
+export const POWERSHELL_FAMILY = {
+  'exchange-mailbox-settings': 'exchange',
+  'exchange-mail-flow': 'exchange',
+  'onedrive-site-settings': 'onedrive',
+  'purview-labels': 'purview',
+  'purview-retention-dlp': 'purview',
+  'teams-org-policies': 'teams',
+};
+const POWERSHELL_FAMILIES = new Set(Object.values(POWERSHELL_FAMILY));
+const CONFIG_DIR = '/etc/keel/';
+
+/**
+ * The PowerShell config path per family, from the scope file. Throws on an unknown
+ * family, a path outside /etc/keel, or a file that names another tenant, so a
+ * misconfigured host fails the run loudly instead of connecting somewhere else.
+ */
+export function powershellConfigPaths(scope, { config, readFile }) {
+  const paths = scope?.powershellConfigs ?? {};
+  if (paths === null || typeof paths !== 'object' || Array.isArray(paths)) throw new Error('powershellConfigs must be an object');
+  for (const [family, path] of Object.entries(paths)) {
+    if (!POWERSHELL_FAMILIES.has(family)) throw new Error(`powershellConfigs.${family} is not a PowerShell family (${[...POWERSHELL_FAMILIES].join(', ')})`);
+    if (typeof path !== 'string' || !resolve(path).startsWith(CONFIG_DIR) || resolve(path) !== path) {
+      throw new Error(`powershellConfigs.${family} must be an absolute path under ${CONFIG_DIR}`);
+    }
+    const tenantId = JSON.parse(readFile(path)).tenantId;
+    if (tenantId !== undefined && tenantId !== config.tenantId) {
+      throw new Error(`powershellConfigs.${family} names another tenant than the tenant config: refusing to collect`);
+    }
+  }
+  return { ...paths };
+}
+
+/** The PowerShell options one workload runs with: its family's config, else the default. */
+export function powershellFor(workload, { scope = {}, powershell = {} }) {
+  const path = scope.powershellConfigs?.[POWERSHELL_FAMILY[workload]];
+  return path ? { ...powershell, tenantConfigPath: path } : powershell;
+}
+
 export function workloadSteps({ config, scope, transport, powershell }) {
   const common = { sleep };
+  const shellFor = (workload) => powershellFor(workload, { scope, powershell });
   return [
     { workload: SHAREPOINT_WORKLOAD, record: recordSharePointRun,
       collect: (client, base) => collectSharePointSites(client, { ...base, ...common, transport, tenantHost: scope.sharepointHost }) },
     { workload: 'teams-settings', record: recordTeamsRun,
       collect: (client, base) => collectTeams(client, { ...base, ...common, transport, tenantId: config.tenantId }) },
     { workload: 'exchange-mailbox-settings', record: recordExchangeRun,
-      collect: (client, base) => collectExchange(client, { ...base, ...common, transport, powershell, mailboxes: scope.mailboxes ?? [] }) },
+      collect: (client, base) => collectExchange(client, { ...base, ...common, transport, powershell: shellFor('exchange-mailbox-settings'), mailboxes: scope.mailboxes ?? [] }) },
     { workload: 'onedrive-site-settings', record: recordOneDriveRun,
-      collect: (client, base) => collectOneDrive(client, { ...base, powershell, sites: scope.onedriveSites ?? [], myHost: scope.onedriveHost }) },
-    { workload: 'purview-labels', record: recordPurviewRun, collect: (client, base) => collectPurview(client, { ...base, powershell }) },
-    { workload: 'exchange-mail-flow', record: recordMailFlowRun, collect: (client, base) => collectMailFlow(client, { ...base, powershell }) },
-    { workload: 'teams-org-policies', record: recordTeamsPolicyRun, collect: (client, base) => collectTeamsPolicies(client, { ...base, powershell }) },
-    { workload: 'purview-retention-dlp', record: recordRetentionDlpRun, collect: (client, base) => collectRetentionDlp(client, { ...base, powershell }) },
+      collect: (client, base) => collectOneDrive(client, { ...base, powershell: shellFor('onedrive-site-settings'), sites: scope.onedriveSites ?? [], myHost: scope.onedriveHost }) },
+    { workload: 'purview-labels', record: recordPurviewRun, collect: (client, base) => collectPurview(client, { ...base, powershell: shellFor('purview-labels') }) },
+    { workload: 'exchange-mail-flow', record: recordMailFlowRun, collect: (client, base) => collectMailFlow(client, { ...base, powershell: shellFor('exchange-mail-flow') }) },
+    { workload: 'teams-org-policies', record: recordTeamsPolicyRun, collect: (client, base) => collectTeamsPolicies(client, { ...base, powershell: shellFor('teams-org-policies') }) },
+    { workload: 'purview-retention-dlp', record: recordRetentionDlpRun, collect: (client, base) => collectRetentionDlp(client, { ...base, powershell: shellFor('purview-retention-dlp') }) },
   ];
 }
 
@@ -237,6 +283,7 @@ export async function main(argv = process.argv.slice(2), {
     }
     const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
     const scope = arg(argv, 'scope') !== undefined || existsSync(scopePath) ? JSON.parse(readFile(scopePath)) : {};
+    scope.powershellConfigs = powershellConfigPaths(scope, { config, readFile });
     const transport = readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl);
     const result = await runWorkloadCollection(client, {
       tenantRef, config, scope, transport, powershell: { tenantConfigPath: configPath }, logger,

@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { GraphReader } from '../../tools/tenant-probe/graph.mjs';
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
+import { verifiedOutcome } from '../../tools/qualification/entraLive.mjs';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { naturalKeyFor } from '../cir/naturalKey.mjs';
@@ -403,6 +404,84 @@ test('B9: a refused branding write records the Graph error body in the journal',
   assert.equal(outcomes[0].outcome, 'failed');
   assert.ok(outcomes[0].detail.startsWith('status 400: '), outcomes[0].detail);
   assert.deepEqual(JSON.parse(outcomes[0].detail.slice('status 400: '.length)), graphError);
+});
+
+/** A rollback journal that keeps every entry and outcome (rollbackJournal.mjs SQL). */
+function recordingJournal() {
+  const entries = [];
+  return {
+    entries,
+    async query(text, values) {
+      if (text.includes('INSERT INTO rollback_entry')) {
+        const id = `entry-${entries.length + 1}`;
+        entries.push({
+          id, naturalKey: values[1], priorState: values[2], restoreRef: values[3], resourceType: values[4],
+          operation: values[5], intendedState: values[8] === null ? null : JSON.parse(values[8]), outcome: values[9],
+        });
+        return { rows: [{ id }] };
+      }
+      if (text.includes('SET outcome')) {
+        const entry = entries.find((row) => row.id === values[0]);
+        Object.assign(entry, { outcome: values[1], postState: values[2] === null ? null : JSON.parse(values[2]), detail: values[4] });
+      }
+      return { rows: [] };
+    },
+  };
+}
+
+test('Q45 step 29: a default branding PATCH journals its prior state and a verified outcome', async () => {
+  const graph = recordingGraph();
+  const journal = recordingJournal();
+  const path = `/organization/${TENANT}/branding`;
+  const live = { ...branding, signInPageText: 'Defaced' };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, branding, live)], {
+    rollbackClient: journal, runId: 'run-29', restoreRef: 'restore-29',
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(journal.entries.length, 1);
+  const [entry] = journal.entries;
+  assert.equal(entry.resourceType, 'organizationalBranding');
+  assert.equal(entry.operation, 'update');
+  assert.equal(entry.restoreRef, 'restore-29');
+  assert.equal(entry.priorState.signInPageText, 'Defaced');
+  assert.equal(entry.outcome, 'succeeded');
+  assert.equal(entry.detail, null);
+  assert.equal(entry.postState.signInPageText, 'Welcome to Contoso');
+});
+
+test('Q45 step 29: a default branding update with nothing to send is still journaled, and never as a verified write', async () => {
+  // Live: the wave reported the default branding applied but left no journal
+  // entry, so the capture tool could not tell what happened (exit 4).
+  const graph = recordingGraph();
+  const journal = recordingJournal();
+  const path = `/organization/${TENANT}/branding`;
+  const desired = { ...branding, signInPageText: '' };
+  const live = { ...branding, signInPageText: 'Defaced' };
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, desired, live)], {
+    rollbackClient: journal, runId: 'run-29b', restoreRef: 'restore-29b',
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied.length, 1);
+  assert.deepEqual(graph.bodies, [], 'nothing is PATCHed');
+  assert.equal(journal.entries.length, 1);
+  const [entry] = journal.entries;
+  assert.equal(entry.resourceType, 'organizationalBranding');
+  assert.equal(entry.operation, 'update');
+  assert.equal(entry.priorState.signInPageText, 'Defaced');
+  assert.equal(entry.outcome, 'succeeded');
+  assert.match(entry.detail, /^not written: /);
+  assert.equal(verifiedOutcome(entry.outcome, entry.detail), false, 'the capture tool must not count it as a verified write');
+});
+
+test('mutation: a dry run of a branding update with nothing to send journals nothing', async () => {
+  const graph = recordingGraph();
+  const journal = recordingJournal();
+  const path = `/organization/${TENANT}/branding`;
+  const result = await run(graph, [plannedUpdate(graph, 'organizationalBranding', path, { ...branding, signInPageText: '' }, { ...branding, signInPageText: 'Defaced' })], {
+    mode: 'dry-run', rollbackClient: journal, runId: 'run-29c', restoreRef: 'restore-29c',
+  });
+  assert.equal(result.applied.length, 1);
+  assert.deepEqual(journal.entries, []);
 });
 
 test('group expiry: a longer lifetime or narrower scope is restored', async () => {

@@ -1063,8 +1063,21 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   }
   const targetId = resource.targetId ?? resource.live?.targetId ?? null;
   const writes = [...methods, ...(root ? [root] : [])];
-  if (writes.length === 0) return { applied: { naturalKey, targetId } };
   if (mode === 'dry-run') return { applied: { naturalKey, targetId } };
+  if (writes.length === 0) {
+    // Q45 step 29: a planned update with nothing to send (every difference is
+    // an empty backup value, which is never written) is still journaled, so
+    // the run says what happened to it. It is recorded as done but not as a
+    // verified write: nothing was sent and nothing was read back.
+    const journal = await journalBeforeMutation(rollbackClient, {
+      runId, restoreRef, resource, operation: verb, targetId,
+      priorState: resource.live?.payload ?? null,
+      intendedState: desired,
+    });
+    if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+    await noteOutcome(rollbackClient, journal, 'succeeded', { detail: 'not written: no writable field differs from live (empty backup values are never sent)' });
+    return { applied: { naturalKey, targetId } };
+  }
 
   // A reviewer query names directory objects inside a string, out of reach of
   // reference rewriting: each must still exist before the PUT replaces the policy.

@@ -6,6 +6,7 @@
  *
  *   transport(url) -> { status, headers, body }            JSON (null when not JSON)
  *   transport(url, { as: 'stream' }) -> { status, headers, body: Readable | null }
+ *   transport(url, { headers: { Prefer } }) sends Prefer or ConsistencyLevel; any other header is refused.
  *
  * A file download answers with a redirect to a pre-authorized SharePoint URL; fetch
  * follows it and drops the Authorization header on the way, so the token stays on Graph.
@@ -19,6 +20,9 @@ import { CONTENT_READER_IDENTITY, scopeProblems } from '../collect/workloadContr
 
 const GRAPH_HOST = 'graph.microsoft.com';
 const RENEW_BEFORE_MS = 5 * 60 * 1000;
+// Request headers a collector may set: they shape a read and never make it a write.
+// Prefer carries the drive delta options; ConsistencyLevel enables advanced queries.
+const PASSED_HEADERS = new Set(['prefer', 'consistencylevel']);
 
 export function contentReadTransport(tokenSource, fetchImpl = globalThis.fetch, { now = () => Date.now() } = {}) {
   let token = null;
@@ -29,7 +33,7 @@ export function contentReadTransport(tokenSource, fetchImpl = globalThis.fetch, 
       : { accessToken: issued?.accessToken, expiresAt: Number.isFinite(issued?.expiresAt) ? issued.expiresAt : Infinity };
     if (typeof token.accessToken !== 'string' || !token.accessToken) throw new Error('the content reader token source returned no token');
   };
-  return async (url, { method = 'GET', body, as = 'json' } = {}) => {
+  return async (url, { method = 'GET', body, as = 'json', headers: asked = {} } = {}) => {
     const verb = String(method).toUpperCase();
     if (verb !== 'GET' || body !== undefined) throw new Error(`content backup is read-only: refused ${verb} ${url}`);
     const parsed = new URL(url);
@@ -38,8 +42,13 @@ export function contentReadTransport(tokenSource, fetchImpl = globalThis.fetch, 
     const problems = scopeProblems({ kind: 'graph', method: 'GET', endpoint }, { identity: CONTENT_READER_IDENTITY });
     if (problems.length) throw new Error(`content backup refused ${url}: ${problems.join('; ')}`);
     if (!['json', 'stream'].includes(as)) throw new TypeError('as must be json or stream');
+    const extra = {};
+    for (const [name, value] of Object.entries(asked ?? {})) {
+      if (!PASSED_HEADERS.has(name.toLowerCase())) throw new Error(`content backup refused request header ${name}`);
+      extra[name.toLowerCase()] = String(value);
+    }
     if (!token || now() >= token.expiresAt - RENEW_BEFORE_MS) await renew();
-    const send = () => fetchImpl(parsed.href, { method: 'GET', headers: { authorization: `Bearer ${token.accessToken}` } });
+    const send = () => fetchImpl(parsed.href, { method: 'GET', headers: { ...extra, authorization: `Bearer ${token.accessToken}` } });
     let response = await send();
     if (response.status === 401) {
       await response.body?.cancel?.();

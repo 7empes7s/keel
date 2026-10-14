@@ -1,0 +1,177 @@
+import { test } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { CONTENT_COLLECTORS } from './collectors.mjs';
+import { driveTransport, mailReader } from './collectorTransports.mjs';
+import { backupOneDrives } from './onedrives.mjs';
+import { createMemoryContentStore } from './store.mjs';
+import { createMemorySyncState } from './syncState.mjs';
+import { contentReadTransport } from './transport.mjs';
+import { runContentCollection } from '../../cli/keel-content-collect.mjs';
+
+const GRAPH = 'https://graph.microsoft.com';
+const TENANT_ID = '00000000-0000-0000-0000-0000000000c1';
+const HOST = 'keelrt.sharepoint.com';
+const SITE = `${HOST},11111111-1111-1111-1111-111111111111,22222222-2222-2222-2222-222222222222`;
+const LIST = '55555555-5555-5555-5555-555555555555';
+const OTHER = `${HOST},33333333-3333-3333-3333-333333333333,44444444-4444-4444-4444-444444444444`;
+const quiet = { log: () => {} };
+
+const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+const deltaDone = (url) => json({ value: [], '@odata.deltaLink': `${url.split('?')[0]}?$deltatoken=KEEL-RT-done` });
+
+/**
+ * A fixture tenant behind a fake fetch: two KEEL-RT- users (one with a OneDrive and a
+ * mailbox, one without either), one user outside the prefix, one KEEL-RT- site with a
+ * document library. Every other list answers empty and every other delta answers done.
+ */
+function fixtureTenant() {
+  const calls = [];
+  const fetchImpl = async (href, init) => {
+    calls.push({ url: href, headers: init.headers });
+    const url = new URL(href);
+    const path = decodeURIComponent(url.pathname);
+    const token = url.searchParams.get('$deltatoken');
+    if (path === '/v1.0/users') {
+      return json({ value: [
+        { id: 'u-alice', displayName: 'KEEL-RT-alice', userPrincipalName: 'KEEL-RT-alice@keelrt.example', mail: 'KEEL-RT-alice@keelrt.example' },
+        { id: 'u-bob', displayName: 'KEEL-RT-bob', userPrincipalName: 'KEEL-RT-bob@keelrt.example', mail: null },
+        { id: 'u-carol', displayName: 'carol', userPrincipalName: 'carol@keelrt.example', mail: 'carol@keelrt.example' },
+      ] });
+    }
+    if (path === '/v1.0/users/u-alice/drive') return json({ id: 'KEEL-RT-drive-alice', driveType: 'business' });
+    if (path === '/v1.0/users/u-bob/drive') return json({ error: { code: 'itemNotFound', message: 'no OneDrive' } }, 404);
+    if (path === '/v1.0/users/u-carol/drive') throw new Error('a user outside the prefix was read');
+    for (const [driveId, file] of [['KEEL-RT-drive-alice', 'KEEL-RT-notes.txt'], ['KEEL-RT-libdrive', 'KEEL-RT-report.txt']]) {
+      if (path === `/v1.0/drives/${driveId}/root/delta`) {
+        if (token) return deltaDone(href);
+        return json({
+          value: [
+            { id: `${driveId}-root`, root: {}, name: 'root' },
+            { id: `${driveId}-f1`, name: file, file: {}, size: 14, cTag: 'c1', eTag: 'e1', parentReference: { id: `${driveId}-root` } },
+          ],
+          '@odata.deltaLink': `${GRAPH}/v1.0/drives/${driveId}/root/delta?$deltatoken=KEEL-RT-1`,
+        });
+      }
+      if (path === `/v1.0/drives/${driveId}/items/${driveId}-f1/content`) return new Response('KEEL-RT- bytes', { status: 200 });
+    }
+    if (path === '/v1.0/users/u-alice/mailboxSettings/userPurpose') return json({ value: 'user' });
+    if (path === '/beta/users/u-alice/settings/exchange') return json({ error: { code: 'NotFound' } }, 404);
+    if (path === '/v1.0/users/u-alice/mailFolders/delta') {
+      if (token) return deltaDone(href);
+      return json({ value: [{ id: 'inbox', displayName: 'Inbox', changeKey: 'k1' }], '@odata.deltaLink': `${GRAPH}/v1.0/users/u-alice/mailFolders/delta?$deltatoken=KEEL-RT-1` });
+    }
+    if (path === '/v1.0/users/u-alice/mailFolders/inbox/messages/delta') {
+      if (token) return deltaDone(href);
+      return json({ value: [{ id: 'm1', changeKey: 'mk1' }], '@odata.deltaLink': `${GRAPH}/v1.0/users/u-alice/mailFolders/inbox/messages/delta?$deltatoken=KEEL-RT-1` });
+    }
+    if (path === '/v1.0/users/u-alice/messages/m1/$value') return new Response('Subject: KEEL-RT-\r\n\r\nhello', { status: 200 });
+    if (path === '/v1.0/sites/root') return json({ siteCollection: { hostname: HOST } });
+    if (path === '/v1.0/sites/getAllSites') {
+      return json({ value: [
+        { id: SITE, name: 'KEEL-RT-site', displayName: 'KEEL-RT-site', webUrl: `https://${HOST}/sites/KEEL-RT-site` },
+        { id: OTHER, name: 'other', displayName: 'other', webUrl: `https://${HOST}/sites/other` },
+      ] });
+    }
+    if (path.startsWith(`/v1.0/sites/${OTHER}`)) throw new Error('a site outside the prefix was read');
+    if (path === `/v1.0/sites/${SITE}`) return json({ id: SITE, displayName: 'KEEL-RT-site', lastModifiedDateTime: '2026-10-14T00:00:00Z' });
+    if (path === `/v1.0/sites/${SITE}/lists`) return json({ value: [{ id: LIST, displayName: 'KEEL-RT-docs', list: { template: 'documentLibrary' } }] });
+    if (path === `/v1.0/sites/${SITE}/lists/${LIST}/drive`) return json({ id: 'KEEL-RT-libdrive', driveType: 'documentLibrary' });
+    if (path.endsWith('/delta')) return deltaDone(href);
+    return json({ value: [] });
+  };
+  return { calls, fetchImpl, transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl) };
+}
+
+function withState(syncState) {
+  return CONTENT_COLLECTORS.map((entry) => ({ workload: entry.workload, collect: (client, context) => entry.collect(client, { ...context, syncState }) }));
+}
+
+test('the registry runs mail, OneDrive, sites, Teams and Planner, with sites before Teams', () => {
+  const order = CONTENT_COLLECTORS.map((entry) => entry.workload);
+  assert.deepEqual(order, ['exchange-mail', 'onedrive', 'sharepoint-sites', 'teams', 'planner']);
+  assert.ok(order.indexOf('sharepoint-sites') < order.indexOf('teams'), 'Teams channel files point at the team site backup of the same run');
+});
+
+test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant and keeps delta state', async () => {
+  const tenant = fixtureTenant();
+  const store = createMemoryContentStore();
+  const syncState = createMemorySyncState();
+  const run = () => runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store, transport: tenant.transport,
+    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(syncState), logger: quiet,
+  });
+
+  const first = await run();
+  assert.deepEqual(first.runs.map((r) => [r.workload, r.outcome]), [
+    ['exchange-mail', 'succeeded'], ['onedrive', 'succeeded'], ['sharepoint-sites', 'succeeded'], ['teams', 'succeeded'], ['planner', 'succeeded'],
+  ], JSON.stringify(first.runs.map((r) => r.reasons)));
+  assert.equal(first.exitCode, 0);
+  assert.ok(first.runs.find((r) => r.workload === 'exchange-mail').items >= 2, 'the folder and the message are stored');
+
+  const files = await store.listItems({ container: 'drive:KEEL-RT-drive-alice' });
+  assert.ok(files.some((item) => item.metadata.kind === 'drive-content' && item.bytes === 'KEEL-RT- bytes'.length), 'the OneDrive file is stored');
+  const site = await store.listItems({ container: `site:${SITE}` });
+  assert.ok(site.some((item) => item.workload === 'sharepoint-sites' && item.metadata.kind === 'drive-content'), 'the library file is stored with the site');
+
+  // Delta state is saved per mailbox, per OneDrive and per library.
+  const keys = [...syncState.rows.keys()].map((key) => JSON.parse(key).slice(1));
+  assert.deepEqual(keys.sort(), [
+    ['exchange-mail', 'mailbox/u-alice'],
+    ['onedrive', 'drive:KEEL-RT-drive-alice'],
+    ['sharepoint-sites', `library:${SITE}/${LIST}/KEEL-RT-libdrive`],
+  ]);
+
+  // The second run resumes from the saved delta links instead of reading everything again.
+  tenant.calls.length = 0;
+  const second = await run();
+  assert.equal(second.exitCode, 0);
+  const deltas = tenant.calls.map((call) => new URL(call.url)).filter((url) => url.pathname.endsWith('/delta') && url.pathname.includes('KEEL-RT-'));
+  assert.ok(deltas.length >= 2);
+  assert.ok(deltas.every((url) => url.searchParams.get('$deltatoken') === 'KEEL-RT-1'), deltas.map(String).join('\n'));
+  const mailDeltas = tenant.calls.map((call) => new URL(call.url)).filter((url) => url.pathname.startsWith('/v1.0/users/u-alice/mailFolders'));
+  assert.ok(mailDeltas.length > 0 && mailDeltas.every((url) => url.searchParams.get('$deltatoken') === 'KEEL-RT-1'));
+  assert.ok(!tenant.calls.some((call) => call.url.endsWith('/content')), 'nothing already stored is downloaded again');
+  // The drive delta carries its Prefer options through the read-only transport.
+  const driveDelta = tenant.calls.find((call) => call.url.includes('/drives/KEEL-RT-drive-alice/root/delta'));
+  assert.match(driveDelta.headers.prefer, /deltashowremovedasdeleted/);
+});
+
+test('OneDrive backup reports users without a drive as skipped and fails only when nothing synced', async () => {
+  const tenant = fixtureTenant();
+  const store = createMemoryContentStore();
+  const result = await backupOneDrives({ transport: tenant.transport, store, tenantRef: 'sha256:KEEL-RT', syncState: createMemorySyncState(), namePrefix: 'KEEL-RT-' });
+  assert.equal(result.outcome, 'succeeded', JSON.stringify(result));
+  assert.deepEqual(result.drives.map((drive) => drive.driveId), ['KEEL-RT-drive-alice']);
+  assert.deepEqual(result.skipped, [{ userId: 'u-bob', name: 'KEEL-RT-bob@keelrt.example', reason: 'no OneDrive' }]);
+
+  const denied = contentReadTransport(async () => 'KEEL-RT-token', async () => json({ error: { code: 'Authorization_RequestDenied' } }, 403));
+  const failed = await backupOneDrives({ transport: denied, store, tenantRef: 'sha256:KEEL-RT', syncState: createMemorySyncState() });
+  assert.equal(failed.outcome, 'failed');
+  assert.match(failed.errors[0].error, /HTTP 403/);
+});
+
+test('the adapters keep every request a Graph GET and only pass read headers', async () => {
+  const seen = [];
+  let throttled = 1;
+  const fetchImpl = async (href, init) => {
+    seen.push({ href, init });
+    if (href.includes('throttled') && throttled-- > 0) return json({}, 429, { 'retry-after': '2' });
+    if (href.includes('missing')) return json({ error: { code: 'ErrorItemNotFound', message: 'gone' } }, 404);
+    if (href.includes('/$value')) return new Response('x'.repeat(100), { status: 200 });
+    return json({ value: [] });
+  };
+  const transport = contentReadTransport(async () => 'KEEL-RT-token', fetchImpl);
+  await assert.rejects(transport(`${GRAPH}/v1.0/users`, { headers: { 'x-ms-whatever': '1' } }), /refused request header/);
+  await assert.rejects(driveTransport(transport)({ method: 'DELETE', url: `${GRAPH}/v1.0/drives/d/items/i` }), /read-only/);
+
+  const waits = [];
+  const reader = mailReader(transport, { sleep: async (ms) => { waits.push(ms); } });
+  assert.deepEqual(await reader.get('v1.0', '/users/throttled/messages'), { ok: true, status: 200, body: { value: [] } });
+  assert.deepEqual(waits, [2000]);
+  assert.deepEqual(await reader.get('v1.0', '/users/missing'), { ok: false, status: 404, code: 'ErrorItemNotFound', error: 'gone' });
+  assert.equal((await reader.get('v1.0', 'https://evil.example/v1.0/users')).code, 'Refused');
+  assert.equal((await reader.getStream('v1.0', '/users/u/messages/m/$value', { maxBytes: 10 })).tooLarge, true);
+  assert.equal((await reader.getStream('v1.0', '/users/u/messages/m/$value', { maxBytes: 1000 })).bytes.length, 100);
+  assert.equal((await reader.getStream('v1.0', '/users/missing/$value', { maxBytes: 1000 })).status, 404);
+  assert.ok(seen.every((call) => call.init.method === 'GET'));
+});

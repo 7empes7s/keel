@@ -62,14 +62,14 @@ export function readerProblems(reader, config) {
  * One scheduled run. A collector that throws is recorded as failed with the reason,
  * and the next one still runs. Exit code 1 when any collector failed or was partial.
  */
-export async function runContentCollection(client, { tenantRef, store, transport, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console }) {
+export async function runContentCollection(client, { tenantRef, tenantId, store, transport, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console }) {
   const runs = [];
   if (!collectors.length) logger.log('content backup: no content collectors are registered yet; nothing was read');
   for (const entry of collectors) {
     if (!CONTENT_WORKLOADS.includes(entry.workload)) throw new Error(`content collector for unknown workload ${entry.workload}`);
     let result;
     try {
-      result = await entry.collect(client, { tenantRef, store, transport, scope, sleep, now, logger });
+      result = await entry.collect(client, { tenantRef, tenantId, store, transport, scope, sleep, now, logger });
     } catch (error) {
       result = { outcome: 'failed', items: 0, bytes: 0, reasons: [String(error?.message ?? error)] };
     }
@@ -110,7 +110,7 @@ export async function main(argv = process.argv.slice(2), {
       index: createPgContentIndex(client), storage: storageFor(reader.storage), key: parseContentKey(readFile(reader.contentKeyFile)),
     });
     const transport = contentReadTransport(() => getTokenFn(reader), fetchImpl);
-    const result = await runContentCollection(client, { tenantRef, store, transport, scope, collectors, logger });
+    const result = await runContentCollection(client, { tenantRef, tenantId: config.tenantId, store, transport, scope, collectors, logger });
     return result.exitCode;
   } finally {
     await client.end();

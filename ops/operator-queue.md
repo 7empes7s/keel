@@ -2611,7 +2611,7 @@ item that needs it stays untouched.
 - Drafted by the "Add API permissions" thread (2026-10-14). Same decision as Q55 (D-Q55); Marouane then added
   "all the necessary permissions" (project chat, 2026-10-14 21:38 UTC), so this covers every read discovery and the plan's
   backups probe, not only ask 1.
-- Status: todo
+- Status: in-progress
 - Needs: Q55 done.
 - **Same rules as Q55:** test tenant, manifest only (GET the KEEL Collector application, MERGE, one PATCH), read permissions
   only, no appRoleAssignment, no consent. Resolve names from the Graph service principal's appRoles (type Role); skip and

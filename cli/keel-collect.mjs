@@ -17,11 +17,13 @@ function arg(name, fallback, argv = process.argv) {
 
 /**
  * The relationship families every scheduled collection reads: each Intune
- * policy's assignments (issue #155) and each group's direct members and owners,
- * so a restore can put a group's membership back.
+ * policy's assignments (issue #155), each group's direct members and owners,
+ * so a restore can put a group's membership back, and who owns each app and
+ * service principal plus the application permissions granted to each service
+ * principal, so privilege changes show up in backups and drift.
  */
 export const COLLECT_RELATIONSHIPS = Object.freeze({
-  families: Object.freeze(['assignment', 'member', 'owner']),
+  families: Object.freeze(['assignment', 'member', 'owner', 'appOwner', 'servicePrincipalOwner', 'appRoleGrant']),
   // Gap D5: nested membership of groups a Conditional Access policy names, read
   // only for those groups, so break-glass readiness can check exclusions.
   conditionalAccessTransitive: true,
@@ -58,6 +60,21 @@ export function describeGroupMembershipReads(byFamily) {
   const problems = count('partial') + count('failed');
   return `group member and owner reads: ${count('complete') + count('complete-empty')} complete, ${count('partial')} partial, ${count('failed')} failed${problems > 0
     ? ' — those groups\' memberships will not be restored; a failed read is often a missing Group.Read.All or GroupMember.Read.All permission'
+    : ''}`;
+}
+
+/**
+ * One log line with how many app owner, service principal owner and app
+ * permission grant reads ended in each outcome (counts only). Null when no app
+ * or service principal was read.
+ */
+export function describeAppPrivilegeReads(byFamily) {
+  const families = ['appOwner', 'servicePrincipalOwner', 'appRoleGrant'].filter((family) => byFamily?.[family]);
+  if (families.length === 0) return null;
+  const count = (outcome) => families.reduce((sum, family) => sum + (byFamily[family][outcome] ?? 0), 0);
+  const problems = count('partial') + count('failed');
+  return `app owner and permission grant reads: ${count('complete') + count('complete-empty')} complete, ${count('partial')} partial, ${count('failed')} failed${problems > 0
+    ? ' — those apps\' owners or permissions are not in this backup; a failed read is often a missing Application.Read.All permission'
     : ''}`;
 }
 
@@ -104,7 +121,8 @@ export async function runCollect({
   try {
     // Issue #155: each Intune policy's assignments (which groups get it) are read
     // beside the policy, and each group's members and owners beside the group, so
-    // a restore can put them back. A failed edge read is recorded as its own
+    // a restore can put them back. App and service principal owners and app
+    // permission grants are read the same way. A failed edge read is recorded as its own
     // observation and never changes a type's outcome.
     // Gap register M6: the company branding files are backed up with the snapshot.
     const { snapshotId, coverageDigest, relationshipsByFamily, brandingAssets } = await collectSnapshotFn(client, {
@@ -115,6 +133,8 @@ export async function runCollect({
     if (assignmentLine) logger.log(assignmentLine);
     const membershipLine = describeGroupMembershipReads(relationshipsByFamily);
     if (membershipLine) logger.log(membershipLine);
+    const appPrivilegeLine = describeAppPrivilegeReads(relationshipsByFamily);
+    if (appPrivilegeLine) logger.log(appPrivilegeLine);
     const brandingLine = describeBrandingFileReads(brandingAssets);
     if (brandingLine) logger.log(brandingLine);
     logger.table?.(coverageDigest);

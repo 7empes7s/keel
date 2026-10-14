@@ -169,6 +169,15 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the language of that localization, for example fr-FR', drift: 'change its sign-in page text',
     note: 'Remove the fr-FR localization at the end if this run added it.',
   },
+  // Gap M6 (#199): each uploaded branding file is journaled as its own write,
+  // keyed organizationalBranding#file:<language>/<file> (language 0 is the
+  // default branding). It belongs to a tenant-wide setting, so it can never
+  // carry a KEEL-RT name: the capture needs --allow-tenant-setting.
+  'organizationalBranding#file': {
+    kind: 'tenant-setting', fixture: 'one file (for example the favicon) of the fr-FR branding localization from the step above, or of the default branding',
+    select: 'organizationalBranding#file:fr-FR/favicon (the language, then the file)', drift: 'upload a different favicon for that language; keep the original file',
+    note: 'A restore of the branding journals each file it uploads apart from the text and colours: capture it with --resource-type \'organizationalBranding#file\', not as the localization.',
+  },
   groupLifecyclePolicy: {
     kind: 'tenant-setting', fixture: 'the tenant group expiration policy; if there is none, create one for Selected groups holding only KEEL-RT-148-group, lifetime 365 days',
     select: 'the policy id KEEL shows (it has no name)', drift: 'make the lifetime LONGER (for example 400 days), never shorter: a shorter lifetime can expire and delete Microsoft 365 groups',

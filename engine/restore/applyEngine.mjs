@@ -2,7 +2,7 @@ import { enforceReportOnly } from '../safety/conditionalAccessGuard.mjs';
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
-import { createBodyProjection, immutableDrift, writableProjection } from '../reconcile/writableProjection.mjs';
+import { createBodyProjection, immutableDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
@@ -714,7 +714,12 @@ export async function applyWave(writer, governor, wave, {
       }
       // A policy that could not be re-read is still written report-only below.
       let live = reRead?.ok === false ? null : (reRead?.body ?? reRead);
-      if (live && canonicalHash(live, resource.resourceType) === canonicalHash(desired, resource.resourceType)) {
+      // Convergence compares only what the snapshot holds: the re-read carries
+      // every property Graph returns, most of which the snapshot never had.
+      const written = verificationView(desired, desired);
+      const converged = (body) => canonicalHash(verificationView(body, desired), resource.resourceType)
+        === canonicalHash(written, resource.resourceType);
+      if (live && converged(live)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
         continue;
@@ -737,7 +742,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
-        isNotFound(r) || (r?.ok === true && canonicalHash(r.body, resource.resourceType) !== canonicalHash(desired, resource.resourceType)), { retryOperation, ...readAfterWriteOptions });
+        isNotFound(r) || (r?.ok === true && !converged(r.body)), { retryOperation, ...readAfterWriteOptions });
       if (updateReRead?.ok === false) {
         if (isPolicy) {
           await policyMayBeOn('the policy could not be read back after the report-only update', live, updateReRead);
@@ -752,15 +757,16 @@ export async function applyWave(writer, governor, wave, {
         await policyMayBeOn(`it reads back as ${live?.state ?? 'an unknown state'}`, live);
         continue;
       }
-      if (canonicalHash(live, resource.resourceType) !== canonicalHash(desired, resource.resourceType)) {
-        const residual = residualDiff(desired, live, resource.resourceType);
+      if (!converged(live)) {
+        const liveView = verificationView(live, desired);
+        const residual = residualDiff(written, liveView, resource.resourceType);
         if (residual.length === 0) {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
           applied.push({ naturalKey: resource.naturalKey, targetId });
           continue;
         }
-        const immutable = immutableDrift(desired, live, resource.resourceType);
+        const immutable = immutableDrift(written, liveView, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
           (immutablePath) => path === immutablePath || path.startsWith(`${immutablePath}.`),
         ))) {
@@ -979,9 +985,12 @@ export async function applyWave(writer, governor, wave, {
       failed.push(graphFailure(resource.naturalKey, reRead));
       continue;
     }
+    // Verification compares exactly what was posted: the read-back's extra
+    // properties and annotations were never written (verificationView), and
+    // server-owned paths are stripped by canonicalHash.
     const createdLive = forVerification(reRead?.body ?? reRead, resource);
-    const actualHash = canonicalHash(createExcluded ? onlyFields(createdLive, createBody) : createdLive, resource.resourceType);
-    const desiredHash = canonicalHash(createBody, resource.resourceType);
+    const actualHash = canonicalHash(verificationView(createdLive, createBody), resource.resourceType);
+    const desiredHash = canonicalHash(verificationView(createBody, createBody), resource.resourceType);
     if (actualHash !== desiredHash) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}` });
@@ -1660,13 +1669,6 @@ function withoutFields(value, fields) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const out = { ...value };
   for (const field of fields) delete out[field];
-  return out;
-}
-
-function onlyFields(value, shape) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const out = {};
-  for (const key of Object.keys(shape ?? {})) if (Object.hasOwn(value, key)) out[key] = value[key];
   return out;
 }
 

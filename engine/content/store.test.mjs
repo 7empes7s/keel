@@ -95,7 +95,7 @@ test('content-defined chunks stay within bounds and do not depend on read sizes'
 test('the memory store round-trips, dedupes and keeps only ciphertext', async () => {
   const store = createMemoryContentStore();
   const plain = Buffer.from('KEEL-RT- a small message body that must never be stored in the clear. '.repeat(50));
-  const first = await store.putItem(Readable.from([plain]), item({ workload: 'mailbox', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' }));
+  const first = await store.putItem(Readable.from([plain]), item({ workload: 'exchange-mail', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' }));
   assert.match(first.ref, /^keel-content:[0-9a-f-]{36}$/);
   assert.equal(first.bytes, plain.length);
   assert.equal(first.sha256, createHash('sha256').update(plain).digest('hex'));
@@ -106,10 +106,10 @@ test('the memory store round-trips, dedupes and keeps only ciphertext', async ()
   // The same version is not read again; the same bytes under another key store nothing new.
   let pulled = false;
   const again = await store.putItem(Readable.from((async function* () { pulled = true; yield plain; })()),
-    item({ workload: 'mailbox', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' }));
+    item({ workload: 'exchange-mail', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' }));
   assert.deepEqual(again, { ...first, deduped: true });
   assert.equal(pulled, false, 'a held version is not downloaded again');
-  const copy = await store.putItem(Readable.from([plain]), item({ workload: 'mailbox', container: 'mailbox:KEEL-RT-user', itemKey: 'm2', version: 'ck-1' }));
+  const copy = await store.putItem(Readable.from([plain]), item({ workload: 'exchange-mail', container: 'mailbox:KEEL-RT-user', itemKey: 'm2', version: 'ck-1' }));
   assert.equal(copy.deduped, true);
   assert.notEqual(copy.ref, first.ref);
   assert.equal(store.storage.objects.size, 1);
@@ -117,7 +117,7 @@ test('the memory store round-trips, dedupes and keeps only ciphertext', async ()
   // Two runs racing on one version with different bytes: the second is refused, not merged.
   const racing = createContentStore({ index: { ...store.index, findItem: async () => null }, storage: store.storage, key: randomBytes(32) });
   await assert.rejects(racing.putItem(Readable.from([Buffer.from('other')]),
-    item({ workload: 'mailbox', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' })), /different content/);
+    item({ workload: 'exchange-mail', container: 'mailbox:KEEL-RT-user', itemKey: 'm1', version: 'ck-1' })), /different content/);
   const empty = await store.putItem(Readable.from([]), item({ itemKey: 'empty' }));
   assert.equal(empty.bytes, 0);
   assert.equal((await Readable.from(await store.getItem(empty.ref)).toArray()).length, 0);

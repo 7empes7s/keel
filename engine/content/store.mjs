@@ -34,8 +34,12 @@ import { Readable } from 'node:stream';
 import { createMemoryContentIndex } from './index.mjs';
 
 export const CONTENT_REF_PREFIX = 'keel-content:';
-// The content workloads an item may belong to. A content collector names one of these.
-export const CONTENT_WORKLOADS = Object.freeze(['mailbox', 'onedrive', 'sharepoint', 'teams', 'planner']);
+// The content workloads an item may belong to, as the Wave 1 collectors name them:
+// exchange-mail (MAIL), onedrive and sharepoint libraries (DRIVE), sharepoint-sites
+// (SITES), teams (TEAMS), planner and group-conversations (PLANNER).
+export const CONTENT_WORKLOADS = Object.freeze([
+  'exchange-mail', 'onedrive', 'sharepoint', 'sharepoint-sites', 'teams', 'planner', 'group-conversations',
+]);
 
 export const CHUNKING = Object.freeze({ min: 256 * 1024, maskBits: 20, max: 4 * 1024 * 1024 });
 const MAGIC = Buffer.from('KCH1');

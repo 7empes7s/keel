@@ -116,6 +116,8 @@ export const WORKLOAD_RESOURCE_TYPES = Object.freeze([
   'purviewRetentionDlp',
   // READ-EXO: the Exchange and Defender settings mail flow does not read (read-only for now).
   'exchangeExtended',
+  // READ-PP: Power Platform environments, DLP policies, connectors and Power BI tenant settings (read-only for now).
+  'powerPlatformSettings',
 ]);
 
 function assertNoWorkloadTypes(resources) {

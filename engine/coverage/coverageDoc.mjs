@@ -381,6 +381,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL does not restore these yet. Change them, and the policies assigned to users and groups, by hand in the Teams admin center using the backup. A live event video provider\'s API token is never backed up: enter it again.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
     todo: 'KEEL does not restore these yet. Recreate them by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
+  'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
+    todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({

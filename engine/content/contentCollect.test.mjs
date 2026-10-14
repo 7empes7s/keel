@@ -81,6 +81,32 @@ test('the content transport reads Graph only, with GET only', async () => {
   assert.equal(calls.length, 2, 'refused requests were never sent');
 });
 
+test('the content transport renews its token before expiry and once on a 401', async () => {
+  let clock = 0;
+  const issued = [];
+  const tokenSource = async () => { issued.push(clock); return { accessToken: `KEEL-RT-token-${issued.length}`, expiresAt: clock + 60 * 60 * 1000 }; };
+  const seen = [];
+  let expireNext = false;
+  const fetchImpl = async (url, init) => {
+    seen.push(init.headers.authorization);
+    if (expireNext) { expireNext = false; return new Response('', { status: 401 }); }
+    return new Response('{}', { status: 200 });
+  };
+  const transport = contentReadTransport(tokenSource, fetchImpl, { now: () => clock });
+  const url = 'https://graph.microsoft.com/v1.0/users/KEEL-RT-user/messages/delta';
+  await transport(url);
+  clock = 50 * 60 * 1000;
+  await transport(url);
+  assert.equal(issued.length, 1, 'a token with ten minutes left is kept');
+  clock = 56 * 60 * 1000;
+  await transport(url);
+  assert.equal(issued.length, 2, 'a token within five minutes of expiry is renewed');
+  expireNext = true;
+  assert.equal((await transport(url)).status, 200);
+  assert.equal(issued.length, 3, 'a 401 renews once and retries');
+  assert.deepEqual(seen.slice(-2), ['Bearer KEEL-RT-token-2', 'Bearer KEEL-RT-token-3']);
+});
+
 test('a content-collect run waits on the reader, checks it, and runs every registered collector', async () => {
   const config = { tenantId: '00000000-0000-0000-0000-0000000000c1', clientId: 'collector-app' };
   const files = { '/etc/keel/tenant.json': JSON.stringify(config) };

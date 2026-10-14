@@ -188,15 +188,70 @@ test('a failed discovery is a failed run with nothing stored, never an empty one
   assert.equal(store.items.length, 0);
 });
 
-test('a next page that leaves the requested path is refused, not followed', async () => {
+test('a refused next page fails that read only; the run still returns a result', async () => {
   const routes = fixtureRoutes();
   routes[`${G}/groups/${GROUP}/planner/plans`] = { value: [], '@odata.nextLink': `${G}/groups/${GROUP}/conversations` };
+  routes[`${G}/planner/plans/${PLAN}/buckets`] = { value: [], '@odata.nextLink': `${G}/planner/plans/${PLAN}/buckets?$expand=tasks` };
   const { transport, calls } = fixtureTransport({ routes });
-  await assert.rejects(
-    backupPlannerAndConversations({ transport, contentStore: memoryContentStore(), tenantRef: 't', groupIds: null, namePrefix: 'KEEL-RT-Planner' }),
-    PlannerScopeError,
-  );
-  assert.ok(!calls.includes(`${G}/groups/${GROUP}/conversations`), 'the off-path next page was never requested');
+  const result = await backupPlannerAndConversations({ transport, contentStore: memoryContentStore(), tenantRef: 't', namePrefix: 'KEEL-RT-Planner' });
+  const [group] = result.groups;
+  assert.equal(group.planner.status, 'failed');
+  assert.equal(group.planner.error.includes('refused a next page'), true);
+  assert.equal(group.conversations.status, 'observed', 'the other section still ran');
+  assert.equal(result.outcome, 'partial');
+  assert.equal(calls.filter((url) => url === `${G}/groups/${GROUP}/conversations`).length, 1, 'only the real conversations read, never the off-path next page');
+});
+
+test('the page cap keeps what was read and marks the section partial', async () => {
+  const routes = fixtureRoutes();
+  const tasks = `${G}/planner/plans/${PLAN}/tasks`;
+  routes[`${tasks}?$skipToken=t2`] = routes[`${tasks}?$skiptoken=t2`];
+  routes[tasks] = { ...routes[tasks], '@odata.nextLink': `${tasks}?$skipToken=t2` };
+  routes[`${tasks}?$skipToken=t2`] = { ...routes[`${tasks}?$skipToken=t2`], '@odata.nextLink': `${tasks}?$skipToken=t3` };
+  const store = memoryContentStore();
+  const { transport } = fixtureTransport({ routes });
+  const result = await backupPlannerAndConversations({ transport, contentStore: store, tenantRef: 't', namePrefix: 'KEEL-RT-Planner', maxPages: 2 });
+  const [group] = result.groups;
+  assert.equal(group.planner.counts.tasks, 2, 'both pages read before the cap are stored ($skipToken in either case)');
+  assert.equal(group.planner.status, 'partial');
+  assert.deepEqual(group.planner.errors.map((error) => [error.scope, error.status]), [[`plan:${PLAN}/tasks`, 'capped']]);
+  assert.equal(result.outcome, 'partial');
+});
+
+test('an object with an id KEEL will not put in a path is still stored and flagged', async () => {
+  const routes = fixtureRoutes();
+  routes[`${G}/planner/plans/${PLAN}/tasks?$skiptoken=t2`] = { value: [{ id: '../task', title: 'odd' }] };
+  const store = memoryContentStore();
+  const { transport, calls } = fixtureTransport({ routes });
+  const result = await backupPlannerAndConversations({ transport, contentStore: store, tenantRef: 't', namePrefix: 'KEEL-RT-Planner' });
+  const [group] = result.groups;
+  assert.equal(group.planner.counts.tasks, 2);
+  assert.equal(group.planner.status, 'partial');
+  const flagged = result.incomplete.find((entry) => entry.itemKey.startsWith('task:unsafe-id:'));
+  assert.deepEqual(flagged.missing, ['details']);
+  const item = store.items.find((entry) => entry.itemKey === flagged.itemKey);
+  assert.equal(JSON.parse(await readBack(store, item.ref)).title, 'odd');
+  assert.ok(!calls.some((url) => url.includes('..') || url.includes('%2E%2E')));
+});
+
+test('a run where every group is denied is failed, and an unreadable named group is that group\'s failure', async () => {
+  const routes = fixtureRoutes();
+  delete routes[`${G}/groups/${DENIED}/conversations`];
+  const named = { ...routes, [`${G}/groups/${DENIED}?$select=id,displayName`]: { id: DENIED, displayName: 'KEEL-RT-NoPlanner' } };
+  const allDenied = await backupPlannerAndConversations({
+    transport: fixtureTransport({ routes: named, fail: { [`${G}/groups/${DENIED}/conversations`]: 403 } }).transport,
+    contentStore: memoryContentStore(), tenantRef: 't', groupIds: [DENIED],
+  });
+  assert.equal(allDenied.outcome, 'failed');
+
+  const withGone = { ...named, [`${G}/groups/${GROUP}?$select=id,displayName`]: { id: GROUP, displayName: 'KEEL-RT-Planner' } };
+  const result = await backupPlannerAndConversations({
+    transport: fixtureTransport({ routes: withGone }).transport, contentStore: memoryContentStore(), tenantRef: 't', groupIds: [OTHER, GROUP],
+  });
+  assert.deepEqual(result.unreachable.map((entry) => [entry.groupId, entry.httpStatus]), [[OTHER, 404]]);
+  assert.deepEqual(result.groups.map((group) => group.groupId), [GROUP]);
+  assert.equal(result.groups[0].planner.status, 'observed');
+  assert.equal(result.outcome, 'partial');
 });
 
 test('the allowlist refuses writes, other hosts, other paths and content-expanding queries', () => {
@@ -214,6 +269,8 @@ test('the allowlist refuses writes, other hosts, other paths and content-expandi
     [`${G}/groups/${GROUP}/conversations?$expand=threads`],
     [`${G}/groups/${GROUP}/conversations/${enc(CONV)}/threads/${enc(THREAD)}/reply`],
     [`${G}/groups?$filter=startswith(displayName,'a')`],
+    [`${G}/groups?${new URLSearchParams([['$filter', "groupTypes/any(c:c eq 'Unified')"], ['$filter', "startswith(displayName,'a')"]])}`],
+    [`${G}/groups?$FILTER=startswith(displayName,'a')`],
     [`${G}/groups/not-a-guid/planner/plans`],
   ];
   for (const [url, method] of refused) assert.throws(() => assertPlannerRequest(url, method), PlannerScopeError, `${method ?? 'GET'} ${url}`);

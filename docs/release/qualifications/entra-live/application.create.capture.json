@@ -1,0 +1,176 @@
+{
+  "restoreRef": "8b94baf5-58a7-8aa5-8600-34d0cb4a324e",
+  "entry": {
+    "naturalKey": "application:c2ba277c-a072-8927-b133-b6f6e8d89390",
+    "resourceType": "application",
+    "operation": "create",
+    "targetId": "de363cee-0cba-820d-b409-29ef7a91a508",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T19:11:30.796Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "60aa1b21-d88d-8d99-802b-b3b67e08ef7f",
+      "api": {
+        "acceptMappedClaims": null,
+        "oauth2PermissionScopes": [],
+        "knownClientApplications": [],
+        "preAuthorizedApplications": [],
+        "requestedAccessTokenVersion": null
+      },
+      "spa": {
+        "redirectUris": []
+      },
+      "web": {
+        "logoutUrl": null,
+        "homePageUrl": null,
+        "redirectUris": [],
+        "redirectUriSettings": [],
+        "implicitGrantSettings": {
+          "enableIdTokenIssuance": false,
+          "enableAccessTokenIssuance": false
+        }
+      },
+      "info": {
+        "logoUrl": null,
+        "supportUrl": null,
+        "marketingUrl": null,
+        "termsOfServiceUrl": null,
+        "privacyStatementUrl": null
+      },
+      "tags": [],
+      "appId": "c2ba277c-a072-8927-b133-b6f6e8d89390",
+      "notes": null,
+      "addIns": [],
+      "appRoles": [],
+      "isDisabled": null,
+      "uniqueName": null,
+      "description": null,
+      "displayName": "KEEL-RT-Q51-app11",
+      "publicClient": {
+        "redirectUris": []
+      },
+      "certification": null,
+      "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
+      "identifierUris": [],
+      "keyCredentials": [],
+      "optionalClaims": null,
+      "signInAudience": "AzureADMyOrg",
+      "createdDateTime": "2026-10-14T19:00:00Z",
+      "deletedDateTime": null,
+      "publisherDomain": "techinsiderbytes.com",
+      "samlMetadataUrl": null,
+      "verifiedPublisher": {
+        "displayName": null,
+        "addedDateTime": null,
+        "verifiedPublisherId": null
+      },
+      "defaultRedirectUri": null,
+      "passwordCredentials": [],
+      "tokenEncryptionKeyId": null,
+      "applicationTemplateId": null,
+      "groupMembershipClaims": null,
+      "isFallbackPublicClient": null,
+      "requiredResourceAccess": [],
+      "parentalControlSettings": {
+        "legalAgeGroupRule": "Allow",
+        "countriesBlockedForMinors": []
+      },
+      "disabledByMicrosoftStatus": null,
+      "isDeviceOnlyAuthSupported": null,
+      "serviceManagementReference": null,
+      "requestSignatureVerification": null,
+      "nativeAuthenticationApisEnabled": null,
+      "servicePrincipalLockConfiguration": {
+        "isEnabled": true,
+        "allProperties": true,
+        "identifierUris": null,
+        "tokenEncryptionKeyId": null,
+        "credentialsWithUsageSign": null,
+        "credentialsWithUsageVerify": null
+      }
+    },
+    "postState": {
+      "id": "de363cee-0cba-820d-b409-29ef7a91a508",
+      "api": {
+        "acceptMappedClaims": null,
+        "oauth2PermissionScopes": [],
+        "knownClientApplications": [],
+        "preAuthorizedApplications": [],
+        "requestedAccessTokenVersion": null
+      },
+      "spa": {
+        "redirectUris": []
+      },
+      "web": {
+        "logoutUrl": null,
+        "homePageUrl": null,
+        "redirectUris": [],
+        "redirectUriSettings": [],
+        "implicitGrantSettings": {
+          "enableIdTokenIssuance": false,
+          "enableAccessTokenIssuance": false
+        }
+      },
+      "info": {
+        "logoUrl": null,
+        "supportUrl": null,
+        "marketingUrl": null,
+        "termsOfServiceUrl": null,
+        "privacyStatementUrl": null
+      },
+      "tags": [],
+      "appId": "34da4f0f-9481-8b1b-ba2d-065e0df1ece6",
+      "notes": null,
+      "addIns": [],
+      "appRoles": [],
+      "isDisabled": null,
+      "uniqueName": null,
+      "description": null,
+      "displayName": "KEEL-RT-Q51-app11",
+      "publicClient": {
+        "redirectUris": []
+      },
+      "certification": null,
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#applications/$entity",
+      "createdByAppId": "ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf",
+      "identifierUris": [],
+      "keyCredentials": [],
+      "optionalClaims": null,
+      "signInAudience": "AzureADMyOrg",
+      "createdDateTime": "2026-10-14T19:11:30Z",
+      "deletedDateTime": null,
+      "publisherDomain": "techinsiderbytes.com",
+      "samlMetadataUrl": null,
+      "verifiedPublisher": {
+        "displayName": null,
+        "addedDateTime": null,
+        "verifiedPublisherId": null
+      },
+      "defaultRedirectUri": null,
+      "passwordCredentials": [],
+      "tokenEncryptionKeyId": null,
+      "applicationTemplateId": null,
+      "groupMembershipClaims": null,
+      "isFallbackPublicClient": null,
+      "requiredResourceAccess": [],
+      "parentalControlSettings": {
+        "legalAgeGroupRule": "Allow",
+        "countriesBlockedForMinors": []
+      },
+      "disabledByMicrosoftStatus": null,
+      "isDeviceOnlyAuthSupported": null,
+      "serviceManagementReference": null,
+      "requestSignatureVerification": null,
+      "nativeAuthenticationApisEnabled": null,
+      "servicePrincipalLockConfiguration": {
+        "isEnabled": true,
+        "allProperties": true,
+        "identifierUris": null,
+        "tokenEncryptionKeyId": null,
+        "credentialsWithUsageSign": null,
+        "credentialsWithUsageVerify": null
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "group#member",
+  "operation": "edge-remove",
+  "fieldProjectionContractVersion": 1,
+  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T19:11:44.480Z",
+  "restoreRef": "8b94baf5-58a7-8aa5-8600-34d0cb4a324e",
+  "naturalKey": "edge:group:KEEL-RT-Q51-g6|member|remove|user:keel-rt-20260908-carla@techinsiderbytes.com",
+  "fixtureKind": "named-object",
+  "captureSha256": "fb69141354d3f3b8bc02bb8f77cf87e1601db77fcb65ebaac7e7464ddfe1764b",
+  "proofRef": "docs/release/qualifications/entra-live/group.member.edge-remove.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "4502f256e513e14a6e2fdcefb3a99b964c5989b7ee17d2e700f1c280c286554d"
+    }
+  }
+}

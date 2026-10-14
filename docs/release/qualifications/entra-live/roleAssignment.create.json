@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "roleAssignment",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T19:23:26.852Z",
+  "restoreRef": "af3ac17a-a446-8df1-9c27-1592db50ff97",
+  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-20260908-carla@techinsiderbytes.com@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+  "fixtureKind": "by-reference",
+  "captureSha256": "2440c574c9b07bce96feda8bef57e90d07b65b807b80790439deb0f653801d75",
+  "proofRef": "docs/release/qualifications/entra-live/roleAssignment.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "ed28e0ad28ee8111560ed0e4e1d24db719372f804626796cd34d85a7ae4ee861"
+    }
+  }
+}

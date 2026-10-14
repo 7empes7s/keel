@@ -1,0 +1,28 @@
+{
+  "restoreRef": "af3ac17a-a446-8df1-9c27-1592db50ff97",
+  "entry": {
+    "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-20260908-carla@techinsiderbytes.com@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+    "resourceType": "roleAssignment",
+    "operation": "create",
+    "targetId": "ucRa4Lrovk6s_xuJ4miopXa3bYW3TDxHrI6GAVnnLgg6yHH4hJBbS4MBvqxNQRUH-2",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T19:23:26.852Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "ucRa4Lrovk6s_xuJ4miopXa3bYW3TDxHrI6GAVnnLgg6yHH4hJBbS4MBvqxNQRUH-2",
+      "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "directoryScopeId": "/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+      "roleDefinitionId": "e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d",
+      "principalOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8"
+    },
+    "postState": {
+      "id": "ucRa4Lrovk6s_xuJ4miopXa3bYW3TDxHrI6GAVnnLgg6yHH4hJBbS4MBvqxNQRUH-2",
+      "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleAssignments/$entity",
+      "directoryScopeId": "/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+      "roleDefinitionId": "e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d",
+      "principalOrganizationId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8"
+    }
+  }
+}

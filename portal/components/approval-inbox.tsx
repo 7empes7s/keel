@@ -22,6 +22,36 @@ function subjectLink(request: ApprovalRequestRecord): { href: string; label: str
   return null;
 }
 
+/**
+ * Q45: a restore whose dry run carries content effects needs a separate approval of
+ * them, whether the dry run was made in the portal or with the command line.
+ */
+export function contentEffectsLink(request: ApprovalRequestRecord): { href: string; label: string; count: number } | null {
+  const plan = request.references?.plan;
+  if (request.action !== "restore" || !plan?.readable || !plan.contentEffects) return null;
+  return {
+    href: `/approvals/content-effects/${encodeURIComponent(plan.id)}`,
+    label: "Review content effects",
+    count: plan.contentEffects,
+  };
+}
+
+export function ContentEffectsNote({ request }: { request: ApprovalRequestRecord }) {
+  const link = contentEffectsLink(request);
+  if (!link) return null;
+  return (
+    <div className="approval-content-effects">
+      <p>
+        {link.count === 1
+          ? "1 change in this restore affects content. It needs its own approval"
+          : `${link.count} changes in this restore affect content. They need their own approval`}
+        {" "}by someone other than the requester, or the restore is refused.
+      </p>
+      <a className="text-link" href={link.href}>{link.label}</a>
+    </div>
+  );
+}
+
 function RequestRecord({ request }: { request: ApprovalRequestRecord }) {
   return (
     <TechnicalDetails>
@@ -125,6 +155,7 @@ export function ApprovalInbox({
                     Expires <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{fromNow(request.expiresAt, now)}</time>. Nothing changes until someone other than the requester approves.
                   </p>
                   {link ? <a className="text-link" href={link.href}>{link.label}</a> : null}
+                  <ContentEffectsNote request={request} />
                   <div className="decision-controls">
                     <button
                       aria-busy={(submitting && submittingDecision === "approve") || undefined}
@@ -191,6 +222,7 @@ export function ApprovalInbox({
                       {request.reason ? <>: “{request.reason}”</> : "."}</>}
                   {" "}Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}.
                 </p>
+                {request.status === "approved" ? <ContentEffectsNote request={request} /> : null}
                 <RequestRecord request={request} />
               </li>
             ))}

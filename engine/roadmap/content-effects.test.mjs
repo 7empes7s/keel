@@ -21,8 +21,9 @@ import { applyWave } from '../restore/applyEngine.mjs';
 import { createDryRunArtifact, getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
 import {
   CONTENT_EFFECTS, ContentEffectApprovalError, approveContentEffects, assertContentEffectApproval, classifyContentEffects,
-  contentEffectsDigest, disclosureFor, isPreservationLockFailure,
+  contentEffectsDigest, contentEffectsReviewPath, disclosureFor, isPreservationLockFailure, loadContentEffectReview,
 } from '../safety/contentEffects.mjs';
+import { resolveDryRuns } from '../govern/references.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
@@ -263,6 +264,46 @@ test('mutation check: an approval never carries over to changed effects', async 
     approveContentEffects(client, { tenantRef: TENANT, artifactId: artifact.id, approverId: approver.id, effectsDigest: 'stale', justification: 'x' }),
     /no longer match/,
   );
+});
+
+test('Q45: a CLI-planned dry run (no portal job) is reviewable and approvable, and the refusal says where', async (t) => {
+  const client = await schemaClient(t);
+  const requester = await principal(client, 'req-q45@contoso.example', 'approver');
+  const approver = await principal(client, 'appr-q45@contoso.example', 'approver');
+  const effects = classifyContentEffects([
+    update('groupLifecyclePolicy', { groupLifetimeInDays: 400 }, { groupLifetimeInDays: 365 }, 'groupLifecyclePolicy:default'),
+  ]).effects;
+  assert.deepEqual(effects.map((e) => e.effect), ['retention-reducing']);
+  // Persisted the way `keel-restore --persist-artifact` does: an artifact with no dry-run job.
+  const artifact = await artifactWithEffects(client, { requestedBy: requester.id, effects });
+  const digest = contentEffectsDigest(effects);
+
+  // The inbox learns the restore carries content effects, though no portal job planned it.
+  const plan = (await resolveDryRuns(client, { tenantRef: TENANT, ids: [artifact.id] })).get(artifact.id);
+  assert.equal(plan.contentEffects, 1);
+  assert.equal(plan.dryRunJobId, null);
+
+  // The refusal at execution names where to approve.
+  await assert.rejects(assertContentEffectApproval(client, { artifact, effects }), (error) => {
+    assert.match(error.message, /^blocked-content-effect: 1 content effect\(s\) \(retention-reducing\)/);
+    assert.ok(error.message.includes(`Approvals, then "Review content effects"`));
+    assert.ok(error.message.includes(contentEffectsReviewPath(artifact.id)));
+    return true;
+  });
+
+  const before = await loadContentEffectReview(client, { tenantRef: TENANT, artifactId: artifact.id });
+  assert.equal(before.effectsDigest, digest, 'the review binds to the same digest the promotion gate checks');
+  assert.equal(before.requestedBy, requester.id);
+  assert.deepEqual(before.effects.map((e) => e.field), ['groupLifetimeInDays']);
+  assert.deepEqual(before.approvals, []);
+  assert.equal(await loadContentEffectReview(client, { tenantRef: 'sha256:other', artifactId: artifact.id }), null, 'another tenant reads it as absent');
+
+  // Same rules: the requester cannot approve; a different approver can.
+  await assert.rejects(approveContentEffects(client, { tenantRef: TENANT, artifactId: artifact.id, approverId: requester.id, effectsDigest: before.effectsDigest, justification: 'mine' }), /someone other than the requester/);
+  await approveContentEffects(client, { tenantRef: TENANT, artifactId: artifact.id, approverId: approver.id, effectsDigest: before.effectsDigest, justification: 'Policy review agreed 365 days' });
+  const reviewed = await loadContentEffectReview(client, { tenantRef: TENANT, artifactId: artifact.id });
+  assert.deepEqual(reviewed.approvals.map((a) => a.approvedBy), [approver.id]);
+  assert.equal((await assertContentEffectApproval(client, { artifact, effects })).approved_by, approver.id);
 });
 
 // ------------------------------------------------------- full CLI: dry run -> promote

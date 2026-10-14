@@ -255,7 +255,7 @@ function renderBaselineCreateForm() {
           back() {}, forward() {}, hmrRefresh() {}, prefetch() {}, push() {}, refresh() {}, replace() {},
         };
       }
-      return { parentCacheNode: { bfcacheId: 0 } };
+      return { parentRenderTree: { data: { bfcacheId: 0 } } };
     },
     useMemo<T>(create: () => T) { return create(); },
   };

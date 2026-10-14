@@ -31,6 +31,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
   refRequestFor, relationshipOperationKey,
 } from '../restore/relationshipWriter.mjs';
+import { listJournal } from '../restore/rollbackJournal.mjs';
 import { createSnapshot, completeSnapshot, insertResourceVersion } from '../store/db.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
@@ -264,6 +265,65 @@ test('post-write verification fails an edge the read-back does not show', async 
   });
   assert.deepEqual(result.applied, []);
   assert.match(result.failed[0].error, /post-write verification failed/);
+});
+
+// Q45 (live run 2026-10-13): every journaled edge write records how it ended,
+// as object writes do. Before, each entry stayed 'pending' and the live capture
+// could not tell a verified edge from one that never landed.
+test('each journaled edge write records its outcome: verified, refused with a reason, or uncertain', async (t) => {
+  const client = await schemaClient(t);
+  const restoreRef = 'edge-outcome-artifact';
+  const tenant = fakeTenant({ 'target-eng|member': ['target-mallory'], 'target-eng|owner': [] });
+  tenant.failures.write = ({ path, method }) => (method === 'DELETE' && path.includes('target-mallory')
+    ? { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: 'last member cannot be removed' } } }
+    : null);
+  const result = await applyRelationshipOperations(tenant.writer, governor, [
+    op('add', 'user:bob', 'target-bob'),
+    op('remove', 'user:mallory', 'target-mallory'),
+    op('add', 'user:carol', 'target-carol', { family: 'owner' }),
+  ], {
+    reader: tenant.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]),
+    rollbackClient: client, runId: 'run-edge-outcomes', restoreRef, sleep: noSleep,
+  });
+  assert.equal(result.applied.length, 2, JSON.stringify(result));
+  assert.equal(result.failed.length, 1);
+
+  const journal = await listJournal(client, { restoreRef });
+  const byKey = new Map(journal.map((entry) => [entry.naturalKey, entry]));
+  assert.equal(journal.length, 3);
+  assert.ok(journal.every((entry) => entry.outcome !== 'pending'), 'no edge entry is left pending');
+  const bob = byKey.get('edge:group:eng|member|add|user:bob');
+  assert.equal(bob.outcome, 'succeeded');
+  assert.equal(bob.outcomeDetail, null, 'a verified edge carries no caveat, so the live capture accepts it');
+  assert.deepEqual(bob.postState, { present: true });
+  assert.equal(bob.operation, 'edge-add');
+  assert.equal(byKey.get('edge:group:eng|owner|add|user:carol').outcome, 'succeeded');
+  const mallory = byKey.get('edge:group:eng|member|remove|user:mallory');
+  assert.equal(mallory.outcome, 'failed', 'a definite 400 is a failed write');
+  assert.match(mallory.outcomeDetail, /^status 400: .*last member cannot be removed/);
+  assert.deepEqual(mallory.postState, { present: true });
+
+  // A write that claims success but never reads back is uncertain, with the reason.
+  const ghost = fakeTenant({ 'target-eng|member': [] });
+  ghost.failures.write = () => ({ ok: true, status: 204, body: null });
+  await applyRelationshipOperations(ghost.writer, governor, [op('add', 'user:bob', 'target-bob')], {
+    reader: ghost.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]),
+    rollbackClient: client, runId: 'run-edge-ghost', restoreRef: 'edge-ghost-artifact', verifyAttempts: 2, sleep: noSleep,
+  });
+  const [uncertain] = await listJournal(client, { restoreRef: 'edge-ghost-artifact' });
+  assert.equal(uncertain.outcome, 'uncertain');
+  assert.match(uncertain.outcomeDetail, /post-write verification failed/);
+
+  // A lost response the read-back settles is recorded as converged (verified by the read).
+  const lost = fakeTenant({ 'target-eng|member': [] });
+  lost.failures.write = ({ apply }) => { apply(); throw new Error('socket hang up'); };
+  await applyRelationshipOperations(lost.writer, governor, [op('add', 'user:bob', 'target-bob')], {
+    reader: lost.reader, mode: 'enforce', targetTenant: 't', parentTargetIds: new Map([['group:eng', 'target-eng']]),
+    rollbackClient: client, runId: 'run-edge-lost', restoreRef: 'edge-lost-artifact', sleep: noSleep,
+  });
+  const [converged] = await listJournal(client, { restoreRef: 'edge-lost-artifact' });
+  assert.equal(converged.outcome, 'succeeded');
+  assert.match(converged.outcomeDetail, /^converged: /);
 });
 
 // ------------------------------------------ acceptance 4 + mutation check 3

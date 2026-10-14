@@ -28,7 +28,7 @@ test("cadence editor converts browser time, saves builder and raw cron, and pres
   let hook = 0;
   let refreshes = 0;
   internals.H = {
-    useContext() { return { parentCacheNode: { bfcacheId: 0 }, refresh() { refreshes++; } }; },
+    useContext() { return { parentRenderTree: { data: { bfcacheId: 0 } }, refresh() { refreshes++; } }; },
     useMemo<T>(compute: () => T) { return compute(); },
     useState<T>(initial: T) {
       const index = hook++;

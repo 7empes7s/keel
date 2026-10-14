@@ -41,6 +41,8 @@ const READ_INVENTORY = join(ROOT, 'portal/lib/read.ts');
 const NON_READ_SURFACES = new Set([
   'approvals/page.tsx', 'api/approvals/route.ts', 'api/health/route.ts',
   'emergency-changes/page.tsx', 'api/change-intents/route.ts',
+  // Q45: content effects of any dry run, for the tenant-wide approvers who approve them.
+  'approvals/content-effects/[id]/page.tsx',
 ]);
 
 // ---------------------------------------------------------------- contract

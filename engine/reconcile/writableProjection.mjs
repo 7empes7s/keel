@@ -7,7 +7,12 @@ import { classifyForOperation, reviewStateFor } from '../contracts/fieldProjecti
  * which resolves through engine/cir/serverOwned.mjs's fieldClass() as the single
  * source of truth and additionally narrows a writable field outside a reviewed
  * type's known-field list to 'unknown' (excluded here, reported by unknownFields()
- * below) instead of letting an unrecognized field silently become writable. */
+ * below) instead of letting an unrecognized field silently become writable.
+ * `@odata.type` is the exception, at every depth, exactly as on a create body
+ * (createBodyProjection below): it is the derived-type discriminator, not a field.
+ * Graph refuses a namedLocation PATCH without it (400 "Unexpected type:
+ * namedLocationType"), and an ipRanges entry needs its own (iPv4CidrRange /
+ * iPv6CidrRange). It is sent only when the snapshot recorded it. */
 export function writableProjection(payload, resourceType) {
   // Validate the type even for an empty payload: unknown types must not be
   // allowed to reach Graph with a pass-through PATCH body.
@@ -24,7 +29,7 @@ function project(value, resourceType, path = '') {
     const projected = {};
     for (const key of Object.keys(value)) {
       const dottedPath = path ? `${path}.${key}` : key;
-      if (classifyForOperation('update', dottedPath, resourceType) !== 'writable') continue;
+      if (key !== '@odata.type' && classifyForOperation('update', dottedPath, resourceType) !== 'writable') continue;
       projected[key] = project(value[key], resourceType, dottedPath);
     }
     return projected;

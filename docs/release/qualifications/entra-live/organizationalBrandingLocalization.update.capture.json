@@ -1,0 +1,143 @@
+{
+  "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
+  "entry": {
+    "naturalKey": "organizationalBrandingLocalization:fr-FR",
+    "resourceType": "organizationalBrandingLocalization",
+    "operation": "update",
+    "targetId": "fr-FR",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-13T11:53:00.436Z",
+    "priorState": {
+      "id": "fr-FR",
+      "cdnList": [],
+      "signInPageText": "KEEL-RT-148 DRIFTED fr",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    },
+    "intendedState": {
+      "id": "fr-FR",
+      "cdnList": [],
+      "signInPageText": "KEEL-RT-148",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    },
+    "postState": {
+      "id": "fr-FR",
+      "cdnList": [],
+      "@odata.type": "#microsoft.graph.organizationalBrandingProperties",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/localizations/$entity",
+      "signInPageText": "KEEL-RT-148",
+      "backgroundColor": "",
+      "usernameHintText": "",
+      "faviconRelativeUrl": null,
+      "customTermsOfUseUrl": null,
+      "contentCustomization": {
+        "attributeCollection": [],
+        "registrationCampaign": [],
+        "attributeCollectionRelativeUrl": null,
+        "registrationCampaignRelativeUrl": null
+      },
+      "customCSSRelativeUrl": null,
+      "customResetItNowText": null,
+      "customTermsOfUseText": null,
+      "bannerLogoRelativeUrl": null,
+      "headerBackgroundColor": null,
+      "headerLogoRelativeUrl": null,
+      "squareLogoRelativeUrl": null,
+      "squareLogoDarkRelativeUrl": null,
+      "backgroundImageRelativeUrl": null,
+      "customForgotMyPasswordText": null,
+      "customPrivacyAndCookiesUrl": null,
+      "customPrivacyAndCookiesText": null,
+      "loginPageLayoutConfiguration": {
+        "isFooterShown": null,
+        "isHeaderShown": null,
+        "layoutTemplateType": null
+      },
+      "loginPageTextVisibilitySettings": {
+        "hideResetItNow": null,
+        "hideTermsOfUse": null,
+        "hideForgotMyPassword": null,
+        "hidePrivacyAndCookies": null,
+        "hideAccountResetCredentials": null,
+        "hideCannotAccessYourAccount": null
+      },
+      "customAccountResetCredentialsUrl": null,
+      "customCannotAccessYourAccountUrl": null,
+      "customCannotAccessYourAccountText": null
+    }
+  }
+}

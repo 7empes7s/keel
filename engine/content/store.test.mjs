@@ -124,7 +124,8 @@ test('the memory store round-trips, dedupes and keeps only ciphertext', async ()
 
   const listed = await store.listItems({ container: 'mailbox:KEEL-RT-user' });
   assert.deepEqual(listed.map((row) => row.itemKey), ['m1', 'm2']);
-  assert.deepEqual((await store.listItems({ container: 'mailbox:KEEL-RT-user', since: listed[0].createdAt })).map((row) => row.itemKey), ['m2']);
+  assert.deepEqual((await store.listItems({ container: 'mailbox:KEEL-RT-user', after: listed[0] })).map((row) => row.itemKey), ['m2']);
+  assert.deepEqual((await store.listItems({ container: 'mailbox:KEEL-RT-user', since: listed[1].createdAt })).map((row) => row.itemKey), ['m2'], 'since is inclusive');
 
   await assert.rejects(store.putItem(Readable.from([plain]), item({ workload: 'exchange' })), /workload must be one of/);
   await assert.rejects(store.putItem(Readable.from([plain]), item({ container: '' })), /container/);
@@ -158,6 +159,20 @@ test('a tampered, swapped or foreign-key chunk fails the read instead of returni
   assert.equal(parseContentKey('ab'.repeat(32)).length, 32);
 });
 
+test('a chunk left in storage by a crashed run is reused only when it reads back', async () => {
+  const key = randomBytes(32);
+  const first = createMemoryContentStore({ key });
+  const body = Buffer.from('KEEL-RT- chunk that a crash left behind');
+  await first.putItem(Readable.from([body]), item({ itemKey: 'a' }));
+  // A new index over the same storage: the chunk is there, the index row is not.
+  const intact = createContentStore({ index: createMemoryContentStore().index, storage: first.storage, key });
+  assert.equal((await intact.putItem(Readable.from([body]), item({ itemKey: 'b' }))).bytes, body.length);
+  const [name] = first.storage.objects.keys();
+  first.storage.objects.set(name, Buffer.alloc(0));
+  const torn = createContentStore({ index: createMemoryContentStore().index, storage: first.storage, key });
+  await assert.rejects(torn.putItem(Readable.from([body]), item({ itemKey: 'c' })), /does not read back/);
+});
+
 test('an edit inside a large item stores only the chunks around it', async () => {
   const store = createMemoryContentStore();
   const size = 64 * MiB;
@@ -169,6 +184,35 @@ test('an edit inside a large item stores only the chunks around it', async () =>
   assert.equal(edited.deduped, false);
   const added = stored() - before;
   assert.ok(added < size * 0.15, `an insert stored ${added} new bytes of ${size}`);
+});
+
+test('Postgres index: concurrent puts page completely with the after cursor', async (t) => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const clients = await Promise.all([0, 1, 2, 3].map(() => database.connect()));
+  t.after(async () => {
+    await Promise.all(clients.map((client) => client.end()));
+    await database.cleanup();
+  });
+  await clients[0].query(schemaSql());
+  const key = randomBytes(32);
+  const storage = createMemoryContentStore().storage;
+  await Promise.all(clients.map(async (client, writer) => {
+    const store = createContentStore({ index: createPgContentIndex(client), storage, key });
+    for (let n = 0; n < 100; n += 1) {
+      await store.putItem(Readable.from([Buffer.from(`KEEL-RT-${writer}-${n}`)]), item({ container: 'drive:KEEL-RT-paging', itemKey: `${writer}-${n}` }));
+    }
+  }));
+  const reader = createContentStore({ index: createPgContentIndex(clients[0]), storage, key });
+  const seen = [];
+  let after = null;
+  for (;;) {
+    const page = await reader.listItems({ container: 'drive:KEEL-RT-paging', after, limit: 7 });
+    if (!page.length) break;
+    seen.push(...page.map((row) => row.itemKey));
+    after = page.at(-1);
+  }
+  assert.equal(seen.length, 400);
+  assert.equal(new Set(seen).size, 400);
 });
 
 test('Postgres index: a 1 GB stream reads back byte-identical, a second store adds under 1%, memory stays bounded', { timeout: 10 * 60 * 1000 }, async (t) => {
@@ -218,5 +262,5 @@ test('Postgres index: a 1 GB stream reads back byte-identical, a second store ad
   assert.deepEqual(listed.map((row) => row.itemKey), ['KEEL-RT-1gb', 'KEEL-RT-1gb-copy']);
   assert.deepEqual(listed[0].metadata, { name: 'KEEL-RT-1gb.bin' });
   assert.equal(listed[0].bytes, GiB);
-  assert.deepEqual((await store.listItems({ container: 'drive:KEEL-RT-drive', since: listed[1].createdAt })), []);
+  assert.deepEqual((await store.listItems({ container: 'drive:KEEL-RT-drive', after: listed[1] })), []);
 });

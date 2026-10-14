@@ -6,12 +6,13 @@
   "tenantRef": "sha256:f7b3959300856957",
   "resourceType": "group",
   "operation": "restore-soft-deleted",
-  "reason": "restore from deleted items succeeded (group back, same id) but the follow-up update in the same restore got HTTP 404 from Graph replication lag right after the restore, so the outcome is recorded uncertain; a read-back retry on the follow-up update (like the 115 read-back fix) would likely make this pass",
-  "restoreRef": "aa4861fd-90d3-89db-b91d-45d4d9c6bcd0",
-  "decidedAt": "2026-10-11T09:18:38.928Z",
+  "reason": "The restore from deleted items worked (same id, read back), but the post-write convergence check reported \"residual drift after update\" on server-managed fields absent from the snapshot (expirationDateTime set by the group expiration policy, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain",
+  "restoreRef": "aabeac39-e68d-8728-a0cd-69d3b0796364",
+  "decidedAt": "2026-10-13T12:25:20.528Z",
   "builderSteps": [
     "remove the restore-soft-deleted registration for group in engine/coverage/capabilities.mjs",
     "add \"live gate #148: restore-soft-deleted failed live: <reason>\" to TYPE_DECISIONS.group.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.group.liveFailures['restore-soft-deleted'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
     "commit this file under docs/release/qualifications/entra-live/ in the same PR"
   ]
 }

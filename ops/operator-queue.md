@@ -2204,8 +2204,21 @@ item that needs it stays untouched.
 - **Report:** per part, passed / failed (with the error) / waiting (PR not live), and every tenant setting read back as original.
 ### Q47: Turn on scheduled workload backups and the portal's live-record check
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: in-progress
-- Result: Started 2026-10-14 09:35 UTC at live build 2b9d310 (#200, #201, #202 live).
+- Status: blocked
+- Result: Run 2026-10-14 09:35 to 09:45 UTC at live build 2b9d310 (#200, #201 and #202 are all live). No tenant writes; Graph reads only, with tenant.json.
+  - **A (portal signing key, #200): done.**
+    - `/etc/keel/qualification.env` already existed, owned by root and mode 600 (keel-portal runs as root). I restarted keel-portal.
+    - The Coverage page needs a signed-in session (401 on localhost), so I ran the same check the page uses with the key against the deployed records: `operations.mjs --live-evidence /opt/keel-live/docs/release/qualifications/entra-live` gives 16 `fixture-tested -> live-qualified` and 6 "not verified by its read-back".
+    - Not checked live: the not-600 refusal. The code path is `qualificationKey()` in `portal/lib/runtime-config.ts`, which returns "the key file can be read by other users…". The operator should confirm the Coverage page when signed in.
+  - **B (scheduled workload backups, #201): partly blocked.**
+    1. Schema: already applied on the live DB by the deploy. `workload_ledger_evidence` and `workload_ledger_grants` exist, and the job check includes `workload-collect`. Nothing to apply.
+    2. Import: **0 records stored (exit 1).** All 4 signed records are at build fb1493ea, and the import requires the live build. With `--build 2b9d310` it reports "build mismatch: evidence is 'fb1493ea…', required '2b9d310…'". Without `--build` it reports "expected tenant/build identity required". I did not pass the old build to force a pass. Needs SharePoint, Teams, Exchange and OneDrive/Purview recaptured at the live build (the same chain as Q46 A).
+    3. `keel-schedules-migrate --tenant-ref … --kinds workload-collect`: done. Schedule is daily at 02:00 UTC, enabled, next due 2026-10-15 02:00.
+    4. `/etc/keel/workload-scope.json` written (mode 644): SharePoint host lxtj.sharepoint.com, mailbox keel-rt-20260908-alice (the only licensed KEEL-RT user), and her OneDrive site.
+    5. `run` (exit 0): all 8 workloads `disabled (not qualified; nothing was read)`, as expected with no imported proof. `proof`: "No workload live proof is stored" (exit 1).
+  - **C (scheduler, #202): mixed.**
+    - `journalctl -u keel-scheduler --since -1h | grep -E "not schedulable|skipped schedule"` is empty (0 matches); the timer ticks every 5 minutes.
+    - **But no `api-drift` schedule row exists, and there has never been an api-drift job**, so none will appear this week unless a schedule is added (e.g. `keel-schedules-migrate --kinds api-drift`; not done, since this item doesn't ask for it).
 - Needs: a live build containing PRs #200 (portal live records), #201 (workload schedule) and #202 (scheduler api-drift fix).
   Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; do only the parts whose PR is live.
 - **No tenant writes.** Everything here is host setup and read-only collection.

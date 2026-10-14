@@ -417,6 +417,51 @@ export async function assertContentEffectApproval(client, { artifact, effects, a
     if (approver && await can(client, approver, 'approve', at)) return approval;
   }
   throw new ContentEffectApprovalError(
-    `blocked-content-effect: ${effects.length} content effect(s) (${[...new Set(effects.map((e) => e.effect))].join(', ')}) need a separate, current high-impact approval of exactly these effects`,
+    `blocked-content-effect: ${effects.length} content effect(s) (${[...new Set(effects.map((e) => e.effect))].join(', ')}) need a separate, current high-impact approval of exactly these effects. `
+    + `Someone other than the requester approves them in the portal: Approvals, then "Review content effects" on this restore (${contentEffectsReviewPath(artifact.id)}). Then run the restore again.`,
   );
+}
+
+/**
+ * Q45: where the portal shows and approves a dry run's content effects, whichever
+ * surface (portal or CLI --persist-artifact) made the dry run.
+ */
+export function contentEffectsReviewPath(artifactId) {
+  return `/approvals/content-effects/${artifactId}`;
+}
+
+/**
+ * Q45: what an approver reviews before approving a dry run's content effects: the
+ * persisted effects, the digest an approval binds to, the requester (who may not
+ * approve them), and the current approvals of exactly these effects. Tenant-scoped:
+ * another tenant's dry run reads as absent. Null when the artifact does not exist.
+ */
+export async function loadContentEffectReview(client, { tenantRef, artifactId }) {
+  const { rows } = await client.query(
+    `SELECT id::text AS id, requested_by, status, content_effects, created_at,
+            jsonb_array_length(COALESCE(closure_keys, '[]'::jsonb)) AS resources
+       FROM restore_dry_run WHERE id::text = $1 AND tenant_ref = $2`,
+    [artifactId, tenantRef],
+  );
+  const artifact = rows[0];
+  if (!artifact) return null;
+  const effects = artifact.content_effects ?? [];
+  const effectsDigest = effects.length > 0 ? contentEffectsDigest(effects) : null;
+  const { rows: approvals } = effectsDigest
+    ? await client.query(
+      `SELECT approved_by, approved_at FROM content_effect_approval
+        WHERE artifact_id::text = $1 AND effects_digest = $2 AND revoked_at IS NULL ORDER BY approved_at`,
+      [artifact.id, effectsDigest],
+    )
+    : { rows: [] };
+  return {
+    artifactId: artifact.id,
+    requestedBy: artifact.requested_by == null ? null : String(artifact.requested_by),
+    status: artifact.status,
+    createdAt: artifact.created_at,
+    resources: Number(artifact.resources),
+    effects,
+    effectsDigest,
+    approvals: approvals.map((row) => ({ approvedBy: String(row.approved_by), approvedAt: row.approved_at })),
+  };
 }

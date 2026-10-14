@@ -22,6 +22,8 @@ const NON_READ_SURFACES = new Set([
   // Roadmap task-93: approved emergency changes declare approve, like the inbox.
   "emergency-changes/page.tsx",
   "api/change-intents/route.ts",
+  // Q45: content effects of any dry run, for the tenant-wide approvers who approve them.
+  "approvals/content-effects/[id]/page.tsx",
 ]);
 
 function getRequest(

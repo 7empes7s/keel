@@ -433,6 +433,9 @@ test("an approved restore whose content effects still need approval waits for a 
   assert.match(waitingSection, /1 request</);
   assert.match(waitingSection, new RegExp(`href="/approvals/content-effects/${artifactId}"`));
   assert.doesNotMatch(waitingSection, /Nothing is waiting/);
+  // And it leads back to the restore run itself.
+  assert.ok(listed.references.plan.dryRunJobId, "the portal-planned dry run has its job");
+  assert.match(waitingSection, new RegExp(`href="/jobs/${listed.references.plan.dryRunJobId}"`));
 
   // Only tenant-wide approvers can approve content effects, so only they see it.
   const entityApprover = { central: false, entities: ["SALES"] };
@@ -446,7 +449,12 @@ test("an approved restore whose content effects still need approval waits for a 
   );
   const decided = await (await inboxRoute(get("/api/approvals", approver))).json();
   assert.equal(decided.awaitingContentEffects.some((candidate: { id: string }) => candidate.id === id), false);
-  assert.ok(decided.history.some((candidate: { id: string }) => candidate.id === id));
+  const filed = decided.history.find((candidate: { id: string }) => candidate.id === id);
+  assert.ok(filed);
+  // Once decided, the restore run stays one link away.
+  const historyHtml = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
+    React.createElement(ApprovalInbox, { pending: [], history: [filed], now: "2026-10-14T13:00:00.000Z" })));
+  assert.match(historyHtml, new RegExp(`href="/jobs/${filed.references.plan.dryRunJobId}"`));
   assert.equal(await getPendingApprovalCount(central), countBefore - 1);
 });
 

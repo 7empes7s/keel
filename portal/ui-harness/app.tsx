@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { CommandPalette } from "@/components/command-palette";
 import { NavLinks, SectionTabs, type NavSection } from "@/components/nav-links";
 import { KeelMark } from "@/components/keel-mark";
+import { SignOutControls } from "@/components/sign-out";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
@@ -1220,6 +1221,7 @@ function App() {
           <span className="operator-email">marouanedefili@gmail.com</span>
           <span className="access-label">{accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"])}</span>
           <ThemeToggle initial="system" />
+          <SignOutControls />
         </div>
       </aside>
       <main className="workspace" id="main-content">

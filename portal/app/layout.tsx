@@ -12,6 +12,7 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 import { CommandPalette } from "@/components/command-palette";
 import { KeelMark } from "@/components/keel-mark";
 import { NavLinks, SectionTabs } from "@/components/nav-links";
+import { SignOutControls } from "@/components/sign-out";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Toaster } from "@/components/toaster";
 import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
@@ -91,6 +92,7 @@ export default async function RootLayout({
                 {accessSummary(capabilities)}
               </span>
               <ThemeToggle initial={theme} />
+              <SignOutControls />
             </div>
           </aside>
           <main className="workspace" id="main-content">

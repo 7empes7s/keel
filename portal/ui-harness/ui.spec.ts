@@ -92,6 +92,24 @@ test("visual · dashboard · phone", async ({ page }) => {
 });
 
 // Interactions that the design relies on.
+test("switch account ends the Access session, then signs out of Microsoft", async ({ page }) => {
+  await page.route("https://login.microsoftonline.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<title>Signed out</title>" }));
+  await open(page, "/");
+  await expect(page.getByRole("link", { name: "Sign out" })).toHaveAttribute("href", "/cdn-cgi/access/logout");
+  // Record the Access sign-out request; it must happen before the browser leaves.
+  await page.evaluate(() => {
+    const original = window.fetch;
+    window.fetch = (input, init) => {
+      sessionStorage.setItem("keel-fetched", String(input));
+      return original(input, init);
+    };
+  });
+  await page.getByRole("button", { name: "Switch account" }).click();
+  await page.waitForURL("https://login.microsoftonline.com/common/oauth2/v2.0/logout");
+  await page.goBack();
+  expect(await page.evaluate(() => sessionStorage.getItem("keel-fetched"))).toBe("/cdn-cgi/access/logout");
+});
+
 test("command palette opens with the keyboard and navigates", async ({ page }) => {
   await open(page, "/");
   await page.keyboard.press("Control+k");

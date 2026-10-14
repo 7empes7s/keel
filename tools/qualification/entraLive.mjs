@@ -139,12 +139,24 @@ const FIXTURE_ROLE = /^KEEL-RT-148-role$/i;
 export function byReferenceProblems({ versions, references, naturalKey }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
   if (!own) return [`the snapshot has no object ${naturalKey}`];
-  const nameOf = (symbol) => {
+  // A symbol is `<type>:<key>` (`roleDefinition:<template id>`, `user:<upn>`), and a
+  // stored natural key carries the same type prefix. Match the whole symbol first,
+  // then the bare key, then the object's own id (or role template id) within that
+  // type: never the bare text alone, which no stored key holds.
+  const namesFor = (symbol) => {
     const text = String(symbol ?? '');
-    const key = text.slice(text.indexOf(':') + 1);
-    const target = versions.find((version) => version.natural_key === key);
-    return target ? (namesOf(target.payload)[0] ?? key) : key;
+    const colon = text.indexOf(':');
+    const type = colon === -1 ? null : text.slice(0, colon);
+    const key = text.slice(colon + 1);
+    const ofType = (version) => !type || !version.resource_type || version.resource_type === type;
+    const lower = key.toLowerCase();
+    const target = versions.find((version) => version.natural_key === text)
+      ?? versions.find((version) => ofType(version) && version.natural_key === key)
+      ?? versions.find((version) => ofType(version) && version.payload && typeof version.payload === 'object'
+        && [version.payload.id, version.payload.templateId].some((id) => typeof id === 'string' && id.toLowerCase() === lower));
+    return target ? [...namesOf(target.payload), key] : [key];
   };
+  const isFixture = (symbol, pattern) => namesFor(symbol).some((name) => pattern.test(name));
   const refs = references.filter((ref) => ref.from_version === own.id);
   const find = (pattern) => refs.find((ref) => pattern.test(String(ref.field_path)));
   const problems = [];
@@ -152,10 +164,10 @@ export function byReferenceProblems({ versions, references, naturalKey }) {
   const role = find(/roleDefinition/i);
   const scope = find(/directoryScope/i);
   if (!principal) problems.push('no principal reference');
-  else if (!DISPOSABLE.test(nameOf(principal.to_symbol))) problems.push('the principal is not a KEEL-RT fixture');
+  else if (!isFixture(principal.to_symbol, DISPOSABLE)) problems.push('the principal is not a KEEL-RT fixture');
   if (!role) problems.push('no role reference');
-  else if (!FIXTURE_ROLE.test(nameOf(role.to_symbol))) problems.push('the role is not the fixture role');
-  if (scope && !DISPOSABLE.test(nameOf(scope.to_symbol))) problems.push('the scope is not a KEEL-RT fixture');
+  else if (!isFixture(role.to_symbol, FIXTURE_ROLE)) problems.push('the role is not the fixture role');
+  if (scope && !isFixture(scope.to_symbol, DISPOSABLE)) problems.push('the scope is not a KEEL-RT fixture');
   return problems;
 }
 

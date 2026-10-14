@@ -242,6 +242,23 @@ export function guidanceFor(resourceType) {
     const lockout = reviewed.lockout === false ? false : (reviewed.lockout === true || rated);
     return { ...reviewed, lockout, reviewed: true };
   }
+  // A file key (`organizationalBranding#file:fr-FR/favicon`) belongs to its parent
+  // object: a file of a tenant-wide setting is a tenant-wide setting, so the same
+  // --allow-tenant-setting covers it. Only the '#file' suffix; never an edge key.
+  const [base, sub] = resourceType.split('#');
+  if (sub === 'file') {
+    const parent = guidanceFor(base);
+    if (parent.kind === 'tenant-setting') {
+      return {
+        reviewed: false, kind: 'tenant-setting', lockout: parent.lockout,
+        fixture: `one file (for example the favicon) of ${parent.fixture}`,
+        select: `${resourceType}:<locale>/<file>, for example ${resourceType}:fr-FR/favicon`,
+        drift: 'replace that file with a different one; keep the original',
+        breakGlass: parent.breakGlass ?? null,
+        note: `The file belongs to ${base}: capture it with --allow-tenant-setting.`,
+      };
+    }
+  }
   const singleton = SINGLETON_TYPES.has(resourceType);
   const lockout = TENANT_POLICY_LOCKOUT.has(resourceType) || blastRadiusOf(resourceType) === 'tenant-lockout';
   return {

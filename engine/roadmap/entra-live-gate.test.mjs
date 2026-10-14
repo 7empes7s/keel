@@ -491,3 +491,46 @@ test('a newly registered write appears in the plan with no edit to the generator
   assert.ok(added);
   assert.match(added.promote, /servicePrincipal\.update\.json/);
 });
+
+test('a by-reference role is found by its prefixed symbol or its id, never by the bare id alone (Q45 step 35)', () => {
+  const roleId = '11111111-2222-4333-8444-555555555555';
+  const assignment = { id: 'v-own', natural_key: 'roleAssignment:x', resource_type: 'roleAssignment', payload: {} };
+  const user = { id: 'v-user', natural_key: 'user:keel-rt-20260908-carla@fixture.example', resource_type: 'user', payload: { displayName: 'Carla', userPrincipalName: 'keel-rt-20260908-carla@fixture.example' } };
+  const refs = [
+    { from_version: 'v-own', field_path: 'principalId', to_symbol: 'user:keel-rt-20260908-carla@fixture.example' },
+    { from_version: 'v-own', field_path: 'roleDefinitionId', to_symbol: `roleDefinition:${roleId}` },
+  ];
+  const problems = (role) => byReferenceProblems({ versions: [assignment, user, role], references: refs, naturalKey: 'roleAssignment:x' });
+  // As a live collection stores it: the natural key carries the type prefix, like the symbol.
+  assert.deepEqual(problems({ id: 'v-role', natural_key: `roleDefinition:${roleId}`, resource_type: 'roleDefinition', payload: { displayName: 'KEEL-RT-148-role' } }), []);
+  // Keyed some other way: the role's own id (or template id) still finds it.
+  assert.deepEqual(problems({ id: 'v-role', natural_key: 'roleDefinition:other', resource_type: 'roleDefinition', payload: { id: roleId.toUpperCase(), displayName: 'KEEL-RT-148-role' } }), []);
+  assert.deepEqual(problems({ id: 'v-role', natural_key: 'roleDefinition:other', resource_type: 'roleDefinition', payload: { templateId: roleId, displayName: 'KEEL-RT-148-role' } }), []);
+  // Found, but not the fixture role.
+  assert.deepEqual(problems({ id: 'v-role', natural_key: `roleDefinition:${roleId}`, resource_type: 'roleDefinition', payload: { displayName: 'Global Administrator' } }), ['the role is not the fixture role']);
+  // An object of another type with the same id is not the role.
+  assert.deepEqual(problems({ id: 'v-role', natural_key: `group:${roleId}`, resource_type: 'group', payload: { id: roleId, displayName: 'KEEL-RT-148-role' } }), ['the role is not the fixture role']);
+});
+
+test('--allow-tenant-setting covers a file of a tenant-setting type, and nothing else (Q46 C)', async () => {
+  const fileKey = 'organizationalBranding#file:fr-FR/favicon';
+  assert.equal(guidanceFor('organizationalBranding#file').kind, 'tenant-setting');
+  assert.equal(guidanceFor('group#member').kind, 'named-object', 'an edge key keeps its own guidance');
+  assert.notEqual(guidanceFor('group#file').kind, 'tenant-setting', 'a file of a named object is not a tenant setting');
+  const restore = fixtureRestore(buildLiveGatePlan().steps.find((step) => step.id === 'group:update'));
+  const [entry] = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  const journal = [{
+    ...entry, naturalKey: fileKey, resourceType: 'organizationalBranding#file', operation: 'update',
+    priorState: { sha256: 'a'.repeat(64), bytes: 79 }, intendedState: null, postState: null,
+  }];
+  const run = (options) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: 'organizationalBranding#file', operation: 'update', fixture: fileKey,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: async () => journal, getSnapshot: restore.getSnapshot, ...options,
+  });
+  await assert.rejects(run({}), /tenant-wide setting: pass --allow-tenant-setting/);
+  const captured = await run({ allowTenantSetting: true });
+  assert.equal(captured.status, 'captured');
+  assert.equal(captured.record.fixtureKind, 'tenant-setting');
+  assert.equal(captured.record.naturalKey, fileKey);
+});

@@ -2241,8 +2241,66 @@ item that needs it stays untouched.
 
 ### Q48: Rerun the Q45–Q47 failures after the 2026-10-14 fixes
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
-- Status: in-progress
-- Result: Started 2026-10-14 12:25 UTC. Step 0: live build cd61e29 = origin/master; #207 #209 #211 #212 #213 #215 #216 #218 #219 #222 all live; no deploy reset needed.
+- Status: done
+- Result: Run 2026-10-14 12:25 to 14:35 UTC.
+  - Step 0: the live build was cd61e29 (= origin/master), with #207 #209 #211 #212 #213 #215 #216 #218 #219 #222 all live; no deploy reset needed. It auto-deployed during the run to a512c40 (#225) and then 95c3a33 (#229, directorySizeQuota fix). Captures record the build that ran them.
+  - Approvals: KEEL CLI dry runs were filed as the Entra principal and approved by the operator (Gmail). For step 31 the portal dry run was the Gmail principal's; at the operator's request keel-operator filed it and approved the request and its content effects as the Entra principal, because the portal had no sign-out at the time.
+  - Evidence: branch `claude/live-evidence-q48` @ bd2fadb (no PR).
+    - `operations.mjs --live-evidence` (with the key): 37 `fixture-tested -> live-qualified`.
+    - Held back, with a raw value the pseudonymizer missed: step 1 group create and step 3 group restore-soft-deleted (`securityIdentifier` S-1-12-1-…), and step 35 roleAssignment create (raw role-assignment object id). All three were promoted on the host. Master's existing group.create files are untouched.
+  - Every demotion added needs a matching `liveFailures` entry in code; that is left to the thread.
+
+  **Per step**
+  - A (Q45 demotions):
+    - 1 group create: promoted (held back).
+    - 3 group restore-soft-deleted: promoted (held back).
+    - 48 CA create: promoted. It landed report-only and still excludes the operator and both break-glass accounts. The journal shows only the policy write; the excluded users are closure-only.
+    - 40 namedLocation update: promoted.
+  - B (Q45 blocked steps):
+    - 5–8 edges (#219): all 4 edges were written, and each journaled `succeeded`. **Capture blocked by a tool bug:** `looksDisposable` takes `edge:group:KEEL-RT-…|…` and keeps the `group:` prefix, so `^KEEL-RT-` never matches ("is not a disposable … fixture"); the bare name gives not-exercised.
+    - 29 organizationalBranding update: promoted (journaled as language 0).
+    - 11 application create: **demoted.** The create sends the read-only `createdByAppId` (Graph 400 "Property 'createdByAppId' is read-only and cannot be set"). File: application.create.demotion.json.
+    - 13 application restore-soft-deleted: promoted.
+    - 14 servicePrincipal create: promoted.
+    - 31 groupLifecyclePolicy (#218): promoted. A portal dry run, then the restore request plus a separate content-effect approval ("Shortens retention" 400→365), run by the worker; reads back 365.
+    - 35 roleAssignment create: promoted (held back).
+    - 44 authorizationPolicy update: promoted. It went through the content-effect approval (externally-sharing).
+    - 46 authenticationMethodsPolicy update: **blocked, code.** Verbatim: "unsupported: authentication method configuration VerifiableCredentials, QRCodePin has no known type, so it cannot be written". The drift was Software OATH, because a trial tenant can't turn on SMS; it was set back by hand.
+    - 47 security defaults: **blocked, as allowed.** 8 CA policies are on, so Entra refuses the drift. Not drifted, not demoted.
+  - C (#213, one restore of a group plus 2 Intune policies): **blocked by the known limit.** The group was purged, so the dry run says "assignments cannot be restored: the group group:KEEL-RT-148-cgroup does not exist in the target. Nothing was written for this policy" for both policies.
+  - D:
+    - fr-FR favicon (#207): promoted. Restored by the worker; it reads back with sha256 68edc125… (79 bytes).
+    - PIM eligibility at an admin-unit scope (#222): promoted (roleEligibilitySchedule create).
+    - Exchange org setting: done. SharePoint, Teams and Exchange live acceptance were recaptured at 95c3a33; `qualification.mjs verify --require-live` exits 0 for each.
+      - Exchange step 9: MailTipsLargeAudienceThreshold went 25 → 26 → 25, read back and restored.
+      - The SharePoint capture used `--allow-widening-toggle`, the same as the earlier fb1493ea decision. Re-decide if needed.
+  - E (#215, #225):
+    - The import stored 4 records at evidenceBuild fb1493ea, none refused.
+    - `proof`: 4 entries expiring 2026-11-06, exit 0 (22 days left, outside the 14-day warning).
+    - After #225, `powershellConfigs` is in /etc/keel/workload-scope.json (exchange → exchange-collector, onedrive and purview → purview-collector). A default `run` gives: SharePoint, Exchange, OneDrive and Purview labels complete; Teams partial (`tenantId` not observable); mail flow, Teams org policies and retention/DLP disabled (no proof yet).
+    - Re-import after the D recapture: SharePoint, Teams and Exchange are now proven until 2026-11-13.
+    - **OneDrive/Purview was refused:** its prerequisites must share its build, so it needs recapturing at the live build before 2026-11-06.
+  - F: done. The `api-drift` schedule row is weekly at 03:00 UTC, enabled, next 2026-10-19 03:00.
+  - G:
+    - 45 PIM policy update: promoted (Accept-Language fix confirmed).
+    - 37 roleAssignment delete: allowed (readiness ready) and executed by the worker. **Capture blocked by a tool bug:** with `--allow-by-reference` it reports "the snapshot has no object …", because a delete's object is never in the snapshot; without the flag it insists on `--allow-by-reference`.
+    - 52 conditionalAccessPolicy delete: **refused.** Verbatim: "refusing to delete conditional access policy: <object id> is excluded by conditions.users.excludeUsers". Every fixture CA policy must exclude the operator and break-glass, so this guard makes 52 untestable here.
+
+  **KEEL bugs found (for the code thread)**
+  1. organization.directorySizeQuota in the restore diff. Already fixed by #229/95c3a33 during the run. Before the fix it was worked around with throwaway groups KEEL-RT-148-pad1/2/3, all since deleted and purged.
+  2. application create sends `createdByAppId`.
+  3. Capture tool: edge fixture prefix (steps 5–8).
+  4. Capture tool: by-reference capture of a delete (step 37).
+  5. Pseudonymizer: misses group securityIdentifier and roleAssignment object ids.
+  6. authenticationMethodsPolicy: unknown method types (VerifiableCredentials, QRCodePin).
+  7. CA delete guard: refuses any policy with excludeUsers.
+  8. Portal: the content-effects page had no link, a dry-run job page couldn't return to Confirm, and there was no sign-out. #228/#229 address these; not yet rechecked.
+
+  **Tenant**
+  - Every KEEL-RT-148-* fixture is deleted and purged.
+  - authorizationPolicy, authenticationMethodsPolicy, security defaults and group lifecycle policies (none) all read back the same as originals.json.
+  - The 8 enabled CA policies are unchanged.
+  - Left for the operator: the fr-FR branding localization (Graph refuses the delete; default "0" goes with it), and purging KEEL-RT-148-ca and KEEL-RT-148-ca-delete from CA deleted items.
 - Needs: Q47 done or blocked. A live build containing #207 (capture tool), #209 (demotion records), #212 (verification
   ignores server-managed fields), #213 (assignment target ordering), #215 (workload proof build), #216 (update body
   @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and

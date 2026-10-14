@@ -135,6 +135,35 @@ test('Q43 step 25: creating a device configuration with hotspot and shared app d
   assert.deepEqual(effects, []);
 });
 
+// ------------------------------------------- applications (live gate Q45, 11/13/14)
+
+const app = Object.freeze({
+  displayName: 'Payroll connector', signInAudience: 'AzureADMyOrg', appId: 'source-appid', publisherDomain: 'source.example',
+  isFallbackPublicClient: false, publicClient: { redirectUris: ['https://login.microsoftonline.com/common/oauth2/nativeclient'] },
+  web: { redirectUris: ['https://payroll.example/signin'], implicitGrantSettings: { enableIdTokenIssuance: false, enableAccessTokenIssuance: false } },
+  spa: { redirectUris: [] }, identifierUris: ['api://source-appid'], tags: ['payroll'],
+  requiredResourceAccess: [{ resourceAppId: '00000003-0000-0000-c000-000000000000', resourceAccess: [{ id: 'e1fe6dd8-ba31-4d61-89e7-88639da4683d', type: 'Scope' }] }],
+});
+
+test('Q45 steps 11, 13, 14: an application create, update or soft-delete restore that changes publicClient passes the guard', () => {
+  const { effects, refusals } = classifyContentEffects([
+    create('application', app, 'application:source-appid'),
+    update('application', { displayName: app.displayName, isFallbackPublicClient: false }, { ...app, isFallbackPublicClient: true }, 'application:updated'),
+    { naturalKey: 'application:restored', resourceType: 'application', verb: 'restore-soft-deleted', payload: app,
+      live: { state: 'soft-deleted', payload: { displayName: app.displayName, appId: app.appId, deletedDateTime: '2026-10-13T00:00:00Z' }, targetId: 'app-1' } },
+  ]);
+  assert.deepEqual(refusals, [], 'publicClient is sign-in configuration on a reviewed type, not an unclassified content effect');
+  assert.deepEqual(effects, []);
+});
+
+test('the same publicClient change is still refused on a type nobody has reviewed', () => {
+  const { refusals } = classifyContentEffects([
+    update('unreviewedAppType', { displayName: 'x' }, { displayName: 'x', publicClient: { redirectUris: ['ms-app://x'] }, isFallbackPublicClient: true }),
+  ]);
+  assert.equal(refusals.length, 1);
+  assert.match(refusals[0].reason, /unclassified-content-effect: unreviewedAppType changes publicClient, isFallbackPublicClient/);
+});
+
 test('a compliance policy that wipes or retires noncompliant devices is irreversible and needs the separate approval', async (t) => {
   const created = classifyContentEffects([create('deviceCompliancePolicy', complianceWith('block', 'wipe'))]);
   assert.deepEqual(created.refusals, []);

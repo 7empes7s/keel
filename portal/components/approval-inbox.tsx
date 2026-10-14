@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp, fromNow } from "@/lib/presentation";
 import { approvalImpact, approvalSentence, refLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
+import { usePoll } from "@/lib/use-poll";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 
 function displayParams(params: unknown): string {
@@ -76,9 +77,9 @@ function RequestRecord({ request }: { request: ApprovalRequestRecord }) {
  * An approved restore that cannot run yet: its content effects still need their own
  * approval. It waits for a decision like any request, with the way to make it.
  */
-function AwaitingContentEffectsCard({ request, now }: { request: ApprovalRequestRecord; now: string }) {
+function AwaitingContentEffectsCard({ request, now, className }: { request: ApprovalRequestRecord; now: string; className: string }) {
   return (
-    <li className="item-card approval-card approval-content-effects-pending">
+    <li className={className}>
       <h3>{approvalSentence(request)}</h3>
       <p>
         Approved by {refLabel(request.references?.people.decided_by, "an unknown person")}{" "}
@@ -112,6 +113,22 @@ export function ApprovalInbox({
   // Which button was pressed, so only that one shows the busy spinner; both stay
   // disabled while either decision for the request is in flight.
   const [submittingDecision, setSubmittingDecision] = useState<"approve" | "reject" | null>(null);
+
+  // New requests appear without a reload: the page re-reads quietly, and a request that
+  // was not on screen before is marked so it fades in.
+  usePoll(() => router.refresh(), 5_000);
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
+  useLayoutEffect(() => {
+    const ids = [...pending, ...awaitingContentEffects].map((request) => request.id);
+    const seen = known.current;
+    if (seen) {
+      const added = ids.filter((id) => !seen.has(id));
+      if (added.length) setFresh(new Set(added));
+    }
+    known.current = new Set(ids);
+  }, [pending, awaitingContentEffects]);
+  const cardClass = (base: string, id: string) => (fresh.has(id) ? `${base} approval-new` : base);
 
   async function decide(request: ApprovalRequestRecord, decision: "approve" | "reject") {
     const reason = reasons[request.id]?.trim() ?? "";
@@ -170,7 +187,7 @@ export function ApprovalInbox({
               const impact = approvalImpact(request);
               const link = subjectLink(request);
               return (
-                <li className="item-card approval-card" key={request.id}>
+                <li className={cardClass("item-card approval-card", request.id)} key={request.id}>
                   <h3>{approvalSentence(request)}</h3>
                   <p>
                     Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}{" "}
@@ -223,7 +240,7 @@ export function ApprovalInbox({
                 </li>
               );
             }), ...awaitingContentEffects.map((request) => (
-              <AwaitingContentEffectsCard key={request.id} now={now} request={request} />
+              <AwaitingContentEffectsCard className={cardClass("item-card approval-card approval-content-effects-pending", request.id)} key={request.id} now={now} request={request} />
             ))]}
           </ul>
         ) : (

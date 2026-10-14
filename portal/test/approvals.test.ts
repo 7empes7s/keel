@@ -265,6 +265,14 @@ function renderApprovalInbox() {
       return { parentRenderTree: { data: { bfcacheId: 0 } } };
     },
     useMemo<T>(create: () => T) { return create(); },
+    useRef<T>(initial: T) {
+      const index = hookIndex++;
+      if (!(index in state)) state[index] = { current: initial };
+      return state[index] as { current: T };
+    },
+    // Effects (polling, new-item marking) need a browser; this harness drives controls only.
+    useEffect() { hookIndex++; },
+    useLayoutEffect() { hookIndex++; },
   };
 
   const pending = [

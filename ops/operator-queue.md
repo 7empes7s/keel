@@ -2176,7 +2176,7 @@ item that needs it stays untouched.
     - Cause: `eligibilityScopeRefusal` checks `ref.prefix === '/administrativeUnits/'`, but `resource_reference` has no prefix column, so the prefix is never stored.
   - **Tenant cleanup:**
     - Deleted: KEEL-RT-148-role, KEEL-RT-148-unit and KEEL-RT-148-delete (deleted by KEEL).
-    - **Left:** the fr-FR branding localization. Its text and favicon are emptied, but Graph still refuses the delete ("images or content customizations are configured", 7 tries). The operator was asked to delete it in the portal.
+    - fr-FR branding localization: Graph refused the delete until the operator deleted it in the portal on 2026-10-14 (the portal showed a "failed" message, but the delete went through). Graph now lists no localizations and no default branding, as in the originals recorded 2026-10-13. **Nothing left in the tenant.**
 - Needs: Q45 done first. A live build that contains PRs #192 (Exchange org setting), #195 (PIM admin-unit scope), #197 (lockout
   delete evidence) and #199 (branding files). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run
   only the parts whose PR is live and report the rest as waiting.

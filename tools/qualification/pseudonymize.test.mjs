@@ -176,3 +176,31 @@ test('the check tells pseudonyms from raw ids without the tenant, SIDs included 
   assert.match(lines.at(-1), /raw\.json: 3 id\(s\) that are not pseudonyms/);
   assert.equal(main([], options), 2);
 });
+
+test('a deleted role assignment id with a longer suffix, a scoped id and a dashless GUID are caught and mapped (#235)', () => {
+  const a = pseudonymizer('sha256:aaaa');
+  const SCOPE = 'c0ffee00-1111-4222-8333-444455556666';
+  const suffixed = `${ASSIGNMENT.slice(0, -2)}-1-e`;
+  const scoped = `${Buffer.concat([toBytes(ROLE), toBytes(GROUP), toBytes(SCOPE)]).toString('base64url')}-1`;
+  const dashless = GROUP.replace(/-/g, '').toUpperCase();
+  assert.deepEqual(roleAssignmentIdGuids(suffixed), [ROLE, GROUP]);
+  assert.deepEqual(roleAssignmentIdGuids(scoped), [ROLE, GROUP, SCOPE]);
+
+  const rawLog = { entry: { targetId: suffixed, priorState: { id: suffixed, scoped, objectId: dashless }, outcomeDetail: `DELETE /roleAssignments/${suffixed}` } };
+  const raw = JSON.stringify(rawLog);
+  assert.deepEqual(unpseudonymizedIds(raw), [GROUP.replace(/-/g, ''), suffixed.toLowerCase(), scoped.toLowerCase()]);
+
+  const published = JSON.stringify(a.walk(rawLog));
+  assert.deepEqual(unpseudonymizedIds(published), []);
+  for (const id of [suffixed.slice(0, 43), scoped.slice(0, 64), dashless.toLowerCase()]) assert.ok(!published.toLowerCase().includes(id.toLowerCase()), `${id} is gone`);
+  const out = a.walk(rawLog).entry;
+  assert.equal(out.targetId, out.priorState.id, 'the same id maps the same way everywhere');
+  assert.match(out.targetId, /^[A-Za-z0-9_-]{43}-1-e$/, 'keeps its shape and suffix');
+  assert.equal(out.outcomeDetail, `DELETE /roleAssignments/${out.targetId}`);
+  assert.equal(out.priorState.objectId, a.guid(GROUP).replace(/-/g, ''), 'a dashless GUID maps like its dashed form');
+  assert.doesNotThrow(() => assertSafeText(published, { rawIds: rawIdentifiers(raw), label: 'the capture log' }));
+  // A sha256 in hex is not a GUID.
+  const sha = createHash('sha256').update('x').digest('hex');
+  assert.deepEqual(rawIdentifiers(sha), []);
+  assert.equal(a.text(sha), sha);
+});

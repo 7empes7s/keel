@@ -2149,8 +2149,34 @@ item that needs it stays untouched.
 - **Report:** per step, promoted / failed (demoted, with the reason) / blocked (why), and the new live-qualified total.
 ### Q46: Phase 3 live checks on the test tenant — Exchange org setting, lockout deletes, branding files, PIM admin-unit scope
 - Drafted by the "Keel backup/restore coverage review" thread (2026-10-12).
-- Status: doing
-- Result: Started 2026-10-13 21:58 UTC at live build 2b9d310 (#192, #195, #197, #199 all present).
+- Status: blocked
+- Result: Run 2026-10-13 21:58 to 2026-10-14 09:30 UTC at live build 2b9d310 (#192, #195, #197, #199 all present). Requester: Entra principal (as the operator chose); approver: the operator. Evidence: branch `claude/live-evidence-q46` @ 7a3ed83 (no PR). `operations.mjs --live-evidence` (with the HMAC key): `live evidence namedLocation.delete.json: fixture-tested -> live-qualified`.
+
+  - **A (Exchange org setting): not run.** The operator chose "do B, C, D first", then "move on". It needs the SharePoint and Teams records captured again at 2b9d310 first (the `exchangeTeamsPrerequisite` rule).
+  - **B (#197 lockout deletes):**
+    - Break-glass Global Admin role-assignment delete (dry run 90a5ea18, dry run only): **refused, as required.** KEEL's reason, verbatim: "refusing to delete tenant-lockout resource: break-glass readiness after the delete is not established: break-glass readiness is not-ready after the delete (account-not-ready); Break glass: phishingResistantCredential unknown (no-method-evidence), privilegedAccessPath fail (no-active-global-administrator); Emergency access: phishingResistantCredential unknown (no-method-evidence)".
+    - Unused named-location delete, `namedLocation:KEEL-RT-148-delete`:
+      - The first dry run (e76937c0) was refused because break-glass readiness was unknown (password only).
+      - The operator then said the break-glass set is now Emergency access plus the operator's own account. In KEEL's database only, with nothing written to the tenant:
+        - `keel-breakglass retire` the "Break glass" account. Its MFA registration fails, and the reason is recorded.
+        - `record methods-attested fido2,password` for Emergency access. On 2026-10-14 Graph lists fido2, Authenticator and password for it.
+        - Readiness is now **ready**: both accounts pass all 5 dimensions.
+      - The rerun dry run (1d6b20a7) completed, the operator approved (0e0ab0b0), and the worker deleted the named location (applied 1, failed 0). Graph returns 404 for it now. **Promoted to live-qualified.**
+  - **C (#199 branding files):**
+    - The fr-FR favicon was stored by hash in snapshot bc6cb3ff, then drifted to a different image.
+    - Restore 2fb2aeee was approved (b95aea2c) and the worker logged "branding files: uploaded 1, failed 0".
+    - **The restore works:** Graph reads the favicon back with sha256 68edc125… (79 bytes), the same as the snapshot.
+    - **Not qualified (blocked):**
+      - The journal records the upload as `organizationalBranding#file:fr-FR/favicon`.
+      - `entraLive capture` as organizationalBrandingLocalization update returns not-exercised (exit 4).
+      - Captured as `organizationalBranding#file`, it refuses: "is not a disposable KEEL-RT-* or keel-rehearsal-* fixture". `--allow-tenant-setting` doesn't cover file keys. Fixing this needs a tool change.
+  - **D (#195 PIM eligibility scoped to an administrative unit): failed.**
+    - Setup: carla eligible for KEEL-RT-148-role, scoped to the admin unit KEEL-RT-148-unit. Snapshot 6cd94f39 captured it. Then the eligibility was removed.
+    - Dry run a839f2eb failed with "unresolvable scope … an administrative unit the snapshot cannot name".
+    - Cause: `eligibilityScopeRefusal` checks `ref.prefix === '/administrativeUnits/'`, but `resource_reference` has no prefix column, so the prefix is never stored.
+  - **Tenant cleanup:**
+    - Deleted: KEEL-RT-148-role, KEEL-RT-148-unit and KEEL-RT-148-delete (deleted by KEEL).
+    - **Left:** the fr-FR branding localization. Its text and favicon are emptied, but Graph still refuses the delete ("images or content customizations are configured", 7 tries). The operator was asked to delete it in the portal.
 - Needs: Q45 done first. A live build that contains PRs #192 (Exchange org setting), #195 (PIM admin-unit scope), #197 (lockout
   delete evidence) and #199 (branding files). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run
   only the parts whose PR is live and report the rest as waiting.

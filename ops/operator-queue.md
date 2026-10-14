@@ -865,6 +865,46 @@ being triggered by queue updates.
   - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
   Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
 
+### Q48: Rerun the Q45–Q47 failures after the 2026-10-14 fixes
+- Drafted by the "Keel backup/restore coverage review" thread (2026-10-14).
+- Status: todo
+- Result:
+- Needs: Q47 done or blocked. A live build containing #207 (capture tool), #209 (demotion records), #212 (verification
+  ignores server-managed fields), #213 (assignment target ordering), #215 (workload proof build), #216 (update body
+  @odata.type), #218 (content-effect approval page), #219 (edge outcomes, language-0 branding, policy-restore waves) and
+  #222 (PIM admin-unit scope). Check each with `git -C /opt/keel-live log --oneline | grep -c "#<n>"`; run only the parts
+  whose PR is live and report the rest as waiting.
+- **Test tenant only.** Same hard rules and requester/approver split as Q45 (file as the Entra principal, approve as Gmail).
+- **A. Q45 demoted steps (#212, #216).** Rerun 1 group create, 3 group restore-soft-deleted, 48 CA policy create (lands
+  report-only) and 40 namedLocation update. Expected: verified and captured. The held-back group evidence is captured again.
+- **B. Q45 blocked steps.**
+  - 5–8 member/owner edge add and remove (#219): each edge now records an outcome; capture each.
+  - 29 organizationalBranding update (#219): capture with `--resource-type organizationalBranding --fixture organizationalBranding --allow-tenant-setting`. In this tenant the write is journalled as language "0"; the capture accepts it.
+  - 11, 13, 14 application steps (#211, if live): publicClient is reviewed sign-in config, so the guard should not refuse.
+    If #211 is not live, report them as waiting.
+  - 31 groupLifecyclePolicy (#218): a new restore request; then Approvals, "Review content effects" on it, approve as
+    someone other than the requester, and run it. Expected: the write goes through instead of `blocked-content-effect`.
+  - 35 roleAssignment create (#207): capture with `--allow-by-reference`.
+  - 44, 46, 47 break-glass steps: readiness is now ready (Q46 B), so rerun them. Refusals of deletes that would leave
+    break-glass unready are a pass; report the reasons verbatim.
+- **C. One restore for Q45's group and its two policies (#213).** Delete the group and both Intune policies assigned to it,
+  then restore all three in one restore. Expected: the group is created first and both policies are assigned to the new
+  group id. (A group that does not exist anywhere yet still refuses its policies in the dry run; that limit is known.)
+- **D. Q46 leftovers.**
+  - C branding file (#207): `capture --resource-type 'organizationalBranding#file' --operation update --fixture
+    'organizationalBranding#file:fr-FR/favicon' --allow-tenant-setting`, then `promote --evidence
+    $OUT/organizationalBranding.file.update.json`. Recreate the fr-FR localization and favicon drift first if needed.
+  - D PIM eligibility at an admin-unit scope (#222): redo Q46 D. No schema statement is needed.
+  - A Exchange org setting: recapture SharePoint and Teams at the live build, then run Q46 A as written.
+- **E. Workload proofs (#215).** `KEEL_QUALIFICATION_HMAC_KEY=… node cli/keel-workload-collect.mjs import` (no `--build`
+  needed). Expected: 4 imported at evidenceBuild fb1493ea, none refused, exit 0. Then `proof` (4 entries, expiring about
+  2026-11-06; exit 1 inside the 14-day warning is expected) and one `run` (workloads no longer "disabled").
+  Recapture the four workload records before 2026-11-06 (the Part D recaptures above count).
+- **F. api-drift schedule.** `node cli/keel-schedules-migrate.mjs --kinds api-drift`; report the schedule row.
+- Capture and promote as in Q43; commit evidence to `claude/live-evidence-q48`. Every demotion file you add needs a
+  matching `liveFailures` entry in code; leave that to the thread and say so in the Result.
+- **Report:** per step, promoted / demoted (with the reason) / blocked / waiting, and every tenant setting read back as original.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

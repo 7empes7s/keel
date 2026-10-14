@@ -89,8 +89,9 @@ export async function ingestAudit(client, options) {
   if (archiveRef !== undefined) safeRef(archiveRef);
   else if (!adapter || adapter.credentialMode !== 'collector-read-only' || adapter.tenantRef !== tenantRef
     || typeof adapter.synthetic !== 'boolean' || typeof adapter.readPage !== 'function') throw new Error('tenant-bound read-only collector adapter required');
+  // Advisory locks are database-wide: the key also names the schema (appended in SQL).
   const lockKey = JSON.stringify(['audit-ingest', tenantRef, source]);
-  const locked = await client.query('SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked', [lockKey]);
+  const locked = await client.query('SELECT pg_try_advisory_lock(hashtextextended($1 || current_schema(), 0)) AS locked', [lockKey]);
   if (!locked.rows[0].locked) return { status: 'busy' };
   const runId = randomUUID(), started = Date.now();
   const evidence = { status: 'running', requests: 0, observedEvents: 0, insertedEvents: 0, storedBytes: 0,
@@ -210,7 +211,7 @@ export async function ingestAudit(client, options) {
     if (/^(not authorized|unfinished time window|time window cannot|audit page persistence)/.test(error.message)) throw error;
     throw new Error('audit ingestion persistence failed');
   } finally {
-    await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [lockKey]);
+    await client.query('SELECT pg_advisory_unlock(hashtextextended($1 || current_schema(), 0))', [lockKey]);
   }
 }
 

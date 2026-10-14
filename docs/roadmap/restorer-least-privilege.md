@@ -1,7 +1,7 @@
 # Restorer least-privilege review (issue #93)
 
 Status 2026-10-04. Review only: no grant has been changed. Removing a grant is an
-operator decision in `ops/operator-queue.md`; no Claude session changes grants.
+operator decision in `ops/operator-queue.md`; no agent session changes grants.
 
 ## What the Restorer holds today
 

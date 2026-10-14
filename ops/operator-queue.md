@@ -2611,7 +2611,24 @@ item that needs it stays untouched.
 - Drafted by the "Add API permissions" thread (2026-10-14). Same decision as Q55 (D-Q55); Marouane then added
   "all the necessary permissions" (project chat, 2026-10-14 21:38 UTC), so this covers every read discovery and the plan's
   backups probe, not only ask 1.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-14 21:58–22:01 UTC. The Collector manifest only: one merged PATCH (204) as the Restorer. No
+  appRoleAssignment, no consent, nothing removed (read back: 0 entries lost). Global admin not used.
+  - Added 15 (all resolved to Graph appRoles; none skipped): AuditLog.Read.All, ServiceHealth.Read.All,
+    CustomAuthenticationExtension.Read.All, ExternalConnection.Read.All, IdentityRiskEvent.Read.All,
+    InformationProtectionPolicy.Read.All, Place.Read.All, Printer.Read.All, Reports.Read.All, RoleManagement.Read.All,
+    SecurityEvents.Read.All, TeamworkTag.Read.All, DeviceManagementScripts.Read.All, plus the already-held
+    GroupMember.Read.All and Sites.FullControl.All.
+  - The Collector's Graph application permissions in its manifest: 45 (49 entries in all, with SharePoint 2, Exchange 1 and Graph delegated 1).
+    Graph roles held now: 26. Every held Graph role is now in the manifest.
+  - Waiting for Marouane's consent (manifest minus held, 19): APIConnectors.Read.All, Agreement.Read.All, AuditLog.Read.All,
+    CustomAuthenticationExtension.Read.All, CustomSecAttributeDefinition.Read.All, DeviceManagementScripts.Read.All,
+    ExternalConnection.Read.All, IdentityRiskEvent.Read.All, IdentityUserFlow.Read.All, InformationProtectionPolicy.Read.All,
+    LifecycleWorkflows.Read.All, MultiTenantOrganization.Read.All, Place.Read.All, Printer.Read.All, Reports.Read.All,
+    RoleManagement.Read.All, SecurityEvents.Read.All, ServiceHealth.Read.All, TeamworkTag.Read.All.
+  - Not added, as the item says: CallRecords.Read.All, Bookings.Read.All, SubjectRightsRequest.Read.All, Power BI.
+  - Note: the SharePoint Online role the Collector holds outside its manifest (678536fe…, Q55 E) is still not in the manifest.
+    Q56 covered Graph only, so it was left as is.
 - Needs: Q55 done.
 - **Same rules as Q55:** test tenant, manifest only (GET the KEEL Collector application, MERGE, one PATCH), read permissions
   only, no appRoleAssignment, no consent. Resolve names from the Graph service principal's appRoles (type Role); skip and

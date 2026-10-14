@@ -81,7 +81,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recoveryMechanism.mjs';
-import { attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
+import { assignmentTargetResolver, attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
@@ -641,7 +641,7 @@ export async function runRestore({
         resources = attachIntuneAssignments(resources, {
           desired: desiredAssignments,
           live: new Map(liveAssignments.map((obs) => [`${obs.parentNaturalKey}|${obs.family}`, obs])),
-          resolve: (naturalKey) => existingTargetIds.get(naturalKey) ?? null,
+          resolve: assignmentTargetResolver(resources, existingTargetIds),
           recoveryFor: (resource) => selectRecoveryMechanism(resource),
         });
       }

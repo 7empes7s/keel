@@ -17,15 +17,22 @@ export function buildGraph(resources) {
     // canonicalize so snapshots that already stored such a self-reference
     // (from before classify() compared ids case-insensitively) plan cleanly.
     const deps = new Set(
-      r.references
-        .filter((ref) => ref.symbol && ref.symbol !== r.naturalKey
-          && !isVerbatimSymbol(ref.symbol) && nodes.has(ref.symbol))
-        .map((ref) => ref.symbol),
+      [...r.references.map((ref) => ref.symbol), ...assignmentTargetSymbols(r)]
+        .filter((symbol) => symbol && symbol !== r.naturalKey
+          && !isVerbatimSymbol(symbol) && nodes.has(symbol)),
     );
     edges.set(r.naturalKey, deps);
   }
   const cycles = findCycles(nodes, edges);
   return { nodes, edges, cycles };
+}
+
+/** The objects an Intune policy's assignments point at (a group, included or
+ * excluded). The policy is assigned right after it is written, so each one
+ * must exist first: when the same run creates or restores it, it goes in an
+ * earlier wave. Constant targets (all devices, all users) carry no key. */
+function assignmentTargetSymbols(resource) {
+  return (resource.assignments?.targets ?? []).map((target) => target?.targetNaturalKey ?? null);
 }
 
 function findCycles(nodes, edges) {

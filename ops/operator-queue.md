@@ -3324,3 +3324,63 @@ item that needs it stays untouched.
   8. **Cleanup:** delete the restored copy or copies, and both fixtures. Report anything left in the tenant.
 - **Report:** B; steps 2–7 outputs (exit codes, JSON, approval ids); both sha256 values; anything refused (403 or guard);
   anything left in the tenant. No tokens or keys.
+
+### Q70: Scoped calendar and contacts write for the Restorer (keel-rt- mailboxes), then the calendar and contacts restore check
+- Drafted by the "Calendar and contacts restore access" thread (2026-10-15). Q68 step 5 got 403 for calendar and contacts:
+  the Q63 RBAC assignment KEEL-RT-restorer-mail-rw covers Application Mail.ReadWrite only.
+- Needs: Q63 done (scope KEEL-RT-test-mailboxes and the Exchange SP "Keel Restorer" exist). Q68 done
+  (`/etc/keel/content-restorer.json` exists). Can run alongside Q69 (different workload, different site).
+- Status: todo
+- Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Same shape as D-Q63: Exchange RBAC for
+  Applications on the existing KEEL-RT-test-mailboxes scope only. No consent click is needed.
+- **Rules:** test tenant. The only permission changes are the two role assignments below. **Do not** add Graph
+  `Calendars.*` or `Contacts.*` write permissions to any app manifest and create no Entra appRoleAssignment: a tenant-wide
+  Entra grant would bypass the scope. Writes only in keel-rt-20260908-alice's mailbox. Events are created **without
+  attendees** (no invitations). Never touch break-glass, the operator's admin account or Marouane's mailbox. Global admin
+  not used. Under the 2026-10-14 standing authorization, keel-operator approves the restores itself; log every approval id.
+- **Do:**
+  1. **Entra check (read-only):** list the Restorer SP's Graph appRoleAssignments. If it holds `Calendars.ReadWrite` or
+     `Contacts.ReadWrite` (or any `Calendars.*`/`Contacts.*` read role), report which; a write role means the scope is
+     bypassed, so stop and report `blocked`. Note the Collector/Content Reader roles are not in scope here.
+  2. **Exchange setup**, in Exchange Online PowerShell as the Restorer (app-only, as in Q63). Reuse an assignment if it
+     already exists with these exact values:
+     ```powershell
+     $spId = '8cd199c9-a96e-4666-924f-aa0ca6910f32'
+     Get-ManagementScope 'KEEL-RT-test-mailboxes' | Select Name,RecipientFilter
+     Get-Recipient -RecipientPreviewFilter "PrimarySmtpAddress -like 'keel-rt-*'" -ResultSize 50 | Select Name,PrimarySmtpAddress
+     New-ManagementRoleAssignment -Name 'KEEL-RT-restorer-calendars-rw' -App $spId -Role 'Application Calendars.ReadWrite' -CustomResourceScope 'KEEL-RT-test-mailboxes'
+     New-ManagementRoleAssignment -Name 'KEEL-RT-restorer-contacts-rw' -App $spId -Role 'Application Contacts.ReadWrite' -CustomResourceScope 'KEEL-RT-test-mailboxes'
+     ```
+     If the preview lists any mailbox not starting with `keel-rt-`, stop before creating anything and report `blocked`.
+     If a cmdlet is refused for the app, stop and report `blocked` with the error text.
+     Undo: `Remove-ManagementRoleAssignment KEEL-RT-restorer-calendars-rw` and `... KEEL-RT-restorer-contacts-rw`.
+  3. **Authorization check (read-only):** `Test-ServicePrincipalAuthorization -Identity $spId -Resource
+     keel-rt-20260908-alice@techinsiderbytes.com` must show Application Calendars.ReadWrite and Application
+     Contacts.ReadWrite with `InScope = True`; against the same non-test mailbox as Q63 (AdeleV): `InScope = False`.
+  4. **Fixtures** (as the Restorer, Graph v1.0; on 403 retry every 10 minutes for up to 2 h, as RBAC propagates). Create
+     each once; reuse if one with that name already exists:
+     - Event in alice's default calendar: `POST /users/keel-rt-20260908-alice@techinsiderbytes.com/events` with
+       `{"subject":"KEEL-RT-20261015-event","start":{"dateTime":"2026-10-20T09:00:00","timeZone":"UTC"},
+       "end":{"dateTime":"2026-10-20T09:30:00","timeZone":"UTC"},"body":{"contentType":"text","content":"KEEL-RT calendar fixture"}}`
+       (no attendees).
+     - Contact in alice's default contacts: `POST /users/keel-rt-20260908-alice@techinsiderbytes.com/contacts` with
+       `{"givenName":"KEEL-RT-20261015-contact","displayName":"KEEL-RT-20261015-contact","emailAddresses":[{"address":"keel-rt-contact@example.invalid","name":"KEEL-RT-20261015-contact"}]}`.
+     Report when each write first succeeded and its id (first 8 chars).
+  5. **Blocked check** (as the Restorer): on the non-test mailbox, `GET /users/<it>/events?$top=1&$select=id` and
+     `GET /users/<it>/contacts?$top=1&$select=id`. Expected 403 each. No write there; record status and error code only.
+     If either returns 200, remove both new assignments and report `failed`.
+  6. **Backup:** `node /opt/keel-live/cli/keel-content-collect.mjs run` once. Report exit code and workload lines, and
+     confirm content_item holds the event and the contact for alice's mailbox.
+  7. **Restore check**, as Q68 with build B (`node /opt/keel-live/cli/keel-content-restore.mjs ...`), `<T>` = now:
+     a. `mail plan --source-mailbox <A> --at <T>`: report counts; expect calendar ≥ 1 and contacts ≥ 1.
+     b. Copy restore: request `--kinds calendar,contacts` at `<T>`, approve, run. Report exit code and JSON. Check a
+        calendar "Restored <today> - Calendar" holds KEEL-RT-20261015-event (no attendees) and a contact folder
+        "Restored <today>" holds KEEL-RT-20261015-contact.
+     c. Re-run the same approval: expect exit 0 and `writes: 0`.
+     d. Into the original: delete both fixtures (Graph DELETE as the Restorer), request `--into original --kinds
+        calendar,contacts` at the same `<T>`, approve, run. Expect both back in the default calendar and contacts. Report JSON.
+  8. **Cleanup:** delete the restored calendar and contact folder from 7b. Keep the event and contact restored in 7d as
+     the standing fixtures. Report anything left in the tenant.
+- **Report:** step 1 findings; preview list and assignments created (or reused); all four
+  Test-ServicePrincipalAuthorization results; fixture write times and ids; blocked-check codes; backup lines; step 7
+  outputs (exit codes, JSON, approval ids); anything refused; anything left in the tenant. No tokens or keys.

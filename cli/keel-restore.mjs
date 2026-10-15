@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-restore.mjs
 //
-// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
+// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
 // node keel-restore.mjs --snapshot-id <id> --select <naturalKey> [--select <naturalKey>...] --collector-config ... --target-config ... [--enforce]
 //
 // node keel-restore.mjs --snapshot-id <id> --delete <naturalKey> [--delete <naturalKey>...] --collector-config ... --target-config ... [--persist-artifact <id>]
@@ -29,7 +29,7 @@
 // only by promoting that artifact with --artifact <id> --enforce after an approver
 // other than the requester approved it; the break-glass lockout gate runs at both.
 //
-// node keel-restore.mjs --workload <name> --collection <id> <workload options> --collector-config <path> [--persist-artifact <id>] [--requested-by <who>]
+// node keel-restore.mjs --workload <name> --collection <id> <workload options> [--collector-config <path>] [--persist-artifact <id>] [--requested-by <who>]
 // plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
 // one recorded workload collection, as a dry run (gap register W2). Workload options:
 //   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
@@ -39,7 +39,8 @@
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
 // It is executed only by promoting that artifact with --artifact <id> --enforce after an
 // approver other than the requester approved it; the credential files are the
-// server's (engine/restore/credentialPaths.mjs), never argv.
+// server's (engine/restore/credentialPaths.mjs), never argv. The dry run reads with the
+// server's collector file too unless --collector-config names another.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -1750,8 +1751,10 @@ export async function main({
     if (mode === 'enforce') {
       throw new Error('--workload is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
     }
-    const collectorConfigPath = arg('collector-config', undefined, argv);
-    if (!collectorConfigPath) throw new Error('--collector-config <path> required (the workload dry run reads with the collector)');
+    // The dry run reads with the collector: the server's file (credentialPaths, the
+    // same one its promotion reads) unless the operator names another.
+    const collectorConfigPath = arg('collector-config', undefined, argv)
+      ?? (dependencies?.credentialPaths ?? credentialPaths)().collectorConfig;
     return runRestore({
       workloadRestore: {
         workload,

@@ -129,7 +129,7 @@ async function recordSource(client) {
   return run.id;
 }
 
-async function dryRun(client, live, { requestedBy = 'requester', options } = {}) {
+async function dryRun(client, live, { requestedBy = 'requester', collectorConfig = '/fixtures/collector.json', options } = {}) {
   const collectionId = await recordSource(client);
   const graph = fakeSharePoint(live);
   const deps = cliDependencies(graph, options);
@@ -137,7 +137,7 @@ async function dryRun(client, live, { requestedBy = 'requester', options } = {})
   const result = await main({
     argv: [
       'node', 'keel-restore.mjs', '--workload', 'sharepoint-site-settings', '--collection', String(collectionId),
-      '--tenant-host', HOST, '--collector-config', '/fixtures/collector.json',
+      '--tenant-host', HOST, ...(collectorConfig === null ? [] : ['--collector-config', collectorConfig]),
       '--persist-artifact', artifactId, ...(requestedBy === null ? [] : ['--requested-by', requestedBy]),
     ],
     readFile, dbUrl: database.url, dependencies: deps.dependencies, logger: quiet,
@@ -195,6 +195,26 @@ test('--workload without --requested-by persists the dry run under the keel-rest
   assert.equal(result.status, 'completed');
   const artifact = await getDryRunArtifactById(client, { id: artifactId });
   assert.equal(artifact.requestedBy, 'keel-restore');
+});
+
+test('--workload without --collector-config reads the server collector file, the one its promotion reads', async (t) => {
+  // keel-operator hit this in Q77: the dry run demanded a path, and the server default
+  // named a file the host never had, so every workload restore needed one by hand.
+  const client = await schemaClient(t);
+  const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
+  const { requester, approver } = await people(client);
+  reads.length = 0;
+  const { result, graph, deps, artifactId } = await dryRun(client, live, { requestedBy: requester, collectorConfig: null });
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(reads, [SERVER_PATHS.collectorConfig]);
+  assert.deepEqual(deps.connections.map((c) => [c.role, c.configPath]), [['collector', SERVER_PATHS.collectorConfig]]);
+
+  await approve(client, artifactId, { requestedBy: requester, decidedBy: approver });
+  reads.length = 0;
+  const promoted = await promote(graph, artifactId);
+  assert.equal(promoted.outcome, 'verified');
+  assert.deepEqual(reads, [SERVER_PATHS.collectorConfig, SERVER_PATHS.targetConfig]);
 });
 
 test('--workload is a dry run only, and refuses an unknown workload or a missing option', async (t) => {

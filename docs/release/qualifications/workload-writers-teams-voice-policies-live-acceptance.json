@@ -1,0 +1,1346 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "2235fb349c9139aac024aac742be5dbcdbdc4672",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-15T18:47:20.295Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "teams-voice-policies",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": null,
+    "tenantWide": true,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "MicrosoftTeams",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-CsTeamsCallingPolicy",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-CsTeamsCallingPolicy is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-CsTeamsCallingPolicy",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-CsTeamsCallingPolicy does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "teams.calling-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsCallingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-f9cca141",
+        "identity": "KEEL-RT-capture-f9cca141",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:42:02.872Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.calling-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsCallingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-f9cca141",
+        "identity": "Tag:KEEL-RT-capture-f9cca141",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:42:26.664Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.voice-routing-policy.add",
+        "kind": "add",
+        "method": "New-CsOnlineVoiceRoutingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-33419ac9",
+        "identity": "KEEL-RT-capture-33419ac9",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:42:34.092Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.voice-routing-policy.update",
+        "kind": "update",
+        "method": "Set-CsOnlineVoiceRoutingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-33419ac9",
+        "identity": "Tag:KEEL-RT-capture-33419ac9",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:42:55.457Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.dial-plan.add",
+        "kind": "add",
+        "method": "New-CsTenantDialPlan",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-520c72fd",
+        "identity": "KEEL-RT-capture-520c72fd",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:43:03.059Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.dial-plan.update",
+        "kind": "update",
+        "method": "Set-CsTenantDialPlan",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-520c72fd",
+        "identity": "Tag:KEEL-RT-capture-520c72fd",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:43:25.128Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-calling-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsEmergencyCallingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-6947985b",
+        "identity": "KEEL-RT-capture-6947985b",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:43:32.487Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-calling-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsEmergencyCallingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-6947985b",
+        "identity": "Tag:KEEL-RT-capture-6947985b",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:43:56.477Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-call-routing-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsEmergencyCallRoutingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-5c2b9362",
+        "identity": "KEEL-RT-capture-5c2b9362",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:44:04.895Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-call-routing-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsEmergencyCallRoutingPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-5c2b9362",
+        "identity": "Tag:KEEL-RT-capture-5c2b9362",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:44:27.618Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.call-park-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsCallParkPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-c945233e",
+        "identity": "KEEL-RT-capture-c945233e",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:44:35.431Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.call-park-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsCallParkPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-c945233e",
+        "identity": "Tag:KEEL-RT-capture-c945233e",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:44:58.395Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.caller-id-policy.add",
+        "kind": "add",
+        "method": "New-CsCallingLineIdentity",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-d8a4b1c6",
+        "identity": "KEEL-RT-capture-d8a4b1c6",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:45:06.766Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.caller-id-policy.update",
+        "kind": "update",
+        "method": "Set-CsCallingLineIdentity",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-d8a4b1c6",
+        "identity": "Tag:KEEL-RT-capture-d8a4b1c6",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:45:29.002Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.voicemail-policy.add",
+        "kind": "add",
+        "method": "New-CsOnlineVoicemailPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-0951ff81",
+        "identity": "KEEL-RT-capture-0951ff81",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:45:36.681Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.voicemail-policy.update",
+        "kind": "update",
+        "method": "Set-CsOnlineVoicemailPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-0951ff81",
+        "identity": "Tag:KEEL-RT-capture-0951ff81",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:45:59.833Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.live-events-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsMeetingBroadcastPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-60e87c9a",
+        "identity": "KEEL-RT-capture-60e87c9a",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:46:07.184Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.live-events-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsMeetingBroadcastPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-60e87c9a",
+        "identity": "Tag:KEEL-RT-capture-60e87c9a",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:46:31.079Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.events-policy.add",
+        "kind": "add",
+        "method": "New-CsTeamsEventsPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-f9b0549a",
+        "identity": "KEEL-RT-capture-f9b0549a",
+        "field": "Description",
+        "type": "text",
+        "before": null,
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:46:57.935Z",
+        "error": null
+      },
+      {
+        "operationId": "teams.events-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsEventsPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-capture-f9b0549a",
+        "identity": "Tag:KEEL-RT-capture-f9b0549a",
+        "field": "Description",
+        "type": "text",
+        "before": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "target": "KEEL capture 2026-10-15T18:41:14.371Z (again)",
+        "final": "KEEL capture 2026-10-15T18:41:14.371Z",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:47:20.295Z",
+        "error": null
+      }
+    ],
+    "skipped": [
+      {
+        "family": "liveEventsConfiguration",
+        "operationId": "teams.live-events-configuration.update",
+        "fixture": "Global",
+        "reason": "no comment, description or harmless switch on it can be changed without a content effect"
+      }
+    ],
+    "created": [
+      {
+        "family": "callingPolicy",
+        "name": "KEEL-RT-capture-f9cca141"
+      },
+      {
+        "family": "voiceRoutingPolicy",
+        "name": "KEEL-RT-capture-33419ac9"
+      },
+      {
+        "family": "dialPlan",
+        "name": "KEEL-RT-capture-520c72fd"
+      },
+      {
+        "family": "emergencyCallingPolicy",
+        "name": "KEEL-RT-capture-6947985b"
+      },
+      {
+        "family": "emergencyCallRoutingPolicy",
+        "name": "KEEL-RT-capture-5c2b9362"
+      },
+      {
+        "family": "callParkPolicy",
+        "name": "KEEL-RT-capture-c945233e"
+      },
+      {
+        "family": "callerIdPolicy",
+        "name": "KEEL-RT-capture-d8a4b1c6"
+      },
+      {
+        "family": "voicemailPolicy",
+        "name": "KEEL-RT-capture-0951ff81"
+      },
+      {
+        "family": "liveEventsPolicy",
+        "name": "KEEL-RT-capture-60e87c9a"
+      },
+      {
+        "family": "eventsPolicy",
+        "name": "KEEL-RT-capture-f9b0549a"
+      }
+    ],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy",
+          "voiceRoutingPolicy",
+          "dialPlan",
+          "emergencyCallingPolicy",
+          "emergencyCallRoutingPolicy",
+          "callParkPolicy",
+          "callerIdPolicy",
+          "voicemailPolicy",
+          "liveEventsPolicy",
+          "eventsPolicy",
+          "liveEventsConfiguration"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsCallingPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-f9cca141",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsCallingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-f9cca141",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsCallingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-f9cca141",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsOnlineVoiceRoutingPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-33419ac9",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voiceRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voiceRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voiceRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-33419ac9",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voiceRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsOnlineVoiceRoutingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-33419ac9",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voiceRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTenantDialPlan",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-520c72fd",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "dialPlan"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "dialPlan"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "dialPlan"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTenantDialPlan",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-520c72fd",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "dialPlan"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTenantDialPlan",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-520c72fd",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "dialPlan"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsEmergencyCallingPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-6947985b",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-6947985b",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEmergencyCallingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-6947985b",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsEmergencyCallRoutingPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-5c2b9362",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEmergencyCallRoutingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-5c2b9362",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEmergencyCallRoutingPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-5c2b9362",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "emergencyCallRoutingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsCallParkPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-c945233e",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callParkPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callParkPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callParkPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsCallParkPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-c945233e",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callParkPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsCallParkPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-c945233e",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callParkPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsCallingLineIdentity",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-d8a4b1c6",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callerIdPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callerIdPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callerIdPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsCallingLineIdentity",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-d8a4b1c6",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callerIdPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsCallingLineIdentity",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-d8a4b1c6",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "callerIdPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsOnlineVoicemailPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-0951ff81",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voicemailPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voicemailPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voicemailPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsOnlineVoicemailPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-0951ff81",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voicemailPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsOnlineVoicemailPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-0951ff81",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "voicemailPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsMeetingBroadcastPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-60e87c9a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "liveEventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "liveEventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "liveEventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsMeetingBroadcastPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-60e87c9a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "liveEventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsMeetingBroadcastPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-60e87c9a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "liveEventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "New-CsTeamsEventsPolicy",
+        "parameters": {
+          "Identity": "KEEL-RT-capture-f9b0549a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "eventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "eventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "eventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEventsPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-f9b0549a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z (again)"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "eventsPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-CsTeamsEventsPolicy",
+        "parameters": {
+          "Identity": "Tag:KEEL-RT-capture-f9b0549a",
+          "Description": "KEEL capture 2026-10-15T18:41:14.371Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "teams-voice-policies",
+        "families": [
+          "eventsPolicy"
+        ],
+        "outcome": "ok"
+      }
+    ],
+    "captureLogSha256": "4b64672c770b38c63d2c9cbe65bd740399d5ea324bcca72f3684e862f81dec24"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-teams-voice-policies-live-acceptance.capture.json",
+      "sha256": "4b64672c770b38c63d2c9cbe65bd740399d5ea324bcca72f3684e862f81dec24"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "a2af25e8b63e11bf3e470bef75225095c07ced2f520b8cf16d8d86eb249db38e"
+    }
+  }
+}

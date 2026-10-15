@@ -1,0 +1,431 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "2235fb349c9139aac024aac742be5dbcdbdc4672",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-15T18:49:17.680Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-extended",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": {
+      "collector": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "restorer": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "tenantIdSource": "config"
+    },
+    "tenantWide": true,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-HostedOutboundSpamFilterPolicy",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-HostedOutboundSpamFilterPolicy is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-HostedOutboundSpamFilterPolicy",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-HostedOutboundSpamFilterPolicy does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "exchange-extended.connection-filter-policy.update",
+        "kind": "update",
+        "method": "Set-HostedConnectionFilterPolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "tenant-wide",
+        "fixture": "Default",
+        "identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
+        "field": "AdminDisplayName",
+        "type": "text",
+        "before": "",
+        "target": "KEEL capture 2026-10-15T18:47:49.397Z",
+        "final": "",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-15T18:49:11.728Z",
+        "error": null
+      },
+      {
+        "operationId": "exchange-extended.quarantine-global-settings.update",
+        "kind": "update",
+        "method": "Set-QuarantinePolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "tenant-wide",
+        "fixture": "DefaultGlobalPolicy",
+        "identity": "766d6357-cf13-863e-ac98-f99d551c3da0",
+        "field": "OrganizationBrandingEnabled",
+        "type": "switch",
+        "before": false,
+        "target": true,
+        "final": null,
+        "contentEffects": [],
+        "ok": false,
+        "readBackVerified": false,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-15T18:49:17.680Z",
+        "error": "Set-QuarantinePolicy failed: Set-QuarantinePolicy: Cannot process argument transformation on parameter 'Identity'. Cannot convert value \"766d6357-cf13-863e-ac98-f99d551c3da0\" to type \"Microsoft.Exchange.Configuration.Tasks.QuarantineTagIdParameter\". Error: \"The format of the value you specified in the objectId parameter isn't valid. Check the value, and then try again. (Parameter 'objectId')\""
+      }
+    ],
+    "skipped": [
+      {
+        "family": "outboundSpamPolicy",
+        "operationId": "exchange-extended.outbound-spam-policy.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "outboundSpamRule",
+        "operationId": "exchange-extended.outbound-spam-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "antiSpamRule",
+        "operationId": "exchange-extended.anti-spam-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "antiPhishRule",
+        "operationId": "exchange-extended.anti-phish-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "antiMalwareRule",
+        "operationId": "exchange-extended.anti-malware-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "quarantinePolicy",
+        "operationId": "exchange-extended.quarantine-policy.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "journalRule",
+        "operationId": "exchange-extended.journal-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "mobileDevicePolicy",
+        "operationId": "exchange-extended.mobile-device-policy.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "deviceAccessRule",
+        "operationId": "exchange-extended.device-access-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "activeSyncSettings",
+        "operationId": "exchange-extended.activesync-settings.update",
+        "fixture": "Mobile Mailbox Settings",
+        "reason": "no comment, description or harmless switch on it can be changed without a content effect"
+      },
+      {
+        "family": "addressList",
+        "operationId": "exchange-extended.address-list.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "globalAddressList",
+        "operationId": "exchange-extended.global-address-list.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "offlineAddressBook",
+        "operationId": "exchange-extended.offline-address-book.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "addressBookPolicy",
+        "operationId": "exchange-extended.address-book-policy.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "retentionPolicyTag",
+        "operationId": "exchange-extended.retention-policy-tag.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "retentionPolicy",
+        "operationId": "exchange-extended.retention-policy.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "safeLinksRule",
+        "operationId": "exchange-extended.safe-links-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "safeAttachmentRule",
+        "operationId": "exchange-extended.safe-attachment-rule.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      },
+      {
+        "family": "defenderForOffice",
+        "operationId": "exchange-extended.defender-office-apps.update",
+        "fixture": "Default",
+        "reason": "no comment, description or harmless switch on it can be changed without a content effect"
+      }
+    ],
+    "created": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "outboundSpamPolicy",
+          "outboundSpamRule",
+          "connectionFilterPolicy",
+          "antiSpamRule",
+          "antiPhishRule",
+          "antiMalwareRule",
+          "quarantinePolicy",
+          "globalQuarantineSettings",
+          "journalRule",
+          "mobileDevicePolicy",
+          "deviceAccessRule",
+          "activeSyncSettings",
+          "addressList",
+          "globalAddressList",
+          "offlineAddressBook",
+          "addressBookPolicy",
+          "retentionPolicyTag",
+          "retentionPolicy",
+          "safeLinksRule",
+          "safeAttachmentRule",
+          "defenderForOffice"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "connectionFilterPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-HostedConnectionFilterPolicy",
+        "parameters": {
+          "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
+          "AdminDisplayName": "KEEL capture 2026-10-15T18:47:49.397Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "connectionFilterPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-HostedConnectionFilterPolicy",
+        "parameters": {
+          "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
+          "AdminDisplayName": ""
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "connectionFilterPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "globalQuarantineSettings"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-QuarantinePolicy",
+        "parameters": {
+          "Identity": "766d6357-cf13-863e-ac98-f99d551c3da0",
+          "OrganizationBrandingEnabled": true
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "[],Write-ErrorMessage"
+        }
+      }
+    ],
+    "captureLogSha256": "e4c709ce0baf0786d7d1787e34f92c8cb2900302fbee08b9f45ca855a18bc439"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-exchange-extended-live-acceptance.capture.json",
+      "sha256": "e4c709ce0baf0786d7d1787e34f92c8cb2900302fbee08b9f45ca855a18bc439"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "f53cd0f78201556ff742f2b94eb1a00f919eb0671a9d374bd36e8121505ba3ad"
+    }
+  }
+}

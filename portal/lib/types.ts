@@ -13,7 +13,9 @@ export type CoverageOutcome =
   | "complete-empty"
   | "partial"
   | "failed"
-  | "not-requested";
+  | "not-requested"
+  // The tenant lacks the licence or feature Microsoft needs before it answers (#309).
+  | "unavailable";
 
 export interface CoverageOutcomeDetail {
   httpStatus: number | null;

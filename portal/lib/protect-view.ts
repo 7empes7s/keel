@@ -24,12 +24,31 @@ export function typeName(type: string): string {
 // The four answers the contract allows for "can KEEL put this type back?".
 export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven";
 
+/**
+ * Whether KEEL has a tested writer for the type: an automated recovery decision and at
+ * least one write operation tested on fixtures or proven live. Most types declare
+ * "read-only" fidelity only because no restore drill has measured them; the writer, not
+ * that declaration, is what says KEEL can put the type back.
+ */
+export function hasRestoreWriter(item: CoverageType): boolean {
+  if (item.qualification?.decision !== "automated" || !item.writeCapability) return false;
+  return Object.values(item.writeCapability.operations)
+    .some((capability) => capability.claim === "fixture-tested" || capability.claim === "live-qualified");
+}
+
+function provenLive(item: CoverageType): boolean {
+  return Object.values(item.writeCapability?.operations ?? {})
+    .some((capability) => capability.claim === "live-qualified" && capability.liveRecord?.live !== false);
+}
+
 export function restoreStanding(item: CoverageType): RestoreStanding {
   const declared = item.fidelity.declared;
   if (item.protectionState === "not-covered" || item.protectionState === "unprotectable"
-    || item.protectionState === "read-only" || declared === "read-only" || declared === "unprotectable" || !declared) {
+    || declared === "unprotectable" || !item.adapter || item.outcome === "unavailable") {
     return "cannot-restore";
   }
+  const readOnly = item.protectionState === "read-only" || declared === "read-only" || !declared;
+  if (readOnly && !hasRestoreWriter(item)) return "cannot-restore";
   if (!item.fidelity.measured) return "unproven";
   return item.fidelity.measured === "full" && declared === "full" ? "protected" : "partial";
 }
@@ -50,20 +69,24 @@ export function standingSentence(item: CoverageType): string {
     case "partial":
       return `Partially protected: some fields Microsoft sets itself and KEEL cannot restore${proven ? `; restore proven on ${proven}` : ""}.`;
     case "unproven":
+      if (provenLive(item)) return "Backed up. KEEL's writes for this type are proven on this tenant, but no restore drill has yet measured what comes back.";
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
     case "cannot-restore":
       if (item.protectionState === "not-covered" || !item.adapter) return "KEEL has no collector for this type, so it is neither backed up nor restorable.";
+      if (item.outcome === "unavailable") return "Nothing to restore: this tenant does not have the licence or feature Microsoft needs for this type.";
       if (item.protectionState === "unprotectable" || item.fidelity.declared === "unprotectable") return "KEEL cannot restore this type: Microsoft manages it, so it is kept for reference only.";
       return "KEEL backs this type up for reference but cannot restore it.";
   }
 }
 
-export type BackupHealth = "ok" | "empty" | "failed" | "stale" | "never" | "not-collected";
+export type BackupHealth = "ok" | "empty" | "failed" | "stale" | "never" | "not-collected" | "unavailable";
 
 export function backupHealth(item: CoverageType): BackupHealth {
   if (item.protectionState === "not-covered" || !item.adapter) return "not-collected";
+  // Microsoft refused the read for a missing licence or tenant feature (#309): not a failure.
+  if (item.outcome === "unavailable") return "unavailable";
   if (item.protectionState === "failed" || item.outcome === "failed" || item.outcome === "partial") return "failed";
   if (item.reportStatus === "never-collected" || !item.lastCollectedAt) return "never";
   if (item.stale) return "stale";
@@ -79,6 +102,7 @@ function items(count: number | null): string {
 export function backupSentence(item: CoverageType, now: string): string {
   switch (backupHealth(item)) {
     case "not-collected": return "Not backed up: no collector exists for this type yet.";
+    case "unavailable": return "Not available on this tenant: Microsoft needs a licence or tenant feature this tenant does not have.";
     case "never": return item.outcome === "not-requested" ? "Not part of the latest backup run." : "Never backed up yet.";
     case "failed":
       return item.outcome === "partial"
@@ -177,7 +201,7 @@ export function protectVerdict(data: CoverageData, now: string): { text: string;
   if (failed) return { text: `${plural(failed, "type", "types")} failed ${failed === 1 ? "its" : "their"} last backup.`, tone: "critical" };
   if (stale) return { text: `${plural(stale, "type has", "types have")} not been backed up recently enough.`, tone: "attention" };
   if (never) return { text: `${plural(never, "type has", "types have")} never been backed up.`, tone: "attention" };
-  const collected = data.types.filter((item) => item.lastCollectedAt);
+  const collected = data.types.filter((item) => item.lastCollectedAt && backupHealth(item) !== "unavailable");
   if (collected.length === 0) return { text: "Nothing has been backed up yet.", tone: "attention" };
   const oldest = Math.min(...collected.map((item) => new Date(item.lastCollectedAt!).valueOf()));
   const hours = Math.max(1, Math.ceil((new Date(now).valueOf() - oldest) / 3_600_000));

@@ -30,10 +30,15 @@ CREATE TABLE IF NOT EXISTS discovery_item (
   objects integer CHECK (objects IS NULL OR objects >= 0),
   objects_exact boolean,
   http_status integer,
-  reason text CHECK (reason IS NULL OR reason IN ('missing-grant', 'not-licensed', 'not-listable', 'error', 'too-large')),
+  reason text,
   message text,
   missing_grant text,
   grant_source text CHECK (grant_source IS NULL OR grant_source IN ('graph', 'documented')),
   PRIMARY KEY (run_id, source, name)
 );
+-- refused-with-grant: a 401/403 for a grant the app already holds. A CHECK cannot be
+-- altered in place; dropping and re-adding it under the same name keeps this idempotent.
+ALTER TABLE discovery_item DROP CONSTRAINT IF EXISTS discovery_item_reason_check;
+ALTER TABLE discovery_item ADD CONSTRAINT discovery_item_reason_check
+  CHECK (reason IS NULL OR reason IN ('missing-grant', 'refused-with-grant', 'not-licensed', 'not-listable', 'error', 'too-large'));
 CREATE INDEX IF NOT EXISTS discovery_item_status_idx ON discovery_item (run_id, status);

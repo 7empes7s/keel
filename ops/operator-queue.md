@@ -3783,7 +3783,7 @@ item that needs it stays untouched.
   an oauth2PermissionGrant by its client app (KEEL-RT- name) and its one user (keel-rt- fixture, consentType Principal),
   not by a role. It still needs `--allow-by-reference` (a grant has no name of its own); the plan's step says so.
 - Needs: /opt/keel-live at 3f969a5 or later (`grep -q "the client app is not a KEEL-RT fixture" /opt/keel-live/tools/qualification/entraLive.mjs`).
-- Status: todo
+- Status: in-progress
 - **Test tenant only. No tenant writes:** this reuses Q67's restores (A1b for create, A2 for update); their journals and
   snapshots (S1, S2, which still hold KEEL-RT-W2-app and the keel-rt user) are in the KEEL database. Same capture tooling as Q67/Q74.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:

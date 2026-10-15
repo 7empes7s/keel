@@ -188,7 +188,8 @@ export async function syncMailboxMail(rawReader, store, { tenantRef, mailbox, st
     base: { tenantRef, workload: MAIL_WORKLOAD },
     foldersContainer: `${mailbox.key}/mail-folders`,
     folderKind: 'mailFolder',
-    foldersPath: `${user}/mailFolders/delta?$select=id,displayName,parentFolderId,wellKnownName,totalItemCount`,
+    // v1.0 only: wellKnownName is a beta-only mailFolder property and v1.0 rejects the whole $select (#263).
+    foldersPath: `${user}/mailFolders/delta?$select=id,displayName,parentFolderId,totalItemCount`,
     itemsPath: (folderId) => `${user}/mailFolders/${seg(folderId)}/messages/delta?$select=${MESSAGE_SELECT}`,
     itemsContainer: (folderId) => `${mailbox.key}/mail/${folderId}`,
     state,

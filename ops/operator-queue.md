@@ -4024,8 +4024,40 @@ item that needs it stays untouched.
   `lastModifiedDateTime`. This item checks that change against the live data before #335 merges.
 - Needs: nothing deployed. Run from your own clone (never `/opt/keel`), checked out at
   `origin/claude/project-thread-kuvgwg` (6fa3964 or later), with `npm ci` in `engine/` if needed.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 19:48 UTC from my own clone at origin/claude/project-thread-kuvgwg **6fa3964** (engine `npm ci`), against the live
+  DB. **Dry run only, never `--apply`**; no tenant access.
+  - **1.** exit 0. Stdout (ids masked):
+    - `would prune 25 snapshot(s): <25 ids>`
+    - `would prune 745 content version(s) and 744 chunk(s) of 2139148 bytes`
+    - `kept snapshots: weekly 1, referenced 292, daily 8`
+    - `kept content versions: latest version 732; 193 item(s) with one version`
+    - `policies: default: 14 daily, 8 weekly, 12 monthly, 7 yearly`
+    - `report <id> saved and written to …/keel-prune-report-q83.json`
+  - **2. content.delete: 745**; kept {latest version: 732}; chunks 744; freedBytes 2,139,148.
+    - By workload/kind:
+      - sharepoint-sites, kind "" (no kind): **705**;
+      - teams, kind "": 33;
+      - sharepoint-sites drive-record: 5;
+      - sharepoint-sites drive-content: 2.
+    - **Largest group (sharepoint-sites, no kind): 705 entries over 617 distinct items.** versionAt oldest 2026-10-15T00:19:37.659Z, newest
+      2026-10-15T14:01:42.133Z. In **all 705, versionAt equals createdAt** (the stored time). Item keys: 696 `list…` (list items), 9 `site…`.
+    - 3 samples (item masked):
+      - version "2026-08-30T20:40:13Z", versionAt and createdAt 2026-10-15T00:19:48.224Z;
+      - version "\"6c3f4bb0-…\"" (an etag), versionAt and createdAt 00:19:48.779Z;
+      - version "\"1466ca5d-…\"", 00:19:50.477Z.
+    - All 745 have reason "outside policy". 744 are from 2026-10-15 and 1 from 2026-09-08.
+    - Teams: 22 versions from the 07:00 runs and 11 from the 00:00 run (the pre-#271 non-deterministic copies).
+  - **3. Q81's report** (still in my scratchpad; Q81's report path was there, not /tmp): content.delete **745** as well, all sharepoint-sites
+    and teams. By version prefix: sharepoint-sites "2026-1…" 21, "2026-0…" 8, "record…" 5, and many etag versions of 2 each.
+  - **4. Snapshot lines:** `would prune 25 snapshot(s)`, the same as Q81. Kept: referenced **292** (Q81 had 291, one newer hourly snapshot); weekly 1; daily 8.
+  - **Reading:** 6fa3964 changes nothing on this data, still 745.
+    - The versions it drops are mostly **SharePoint list items** (and site items), not drive files. Their versionAt is the stored time,
+      so lastModifiedDateTime rotation, which applies to drive versions only, doesn't touch them.
+    - They are intra-day duplicates from today's several backup runs (00:19 for Q58's first pass, 07:0x for Q62, 08:30 for Q64's #273 pass,
+      14:01). The daily rule keeps only the newest per item per day.
+    - So the deletes match the policy as written: superseded same-day versions, plus the 33 pre-#271 Teams copies. They are not a
+      loss of distinct history.
 - Do (no tenant access, **never `--apply`**):
   1. `set -a; . /etc/keel/db.env; set +a; node <clone>/cli/keel-prune.mjs --report /tmp/keel-prune-report-q83.json`.
      Report the exit code and every stdout line.

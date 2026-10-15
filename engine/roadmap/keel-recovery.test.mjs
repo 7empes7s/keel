@@ -367,7 +367,7 @@ test('empty disposable instance recovers fixture history with writers disabled',
   );
   // Reads still work through the guard.
   const { rows } = await result.access.query('SELECT count(*)::int AS n FROM schedule WHERE tenant_ref = $1', [TENANT]);
-  assert.equal(rows[0].n, 8);
+  assert.equal(rows[0].n, 9);
 
   await result.access.client.end();
 });
@@ -1006,7 +1006,7 @@ test('CLI: full reconstruction, refusal without authenticator, named prerequisit
   });
   assert.equal(exit, 0, JSON.stringify(quiet.errors));
   assert.ok(quiet.lines.some((line) => line.includes('recovered read-only as recovery-officer@example.test (writers disabled)')));
-  assert.ok(quiet.lines.some((line) => line.includes('schedules: 8')));
+  assert.ok(quiet.lines.some((line) => line.includes('schedules: 9')));
   assert.ok(quiet.lines.some((line) => line.includes('approvals: 2')));
   assert.ok(quiet.lines.some((line) => line.includes('grants: 2')));
 
@@ -1177,7 +1177,7 @@ test('CLI with the production signed-assertion authenticator recovers and writes
     assert.equal(record.buildRevision, BUILD_REVISION);
     assert.ok(!Number.isNaN(Date.parse(record.completedAt)));
     assert.deepEqual(record.recovered.evidence, { chainOk: true, ...fixture.checkpoint });
-    assert.equal(record.recovered.counts.schedules, 8);
+    assert.equal(record.recovered.counts.schedules, 9);
     assert.equal(record.identity.authenticator, 'signed-assertion');
     assert.equal(record.identity.credentialRef, assertionPath);
     assert.equal(record.access, undefined, 'the access handle is never persisted');

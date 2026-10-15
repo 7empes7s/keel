@@ -3810,7 +3810,27 @@ item that needs it stays untouched.
   include is extra, the backup's includes are added first and the last extra one is removed right after, retrying that
   400 while the new include replicates (up to 13 x 5 s).
 - Needs: /opt/keel-live at the #327 merge or later (`grep -q isLastIncludeRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 14:29–14:42 UTC on **B = 8dbb0e8e** (includes #327, `isLastIncludeRefusal`). Restorer only; global admin not used.
+  Approval **9b2b8c92**, self-approved under the standing authorization.
+  - Fixture `keel-rt-w2-consent` created fresh (one include, delegated/low; not referenced by the authorization policy).
+  - Snapshot S7 c36caaf3 (1 include, low).
+  - Drift: added (delegated, medium), then removed low (the first DELETE returned 400 until medium had replicated, the second 204).
+    Live: medium only.
+  - **Step 3:** the dry run shows `update update-existing`. Enforce (worker): **`applied 1, skipped 0, failed 0`**; rollback_entry: update succeeded.
+    - **Read-back: exactly `[(delegated, low)]`**; medium is gone.
+    - Retries of the last DELETE: not shown in the run log (no retry or refusal line printed), so the count is unknown.
+    - Capture exit 0, readBackVerified true, promote → live-qualified.
+  - **Step 4, re-run dry run:**
+    - The first attempt aborted on a transient `collecting accessPackageCatalog failed:` (empty error), and I'd already deleted the
+      fixture. So I recreated the fixture as backed up (one low include) and reran.
+    - **1 planned write** (`update update-existing`), not 0. The live policy matches the backup except the include's id, which
+      Graph assigns anew. The comparison doesn't ignore condition-set ids (reported on #294).
+  - **Evidence:** `claude/live-evidence-w2-entra` @ **d873727** (permissionGrantPolicy.update.json, .capture.json and the log; pseudonymize
+    check passes, scan clean).
+    `live evidence permissionGrantPolicy.update.json: not applied (permissionGrantPolicy.update.demotion.json demotes this write, so it is not promoted)`.
+    The Q67 demotion still has to be removed by a builder.
+  - **Cleanup:** `keel-rt-w2-consent` deleted (204) after the recheck. Nothing left.
 - **Test tenant only.** Same rules, capture tooling, requester/approver split and standing authorization as Q75; log every
   approval id. No permission to add. Never touch CA policies, break-glass or the user's account.
 - Fixture: as Q75. Custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low),

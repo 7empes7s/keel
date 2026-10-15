@@ -13,6 +13,9 @@
  *  - Resumable. A failed page stops the walk and its URL is kept as the cursor, so the
  *    next run re-reads that page (items already stored dedupe in the store) instead of
  *    skipping what it never stored. An expired delta link (410) restarts that folder once.
+ *    A stored cursor that this build would not have written (a query of an older build) is
+ *    dropped for the current query, and a stored link Graph rejects (400) restarts once too,
+ *    so a cursor saved from a bad request can never pin the walk to that request (#268).
  *  - Nothing readable is skipped. A message bigger than the MIME limit is stored as its
  *    metadata with an `incomplete` record naming what is missing and why.
  *  - The archive mailbox is read through the beta mailbox API. Its item content is only
@@ -48,18 +51,31 @@ const isExpired = (res) => res?.status === 410
   || /syncstate(notfound|invalid)|resyncrequired/i.test(String(res?.code ?? ''));
 
 /**
+ * The URL a walk starts from. A usable cursor is a link Graph issued (an absolute
+ * nextLink or deltaLink) or this walk's own initial query. Any other path is a query an
+ * older build saved when its first page failed; replaying it would repeat that failure
+ * on every run, so the walk starts from the current query instead (#268).
+ */
+export function startFrom(cursor, initial) {
+  if (!cursor || cursor === initial) return initial;
+  return /^https:\/\//i.test(String(cursor)) ? cursor : initial;
+}
+
+const isRejected = (res) => res?.status === 400;
+
+/**
  * Walks one delta query to its delta link. `onItems(items)` returns the number of items
  * it could not store; any failure stops the walk on that page so it is read again.
  * Returns { ok, deltaLink, cursor, pages, error, resynced }.
  */
 export async function walkDelta(reader, version, { initial, cursor }, onItems) {
-  let next = cursor ?? initial;
+  let next = startFrom(cursor, initial);
   let pages = 0;
-  let resynced = false;
+  let resynced = next !== (cursor ?? initial);
   while (next) {
     const res = await reader.get(version, next);
     if (!res?.ok) {
-      if (isExpired(res) && next !== initial && !resynced) {
+      if ((isExpired(res) || isRejected(res)) && next !== initial && !resynced) {
         resynced = true;
         next = initial;
         continue;

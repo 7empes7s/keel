@@ -3858,13 +3858,38 @@ item that needs it stays untouched.
   transport that allows only those POSTs on the one site.
 - Needs: A has no deploy dependency. B needs /opt/keel-live at the merge of PR #332 or later
   (`test -f /opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs`).
-- Status: in-progress (B waiting on #332)
-- Result: **A done; B waiting on PR #332** (open, not merged; checked 15:16 UTC on ea681454).
-  - **A. Collector manifest:** SharePoint Online `Sites.FullControl.All` (678536fe…) was **already in the manifest**, so no PATCH was needed.
-    - Before: 3 resources, 50 entries (SharePoint 3). After: the same; 0 removed, 0 added.
-    - At Q56 the manifest had 49 entries, so someone added it since. The SP still holds it.
-    - appRoleAssignments unchanged (49). No consent call.
-  - **B:** not started. It runs when `/opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs` exists (a watcher is running).
+- Status: done
+- Result: Done 2026-10-15 15:16–15:40 UTC on **B = c82311f0** (includes #332). Writes only on the KEEL-RT-20261004 site, to KEEL-RT- objects and
+  keel-rt- test users. Global admin not used; no permission or consent change. Approvals filed by the Entra principal and self-approved
+  as the Gmail approver (request plus content effects) under the standing authorization.
+  - **A. Collector manifest:** SharePoint Online `Sites.FullControl.All` (678536fe…) was **already listed**, so no PATCH was made.
+    Before and after: 3 resources, 50 entries (SharePoint 3); 0 removed. appRoleAssignments unchanged (49).
+  - **B1. Fixtures:**
+    - Created `KEEL-RT-perm-list` on KEEL-RT-20261004 and broke its inheritance (copyRoleAssignments=true): HasUniqueRoleAssignments true.
+    - Test user **keel-rt-20260908-diego**. ben was the site's only site collection admin, so not usable.
+  - **B2. Capture:** `plan` lists 7 writes. `capture --confirm-live-tenant-write`: **exit 0, verify ok, failures []**.
+    All five operations ok with readBackVerified true: role-definitions.add, site-groups.add, site-group-members.add,
+    site-admins.add and site-role-assignments.add (site and list).
+    - Note: the signed record carries the test user's claims login (`i:0#.f|membership|keel-rt-20260908-diego@<tenant domain>`) in
+      `subject.fixture.member` and two write subjects. `pseudonymize.mjs check` passes it. It is a fixture user on the public
+      domain, but the pseudonymizer could cover claims logins too.
+  - **B3. Import:** `sharepoint-site-permissions-live-acceptance.json` imported (writes 5); refused [], exit 0.
+  - **B4. Backup** (exit 0, `sharepoint-sites: succeeded (9 items, 23451 bytes)`). The newest site/permissions row of KEEL-RT-20261004 holds
+    the level, the group with the test user, the user as admin, and the group's role on the site (KEEL-RT-perm-1 level, plus Limited Access)
+    and on KEEL-RT-perm-list (KEEL-RT-perm-1 level).
+  - **B5. Round trip:** deleted the group and the level, and removed the user as admin, by hand.
+    - Dry run as the Collector: `6 change(s), 1 manual, 0 refused`. The 6 are level, group, member, admin, role on site, role on list.
+      The manual line: "its owner was SharePoint App; KEEL creates the group, a person sets its owner back".
+    - Approval **f0ee9777** (4 content effects). Enforce with `KEEL_COLLECTOR_CONFIG_PATH=/etc/keel/tenant.json`:
+      `SharePoint site groups and permissions: 5 of 5 write(s) qualified for this tenant`, **verified**.
+    - Read-back: group, level, member and admin all present.
+  - **B6. Re-run:** dry run `0 change(s), 0 manual, 0 refused`. Promoting it (approval **8caab7c8**): **no-change**, no write.
+    Re-promoting the step-5 artifact: **stale**, no write.
+  - **B7. Wider check:** added keel-rt-20260908-farah to the group by hand. Dry run: `0 change(s), 1 manual, 0 refused` with
+    "a member now but not in the backup; KEEL never removes a member". Not promoted.
+  - **B8. Cleanup:** removed the test user as admin (204), deleted KEEL-RT-perm-1 group (200), KEEL-RT-perm-1 level (200) and KEEL-RT-perm-list (204).
+    Left on the site: 1 admin (the original), 0 KEEL-RT-perm groups or levels.
+  - **B9. Evidence:** `claude/live-evidence-site-permissions` @ **139eedc** (record and .capture.json). No PR.
 - **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
   Global admin not used. Never touch CA policies, break-glass accounts or Marouane's account. No consent is granted.
 - **A. Collector manifest (Entra, one PATCH as the Restorer):** the Collector already holds Office 365 SharePoint Online

@@ -245,7 +245,7 @@ test('mutation check: incident-pinned data survives prune until an authorized re
   const { point } = await import('../govern/incidents.mjs').then((m) => m.qualifySnapshotForIncident(client, { tenantRef, incidentId: incident.id, snapshotId: old }));
   assert.equal(point.status, 'unassessed');
 
-  const pruned = await pruneSnapshots(client, { tenantRef, now: new Date().toISOString() });
+  const pruned = await pruneSnapshots(client, { tenantRef, policy: { tier1: 7, tier2: 90, tier3: 365 }, now: new Date().toISOString() });
   assert.deepEqual(pruned, [other], 'only the unpinned snapshot is pruned (tier1 retention is 7 days)');
   const { rows: survivors } = await client.query('SELECT count(*)::int AS n FROM resource_version WHERE snapshot_id = $1', [old]);
   assert.equal(survivors[0].n, 1, 'the pinned snapshot keeps its resource versions');
@@ -258,7 +258,7 @@ test('mutation check: incident-pinned data survives prune until an authorized re
   assert.equal(released.releasedBy, investigator.id);
 
   // Released: routine retention applies again, and the pin history does not block it.
-  assert.deepEqual(await pruneSnapshots(client, { tenantRef, now: new Date().toISOString() }), [old]);
+  assert.deepEqual(await pruneSnapshots(client, { tenantRef, policy: { tier1: 7, tier2: 90, tier3: 365 }, now: new Date().toISOString() }), [old]);
   const { rows: history } = await client.query('SELECT released_at FROM retention_pin WHERE id = $1', [pin.id]);
   assert.ok(history[0].released_at);
 });

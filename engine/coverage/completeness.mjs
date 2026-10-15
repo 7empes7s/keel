@@ -78,6 +78,16 @@ function secretSettings(payload) {
   return found;
 }
 
+// Wave 2 ENTRA: a part the backup may already hold (a later read can add it).
+const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArray(payload?.[field])) ? [] : always(payload));
+const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
+const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
+// Token lifetime, token issuance, claims mapping and home realm discovery policies.
+const STS_POLICY_MISSING = Object.freeze([
+  part('Which apps the policy is assigned to', 'other-route'),
+  part('Being the organization default (KEEL recreates it as an ordinary policy)', 'not-written', organizationDefault),
+]);
+
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
 /**
@@ -108,7 +118,7 @@ export const COMPLETENESS = Object.freeze({
     part('Certificates', 'secret', credentialItems('keyCredentials')),
     part('Changed settings on an existing enterprise app', 'not-written'),
   ] },
-  oauth2PermissionGrant: { whole: 'not-written' },
+  oauth2PermissionGrant: {},
   identityProvider: { whole: 'not-written', missing: [part('Client secret', 'secret', always)] },
   certificateBasedAuthConfiguration: { whole: 'not-written' },
   directoryRole: { managed: true },
@@ -156,13 +166,13 @@ export const COMPLETENESS = Object.freeze({
   crossTenantAccessPolicyPartner: {},
   deviceRegistrationPolicy: { whole: 'not-written' },
   authenticationFlowsPolicy: {},
-  permissionGrantPolicy: { whole: 'not-written', missing: [part('The include and exclude rules of a custom policy', 'other-route')] },
+  permissionGrantPolicy: { missing: [part('The include and exclude rules of a custom policy', 'other-route', heldUnless(['includes', 'excludes'])), part('A built-in app consent policy', 'microsoft-managed', builtInGrantPolicy)] },
   adminConsentRequestPolicy: {},
   activityBasedTimeoutPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  claimsMappingPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  homeRealmDiscoveryPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  tokenIssuancePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  tokenLifetimePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
+  claimsMappingPolicy: { missing: STS_POLICY_MISSING },
+  homeRealmDiscoveryPolicy: { missing: STS_POLICY_MISSING },
+  tokenIssuancePolicy: { missing: STS_POLICY_MISSING },
+  tokenLifetimePolicy: { missing: STS_POLICY_MISSING },
   featureRolloutPolicy: { whole: 'not-written', missing: [part('Which groups the rollout covers', 'other-route')] },
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
   appManagementPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },

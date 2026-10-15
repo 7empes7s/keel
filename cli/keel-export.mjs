@@ -2,17 +2,29 @@
 // /opt/keel/cli/keel-export.mjs
 //
 // node keel-export.mjs --export-root PATH [--snapshot-id ID] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
+// node keel-export.mjs --bundle FILE --as EMAIL [--content none|refs|bytes] [--reader /etc/keel/content-reader.json]
+//                      [--snapshot-id ID] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //
 // Publishes an atomic, redacted configuration export of one snapshot to the
 // local filesystem (engine/export/configExport.mjs). Read-side only: it reads
 // the local keel database and writes local files — no Graph token, no tenant
 // write, no credentials beyond the database URL. Storage/offsite policy
 // belongs to WS10; this command only publishes locally.
+//
+// --bundle writes one signed Keel bundle v1 archive instead (engine/export/bundle.mjs,
+// docs/format/keel-bundle-v1.md). It needs a principal holding the `export` capability
+// and the signing key from the git-ignored /etc/keel/bundle.env (KEEL_BUNDLE_SIGNING_KEY).
+// --content bytes also carries content item bytes, read through the content store the
+// content-reader file names; the default, refs, names each item by natural key and sha256.
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { exportSnapshot } from '../engine/export/configExport.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { can } from '../engine/authz/can.mjs';
+import { findPrincipalByEmail } from '../engine/authz/principals.mjs';
+import { bundleKeysFromEnv, exportBundle, requireBundleCapability } from '../engine/export/bundle.mjs';
+import { contentStoreFromReader } from './keel-import.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -57,15 +69,70 @@ export async function runExport({
   }
 }
 
+export async function runBundleExport({
+  tenantRef,
+  snapshotId,
+  out,
+  as,
+  content = 'refs',
+  readerPath,
+  dbUrl = process.env.KEEL_DB_URL,
+  env = process.env,
+  readFile = readFileSync,
+  dependencies = {},
+  logger = console,
+}) {
+  const {
+    connect: connectFn = connect,
+    can: canFn = can,
+    resolvePrincipal = findPrincipalByEmail,
+    contentStoreFor = (client, path) => contentStoreFromReader(client, path, readFile),
+  } = dependencies;
+  if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
+  const { signingKey } = bundleKeysFromEnv(env);
+  if (!signingKey) throw new Error('KEEL_BUNDLE_SIGNING_KEY not set (source /etc/keel/bundle.env)');
+  if (content === 'bytes' && !readerPath) throw new Error('--content bytes needs --reader (the content-reader file)');
+
+  const client = await connectFn(dbUrl);
+  try {
+    await requireBundleCapability(client, as, { resolve: resolvePrincipal, can: canFn });
+    const contentStore = content === 'bytes' ? await contentStoreFor(client, readerPath) : null;
+    const result = await exportBundle(client, { tenantRef, snapshotId, out, signingKey, content, contentStore });
+    logger.log(`snapshot ${result.snapshotId} bundled to ${result.out}: ${result.objects} objects, ${result.content.items} content items (${result.content.mode}), signed with key ${result.keyId}`);
+    return { ...result, exitCode: 0 };
+  } finally {
+    await client.end();
+  }
+}
+
 export async function main({
   argv = process.argv,
   readFile = readFileSync,
+  env = process.env,
   dependencies,
   logger = console,
 } = {}) {
   if (argv.includes('--help')) {
     logger.log('usage: keel-export.mjs --export-root PATH [--snapshot-id ID] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
+    logger.log('       keel-export.mjs --bundle FILE --as EMAIL [--content none|refs|bytes] [--reader FILE] [--snapshot-id ID] [--tenant-ref REF] [--config FILE] [--db-url URL]');
     return 0;
+  }
+  const bundle = arg('bundle', undefined, argv);
+  if (bundle !== undefined) {
+    const { exitCode } = await runBundleExport({
+      tenantRef: resolveTenantRef({ argv, readFile }),
+      snapshotId: arg('snapshot-id', undefined, argv),
+      out: bundle,
+      as: arg('as', undefined, argv),
+      content: arg('content', 'refs', argv),
+      readerPath: arg('reader', undefined, argv),
+      dbUrl: arg('db-url', env.KEEL_DB_URL, argv),
+      env,
+      readFile,
+      dependencies,
+      logger,
+    });
+    return exitCode;
   }
   const { exitCode } = await runExport({
     tenantRef: resolveTenantRef({ argv, readFile }),

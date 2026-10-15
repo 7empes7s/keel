@@ -128,13 +128,16 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   const site = await store.listItems({ container: `site:${SITE}` });
   assert.ok(site.some((item) => item.workload === 'sharepoint-sites' && item.metadata.kind === 'drive-content'), 'the library file is stored with the site');
 
-  // Delta state is saved per mailbox, per OneDrive and per library, plus which libraries were read in full.
+  // Delta state is saved per mailbox, per OneDrive, per library and per list, plus each
+  // site's stored settings and which libraries were read in full.
   const keys = [...syncState.rows.keys()].map((key) => JSON.parse(key).slice(1));
   assert.deepEqual(keys.sort(), [
     ['exchange-mail', 'mailbox/u-alice'],
     ['onedrive', 'drive:KEEL-RT-drive-alice'],
     ['sharepoint-sites', `covered:${SITE}/KEEL-RT-libdrive`],
+    ['sharepoint-sites', `items:${SITE}/${LIST}`],
     ['sharepoint-sites', `library:${SITE}/${LIST}/KEEL-RT-libdrive`],
+    ['sharepoint-sites', `site:${SITE}`],
   ].sort());
 
   // A channel folder is covered by its site only when that site's library was read in full.
@@ -158,6 +161,9 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   const mailDeltas = tenant.calls.map((call) => new URL(call.url)).filter((url) => url.pathname.startsWith('/v1.0/users/u-alice/mailFolders'));
   assert.ok(mailDeltas.length > 0 && mailDeltas.every((url) => url.searchParams.get('$deltatoken') === 'KEEL-RT-1'));
   assert.ok(!tenant.calls.some((call) => call.url.endsWith('/content')), 'nothing already stored is downloaded again');
+  assert.equal(second.runs.find((r) => r.workload === 'sharepoint-sites').items, 0, 'an unchanged site stores nothing on a repeat run');
+  const itemDeltas = tenant.calls.map((call) => new URL(call.url)).filter((url) => url.pathname.endsWith('/items/delta'));
+  assert.ok(itemDeltas.length > 0 && itemDeltas.every((url) => url.searchParams.get('$deltatoken') === 'KEEL-RT-done'), itemDeltas.map(String).join('\n'));
   // The drive delta carries its Prefer options through the read-only transport.
   const driveDelta = tenant.calls.find((call) => call.url.includes('/drives/KEEL-RT-drive-alice/root/delta'));
   assert.match(driveDelta.headers.prefer, /deltashowremovedasdeleted/);

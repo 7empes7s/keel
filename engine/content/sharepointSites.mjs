@@ -17,6 +17,13 @@
  *    read is recorded where it happened and makes the run `partial`, never `complete`.
  *  - Tenant scope comes from configuration. A site whose id or URL names another host is
  *    recorded out of scope and never read.
+ *  - Change-only on repeat runs. List items are read through Graph list item delta and
+ *    library files through drive delta, each resuming from the link saved in `deltaState`
+ *    / `libraryState`. A page is fetched again only when its eTag changed, and site and
+ *    list settings (which Graph has no delta for) are re-read but stored only when they
+ *    changed. An item the delta reports deleted gets a `deleted` record; nothing stored
+ *    is removed. A saved link Graph refuses (410, or 400 for a stale link) starts one
+ *    full pass, which marks deleted whatever it no longer sees.
  *  - Bounded. Items are stored page by page, so memory does not grow with a list's size.
  *    `maxSites`, `maxDepth` and `maxPages` cap a run, and a capped run is `partial`.
  *  - Storage goes through the content store interface: putItem(stream, meta) -> { ref, ... }.
@@ -43,11 +50,17 @@ export const ALLOWED_PATHS = Object.freeze([
   /^\/sites\/getAllSites$/,
   new RegExp(`^/sites/${SITE}$`, 'i'),
   new RegExp(`^/sites/${SITE}/(sites|columns|contentTypes|lists)$`, 'i'),
-  new RegExp(`^/sites/${SITE}/lists/${GUID}/(columns|contentTypes|items|drive)$`, 'i'),
+  new RegExp(`^/sites/${SITE}/lists/${GUID}/(columns|contentTypes|drive)$`, 'i'),
+  new RegExp(`^/sites/${SITE}/lists/${GUID}/items/delta$`, 'i'),
+  // One item, read only when its delta entry came back without fields.
+  new RegExp(`^/sites/${SITE}/lists/${GUID}/items/[0-9]+$`, 'i'),
   new RegExp(`^/sites/${SITE}/pages/microsoft\\.graph\\.sitePage$`, 'i'),
   new RegExp(`^/sites/${SITE}/pages/${GUID}/microsoft\\.graph\\.sitePage$`, 'i'),
 ]);
-const ALLOWED_QUERY = new Set(['$select', '$expand', '$top', '$skiptoken']);
+const ALLOWED_QUERY = new Set(['$select', '$expand', '$top', '$skiptoken', '$deltatoken', 'token']);
+// Version of the per-site and per-list states kept in deltaState.
+export const SITE_STATE_VERSION = 1;
+export const LIST_STATE_VERSION = 1;
 
 // Parts of a site Graph v1.0 does not return. Recorded on every site so a backup never
 // looks complete when it is not.
@@ -183,10 +196,13 @@ const enc = encodeURIComponent;
  * - libraryState: { load({ siteId, listId, driveId }) -> state | null, save({ siteId, listId, driveId, state }) }
  *   keeps each library's delta state between runs. Without it every run is a full pass
  *   (correct, since the store deduplicates, but slower).
+ * - deltaState: { load(key) -> state | null, save(key, state) } keeps each site's stored
+ *   settings and page eTags (key `site:<siteId>`) and each list's item delta
+ *   (key `items:<siteId>/<listId>`) between runs. Without it every run reads every item.
  * - siteFilter(site) narrows the run (for example to `KEEL-RT-` sites for a live check).
  */
 export async function backupSharePointSites({
-  transport, store, tenantRef, tenantHost, backupLibrary, libraryState = null, siteFilter = () => true,
+  transport, store, tenantRef, tenantHost, backupLibrary, libraryState = null, deltaState = null, siteFilter = () => true,
   sleep = async () => {}, now = () => new Date(),
   maxSites = DEFAULT_MAX_SITES, maxDepth = DEFAULT_MAX_DEPTH, maxPages = DEFAULT_MAX_PAGES,
 }) {
@@ -196,7 +212,9 @@ export async function backupSharePointSites({
   if (typeof store?.putItem !== 'function') throw new TypeError('store must implement putItem');
   if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('tenantRef is required');
   const library = backupLibrary ?? defaultLibraryBackup();
-  const counters = { requests: 0, throttled: 0, stored: 0, deduped: 0, bytes: 0 };
+  const counters = { requests: 0, throttled: 0, stored: 0, deduped: 0, bytes: 0, unchanged: 0, itemsDeleted: 0, resyncs: 0 };
+  const loadState = async (key) => (deltaState ? deltaState.load(key) : null);
+  const saveState = async (key, state) => { if (deltaState) await deltaState.save(key, state); };
   const reader = createReader({ transport, sleep, maxPages, counters });
   const startedAt = now().toISOString();
   // The drive backup reads its own paths, but it gets a transport that still refuses
@@ -222,7 +240,7 @@ export async function backupSharePointSites({
     counters.stored += 1;
     counters.bytes += bytes.length;
     if (result?.deduped) counters.deduped += 1;
-    return result?.ref ?? null;
+    return { ref: result?.ref ?? null, sha256 };
   };
 
   // Discovery: every site collection, then each one's subsites, breadth first.
@@ -262,6 +280,23 @@ export async function backupSharePointSites({
     const siteId = discovered.id;
     const container = `site:${siteId}`;
     const base = `${GRAPH}/sites/${enc(siteId)}`;
+    const stateKey = `site:${siteId}`;
+    const saved = await loadState(stateKey);
+    const previous = saved?.version === SITE_STATE_VERSION ? saved : { stored: {}, pages: {} };
+    const next = { version: SITE_STATE_VERSION, stored: {}, pages: {} };
+    // Settings Graph has no delta for: read every run, stored only when they changed.
+    const putSetting = async (itemKey, value, version) => {
+      const sha256 = createHash('sha256').update(canonicalJson(value)).digest('hex');
+      const known = previous.stored[itemKey];
+      if (known?.sha256 === sha256 && known.ref) {
+        counters.unchanged += 1;
+        next.stored[itemKey] = known;
+        return known.ref;
+      }
+      const stored = await put(container, itemKey, value, version);
+      next.stored[itemKey] = stored;
+      return stored.ref;
+    };
     const entry = {
       siteId, webUrl: discovered.webUrl ?? null, displayName: discovered.displayName ?? null, parentSiteId,
       refs: {}, reads: {}, lists: [], pages: null, subsites: null,
@@ -276,13 +311,13 @@ export async function backupSharePointSites({
 
     await read('site', async () => {
       const body = await reader.get(`${base}?$select=${SITE_SELECT}`);
-      entry.refs.site = await put(container, 'site', body, body.lastModifiedDateTime);
+      entry.refs.site = await putSetting('site', body, body.lastModifiedDateTime);
     });
     await read('columns', async () => {
-      entry.refs.columns = await put(container, 'site/columns', await reader.all(`${base}/columns`));
+      entry.refs.columns = await putSetting('site/columns', await reader.all(`${base}/columns`));
     });
     await read('contentTypes', async () => {
-      entry.refs.contentTypes = await put(container, 'site/contentTypes', await reader.all(`${base}/contentTypes`));
+      entry.refs.contentTypes = await putSetting('site/contentTypes', await reader.all(`${base}/contentTypes`));
     });
 
     // Subsites go on the queue; each is backed up as a site of its own.
@@ -298,16 +333,26 @@ export async function backupSharePointSites({
 
     await read('lists', async () => {
       const lists = await reader.all(`${base}/lists?$select=${LIST_SELECT}`);
-      for (const list of lists) entry.lists.push(await backupList(list, { siteId, base, container }));
+      for (const list of lists) entry.lists.push(await backupList(list, { siteId, base, container, putSetting }));
     });
 
     await read('pages', async () => {
       const summaries = await reader.all(`${base}/pages/microsoft.graph.sitePage?$select=id,name,title,eTag,lastModifiedDateTime`);
-      const pages = { count: 0, failed: [] };
+      const pages = { count: 0, unchanged: 0, failed: [] };
       for (const summary of summaries) {
+        // A page whose eTag is the one already stored is not fetched again.
+        const tag = summary.eTag ?? summary.lastModifiedDateTime ?? null;
+        const known = previous.pages[summary.id];
+        if (tag && known?.tag === tag && known.ref) {
+          next.pages[summary.id] = known;
+          pages.unchanged += 1;
+          counters.unchanged += 1;
+          continue;
+        }
         try {
           const page = await reader.get(`${base}/pages/${enc(summary.id)}/microsoft.graph.sitePage?$expand=canvasLayout`);
-          await put(container, `page/${summary.id}`, page, page.eTag ?? page.lastModifiedDateTime);
+          const { ref } = await put(container, `page/${summary.id}`, page, page.eTag ?? page.lastModifiedDateTime);
+          if (tag) next.pages[summary.id] = { tag, ref };
           pages.count += 1;
         } catch (error) {
           pages.failed.push({ pageId: summary.id, ...failure(error) });
@@ -317,10 +362,12 @@ export async function backupSharePointSites({
       if (pages.failed.length) throw Object.assign(new Error(`${pages.failed.length} page(s) not read`), { status: pages.failed[0].httpStatus });
     });
 
+    // A part that failed this run is left out, so the next run stores it again.
+    await saveState(stateKey, next);
     return entry;
   }
 
-  async function backupList(list, { siteId, base, container }) {
+  async function backupList(list, { siteId, base, container, putSetting }) {
     const listBase = `${base}/lists/${enc(list.id)}`;
     const template = list.list?.template ?? null;
     const entry = { listId: list.id, displayName: list.displayName ?? list.name ?? null, template, refs: {}, reads: {}, items: 0, library: null };
@@ -330,23 +377,25 @@ export async function backupSharePointSites({
       }
     };
     await read('list', async () => {
-      entry.refs.list = await put(container, `list/${list.id}`, list, list.lastModifiedDateTime);
+      entry.refs.list = await putSetting(`list/${list.id}`, list, list.lastModifiedDateTime);
     });
     await read('columns', async () => {
-      entry.refs.columns = await put(container, `list/${list.id}/columns`, await reader.all(`${listBase}/columns`));
+      entry.refs.columns = await putSetting(`list/${list.id}/columns`, await reader.all(`${listBase}/columns`));
     });
     await read('contentTypes', async () => {
-      entry.refs.contentTypes = await put(container, `list/${list.id}/contentTypes`, await reader.all(`${listBase}/contentTypes`));
+      entry.refs.contentTypes = await putSetting(`list/${list.id}/contentTypes`, await reader.all(`${listBase}/contentTypes`));
     });
     // Item fields for every list, libraries included: a library's custom column values
-    // live on its list items, not in the drive.
+    // live on its list items, not in the drive. Read through list item delta: a repeat
+    // run reads only what changed since the saved link.
     await read('items', async () => {
-      for await (const page of reader.pages(`${listBase}/items?$expand=fields`)) {
-        for (const item of page) {
-          await put(container, `list/${list.id}/item/${item.id}`, item, item.eTag ?? item.lastModifiedDateTime);
-          entry.items += 1;
-        }
-      }
+      const key = `items:${siteId}/${list.id}`;
+      const synced = await syncListItems({
+        listBase, container, listId: list.id, state: await loadState(key),
+        checkpoint: (state) => saveState(key, state),
+      });
+      entry.items = synced.stored;
+      entry.itemsDeleted = synced.deleted;
     });
     if (LIBRARY_TEMPLATES.has(template)) {
       await read('library', async () => {
@@ -369,6 +418,91 @@ export async function backupSharePointSites({
       });
     }
     return entry;
+  }
+
+  /**
+   * One list's items through Graph list item delta. The state keeps the next or delta
+   * link and each known item's eTag (null once deleted), so a replayed page or a full
+   * pass after a resync stores nothing that is already stored.
+   */
+  async function syncListItems({ listBase, container, listId, state, checkpoint }) {
+    const current = state?.version === LIST_STATE_VERSION
+      ? structuredClone(state)
+      : { version: LIST_STATE_VERSION, nextLink: null, deltaLink: null, fullPass: null, items: {} };
+    const first = `${listBase}/items/delta?$expand=fields`;
+    const deltaPath = assertSitesRequest(first, 'GET');
+    const result = { stored: 0, deleted: 0, pages: 0, resynced: false };
+    const itemKey = (id) => `list/${listId}/item/${id}`;
+    const startFullPass = () => {
+      current.nextLink = null;
+      current.deltaLink = null;
+      current.fullPass = { seen: {} };
+      return first;
+    };
+    const markDeleted = async (id) => {
+      const known = current.items[id];
+      if (known === undefined || known === null) return;
+      current.items[id] = null;
+      await put(container, itemKey(id), { id, deleted: true }, `deleted:${known}`);
+      result.deleted += 1;
+      counters.itemsDeleted += 1;
+    };
+    const onSavedPath = (link) => {
+      try { return assertSitesRequest(link, 'GET') === deltaPath; } catch { return false; }
+    };
+
+    let link = current.nextLink ?? current.deltaLink;
+    // A saved link for another path (or a malformed one) is dropped, never followed.
+    if (!link || !onSavedPath(link)) link = startFullPass();
+    let fromSaved = link !== first;
+    while (link) {
+      if (result.pages >= maxPages) throw Object.assign(new Error(`more than ${maxPages} pages: ${deltaPath}`), { capped: true });
+      if (assertSitesRequest(link, 'GET') !== deltaPath) throw new Error(`refused a next page outside ${deltaPath}`);
+      let body;
+      try {
+        body = await reader.get(link);
+      } catch (error) {
+        // An expired link (410) or one Graph no longer accepts (400): one full pass.
+        if ((error.status === 410 || (error.status === 400 && fromSaved)) && !result.resynced) {
+          result.resynced = true;
+          counters.resyncs += 1;
+          link = startFullPass();
+          fromSaved = false;
+          continue;
+        }
+        throw error;
+      }
+      result.pages += 1;
+      for (const item of Array.isArray(body.value) ? body.value : []) {
+        const id = String(item.id);
+        if (current.fullPass) current.fullPass.seen[id] = true;
+        if (item.deleted) { await markDeleted(id); continue; }
+        const tag = item.eTag ?? item.lastModifiedDateTime ?? null;
+        if (tag && current.items[id] === tag) continue;
+        const full = item.fields ? item : await reader.get(`${listBase}/items/${enc(id)}?$expand=fields`);
+        await put(container, itemKey(id), full, full.eTag ?? full.lastModifiedDateTime);
+        current.items[id] = full.eTag ?? full.lastModifiedDateTime ?? tag;
+        result.stored += 1;
+      }
+      const nextLink = body['@odata.nextLink'];
+      if (nextLink) {
+        current.nextLink = nextLink;
+        link = nextLink;
+      } else {
+        if (current.fullPass) {
+          // Whatever a full pass did not see is gone from the list.
+          for (const id of Object.keys(current.items)) if (!current.fullPass.seen[id]) await markDeleted(id);
+          current.fullPass = null;
+        }
+        current.nextLink = null;
+        current.deltaLink = body['@odata.deltaLink'] ?? null;
+        if (!current.deltaLink) throw new Error(`the last delta page carried no delta link: ${deltaPath}`);
+        link = null;
+      }
+      fromSaved = false;
+      await checkpoint(structuredClone(current));
+    }
+    return result;
   }
 
   const statuses = sites.flatMap((site) => [

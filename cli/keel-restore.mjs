@@ -34,6 +34,9 @@
 // one recorded workload collection, as a dry run (gap register W2). Workload options:
 //   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
 //   sharepoint-site-grants     --tenant-host <host>.sharepoint.com --site <site id> (one site's app grants)
+//   sharepoint-site-permissions --tenant-host <host>.sharepoint.com --site <site id> [--at <ISO time>]
+//                              (one site's groups, members, admins, permission levels and role
+//                              assignments, from the content backup; no --collection)
 //   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
@@ -101,6 +104,11 @@ import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
 import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
 import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
+import { createPgContentIndex } from '../engine/content/index.mjs';
+import { createContentStore, parseContentKey } from '../engine/content/store.mjs';
+import { sharePointReadTransport } from '../engine/content/transport.mjs';
+import { sitePermissionsWriteTransport } from '../engine/restore/workloads/sharepointRest.mjs';
+import { createLocalStorageAdapter } from '../engine/storage/local.mjs';
 import {
   WORKLOAD_RESTORES, graphTransport, isWorkloadArtifact, workloadRestoreFor,
 } from '../engine/restore/workloads/dispatch.mjs';
@@ -317,6 +325,7 @@ export async function runRestore({
     workloadRestores = WORKLOAD_RESTORES,
     workloadConnection: workloadConnectionFn = defaultWorkloadConnection,
     workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
+    contentStore: contentStoreFn = defaultContentStore,
     credentialPaths: credentialPathsFn = credentialPaths,
     sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
@@ -459,6 +468,8 @@ export async function runRestore({
     }
     const workloadDeps = {
       workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, getTokenFn, sleep,
+      // Opened only by a restore whose backup is in the content store (site permissions).
+      contentStore: () => contentStoreFn({ client, readFile }),
     };
     if (workloadRestore !== undefined) {
       return await planWorkloadRun({
@@ -1608,10 +1619,34 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
 
 // ------------------------------------------------------------- workload restores (W2)
 
-/** Production connection for a workload run: a Graph transport and the cmdlet job options. */
-async function defaultWorkloadConnection({ config, configPath, getTokenFn }) {
+/**
+ * Production connection for a workload run: a Graph transport, the cmdlet job options
+ * and, for the site permissions restore, a SharePoint REST transport on the tenant host
+ * (a certificate token for that host). The collector's can only read; the restorer's
+ * can only send the allow-listed site permission writes (sitePermissionsWriteTransport).
+ */
+async function defaultWorkloadConnection({ role, config, configPath, getTokenFn }) {
   const { accessToken } = await getTokenFn(config);
-  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath } };
+  const sharePoint = (tenantHost, { webUrl = null } = {}) => {
+    const token = () => getTokenFn(config, { scope: `https://${tenantHost}/.default` });
+    return role === 'restorer'
+      ? sitePermissionsWriteTransport(token, globalThis.fetch, { tenantHost, webUrl })
+      : sharePointReadTransport(token, globalThis.fetch, { tenantHost });
+  };
+  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath }, sharePoint };
+}
+
+/** The content store named in the content reader file (where the content backup lives). */
+async function defaultContentStore({ client, readFile, readerPath = process.env.KEEL_CONTENT_READER_PATH || '/etc/keel/content-reader.json' }) {
+  let reader;
+  try { reader = JSON.parse(readFile(readerPath, 'utf8')); } catch (error) {
+    throw new Error(`this restore reads the content backup named in ${readerPath}, which could not be read: ${error.message}`);
+  }
+  if (!reader?.storage?.root || !reader?.contentKeyFile) throw new Error(`${readerPath} names no content store (storage.root and contentKeyFile)`);
+  return createContentStore({
+    index: createPgContentIndex(client), storage: createLocalStorageAdapter({ root: reader.storage.root }),
+    key: parseContentKey(readFile(reader.contentKeyFile, 'utf8')),
+  });
 }
 
 /**
@@ -1646,7 +1681,9 @@ async function planWorkloadRun({ client, request, collectorConfig, collectorConf
   const connection = await deps.workloadConnectionFn({
     role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
   });
-  const plan = await entry.plan(client, { tenantRef, tenantId: collectorConfig.tenantId, request, connection, sleep: deps.sleep });
+  const plan = await entry.plan(client, {
+    tenantRef, tenantId: collectorConfig.tenantId, request, connection, contentStore: deps.contentStore, sleep: deps.sleep,
+  });
   const artifact = await entry.create(client, {
     tenantRef, plan, requestedBy: requestedBy ?? 'keel-restore', ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
   });
@@ -1685,7 +1722,7 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
   }
   const result = await entry.execute(client, {
     tenantRef: artifact.tenantRef, artifactId: artifact.id, tenantId: targetConfig.tenantId, plan, connection,
-    qualifications: qualifications ?? {}, sleep: deps.sleep,
+    qualifications: qualifications ?? {}, contentStore: deps.contentStore, sleep: deps.sleep,
   });
   logger.log(`${entry.label} restore: ${result.outcome}`);
   if (!WORKLOAD_SUCCESS.has(result.outcome)) {
@@ -1768,6 +1805,7 @@ export async function main({
         includeOrganization: flag('include-organization', argv),
         teamId: arg('team', undefined, argv),
         siteId: arg('site', undefined, argv),
+        at: arg('at', undefined, argv),
         targets: argAll('target', argv),
         allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
       },

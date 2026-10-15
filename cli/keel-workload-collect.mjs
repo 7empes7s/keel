@@ -16,7 +16,7 @@
 //           read-only allowlist. Each run is a workload snapshot a restore can use.
 //   import  reads the four signed live acceptance records (SharePoint, Teams, Exchange,
 //           OneDrive and Purview), and each Wave 2 writer capture record present (one per
-//           written workload) and the site app grant record (absent ones are listed, not refused), verifies each through
+//           written workload), the site app grant and site permissions records (absent ones are listed, not refused), verifies each through
 //           its own import seam, and stores the evidence rows, the collector and restorer
 //           grants and the module versions. A record that does not verify stores nothing.
 //           Run it after every recapture.
@@ -182,11 +182,12 @@ export async function importSeams() {
   const [{ ledgerEvidenceFromAcceptance }, { ledgerEvidenceFromTeamsAcceptance }, { ledgerEvidenceFromExchangeAcceptance },
     { ledgerEvidenceFromOneDrivePurviewAcceptance }, { ledgerEvidenceFromWorkloadWritesAcceptance },
     { WRITTEN_WORKLOADS, workloadWritesRecordFile }, { ledgerEvidenceFromSiteGrantsAcceptance },
-    { SITE_GRANTS_RECORD_FILE }] = await Promise.all([
+    { SITE_GRANTS_RECORD_FILE }, { ledgerEvidenceFromSitePermissionsAcceptance }, { SITE_PERMISSIONS_RECORD_FILE }] = await Promise.all([
     import('../tools/qualification/sharepointLive.mjs'), import('../tools/qualification/teamsLive.mjs'),
     import('../tools/qualification/exchangeLive.mjs'), import('../tools/qualification/onedrivePurviewLive.mjs'),
     import('../tools/qualification/workloadWritesLive.mjs'), import('../tools/qualification/workloadWritesAcceptance.mjs'),
     import('../tools/qualification/sharepointSiteGrantsLive.mjs'), import('../tools/qualification/sharepointSiteGrantsAcceptance.mjs'),
+    import('../tools/qualification/sharepointSitePermissionsLive.mjs'), import('../tools/qualification/sharepointSitePermissionsAcceptance.mjs'),
   ]);
   return [
     { file: 'sharepoint-live-acceptance.json', seam: ledgerEvidenceFromAcceptance },
@@ -202,6 +203,8 @@ export async function importSeams() {
     })),
     // Gap 5: the site app grant writes, optional until captured.
     { file: SITE_GRANTS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSiteGrantsAcceptance },
+    // Gap 4: the site group, member, admin, level and role assignment writes, optional until captured.
+    { file: SITE_PERMISSIONS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSitePermissionsAcceptance },
   ];
 }
 

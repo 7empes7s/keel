@@ -12,6 +12,8 @@ import {
   ITEM_PERMISSIONS_MISSING, MISSING_PARTS, SITE_PERMISSIONS_MISSING, assertPermissionsRequest, assertSitesRequest,
   backupSharePointSites, canonicalJson, defaultLibraryBackup,
 } from './sharepointSites.mjs';
+import { createMemoryContentStore } from './store.mjs';
+import { loadSitePermissionsSource } from '../restore/workloads/sharepointSitePermissions.mjs';
 
 const HOST = 'contoso.sharepoint.com';
 const G = 'https://graph.microsoft.com/v1.0';
@@ -628,4 +630,28 @@ test('unchanged site permissions are not stored again on a repeat run', async ()
   assert.equal(before, 2);
   await run();
   assert.equal(store.items.filter((item) => item.itemKey === 'site/permissions').length, before);
+});
+
+test('site permissions that change and change back are stored again, so the latest backup is the latest state', async () => {
+  // The content store keeps one row per version; a state seen before must still be the newest row.
+  let clock = Date.parse('2026-10-15T08:00:00Z');
+  const now = () => new Date(clock);
+  const store = createMemoryContentStore({ now });
+  const states = new Map();
+  const deltaState = { load: async (key) => states.get(key) ?? null, save: async (key, state) => { states.set(key, state); } };
+  const base = new URL(ROOT_URL).pathname;
+  const admins = (title) => ({ [`${base}/_api/web/siteusers`]: () => ({ status: 200, headers: {}, body: { value: [{ Id: 11, Title: title, PrincipalType: 1, IsSiteAdmin: true }] } }) });
+  const run = async (override) => {
+    clock += 60_000;
+    await backupSharePointSites({
+      transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint({ override }).transport, deltaState,
+      store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), now,
+    });
+  };
+  await run(admins('KEEL-RT-Owner'));
+  await run(admins('KEEL-RT-Other'));
+  await run(admins('KEEL-RT-Owner'));
+  const latest = await loadSitePermissionsSource({ store, tenantRef: 't', siteId: ROOT });
+  assert.deepEqual(latest.value.siteCollectionAdmins.map((admin) => admin.title), ['KEEL-RT-Owner']);
+  assert.equal(latest.storedAt, new Date(clock).toISOString());
 });

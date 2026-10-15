@@ -401,6 +401,29 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
  * still disabled. Nothing here sends a request.
  */
 export const WORKLOAD_WRITE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// SharePoint REST writes on a site (gap 4). The version is the REST API itself, not a
+// Graph version; a capture records the same string.
+export const SHAREPOINT_REST_VERSION = 'sharepoint-rest';
+const SHAREPOINT_REST_DOCS = 'https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins';
+function sharePointSitePermissionWrite(id, name, endpoint, fields) {
+  return {
+    [id]: Object.freeze({
+      workload: 'sharepoint-site-settings',
+      resourceType: 'sharepointSitePermission',
+      name,
+      method: 'POST',
+      endpoint,
+      version: SHAREPOINT_REST_VERSION,
+      readBack: 'sharepoint.site-permissions',
+      fields: Object.freeze([...fields]),
+      rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+      source: id === 'sharepoint.site-role-definitions.add' || id === 'sharepoint.site-role-assignments.add'
+        ? `${SHAREPOINT_REST_DOCS}/set-custom-permissions-on-a-list-by-using-the-rest-interface`
+        : 'https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-rest-reference/dn531432(v=office.15)',
+    }),
+  };
+}
+
 export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   'sharepoint.tenant-settings.update': Object.freeze({
     workload: 'sharepoint-site-settings',
@@ -442,6 +465,21 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
     source: `${DOCS}/site-update-permission?view=graph-rest-1.0`,
   }),
+  // Gap 4 (site permissions audit, 2026-10-15): SharePoint groups, members, site
+  // collection admins, permission levels and role assignments, through SharePoint
+  // REST as the Restorer (SharePoint Online Sites.FullControl.All). Each only adds
+  // what the content backup's `site/permissions` item holds: KEEL never removes a
+  // member, admin or role, or changes an existing group or permission level.
+  // `name` is the plain-English name docs/coverage.md uses; the read-back gate is
+  // the site permissions read, and the capture reads each write back through REST.
+  ...sharePointSitePermissionWrite('sharepoint.site-role-definitions.add', 'SharePoint custom permission levels', '/_api/web/roledefinitions', ['Name', 'Description', 'Order', 'BasePermissions']),
+  ...sharePointSitePermissionWrite('sharepoint.site-groups.add', 'SharePoint site groups', '/_api/web/sitegroups', [
+    'Title', 'Description', 'AllowMembersEditMembership', 'AllowRequestToJoinLeave', 'AutoAcceptRequestToJoinLeave',
+    'OnlyAllowMembersViewMembership', 'RequestToJoinLeaveEmailSetting']),
+  ...sharePointSitePermissionWrite('sharepoint.site-group-members.add', 'SharePoint site group members', '/_api/web/sitegroups/getbyid({group-id})/users', ['LoginName']),
+  ...sharePointSitePermissionWrite('sharepoint.site-admins.add', 'SharePoint site collection admins', '/_api/web/siteusers/getbyid({user-id})', ['IsSiteAdmin']),
+  ...sharePointSitePermissionWrite('sharepoint.site-role-assignments.add', 'SharePoint role assignments on sites and lists',
+    '/_api/web/roleassignments/addroleassignment(principalid={principal-id},roledefid={role-id})', []),
   // Roadmap task-104: Teams settings and structural membership. Each is its own
   // operation with its own proof. `requires` names the SharePoint write: Teams
   // activates only after SharePoint is qualified, and SharePoint proof is never

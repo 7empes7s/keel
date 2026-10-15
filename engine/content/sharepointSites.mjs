@@ -236,6 +236,88 @@ function createReader({ transport, sleep, maxPages, maxRetries = 3, counters, as
 
 const enc = encodeURIComponent;
 
+/** The read-only SharePoint REST reader for site permissions (assertPermissionsRequest on every URL). */
+export function createPermissionsReader({ transport, tenantHost, sleep = async () => {}, maxPages = DEFAULT_MAX_PAGES, counters = { requests: 0, throttled: 0 } }) {
+  return createReader({ transport, sleep, maxPages, counters, assert: (url, method) => assertPermissionsRequest(url, method, tenantHost) });
+}
+
+/**
+ * One site's permissions through SharePoint REST: its permission levels, the site
+ * collection's groups with their members, its admins, and the role assignments on the
+ * site and on each list that breaks inheritance. A subsite that inherits records
+ * `roleAssignments: null`. Every list is sorted, so an unchanged site stores nothing.
+ * A failed group member or list read is recorded on that group or list and makes the
+ * read partial; the rest is still stored. The restore (engine/restore/workloads/
+ * sharepointSitePermissions.mjs) reads a site now through this same function, so the
+ * backup and the live state compare in one form.
+ */
+export async function readSitePermissions(permissionsReader, webUrl) {
+  const api = `${String(webUrl).replace(/\/+$/, '')}/_api`;
+  const byId = (a, b) => Number(a.id ?? a.principalId) - Number(b.id ?? b.principalId);
+  const principal = (p) => ({
+    id: p?.Id ?? null, title: p?.Title ?? null, loginName: p?.LoginName ?? null, email: p?.Email || null,
+    principalType: p?.PrincipalType ?? null, isSiteAdmin: p?.IsSiteAdmin ?? null, userPrincipalName: p?.UserPrincipalName ?? null,
+  });
+  const assignments = (rows) => rows.map((row) => ({
+    principalId: row.PrincipalId ?? row.Member?.Id ?? null,
+    member: { id: row.Member?.Id ?? null, title: row.Member?.Title ?? null, loginName: row.Member?.LoginName ?? null, principalType: row.Member?.PrincipalType ?? null },
+    roles: (row.RoleDefinitionBindings ?? []).map((role) => ({ id: role.Id ?? null, name: role.Name ?? null })).sort(byId),
+  })).sort(byId);
+  const failed = [];
+
+  const web = await permissionsReader.get(`${api}/web?$select=Id,Url,HasUniqueRoleAssignments`);
+  const roleDefinitions = (await permissionsReader.all(`${api}/web/roledefinitions?$select=${ROLE_DEFINITION_SELECT}`))
+    .map((role) => ({
+      id: role.Id ?? null, name: role.Name ?? null, description: role.Description ?? null, hidden: role.Hidden ?? null,
+      roleTypeKind: role.RoleTypeKind ?? null, order: role.Order ?? null,
+      basePermissions: role.BasePermissions ? { high: String(role.BasePermissions.High), low: String(role.BasePermissions.Low) } : null,
+    })).sort(byId);
+  const groups = [];
+  for (const group of await permissionsReader.all(`${api}/web/sitegroups?$select=${GROUP_SELECT}`)) {
+    const entry = {
+      id: group.Id ?? null, title: group.Title ?? null, description: group.Description ?? null, loginName: group.LoginName ?? null,
+      ownerTitle: group.OwnerTitle ?? null, allowMembersEditMembership: group.AllowMembersEditMembership ?? null,
+      allowRequestToJoinLeave: group.AllowRequestToJoinLeave ?? null, autoAcceptRequestToJoinLeave: group.AutoAcceptRequestToJoinLeave ?? null,
+      onlyAllowMembersViewMembership: group.OnlyAllowMembersViewMembership ?? null, requestToJoinLeaveEmailSetting: group.RequestToJoinLeaveEmailSetting ?? null,
+      members: null,
+    };
+    try {
+      entry.members = (await permissionsReader.all(`${api}/web/sitegroups/GetById(${Number(group.Id)})/users?$select=${PRINCIPAL_SELECT}`)).map(principal).sort(byId);
+    } catch (error) {
+      entry.membersRead = failure(error);
+      failed.push({ what: `members of ${entry.title ?? entry.id}`, ...entry.membersRead });
+    }
+    groups.push(entry);
+  }
+  groups.sort(byId);
+  const siteCollectionAdmins = (await permissionsReader.all(`${api}/web/siteusers?$filter=IsSiteAdmin eq true&$select=${PRINCIPAL_SELECT}`))
+    .map(principal).sort(byId);
+  const hasUnique = web.HasUniqueRoleAssignments === true;
+  const roleAssignments = hasUnique ? assignments(await permissionsReader.all(`${api}/web/roleassignments?${ROLE_ASSIGNMENT_QUERY}`)) : null;
+  const lists = [];
+  for (const list of await permissionsReader.all(`${api}/web/lists?$select=Id,Title,Hidden,HasUniqueRoleAssignments`)) {
+    if (list.HasUniqueRoleAssignments !== true) continue;
+    const entry = { id: String(list.Id ?? '').toLowerCase(), title: list.Title ?? null, hidden: list.Hidden ?? null, roleAssignments: null };
+    try {
+      if (!new RegExp(`^${GUID}$`, 'i').test(entry.id)) throw new Error(`not a list id: ${entry.id}`);
+      entry.roleAssignments = assignments(await permissionsReader.all(`${api}/web/lists(guid'${entry.id}')/roleassignments?${ROLE_ASSIGNMENT_QUERY}`));
+    } catch (error) {
+      entry.read = failure(error);
+      failed.push({ what: `list ${entry.title ?? entry.id}`, ...entry.read });
+    }
+    lists.push(entry);
+  }
+  lists.sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    value: {
+      web: { id: web.Id ?? null, url: web.Url ?? null, hasUniqueRoleAssignments: hasUnique },
+      roleDefinitions, groups, siteCollectionAdmins, roleAssignments, lists,
+    },
+    failed,
+  };
+}
+
+
 /**
  * Backs up every in-scope site. Pure apart from the injected transport, store and drive
  * backup: no database and no gate.
@@ -276,7 +358,7 @@ export async function backupSharePointSites({
   const saveState = async (key, state) => { if (deltaState) await deltaState.save(key, state); };
   const reader = createReader({ transport, sleep, maxPages, counters });
   const permissionsReader = permissionsTransport
-    ? createReader({ transport: permissionsTransport, sleep, maxPages, counters, assert: (url, method) => assertPermissionsRequest(url, method, tenantHost) })
+    ? createPermissionsReader({ transport: permissionsTransport, tenantHost, sleep, maxPages, counters })
     : null;
   const startedAt = now().toISOString();
   // The drive backup reads its own paths, but it gets a transport that still refuses
@@ -384,8 +466,12 @@ export async function backupSharePointSites({
 
     if (permissionsReader) {
       await read('permissions', async () => {
-        const { value, failed } = await readSitePermissions(discovered.webUrl);
-        entry.refs.permissions = await putSetting('site/permissions', value);
+        const { value, failed } = await readSitePermissions(permissionsReader, discovered.webUrl);
+        // Versioned by run as well as content: a site that goes back to an earlier state
+        // gets a new row with this run's time, so the latest row is always the state now
+        // (the restore picks a backup by time). Unchanged permissions are still not stored.
+        const hash = createHash('sha256').update(canonicalJson(value)).digest('hex');
+        entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`);
         if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
       });
     }
@@ -435,80 +521,6 @@ export async function backupSharePointSites({
     // A part that failed this run is left out, so the next run stores it again.
     await saveState(stateKey, next);
     return entry;
-  }
-
-  /**
-   * One site's permissions through SharePoint REST: its permission levels, the site
-   * collection's groups with their members, its admins, and the role assignments on the
-   * site and on each list that breaks inheritance. A subsite that inherits records
-   * `roleAssignments: null`. Every list is sorted, so an unchanged site stores nothing.
-   * A failed group member or list read is recorded on that group or list and makes the
-   * read partial; the rest is still stored.
-   */
-  async function readSitePermissions(webUrl) {
-    const api = `${String(webUrl).replace(/\/+$/, '')}/_api`;
-    const byId = (a, b) => Number(a.id ?? a.principalId) - Number(b.id ?? b.principalId);
-    const principal = (p) => ({
-      id: p?.Id ?? null, title: p?.Title ?? null, loginName: p?.LoginName ?? null, email: p?.Email || null,
-      principalType: p?.PrincipalType ?? null, isSiteAdmin: p?.IsSiteAdmin ?? null, userPrincipalName: p?.UserPrincipalName ?? null,
-    });
-    const assignments = (rows) => rows.map((row) => ({
-      principalId: row.PrincipalId ?? row.Member?.Id ?? null,
-      member: { id: row.Member?.Id ?? null, title: row.Member?.Title ?? null, loginName: row.Member?.LoginName ?? null, principalType: row.Member?.PrincipalType ?? null },
-      roles: (row.RoleDefinitionBindings ?? []).map((role) => ({ id: role.Id ?? null, name: role.Name ?? null })).sort(byId),
-    })).sort(byId);
-    const failed = [];
-
-    const web = await permissionsReader.get(`${api}/web?$select=Id,Url,HasUniqueRoleAssignments`);
-    const roleDefinitions = (await permissionsReader.all(`${api}/web/roledefinitions?$select=${ROLE_DEFINITION_SELECT}`))
-      .map((role) => ({
-        id: role.Id ?? null, name: role.Name ?? null, description: role.Description ?? null, hidden: role.Hidden ?? null,
-        roleTypeKind: role.RoleTypeKind ?? null, order: role.Order ?? null,
-        basePermissions: role.BasePermissions ? { high: String(role.BasePermissions.High), low: String(role.BasePermissions.Low) } : null,
-      })).sort(byId);
-    const groups = [];
-    for (const group of await permissionsReader.all(`${api}/web/sitegroups?$select=${GROUP_SELECT}`)) {
-      const entry = {
-        id: group.Id ?? null, title: group.Title ?? null, description: group.Description ?? null, loginName: group.LoginName ?? null,
-        ownerTitle: group.OwnerTitle ?? null, allowMembersEditMembership: group.AllowMembersEditMembership ?? null,
-        allowRequestToJoinLeave: group.AllowRequestToJoinLeave ?? null, autoAcceptRequestToJoinLeave: group.AutoAcceptRequestToJoinLeave ?? null,
-        onlyAllowMembersViewMembership: group.OnlyAllowMembersViewMembership ?? null, requestToJoinLeaveEmailSetting: group.RequestToJoinLeaveEmailSetting ?? null,
-        members: null,
-      };
-      try {
-        entry.members = (await permissionsReader.all(`${api}/web/sitegroups/GetById(${Number(group.Id)})/users?$select=${PRINCIPAL_SELECT}`)).map(principal).sort(byId);
-      } catch (error) {
-        entry.membersRead = failure(error);
-        failed.push({ what: `members of ${entry.title ?? entry.id}`, ...entry.membersRead });
-      }
-      groups.push(entry);
-    }
-    groups.sort(byId);
-    const siteCollectionAdmins = (await permissionsReader.all(`${api}/web/siteusers?$filter=IsSiteAdmin eq true&$select=${PRINCIPAL_SELECT}`))
-      .map(principal).sort(byId);
-    const hasUnique = web.HasUniqueRoleAssignments === true;
-    const roleAssignments = hasUnique ? assignments(await permissionsReader.all(`${api}/web/roleassignments?${ROLE_ASSIGNMENT_QUERY}`)) : null;
-    const lists = [];
-    for (const list of await permissionsReader.all(`${api}/web/lists?$select=Id,Title,Hidden,HasUniqueRoleAssignments`)) {
-      if (list.HasUniqueRoleAssignments !== true) continue;
-      const entry = { id: String(list.Id ?? '').toLowerCase(), title: list.Title ?? null, hidden: list.Hidden ?? null, roleAssignments: null };
-      try {
-        if (!new RegExp(`^${GUID}$`, 'i').test(entry.id)) throw new Error(`not a list id: ${entry.id}`);
-        entry.roleAssignments = assignments(await permissionsReader.all(`${api}/web/lists(guid'${entry.id}')/roleassignments?${ROLE_ASSIGNMENT_QUERY}`));
-      } catch (error) {
-        entry.read = failure(error);
-        failed.push({ what: `list ${entry.title ?? entry.id}`, ...entry.read });
-      }
-      lists.push(entry);
-    }
-    lists.sort((a, b) => a.id.localeCompare(b.id));
-    return {
-      value: {
-        web: { id: web.Id ?? null, url: web.Url ?? null, hasUniqueRoleAssignments: hasUnique },
-        roleDefinitions, groups, siteCollectionAdmins, roleAssignments, lists,
-      },
-      failed,
-    };
   }
 
   async function backupList(list, { siteId, base, container, putSetting }) {

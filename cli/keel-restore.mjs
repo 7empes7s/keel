@@ -604,7 +604,10 @@ export async function runRestore({
     // Re-collect the target's CURRENT state — not what planning saw — so a retry
     // after a partial failure treats already-created resources as done instead
     // of re-creating them (spec §9.3; see Task 17's idempotency fix).
-    const targetCollected = await collectM1Fn(targetReader);
+    // Issue #289: a type the tenant has no licence for is skipped unless this
+    // restore touches it, so one unlicensed workload does not block every restore.
+    const neededTypes = new Set(resources.map((resource) => resource.resourceType));
+    const targetCollected = await collectM1Fn(targetReader, { needed: neededTypes });
     const targetResources = canonicalizeAllFn(targetCollected);
     const existingTargetIds = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
     const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
@@ -1161,7 +1164,8 @@ export async function runRestore({
     // live after recovery is never reported as a clean restore.
     let incidentChecks = [];
     if (mode === 'enforce' && artifact && incidentRecovery) {
-      const reread = await collectM1Fn(targetReader);
+      const checkedTypes = incidentRecovery.postRestoreChecks.map((check) => String(check.naturalKey).split(':')[0]);
+      const reread = await collectM1Fn(targetReader, { needed: new Set([...neededTypes, ...checkedTypes]) });
       const collectedTypes = Array.isArray(reread) ? reread.map((entry) => entry?.[0]).filter((type) => typeof type === 'string') : [];
       incidentChecks = evaluatePostRestoreChecks(incidentRecovery.postRestoreChecks, canonicalizeAllFn(reread), { collectedTypes });
       await recordPostRestoreChecks(client, {
@@ -1256,7 +1260,8 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   }
   const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
   const targetReader = new deps.GraphReaderClass(async () => collectorToken);
-  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const needed = new Set(entries.map((entry) => entry.resourceType));
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader, { needed }));
   const current = new Map(targetResources.map((resource) => [resource.naturalKey, { targetId: resource.sourceId, payload: resource.payload }]));
   const plan = planCompensation({ restoreRef: forward.id, entries, current });
   const order = plan.operations.map((op) => op.naturalKey);
@@ -1427,7 +1432,7 @@ async function buildEnforcement({ client, forward, naturalKey, collectorConfig, 
   );
   const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
   const targetReader = new deps.GraphReaderClass(async () => collectorToken);
-  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader, { needed: new Set(['conditionalAccessPolicy']) }));
   const current = targetResources.find((resource) => resource.naturalKey === naturalKey && resource.resourceType === 'conditionalAccessPolicy');
   const live = current ? { targetId: current.sourceId, payload: current.payload } : null;
   const snapshotPayload = rows[0]?.payload ?? null;

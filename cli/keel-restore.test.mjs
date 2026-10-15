@@ -246,6 +246,19 @@ async function runFixture(dependencies, { logger = { log() {}, error() {} } } = 
   assert.equal(roleAssignmentWrite.options.body.principalId, 'target-group-id');
 }
 
+// Issue #289: the current-state read names the types this restore touches, so a
+// type the tenant has no licence for is skipped instead of failing every restore.
+{
+  const fixture = restoreFakes();
+  const scopes = [];
+  fixture.dependencies.collectM1 = async (reader, scope) => { scopes.push(scope); return []; };
+  const exitCode = await runFixture(fixture.dependencies);
+  assert.equal(exitCode, 0, JSON.stringify(fixture.state.waveResults));
+  assert.ok(scopes.length > 0);
+  assert.ok(scopes[0]?.needed instanceof Set);
+  assert.deepEqual([...scopes[0].needed].sort(), ['group', 'roleAssignment']);
+}
+
 // A null result is not provenance. The same plan therefore fails before the
 // second wave can send its unresolved source-tenant reference to the writer.
 {

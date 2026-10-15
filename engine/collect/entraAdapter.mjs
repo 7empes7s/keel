@@ -66,7 +66,11 @@ function graphNativeAdapter(type) {
     collectRaw,
     async collect(reader, scope = {}) {
       const { items, error, capped } = await collectRaw(reader, scope);
-      if (error) throw new Error(`collecting ${type} failed: ${redactSecrets(error.error ?? error.message ?? error.status)}`);
+      if (error) {
+        const failure = new Error(`collecting ${type} failed: ${redactSecrets(error.error ?? error.message ?? error.status)}`);
+        if (unavailableOnTenant(error)) failure.unavailableOnTenant = true;
+        throw failure;
+      }
       if (capped) throw new Error(`collecting ${type} failed: pagination incomplete`);
       if (!Array.isArray(items)) throw new Error(`collecting ${type} failed: missing items`);
       return items;
@@ -118,12 +122,37 @@ for (const descriptor of DESCRIPTORS) {
   register(descriptor, graphNativeAdapter(descriptor.type));
 }
 
+// Issue #289: Graph answers some types with a refusal that says the tenant
+// lacks the licence or feature for them, not that KEEL lacks a permission:
+// 403 "Insufficient license" (lifecycle workflows need Entra ID Governance) and
+// 400 AADB2C99039 (API connectors need self-service sign-up).
+export function unavailableOnTenant(error) {
+  if (!error) return false;
+  const message = String(error.error ?? error.message ?? '');
+  if (error.status === 403 && /insufficient licen[cs]e/i.test(message)) return true;
+  return error.code === 'AADB2C99039' || /\bAADB2C99039\b/.test(message);
+}
+
+/**
+ * Reads every M1 type and fails on the first type it cannot read.
+ * `scope.needed` (a set of types), when given, relaxes that for one case only:
+ * a type the tenant has no licence or feature for, and that is not needed, is
+ * left out of the result (not read, never an invented empty list). A needed
+ * type that is unavailable still fails, naming the type.
+ */
 export async function collectM1(reader, scope = {}) {
+  const { needed, ...rest } = scope;
   const collected = [];
-  const context = { ...scope };
+  const context = { ...rest };
   for (const type of M1_TYPES) {
     const { adapter } = get(type);
-    const items = await adapter.collect(reader, context);
+    let items;
+    try {
+      items = await adapter.collect(reader, context);
+    } catch (error) {
+      if (needed instanceof Set && error?.unavailableOnTenant === true && !needed.has(type)) continue;
+      throw error;
+    }
     collected.push([type, items]);
     if (type === 'organization') {
       context.tenantId ??= items[0]?.id;

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { registerOperationCapability } from '../../coverage/capabilities.mjs';
 import { applyWave } from '../applyEngine.mjs';
 import { ThrottleGovernor } from '../throttleGovernor.mjs';
-import { WRITER_FRAGMENTS, registerWriter, registeredWriterTypes, writerFor } from './registry.mjs';
+import { WRITER_FRAGMENTS, registerWriter, registeredWriterKeys, writerFor } from './registry.mjs';
 
 const DIR = new URL('./', import.meta.url);
 const governor = new ThrottleGovernor({ 'target/entra/write': { capacity: 100, refillPerSecond: 100 } });
@@ -23,6 +23,7 @@ for (const operation of ['create', 'update', 'delete']) {
 const calls = [];
 registerWriter({
   resourceType: TYPE,
+  verbs: ['create', 'update', 'delete'],
   handler: 'engine/restore/writers/registry.test.mjs#apply',
   apply: async (writer, resource, verb, ctx) => {
     calls.push({ writer, naturalKey: resource.naturalKey, verb, mode: ctx.mode, targetId: ctx.targetId, ctx });
@@ -43,7 +44,8 @@ test('every writers/ fragment is imported by registry.mjs', () => {
   const files = readdirSync(DIR).filter((name) => name.endsWith('.mjs') && name !== 'registry.mjs' && !name.endsWith('.test.mjs')).sort();
   assert.deepEqual(imported, files);
   assert.deepEqual(Object.keys(WRITER_FRAGMENTS).sort(), files.map((name) => name.replace(/\.mjs$/, '')));
-  assert.deepEqual(registeredWriterTypes(), [...Object.values(WRITER_FRAGMENTS).flat().map((entry) => entry.resourceType), TYPE].sort());
+  const fragmentKeys = Object.values(WRITER_FRAGMENTS).flat().flatMap((entry) => entry.verbs.map((verb) => `${entry.resourceType}|${verb}`));
+  assert.deepEqual(registeredWriterKeys(), [...fragmentKeys, `${TYPE}|create`, `${TYPE}|delete`, `${TYPE}|update`].sort());
 });
 
 test('applyWave calls the registered writer for its type with the shared context', async () => {
@@ -59,7 +61,7 @@ test('applyWave calls the registered writer for its type with the shared context
     { verb: 'update', mode: 'enforce', targetId: 't-2' },
   ]);
   assert.equal(calls[0].writer, graphWriter);
-  for (const name of ['retryOperation', 'journalBeforeMutation', 'noteOutcome', 'rewriteReferences']) {
+  for (const name of ['retryOperation', 'journalBeforeMutation', 'noteOutcome', 'rewriteReferences', 'graphFailure', 'readAfterWrite']) {
     assert.equal(typeof calls[0].ctx[name], 'function', name);
   }
   assert.deepEqual(await calls[0].ctx.journalBeforeMutation({ operation: 'create', priorState: null, intendedState: {} }), { ok: true, entryId: null });
@@ -83,15 +85,29 @@ test('a writer that reports nothing fails the resource', async () => {
   assert.match(result.failed[0].error, /reported no outcome/);
 });
 
-test('a registered writer never replaces a built-in one', async () => {
-  registerWriter({ resourceType: 'group', handler: 'engine/restore/writers/registry.test.mjs#group', apply: async () => assert.fail('called') });
+test('a registered writer never replaces a built-in one, and needs a capability naming it', async () => {
+  registerWriter({ resourceType: 'group', verbs: ['create'], handler: 'engine/restore/writers/registry.test.mjs#group', apply: async () => assert.fail('called') });
   const result = await run([{ naturalKey: 'group:KEEL-RT-g', resourceType: 'group', verb: 'create', payload: { displayName: 'KEEL-RT-g' }, references: [] }]);
-  assert.match(result.failed[0].error, /built-in writer/);
+  assert.match(result.failed[0].error, /capability names engine\/restore\/applyEngine\.mjs#applyWave, not the registered writer/);
+
+  const OTHER = 'keelRtMismatchedType';
+  registerOperationCapability({ resourceType: OTHER, operation: 'create', path: '/keelRtOther', handler: 'engine/restore/other.mjs#apply', idOutcome: 'server-assigned' });
+  registerWriter({ resourceType: OTHER, verbs: ['create'], handler: 'engine/restore/writers/registry.test.mjs#other', apply: async () => assert.fail('called') });
+  const mismatched = await run([resource({ naturalKey: `${OTHER}:KEEL-RT-x`, resourceType: OTHER })]);
+  assert.match(mismatched.failed[0].error, /not the registered writer/);
+});
+
+test('a writer covers only the verbs it names', async () => {
+  calls.length = 0;
+  assert.equal(writerFor(TYPE, 'restore-soft-deleted'), null);
+  assert.equal(writerFor(TYPE, 'update').handler, 'engine/restore/writers/registry.test.mjs#apply');
 });
 
 test('registerWriter refuses a malformed or repeated entry', () => {
-  assert.throws(() => registerWriter({ resourceType: TYPE, handler: 'engine/x.mjs#y', apply: () => {} }), /already registered/);
-  assert.throws(() => registerWriter({ resourceType: 'other', handler: 'nowhere', apply: () => {} }), /handler reference/);
-  assert.throws(() => registerWriter({ resourceType: 'other', handler: 'engine/x.mjs#y' }), /apply function/);
-  assert.equal(writerFor('other'), null);
+  assert.throws(() => registerWriter({ resourceType: TYPE, verbs: ['update'], handler: 'engine/x.mjs#y', apply: () => {} }), /already registered/);
+  assert.throws(() => registerWriter({ resourceType: 'other', verbs: ['create'], handler: 'nowhere', apply: () => {} }), /handler reference/);
+  assert.throws(() => registerWriter({ resourceType: 'other', verbs: ['create'], handler: 'engine/x.mjs#y' }), /apply function/);
+  assert.throws(() => registerWriter({ resourceType: 'other', verbs: ['noop'], handler: 'engine/x.mjs#y', apply: () => {} }), /names its verbs/);
+  assert.throws(() => registerWriter({ resourceType: 'other', handler: 'engine/x.mjs#y', apply: () => {} }), /names its verbs/);
+  assert.equal(writerFor('other', 'create'), null);
 });

@@ -42,6 +42,7 @@ import {
   matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
+import { writerFor } from './writers/registry.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -384,6 +385,15 @@ function unfinishedAttempt(resource, prior) {
   };
 }
 
+// Wave 2 seam: the types applyWave writes itself. The generic path was proven
+// for the first six; the rest go through their operation records.
+const GENERIC_WRITER_TYPES = new Set(['group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy', 'application', 'servicePrincipal']);
+function hasBuiltInWriter(resourceType) {
+  return GENERIC_WRITER_TYPES.has(resourceType) || isIntuneGoverned(resourceType) || isTenantPolicyGoverned(resourceType)
+    || isAdminRoleGoverned(resourceType) || isUserGoverned(resourceType) || isPolicyGoverned(resourceType)
+    || isAdministrativeGoverned(resourceType);
+}
+
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -589,6 +599,42 @@ export async function applyWave(writer, governor, wave, {
         });
         return;
       }
+    }
+
+    // Wave 2 seam: a type with no built-in writer is written by the writer its
+    // package registered in engine/restore/writers/, after the shared gates
+    // above plus the deletion and synced-object guards. A registered writer
+    // never replaces a built-in one.
+    const registeredWriter = writerFor(resource.resourceType);
+    if (registeredWriter) {
+      if (hasBuiltInWriter(resource.resourceType)) {
+        failed.push({ naturalKey: resource.naturalKey, error: `${resource.resourceType} has a built-in writer; the registered writer ${registeredWriter.handler} is refused` });
+        return;
+      }
+      const guarded = { ...resource, payload: resource.live?.payload ?? resource.payload };
+      const guard = effectiveVerb === 'delete' ? refuseUnsafeDeletion(guarded, deletionGuardOptions) : refuseIfSynced(guarded);
+      if (guard.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: guard.reason }); return; }
+      if (effectiveVerb === 'delete' && resource.blastRadius === 'tenant-lockout') {
+        skipped.push({ naturalKey: resource.naturalKey, reason: 'a tenant-lockout delete is never written through a registered writer' });
+        return;
+      }
+      if (resumedGoverned()) return;
+      const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
+        mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
+        now, approvedContentEffects, readAfterWriteOptions,
+        targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
+        journalBeforeMutation: (fields) => journalBeforeMutation(rollbackClient, { runId, restoreRef, resource, ...fields }),
+        noteOutcome: (journal, result, extras) => noteOutcome(rollbackClient, journal, result, extras),
+        rewriteReferences: (payload) => rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType),
+      });
+      if (outcome?.applied) applied.push(outcome.applied);
+      if (outcome?.skipped) skipped.push(outcome.skipped);
+      if (outcome?.failed) failed.push(outcome.failed);
+      if (outcome?.notRemediable) notRemediable.push(outcome.notRemediable);
+      if (!outcome?.applied && !outcome?.skipped && !outcome?.failed && !outcome?.notRemediable) {
+        failed.push({ naturalKey: resource.naturalKey, error: `${registeredWriter.handler} reported no outcome` });
+      }
+      return;
     }
 
     // Issue #155: an Intune policy is written through its operation record, with

@@ -102,3 +102,31 @@ test('the token is renewed before it expires and once after a 401', async () => 
   assert.equal(result.status, 201);
   assert.deepEqual(fetch.calls.map((call) => call.headers.authorization), ['Bearer t1', 'Bearer t2', 'Bearer t2', 'Bearer t3']);
 });
+
+test('an upload session URL the transport was issued takes PUT chunks without the token', async () => {
+  const uploadUrl = 'https://contoso.sharepoint.com/sites/KEEL-RT-s/_api/v2.0/drives/d/items/x/uploadSession?guid=1&tempauth=abc';
+  const fetch = fakeFetch([{ status: 200, json: { uploadUrl } }, { status: 202, json: {} }, { status: 201, json: { id: 'f' } }]);
+  const seen = [];
+  const transport = contentWriteTransport(() => 'token-1', fetch.impl, { guard: (url) => { seen.push(url); } });
+  const chunk = Buffer.from('abc');
+  await assert.rejects(transport(uploadUrl, { method: 'PUT', body: chunk, headers: { 'Content-Range': 'bytes 0-2/6' } }), /Microsoft Graph only/);
+  await transport(`${GRAPH}/drives/d/root:/KEEL-RT-big.bin:/createUploadSession`, { method: 'POST', body: {} });
+  await assert.rejects(transport(uploadUrl, { method: 'PUT', body: chunk, headers: { authorization: 'Bearer x', 'Content-Range': 'bytes 0-2/6' } }), /upload header/);
+  await assert.rejects(transport(uploadUrl, { method: 'PUT', body: chunk }), /content-range/);
+  await assert.rejects(transport(uploadUrl, { method: 'POST', body: {} }), /Microsoft Graph only/);
+  assert.equal((await transport(uploadUrl, { method: 'PUT', body: chunk, headers: { 'Content-Range': 'bytes 0-2/6' } })).status, 202);
+  assert.equal((await transport(uploadUrl, { method: 'PUT', body: chunk, headers: { 'Content-Range': 'bytes 3-5/6' } })).status, 201);
+  assert.deepEqual(fetch.calls[1].headers, { 'content-range': 'bytes 0-2/6' });
+  assert.equal(fetch.calls[1].body, chunk);
+  assert.ok(seen.includes(uploadUrl));
+  // Once the upload completes the URL is forgotten.
+  await assert.rejects(transport(uploadUrl, { method: 'PUT', body: chunk, headers: { 'Content-Range': 'bytes 0-2/6' } }), /Microsoft Graph only/);
+  assert.equal(fetch.calls.length, 3);
+});
+
+test('an upload URL on a host other than SharePoint is never trusted', async () => {
+  const fetch = fakeFetch([{ status: 200, json: { uploadUrl: 'https://evil.example/upload' } }]);
+  const transport = contentWriteTransport(() => 't', fetch.impl, { guard: () => true });
+  await transport(`${GRAPH}/drives/d/root:/KEEL-RT-big.bin:/createUploadSession`, { method: 'POST', body: {} });
+  await assert.rejects(transport('https://evil.example/upload', { method: 'PUT', body: Buffer.from('a'), headers: { 'Content-Range': 'bytes 0-0/1' } }), /Microsoft Graph only/);
+});

@@ -320,15 +320,6 @@ function outcomeDetailWithBody(result) {
   return `${detail}: ${text.slice(0, 2000)}`;
 }
 
-// Wave 2 seam: the types applyWave writes itself. The generic path was proven
-// for the first six; the rest go through their operation records.
-const GENERIC_WRITER_TYPES = new Set(['group', 'roleAssignment', 'namedLocation', 'conditionalAccessPolicy', 'application', 'servicePrincipal']);
-function hasBuiltInWriter(resourceType) {
-  return GENERIC_WRITER_TYPES.has(resourceType) || isIntuneGoverned(resourceType) || isTenantPolicyGoverned(resourceType)
-    || isAdminRoleGoverned(resourceType) || isUserGoverned(resourceType) || isPolicyGoverned(resourceType)
-    || isAdministrativeGoverned(resourceType);
-}
-
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -511,14 +502,15 @@ export async function applyWave(writer, governor, wave, {
       }
     }
 
-    // Wave 2 seam: a type with no built-in writer is written by the writer its
-    // package registered in engine/restore/writers/, after the shared gates
-    // above plus the deletion and synced-object guards. A registered writer
-    // never replaces a built-in one.
-    const registeredWriter = writerFor(resource.resourceType);
+    // Wave 2 seam: a (type, verb) with no built-in writer is written by the
+    // writer its package registered in engine/restore/writers/, after the shared
+    // gates above plus the deletion and synced-object guards. The capability
+    // record must name that writer; one naming applyWave keeps the built-in path.
+    const registeredWriter = writerFor(resource.resourceType, effectiveVerb);
     if (registeredWriter) {
-      if (hasBuiltInWriter(resource.resourceType)) {
-        failed.push({ naturalKey: resource.naturalKey, error: `${resource.resourceType} has a built-in writer; the registered writer ${registeredWriter.handler} is refused` });
+      const handler = capabilityGate.capability?.handler;
+      if (handler !== registeredWriter.handler) {
+        failed.push({ naturalKey: resource.naturalKey, error: `${resource.resourceType} ${effectiveVerb}: the capability names ${handler}, not the registered writer ${registeredWriter.handler}` });
         continue;
       }
       const guarded = { ...resource, payload: resource.live?.payload ?? resource.payload };
@@ -530,11 +522,12 @@ export async function applyWave(writer, governor, wave, {
       }
       const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
         mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
-        now, approvedContentEffects, readAfterWriteOptions,
+        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
         journalBeforeMutation: (fields) => journalBeforeMutation(rollbackClient, { runId, restoreRef, resource, ...fields }),
         noteOutcome: (journal, result, extras) => noteOutcome(rollbackClient, journal, result, extras),
         rewriteReferences: (payload) => rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType),
+        readAfterWrite: (version, path, isStale) => readAfterWrite(writer, version, path, isStale, { retryOperation, ...readAfterWriteOptions }),
       });
       if (outcome?.applied) applied.push(outcome.applied);
       if (outcome?.skipped) skipped.push(outcome.skipped);

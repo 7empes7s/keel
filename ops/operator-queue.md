@@ -3226,7 +3226,7 @@ item that needs it stays untouched.
   /mnt/project-files/handoff/wave2/MAILR/HANDOFF.md (cloud side).
 - Needs: `test -f /opt/keel-live/cli/keel-content-restore.mjs`. Q63 done (Restorer has Exchange RBAC
   Application Mail.ReadWrite scoped to `keel-rt-*` mailboxes). Q64 done (alice's mailbox is in the content store).
-- Status: todo
+- Status: in-progress
 - **Test tenant only.** Same hard rules and requester/approver split as Q45. Under the 2026-10-14 standing authorization,
   keel-operator approves these test-tenant restores itself; log every approval id here. Write only into
   keel-rt-20260908-alice's mailbox. Grant no permission: if Graph answers 403 for a kind, record it and go on.

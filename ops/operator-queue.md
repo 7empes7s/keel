@@ -3711,7 +3711,35 @@ item that needs it stays untouched.
   Never wider than the backup, never narrows or removes. Both writes (`sharepoint.site-permissions.add`, `.update`) are
   **off** until the capture below is imported.
 - Needs: /opt/keel-live at cc6404a or later (`test -f /opt/keel-live/engine/restore/workloads/sharepointSiteGrants.mjs`).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 14:04–14:20 UTC on **B = 14aa4f51** (includes cc6404a, #321). Writes only on the KEEL-RT-20261004 site, for the fixture app.
+  Global admin not used; no Restorer permission added. Approvals filed by the Entra principal and self-approved as the Gmail approver
+  (restore request plus content effect) under the standing authorization.
+  - **1.** Created `KEEL-RT-site-grant-app`: no API permissions, no secret, no certificate. It held 0 grants on the site.
+  - **2. Capture:** `plan` (exit 0) lists the 4 documented requests. `capture --confirm-live-tenant-write`: **exit 0**,
+    **verify ok, failures []**.
+    - `sharepoint.site-permissions.add` (read) and `.update` (write): ok, readBackVerified true.
+    - Doc URLs (the 4 from requiredDocumentation) all returned 200 at capture time.
+  - **3. Import** (`keel-workload-collect.mjs import --dir <evidence checkout>/docs/release/qualifications`): exit 0.
+    - `sharepoint-site-grants-live-acceptance.json`: imported, reads 2, writes 2; refused [].
+    - The enforce runs log `SharePoint site app grants: 2 of 2 write(s) qualified for this tenant`.
+  - **4. Backup:** `keel-workload-collect.mjs run` exit 0, sharepoint-site-settings complete. **Collection C = 99282f12**.
+    The site's appPermissionGrants holds KEEL-RT-site-grant-app with `write`.
+  - **5. Add round:** deleted the grant by hand (204). Dry run: `1 change(s), 0 manual, 0 refused`. Content effect: externally-sharing,
+    roles → write. Approval **deb091af**. `--artifact --enforce`: **verified**; reads back `write`.
+    - Note: the workload enforce reads the collector config from `KEEL_COLLECTOR_CONFIG_PATH`, defaulting to
+      `/etc/keel/tenant-target.json`, which doesn't exist on Mulinux. Run with `KEEL_COLLECTOR_CONFIG_PATH=/etc/keel/tenant.json`.
+  - **6. Re-run:**
+    - Dry run from C: `0 change(s)`. Promoting it (approval **b72e2059**): **no-change**, no write.
+    - Re-promoting the step-5 artifact: **stale** ("the site grants changed since the dry run; a new dry run is required"), no write.
+  - **7. Update round:** PATCH to `read` by hand. Dry run: `1 change(s)`. Approval **6e051de4** (with its content effect). Enforce: **verified**;
+    reads back `write`. Dry run again: `0 change(s)`.
+  - **8. Wider check:** PATCH to `fullcontrol` by hand. Dry run: `0 change(s), 1 manual, 0 refused`, with the manual line
+    "the grant is wider now than in the backup; KEEL never narrows a grant, a person decides". Not promoted.
+  - **9. Cleanup:** deleted the grant (204); 0 grants left on the site. **Kept** `KEEL-RT-site-grant-app` (no permissions) for the
+    30-day recapture.
+  - **10. Evidence:** `claude/live-evidence-site-grants` @ **5e47ab8** (record and .capture.json; pseudonymize check passes, scan
+    clean). No PR.
 - **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
   Global admin not used. **Restorer permissions:** none to add (it holds Graph Sites.FullControl.All, Q26). If Graph
   refuses a write with 403, report blocked with what Graph names; do not grant anything.

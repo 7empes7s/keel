@@ -165,9 +165,13 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}
       const lists = [...(targets[cmdlet] ?? [])].map((key) => (state[key] ??= []));
       if (cmdlet.startsWith('New-')) {
         lists[0].push({ Identity: `Tag:${Identity}`, ...values });
+      } else if (cmdlet === 'Set-QuarantinePolicy' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(Identity))) {
+        // As live (#339): Set-QuarantinePolicy fails its Identity argument transformation on a Guid; it takes the Name.
+        return { error: { message: `Cannot process argument transformation on parameter 'Identity'. Cannot convert value "${Identity}"`, category: 'InvalidData', errorId: 'ParameterArgumentTransformationError,Set-QuarantinePolicy' } };
       } else {
         const found = lists.flat().find((body) => String(body.Guid ?? '').toLowerCase() === String(Identity).toLowerCase()
-          || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase());
+          || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase()
+          || (cmdlet === 'Set-QuarantinePolicy' && String(body.Name ?? '').toLowerCase() === String(Identity).toLowerCase()));
         if (!found) return { error: { message: `The operation couldn't be performed because object '${Identity}' couldn't be found.`, category: 'NotSpecified', errorId: 'ManagementObjectNotFoundException' } };
         Object.assign(found, values, 'WhenChangedUTC' in found ? { WhenChangedUTC: NOW.toISOString() } : {});
       }

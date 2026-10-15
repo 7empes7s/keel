@@ -163,7 +163,7 @@ export function identityNamesFixture(write, capture) {
   const kind = String(capture?.operationId ?? '').endsWith('.add') ? 'add' : 'update';
   const identity = capture.identity;
   if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
-  if (kind === 'add' || write.identity === 'name') return identity === capture.fixture;
+  if (kind === 'add' || write.identity === 'name' || write.identity === 'object-name') return identity === capture.fixture;
   if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture && identity.toLowerCase() === 'global';
   if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
   return GUID_RE.test(identity);

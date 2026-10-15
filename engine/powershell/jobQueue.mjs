@@ -8,14 +8,24 @@
 //
 // The container mounts /etc/keel read-only (credentials never enter the
 // image) and is invoked with `--rm` so no state survives between jobs.
+//
+// It also mounts this checkout's ops/powershell read-only over /app, so the
+// entrypoint and the cmdlet allowlist are always the deployed ones, never the
+// copy baked in when the image was last built (#339: a stale image refused
+// Set-QuarantinePolicy). The image supplies only pwsh and the pinned modules.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IMAGE = 'keel-powershell:latest';
 export const DEFAULT_MEMORY = '1g';
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 export const DEFAULT_CREDENTIAL_MOUNT = '/etc/keel';
+/** The deployed container scripts (run-job.sh, run-cmdlet.ps1, probe-workloads.ps1). */
+export const DEFAULT_SCRIPT_MOUNT = fileURLToPath(new URL('../../ops/powershell', import.meta.url));
+export const CONTAINER_SCRIPT_DIR = '/app';
 
 export class JobQueueError extends Error {
   constructor(message, { code, stderr, stdout, jobId } = {}) {
@@ -63,6 +73,8 @@ export function parseJobStdout(stdout) {
  *   SIGKILLed and the call rejects.
  * @param {string} [options.credentialMount] - Host path bind-mounted read-only
  *   into the container at the same path.
+ * @param {string|null} [options.scriptMount] - Host directory holding the container
+ *   scripts, bind-mounted read-only over /app. null keeps the image's own copy.
  * @param {string} [options.dockerBin] - Override for the docker binary.
  * @param {Function} [options.spawnFn] - Injectable replacement for
  *   node:child_process.spawn, so this can be unit-tested offline without
@@ -79,10 +91,14 @@ export async function runJob(job, options = {}) {
     memory = DEFAULT_MEMORY,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     credentialMount = DEFAULT_CREDENTIAL_MOUNT,
+    scriptMount = DEFAULT_SCRIPT_MOUNT,
     dockerBin = 'docker',
     spawnFn = spawn,
   } = options;
 
+  if (scriptMount !== null && !existsSync(`${scriptMount}/run-job.sh`)) {
+    throw new JobQueueError(`the container scripts are not at ${scriptMount}; nothing was run`, { code: 'SCRIPTS_MISSING', stderr: '', stdout: '' });
+  }
   const jobId = job.jobId ?? randomUUID();
   const payload = JSON.stringify({ ...job, jobId });
 
@@ -94,6 +110,7 @@ export async function runJob(job, options = {}) {
     '--memory-swap', memory,
     '--network', 'host',
     '-v', `${credentialMount}:${credentialMount}:ro`,
+    ...(scriptMount === null ? [] : ['-v', `${scriptMount}:${CONTAINER_SCRIPT_DIR}:ro`]),
     image,
   ];
 

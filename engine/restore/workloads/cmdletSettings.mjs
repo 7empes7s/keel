@@ -491,10 +491,12 @@ const TENANT_WIDE_FAMILIES = new Set(['activeSyncSettings', 'globalQuarantineSet
 export function workloadTarget(write, family, entry) {
   const fields = entry?.fields ?? {};
   const identity = String(fields.Identity ?? entry?.identity ?? '');
+  // Exchange and Purview objects are named by their Name, whether the cmdlet takes their Guid or that Name.
+  const exchange = write.identity === 'guid' || write.identity === 'object-name';
   const tenantWide = TENANT_WIDE_FAMILIES.has(family)
-    || (write.identity !== 'guid' && !/^tag:/i.test(identity))
+    || (!exchange && !/^tag:/i.test(identity))
     || ['IsDefault', 'IsDefaultGlobalAddressList', 'IsBuiltInProtection'].some((field) => truthy(fields[field]));
-  const names = write.identity === 'guid' ? [fields.Name] : [identity.replace(/^tag:/i, '')];
+  const names = exchange ? [fields.Name] : [identity.replace(/^tag:/i, '')];
   return { tenantWide, names };
 }
 
@@ -510,6 +512,7 @@ function targetProblem(write, family, entries, { key, tenantRef, testTenantRefs,
 
 function identityParameters(write, observation) {
   if (write.identity === 'guid') return { Identity: observation.identity };
+  if (write.identity === 'object-name') return { Identity: observation.fields.Name };
   if (write.identity === 'name') return { Identity: String(observation.fields.Identity).replace(/^tag:/i, '') };
   return { Identity: observation.fields.Identity };
 }

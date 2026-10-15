@@ -151,7 +151,9 @@ function lockProblem(entry, resources) {
 
 /** The parameters naming an object to its Set- cmdlet (writeDeclarations.mjs `identity`). */
 function identityOf(write, entry) {
-  return write.identity === 'guid' ? { Identity: entry.identity } : { Identity: entry.fields.Identity };
+  if (write.identity === 'guid') return { Identity: entry.identity };
+  if (write.identity === 'object-name') return { Identity: entry.fields.Name };
+  return { Identity: entry.fields.Identity };
 }
 
 /**

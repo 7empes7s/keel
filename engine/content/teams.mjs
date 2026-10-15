@@ -24,7 +24,9 @@
  *  - Content goes through the content store interface (section 2 of the coverage plan):
  *    `putItem(stream, { tenantRef, workload, container, itemKey, version, metadata })`.
  *    Each team is one item: a canonical JSON document keyed by the team id, versioned by
- *    its own sha256, so an unchanged team is stored once.
+ *    its own sha256, so an unchanged team is stored once. The document holds only what
+ *    the tenant says (no read time), and every list in it is sorted, so the same team
+ *    always hashes the same; when it was read goes in the item metadata.
  *  - Tenant scope comes from configuration. A team or channel that names another tenant
  *    is recorded out of scope and never read further.
  *  - A failed read is recorded on the part it affects (`denied` or `failed`), never as empty.
@@ -142,7 +144,14 @@ function normalizeInstalledApp(app) {
   };
 }
 
-const byKey = (key) => (a, b) => String(a[key] ?? '').localeCompare(String(b[key] ?? ''));
+// Sorts by each key in turn, so ties never fall back to the order Graph happened to return.
+const byKey = (...keys) => (a, b) => {
+  for (const key of keys) {
+    const order = String(a[key] ?? '').localeCompare(String(b[key] ?? ''));
+    if (order) return order;
+  }
+  return 0;
+};
 
 /**
  * Reads every team the tenant has, as containers. Pure apart from the injected
@@ -235,7 +244,7 @@ export async function readTeamContainers({ transport, tenantId, maxTeams = DEFAU
       continue;
     }
 
-    const installedApps = await part(`${base}/installedApps?$expand=teamsAppDefinition`, (items) => items.map(normalizeInstalledApp).sort(byKey('teamsAppId')));
+    const installedApps = await part(`${base}/installedApps?$expand=teamsAppDefinition`, (items) => items.map(normalizeInstalledApp).sort(byKey('teamsAppId', 'id')));
     const channelList = await part(`${base}/channels`, (items) => items);
     const channels = [];
     for (const listedChannel of channelList.items ?? []) {
@@ -260,7 +269,7 @@ export async function readTeamContainers({ transport, tenantId, maxTeams = DEFAU
       const kind = String(channelBody.membershipType ?? listedChannel.membershipType ?? 'standard').toLowerCase();
       const members = kind === 'standard'
         ? { status: 'inherited', items: null, reason: 'a standard channel has the team\'s members' }
-        : await part(`${path}/members`, (items) => items.map(normalizeChannelMember).sort(byKey('userId')));
+        : await part(`${path}/members`, (items) => items.map(normalizeChannelMember).sort(byKey('userId', 'membershipId')));
       const tabs = await part(`${path}/tabs?$expand=teamsApp`, (items) => items.map(normalizeTab).sort(byKey('id')));
       let files;
       try {
@@ -366,7 +375,8 @@ export async function backupTeams({ transport, tenantId, tenantRef, store, sites
         item.files = { ...item.files, ...failure(error) };
       }
     }
-    const document = { schema: 'keel.teams.team/v1', tenantId: result.tenantId, observedAt: result.observedTo, ...entry };
+    // No read time in the document: it would give an unchanged team a new version every run (#269).
+    const document = { schema: 'keel.teams.team/v1', tenantId: result.tenantId, ...entry };
     const json = canonicalJson(document);
     const version = createHash('sha256').update(json).digest('hex');
     const stored = await store.putItem(Readable.from([Buffer.from(json)]), {
@@ -381,6 +391,7 @@ export async function backupTeams({ transport, tenantId, tenantRef, store, sites
         tabs: entry.channels.items.reduce((sum, item) => sum + (item.tabs.items?.length ?? 0), 0),
         installedApps: entry.installedApps.items?.length ?? 0,
         messages: MESSAGES_WAITING.status,
+        observedAt: result.observedTo,
       },
     });
     items.push({ teamId: entry.teamId, container, version, ...stored });

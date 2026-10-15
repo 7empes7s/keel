@@ -212,6 +212,28 @@ test('backup stores one item per team, unchanged teams dedupe, and channel folde
   assert.deepEqual(second.items.map((item) => item.version), first.items.map((item) => item.version));
 });
 
+test('a later run that reads the same teams in another order stores no new version (#269)', async () => {
+  const store = fakeStore();
+  const first = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: NOW });
+
+  // Same tenant an hour later, with Graph returning every list in reverse order.
+  const reversed = Object.fromEntries(Object.entries(fixture()).map(([key, body]) => [key, Array.isArray(body?.value) ? { ...body, value: [...body.value].reverse() } : body]));
+  const later = () => new Date('2026-10-14T13:00:00Z');
+  const second = await backupTeams({ transport: fakeGraph(reversed).transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: later });
+  assert.deepEqual(second.items.map((item) => item.version), first.items.map((item) => item.version));
+  assert.deepEqual(second.items.map((item) => item.deduped), [true, true]);
+  assert.deepEqual(store.index.map((item) => item.metadata.observedAt), [
+    '2026-10-14T12:00:00.000Z', '2026-10-14T12:00:00.000Z', '2026-10-14T13:00:00.000Z', '2026-10-14T13:00:00.000Z',
+  ]);
+
+  // A real change still gives that team, and only that team, a new version.
+  const renamed = fixture();
+  renamed[`/teams/${TEAM}`] = { ...renamed[`/teams/${TEAM}`], description: 'Fixture team, renamed' };
+  const third = await backupTeams({ transport: fakeGraph(renamed).transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: later });
+  assert.notEqual(third.items[0].version, first.items[0].version);
+  assert.equal(third.items[1].version, first.items[1].version);
+});
+
 test('by default, channel folders point at the team site backup and are not copied twice', async () => {
   const store = fakeStore();
   const result = await backupTeams({ transport: fakeGraph().transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: NOW });

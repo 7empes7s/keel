@@ -3651,3 +3651,29 @@ item that needs it stays untouched.
   7. Cleanup: delete `keel-rt-w2-consent`. Report anything left.
 - **Report:** B; the enforce summary line; read-back include list; the step 4 planned-write count; step 5 result or skipped;
   approval ids; the evidence commit and the `live evidence` line for the update. Comment the result on #294.
+
+### Q76: Content backup reads SharePoint groups and role assignments on the KEEL-RT- sites (read-only, after #320)
+- Drafted by the "SharePoint site groups backup" thread (2026-10-15). Fix: PR #320, master 79f6385. The sites backup now
+  reads each site's permission levels, SharePoint groups with their members, site collection admins, and the role
+  assignments on the site and on each list with unique permissions, through SharePoint REST, and stores them as the
+  `site/permissions` item in the site's container. These reads use the **Collector** certificate from
+  `/etc/keel/tenant.json` (it already holds Office 365 SharePoint Online Sites.FullControl.All, 678536fe…), through a
+  GET-only transport limited to the tenant host and `/_api/web/...`. Everything else still reads as the Content Reader.
+- Needs: /opt/keel-live at 79f6385 or later (`grep -q sharePointReadTransport /opt/keel-live/engine/content/transport.mjs`).
+- Status: todo
+- **Read-only against the tenant.** No permission, consent or fixture changes. Global admin not used.
+- **Do:**
+  1. Record the commit `/opt/keel-live` is deployed at and confirm the check above. If it has not arrived within 30 minutes
+     of its Portal CI passing, report `blocked` with the master CI state for 79f6385.
+  2. Confirm `/etc/keel/tenant.json` has `certPath` and `keyPath` (names only; never print key material). Without them the
+     run declares the part missing and this item is `blocked`.
+  3. **Run A:** `node /opt/keel-live/cli/keel-content-collect.mjs run` once, as Q64 step 3 (worker's user, DB env loaded;
+     with Q58's KEEL-RT- scope file; not while a scheduled job runs). Report the exit code and every workload line verbatim.
+  4. For each KEEL-RT- site container (`site:<siteId>`), confirm a `site/permissions` content_item row exists. Read the
+     newest one back through the content store (`createContentStore(...).getItem(ref)`, same reader file and key as the run)
+     and report, per site: `web.hasUniqueRoleAssignments`; each group's title and member count; the number of site
+     collection admins; the number of role assignments and the role names used; the titles of lists with unique
+     permissions. Names of KEEL-RT- objects and default groups only; no e-mail addresses or login names.
+  5. **Run B:** the same command again. Expect sharepoint-sites to store 0 new `site/permissions` rows (change-only).
+- **Report:** the deployed commit; step 2 yes/no; for A and B the exit code and each workload line verbatim; the step 4
+  summary per site; any denied or failed permission read with its HTTP status and path (no tokens).

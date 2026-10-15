@@ -4140,7 +4140,7 @@ item that needs it stays untouched.
   calling, voice routing, dial plan, emergency, call park, voicemail, broadcast and events policies all worked. This item finds
   out whether the refusal is about meeting-policy writes in general, about New- only, or about the Restorer's role.
 - Needs: nothing. Use the same PowerShell image and run-cmdlet scripts the writer capture used (MicrosoftTeams 7.9.0).
-- Status: todo
+- Status: in-progress
 - Do (read-only, or calls that cannot change anything: the only New- is retried on a fresh KEEL-RT- name and is the exact call
   that already failed; the Set- calls name a policy that does not exist, so they can only fail):
   Each step is one run-cmdlet job as the Restorer:

@@ -2835,7 +2835,7 @@ item that needs it stays untouched.
 - Drafted by the "Second test content backup" thread (2026-10-15). Follows Q58 (first run, 3 partial) and Q60 (Planner
   fixture KEEL-RT-20261015-plan now exists). Fixes since Q58: #265 (e5a773f, site permissions declared not read),
   #266 (b70b9dc, Teams partial reason names the failed part), #267 (80a040a, mail folder delta without wellKnownName).
-- Status: todo
+- Status: in-progress
 - Result:
 - Needs: Q58 done, Q60 done.
 - **Read-only against the tenant**, except the optional fixture mail in step 3. Content reads go through the GET-only

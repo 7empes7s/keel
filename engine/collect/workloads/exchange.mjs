@@ -57,6 +57,22 @@ export const MAILBOX_SETTING_FIELDS = Object.freeze([
   'automaticRepliesSetting', 'timeZone', 'language', 'workingHours', 'dateFormat', 'timeFormat',
   'delegateMeetingMessageDeliveryOptions', 'userPurpose',
 ]);
+// Issue #296: unless automatic replies are scheduled, Graph returns the current hour,
+// and that hour a day later, as the schedule, so both times move on every read. They
+// mean nothing then, so every comparison of two reads (compare, restore planning,
+// the pre-write re-read and the read-back) leaves them out.
+export function comparableAutomaticReplies(setting) {
+  if (!setting || typeof setting !== 'object' || Array.isArray(setting)) return setting;
+  if (String(setting.status ?? '').toLowerCase() === 'scheduled') return setting;
+  const { scheduledStartDateTime, scheduledEndDateTime, ...rest } = setting;
+  return rest;
+}
+
+/** One mailbox setting as two reads are compared. */
+export function comparableMailboxSetting(field, value) {
+  return field === 'automaticRepliesSetting' ? comparableAutomaticReplies(value) : value;
+}
+
 export const CLIENT_ACCESS_FIELDS = Object.freeze([
   'OWAEnabled', 'ActiveSyncEnabled', 'PopEnabled', 'ImapEnabled', 'MAPIEnabled', 'EwsEnabled', 'SmtpClientAuthenticationDisabled',
 ]);

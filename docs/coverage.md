@@ -193,9 +193,9 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
   - *You do:* The sign-up user flows themselves are restored by hand (see guest sign-up user flows).
-- **App consent policies.** Recreates custom app consent policies and puts their name and description back, with their include and exclude rules when the backup holds them (tested against a simulated tenant only).
+- **App consent policies.** Recreates custom app consent policies and puts their name and description back. When the backup holds their include and exclude rules, it puts those back and removes rules added since the backup (tested against a simulated tenant only).
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app consent policy (set by Microsoft).
-  - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet, and extra rules added since the backup, are set by hand.
+  - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet are set by hand.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
 - **Idle sign-out policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
@@ -476,9 +476,13 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Safe Links policies
 - Safe Attachments policies
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
+- Put back: Mail flow (transport) rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Inbound connectors (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Outbound connectors (switched on only after the restore of mailbox client access settings is proven)
+
+**You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
 ### Teams organization policies
 
@@ -494,9 +498,19 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Teams guest messaging configuration
 - Teams guest calling configuration
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Change them by hand in the Teams admin center using the backup.
+- Put back: Teams meeting policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams meeting policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams external access (federation) configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams client and guest access configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams guest meeting configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams guest messaging configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams guest calling configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+
+**You do:** Which users and groups a policy is assigned to, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. Turning recording or transcription on needs a second approver.
 
 ### Purview retention and data loss prevention
 
@@ -507,9 +521,14 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Data loss prevention (DLP) policies
 - Data loss prevention (DLP) rules
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Change them by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
+- Put back: Retention policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Retention rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Data loss prevention (DLP) policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Data loss prevention (DLP) rules (switched on only after the restore of mailbox client access settings is proven)
+
+**You do:** Shorter retention, a deleting retention action and a released hold need a second approver; a preservation lock is never changed. A deleted policy or rule, and settings KEEL does not restore, are changed by hand in the Purview portal using the backup. Data loss prevention policies are backed up only when the tenant's licence includes it.
 
 ### Exchange protection rules, address lists, mobile and retention settings
 
@@ -539,9 +558,31 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Defender preset policy rules
 - Safe Attachments for SharePoint, OneDrive and Teams
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Change them by hand in the Exchange admin center or Microsoft Defender portal using the backup. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
+- Put back: Outbound spam policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Outbound spam rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Connection filter policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-spam rules (who each policy applies to) (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-phishing rules (who each policy applies to) (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-malware rules (who each policy applies to) (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Quarantine policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Quarantine notification settings (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Journal rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Mobile device mailbox policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Mobile device access rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Mobile device access settings (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Address lists (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Global address lists (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Offline address books (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Address book policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Mailbox retention tags (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Mailbox retention policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Safe Links rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Safe Attachments rules (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Safe Attachments for SharePoint, OneDrive and Teams (switched on only after the restore of mailbox client access settings is proven)
+
+**You do:** A rule turned on or off, a deleted object, and settings KEEL does not restore are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a spam, anti-phish or Safe Attachments rule other than its comment needs a second approver. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
 
 ### Teams calling, voice and live event policies
 
@@ -561,9 +602,31 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Teams policies assigned to each user
 - Teams policies assigned to groups
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Change them, and the policies assigned to users and groups, by hand in the Teams admin center using the backup. A live event video provider's API token is never backed up: enter it again.
+- Put back: Teams calling policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams calling policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams voice routing policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams voice routing policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams dial plans (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams dial plans (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams emergency calling policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams emergency calling policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams emergency call routing policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams emergency call routing policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams call park policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams call park policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams caller ID policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams caller ID policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams voicemail policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams voicemail policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams live event policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams live event policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams town hall and webinar policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Add back: Teams town hall and webinar policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+- Put back: Teams live event configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
+
+**You do:** The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider's API token is never backed up: enter it again.
 
 ### Purview retention labels, auto-labeling and eDiscovery
 
@@ -578,9 +641,11 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - eDiscovery case holds
 - eDiscovery case hold queries
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore these yet. Recreate them by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
+- Put back: Retention labels (switched on only after the restore of mailbox client access settings is proven)
+
+**You do:** KEEL restores only a retention label's text and duration; a shorter duration needs a second approver. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
 
 ### Power Platform and Power BI settings
 

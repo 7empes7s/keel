@@ -23,9 +23,12 @@
  *  - Which apps a policy is assigned to is not in the backup yet; it is a
  *    follow-up step from the type's completeness record.
  *  - A permission grant policy's include and exclude condition sets are
- *    written when the backup holds them (missing ones added, extra live ones
- *    left alone); otherwise they are a follow-up step. Built-in microsoft-*
- *    policies are Microsoft-managed and skipped.
+ *    written when the backup holds them: missing ones are added and extra live
+ *    ones removed, so the policy ends with exactly the backup's rules (issue
+ *    #294: an extra include left in place allowed consents the backup did not).
+ *    The read-back checks the whole sets, not only what was written. Otherwise
+ *    they are a follow-up step. Built-in microsoft-* policies are
+ *    Microsoft-managed and skipped.
  *  - A consent is matched on (app, resource, consent type, user): Graph keeps
  *    one grant per such pair, so a re-run updates the grant it made instead of
  *    adding a second one. Its scopes are written as the backup had them.
@@ -148,6 +151,22 @@ function conditionSetBody(condition) {
 const sameCondition = (left, right) => isDeepStrictEqual(conditionSetBody(left), conditionSetBody(right));
 
 /**
+ * Pairs each desired condition with a distinct live one it equals. Returns the
+ * desired conditions nobody matched (`missing`) and the live ones left over
+ * (`extra`); both empty means the live set is the backup's set.
+ */
+export function conditionSetDifference(desired, live) {
+  const unmatched = [...(live ?? [])];
+  const missing = [];
+  for (const condition of desired ?? []) {
+    const at = unmatched.findIndex((existing) => sameCondition(existing, condition));
+    if (at === -1) missing.push(condition);
+    else unmatched.splice(at, 1);
+  }
+  return { missing, extra: unmatched };
+}
+
+/**
  * Refuses a write before any Graph call, or returns null. A refusal is
  * { outcome: 'skipped' | 'failed', reason }.
  */
@@ -230,6 +249,23 @@ function matcherFor(entry, desired) {
   return null;
 }
 
+/**
+ * The one live object a create of this backup would adopt instead of writing,
+ * or null. Only an STS policy is answered here: the writer finds it by the
+ * same name and definition, and since those are all an update may write, a
+ * match with the same organization-default flag needs no write at all. The
+ * reconciliation plan uses it so a dry run does not list a recreate the run
+ * will never make (issue #294). Several matches stay a create, which the
+ * writer refuses as ambiguous.
+ */
+export function adoptableLiveObject(resourceType, payload, liveObjects) {
+  const entry = DIRECTORY_POLICY_RECORDS[resourceType];
+  if (entry?.family !== 'sts-policy' || !payload) return null;
+  const matches = liveObjects.filter(matcherFor(entry, payload));
+  if (matches.length !== 1) return null;
+  return (matches[0].isOrganizationDefault === true) === (payload.isOrganizationDefault === true) ? matches[0] : null;
+}
+
 function listPath(entry, desired) {
   // Graph filters grants by client; the policies are few and listed whole.
   if (entry.family === 'consent') return `${entry.collection}?$filter=clientId eq '${encodeURIComponent(desired.clientId)}'`;
@@ -308,6 +344,21 @@ async function readBack(writer, version, path, isStale, { retryOperation, attemp
 }
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
+
+/**
+ * Repeats `attempt` while it answers 404, for about a minute by default: the
+ * wait for a just-created directory object to replicate before a write under
+ * it can find it. Any other answer is returned at once.
+ */
+async function untilReplicated(attempt, { replicationAttempts = 13, replicationDelayMs = 5000 } = {}) {
+  let result;
+  for (let i = 0; i < replicationAttempts; i += 1) {
+    result = await attempt();
+    if (!isNotFound(result)) return result;
+    if (i < replicationAttempts - 1) await new Promise((resolve) => setTimeout(resolve, replicationDelayMs));
+  }
+  return result;
+}
 
 const lower = (value) => String(value ?? '').toLowerCase();
 
@@ -399,10 +450,11 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   const body = operation === 'create'
     ? directoryPolicyBody(entry, desired, 'create')
     : Object.fromEntries(changedDirectoryPolicyFields(entry, desired, live).map((field) => [field, directoryPolicyBody(entry, desired, 'update')[field]]));
-  const conditionWrites = entry.family === 'permission-grant-policy'
-    ? await missingConditionSets(writer, entry, desired, operation === 'create' ? null : targetId, { retryOperation })
-    : [];
-  if (conditionWrites.failed) return { failed: { naturalKey, error: conditionWrites.failed } };
+  const conditions = entry.family === 'permission-grant-policy'
+    ? await conditionSetChanges(writer, entry, desired, operation === 'create' ? null : targetId, { retryOperation })
+    : { writes: [], live: {} };
+  if (conditions.failed) return { failed: { naturalKey, error: conditions.failed } };
+  const conditionWrites = conditions.writes;
 
   if (operation === 'update' && Object.keys(body).length === 0 && conditionWrites.length === 0) {
     return { applied: { naturalKey, targetId, followUp } };
@@ -410,7 +462,10 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, followUp } };
 
   const journal = await journalBefore(rollbackClient, {
-    runId, restoreRef, resource, operation, targetId, priorState: live ?? null, intendedState: desired,
+    runId, restoreRef, resource, operation, targetId,
+    // The live condition sets go with the prior state, so a removed rule can be put back from the journal.
+    priorState: live ? { ...live, ...conditions.live } : null,
+    intendedState: desired,
   });
   if (!journal.ok) return { failed: { naturalKey, error: `refusing to ${operation}: rollback journal write failed` } };
 
@@ -433,11 +488,17 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
     }
   }
   for (const write of conditionWrites) {
-    const path = `${entry.collection}/${encodeURIComponent(targetId)}/${write.set}`;
-    const added = await retryOperation(() => writer.write(version, path, { method: 'POST', body: write.body }));
-    if (!added?.ok) {
-      await journalOutcome(rollbackClient, journal, classifyWriteOutcome(added), { targetId, detail: `${write.set}: ${detailOf(added)}` });
-      return { failed: failure(naturalKey, added) };
+    const setPath = `${entry.collection}/${encodeURIComponent(targetId)}/${write.set}`;
+    const post = () => retryOperation(() => writer.write(version, setPath, { method: 'POST', body: write.body }));
+    // Issue #294: a policy created in this run can 404 here until the
+    // directory has replicated it (10-20 s live), so the write waits for it.
+    // A DELETE only ever targets a rule of a policy that already existed.
+    const result = write.method === 'DELETE'
+      ? await retryOperation(() => writer.write(version, `${setPath}/${encodeURIComponent(write.id)}`, { method: 'DELETE' }))
+      : operation === 'create' ? await untilReplicated(post, readAfterWrite) : await post();
+    if (!result?.ok) {
+      await journalOutcome(rollbackClient, journal, classifyWriteOutcome(result), { targetId, detail: `${write.set}: ${detailOf(result)}` });
+      return { failed: failure(naturalKey, result) };
     }
   }
 
@@ -452,7 +513,10 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   }
   const postStateRefusal = directoryPolicyPostStateRefusal(entry, desired, reRead.body, written)
     ?? (operation === 'create' && entry.family === 'sts-policy' && reRead.body?.isOrganizationDefault === true
-      ? `${entry.resourceType}: the recreated policy reads back as the organization default` : null);
+      ? `${entry.resourceType}: the recreated policy reads back as the organization default` : null)
+    ?? (entry.family === 'permission-grant-policy'
+      ? await conditionSetsPostStateRefusal(writer, entry, desired, targetId, { retryOperation, ...readAfterWrite })
+      : null);
   if (postStateRefusal) {
     await journalOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead.body, detail: 'directory policy post-state did not verify' });
     return { failed: { naturalKey, error: postStateRefusal } };
@@ -462,24 +526,54 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
 }
 
 /**
- * The include and exclude condition sets the backup holds that the live policy
- * lacks, as POST bodies. Extra live sets are left alone: removing one could
- * widen or narrow consent in ways a person must judge. A policy recreated in
- * this run (`targetId` null) has none.
+ * The writes that make the live include and exclude condition sets equal the
+ * backup's, for each set the backup holds: a POST for each missing condition
+ * and a DELETE for each extra one. A policy recreated in this run (`targetId`
+ * null) has no live conditions.
+ *
+ * They run narrowing first, so the policy never allows more than either the
+ * live or the backup state while they land: extra includes are removed, then
+ * missing excludes added, then missing includes added, then extra excludes
+ * removed. Returns { writes, live } (live: the sets as read), or { failed }.
  */
-async function missingConditionSets(writer, entry, desired, targetId, { retryOperation }) {
-  const writes = [];
+async function conditionSetChanges(writer, entry, desired, targetId, { retryOperation }) {
+  const live = {};
+  const changes = {};
   for (const set of CONDITION_SETS) {
     if (!Array.isArray(desired[set])) continue;
-    let live = [];
+    live[set] = [];
     if (targetId) {
       const listed = await retryOperation(() => writer.read(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}/${set}`));
-      if (listed?.ok !== true) return Object.assign([], { failed: `could not read the ${set} of ${targetId}: ${detailOf(listed)}` });
-      live = listed.body?.value ?? [];
+      if (listed?.ok !== true) return { failed: `could not read the ${set} of ${targetId}: ${detailOf(listed)}` };
+      live[set] = listed.body?.value ?? [];
     }
-    for (const condition of desired[set]) {
-      if (!live.some((existing) => sameCondition(existing, condition))) writes.push({ set, body: conditionSetBody(condition) });
+    changes[set] = conditionSetDifference(desired[set], live[set]);
+    const unnamed = changes[set].extra.find((condition) => typeof condition?.id !== 'string' || condition.id.length === 0);
+    if (unnamed) return { failed: `an extra rule in the ${set} of ${targetId} has no id, so KEEL cannot remove it` };
+  }
+  const add = (set) => (changes[set]?.missing ?? []).map((condition) => ({ set, method: 'POST', body: conditionSetBody(condition) }));
+  const remove = (set) => (changes[set]?.extra ?? []).map((condition) => ({ set, method: 'DELETE', id: condition.id }));
+  return { writes: [...remove('includes'), ...add('excludes'), ...add('includes'), ...remove('excludes')], live };
+}
+
+/**
+ * Null when every condition set the backup holds reads back equal to it, as a
+ * whole: a rule the write left in place counts as much as one it wrote.
+ */
+async function conditionSetsPostStateRefusal(writer, entry, desired, targetId, { retryOperation, ...options }) {
+  for (const set of CONDITION_SETS) {
+    if (!Array.isArray(desired[set])) continue;
+    const path = `${entry.collection}/${encodeURIComponent(targetId)}/${set}`;
+    const differs = (r) => {
+      const { missing, extra } = conditionSetDifference(desired[set], r.body?.value ?? []);
+      return missing.length > 0 || extra.length > 0;
+    };
+    const reRead = await readBack(writer, entry.version, path, (r) => isNotFound(r) || (r?.ok === true && differs(r)), { retryOperation, ...options });
+    if (reRead?.ok !== true) return `${entry.resourceType}: the ${set} could not be re-read (${detailOf(reRead)})`;
+    const { missing, extra } = conditionSetDifference(desired[set], reRead.body?.value ?? []);
+    if (missing.length > 0 || extra.length > 0) {
+      return `${entry.resourceType} post-state did not verify: the ${set} read back with ${missing.length} rule(s) missing and ${extra.length} extra against the backup`;
     }
   }
-  return writes;
+  return null;
 }

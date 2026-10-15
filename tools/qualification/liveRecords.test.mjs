@@ -72,6 +72,18 @@ test('a signed record of a write that failed its live run is not live', () => {
   assert.equal(withLiveRecords(capabilitySummaryFor('group'), records).operations.create.claim, 'fixture-tested');
 });
 
+test('a record with a sibling demotion is never live, however well it verifies (#294)', () => {
+  const dir = resignedCopy('demoted');
+  copyFileSync(join(COMMITTED, 'entra-live', 'group.create.demotion.json'), join(dir, 'entra-live', 'user.update.demotion.json'));
+  const records = loadLiveRecords({ dir, hmacKey: KEY, tenantRef: TEST_TENANT, now: fresh });
+  assert.equal(records.operations.some((record) => record.file.endsWith('.demotion.json')), false);
+  const user = op(records, 'user', 'update');
+  assert.equal(user.live, false);
+  assert.match(user.failures.join(';'), /user\.update\.demotion\.json demotes this write/);
+  assert.equal(user.reason, 'a later review withdrew this write from live');
+  assert.equal(withLiveRecords(capabilitySummaryFor('user'), records).operations.update.claim, 'fixture-tested');
+});
+
 test('without a key nothing is live and the reason says so', () => {
   const records = loadLiveRecords({ dir: resignedCopy('nokey'), hmacKey: null, tenantRef: TEST_TENANT, now: fresh });
   assert.equal(records.keyConfigured, false);

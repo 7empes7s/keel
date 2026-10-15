@@ -4,6 +4,7 @@ import { SOFT_DELETABLE, buildLiveIndex } from './liveState.mjs';
 import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
 import { decideVerb } from './verb.mjs';
 import { licencePlan } from '../restore/userOperations.mjs';
+import { adoptableLiveObject } from '../restore/directoryPolicyOperations.mjs';
 
 // Roadmap task-150: licences are left out of the hash, so an object whose only
 // difference is a licence the snapshot held and live lacks is planned as an update.
@@ -92,18 +93,32 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
   });
   const resolved = [];
   const noops = [];
+  const plannedKeys = new Set(resources.map((resource) => resource.naturalKey));
 
   for (const resource of resources) {
-    const current = liveIndex.get(resource.naturalKey) ?? null;
+    let current = liveIndex.get(resource.naturalKey) ?? null;
     const desired = resource.payload === null
       ? null
       : { payloadHash: resource.payloadHash ?? canonicalHash(resource.payload, resource.resourceType) };
     const live = current?.state === 'present' ? { payloadHash: current.payloadHash } : null;
-    const decision = licenceDecision(resource, current, decideVerb({
+    let decision = licenceDecision(resource, current, decideVerb({
       desired,
       live,
       softDeleted: current?.state === 'soft-deleted',
     }));
+    // Issue #294: a create the writer would answer by adopting a live twin
+    // (an STS policy with the same name and definition, made by an earlier
+    // run under a new id) writes nothing, so it is planned as a noop, never
+    // as a recreate. A live object another planned resource holds is not one.
+    if (decision.verb === 'create') {
+      const candidates = [...liveIndex.entries()]
+        .filter(([key, entry]) => entry.state === 'present' && !plannedKeys.has(key) && key.startsWith(`${resource.resourceType}:`));
+      const adopted = adoptableLiveObject(resource.resourceType, resource.payload, candidates.map(([, entry]) => entry.payload));
+      if (adopted) {
+        current = candidates.find(([, entry]) => entry.payload === adopted)[1];
+        decision = { verb: 'noop', reason: `adopts live ${adopted.id}: same name and definition as the backup, nothing to write` };
+      }
+    }
     const targetResource = targetByNaturalKey.get(resource.naturalKey);
     const planned = {
       ...resource,

@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
-import { collectM1 } from '../engine/collect/entraAdapter.mjs';
+import { collectM1, neededTypes } from '../engine/collect/entraAdapter.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import {
   completeSnapshot, connect, createSnapshot, getResourceVersions, insertReferences,
@@ -135,6 +135,8 @@ async function detect() {
     const baseline = await getActiveBaseline(client, { tenantRef });
     if (!baseline) throw new Error(`no active baseline for ${tenantRef}`);
 
+    const before = await baselineRows(client, baseline.id);
+
     // /etc/keel/tenant.json is the Collector registration. GraphReader has no
     // write method, so this collection path cannot issue a tenant mutation.
     let snapshotId = suppliedSnapshotId;
@@ -144,7 +146,9 @@ async function detect() {
     } else {
       const { accessToken } = await getToken(config);
       const reader = new GraphReader(async () => accessToken);
-      const resources = canonicalizeAll(await collectM1(reader));
+      // Issue #289: a type the tenant has no licence for is skipped unless the
+      // baseline holds resources of that type, so it can never read as deleted.
+      const resources = canonicalizeAll(await collectM1(reader, { needed: neededTypes(before) }));
       snapshotId = await createSnapshot(client, { tenantRef });
       const coverageDigest = {};
 
@@ -159,8 +163,7 @@ async function detect() {
       await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
     }
 
-    const [before, after, dispositions] = await Promise.all([
-      baselineRows(client, baseline.id),
+    const [after, dispositions] = await Promise.all([
       getResourceVersions(client, { snapshotId }),
       activeIgnoreDispositions(client, tenantRef),
     ]);

@@ -93,7 +93,8 @@ export function describeBrandingFileReads(summary) {
 }
 
 // A partial read fails completeness exactly like a failure; only
-// complete / complete-empty / not-requested outcomes keep a zero exit.
+// complete / complete-empty / not-requested / unavailable outcomes keep a zero
+// exit. Unavailable is a type the tenant has no licence or feature for (#309).
 export function exitCodeForDigest(coverageDigest) {
   return Object.values(coverageDigest).some((entry) => entry.outcome === 'failed' || entry.outcome === 'partial') ? 1 : 0;
 }

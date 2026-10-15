@@ -31,6 +31,7 @@ import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger, descriptorProblems } from '.
 import { listWorkloads } from '../collect/registry.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../coverage/qualification.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { planWaves } from '../restore/wavePlanner.mjs';
 import { runFixtureHarness } from '../../tools/qualification/workloads.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -173,7 +174,15 @@ test('each read is declared, in scope, probed, Get-only and ships disabled', asy
   assert.equal(EXCHANGE_EXTENDED_DESCRIPTOR.enabledByDefault, false);
   assert.equal(EXCHANGE_EXTENDED_DESCRIPTOR.readOnly, true);
   assert.ok(listWorkloads().some((descriptor) => descriptor.workload === EXCHANGE_EXTENDED_WORKLOAD && descriptor.enabledByDefault === false));
-  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === EXCHANGE_EXTENDED_WORKLOAD), []);
+  // Wave 2 WKLD: the only writes for this workload are its declared cmdlet writes, and
+  // each needs observed grants and a live write capture before it runs.
+  const writes = Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === EXCHANGE_EXTENDED_WORKLOAD);
+  assert.ok(writes.length > 0);
+  for (const [id, operation] of writes) {
+    assert.equal(operation, WKLD_WRITE_OPERATIONS[id], id);
+    assert.equal(operation.kind, 'cmdlet', id);
+    assert.equal(operation.grantsRequired, true, id);
+  }
   assert.ok(WORKLOAD_COLLECTORS.some((entry) => entry.workload === EXCHANGE_EXTENDED_WORKLOAD && entry.powershellFamily === 'exchange'));
 
   // The allowlist holds Get cmdlets only, and matches the container's exactly.

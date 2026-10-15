@@ -25,8 +25,9 @@
  *    sends nothing; the others still run and report their own outcome.
  *  - Exact approval for widening changes (guest channel rights, discoverability,
  *    adding a guest).
- *  - Tenant identity. The plan names the tenant; the live team must still belong to
- *    it. A member is identified by (tenantId, userId) in planning, retry and
+ *  - Tenant identity. The plan names the tenant; a live team that names another tenant
+ *    is refused. The live body usually names none, so the plan then needs the managed
+ *    tenant's own source collection to have observed the team. A member is identified by (tenantId, userId) in planning, retry and
  *    verification, so a same-id user in another tenant never counts as restored.
  *  - No overwrite. Settings and members are re-read first; a change since the plan
  *    is `stale`.
@@ -87,6 +88,10 @@ function canonical(value) {
 const sha256 = (value) => createHash('sha256').update(canonical(value)).digest('hex');
 const same = (a, b) => canonical(a ?? null) === canonical(b ?? null);
 const lower = (value) => (typeof value === 'string' ? value.toLowerCase() : null);
+// The live GET /teams/{id} body usually carries no `tenantId` (#292). A body that
+// names another tenant is always refused; a body that names none is checked
+// against the source collection instead (see planTeamsRestore).
+const namesOtherTenant = (team, tenant) => team?.tenantId != null && lower(team.tenantId) !== tenant;
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -137,9 +142,14 @@ export function planTeamsRestore({ source, live, tenantId, teamId }) {
   const team = teamId.toLowerCase();
   if (lower(source.tenantId) !== tenant) throw new Error('the source collection was taken from a different tenant');
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
-  if (lower(live?.team?.tenantId) !== tenant) throw new Error('the live team does not belong to the managed tenant');
+  if (!live?.team || namesOtherTenant(live.team, tenant)) throw new Error('the live team does not belong to the managed tenant');
 
   const observation = (source.observations ?? []).find((entry) => entry.resourceKey === `team:${team}`);
+  // Without a tenantId in the live body, the proof of tenancy is the source: the
+  // managed tenant's own collection listed this team.
+  if (live.team.tenantId == null && (!observation || lower(live.team.id) !== team)) {
+    throw new Error('the live team names no tenant and the source collection has no observation of it, so it cannot be confirmed as the managed tenant\'s');
+  }
   const resourceKey = `team:${team}`;
   const manual = [];
   const excluded = TEAMS_EXCLUDED_CONTENT.map((field) => ({ resourceKey, field, reason: 'Teams content: messages, chats, channel posts and files are never read or restored' }));
@@ -500,7 +510,7 @@ async function runOperations(plan, runnable, { counted, sleep, settle }) {
     for (const op of runnable) await settle(op, { outcome: 'failed', reasons: [`could not re-read the team before writing: ${error.message}`] });
     return;
   }
-  if (lower(live.team?.tenantId) !== plan.tenantId) {
+  if (!live.team || namesOtherTenant(live.team, plan.tenantId)) {
     for (const op of runnable) await settle(op, { outcome: 'refused', reasons: ['the team no longer belongs to the planned tenant'] });
     return;
   }
@@ -536,7 +546,7 @@ async function runSettings(op, plan, { counted, sleep, settle }) {
     await settle(op, { outcome: 'verification-failed', writes: 1, attempts, reasons: [`the write was sent but could not be read back: ${error.message}`] });
     return;
   }
-  if (lower(after?.tenantId) !== plan.tenantId) {
+  if (!after || namesOtherTenant(after, plan.tenantId)) {
     await settle(op, { outcome: 'verification-failed', writes: 1, attempts, reasons: ['the read-back team does not belong to the planned tenant'] });
     return;
   }

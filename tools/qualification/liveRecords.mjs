@@ -12,7 +12,10 @@
  *
  * Nothing here promotes a claim or writes a file. A record that does not verify
  * (no key, bad signature, another tenant, older than 30 days) is reported as not
- * live, with the checker's own failures and one plain-English reason.
+ * live, with the checker's own failures and one plain-English reason. An Entra
+ * record with a sibling `<stem>.demotion.json` is never live, however well it
+ * verifies: the demotion is the later, overriding decision (issue #294, the same
+ * rule as entraLive.mjs applyCommittedEvidence).
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -51,6 +54,7 @@ export function plainReason(failures, { missingKeyReason = NO_KEY_REASON } = {})
   if (/synthetic|fixture/.test(text)) return 'it comes from a test run, not a live one';
   if (/read-back/.test(text)) return 'the write did not read back as intended in the live run';
   if (/not a registered write/.test(text)) return 'KEEL no longer offers this write';
+  if (/demotes this write/.test(text)) return 'a later review withdrew this write from live';
   return 'it did not pass its checks';
 }
 
@@ -74,9 +78,12 @@ function entraRecords(dir, { hmacKey, tenantRef, now, missingKeyReason }) {
     .sort()
     .map((file) => {
       const record = readJson(join(dir, file));
+      const demotion = file.replace(/\.json$/, '.demotion.json');
       const capturePath = join(dir, file.replace(/\.json$/, '.capture.json'));
       const captureLog = existsSync(capturePath) ? readFileSync(capturePath, 'utf8') : '';
-      const result = record
+      const result = existsSync(join(dir, demotion))
+        ? { ok: false, failures: [`${demotion} demotes this write, so it is not promoted`] }
+        : record
         ? verifyRecord(record, { hmacKey, captureLog, now, tenantRef })
         : { ok: false, failures: ['the record is not readable JSON'] };
       return Object.freeze({

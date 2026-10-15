@@ -94,15 +94,21 @@ await client.query(
       ['/fixtures/source.json', JSON.stringify({ tenantId })],
       ['/fixtures/target.json', JSON.stringify({ tenantId: 'target-tenant' })],
     ]);
+    const collectScopes = [];
     const result = await main({
       argv: [
         'node', 'keel-plan.mjs', '--source-config', '/fixtures/source.json',
         '--target-config', '/fixtures/target.json', '--db-url', database.url,
       ],
       readFile: (path) => configs.get(path),
-      dependencies: fakeGraphDependencies(),
+      dependencies: { ...fakeGraphDependencies(), collectM1: async (reader, scope) => { collectScopes.push(scope); return []; } },
       logger: noopLogger,
     });
+    // Issue #289: the target read names the snapshot's types, so a type the target
+    // has no licence for is skipped unless the snapshot holds it.
+    assert.equal(collectScopes.length, 1);
+    assert.ok(collectScopes[0]?.needed instanceof Set);
+    assert.deepEqual([...collectScopes[0].needed], ['group']);
     assert.equal(
       result.snapshot.tenant_ref,
       collectorTenantRef,

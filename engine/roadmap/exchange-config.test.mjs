@@ -34,7 +34,7 @@ import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import {
   EXCHANGE_CLIENT_ACCESS_WRITE, EXCHANGE_MAILBOX_SETTINGS_WRITE, EXCHANGE_ORGANIZATION_WRITE, EXCHANGE_RESTORE_EVIDENCE_KIND,
   EXCHANGE_RETENTION_WRITE, EXCHANGE_WRITE_OPERATIONS, createExchangeRestoreArtifact, executeExchangeRestore, loadExchangeSource,
-  planExchangeRestore, readLiveExchange,
+  groupFingerprint, planExchangeRestore, readLiveExchange,
 } from '../restore/workloads/exchange.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -621,4 +621,30 @@ test('a hold-releasing operation refuses without qualified approval, and never o
   const refused = await executeExchangeRestore(client, { tenantRef, artifactId: purviewArtifact.id, tenantId: TENANT, transport: purview.transport, powershell: purview.powershell, qualifications: qualifications(tenantRef) });
   assert.equal(refused.outcome, 'refused');
   assert.deepEqual(purview.writes(), []);
+});
+
+test('issue #296: an unscheduled automatic reply\'s schedule is read-time noise, so it plans no write and never makes a plan stale', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // Graph reports the current hour, and that hour a day later, while replies are not scheduled.
+  const replies = (hour, status = 'disabled') => ({ automaticRepliesSetting: {
+    ...SETTINGS.automaticRepliesSetting, status,
+    scheduledStartDateTime: { dateTime: `2026-10-15T${hour}:00:00.0000000`, timeZone: 'UTC' },
+    scheduledEndDateTime: { dateTime: `2026-10-16T${hour}:00:00.0000000`, timeZone: 'UTC' },
+  } });
+  const { source } = await recordSource(client, tenantRef, { mailbox: mailboxState({ settings: replies('02') }) });
+  const readAt = async (hour, status) => {
+    const exchange = fakeExchange({ mailboxes: { [MAILBOX]: mailboxState({ settings: replies(hour, status) }) } });
+    return readLiveExchange({ transport: exchange.transport, powershell: exchange.powershell, mailbox: MAILBOX, includeOrganization: false });
+  };
+  const live = await readAt('10');
+  const plan = planExchangeRestore({ source, live, tenantId: TENANT, mailbox: MAILBOX });
+  assert.deepEqual(plan.operations, [], 'only the unscheduled times moved');
+  assert.equal(groupFingerprint((await readAt('11')).mailbox, 'mailboxSettings'), plan.liveFingerprints.mailboxSettings, 'a later re-read is not a change');
+
+  // Once scheduled, the window is the setting and a move is real.
+  const scheduled = await readAt('10', 'scheduled');
+  assert.notEqual(groupFingerprint((await readAt('11', 'scheduled')).mailbox, 'mailboxSettings'), groupFingerprint(scheduled.mailbox, 'mailboxSettings'));
+  const replan = planExchangeRestore({ source, live: scheduled, tenantId: TENANT, mailbox: MAILBOX });
+  assert.deepEqual(replan.operations.map((op) => op.changes.map((change) => change.field)), [['automaticRepliesSetting']]);
 });

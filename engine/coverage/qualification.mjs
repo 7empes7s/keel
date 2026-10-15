@@ -36,6 +36,7 @@ import { reviewStateFor } from '../contracts/fieldProjection.mjs';
 import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey, isSupportedClaim,
 } from './capabilities.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -136,7 +137,7 @@ export const TYPE_DECISIONS = Object.freeze({
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
   crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
   crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
-  permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extras left); built-in microsoft-* policies are skipped; delete is not registered'),
+  permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extra ones removed); built-in microsoft-* policies are skipped; delete is not registered'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
   authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
@@ -558,6 +559,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     requires: Object.freeze(['exchange.client-access.update']),
     source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
   }),
+  // Wave 2 WKLD: mail flow, Exchange settings, Teams org-wide and voice policies,
+  // Purview retention, DLP and retention labels (restore/workloads/writeDeclarations.mjs).
+  ...WKLD_WRITE_OPERATIONS,
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */
@@ -787,7 +791,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   crossTenantAccessPolicyPartner: subset('policy', 'POST /policies/crossTenantAccessPolicy/partners; PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}', 'Policy.ReadWrite.CrossTenantAccess',
     'create and update are fixture-tested and keyed by the partner tenantId; Graph refuses a tenantId that does not exist; delete is refused'),
   permissionGrantPolicy: subset('policy', 'POST /policies/permissionGrantPolicies; PATCH /policies/permissionGrantPolicies/{id}; POST .../{id}/includes|excludes', 'Policy.ReadWrite.PermissionGrant',
-    'create and update of custom policies are fixture-tested; include and exclude rules are added when the backup holds them and extras are left; built-in microsoft-* policies are skipped; delete is refused'),
+    'create and update of custom policies are fixture-tested; include and exclude rules are made to match the backup when it holds them (missing ones added, extra ones removed) and the whole rule sets are read back; built-in microsoft-* policies are skipped; delete is refused'),
   adminConsentRequestPolicy: subset('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
     'update (a PUT of every writable field) is fixture-tested for the same tenant; reviewer queries are written as observed and are never remapped to another tenant'),
   // Issue #156: basic tenant settings in the policy family.

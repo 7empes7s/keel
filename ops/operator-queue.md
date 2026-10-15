@@ -3329,21 +3329,21 @@ item that needs it stays untouched.
 - Result: Done 2026-10-15 10:46–10:55 UTC on **B = 39669a6c** (it has #274). Writes only in the KEEL-RT-20261004 site's Documents library
   (Restorer through content-restorer.json, appId 12f8942f…). Global admin not used. No 403s.
   Approvals: filed by the Entra principal and self-approved as the Gmail approver.
-  - **1. Fixtures:**  ("KEEL-RT version 1", simple PUT, 201) and 
+  - **1. Fixtures:** `KEEL-RT-20261015-file.txt` ("KEEL-RT version 1", simple PUT, 201) and `KEEL-RT-20261015-large.bin`
     (5,242,880 random bytes through createUploadSession, 3 chunks, 201). Upload sha256:
     **248c28650776088530835f61b240573c4026aadd5cb9be60b395576fb7725ca2**.
   - **2. Backup** (exit 0): sharepoint-sites succeeded, 8 items, 5,252,682 bytes. Both files have drive-content and drive-record rows
     under site:<S>. T1 = 2026-10-15T10:47:31Z.
   - **3.** Overwrote the .txt with "KEEL-RT version 2" (200) and deleted the .bin (204, to the site recycle bin). Backup exit 0.
     T2 = 2026-10-15T10:48:56Z.
-  - **4. Plan** (exit 0): items 2, writes 2, bytes 5,242,898, conflict copy. Steps: 
-    **create-copy**;  **create**.
+  - **4. Plan** (exit 0): items 2, writes 2, bytes 5,242,898, conflict copy. Steps: `KEEL-RT-20261015-file (restored 2026-10-15).txt`
+    **create-copy**; `KEEL-RT-20261015-large.bin` **create**.
   - **5. Restore as of T1** (approval **66733db0**): exit 0, status completed. Stats: planned 2, written 2, copies 1, writes 4,
     bytes 5,242,898, failed 0.
     - The copy holds **"KEEL-RT version 1"**; the live .txt still holds "KEEL-RT version 2".
     - The .bin is back, 5,242,880 bytes, downloaded sha256 **248c2865…25ca2, equal** to step 1's. The upload-session path is proven.
-  - **6. Re-run:** exit 0, written 0, skipped 2 (, ), writes 0.
-  - **7. Single file, --conflict replace** (approval **1c8a9c5c**): exit 0, written 0, skipped 1:  (step 5's copy).
+  - **6. Re-run:** exit 0, written 0, skipped 2 (`restored copy exists`, `identical`), writes 0.
+  - **7. Single file, --conflict replace** (approval **1c8a9c5c**): exit 0, written 0, skipped 1: `restored copy exists` (step 5's copy).
     - 7b: I deleted that copy and requested again with the same flags (approval **12d0a08f**). Exit 0, but it got the **same runId**
       and resumed the journal: the step reads create-copy, "the live file is newer; restored as a copy", while the stats show written 0,
       skipped 1, and **no copy was written**.

@@ -2800,7 +2800,20 @@ item that needs it stays untouched.
   `New-PowerAppManagementApp` for the KEEL Collector (appId 87aa77c4…; it returned that appId) and turned on the Fabric
   setting "Service principals can access read-only admin APIs" for `KEEL-RT-collector-fabric-readers`. Follows Q57's two
   optional checks, which were both 403 before this.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 06:49 UTC, read-only. Each admin API call used the Collector's own token (client credentials); the
+  group reads used the Restorer. Nothing created, granted, changed or removed. No retries were needed.
+  - **Group KEEL-RT-collector-fabric-readers (2e66e1b2…):** the only member is the KEEL Collector SP
+    (`members/microsoft.graph.servicePrincipal` returns 1, KEEL Collector).
+    - The user, group, device and orgContact casts all return 0.
+    - Note: the plain `members` and `transitiveMembers` lists come back empty for the Restorer, which is why the typed SP cast was used.
+  - **Power Platform**, BAP `scopes/admin/environments?api-version=2020-10-01`: **200, 2 environments**, with both token audiences
+    (service.powerapps.com and api.bap.microsoft.com).
+  - **Power BI** `v1.0/myorg/admin/groups?$top=1`: **200, 1 workspace** (the $top=1 page).
+  - **Fabric** `v1/admin/workspaces`: **200, 1 workspace.**
+  - The Power BI Service permissions check was not needed; Q55 E already showed the Collector holds none.
+  - **Verdict, Power Platform management app works: yes.** The Collector lists environments through the BAP admin API.
+  - **Verdict, Fabric read-only admin APIs work: yes.** Both the Power BI admin and the Fabric admin endpoints return 200 for the Collector.
 - Needs: none.
 - **Read-only.** Nothing created, granted, changed or removed. Use the Collector's own token (client credentials) for every
   call below, except the group-membership read, which may use the Restorer.

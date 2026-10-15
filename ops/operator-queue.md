@@ -4275,3 +4275,26 @@ item that needs it stays untouched.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,
   `restoredToOriginal`, `field` and `error`; the verify exit code; the import line; and the PR link. Exit 3: report the object, field and
   original value it names.
+
+### Q89: Which Identity form Set-QuarantinePolicy accepts for the global quarantine settings (issue #339; no-change probe)
+- Drafted by the "Quarantine global identity" thread (2026-10-15). Q87 and Q88 showed Set-QuarantinePolicy refuses the global settings both
+  as the bare Name `DefaultGlobalPolicy` and as `DefaultGlobalTag`. Before the code changes a third time, this item finds out which identity
+  form resolves. Each Set- below writes `OrganizationBrandingEnabled` back to the value step 1 reads, so nothing changes.
+- Needs: nothing. Use the default image `keel-powershell:latest` with the deployed scripts mounted, as the capture does:
+  `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /opt/keel-live/ops/powershell:/app:ro keel-powershell:latest`
+  with the job JSON on stdin. Every step is one run-cmdlet job as the Restorer:
+  `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"<cmdlet>","parameters":{...},"tenantConfigPath":"/etc/keel/restorer.json"}`.
+- Status: todo
+- Do (test tenant only; one tenant-wide object, written back to its own current value):
+  1. `Get-QuarantinePolicy` with `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`. Note the object's `Identity`, `DistinguishedName`,
+     `ExchangeObjectId`, `Guid` and the current `OrganizationBrandingEnabled` (true or false). Report `ok`, the number of objects and the
+     `OrganizationBrandingEnabled` value.
+  2. `Set-QuarantinePolicy` with `{"Identity":"<the full Identity from step 1, e.g. org.onmicrosoft.com\\DefaultGlobalPolicy>","OrganizationBrandingEnabled":<value from step 1>}`.
+  3. The same with `"Identity":"<the DistinguishedName from step 1>"`.
+  4. The same with `"Identity":"<the ExchangeObjectId from step 1>"`.
+  5. The same with `"Identity":"<the real Guid from step 1>"` (not a pseudonymized copy).
+  6. Repeat step 1 and confirm `OrganizationBrandingEnabled` still has its original value.
+  Run every step even if an earlier one succeeds. If a step ever writes a value other than the one step 1 read, stop and put it back.
+- **Report:** for steps 2-5, `ok` and, on failure, the error message and `errorId` (FullyQualifiedErrorId) verbatim, with the tenant name
+  masked as `<org>`. For steps 1 and 6, `ok` and the `OrganizationBrandingEnabled` value. Then comment the findings on issue #339 as
+  keel-operator.

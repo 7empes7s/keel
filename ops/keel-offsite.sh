@@ -24,6 +24,8 @@
 #   KEEL_OFFSITE_DIR      destination directory (default /mnt/keel-copy/keel-offsite)
 #   KEEL_OFFSITE_REMOTE   user@host; when set, ship over SSH instead of to a local volume
 #   KEEL_OFFSITE_SSH_KEY  SSH key for KEEL_OFFSITE_REMOTE (default /root/.ssh/playground_vps)
+#   KEEL_STORAGE_TARGETS  target ids; when set, ship to every target in the registry instead
+#                         (settings per target: see engine/storage/targets.mjs)
 
 set -euo pipefail
 # The dump holds every tenant baseline: keep the staged and promoted copies root-only.
@@ -124,6 +126,24 @@ fi
 log "local sha256: $LOCAL_SHA256"
 MANIFEST_SHA256="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).checksum)' "$PINNED_MANIFEST")"
 [ "$LOCAL_SHA256" = "$MANIFEST_SHA256" ] || fail "dump changed after manifest verification"
+
+# --- storage target registry ------------------------------------------------------
+# With KEEL_STORAGE_TARGETS set, the dump ships to every configured target instead of
+# the single directory/remote below, and each copy is read back and verified there
+# (engine/storage/targets.mjs). Exit 3 means some targets hold a verified copy and
+# some do not; the next run retries the missing ones.
+
+if [ -n "${KEEL_STORAGE_TARGETS:-}" ]; then
+  SHIP_ARGS=(ship)
+  [ "$DRY_RUN" -eq 1 ] && SHIP_ARGS+=(--dry-run)
+  set +e
+  node "$MANIFEST_TOOL" "${SHIP_ARGS[@]}" "$PINNED_MANIFEST" "$SHIPPED_MANIFEST"
+  SHIP_STATUS=$?
+  set -e
+  [ "$SHIP_STATUS" -eq 0 ] || fail "storage target shipment did not complete (exit $SHIP_STATUS)"
+  log "keel-offsite: done via storage targets ($KEEL_STORAGE_TARGETS)"
+  exit 0
+fi
 
 # --- confirm the target is usable -------------------------------------------------
 # A local target must sit on a different filesystem than the dump. The volume is

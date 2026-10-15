@@ -3289,3 +3289,38 @@ item that needs it stays untouched.
      and the KEEL-RT-20261015-mail copy left in Deleted Items. Keep the message restored in step 4 in the Inbox.
 - **Report:** B; the restorer appId used; steps 1–5 outputs (exit codes, report JSON, approval ids); both `isDraft`
   values; anything refused; anything left in the tenant. No tokens or keys.
+
+### Q69: File restore live check on the test tenant (the KEEL-RT-20261004 site library)
+- Drafted by the "File restore" thread (2026-10-15). Code: PR #274 (merged on master 2026-10-15 ~10:19Z), CLI
+  `cli/keel-content-restore.mjs files plan|request|run`. Fixture-tested only so far. Handoff:
+  /mnt/project-files/handoff/wave2/FILER/HANDOFF.md (cloud side).
+- Needs: `test -f /opt/keel-live/cli/keel-content-restore-files.mjs` (a build with #274). Q68 done (it created
+  `/etc/keel/content-restorer.json` for the Restorer).
+- Status: todo
+- **Test tenant only.** Same hard rules and requester/approver split as Q68. Under the 2026-10-14 standing authorization,
+  keel-operator approves these test-tenant restores itself; log every approval id here. Write only into the
+  `KEEL-RT-20261004` communication site (Q8) and its default document library. Grant no permission: if Graph answers 403,
+  record it and stop.
+- Do, as the deployed build B (`node /opt/keel-live/cli/keel-content-restore.mjs files ...`, KEEL_DB_URL from /etc/keel/db.env).
+  `<S>` = the site's Graph id (the part after `site:` in the content store container), `<D>` = its default library's drive id,
+  `<R>` requester and `<P>` approver principal ids:
+  1. **Fixtures (Restorer, the only setup writes):** in the library root, upload
+     - `KEEL-RT-20261015-file.txt` with the one line `KEEL-RT version 1`;
+     - `KEEL-RT-20261015-large.bin`: 5 MiB of random bytes, through `createUploadSession`, since a simple PUT stops at 4 MiB.
+       Record its sha256 locally.
+  2. **Backup:** `node /opt/keel-live/cli/keel-content-collect.mjs run`, as Q64. Confirm that both files have
+     `drive-record` rows under container `site:<S>` (workload `sharepoint-sites`). Note `<T1>` = the current UTC time.
+  3. **Change and delete:** overwrite the .txt with `KEEL-RT version 2`. Delete the .bin (it goes to the site recycle bin).
+     Run the backup again, and note `<T2>` = the current UTC time.
+  4. **Plan (read-only):** `files plan --drive <D> --site <S> --whole-drive --at <T1>`. Report the JSON: the .txt should
+     plan `create-copy` (the live file differs) and the .bin `create`.
+  5. **Restore as of T1:** `files request` with the same flags `--actor <R>`, approve as `<P>`, then
+     `files run --approval-id <id> --actor <R>`. Report the exit code and the JSON. Check:
+     - `KEEL-RT-20261015-file (restored 2026-10-15).txt` exists with `KEEL-RT version 1`, and the live .txt still says version 2;
+     - `KEEL-RT-20261015-large.bin` is back, and its downloaded sha256 equals step 1's (this proves the upload-session path).
+  6. **Re-run:** the same `files run` again. Expect exit 0 and no writes (every step `skip`, or already done).
+  7. **Single file, replace:** `files request --drive <D> --site <S> --file <the .txt's item id> --at <T1> --conflict replace`,
+     approve, then run. The live .txt is newer than T1, so expect a kept-newer copy, not an overwrite. Report the JSON.
+  8. **Cleanup:** delete the restored copy or copies, and both fixtures. Report anything left in the tenant.
+- **Report:** B; steps 2–7 outputs (exit codes, JSON, approval ids); both sha256 values; anything refused (403 or guard);
+  anything left in the tenant. No tokens or keys.

@@ -3164,7 +3164,7 @@ item that needs it stays untouched.
   (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
   claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: todo (resumed 2026-10-15: #289 fixed by PR #290, merge c3b5f6c)
+- Status: in-progress
 - Coordinator note (2026-10-15): resume from the S1 dry run, no new setup. Needs /opt/keel-live at c3b5f6c or later
   (`grep -q unavailableOnTenant /opt/keel-live/engine/collect/entraAdapter.mjs`). The restore's current-state read now
   skips a type the tenant has no licence or feature for (403 "Insufficient license", 400 AADB2C99039) unless the

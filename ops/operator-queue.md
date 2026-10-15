@@ -3945,8 +3945,31 @@ item that needs it stays untouched.
   change that makes the scheduled prune delete is merged.
 - Needs: /opt/keel-live at the merge of PR #282 or later (`test -f /opt/keel-live/engine/store/rotation.mjs`), and the
   schema applied (`retention_prune_report` exists).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 18:17 UTC on B = c82311f0 (has engine/store/rotation.mjs; retention_prune_report exists). **Dry run only, nothing deleted**
+  (no `--apply`). No tenant access.
+  - **1.** `keel-prune.mjs --report …`: **exit 0**. Stdout (ids masked):
+    - `would prune 25 snapshot(s): <25 ids>`
+    - `would prune 745 content version(s) and 744 chunk(s) of 2139148 bytes`
+    - `kept snapshots: weekly 1, referenced 291, daily 8`
+    - `kept content versions: latest version 732; 193 item(s) with one version`
+    - `policies: default: 14 daily, 8 weekly, 12 monthly, 7 yearly`
+    - `report <id> saved and written to …/keel-prune-report.json`
+  - **2. Report:**
+    - snapshots.entries 325; snapshots.delete 25; snapshots.kept {weekly 1, referenced 291, daily 8}.
+    - content.delete 745; content.chunks 744; content.freedBytes 2,139,148; content.kept {latest version 732}; content.singleVersionItems 193.
+    - policies ["default: 14 daily, 8 weekly, 12 monthly, 7 yearly"]; holds [].
+    - Deletes span **2026-09-04T10:02:15Z** (oldest) to **2026-10-15T14:00:38Z** (newest).
+    - The 3 newest kept:
+      - 2026-10-15T18:00:20Z [referenced by drift, referenced by resource symbol, daily 2026-10-15, weekly 2026-W42, monthly 2026-10, yearly 2026];
+      - 17:00:17Z [referenced by drift];
+      - 16:00:13Z [referenced by drift].
+  - **3. Sanity:**
+    - All 25 deletes have the reason "outside policy". 14 are newer than 14 days, and **none of those is the newest snapshot of its day**:
+      each day keeps a later snapshot.
+    - The 10 deletes that are the last of their day are all from 2026-09-07 to 09-12, older than the 14-day daily window.
+    - **The newest complete snapshot (18:00:20Z) is kept.**
+  - **4.** `schedule` row: `prune | enabled true | next_due_at 2026-10-16 00:00:00+00`. The scheduled prune is on, and runs tonight at 00:00.
 - Do (no tenant access, no deletes):
   1. `set -a; . /etc/keel/db.env; set +a; node /opt/keel-live/cli/keel-prune.mjs --report /tmp/keel-prune-report.json`
      (never with `--apply`). Report the exit code and every stdout line.

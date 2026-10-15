@@ -3548,10 +3548,19 @@ item that needs it stays untouched.
 - Drafted by the "#294 consent policy" thread (2026-10-15). Fix: PR #302, master 1a33ff5. A create now waits (up to about
   60 s, on 404 only) for the new policy to replicate before posting its include and exclude rules.
 - Needs: /opt/keel-live at 1a33ff5 or later (`grep -q untilReplicated /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: in-progress
-- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
-  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
-  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
+- Status: done
+- Result: Done 2026-10-15 13:38–13:43 UTC on **B = 321435f6** (includes 1a33ff5, #302). Restorer only; global admin not used. Approval **eb3fa523**,
+  self-approved under the standing authorization.
+  - Plan re-taken at B (Q74 plan). Fixture `keel-rt-w2-consent` (KEEL-RT-W2-consent, one include delegated/low, not referenced by the
+    authorization policy), created fresh. Snapshot S5 78ff6b94 (1 include); then the policy was deleted (204).
+  - **Restore** from S5, selecting only that policy: the dry run shows `create recreate`. Enforce (worker): **`applied 1, skipped 0,
+    failed 0`**, no 404, and no include-write retry in the log. rollback_entry: create succeeded.
+  - **Read-back:** exactly 1 include, `(delegated, low)`, as the backup. Capture exit 0, readBackVerified true, promote → live-qualified.
+  - **Evidence:** `claude/live-evidence-w2-entra` @ **a53970c** (permissionGrantPolicy.create.json, .capture.json and the capture log;
+    pseudonymize check passes, scan clean).
+  - `live evidence permissionGrantPolicy.create.json: not applied (permissionGrantPolicy.create.demotion.json demotes this write, so it is not promoted)`.
+    The Q67 demotion is still next to it. keel-operator only adds or updates evidence files, so a builder removes it (asked on #294).
+  - The fixture was kept for Q75, then deleted (see Q75). Nothing left.
 - **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
   standing authorization; log every approval id here. No permission to add (Q26).
 - Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not
@@ -3608,10 +3617,20 @@ item that needs it stays untouched.
   ("adopts live <id>"), not `create recreate`.
 - Needs: /opt/keel-live at 321435f or later (`grep -q conditionSetsPostStateRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
   Can run in the same sitting as Q73 (same fixture).
-- Status: in-progress
-- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
-  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
-  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
+- Status: failed: Graph refuses removing the last include (#294)
+- Result: **Failed** 2026-10-15 13:43–13:46 UTC on **B = 321435f6** (includes 321435f, #312). Restorer only; global admin not used. Approval **26a15925**,
+  self-approved.
+  - Snapshot S6 2a098792 with the fixture (1 include, delegated/low). Drift: added (delegated, medium) and removed low (the first
+    delete returned 400 until medium had replicated; then 204). Live: medium only.
+  - Dry run from S6: `update update-existing`. Enforce (worker): **`applied 0, skipped 0, failed 1`**:
+    `Request_BadRequest "PermissionGrantPolicy should contain an Includes PermissionGrantConditionSet."`
+    - Narrowing first deletes the only live include before adding the backup's, and Graph refuses a consent policy with no include.
+    - rollback_entry: update failed. **Read-back:** `(delegated, medium)` only, the drifted state, unchanged.
+  - Capture: exit 3 (write failed); the record was **not committed**, and the Q67 update demotion stands.
+  - **Step 4, re-run dry run:** 1 planned write (not 0).
+  - **Step 5:** skipped, because Q67's STS fixtures no longer exist.
+  - **Cleanup:** deleted `keel-rt-w2-consent` (204). Nothing left.
+  - Suggested fix on #294: when removing the extra includes would leave none, add the missing backup includes first, then remove the extras.
 - **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
   standing authorization; log every approval id here. No permission to add (Q26).
 - Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not

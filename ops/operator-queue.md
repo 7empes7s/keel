@@ -3084,8 +3084,7 @@ item that needs it stays untouched.
   - **5.** `/mnt/keel-copy/keel-store/keel-db/keel-db-2026-10-15.sql.gz` is 219414823 bytes (root, 600). Its sha256 is
     783dec5957a93eb4645d97498b31c6d32b840005cc5c60d897a9da6eeea24b64, which **equals** the `checksum` in /opt/backups/keel-db-manifest.json.
   - **6.** keel-offsite.timer is enabled. Next run: Fri 2026-10-16 05:00:00 UTC.
-  - Note: the storage-target path did not write a new `/opt/backups/keel-db-shipped-manifest.json` (only the .bak-q65 is there).
-    Tomorrow's 05:00 run has a newer dump, so the "not newer" guard won't block it, but this is worth checking after that run.
+  - The run wrote a new `/opt/backups/keel-db-shipped-manifest.json` (09:36). The 05:00 original is kept as `.bak-q65`.
   - Rollback: delete /etc/keel/offsite.env (it did not exist before) and restore the .bak-q65 manifest.
 - Do, as root (host only, no tenant, no secrets printed):
   1. `findmnt /mnt/keel-copy` (must be its own device, not the root fs). Stop and report if not.

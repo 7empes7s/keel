@@ -430,7 +430,9 @@ export async function backupSharePointSites({
       ? structuredClone(state)
       : { version: LIST_STATE_VERSION, nextLink: null, deltaLink: null, fullPass: null, items: {} };
     const first = `${listBase}/items/delta?$expand=fields`;
-    const deltaPath = assertSitesRequest(first, 'GET');
+    // Paths compare without case: Graph may echo site ids and GUIDs in another case.
+    const pathOf = (link) => assertSitesRequest(link, 'GET').toLowerCase();
+    const deltaPath = pathOf(first);
     const result = { stored: 0, deleted: 0, pages: 0, resynced: false };
     const itemKey = (id) => `list/${listId}/item/${id}`;
     const startFullPass = () => {
@@ -448,7 +450,7 @@ export async function backupSharePointSites({
       counters.itemsDeleted += 1;
     };
     const onSavedPath = (link) => {
-      try { return assertSitesRequest(link, 'GET') === deltaPath; } catch { return false; }
+      try { return pathOf(link) === deltaPath; } catch { return false; }
     };
 
     let link = current.nextLink ?? current.deltaLink;
@@ -457,7 +459,7 @@ export async function backupSharePointSites({
     let fromSaved = link !== first;
     while (link) {
       if (result.pages >= maxPages) throw Object.assign(new Error(`more than ${maxPages} pages: ${deltaPath}`), { capped: true });
-      if (assertSitesRequest(link, 'GET') !== deltaPath) throw new Error(`refused a next page outside ${deltaPath}`);
+      if (pathOf(link) !== deltaPath) throw new Error(`refused a next page outside ${deltaPath}`);
       let body;
       try {
         body = await reader.get(link);
@@ -479,7 +481,17 @@ export async function backupSharePointSites({
         if (item.deleted) { await markDeleted(id); continue; }
         const tag = item.eTag ?? item.lastModifiedDateTime ?? null;
         if (tag && current.items[id] === tag) continue;
-        const full = item.fields ? item : await reader.get(`${listBase}/items/${enc(id)}?$expand=fields`);
+        let full = item;
+        if (!item.fields) {
+          try {
+            full = await reader.get(`${listBase}/items/${enc(id)}?$expand=fields`);
+          } catch (error) {
+            // Gone between the delta page and the read: a deletion, not a failed page.
+            if (error.status !== 404) throw error;
+            await markDeleted(id);
+            continue;
+          }
+        }
         await put(container, itemKey(id), full, full.eTag ?? full.lastModifiedDateTime);
         current.items[id] = full.eTag ?? full.lastModifiedDateTime ?? tag;
         result.stored += 1;

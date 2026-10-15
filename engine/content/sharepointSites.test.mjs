@@ -459,3 +459,19 @@ test('a changed page is fetched again on a repeat run', async () => {
   await backupSharePointSites({ transport: changed.transport, ...options });
   assert.ok(changed.requests.some((request) => request.url.includes(`/pages/${PAGE}/`)));
 });
+
+test('a delta item gone before its own read is a deletion, and a next link in another case is followed', async () => {
+  const deltaState = memoryDeltaState();
+  await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: null, fullPass: null, items: { 8: 'e8' } });
+  const store = memoryStore();
+  const upper = `${G}/sites/${encodeURIComponent(ROOT.toUpperCase())}/lists/${LIST.toUpperCase()}/items/delta?token=page-2`;
+  const { transport } = fakeGraph(fixtureRoutes(), { override: {
+    [LIST_DELTA]: () => ({ status: 200, headers: {}, body: { value: [{ id: '1', eTag: 'e1', fields: { Title: 'one' } }], '@odata.nextLink': upper } }),
+    [`/sites/${ROOT.toUpperCase()}/lists/${LIST.toUpperCase()}/items/delta`]: deltaPage([{ id: '8', eTag: 'e8b' }]),
+  } });
+  const result = await backupSharePointSites({ transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState });
+  const list = result.sites[0].lists.find((entry) => entry.listId === LIST);
+  assert.equal(list.reads.items.status, 'observed');
+  assert.equal(list.itemsDeleted, 1);
+  assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).items['8'], null);
+});

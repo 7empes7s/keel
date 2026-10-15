@@ -2646,7 +2646,21 @@ item that needs it stays untouched.
 
 ### Q57: Confirm Marouane's admin consent for Q55/Q56 (read-only)
 - Drafted by the "Add API permissions" thread (2026-10-15). Marouane reported consent done at 00:09 UTC.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 00:12 UTC, read-only (the Restorer listed manifests and assignments via Graph GET; the Collector token was used for the two optional reads). Nothing created, granted or removed.
+  - **KEEL Collector: missing none.** All 49 application roles in its manifest (Graph 45, SharePoint 2+, Exchange 1) are held;
+    49 appRoleAssignments in all. The 19 that Q56 left waiting are now held.
+  - **KEEL Content Reader: NOT consented. Missing all 17**, with 0 appRoleAssignments on its SP (9fa46563…): Mail.Read,
+    Calendars.Read, Contacts.Read, MailboxSettings.Read, Tasks.Read.All, User.Read.All, Group.Read.All, Files.Read.All,
+    Sites.Read.All, Team.ReadBasic.All, Channel.ReadBasic.All, ChannelSettings.Read.All, ChannelMember.Read.All,
+    TeamsTab.Read.All, TeamsAppInstallation.ReadForTeam.All, MailboxFolder.Read.All, MailboxItem.Read.All.
+    Marouane: open Entra > App registrations > **KEEL Content Reader** (not the Collector) > API permissions > Grant admin consent.
+  - **Fabric "Service principals can access read-only admin APIs": not readable.** As the Collector,
+    `GET api.fabric.microsoft.com/v1/admin/tenantsettings` returns 403, and the Power BI `admin/tenantsettings` returns 404.
+    That fits the setting being off or not yet propagated (Fabric says up to 15 min); I can't tell which. Re-check later if wanted.
+  - **Power Platform management app: not readable.** As the Collector, BAP `adminApplications` returns 403 ("does not have
+    permission"). That suggests the Collector is not registered as a management app yet (`New-PowerAppManagementApp`
+    needs a signed-in admin).
 - Needs: Q56 done.
 - **Read-only.** Nothing created, granted or removed.
 - **Do:** for the KEEL Collector and the KEEL Content Reader, list the Graph app roles in `requiredResourceAccess` that the

@@ -3573,7 +3573,7 @@ item that needs it stays untouched.
   tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy and homeRealmDiscoveryPolicy as named objects: it checks the
   policy's own display name (KEEL-RT- prefix) and no longer needs `--allow-by-reference`.
 - Needs: /opt/keel-live at afd3641 or later (`grep -q NAMED_ID_KEY_TYPES /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
-- Status: todo (waiting on deploy)
+- Status: in-progress
 - Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
   Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
   runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.

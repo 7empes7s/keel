@@ -2671,7 +2671,7 @@ item that needs it stays untouched.
 
 ### Q58: First content backup run on the test tenant (one KEEL-RT- mailbox, OneDrive, site, team and plan)
 - Drafted by the "First test content backup" thread (2026-10-15). Follows Q57 (Content Reader holds 17 of 17).
-- Status: todo
+- Status: in-progress
 - Needs: Q57 done.
 - **Read-only against the tenant**, except an optional fixture plan in step 4. Every content request goes through the
   GET-only `contentReadTransport` as the KEEL Content Reader. No permission or consent changes.

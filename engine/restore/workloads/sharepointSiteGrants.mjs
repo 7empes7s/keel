@@ -25,6 +25,8 @@
  *  - Verified. After writing, the grants are read back and each write is checked.
  *  - Idempotent. Once restored, a new dry run plans nothing, and the same artifact
  *    run again is stale and writes nothing.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant the site and every
+ *    application granted must be KEEL-RT- fixtures, at plan time and again before writing.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -36,6 +38,7 @@ import {
   assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure, siteRoleAt, siteRoleRank,
 } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 import { loadSharePointSource } from './sharepoint.mjs';
 
 export const SITE_GRANTS_RESTORE = 'sharepoint-site-grants';
@@ -103,13 +106,28 @@ export function withinBackup(operation) {
     && named.length === backup.applications.length && grantAppKey({ applications: named }) === grantAppKey(backup);
 }
 
+/** A site's name as the fixture guard sees it: the last segment of its URL, else its name. */
+export function siteNameOf(fields) {
+  try { return decodeURIComponent(new URL(fields?.webUrl).pathname.split('/').filter(Boolean).pop() ?? ''); } catch { return fields?.name ?? ''; }
+}
+
+/** Why the fixture guard refuses this grant on this site, or null. */
+function grantFixtureProblem(operation, siteName, { tenantRef, testTenantRefs }) {
+  return fixtureProblem({ tenantRef, testTenantRefs, label: 'the site', names: [siteName] })
+    ?? fixtureProblem({
+      tenantRef, testTenantRefs, label: 'the application granted',
+      names: operation.backup.applications.length ? operation.backup.applications.map((application) => application.displayName) : [null],
+    });
+}
+
 /**
  * Builds the frozen plan for one site. `source` is a recorded sharepoint-site-settings
  * collection (loadSharePointSource); `live` is the site's grants read now, in the
  * collector's normal form (readLiveSiteGrants).
  */
-export function planSiteGrantsRestore({ source, live, tenantHost, siteId }) {
+export function planSiteGrantsRestore({ source, live, tenantHost, siteId, tenantRef, testTenantRefs = TEST_TENANT_REFS }) {
   if (!source?.collectionId) throw new TypeError('a site grant restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('a site grant restore plan needs the tenant');
   if (typeof tenantHost !== 'string' || source.tenantHost !== tenantHost) {
     throw new Error('the source collection was taken from a different SharePoint tenant');
   }
@@ -172,14 +190,23 @@ export function planSiteGrantsRestore({ source, live, tenantHost, siteId }) {
   for (const operation of operations) {
     if (!withinBackup(operation)) throw new Error(`refusing a grant wider than the backup for ${operation.naturalKey}`);
   }
+  const siteName = siteNameOf(site.fields);
+  const notFixtures = [];
+  for (const operation of [...operations]) {
+    const problem = grantFixtureProblem(operation, siteName, { tenantRef, testTenantRefs });
+    if (!problem) continue;
+    notFixtures.push({ naturalKey: operation.naturalKey, reason: `not-a-fixture: ${problem}` });
+    operations.splice(operations.indexOf(operation), 1);
+  }
 
-  const { effects, refusals } = classifyContentEffects(operations.map((operation) => ({
+  const { effects, refusals: effectRefusals } = classifyContentEffects(operations.map((operation) => ({
     naturalKey: operation.naturalKey,
     resourceType: RESOURCE_TYPE,
     verb: operation.verb,
     payload: { roles: operation.body.roles },
     live: operation.before ? { state: 'present', payload: operation.before } : { state: 'absent' },
   })));
+  const refusals = [...effectRefusals, ...notFixtures];
 
   const plan = {
     workload: SITE_GRANTS_RESTORE,
@@ -236,7 +263,7 @@ export async function createSiteGrantsRestoreArtifact(client, { tenantRef, plan,
  * blocked-content-effect, no-change, failed, verification-failed, verified.
  */
 export async function executeSiteGrantsRestore(client, {
-  tenantRef, artifactId, tenantHost, transport, qualifications = {}, actor = null, sleep,
+  tenantRef, artifactId, tenantHost, transport, qualifications = {}, actor = null, sleep, testTenantRefs = TEST_TENANT_REFS,
 }) {
   const requests = [];
   const counted = async (url, init) => { requests.push({ url, method: init?.method ?? 'GET' }); return transport(url, init); };
@@ -287,7 +314,8 @@ export async function executeSiteGrantsRestore(client, {
   }
   // The stored plan must be exactly what the recorded backup and these grants give:
   // an edited plan (another app, a wider role) never reaches Graph, even with a
-  // recomputed digest and its approved content effects left as they were.
+  // recomputed digest and its approved content effects left as they were. The re-plan
+  // runs the fixture guard again, so a grant it now refuses is never written.
   let source;
   try {
     source = await loadSharePointSource(client, { tenantRef, collectionId: plan.source.collectionId });
@@ -296,7 +324,7 @@ export async function executeSiteGrantsRestore(client, {
   }
   let replanned = null;
   try {
-    replanned = source ? planSiteGrantsRestore({ source, live, tenantHost: plan.tenantHost, siteId: plan.siteId }) : null;
+    replanned = source ? planSiteGrantsRestore({ source, live, tenantHost: plan.tenantHost, siteId: plan.siteId, tenantRef, testTenantRefs }) : null;
   } catch { replanned = null; }
   if (replanned?.digest !== plan.digest) {
     return done({ outcome: 'refused', reasons: ['the stored plan is not what the recorded backup gives; a new dry run is required'] });

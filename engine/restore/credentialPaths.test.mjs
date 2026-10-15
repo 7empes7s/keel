@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   credentialPaths, DEFAULT_COLLECTOR_CONFIG_PATH, DEFAULT_RESTORER_CONFIG_PATH,
@@ -8,9 +9,9 @@ import {
 
 test('the Restorer default is the file the deployment host carries', () => {
   assert.equal(DEFAULT_RESTORER_CONFIG_PATH, '/etc/keel/restorer.json');
-  assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, '/etc/keel/tenant-target.json');
+  assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, '/etc/keel/tenant.json');
   assert.deepEqual(credentialPaths({}), {
-    collectorConfig: '/etc/keel/tenant-target.json', targetConfig: '/etc/keel/restorer.json',
+    collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json',
   });
 });
 
@@ -32,4 +33,12 @@ test('no source names the old Restorer path the host never had (issue #92)', () 
     if (error.status !== 1) throw error; // 1 = no match
   }
   assert.equal(hits, '', `files still naming restorer-target.json:\n${hits}`);
+});
+
+test('the Collector default is the file every collect command reads by default', () => {
+  // keel-operator (Q77): the old default, tenant-target.json, was never on the host, so a
+  // workload restore needed KEEL_COLLECTOR_CONFIG_PATH set by hand.
+  const source = readFileSync(fileURLToPath(new URL('../../cli/keel-collect.mjs', import.meta.url)), 'utf8');
+  assert.match(source, /arg\('config', '\/etc\/keel\/tenant\.json', argv\)/);
+  assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, '/etc/keel/tenant.json');
 });

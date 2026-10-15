@@ -346,15 +346,23 @@ async function readBack(writer, version, path, isStale, { retryOperation, attemp
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
 /**
+ * Graph's 400 for removing the last include of a consent policy. Live (Q75),
+ * it also comes back for a while after an include was just added, until that
+ * include has replicated.
+ */
+const isLastIncludeRefusal = (result) => result?.ok === false && result?.status === 400
+  && /should contain an Includes/i.test(JSON.stringify(result?.body ?? result?.error ?? ''));
+
+/**
  * Repeats `attempt` while it answers 404, for about a minute by default: the
  * wait for a just-created directory object to replicate before a write under
  * it can find it. Any other answer is returned at once.
  */
-async function untilReplicated(attempt, { replicationAttempts = 13, replicationDelayMs = 5000 } = {}) {
+async function untilReplicated(attempt, { replicationAttempts = 13, replicationDelayMs = 5000 } = {}, isPending = isNotFound) {
   let result;
   for (let i = 0; i < replicationAttempts; i += 1) {
     result = await attempt();
-    if (!isNotFound(result)) return result;
+    if (!isPending(result)) return result;
     if (i < replicationAttempts - 1) await new Promise((resolve) => setTimeout(resolve, replicationDelayMs));
   }
   return result;
@@ -493,8 +501,11 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
     // Issue #294: a policy created in this run can 404 here until the
     // directory has replicated it (10-20 s live), so the write waits for it.
     // A DELETE only ever targets a rule of a policy that already existed.
+    const remove = () => retryOperation(() => writer.write(version, `${setPath}/${encodeURIComponent(write.id)}`, { method: 'DELETE' }));
+    // The last drifted include goes only once the backup's are in, and Graph
+    // can still refuse it as the last include until they have replicated.
     const result = write.method === 'DELETE'
-      ? await retryOperation(() => writer.write(version, `${setPath}/${encodeURIComponent(write.id)}`, { method: 'DELETE' }))
+      ? (write.afterIncludes ? await untilReplicated(remove, readAfterWrite, isLastIncludeRefusal) : await remove())
       : operation === 'create' ? await untilReplicated(post, readAfterWrite) : await post();
     if (!result?.ok) {
       await journalOutcome(rollbackClient, journal, classifyWriteOutcome(result), { targetId, detail: `${write.set}: ${detailOf(result)}` });
@@ -534,7 +545,11 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
  * They run narrowing first, so the policy never allows more than either the
  * live or the backup state while they land: extra includes are removed, then
  * missing excludes added, then missing includes added, then extra excludes
- * removed. Returns { writes, live } (live: the sets as read), or { failed }.
+ * removed. Graph refuses a policy with no include (issue #294, Q75), so when
+ * every live include is extra and the backup has some to add, the last extra
+ * one is removed right after they are added, not before: for those few writes
+ * the policy allows that one rule as well as the backup's.
+ * Returns { writes, live } (live: the sets as read), or { failed }.
  */
 async function conditionSetChanges(writer, entry, desired, targetId, { retryOperation }) {
   const live = {};
@@ -553,7 +568,11 @@ async function conditionSetChanges(writer, entry, desired, targetId, { retryOper
   }
   const add = (set) => (changes[set]?.missing ?? []).map((condition) => ({ set, method: 'POST', body: conditionSetBody(condition) }));
   const remove = (set) => (changes[set]?.extra ?? []).map((condition) => ({ set, method: 'DELETE', id: condition.id }));
-  return { writes: [...remove('includes'), ...add('excludes'), ...add('includes'), ...remove('excludes')], live };
+  const removeIncludes = remove('includes');
+  const addIncludes = add('includes');
+  const keepsNone = removeIncludes.length > 0 && removeIncludes.length === (live.includes ?? []).length && addIncludes.length > 0;
+  const lastInclude = keepsNone ? [{ ...removeIncludes.pop(), afterIncludes: true }] : [];
+  return { writes: [...removeIncludes, ...add('excludes'), ...addIncludes, ...lastInclude, ...remove('excludes')], live };
 }
 
 /**

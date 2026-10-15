@@ -33,6 +33,9 @@
  *    that target's operation `stale`.
  *  - Errors are structured; an ambiguous outcome is reconciled by re-reading and is
  *    never sent a second time.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant every object
+ *    written is a KEEL-RT- fixture, at plan time and again before writing. A tenant-wide
+ *    object needs a plan made with the separate tenant-wide option (off by default).
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -42,6 +45,7 @@ import { appendEvidence } from '../../govern/evidence.mjs';
 import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 import { WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
 
 export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
@@ -476,6 +480,34 @@ function parentLock(live, entry) {
   return isLocked(parent) ? 'locked' : 'clear';
 }
 
+// Exchange objects there is one of per tenant. Teams ones are found by their identity.
+const TENANT_WIDE_FAMILIES = new Set(['activeSyncSettings', 'globalQuarantineSettings', 'defenderForOffice']);
+
+/**
+ * How the fixture guard sees one object: its names, and whether it is tenant-wide (a
+ * Teams `Global` policy or configuration, an Exchange organization setting, or a
+ * default policy that covers everyone).
+ */
+export function workloadTarget(write, family, entry) {
+  const fields = entry?.fields ?? {};
+  const identity = String(fields.Identity ?? entry?.identity ?? '');
+  const tenantWide = TENANT_WIDE_FAMILIES.has(family)
+    || (write.identity !== 'guid' && !/^tag:/i.test(identity))
+    || ['IsDefault', 'IsDefaultGlobalAddressList', 'IsBuiltInProtection'].some((field) => truthy(fields[field]));
+  const names = write.identity === 'guid' ? [fields.Name] : [identity.replace(/^tag:/i, '')];
+  return { tenantWide, names };
+}
+
+/** The guard over every object an operation writes: the live one and the one the source restores it to. */
+function targetProblem(write, family, entries, { key, tenantRef, testTenantRefs, allowTenantWide }) {
+  for (const entry of entries) {
+    const { tenantWide, names } = workloadTarget(write, family, entry);
+    const problem = fixtureProblem({ tenantRef, testTenantRefs, label: key, names, tenantWide, allowTenantWide });
+    if (problem) return problem;
+  }
+  return null;
+}
+
 function identityParameters(write, observation) {
   if (write.identity === 'guid') return { Identity: observation.identity };
   if (write.identity === 'name') return { Identity: String(observation.fields.Identity).replace(/^tag:/i, '') };
@@ -540,9 +572,15 @@ function createFields(write, observation, manual) {
  * Builds the frozen plan. `source` is a recorded collection of `workload`
  * (loadWorkloadSource); `live` is the workload's read run now. `targets` names
  * resource keys to restore; empty means every object of a written family in the source.
+ * `tenantRef` decides the fixture guard; `allowTenantWide` is the separate tenant-wide
+ * option, recorded in the plan.
  */
-export function planWorkloadSettingsRestore({ workload, source, live, tenantId, targets = [], declarations = WKLD_WRITE_OPERATIONS }) {
+export function planWorkloadSettingsRestore({
+  workload, source, live, tenantId, tenantRef, targets = [], declarations = WKLD_WRITE_OPERATIONS,
+  testTenantRefs = TEST_TENANT_REFS, allowTenantWide = false,
+}) {
   if (!source?.collectionId) throw new TypeError('a workload restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('a workload restore plan needs the tenant');
   if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
   const families = writeFamilies(workload, declarations);
@@ -607,6 +645,11 @@ export function planWorkloadSettingsRestore({ workload, source, live, tenantId, 
       op = { kind: 'update', operationId: ops.update, cmdlet: write.method, changes: fields, parameters: { ...identityParameters(write, current), ...Object.fromEntries(fields.map(({ field, after }) => [field, after])) } };
     }
     const naturalKey = `${workload}:${key}`;
+    const notFixture = targetProblem(write, family, [current, observation].filter(Boolean), { key, tenantRef, testTenantRefs, allowTenantWide });
+    if (notFixture) {
+      refusals.push({ naturalKey, reason: `not-a-fixture: ${notFixture}` });
+      continue;
+    }
     operations.push({ key, family, resourceKey: key, naturalKey, ...op });
     resources.push({
       naturalKey, resourceType: write.resourceType, verb: op.kind,
@@ -626,6 +669,8 @@ export function planWorkloadSettingsRestore({ workload, source, live, tenantId, 
     contentEffects: classifyWorkloadEffects(resources),
     refusals,
     liveFingerprints,
+    // Only a plan made with the option carries it, so other plans keep their digest.
+    ...(allowTenantWide === true ? { allowTenantWide: true } : {}),
   };
   plan.digest = workloadSettingsPlanDigest(plan);
   return deepFreeze(plan);
@@ -666,7 +711,10 @@ export async function createWorkloadSettingsArtifact(client, { tenantRef, plan, 
  * Operation outcomes: disabled, blocked-content-effect, refused, stale, failed,
  * verification-failed, verified.
  */
-export async function executeWorkloadSettingsRestore(client, { tenantRef, artifactId, tenantId, workload, read, powershell = {}, qualifications = {}, actor = null }) {
+export async function executeWorkloadSettingsRestore(client, {
+  tenantRef, artifactId, tenantId, workload, read, powershell = {}, qualifications = {}, actor = null,
+  testTenantRefs = TEST_TENANT_REFS, declarations = WKLD_WRITE_OPERATIONS,
+}) {
   const artifact = await getDryRunArtifact(client, { id: artifactId, tenantRef });
   const by = actor ?? artifact?.requestedBy ?? 'keel';
   const finish = async (result) => {
@@ -734,6 +782,17 @@ export async function executeWorkloadSettingsRestore(client, { tenantRef, artifa
     }
     if (entry && (isLocked(entry) || parent === 'locked')) {
       await settle(op, { outcome: 'refused', reasons: ['the object or its policy now reports a preservation lock; KEEL never changes it'] });
+      continue;
+    }
+    // The fixture guard again, on what is about to be written: the object read now, or
+    // for a re-created policy the name it is created with.
+    const write = declarations[op.operationId];
+    const writing = entry ?? { fields: { Identity: `Tag:${op.parameters?.Identity ?? ''}` } };
+    const notFixture = write
+      ? targetProblem(write, family, [writing], { key: op.resourceKey, tenantRef, testTenantRefs, allowTenantWide: plan.allowTenantWide === true })
+      : `${op.operationId} is not a declared write`;
+    if (notFixture) {
+      await settle(op, { outcome: 'refused', reasons: [notFixture] });
       continue;
     }
     await runOperation(op, { powershell, read, settle });
@@ -823,7 +882,9 @@ export function workloadSettingsRestore({ workload, label, read }) {
       const source = await loadWorkloadSource(client, { tenantRef, collectionId: request.collectionId, workload });
       if (!source) throw new Error(`no recorded ${label} collection ${request.collectionId} for this tenant`);
       const live = await readWritten({ powershell: connection.powershell });
-      return planWorkloadSettingsRestore({ workload, source, live, tenantId, targets: request.targets ?? [] });
+      return planWorkloadSettingsRestore({
+        workload, source, live, tenantId, tenantRef, targets: request.targets ?? [], allowTenantWide: request.allowTenantWide === true,
+      });
     },
     create: createWorkloadSettingsArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications }) => executeWorkloadSettingsRestore(client, {

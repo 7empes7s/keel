@@ -129,7 +129,7 @@ async function recordSource(client) {
   return run.id;
 }
 
-async function dryRun(client, live, { requestedBy = 'requester', options } = {}) {
+async function dryRun(client, live, { requestedBy = 'requester', collectorConfig = '/fixtures/collector.json', options } = {}) {
   const collectionId = await recordSource(client);
   const graph = fakeSharePoint(live);
   const deps = cliDependencies(graph, options);
@@ -137,7 +137,7 @@ async function dryRun(client, live, { requestedBy = 'requester', options } = {})
   const result = await main({
     argv: [
       'node', 'keel-restore.mjs', '--workload', 'sharepoint-site-settings', '--collection', String(collectionId),
-      '--tenant-host', HOST, '--collector-config', '/fixtures/collector.json',
+      '--tenant-host', HOST, ...(collectorConfig === null ? [] : ['--collector-config', collectorConfig]),
       '--persist-artifact', artifactId, ...(requestedBy === null ? [] : ['--requested-by', requestedBy]),
     ],
     readFile, dbUrl: database.url, dependencies: deps.dependencies, logger: quiet,
@@ -197,6 +197,26 @@ test('--workload without --requested-by persists the dry run under the keel-rest
   assert.equal(artifact.requestedBy, 'keel-restore');
 });
 
+test('--workload without --collector-config reads the server collector file, the one its promotion reads', async (t) => {
+  // keel-operator hit this in Q77: the dry run demanded a path, and the server default
+  // named a file the host never had, so every workload restore needed one by hand.
+  const client = await schemaClient(t);
+  const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
+  const { requester, approver } = await people(client);
+  reads.length = 0;
+  const { result, graph, deps, artifactId } = await dryRun(client, live, { requestedBy: requester, collectorConfig: null });
+
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(reads, [SERVER_PATHS.collectorConfig]);
+  assert.deepEqual(deps.connections.map((c) => [c.role, c.configPath]), [['collector', SERVER_PATHS.collectorConfig]]);
+
+  await approve(client, artifactId, { requestedBy: requester, decidedBy: approver });
+  reads.length = 0;
+  const promoted = await promote(graph, artifactId);
+  assert.equal(promoted.outcome, 'verified');
+  assert.deepEqual(reads, [SERVER_PATHS.collectorConfig, SERVER_PATHS.targetConfig]);
+});
+
 test('--workload is a dry run only, and refuses an unknown workload or a missing option', async (t) => {
   await schemaClient(t);
   const run = (extra) => main({
@@ -211,6 +231,21 @@ test('--workload is a dry run only, and refuses an unknown workload or a missing
     workloadRestore: { workload: 'sharepoint-site-settings' }, mode: 'enforce',
     collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), readFile, dbUrl: database.url, logger: quiet,
   }), /only ever planned as a dry run/);
+});
+
+test('--allow-tenant-wide-test-writes reaches the workload plan, and is off unless given (#317)', async (t) => {
+  await schemaClient(t);
+  const seen = [];
+  const workloadRestores = {
+    'teams-org-policies': { label: 'Teams', operations: [], plan: async (_client, { request }) => { seen.push(request.allowTenantWide); throw new Error('planned'); } },
+  };
+  const run = (extra) => main({
+    argv: ['node', 'keel-restore.mjs', '--collector-config', '/fixtures/collector.json', '--workload', 'teams-org-policies', '--collection', '1', ...extra],
+    readFile, dbUrl: database.url, dependencies: { ...cliDependencies(fakeSharePoint(SOURCE_SETTINGS)).dependencies, workloadRestores }, logger: quiet,
+  });
+  await assert.rejects(run([]), /planned/);
+  await assert.rejects(run(['--allow-tenant-wide-test-writes']), /planned/);
+  assert.deepEqual(seen, [false, true]);
 });
 
 // ------------------------------------------------------------------- promotion

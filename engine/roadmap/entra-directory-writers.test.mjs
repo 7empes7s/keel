@@ -64,6 +64,10 @@ function directoryGraph({ readOverride = null } = {}) {
       const list = graph.objects.get(member[1])?.value ?? [];
       const id = decodeURIComponent(member[2]);
       if (!list.some((condition) => condition.id === id)) return { ok: false, status: 404, body: null };
+      // Graph refuses a consent policy with no include (issue #294, Q75).
+      if (member[1].endsWith('/includes') && list.length === 1) {
+        return { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: 'PermissionGrantPolicy should contain an Includes PermissionGrantConditionSet.' } } };
+      }
       graph.objects.set(member[1], { value: list.filter((condition) => condition.id !== id) });
       return { ok: true, status: 204, body: null };
     }
@@ -340,7 +344,7 @@ const POLICY = '/policies/permissionGrantPolicies/keel-rt-low-risk';
 const lowInclude = grantPolicy().includes[0];
 const mediumInclude = { ...lowInclude, permissionClassification: 'medium' };
 
-test('an existing app consent policy is brought back to exactly the backup\'s rules, removing extras first', async () => {
+test('an existing app consent policy is brought back to exactly the backup\'s rules, its only extra include removed once the backup\'s is in', async () => {
   const graph = directoryGraph();
   graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'Renamed', description: 'Low-risk delegated permissions' });
   graph.objects.set(`${POLICY}/includes`, { value: [{ id: 'extra', permissionType: 'application', resourceApplication: 'any', permissions: ['all'] }] });
@@ -348,8 +352,8 @@ test('an existing app consent policy is brought back to exactly the backup\'s ru
   assert.deepEqual(result.failed, []);
   assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
     `PATCH ${POLICY}`,
-    `DELETE ${POLICY}/includes/extra`,
     `POST ${POLICY}/includes`,
+    `DELETE ${POLICY}/includes/extra`,
   ]);
   assert.deepEqual(graph.bodies[0].body, { displayName: 'KEEL-RT low risk' });
   const includes = graph.objects.get(`${POLICY}/includes`).value;
@@ -369,9 +373,10 @@ test('issue #294: a drifted, wider include is replaced by the backup\'s, and a r
   const result = await run(graph, [resource]);
   assert.deepEqual(result.failed, []);
   assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
-    `DELETE ${POLICY}/includes/drifted`,
     `POST ${POLICY}/includes`,
-  ], 'the wider rule goes before the backup\'s rule is added, so the policy never allows more than either');
+    `DELETE ${POLICY}/includes/drifted`,
+  ], 'Graph refuses removing the only include, so the wider rule goes right after the backup\'s is added');
+  assert.deepEqual(result.applied.map((applied) => applied.targetId), ['keel-rt-low-risk']);
   assert.deepEqual(graph.objects.get(`${POLICY}/includes`).value.map((condition) => condition.permissionClassification), ['low']);
 
   const dryRun = await run(graph, [resource], { mode: 'dry-run' });
@@ -390,12 +395,50 @@ test('excludes converge too: a missing exclude is added before includes, an extr
   const result = await run(graph, [grantResource('create', grantPolicy({ excludes: [backupExclude] }))]);
   assert.deepEqual(result.failed, []);
   assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
-    `DELETE ${POLICY}/includes/drifted`,
     `POST ${POLICY}/excludes`,
     `POST ${POLICY}/includes`,
+    `DELETE ${POLICY}/includes/drifted`,
     `DELETE ${POLICY}/excludes/extra-exclude`,
   ]);
   assert.deepEqual(graph.objects.get(`${POLICY}/excludes`).value.map((condition) => condition.clientApplicationIds), [['app-blocked']]);
+});
+
+test('issue #294: extra includes go first while another rule stays, and only the last waits for the backup\'s', async () => {
+  const graph = directoryGraph();
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'Low-risk delegated permissions' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted-1' }, { ...mediumInclude, permissionType: 'application', id: 'drifted-2' }] });
+  const result = await run(graph, [grantResource('create')]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
+    `DELETE ${POLICY}/includes/drifted-1`,
+    `POST ${POLICY}/includes`,
+    `DELETE ${POLICY}/includes/drifted-2`,
+  ]);
+  assert.deepEqual(graph.objects.get(`${POLICY}/includes`).value.map((condition) => condition.permissionClassification), ['low']);
+});
+
+test('issue #294: a last-include refusal while the backup\'s include replicates is retried, and a lasting one fails', async () => {
+  for (const [refusals, failed] of [[2, 0], [Infinity, 1]]) {
+    const graph = directoryGraph();
+    const write = graph.write;
+    let left = refusals;
+    graph.write = async (version, path, request) => {
+      if (request.method === 'DELETE' && path === `${POLICY}/includes/drifted` && left > 0) {
+        left -= 1;
+        graph.bodies.push({ method: request.method, path, body: request.body });
+        return { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: 'PermissionGrantPolicy should contain an Includes PermissionGrantConditionSet.' } } };
+      }
+      return write(version, path, request);
+    };
+    graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'Low-risk delegated permissions' });
+    graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted' }] });
+    const result = await run(graph, [grantResource('create')], {
+      readAfterWriteOptions: { attempts: 1, delayMs: 0, replicationAttempts: 4, replicationDelayMs: 0 },
+    });
+    assert.equal(result.failed.length, failed, String(refusals));
+    assert.equal(graph.bodies.filter((w) => w.method === 'DELETE').length, failed ? 4 : 3, String(refusals));
+    if (!failed) assert.deepEqual(graph.objects.get(`${POLICY}/includes`).value.map((condition) => condition.permissionClassification), ['low']);
+  }
 });
 
 test('the read-back checks the whole rule sets: a rule left in place fails the write, never applies it', async () => {

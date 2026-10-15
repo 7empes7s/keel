@@ -611,7 +611,7 @@ assert.deepEqual(
 assert.deepEqual(
   JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'] }),
   ['--drift-id', 'drift-1',
-    '--collector-config', '/etc/keel/tenant-target.json',
+    '--collector-config', '/etc/keel/tenant.json',
     '--target-config', '/etc/keel/restorer.json'],
 );
 // The defaults follow the same server environment the portal reads (issue #92).

@@ -5,6 +5,8 @@
 //  - promoting that artifact needs an approved request from someone other than the
 //    requester, and then dispatches to that workload's own execute function;
 //  - the content-effect guard and the write qualification still apply;
+//  - by default the qualification comes from the stored workload ledger: a write
+//    with no live capture from this tenant stays disabled;
 //  - a workload artifact never has its `workload:<name>` marker read as a file.
 //
 // Everything runs against the isolated test database, an in-memory fake Graph and
@@ -13,7 +15,9 @@ import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
-import { recordSharePointRun } from '../collect/workloads/sharepoint.mjs';
+import { WORKLOAD_DESCRIPTORS } from '../collect/workloadContract.mjs';
+import { saveLedgerInputs } from '../collect/workloadLedgerStore.mjs';
+import { SHAREPOINT_OPERATIONS, recordSharePointRun } from '../collect/workloads/sharepoint.mjs';
 import { workloadWriteQualification } from '../coverage/qualification.mjs';
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
 import { createDryRunArtifact, getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
@@ -22,7 +26,7 @@ import { SHAREPOINT_WRITE_OPERATION } from '../restore/workloads/sharepoint.mjs'
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
-import { main, runRestore } from '../../cli/keel-restore.mjs';
+import { defaultWorkloadQualifications, main, runRestore } from '../../cli/keel-restore.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -294,4 +298,104 @@ test('promotion dispatches each workload artifact to its own execute function', 
     assert.deepEqual(calls.at(-1), { workload, artifactId: id, tenantId: TENANT_ID, planWorkload: workload });
   }
   assert.deepEqual(calls.map((call) => call.workload), Object.keys(WORKLOAD_RESTORES));
+});
+
+// ------------------------------------------------------- stored qualification
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const descriptor = (id) => WORKLOAD_DESCRIPTORS.find((item) => item.id === id);
+
+/** The SharePoint live proof as the import stores it: every read, and the one write. */
+function sharePointProof(tenantRef, capturedAt) {
+  const proofRef = 'sharepoint-live-acceptance@sha256:fixture';
+  return [
+    ...SHAREPOINT_OPERATIONS.map((id) => ({
+      operationId: id, kind: 'live-capture', synthetic: false, tenantRef, capturedAt,
+      version: descriptor(id).operation.version, ok: true, error: null, observed: { pages: 1 }, proofRef,
+    })),
+    {
+      operationId: SHAREPOINT_WRITE_OPERATION, kind: 'live-write-capture', synthetic: false, tenantRef, capturedAt,
+      version: 'v1.0', ok: true, readBackVerified: true, proofRef,
+    },
+  ];
+}
+const collectorGrants = () => ({
+  permissions: [...new Set(SHAREPOINT_OPERATIONS.flatMap((id) => descriptor(id).rbac.permissions))],
+  roles: [...new Set(SHAREPOINT_OPERATIONS.flatMap((id) => descriptor(id).rbac.roles))],
+});
+
+test('by default a promotion reads the stored ledger: no live write capture sends nothing, a stored one writes', async (t) => {
+  const client = await schemaClient(t);
+  const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
+  const { requester, approver } = await people(client);
+  const { graph, artifactId } = await dryRun(client, live, { requestedBy: requester });
+  await approve(client, artifactId, { requestedBy: requester, decidedBy: approver });
+  const stored = () => {
+    const { dependencies } = cliDependencies(graph);
+    delete dependencies.workloadQualifications;
+    return dependencies;
+  };
+  const enforce = () => runRestore({ artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies: stored(), logger: quiet });
+
+  // Nothing stored for this tenant: the write stays disabled.
+  await assert.rejects(enforce(), /SharePoint restore disabled/);
+  assert.deepEqual(graph.writes(), []);
+
+  // A live read and write capture stored for this tenant enables it.
+  const capturedAt = new Date(Date.now() - DAY_MS).toISOString();
+  await saveLedgerInputs(client, { tenantRef: TENANT, evidence: sharePointProof(TENANT, capturedAt), grants: collectorGrants() });
+  const result = await enforce();
+  assert.equal(result.outcome, 'verified');
+  assert.deepEqual(graph.writes().map((w) => `${w.method} ${w.url}`), [`PATCH ${SETTINGS_URL}`]);
+  assert.equal(graph.state.settings.sharingCapability, 'externalUserSharingOnly');
+});
+
+test('the stored qualification applies the 30-day, grant and per-operation rules at the moment of the run', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = `sha256:wq-${crypto.randomUUID()}`;
+  const capturedAt = '2026-10-10T00:00:00.000Z';
+  const operations = [SHAREPOINT_WRITE_OPERATION, 'teams.settings.update', 'exchange.client-access.update'];
+
+  // A database without stored proof: every operation answers, and none is enabled.
+  const none = await defaultWorkloadQualifications(client, { tenantRef, operations, now: new Date('2026-10-12T00:00:00Z') });
+  assert.deepEqual(Object.keys(none), operations);
+  for (const id of operations) {
+    assert.equal(none[id].operationId, id);
+    assert.equal(none[id].enabled, false, id);
+    assert.ok(none[id].reasons.includes('no proof yet'), id);
+  }
+
+  await saveLedgerInputs(client, { tenantRef, evidence: sharePointProof(tenantRef, capturedAt), grants: collectorGrants() });
+  const fresh = await defaultWorkloadQualifications(client, { tenantRef, operations, now: new Date('2026-10-12T00:00:00Z') });
+  assert.equal(fresh[SHAREPOINT_WRITE_OPERATION].state, 'live-qualified');
+  assert.equal(fresh[SHAREPOINT_WRITE_OPERATION].enabled, true);
+  // SharePoint proof is never Teams proof.
+  assert.equal(fresh['teams.settings.update'].enabled, false);
+  assert.equal(fresh['teams.settings.update'].state, 'disabled');
+  // A write that needs the restorer's grants stays off while they are unknown.
+  assert.ok(fresh['exchange.client-access.update'].reasons.some((reason) => /grants are unknown/.test(reason)));
+  assert.equal(fresh['exchange.client-access.update'].enabled, false);
+
+  // The same stored capture lapses after 30 days: the ledger is rebuilt per run.
+  const later = await defaultWorkloadQualifications(client, { tenantRef, operations, now: new Date('2026-11-10T00:00:00Z') });
+  assert.equal(later[SHAREPOINT_WRITE_OPERATION].enabled, false);
+  assert.ok(later[SHAREPOINT_WRITE_OPERATION].reasons.some((reason) => /older than 30 days/.test(reason)));
+
+  // Another tenant's stored proof never qualifies this one.
+  const other = await defaultWorkloadQualifications(client, { tenantRef: `sha256:wq-${crypto.randomUUID()}`, operations, now: new Date('2026-10-12T00:00:00Z') });
+  assert.equal(other[SHAREPOINT_WRITE_OPERATION].enabled, false);
+});
+
+test('every WKLD write stays disabled by default until a live capture is stored for it', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = `sha256:wq-${crypto.randomUUID()}`;
+  await saveLedgerInputs(client, { tenantRef, evidence: sharePointProof(tenantRef, new Date(Date.now() - DAY_MS).toISOString()), grants: collectorGrants() });
+  for (const [workload, entry] of Object.entries(WORKLOAD_RESTORES)) {
+    const answers = await defaultWorkloadQualifications(client, { tenantRef, operations: entry.operations });
+    assert.deepEqual(Object.keys(answers), [...entry.operations], workload);
+    for (const id of entry.operations) {
+      if (id === SHAREPOINT_WRITE_OPERATION) continue;
+      assert.equal(answers[id].enabled, false, `${workload} ${id}`);
+    }
+  }
 });

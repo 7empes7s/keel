@@ -2643,3 +2643,14 @@ item that needs it stays untouched.
 - Not added on purpose: `CallRecords.Read.All`, `Bookings.Read.All`, `SubjectRightsRequest.Read.All` (they read people's
   data, not configuration) and any Power BI permission.
 - **Report:** names added, names skipped and why, and the list still waiting for consent (manifest minus held).
+
+### Q57: Confirm Marouane's admin consent for Q55/Q56 (read-only)
+- Drafted by the "Add API permissions" thread (2026-10-15). Marouane reported consent done at 00:09 UTC.
+- Status: todo
+- Needs: Q56 done.
+- **Read-only.** Nothing created, granted or removed.
+- **Do:** for the KEEL Collector and the KEEL Content Reader, list the Graph app roles in `requiredResourceAccess` that the
+  service principal does NOT hold as appRoleAssignments (expected: none for either). Also say whether the Fabric setting
+  "Service principals can access read-only admin APIs" is visible as on for `KEEL-RT-collector-fabric-readers` and whether
+  the Collector is a Power Platform management app, if you can read either; otherwise say "not readable".
+- **Report:** missing roles per app (or "none"), and the two optional checks.

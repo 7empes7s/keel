@@ -3988,8 +3988,24 @@ item that needs it stays untouched.
   `engine/discovery/transport.mjs`, which refuses anything but a body-less GET to graph.microsoft.com before it is sent.
   Bodies are counted and dropped. It writes one `discovery_run` (and its items) to the KEEL database, nothing else.
 - Needs: `test -f /opt/keel-live/cli/keel-discover.mjs` and the schema applied (`discovery_run` table exists).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 18:25–18:35 UTC on B = 1cb777c9. Read-only: Collector GETs to graph.microsoft.com only, plus one stored discovery_run.
+  No tenant write, approval or grant.
+  - **1. `keel-discover.mjs run`:** **exit 0**, **wall time 258 s**.
+    - Summary: `Discovery 2026-10-15T18:29:10.005Z: 1004 types; 83 catalogued, 276 uncatalogued, 573 unreadable, 72 not listed.`
+    - Source lines that are not `complete`: `powershell:ExchangeOnlineManagement`, `powershell:MicrosoftTeams` and `powershell:PnP.PowerShell`
+      are `unknown (no command list was supplied for this module)`, as expected without `--powershell-commands`. Every Graph source is complete.
+    - Also printed: `Containers: users 104, groups 57, teams 11, sites 1.` and `Catalogue: 82 covered, 6 under-item, 6 unreadable.`
+    - `1659 Graph GET requests, 17 throttled.` `Stored discovery run 1.`
+  - **2. `show`:** exit 0. **384 uncatalogued lines and 820 unreadable lines** (the item lines under each heading).
+    - The 10 most common `needs <grant>` values among the unreadable ones: needs DeviceManagementConfiguration.Read.All (41); needs SecurityEvents.Read.All (38); needs Directory.Read.All (30); needs Reports.Read.All (18); needs Policy.Read.All (14); needs Printer.Read.All (11); needs CallRecords.Read.All (6); needs RoleManagement.Read.Directory (5); needs IdentityRiskEvent.Read.All (5); needs RoleManagement.Read.All (4); 
+    - Nothing granted.
+    - Several of those the Collector already holds (DeviceManagementConfiguration.Read.All, SecurityEvents.Read.All, Directory.Read.All,
+      Reports.Read.All, Policy.Read.All, Printer.Read.All, RoleManagement.Read.*). So the "needs" hint is the documented scope, and the
+      real cause is something else: many unreadable lines are `not-listable (400/404)` beta paths. Worth a look by the discovery thread.
+  - **3. Portal:** the Protect page reads `loadLatestDiscovery` (portal/lib/discovery.ts). Called with the same arguments, it returns
+    **run 1** (276 uncatalogued, 573 unreadable, 72 not listed; 1276 items), so the Discovery section shows this run.
+    - I didn't view the page itself (Cloudflare Access plus a portal session; `/api/discovery` without a session returns 401).
 - Do (no tenant writes, no approvals, no consent, no new grants):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
      (no `--powershell-commands`; PowerShell modules then show as "not listed", which is expected). Report the exit code,

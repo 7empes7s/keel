@@ -4284,7 +4284,7 @@ item that needs it stays untouched.
   `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /opt/keel-live/ops/powershell:/app:ro keel-powershell:latest`
   with the job JSON on stdin. Every step is one run-cmdlet job as the Restorer:
   `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"<cmdlet>","parameters":{...},"tenantConfigPath":"/etc/keel/restorer.json"}`.
-- Status: todo
+- Status: in-progress
 - Do (test tenant only; one tenant-wide object, written back to its own current value):
   1. `Get-QuarantinePolicy` with `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`. Note the object's `Identity`, `DistinguishedName`,
      `ExchangeObjectId`, `Guid` and the current `OrganizationBrandingEnabled` (true or false). Report `ok`, the number of objects and the

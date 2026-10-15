@@ -247,7 +247,9 @@ export const JOB_HANDLERS = {
       if (params.config !== undefined) {
         args.push('--config', requireString(params.config, 'params.config'));
       }
-      if (params.dryRun) args.push('--dry-run');
+      // Retention go (2026-10-15): a scheduled prune deletes what its own report lists.
+      // dryRun: true keeps it to the report.
+      args.push(params.dryRun ? '--dry-run' : '--apply');
       return args;
     },
   },

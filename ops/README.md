@@ -97,8 +97,8 @@ trigger from before the schedules migration: `cli/keel-schedules-migrate.mjs` di
 prune twice and break the check. `keel-prune.service` stays installed for a manual run.
 
 Every prune run first saves a report (`retention_prune_report`): what would go, what stays and
-why. **The scheduled run is a dry run and deletes nothing.** Only `keel-prune.mjs --apply` deletes,
-and it deletes exactly what its own report lists. Nothing runs `--apply` until Marouane says go.
+why. The scheduled run passes `--apply` (Marouane's go, 2026-10-15) and deletes exactly what its own
+report lists, in the same transaction. `keel-prune.mjs` without `--apply` is a dry run.
 
 What routine retention keeps is a rotation policy (`engine/store/rotation.mjs`), per tenant,
 workload, container or item; the most specific one wins:
@@ -131,7 +131,7 @@ set -a; . /etc/keel/db.env; set +a
 node /opt/keel/cli/keel-prune.mjs --report /tmp/keel-prune-report.json
 ```
 
-To stop the daily report, turn the `prune` schedule off on the Schedules page.
+To stop pruning, turn the `prune` schedule off on the Schedules page.
 
 ## Round-trip rehearsal
 

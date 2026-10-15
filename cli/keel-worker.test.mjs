@@ -339,6 +339,10 @@ assert.equal(
   join(cliDir, 'keel-collect.mjs'),
   'a backup job must spawn the existing tiered collection script',
 );
+// A scheduled prune deletes what its report lists; dryRun keeps it to the report.
+assert.deepEqual(JOB_HANDLERS.prune.argsFor({}), ['--apply']);
+assert.deepEqual(JOB_HANDLERS.prune.argsFor({ dryRun: true }), ['--dry-run']);
+assert.deepEqual(JOB_HANDLERS.prune.argsFor({ config: '/etc/keel/tenant.json' }), ['--config', '/etc/keel/tenant.json', '--apply']);
 assert.deepEqual(JOB_HANDLERS.backup.argsFor({ tier: 'tier2' }), ['--tier', 'tier2']);
 assert.deepEqual(JOB_HANDLERS.backup.argsFor({}), ['--tier', 'tier1'], 'tier defaults to tier1');
 assert.throws(

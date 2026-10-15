@@ -28,7 +28,7 @@ import { signEvidence, verifyEvidence } from '../../tools/release/qualification.
 import { SITE_GRANTS_RECORD_FILE } from '../../tools/qualification/sharepointSiteGrantsAcceptance.mjs';
 import { SITE_PERMISSIONS_RECORD_FILE } from '../../tools/qualification/sharepointSitePermissionsAcceptance.mjs';
 import {
-  CAPTURE_CREATE_PREFIX, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
+  CAPTURE_CREATE_PREFIX, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
 } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import {
   captureWorkloadWrites, ledgerEvidenceFromWorkloadWritesAcceptance, main, workloadWritesCapturePlan, writeWorkloadWritesFiles,
@@ -371,6 +371,65 @@ test('a writer record captured at another module version than the read proof it 
   assert.deepEqual(result.imported.map((item) => item.file), ['exchange-read.json']);
   assert.match(result.refused[0].failures[0], /ExchangeOnlineManagement 3\.5\.0, but the read proof in this import is at 3\.10\.1/);
   assert.equal(result.exitCode, 1);
+});
+
+test('a tenant-wide setting is written only when allowed and when it is the one object, then put back', async (t) => {
+  for (const workload of ['teams-org-policies', 'exchange-extended']) {
+    const { families } = WORKLOADS[workload];
+    const wide = Object.entries(writeFamilies(workload)).filter(([, ops]) => TENANT_WIDE_WRITES.includes(ops.update));
+    assert.ok(wide.length > 0, workload);
+    const state = tenantState(workload);
+    for (const [family] of wide) {
+      const key = getKey(families[family]);
+      state[key] = state[key].filter((body) => !isFixture(body));
+      for (const body of state[key]) {
+        // Settings hold switches: give each non-text field a true/false value.
+        for (const field of families[family].fields) if (!TEXT.has(field) && field !== 'Identity' && field !== 'Name') body[field] = false;
+        if (WORKLOADS[workload].keyed === 'guid') body.IsDefault = true;
+      }
+    }
+    const wideOps = wide.map(([, ops]) => ops.update);
+
+    // Without the option: skipped, nothing tenant-wide is written.
+    const off = await signedCapture(workload, fakeTenant(workload, { state: structuredClone(state) }));
+    for (const id of wideOps) assert.match(off.evidence.subject.skipped.find((item) => item.operationId === id)?.reason ?? '', /no KEEL-RT- object/, id);
+
+    // With it: written, read back and put back on the one object.
+    const live = fakeTenant(workload, { state: structuredClone(state) });
+    const before = structuredClone(live.state);
+    const { evidence, dir, needsManualRevert } = await signedCapture(workload, live, { allowTenantWide: true });
+    assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
+    assert.deepEqual(needsManualRevert, []);
+    assert.equal(evidence.subject.tenantWide, true);
+    const wideCaptures = evidence.subject.writes.filter((item) => item.scope === 'tenant-wide');
+    assert.ok(wideCaptures.length > 0, `${workload}: no tenant-wide capture`);
+    assert.ok(wideCaptures.every((item) => wideOps.includes(item.operationId) && item.restoredToOriginal && item.readBackVerified), workload);
+    for (const [key, list] of Object.entries(before)) {
+      assert.deepEqual(live.state[key].filter((body) => !String(body.Identity ?? '').toUpperCase().startsWith(`TAG:${CAPTURE_CREATE_PREFIX.toUpperCase()}`)), list, key);
+    }
+    t.diagnostic(`${workload}: ${wideCaptures.map((item) => `${item.operationId} (${item.field})`).join(', ')}; skipped ${evidence.subject.skipped.filter((item) => wideOps.includes(item.operationId)).map((item) => `${item.operationId}: ${item.reason}`).join('; ')}`);
+
+    // A switch that turns a tenant-wide protection off is never flipped.
+    assert.ok(wideCaptures.every((item) => !TENANT_WIDE_UNSAFE_SWITCHES.includes(item.field)), workload);
+
+    // The gate refuses a tenant-wide write in a record that did not allow them, and one on another operation.
+    const failures = (change) => verifyEvidence(signEvidence(change(structuredClone(evidence)), KEY), verifyOptions(dir)).failures.join(' | ');
+    assert.match(failures((record) => { record.subject.tenantWide = false; return record; }), /did not allow them/);
+    const fixtureCapture = evidence.subject.writes.find((item) => item.scope === 'fixture' && item.kind === 'update');
+    if (fixtureCapture) {
+      assert.match(failures((record) => { record.subject.writes.find((item) => item.operationId === fixtureCapture.operationId).scope = 'tenant-wide'; return record; }), /not a tenant-wide setting a capture may write/);
+    }
+
+    // Two objects of the kind (the Teams readers keep one configuration): not the one tenant-wide object, so skipped.
+    if (WORKLOADS[workload].keyed !== 'guid') continue;
+    const twice = structuredClone(state);
+    const [family] = wide[0];
+    const key = getKey(families[family]);
+    twice[key].push({ ...structuredClone(twice[key][0]), Guid: guid(), Identity: WORKLOADS[workload].keyed === 'guid' ? 'x' : 'Tag:Other' });
+    const doubled = fakeTenant(workload, { state: twice });
+    const result = await signedCapture(workload, doubled, { allowTenantWide: true });
+    assert.match(result.evidence.subject.skipped.find((item) => item.operationId === wide[0][1].update)?.reason, /returned 2 objects/);
+  }
 });
 
 test('a locked retention policy and its rules are never written; a family with no fixture is skipped', async () => {

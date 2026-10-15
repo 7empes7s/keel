@@ -29,6 +29,33 @@ export const CAPTURE_TEXT_FIELDS = Object.freeze(['Comments', 'Comment', 'Descri
 // A policy re-created by an add capture is named this, plus a random suffix.
 export const CAPTURE_CREATE_PREFIX = `${WORKLOAD_FIXTURE_PREFIX}capture-`;
 
+/**
+ * Tenant-wide settings: one object per tenant, which can never carry a KEEL-RT- name.
+ * A capture writes one only when run with --allow-tenant-wide-test-writes (Marouane
+ * allowed write-and-put-back captures of these in the test tenant on 2026-10-15), and
+ * then only when the read returns exactly one object of its kind.
+ */
+export const TENANT_WIDE_WRITES = Object.freeze([
+  'exchange-extended.connection-filter-policy.update',
+  'exchange-extended.quarantine-global-settings.update',
+  'exchange-extended.activesync-settings.update',
+  'exchange-extended.defender-office-apps.update',
+  'teams.federation-configuration.update',
+  'teams.client-configuration.update',
+  'teams.guest-meeting-configuration.update',
+  'teams.guest-messaging-configuration.update',
+  'teams.guest-calling-configuration.update',
+  'teams.live-events-configuration.update',
+]);
+
+/**
+ * Switches no capture flips on a tenant-wide setting, even briefly: each one turns a
+ * tenant-wide protection off or changes where calls and messages route.
+ */
+export const TENANT_WIDE_UNSAFE_SWITCHES = Object.freeze([
+  'EnableATPForSPOTeamsODB', 'EnableSafeDocs', 'AllowSafeDocsOpen', 'EnableSafeList', 'AllowAccessForUnSupportedPlatform', 'SharedSipAddressSpace',
+]);
+
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // A capture belongs to the record it is in: no older than this before observedAt.
@@ -80,16 +107,17 @@ function effectsOf(write, from, to) {
  * never a candidate: some rules depend on other fields of the object (an inbound
  * connector's Enabled while ScanAndDropRecipients is set), which the check cannot see.
  */
-function candidateFields(write) {
+function candidateFields(write, { tenantWide = false } = {}) {
   const ruled = new Set((WORKLOAD_EFFECT_RULES[write.resourceType] ?? []).map((entry) => entry.field));
+  if (tenantWide) for (const field of TENANT_WIDE_UNSAFE_SWITCHES) ruled.add(field);
   const text = CAPTURE_TEXT_FIELDS.filter((field) => write.fields.includes(field) && !ruled.has(field));
   const switches = /Rule$/.test(write.resourceType) ? [] : write.fields.filter((field) => !text.includes(field) && !ruled.has(field));
   return [...text.map((field) => ({ field, type: 'text' })), ...switches.map((field) => ({ field, type: 'switch' }))];
 }
 
 /** Whether a capture may write `field` of this write at all (the check's view, without the object). */
-export function captureFieldAllowed(write, field, type) {
-  return candidateFields(write).some((candidate) => candidate.field === field && candidate.type === type);
+export function captureFieldAllowed(write, field, type, options = {}) {
+  return candidateFields(write, options).some((candidate) => candidate.field === field && candidate.type === type);
 }
 
 /**
@@ -97,9 +125,9 @@ export function captureFieldAllowed(write, field, type) {
  * after }, or { reason } when nothing on it can be changed harmlessly. `marker` is
  * the text written to a text field.
  */
-export function chooseCaptureChange(write, resource, { marker }) {
+export function chooseCaptureChange(write, resource, { marker, tenantWide = false }) {
   const fields = resource?.fields ?? {};
-  for (const { field, type } of candidateFields(write)) {
+  for (const { field, type } of candidateFields(write, { tenantWide })) {
     if (resource?.fieldCoverage?.[field]?.status !== 'observed') continue;
     const before = fields[field] ?? null;
     let after;
@@ -134,6 +162,7 @@ export function identityNamesFixture(write, capture) {
   const identity = capture.identity;
   if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
   if (kind === 'add' || write.identity === 'name') return identity === capture.fixture;
+  if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture;
   if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
   return GUID_RE.test(identity);
 }
@@ -155,7 +184,7 @@ function requestFits(capture, request) {
  * not on a fixture, not a harmless field, or not of this record. Any of these fails
  * the whole record.
  */
-function structuralProblems(capture, { workload, moduleVersion, observedAt }) {
+function structuralProblems(capture, { workload, moduleVersion, observedAt, tenantWide }) {
   const id = capture?.operationId;
   const write = WKLD_WRITE_OPERATIONS[id];
   if (!write || write.workload !== workload) return [`${id ?? 'a write'}: not a declared ${workload} write in this build`];
@@ -165,12 +194,16 @@ function structuralProblems(capture, { workload, moduleVersion, observedAt }) {
   if (capture.method !== write.method) problems.push(`${id}: sent ${capture.method ?? 'nothing'}, declared ${write.method}`);
   if (capture.synthetic !== false) problems.push(`${id}: a synthetic capture is never live proof`);
   if (capture.version !== moduleVersion) problems.push(`${id}: captured at ${capture.version ?? 'an unknown version'}, the record says ${moduleVersion}`);
-  if (!isFixtureName(capture.fixture)) problems.push(`${id}: the object written is not a ${WORKLOAD_FIXTURE_PREFIX} fixture`);
+  if (capture.scope === 'tenant-wide') {
+    if (kind !== 'update' || !TENANT_WIDE_WRITES.includes(id)) problems.push(`${id}: not a tenant-wide setting a capture may write`);
+    else if (!tenantWide) problems.push(`${id}: a tenant-wide write in a record that did not allow them`);
+    if (typeof capture.fixture !== 'string' || !capture.fixture) problems.push(`${id}: the tenant-wide setting written is not named`);
+  } else if (!isFixtureName(capture.fixture)) problems.push(`${id}: the object written is not a ${WORKLOAD_FIXTURE_PREFIX} fixture`);
   if (kind === 'add' && !String(capture.fixture ?? '').toUpperCase().startsWith(CAPTURE_CREATE_PREFIX.toUpperCase())) {
     problems.push(`${id}: a created policy must be named ${CAPTURE_CREATE_PREFIX}*`);
   }
   if (!identityNamesFixture(write, capture)) problems.push(`${id}: the object named to ${write.method} is not the ${WORKLOAD_FIXTURE_PREFIX} fixture recorded`);
-  if (!write.fields.includes(capture.field) || !captureFieldAllowed(write, capture.field, capture.type)) {
+  if (!write.fields.includes(capture.field) || !captureFieldAllowed(write, capture.field, capture.type, { tenantWide: capture.scope === 'tenant-wide' })) {
     problems.push(`${id}: ${capture.field ?? 'no field'} is not a field a capture may write`);
   } else if (capture.type === 'switch' && (typeof capture.before !== 'boolean' || capture.target !== !capture.before)) {
     problems.push(`${id}: a switch capture must flip a true/false value`);
@@ -282,7 +315,7 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
   for (const capture of writes) {
     if (seen.has(capture?.operationId)) failures.push(`${capture.operationId}: captured twice`);
     seen.add(capture?.operationId);
-    failures.push(...structuralProblems(capture, { workload, moduleVersion, observedAt }));
+    failures.push(...structuralProblems(capture, { workload, moduleVersion, observedAt, tenantWide: subject.tenantWide === true }));
   }
   // Every write sent belongs to a capture: one request per add, a write and its put-back per update.
   const used = new Map();

@@ -19,8 +19,23 @@ never an exact name) and that reports no preservation lock:
   Description. KEEL never deletes, so it stays, assigned to nobody (`--no-create` skips this).
 
 A family with no `KEEL-RT-` object, nothing harmless to change, or a lock is skipped and listed.
-Global policies, tenant-wide settings (organization, federation, ActiveSync, Defender), journal
-rules and device access rules are never written, so their writers stay off.
+Global policies, journal rules and device access rules are never written, so their writers stay off.
+
+### Tenant-wide settings (`--allow-tenant-wide-test-writes`)
+
+Ten settings exist once per tenant and can never carry a `KEEL-RT-` name (`TENANT_WIDE_WRITES`):
+Teams federation, client, guest meeting, guest messaging, guest calling and live events
+configuration, and the Exchange connection filter, quarantine global settings, ActiveSync
+organization settings and Defender for Office. Marouane allowed write-and-put-back captures of these in
+the test tenant on 2026-10-15. Off by default; with `--allow-tenant-wide-test-writes` a capture:
+
+- writes one only when its family has no `KEEL-RT-` object and the read returns exactly one object,
+  which the restore guard (`workloadTarget`) also sees as tenant-wide;
+- changes one harmless field as above, never a switch in `TENANT_WIDE_UNSAFE_SWITCHES` (Defender
+  and Safe Documents, the IP safe list, unsupported ActiveSync platforms, the shared SIP address
+  space), reads it back and puts it back;
+- marks the capture `scope: tenant-wide` and the record `tenantWide: true`. The gate refuses a
+  tenant-wide capture in a record without it, or on any other operation.
 
 ## Operator steps
 

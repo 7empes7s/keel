@@ -59,6 +59,8 @@ import { valueVerdict, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
+import { CompareView } from "@/components/compare-view";
+import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
@@ -1034,6 +1036,100 @@ function askPage(data: AskData) {
     <div data-layer="explanation"><AskView data={data} question={data.answer?.question ?? ""} /></div></>;
 }
 
+// Wave 2 CMP: two snapshots of this tenant, and this tenant against another.
+const CMP_SNAP_OLD = "c0a10000-0000-4000-8000-000000000001";
+const CMP_SNAP_NEW = "c0a10000-0000-4000-8000-000000000002";
+const CMP_SNAP_OTHER = "c0a10000-0000-4000-8000-000000000003";
+const COMPARE_TENANTS: CompareTenant[] = [
+  { tenantRef: "sha256:5a1e00000000c0a1", label: "This tenant", own: true, snapshots: [
+    { id: CMP_SNAP_NEW, completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 },
+    { id: CMP_SNAP_OLD, completedAt: "2026-10-01T09:10:00Z", resourceCount: 4809 },
+  ] },
+  { tenantRef: "sha256:5a1e00000000c0b2", label: "Other tenant 1", own: false, snapshots: [{ id: CMP_SNAP_OTHER, completedAt: "2026-10-02T06:00:00Z", resourceCount: 3120 }] },
+];
+const COMPARE_SNAPSHOTS: CompareResult = {
+  version: 1, mode: "snapshots", portable: false, generatedAt: now,
+  left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_OLD, at: "2026-10-01T09:10:00Z" },
+  right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
+  settings: {
+    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 1, unmatched: 0 },
+    groups: [
+      { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 0, changed: 1, unchanged: 11, total: 1, items: [
+        { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 2, fields: [
+          { path: "state", kind: "changed", before: "enabled", after: "enabledForReportingButNotEnforced" },
+          { path: "conditions.users.excludeGroups", kind: "changed", before: ["b1ea0000-0000-4000-8000-000000000001"], after: ["b1ea0000-0000-4000-8000-000000000001", "f1aa0000-0000-4000-8000-000000000002"] },
+        ] },
+      ] },
+      { service: "Entra ID", resourceType: "group", added: 1, removed: 1, changed: 1, unchanged: 210, total: 3, items: [
+        { naturalKey: "group:Old project team", name: "Old project team", changeType: "removed", blastRadius: "access-affecting" },
+        { naturalKey: "group:Finance", name: "Finance", changeType: "changed", blastRadius: "access-affecting", fieldsTotal: 1, fields: [{ path: "securityEnabled", kind: "changed", before: true, after: false }] },
+        { naturalKey: "group:KEEL-RT-Contractors", name: "KEEL-RT-Contractors", changeType: "added", blastRadius: "access-affecting" },
+      ] },
+    ],
+    notCompared: [{ resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" }],
+    unmatched: [],
+  },
+  workloads: {
+    totals: { added: 0, removed: 0, changed: 1, unchanged: 41, notCompared: 1 },
+    groups: [
+      { service: "Exchange Online", workload: "exchange-mailbox-settings", state: "compared", added: 0, removed: 0, changed: 1, unchanged: 41, unverified: 0, unverifiedFields: 2, total: 1,
+        left: { collectionId: "c0a10000-0000-4000-8000-0000000000e1", outcome: "complete", at: "2026-10-01T09:00:00Z" },
+        right: { collectionId: "c0a10000-0000-4000-8000-0000000000e2", outcome: "complete", at: "2026-10-02T09:00:00Z" },
+        items: [{ resourceKey: "mailbox:finance@contoso.com", changeType: "changed", fieldsTotal: 1, fields: [{ path: "mailboxSettings.ForwardingSmtpAddress", kind: "changed", before: null, after: "smtp:outside@example.com" }] }] },
+      { service: "Teams", workload: "teams-org-policies", state: "not-compared", reason: "collection-failed",
+        left: { collectionId: "c0a10000-0000-4000-8000-0000000000e3", outcome: "complete", at: "2026-10-01T09:00:00Z" },
+        right: { collectionId: "c0a10000-0000-4000-8000-0000000000e4", outcome: "failed", at: "2026-10-02T09:00:00Z" } },
+    ],
+  },
+  content: {
+    by: "item", totals: { added: 1, removed: 1, changed: 1 }, shown: 3, total: 3,
+    groups: [
+      { service: "OneDrive", workload: "onedrive", leftItems: 1204, rightItems: 1204, added: 1, removed: 1, changed: 0, containers: [
+        { container: "drive:b!Xc9", added: 1, removed: 1, changed: 0, items: [
+          { itemKey: "01ABCDEF", name: "Budget 2027.xlsx", kind: "drive-content", changeType: "removed", beforeSha256: "3e".repeat(32), afterSha256: null, beforeBytes: 48211, afterBytes: null },
+          { itemKey: "01ABCDEG", name: "Budget 2027 v2.xlsx", kind: "drive-content", changeType: "added", beforeSha256: null, afterSha256: "4f".repeat(32), beforeBytes: null, afterBytes: 49302 },
+        ] },
+      ] },
+      { service: "Exchange Online", workload: "exchange-mail", leftItems: 30211, rightItems: 30211, added: 0, removed: 0, changed: 1, containers: [
+        { container: "mailbox/c0a10000-0000-4000-8000-0000000000f1/items/inbox", added: 0, removed: 0, changed: 1, items: [
+          { itemKey: "AAMkAD1", name: null, kind: "message", changeType: "changed", beforeSha256: "5a".repeat(32), afterSha256: "6b".repeat(32), beforeBytes: 18200, afterBytes: 18342 },
+        ] },
+      ] },
+    ],
+  },
+};
+const COMPARE_TENANTS_RESULT: CompareResult = {
+  version: 1, mode: "tenants", portable: true, generatedAt: now,
+  left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
+  right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0b2", snapshotId: CMP_SNAP_OTHER, at: "2026-10-02T06:00:00Z" },
+  settings: {
+    totals: { added: 0, removed: 1, changed: 1, unchanged: 3010, notCompared: 0, unmatched: 1 },
+    groups: [
+      { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 1, changed: 1, unchanged: 10, total: 2, items: [
+        { naturalKey: "conditionalAccessPolicy:Require MFA for admins", name: "Require MFA for admins", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 1, fields: [
+          { path: "conditions.users.excludeGroups", kind: "changed", before: ["ref:group:Break-glass admins"], after: ["ref:group:Break-glass admins", "ref:unresolved"] },
+        ] },
+        { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "removed", blastRadius: "tenant-lockout" },
+      ] },
+    ],
+    notCompared: [],
+    unmatched: [{ resourceType: "deviceCategory", service: "Intune", left: 3, right: 2 }],
+  },
+  workloads: { totals: { added: 0, removed: 0, changed: 0, unchanged: 0, notCompared: 0 }, groups: [] },
+  content: { by: "holdings", totals: { inBoth: 812, onlyLeft: 31, onlyRight: 4 }, groups: [
+    { service: "SharePoint", workload: "sharepoint-sites", leftItems: 843, rightItems: 816, leftBytes: 912_334_120, rightBytes: 880_102_400, inBoth: 812, onlyLeft: 31, onlyRight: 4 },
+  ] },
+};
+const COMPARE: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_OLD, to: CMP_SNAP_NEW }, result: COMPARE_SNAPSHOTS, problem: null };
+const COMPARE_ACROSS: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_NEW, to: CMP_SNAP_OTHER }, result: COMPARE_TENANTS_RESULT, problem: null };
+
+function comparePage(data: CompareData) {
+  const verdict = compareVerdict(data);
+  return <>{header("Changes", "Compare", "Put two snapshots side by side, or two tenants: settings, workload settings and stored content.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><CompareView data={data} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   switch (path) {
@@ -1075,6 +1171,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return reportsPage(VALUE_REPORT);
     case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
+    case "/compare": return comparePage(COMPARE);
+    case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/readiness": return readinessPage(READINESS);

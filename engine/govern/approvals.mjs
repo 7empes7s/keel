@@ -15,12 +15,15 @@ import { appendEvidence } from './evidence.mjs';
 import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
 import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
-import { capabilityScope } from '../authz/can.mjs';
+import { can, capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
+import { classifyApprovalActions, requiredApprovalsFor, standingPolicyRefusal } from './approvalPolicy.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
+// Wave 2 RBAC: the first of two approvals a two-person request needs.
+export const APPROVAL_SIGNOFF_EVIDENCE_KIND = 'approval-signoff';
 export const APPROVAL_STATUSES = Object.freeze([
   'pending', 'approved', 'rejected', 'expired',
 ]);
@@ -30,6 +33,16 @@ export const APPROVAL_STATUSES = Object.freeze([
 // mints no job — a second, worker-run copy of the same restore would be wrong. Only a
 // restore may be CLI-executed.
 export const APPROVAL_EXECUTORS = Object.freeze(['worker', 'cli']);
+// Wave 2: actions an operator carries out with the CLI. A content restore (mail or
+// files, `keel-content-restore`) is not a worker job kind, so it is CLI-only.
+export const CLI_EXECUTED_ACTIONS = Object.freeze(['restore', 'content-restore']);
+const CLI_ONLY_ACTIONS = Object.freeze(['content-restore']);
+// The capability a requester must still hold for an action that is not a job kind.
+const NON_JOB_ACTION_CAPABILITIES = Object.freeze({ 'content-restore': 'content-restore' });
+
+function requesterCapabilityFor(action) {
+  return capabilityForJobKind(action) ?? NON_JOB_ACTION_CAPABILITIES[action] ?? null;
+}
 export const DEFAULT_APPROVAL_LIST_LIMIT = 100;
 export const MAX_APPROVAL_LIST_LIMIT = 100;
 
@@ -69,6 +82,13 @@ export class ApprovalInvalidatedError extends ApprovalExpiredError {
     this.reason = reason;
   }
 }
+
+// Wave 2 RBAC: under the two-person rule, the same person tried to approve a request
+// they already approved. Nothing changes; the request waits for someone else.
+export class DuplicateApproverError extends Error {}
+// Wave 2 RBAC: a decision made under a standing policy the request is outside of (for
+// the operator's standing approval: anything that is not a test-tenant restore).
+export class StandingPolicyRefusedError extends Error {}
 
 // Task 96: the decision named a plan that is no longer the request's plan. Nothing is
 // decided; the request stays as it was.
@@ -133,20 +153,27 @@ export async function listApprovalRequests(client, {
 
 // Task 90: `entityScope` is entityScope.mjs#captureApprovalScope's server-side capture
 // of the resources this request concerns. Omitted, the request is central-only.
+// Wave 2 RBAC: `policyActions` are the approval-policy actions the caller knows this
+// request is (approvalPolicy.mjs#APPROVAL_POLICY_ACTIONS); a restore's dry run adds the
+// ones it records. They and the approvers needed under the current policy are kept on
+// the request, so turning the rule off later never lowers what a request needs.
 /** @param {any} client
- * @param {{ tenantRef: string, action: string, params?: any, requestedBy: string, justification?: string | null, ttlMs?: number, entityScope?: any, executor?: 'worker' | 'cli' }} options
+ * @param {{ tenantRef: string, action: string, params?: any, requestedBy: string, justification?: string | null, ttlMs?: number, entityScope?: any, executor?: 'worker' | 'cli', policyActions?: string[] }} options
  */
 export async function requestApproval(client, {
   tenantRef, action, params, requestedBy, justification, ttlMs = DEFAULT_APPROVAL_TTL_MS, entityScope = null,
-  executor = 'worker',
+  executor = 'worker', policyActions = [],
 }) {
   // Gap B11: checked before anything is written. The worker re-checks the requester
   // again at execution; this only stops a request that could never run.
   if (!APPROVAL_EXECUTORS.includes(executor)) {
     throw new ApprovalRequestRefusedError(`executor must be one of ${APPROVAL_EXECUTORS.join(', ')}`);
   }
-  if (executor === 'cli' && action !== 'restore') {
-    throw new ApprovalRequestRefusedError('only a restore can be carried out with the CLI');
+  if (executor === 'cli' && !CLI_EXECUTED_ACTIONS.includes(action)) {
+    throw new ApprovalRequestRefusedError('only a restore or a content restore can be carried out with the CLI');
+  }
+  if (executor !== 'cli' && CLI_ONLY_ACTIONS.includes(action)) {
+    throw new ApprovalRequestRefusedError(`a ${action} is carried out with the CLI only`);
   }
   const requester = await findPrincipalById(client, requestedBy);
   if (!requester || requester.disabled_at) {
@@ -155,11 +182,16 @@ export async function requestApproval(client, {
   // Task 91: where the request goes, from current ownership at request time. Advisory
   // for the inbox and the evidence; eligibility is still decided afresh at decision time.
   const route = await routeApproval(client, { tenantRef, entityScope, requesterId: requestedBy });
+  const artifact = await restoreArtifact(client, { tenantRef, action, params });
+  const classes = classifyApprovalActions({ action, artifact, declared: policyActions });
+  const requiredApprovals = await requiredApprovalsFor(client, { tenantRef, classes });
   const { rows } = await client.query(
-    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope, route, executor)
-     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6, $7, $8)
+    `INSERT INTO approval_request (action, params, requested_by, justification, expires_at, entity_scope, route, executor,
+                                   policy_actions, required_approvals)
+     VALUES ($1,$2,$3,$4, now() + ($5 * interval '1 millisecond'), $6, $7, $8, $9, $10)
      RETURNING *`,
-    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope, route, executor],
+    [action, params ?? {}, requestedBy, justification ?? null, ttlMs, entityScope, route, executor,
+      JSON.stringify(classes), requiredApprovals],
   );
   const request = rows[0];
 
@@ -173,10 +205,50 @@ export async function requestApproval(client, {
       requestedBy,
       route,
       executor,
+      policyActions: classes,
+      requiredApprovals,
     },
     actor: requestedBy,
   });
   return request;
+}
+
+async function restoreArtifact(client, { tenantRef, action, params }) {
+  const artifactId = params?.artifactId;
+  if (action !== 'restore' || typeof artifactId !== 'string' || artifactId.length === 0) return null;
+  return getDryRunArtifact(client, { id: artifactId, tenantRef });
+}
+
+// Wave 2 RBAC: approvers needed now. A policy turned on since the request was made
+// raises it; one turned off never lowers it below what the request was made with.
+async function requiredApprovalsNow(client, { tenantRef, request }) {
+  const current = await requiredApprovalsFor(client, { tenantRef, classes: request.policy_actions ?? [] });
+  return Math.max(request.required_approvals ?? 1, current);
+}
+
+// Wave 2 RBAC: record this approver's sign-off and return every sign-off that still
+// counts: the decider's own, and earlier ones whose approver still holds `approve`.
+async function signOff(client, { request, decidedBy, standingPolicy }) {
+  const { rows: inserted } = await client.query(
+    `INSERT INTO approval_signoff (request_id, approver, standing_policy) VALUES ($1,$2,$3)
+     ON CONFLICT (request_id, approver) DO NOTHING RETURNING approver`,
+    [request.id, decidedBy, standingPolicy],
+  );
+  if (!inserted.length) {
+    throw new DuplicateApproverError('this approver already approved the request; a second, different approver must approve it');
+  }
+  const { rows } = await client.query(
+    `SELECT approver FROM approval_signoff WHERE request_id = $1 ORDER BY signed_at, approver`,
+    [request.id],
+  );
+  const counted = [];
+  for (const { approver } of rows) {
+    if (approver === request.requested_by) continue;
+    if (approver === decidedBy) { counted.push(approver); continue; }
+    const principal = await findPrincipalById(client, approver);
+    if (principal && await can(client, principal, 'approve')) counted.push(approver);
+  }
+  return counted;
 }
 
 const MAX_ROUTE_APPROVERS = 500;
@@ -263,7 +335,7 @@ async function checkEligibility(client, { tenantRef, request, decidedBy, enforce
     approverId: decidedBy,
     approverScope,
     requesterId: request.requested_by,
-    requesterCapability: capabilityForJobKind(request.action),
+    requesterCapability: requesterCapabilityFor(request.action),
   });
   if (verdict.eligible) return null;
   if (verdict.invalidate) {
@@ -291,11 +363,18 @@ async function closeIfExpired(client, request) {
 
 // Task 96: `expectedPlanDigest`, when given, must equal the locked request's plan digest
 // (approvalPlanDigest); a mirror callback passes the digest the external approver saw.
+// Wave 2 RBAC: `standingPolicy` names the standing policy this decision is made under
+// (approvalPolicy.mjs#STANDING_POLICIES); a request it does not cover is refused. When
+// the request needs two approvers, the first approval is a sign-off: the request stays
+// pending, no job is minted, and `{ request, job: null, signoffs, requiredApprovals }`
+// comes back. The second, different approver's approval decides it. `testTenantRefs`
+// replaces the committed test-tenant list in tests only; the portal never passes it.
 /** @param {any} client
- * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null }} options
+ * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null, standingPolicy?: string | null, testTenantRefs?: readonly string[] }} options
  */
 export async function approveRequest(client, {
-  tenantRef, id, decidedBy, enforceScope = false, approverScope = null, expectedPlanDigest = null,
+  tenantRef, id, decidedBy, enforceScope = false, approverScope = null, expectedPlanDigest = null, standingPolicy = null,
+  testTenantRefs = undefined,
 }) {
   let decided;
   await client.query('BEGIN');
@@ -345,11 +424,12 @@ export async function approveRequest(client, {
     // get right or wrong, because those fields are never looked at, so there is no
     // longer a param path for a future caller to find into this defect.
     let jobParams = request.params;
+    const artifact = await restoreArtifact(client, { tenantRef, action: request.action, params: request.params });
+    if (standingPolicy != null) {
+      const refusal = standingPolicyRefusal({ policy: standingPolicy, tenantRef, request, artifact, testTenantRefs });
+      if (refusal) throw new StandingPolicyRefusedError(refusal);
+    }
     if (request.action === 'restore') {
-      const artifactId = request.params?.artifactId;
-      const artifact = typeof artifactId === 'string' && artifactId.length > 0
-        ? await getDryRunArtifact(client, { id: artifactId, tenantRef })
-        : null;
       const validation = validateArtifactForApproval(artifact);
       if (!validation.ok) throw new PromotionRefusedError(validation.reason);
       // The approval row has only an artifact reference.  The job's restore scope is
@@ -372,6 +452,28 @@ export async function approveRequest(client, {
       };
     }
 
+    // Wave 2 RBAC: the two-person rule. Below the approvers it needs, this approval is a
+    // sign-off only: committed, evidenced, and the request stays pending.
+    const requiredApprovals = await requiredApprovalsNow(client, { tenantRef, request });
+    let approvers = [decidedBy];
+    if (requiredApprovals > 1) {
+      approvers = await signOff(client, { request, decidedBy, standingPolicy });
+      if (approvers.length < requiredApprovals) {
+        await client.query('COMMIT');
+        committed = true;
+        await appendEvidence(client, {
+          tenantRef,
+          kind: APPROVAL_SIGNOFF_EVIDENCE_KIND,
+          subject: {
+            requestId: request.id, action: request.action, signoffs: approvers.length, requiredApprovals,
+            policyActions: request.policy_actions ?? [], standingPolicy,
+          },
+          actor: decidedBy,
+        });
+        return { request, job: null, signoffs: approvers.length, requiredApprovals };
+      }
+    }
+
     // The idempotency key pins the minted job to this request: even a retried or
     // duplicated approval can never mint a second job for the same request.
     // Gap B11: a CLI-executed request mints no job at all; the operator runs the
@@ -385,12 +487,12 @@ export async function approveRequest(client, {
     });
     const { rows } = await client.query(
       `UPDATE approval_request
-       SET status = 'approved', decided_by = $2, decided_at = now()
+       SET status = 'approved', decided_by = $2, decided_at = now(), standing_policy = $3
        WHERE id = $1
        RETURNING *`,
-      [id, decidedBy],
+      [id, decidedBy, standingPolicy],
     );
-    decided = { request: rows[0], job };
+    decided = { request: rows[0], job, approvers, requiredApprovals };
     await client.query('COMMIT');
     committed = true;
   } finally {
@@ -406,6 +508,8 @@ export async function approveRequest(client, {
       decision: 'approved',
       executor: decided.request.executor,
       jobId: decided.job?.id ?? null,
+      ...(decided.requiredApprovals > 1 ? { approvers: decided.approvers, requiredApprovals: decided.requiredApprovals } : {}),
+      ...(standingPolicy != null ? { standingPolicy } : {}),
     },
     actor: decidedBy,
   });

@@ -42,6 +42,7 @@ import {
   matchingEligibility, policyPostStateRefusal, policyReadPath, policyRuleWrites, roleActionChanges, roleDefinitionPostStateRefusal,
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
+import { writerFor } from './writers/registry.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -499,6 +500,43 @@ export async function applyWave(writer, governor, wave, {
         });
         continue;
       }
+    }
+
+    // Wave 2 seam: a (type, verb) with no built-in writer is written by the
+    // writer its package registered in engine/restore/writers/, after the shared
+    // gates above plus the deletion and synced-object guards. The capability
+    // record must name that writer; one naming applyWave keeps the built-in path.
+    const registeredWriter = writerFor(resource.resourceType, effectiveVerb);
+    if (registeredWriter) {
+      const handler = capabilityGate.capability?.handler;
+      if (handler !== registeredWriter.handler) {
+        failed.push({ naturalKey: resource.naturalKey, error: `${resource.resourceType} ${effectiveVerb}: the capability names ${handler}, not the registered writer ${registeredWriter.handler}` });
+        continue;
+      }
+      const guarded = { ...resource, payload: resource.live?.payload ?? resource.payload };
+      const guard = effectiveVerb === 'delete' ? refuseUnsafeDeletion(guarded, deletionGuardOptions) : refuseIfSynced(guarded);
+      if (guard.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: guard.reason }); continue; }
+      if (effectiveVerb === 'delete' && resource.blastRadius === 'tenant-lockout') {
+        skipped.push({ naturalKey: resource.naturalKey, reason: 'a tenant-lockout delete is never written through a registered writer' });
+        continue;
+      }
+      const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
+        mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
+        now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure,
+        targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
+        journalBeforeMutation: (fields) => journalBeforeMutation(rollbackClient, { runId, restoreRef, resource, ...fields }),
+        noteOutcome: (journal, result, extras) => noteOutcome(rollbackClient, journal, result, extras),
+        rewriteReferences: (payload) => rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType),
+        readAfterWrite: (version, path, isStale) => readAfterWrite(writer, version, path, isStale, { retryOperation, ...readAfterWriteOptions }),
+      });
+      if (outcome?.applied) applied.push(outcome.applied);
+      if (outcome?.skipped) skipped.push(outcome.skipped);
+      if (outcome?.failed) failed.push(outcome.failed);
+      if (outcome?.notRemediable) notRemediable.push(outcome.notRemediable);
+      if (!outcome?.applied && !outcome?.skipped && !outcome?.failed && !outcome?.notRemediable) {
+        failed.push({ naturalKey: resource.naturalKey, error: `${registeredWriter.handler} reported no outcome` });
+      }
+      continue;
     }
 
     // Issue #155: an Intune policy is written through its operation record, with

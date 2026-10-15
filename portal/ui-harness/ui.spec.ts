@@ -38,6 +38,8 @@ const PAGES = [
   { name: "ask", hash: "/ask" },
   { name: "ask-unknown", hash: "/ask/unknown" },
   { name: "emergency-changes", hash: "/emergency-changes" },
+  { name: "compare", hash: "/compare" },
+  { name: "compare-tenants", hash: "/compare/tenants" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -512,6 +514,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "entities FIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
+  compare: ["c0a10000-0000-4000-8000-000000000001", "c0a10000-0000-4000-8000-000000000002", "conditionalAccessPolicy:Block legacy auth", "mailbox:finance@contoso.com", "drive:b!Xc9", "3e".repeat(32)],
+  "compare-tenants": ["sha256:5a1e00000000c0b2", "conditionalAccessPolicy:Require MFA for admins"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
 };
@@ -794,6 +798,42 @@ test("ask cites its records, states unknown periods, and fits a phone", async ({
   await expect(page.locator(".ask-answer")).toContainText("This is not the same as nothing happening");
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
+
+// Wave 2 CMP: compare groups differences by service and kind with plain names, reads
+// references by name across tenants, and fits a phone and a desktop.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`compare groups differences by service and kind and fits ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/compare", "dark");
+    await expect(page.locator('[data-layer="verdict"]')).toContainText("8 differences between the two snapshots");
+    await expect(page.locator("form[method='get']")).toHaveCount(1);
+    await expect(page.locator("form[method='post']")).toHaveCount(0);
+    const settings = page.locator("section", { has: page.locator("#compare-settings-heading") });
+    await expect(settings.locator("h3").first()).toHaveText("Entra ID");
+    const policies = settings.locator("details.compare-group", { hasText: "Conditional Access policy" });
+    await policies.locator("summary").click();
+    await expect(policies).toContainText("Block legacy auth");
+    await expect(policies).toContainText("enabled for reporting but not enforced");
+    await expect(policies).toContainText("an id, an id");
+    await expect(settings).toContainText("Device configuration (Intune): First side read in full, second side failed to read.");
+    const content = page.locator("section", { has: page.locator("#compare-content-heading") });
+    await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
+    await expect(content).toContainText("Budget 2027 v2.xlsx");
+    await content.locator("details.compare-group", { hasText: "Mailbox · items › inbox" }).locator("summary").click();
+    await expect(content).toContainText("An item (message)");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await open(page, "/compare/tenants", "light");
+    await expect(page.locator('[data-layer="verdict"]')).toContainText("between the two tenants");
+    const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
+    await across.locator("details.compare-group").first().locator("summary").click();
+    await expect(across).toContainText("Break-glass admins (group)");
+    await expect(across).toContainText("an object KEEL could not name");
+    await expect(across).toContainText("Device category (Intune): 3 in the first, 2 in the second.");
+    await expect(page.locator("section", { has: page.locator("#compare-content-heading") })).toContainText("812 items in both");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
 
 // Task-93: an approved emergency change says what KEEL will hold back and until when,
 // keeps every other change on the resource in play, says what happened when one ended,

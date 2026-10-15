@@ -3561,6 +3561,9 @@ item that needs it stays untouched.
   - `live evidence permissionGrantPolicy.create.json: not applied (permissionGrantPolicy.create.demotion.json demotes this write, so it is not promoted)`.
     The Q67 demotion is still next to it. keel-operator only adds or updates evidence files, so a builder removes it (asked on #294).
   - The fixture was kept for Q75, then deleted (see Q75). Nothing left.
+  - **18:03 UTC recheck** (after ffcefb9 removed the stale create demotion): `operations.mjs --live-evidence` (HMAC key set) reports
+    `live evidence permissionGrantPolicy.create.json: fixture-tested -> live-qualified`. The update record (Q79) still says
+    `not applied (permissionGrantPolicy.update.demotion.json demotes this write, so it is not promoted)`; that demotion is still there.
 - **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
   standing authorization; log every approval id here. No permission to add (Q26).
 - Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not

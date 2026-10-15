@@ -3066,7 +3066,7 @@ item that needs it stays untouched.
 - Drafted by the "Immutable Azure storage target" thread (2026-10-15). Marouane: the offsite copy must be plain files
   stored locally on Mulinux first. Code: #281 (merge 5ccdb7a), `engine/storage/targets.mjs`.
 - Needs: /opt/keel-live at 5ccdb7a or later (`test -f /opt/keel-live/engine/storage/targets.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - Do, as root (host only, no tenant, no secrets printed):
   1. `findmnt /mnt/keel-copy` (must be its own device, not the root fs). Stop and report if not.

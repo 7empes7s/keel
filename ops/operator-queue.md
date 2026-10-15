@@ -3723,3 +3723,20 @@ item that needs it stays untouched.
       (secret scan first, as Q39). No PR.
 - **Report:** B; step 2 exit code and verify; step 3 import lines; collection C; per round the plan line, outcome, read-back
   role and approval ids; steps 6 and 8 results; the evidence commit; anything left in the tenant.
+
+### Q78: Recapture the delegated consent grant after #324 (oauth2PermissionGrant, no new restore)
+- Drafted by the "consent grant capture" thread (2026-10-15). Fix: PR #324, master 3f969a5. `entraLive.mjs capture` now checks
+  an oauth2PermissionGrant by its client app (KEEL-RT- name) and its one user (keel-rt- fixture, consentType Principal),
+  not by a role. It still needs `--allow-by-reference` (a grant has no name of its own); the plan's step says so.
+- Needs: /opt/keel-live at 3f969a5 or later (`grep -q "the client app is not a KEEL-RT fixture" /opt/keel-live/tools/qualification/entraLive.mjs`).
+- Status: todo
+- **Test tenant only. No tenant writes:** this reuses Q67's restores (A1b for create, A2 for update); their journals and
+  snapshots (S1, S2, which still hold KEEL-RT-W2-app and the keel-rt user) are in the KEEL database. Same capture tooling as Q67/Q74.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Re-take plan-B (`live-gate-plan.mjs`); confirm the oauth2PermissionGrant steps show the reviewed fixture guidance.
+  2. `entraLive.mjs capture --allow-by-reference` for oauth2PermissionGrant: create from A1b, update from A2.
+     `--fixture` is the grant's natural key (its id, as journaled). 2 captures.
+  3. `promote` each record that captures. Commit the records and capture logs on `claude/live-evidence-w2-entra`
+     (secret scan and `pseudonymize.mjs check` first), and run `operations.mjs --live-evidence` on that directory.
+- **Report:** B; per operation: promoted / refused (the exact message); the evidence commit and the `live evidence` lines.
+  Comment the result on #295.

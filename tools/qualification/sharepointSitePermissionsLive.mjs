@@ -29,8 +29,8 @@
  *  2. restorer, with the restore's own request builder (sendSitePermissionWrite):
  *     creates the permission level `<label> level` with the site's Read permissions,
  *     creates the group `<label> group`, adds the test user to it, makes the test user a
- *     site collection admin, and grants the group the new level on the site (and on the
- *     list named by --list-id, which must have its own permissions).
+ *     site collection admin, and grants the group the new level on the site and on the
+ *     list named by --list-id, which must have its own permissions.
  *  3. collector: reads the site's permissions back until every write shows.
  * Nothing is removed afterwards (KEEL never removes a grant); the fixture stays on the
  * KEEL-RT- site for the restore round trip, and a person cleans it up by hand.

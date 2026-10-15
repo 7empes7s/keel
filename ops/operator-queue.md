@@ -3831,6 +3831,8 @@ item that needs it stays untouched.
     `live evidence permissionGrantPolicy.update.json: not applied (permissionGrantPolicy.update.demotion.json demotes this write, so it is not promoted)`.
     The Q67 demotion still has to be removed by a builder.
   - **Cleanup:** `keel-rt-w2-consent` deleted (204) after the recheck. Nothing left.
+  - **Follow-up 15:05 UTC on ea681454 (#331, the rule-id fix):** recreated the fixture as backed up (one low include, new rule id).
+    The dry run from S7 plans **0 writes** (it planned 1 before #331). Dry run only, so no approval. Fixture deleted (204). Commented on #294.
 - **Test tenant only.** Same rules, capture tooling, requester/approver split and standing authorization as Q75; log every
   approval id. No permission to add. Never touch CA policies, break-glass or the user's account.
 - Fixture: as Q75. Custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low),

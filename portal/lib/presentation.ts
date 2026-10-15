@@ -174,6 +174,7 @@ export const DISPLAY_ENUMS = {
     notify: "Notification",
     "api-drift": "Microsoft API check",
     "workload-collect": "Backup of SharePoint, Teams, Exchange and Purview settings",
+    discover: "Check of what the tenant holds",
   },
   jobStatus: {
     queued: "Waiting to start",

@@ -9,9 +9,11 @@ const DAY = 1440 * MINUTE;
 // content-collect (Wave 1 CONT) is delta sync of mail, files, sites, Teams and Planner,
 // seeded nightly; each run resumes from the last delta, so more often than every few
 // hours only adds throttled calls.
+// discover (Wave 1 DISC) walks every Graph path the tenant exposes, thousands of GETs per
+// run, for a picture that changes slowly; seeded weekly, at most daily.
 export const MINIMUM_INTERVAL_MS = Object.freeze({
   collect: 15 * MINUTE, prune: 60 * MINUTE, offsite: 60 * MINUTE, 'workload-collect': 60 * MINUTE, 'api-drift': DAY,
-  'content-collect': 4 * 60 * MINUTE,
+  'content-collect': 4 * 60 * MINUTE, discover: DAY,
 });
 const cache = new Map();
 const names = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,

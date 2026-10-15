@@ -131,7 +131,7 @@ try {
     await seedSchedules(client, { tenantRef: 'seed-fixture', now: due });
     try {
       const seeded = (await client.query("SELECT * FROM schedule WHERE tenant_ref = 'seed-fixture'")).rows;
-      assert.equal(seeded.length, 8, "collect tiers 1-3, prune, offsite, api-drift, workload-collect and content-collect");
+      assert.equal(seeded.length, 9, "collect tiers 1-3, prune, offsite, api-drift, workload-collect, content-collect and discover");
       for (const schedule of seeded) assert.doesNotThrow(() => validateSchedule(schedule), schedule.job_kind);
       const apiDrift = seeded.find((schedule) => schedule.job_kind === 'api-drift');
       const jobs = await tick(client, { now: apiDrift.next_due_at });

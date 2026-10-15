@@ -86,9 +86,20 @@ test('a proven restore: "Protected", restorable of backed-up counts and the dril
   });
   const { types } = await report(client, tenantRef, new Date('2026-10-02T10:00:00Z'));
   const backedUp = types.filter((entry) => entry.status === 'covered' && !entry.stale);
-  const restorable = backedUp.filter((entry) => ['full', 'partial'].includes(entry.fidelity.verifiedBy?.measuredFidelity ?? entry.fidelity.declared));
-  assert.ok(restorable.length < backedUp.length, 'read-only types are backed up but not restorable');
+  // Restorable: a drill measured full or partial; with no drill, a declared full or
+  // partial fidelity or a tested writer (automated decision, a fixture-tested or
+  // live-qualified write), the Protect page's rule.
+  const testedWriter = (entry) => entry.qualification?.decision === 'automated'
+    && Object.values(entry.writeCapability?.operations ?? {}).some((op) => ['fixture-tested', 'live-qualified'].includes(op.claim));
+  const restorable = backedUp.filter((entry) => {
+    const measured = entry.fidelity.verifiedBy?.measuredFidelity;
+    if (measured) return ['full', 'partial'].includes(measured);
+    return ['full', 'partial'].includes(entry.fidelity.declared) || testedWriter(entry);
+  });
+  assert.ok(restorable.length < backedUp.length, 'read-only types with no tested writer are backed up but not restorable');
   assert.equal(restorable.some((entry) => entry.type === 'namedLocation'), false, 'a measured fidelity overrides the declared one');
+  assert.equal(restorable.some((entry) => entry.type === 'user'), true, 'a declared read-only type with a tested writer is restorable');
+  assert.equal(restorable.some((entry) => entry.type === 'organization'), false, 'a read-only type with no tested writer is not');
 
   const headline = protectionHeadline(types);
   const { rows } = await client.query(`SELECT max(occurred_at) AS at FROM evidence WHERE tenant_ref = $1 AND kind = 'fidelity-drill'`, [tenantRef]);

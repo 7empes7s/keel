@@ -13,16 +13,39 @@
 //      "KEEL backs up 52 configuration types. No restore has been proven on this tenant yet."
 //
 // A type counts as backed up when its latest collection completed and is fresh for
-// its tier. It counts as restorable when it is backed up and its fidelity — measured
-// by a drill when one ran, otherwise declared — is full or partial. "Not covered"
-// types (no collector exists) are a coverage gap reported elsewhere, not a failure.
+// its tier. It counts as restorable when it is backed up and either a drill measured
+// its fidelity as full or partial, or, with no drill yet, it declares full or partial
+// fidelity or KEEL has a tested writer for it (the Protect page's rule, #336: most
+// types declare "read-only" only because no drill measured them). "Not covered"
+// types (no collector exists) are a coverage gap reported elsewhere, not a failure,
+// and so are types Microsoft refused for a missing licence or tenant feature
+// (outcome "unavailable").
 
 const RESTORABLE = new Set(['full', 'partial']);
+const TESTED_CLAIMS = new Set(['fixture-tested', 'live-qualified']);
 
 const DATE = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
 export function formatHeadlineDate(value) {
   return DATE.format(new Date(value));
+}
+
+/**
+ * Whether KEEL has a tested writer for the type: an automated recovery decision and at
+ * least one write operation tested on fixtures or proven live. Mirrors
+ * hasRestoreWriter in portal/lib/protect-view.ts.
+ */
+export function hasRestoreWriter(entry) {
+  if (entry.qualification?.decision !== 'automated' || !entry.writeCapability) return false;
+  return Object.values(entry.writeCapability.operations ?? {}).some((capability) => TESTED_CLAIMS.has(capability?.claim));
+}
+
+function restorable(entry) {
+  const measured = entry.fidelity?.verifiedBy?.measuredFidelity ?? null;
+  if (measured) return RESTORABLE.has(measured);
+  const declared = entry.fidelity?.declared ?? null;
+  if (declared === 'unprotectable') return false;
+  return RESTORABLE.has(declared ?? '') || hasRestoreWriter(entry);
 }
 
 function plural(count, one, many) {
@@ -37,13 +60,10 @@ function plural(count, one, many) {
  *   failing: number, failed: number, stale: number, neverCollected: number }, lastProvenRestoreAt: string | null, failingSince: string | null }}
  */
 export function protectionHeadline(types) {
-  const failing = types.filter((entry) => entry.status === 'failed' || entry.status === 'never-collected'
-    || (entry.status === 'covered' && entry.stale === true));
+  const failing = types.filter((entry) => (entry.status === 'failed' && entry.outcome !== 'unavailable')
+    || entry.status === 'never-collected' || (entry.status === 'covered' && entry.stale === true));
   const backedUp = types.filter((entry) => entry.status === 'covered' && entry.stale !== true);
-  const restorable = backedUp.filter((entry) => {
-    const measured = entry.fidelity?.verifiedBy?.measuredFidelity ?? null;
-    return RESTORABLE.has(measured ?? entry.fidelity?.declared ?? '');
-  });
+  const restorableTypes = backedUp.filter(restorable);
   const drills = types
     .map((entry) => entry.fidelity?.verifiedBy?.at ?? null)
     .filter((at) => at !== null)
@@ -60,7 +80,7 @@ export function protectionHeadline(types) {
     .filter((at) => at && Number.isFinite(at.getTime()));
   const failingSince = staleTimes.length ? new Date(Math.min(...staleTimes.map((at) => at.getTime()))) : null;
   const counts = {
-    backedUp: backedUp.length, restorable: restorable.length, failing: failing.length,
+    backedUp: backedUp.length, restorable: restorableTypes.length, failing: failing.length,
     failed: failed.length, stale: stale.length, neverCollected: neverCollected.length,
   };
   const base = { counts, lastProvenRestoreAt: lastProven?.toISOString() ?? null, failingSince: failingSince?.toISOString() ?? null };
@@ -100,7 +120,7 @@ export function protectionHeadline(types) {
       state: 'proven',
       tone: 'good',
       headline: 'Protected',
-      sentence: `KEEL can restore ${restorable.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today. Last proven restore: ${formatHeadlineDate(lastProven)}.`,
+      sentence: `KEEL can restore ${restorableTypes.length.toLocaleString('en-GB')} of ${plural(backedUp.length, 'configuration type', 'configuration types')} today. Last proven restore: ${formatHeadlineDate(lastProven)}.`,
       action: null,
     };
   }

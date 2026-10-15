@@ -268,9 +268,6 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   const tenantRef = nextTenant();
   const live = fakeTenant('exchange-mail-flow');
   const rule = live.state['Get-TransportRule'][0];
-  // A rule with no deleting, copying or sending action: its Mode is not a content effect.
-  for (const action of TRANSPORT_ACTIONS) rule[action] = null;
-  Object.assign(rule, { DeleteMessage: false, Quarantine: false });
   rule.Mode = 'Enforce';
   rule.Conditions = ['KEEL-RT-condition'];
   const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
@@ -286,6 +283,9 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   assert.match(manual('State').reason, /Enable-\/Disable-/);
   // The live value is structured, but the source value is text: that is sendable and restored.
   assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [['Set-TransportRule', { Identity: rule.Guid, Mode: 'Enforce', SentTo: 'KEEL-RT-SentTo' }]]);
+  // Every change to a transport rule reaches different mail, so it needs the separate approval.
+  assert.deepEqual(effectsOf(plan), ['Mode:irreversible', 'SentTo:irreversible']);
+  await approveEffects(client, tenantRef, artifact, plan);
 
   // A lost answer is reconciled by re-reading, never resent.
   const crashing = fakeTenant('exchange-mail-flow', { state: live.state, hooks: { cmdlet: () => 'apply-then-crash' } });
@@ -461,6 +461,26 @@ test('effects: a never-expiring recording, recording turned on, and a deleting r
   rule.Mode = 'Audit';
   const enforce = await planned(client, tenant3, 'exchange-mail-flow', { source: mailSource, live: mail });
   assert.deepEqual(effectsOf(enforce.plan), ['Mode:irreversible']);
+
+  // An action KEEL does not write (CopyTo) still makes a change to the rule a content effect.
+  const tenant5 = nextTenant();
+  const copying = fakeTenant('exchange-mail-flow');
+  const copier = copying.state['Get-TransportRule'][0];
+  for (const action of TRANSPORT_ACTIONS) copier[action] = null;
+  Object.assign(copier, { DeleteMessage: false, Quarantine: false, Actions: ['CopyTo'], Mode: 'Enforce' });
+  const copySource = await recordSource(client, tenant5, 'exchange-mail-flow', copying);
+  copier.Mode = 'Audit';
+  const copy = await planned(client, tenant5, 'exchange-mail-flow', { source: copySource, live: copying });
+  assert.deepEqual(effectsOf(copy.plan), ['Mode:externally-sharing']);
+
+  // A spam rule decides which mailboxes its policy (auto-forwarding, deleting spam) covers.
+  const tenant6 = nextTenant();
+  const spam = fakeTenant('exchange-extended');
+  const spamSource = await recordSource(client, tenant6, 'exchange-extended', spam);
+  spam.state['Get-HostedOutboundSpamFilterRule'][0].From = ['keel-rt-narrowed@contoso.test'];
+  spam.state['Get-HostedOutboundSpamFilterRule'][0].Comments = 'narrowed after an incident';
+  const widened = await planned(client, tenant6, 'exchange-extended', { source: spamSource, live: spam });
+  assert.deepEqual(effectsOf(widened.plan), ['From:externally-sharing']);
 
   // Quarantining is a loss too, both when it is turned on and on the rest of such a rule.
   const tenant4 = nextTenant();

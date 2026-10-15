@@ -154,6 +154,8 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('UseMXRecord', SHARING, enabledToDisabled),
     rule('RouteAllMessagesViaOnPremises', SHARING, changes),
     rule('AllAcceptedDomains', SHARING, changes),
+    rule('TlsSettings', SHARING, changes),
+    rule('TlsDomain', SHARING, changes),
   ],
   exchangeOutboundSpamPolicy: [
     rule('AutoForwardingMode', SHARING, becomes('On')),
@@ -173,6 +175,7 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('NewMeetingRecordingExpirationDays', RETENTION, expiresSooner),
     rule('AllowAnonymousUsersToJoinMeeting', SHARING, disabledToEnabled),
     rule('AllowAnonymousUsersToStartMeeting', SHARING, disabledToEnabled),
+    rule('AllowPSTNUsersToBypassLobby', SHARING, disabledToEnabled),
     rule('AllowExternalNonTrustedMeetingChat', SHARING, disabledToEnabled),
     rule('AllowExternalParticipantGiveRequestControl', SHARING, disabledToEnabled),
     rule('AllowMeetingRegistration', SHARING, disabledToEnabled),
@@ -235,6 +238,8 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('TownhallEventAttendeeAccess', SHARING, widensAudience),
     ...['RecordingForTownhall', 'RecordingForWebinar', 'TranscriptionForTownhall', 'TranscriptionForWebinar'].map((field) => rule(field, SHARING, changes)),
   ],
+  // The stream delivery provider a live event sends its video to.
+  teamsLiveEventsConfiguration: [rule('SdnApiTemplateUrl', SHARING, changes), rule('SdnName', SHARING, changes)],
   // Turning a retention policy or rule off releases what it preserved.
   purviewRetentionPolicy: [rule('Enabled', HOLD, enabledToDisabled)],
   purviewRetentionRule: [
@@ -251,6 +256,8 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('BlockAccess', SHARING, enabledToDisabled),
     rule('BlockAccessScope', SHARING, changes),
     rule('NotifyAllowOverride', SHARING, addsEntry),
+    rule('NotifyUser', SHARING, addsEntry),
+    rule('GenerateAlert', SHARING, addsEntry),
     rule('GenerateIncidentReport', SHARING, addsEntry),
     rule('IncidentReportContent', SHARING, changes),
     rule('StopPolicyProcessing', SHARING, disabledToEnabled),
@@ -260,25 +267,30 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
 });
 
 /**
- * Object rules: a change to any field of an object that carries a destructive or
- * sharing action. A transport rule that deletes, quarantines, rejects, copies,
- * redirects, moderates, encrypts or reports mail reaches more (or less) mail when its Mode moves to Enforce or a condition or
- * exception is widened or cleared, so every such change needs the approval.
+ * Object rules: every change to an object whose job is to act on mail. A transport
+ * rule always carries an action, and not every action is a written parameter (CopyTo,
+ * a manager as recipient, removing encryption), so any change to its Mode, conditions,
+ * exceptions or order can reach more mail: all of them need the approval. A spam
+ * rule decides which mailboxes its policy (auto-forwarding, deleting spam) covers.
  */
-const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector', 'ApplyRightsProtectionTemplate'];
 const TRANSPORT_LOSSES = ['RejectMessageReasonText', 'RejectMessageEnhancedStatusCode'];
-const NOT_JUDGED = new Set(['Comments', 'Priority', 'DeleteMessage', 'Quarantine', 'RouteMessageOutboundRequireTls', ...TRANSPORT_LOSSES, ...TRANSPORT_ACTIONS]);
+const LOSS_TEXT = /delete|quarantine|reject/i;
+const everyChange = (effectOf) => Object.freeze({
+  covers: 'every written field but Comments',
+  effects(from, to, changed) {
+    const effect = effectOf(from, to);
+    return changed.filter((field) => field !== 'Comments').map((field) => ({ field, effect }));
+  },
+});
 export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
-  exchangeTransportRule: Object.freeze({
-    covers: 'every written field',
-    effects(from, to, changed) {
-      const deletes = ['DeleteMessage', 'Quarantine'].some((field) => truthy(from?.[field]) || truthy(to?.[field]))
-        || TRANSPORT_LOSSES.some((field) => nonEmpty(from?.[field]) || nonEmpty(to?.[field]));
-      const armed = deletes || TRANSPORT_ACTIONS.some((field) => nonEmpty(from?.[field]) || nonEmpty(to?.[field]));
-      if (!armed) return [];
-      return changed.filter((field) => !NOT_JUDGED.has(field)).map((field) => ({ field, effect: deletes ? IRREVERSIBLE : SHARING }));
-    },
+  exchangeTransportRule: everyChange((from, to) => {
+    const loses = [from, to].some((side) => ['DeleteMessage', 'Quarantine'].some((field) => truthy(side?.[field]))
+      || TRANSPORT_LOSSES.some((field) => nonEmpty(side?.[field]))
+      || LOSS_TEXT.test(canonical(side?.Actions ?? null)));
+    return loses ? IRREVERSIBLE : SHARING;
   }),
+  exchangeOutboundSpamRule: everyChange(() => SHARING),
+  exchangeAntiSpamRule: everyChange(() => IRREVERSIBLE),
 });
 
 // Written fields whose names look content-bearing but are not, and why.

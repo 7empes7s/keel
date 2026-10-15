@@ -1,0 +1,112 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "outboundSpamPolicy",
+        "outboundSpamRule",
+        "connectionFilterPolicy",
+        "antiSpamRule",
+        "antiPhishRule",
+        "antiMalwareRule",
+        "quarantinePolicy",
+        "globalQuarantineSettings",
+        "journalRule",
+        "mobileDevicePolicy",
+        "deviceAccessRule",
+        "activeSyncSettings",
+        "addressList",
+        "globalAddressList",
+        "offlineAddressBook",
+        "addressBookPolicy",
+        "retentionPolicyTag",
+        "retentionPolicy",
+        "safeLinksRule",
+        "safeAttachmentRule",
+        "defenderForOffice"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:47:49.397Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "connectionFilterPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:48:56.075Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-HostedConnectionFilterPolicy",
+      "parameters": {
+        "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
+        "AdminDisplayName": "KEEL capture 2026-10-15T18:47:49.397Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:48:58.984Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "connectionFilterPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:49:02.370Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-HostedConnectionFilterPolicy",
+      "parameters": {
+        "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
+        "AdminDisplayName": ""
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:49:05.346Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "connectionFilterPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:49:08.677Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "globalQuarantineSettings"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:49:11.728Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-QuarantinePolicy",
+      "parameters": {
+        "Identity": "766d6357-cf13-863e-ac98-f99d551c3da0",
+        "OrganizationBrandingEnabled": true
+      },
+      "outcome": "failed",
+      "at": "2026-10-15T18:49:14.583Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "[],Write-ErrorMessage"
+      }
+    }
+  ],
+  "values": {
+    "refusalFamily": "outboundSpamPolicy",
+    "exchange-extended.connection-filter-policy.update": {
+      "written": true
+    },
+    "exchange-extended.quarantine-global-settings.update": {
+      "written": false
+    }
+  }
+}

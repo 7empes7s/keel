@@ -6,11 +6,13 @@
 
 .DESCRIPTION
   Reads the job descriptor from $env:KEEL_JOB_JSON:
-    { mode: "cmdlet", module, cmdlet, parameters: { Name: value, ... }, tenantConfigPath? }
+    { mode: "cmdlet", module, cmdlet, parameters: { Name: value, ... }, tenantConfigPath?, pipeFrom? }
   There is no script field and nothing here builds PowerShell source from the job.
   The cmdlet name must be in $Allowed and every parameter name in its list. Values
   are bound by splatting a hashtable, so each value is exactly one argument: a
   mailbox identity such as  o'brien'; Remove-Mailbox x  is passed literally.
+  pipeFrom names an entry of $AllowedPipes: the cmdlet then gets its object from that
+  fixed Get- through the pipeline instead of an -Identity (#339).
 
   Answers one JSON envelope on stdout:
     { ok: true,  output: [...] }                               exit 0
@@ -180,6 +182,13 @@ $AllowedExchangeWrites = @{
     'Set-TransportRule'                  = @('Identity', 'ActivationDate', 'AddToRecipients', 'ApplyHtmlDisclaimerFallbackAction', 'ApplyHtmlDisclaimerLocation', 'ApplyHtmlDisclaimerText', 'ApplyRightsProtectionTemplate', 'AttachmentExtensionMatchesWords', 'AttachmentHasExecutableContent', 'BlindCopyTo', 'Comments', 'DeleteMessage', 'ExceptIfFrom', 'ExceptIfRecipientDomainIs', 'ExceptIfSenderDomainIs', 'ExceptIfSenderIpRanges', 'ExceptIfSentTo', 'ExpiryDate', 'From', 'FromAddressContainsWords', 'FromScope', 'GenerateIncidentReport', 'HeaderContainsMessageHeader', 'HeaderContainsWords', 'Mode', 'ModerateMessageByUser', 'PrependSubject', 'Priority', 'Quarantine', 'RecipientDomainIs', 'RedirectMessageTo', 'RejectMessageEnhancedStatusCode', 'RejectMessageReasonText', 'RouteMessageOutboundConnector', 'RouteMessageOutboundRequireTls', 'RuleErrorAction', 'SenderAddressLocation', 'SenderDomainIs', 'SenderIpRanges', 'SentTo', 'SentToScope', 'SetHeaderName', 'SetHeaderValue', 'SetSCL', 'StopRuleProcessing', 'SubjectContainsWords', 'SubjectOrBodyContainsWords')
 }
 
+# Objects a write is piped from, as Microsoft documents for a singleton whose Set- finds it
+# by no -Identity: Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy |
+# Set-QuarantinePolicy (#339). The Get- and its parameters are fixed here, never taken from the job.
+$AllowedPipes = @{
+    'global-quarantine-settings' = @{ target = 'Set-QuarantinePolicy'; cmdlet = 'Get-QuarantinePolicy'; parameters = @{ QuarantinePolicyType = 'GlobalQuarantinePolicy' } }
+}
+
 $AllowedPurviewWrites = @{
     'Set-ComplianceTag'             = @('Identity', 'Comment', 'Notes', 'RetentionDuration')
     'Set-DlpCompliancePolicy'       = @('Identity', 'Comment', 'Mode', 'Priority')
@@ -285,6 +294,13 @@ if ($null -ne $job['parameters']) {
     }
 }
 
+$pipe = $null
+if ($job['pipeFrom']) {
+    $pipe = $AllowedPipes[[string]$job['pipeFrom']]
+    if ($null -eq $pipe -or $pipe.target -ne $name) { Out-Failure -Message "$name cannot be piped from $($job['pipeFrom'])" -ErrorId 'PipeNotAllowed' }
+    if ($params.ContainsKey('Identity')) { Out-Failure -Message "a piped $name takes no Identity" -ErrorId 'ParameterNotAllowed' }
+}
+
 $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPath'] } else { '/etc/keel/tenant.json' }
 try {
     $config = Get-Content -Raw -Path $tenantConfigPath | ConvertFrom-Json
@@ -315,7 +331,14 @@ try {
 try {
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
-    $output = & $name @params -ErrorAction Stop 3>$null
+    if ($pipe) {
+        $sourceParams = $pipe.parameters
+        $source = @(& $pipe.cmdlet @sourceParams -ErrorAction Stop 3>$null)
+        if ($source.Count -ne 1) { Out-Failure -Message "$($pipe.cmdlet) answered $($source.Count) objects, not 1" -ErrorId 'PipeSourceNotSingle' }
+        $output = $source | & $name @params -ErrorAction Stop 3>$null
+    } else {
+        $output = & $name @params -ErrorAction Stop 3>$null
+    }
     Out-Envelope -Envelope @{ ok = $true; output = @($output) } -Code 0
 } catch {
     $record = $_

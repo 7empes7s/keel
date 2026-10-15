@@ -233,6 +233,24 @@ test('pure rules: unknown coverage is compared, differing hash versions are repr
   assert.equal(differenceCount({ settings: same, workloads, content: null }).total, 0);
 });
 
+test('a role assignment schedule read at another time is unchanged, even against a hash stored under older rules', () => {
+  const schedule = (start, expiration = { type: 'noExpiration', endDateTime: null, duration: null }) => ({
+    id: 'a-1', principalId: 'p', roleDefinitionId: 'r', directoryScopeId: '/', memberType: 'Direct', status: 'Provisioned',
+    scheduleInfo: { startDateTime: start, recurrence: null, expiration },
+  });
+  const row = (payload, hash) => ({ natural_key: 'a-1', resource_type: 'roleAssignmentSchedule', payload, payload_hash: hash, hash_version: 2, blast_radius: 'tenant-lockout' });
+  const stored = row(schedule('2026-10-15T09:00:17.5660219Z'), 'hash-with-the-read-time');
+  const live = row(schedule('2026-10-15T09:39:03.6767194Z'), 'hash-without-it');
+  const same = compareSettings({ rows: [stored], coverage: null }, { rows: [live], coverage: null });
+  assert.equal(same.totals.changed, 0, 'the start Graph reports as the read time is not a difference');
+  assert.equal(same.totals.unchanged, 1);
+
+  const expiring = row(schedule('2026-10-15T09:39:03.6767194Z', { type: 'afterDateTime', endDateTime: '2026-11-01T00:00:00Z', duration: null }), 'x');
+  const changed = compareSettings({ rows: [stored], coverage: null }, { rows: [expiring], coverage: null });
+  assert.equal(changed.totals.changed, 1, 'a new expiry is still a difference');
+  assert.deepEqual(changed.groups[0].items[0].fields.map((field) => field.path).sort(), ['scheduleInfo.expiration.endDateTime', 'scheduleInfo.expiration.type']);
+});
+
 test('a deleted list item is gone, and a drive file is compared by its file, not its record', async () => {
   const C = 'sha256:00000000000000c3';
   const D = 'sha256:00000000000000d4';

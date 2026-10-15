@@ -127,9 +127,11 @@ export function portablePayload(payload, references = []) {
   return maskIds(walk(payload, ''));
 }
 
-function settingsFingerprint(row, { portable, directHash }) {
+// Stored hashes are not trusted: a row hashed before a field was classified as
+// server-owned would differ from one hashed after (issue #288), so both sides are
+// projected under the current rules.
+function settingsFingerprint(row, { portable }) {
   if (portable) return sha(comparedSettings(row.resource_type, portablePayload(row.payload, row.references)));
-  if (directHash) return row.payload_hash;
   return sha(comparedSettings(row.resource_type, row.payload));
 }
 
@@ -202,9 +204,7 @@ export function compareSettings(left, right, { portable = false } = {}) {
         group.items.push({ naturalKey, name: nameOf(now.payload), changeType: 'added', blastRadius: now.blast_radius ?? null });
         continue;
       }
-      const directHash = !portable && was.hash_version === now.hash_version && was.payload_hash && now.payload_hash;
-      const options = { portable, directHash };
-      if (settingsFingerprint(was, options) === settingsFingerprint(now, options)) {
+      if (settingsFingerprint(was, { portable }) === settingsFingerprint(now, { portable })) {
         group.unchanged += 1;
         continue;
       }

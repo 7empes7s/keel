@@ -1,6 +1,6 @@
 /**
  * Gap register W2: the one table cli/keel-restore.mjs uses to plan and promote a
- * workload restore (SharePoint, Exchange, Teams, Purview, and from Wave 2 WKLD mail
+ * workload restore (SharePoint settings and site app grants, Exchange, Teams, Purview, and from Wave 2 WKLD mail
  * flow, the Exchange settings READ-EXO added, Teams org-wide and voice policies,
  * Purview retention and DLP, and retention labels: cmdletSettings.mjs).
  *
@@ -25,6 +25,10 @@ import {
   SHAREPOINT_WRITE_OPERATION, createSharePointRestoreArtifact, executeSharePointRestore, loadSharePointSource,
   planSharePointRestore, readLiveSettings,
 } from './sharepoint.mjs';
+import {
+  SITE_GRANTS_RESTORE, SITE_GRANT_WRITE_OPERATIONS, createSiteGrantsRestoreArtifact, executeSiteGrantsRestore,
+  planSiteGrantsRestore, readLiveSiteGrants,
+} from './sharepointSiteGrants.mjs';
 import {
   EXCHANGE_WRITE_OPERATIONS, createExchangeRestoreArtifact, executeExchangeRestore, loadExchangeSource,
   planExchangeRestore, readLiveExchange,
@@ -71,6 +75,23 @@ export const WORKLOAD_RESTORES = Object.freeze({
     execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSharePointRestore(client, {
       tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.transport,
       qualification: qualifications[SHAREPOINT_WRITE_OPERATION], sleep,
+    }),
+  }),
+  // Gap 5: one site's app grants, from the same sharepoint-site-settings collection.
+  [SITE_GRANTS_RESTORE]: Object.freeze({
+    label: 'SharePoint site app grants',
+    operations: SITE_GRANT_WRITE_OPERATIONS,
+    usage: '--collection <id> --tenant-host <host>.sharepoint.com --site <site id>',
+    async plan(client, { tenantRef, request, connection, sleep }) {
+      const tenantHost = required(request.tenantHost, '--tenant-host <host>');
+      const siteId = required(request.siteId, '--site <site id>');
+      const recorded = await source(loadSharePointSource, client, { tenantRef, collectionId: request.collectionId }, 'SharePoint');
+      const live = await readLiveSiteGrants({ transport: connection.transport, siteId, sleep });
+      return planSiteGrantsRestore({ source: recorded, live, tenantHost, siteId });
+    },
+    create: createSiteGrantsRestoreArtifact,
+    execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSiteGrantsRestore(client, {
+      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.transport, qualifications, sleep,
     }),
   }),
   [EXCHANGE_WORKLOAD]: Object.freeze({

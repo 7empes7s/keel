@@ -25,6 +25,7 @@ import { after, test } from 'node:test';
 
 import { importLedgerInputs, importSeams } from '../../cli/keel-workload-collect.mjs';
 import { signEvidence, verifyEvidence } from '../../tools/release/qualification.mjs';
+import { SITE_GRANTS_RECORD_FILE } from '../../tools/qualification/sharepointSiteGrantsAcceptance.mjs';
 import {
   CAPTURE_CREATE_PREFIX, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
 } from '../../tools/qualification/workloadWritesAcceptance.mjs';
@@ -235,7 +236,9 @@ test('the import stores the proven writes, skips absent writer records, and refu
   const result = await importLedgerInputs(client, { tenantRef, dir, seams, verify: { hmacKey: KEY } });
   assert.deepEqual(result.refused, []);
   assert.deepEqual(result.imported.map(({ file, writes }) => ({ file, writes })), [{ file: workloadWritesRecordFile('exchange-mail-flow'), writes: 3 }]);
-  assert.deepEqual(result.absent.sort(), Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile).sort());
+  assert.deepEqual(result.absent.sort(), [
+    ...Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile), SITE_GRANTS_RECORD_FILE,
+  ].sort());
   const inserted = saved.filter(({ sql }) => /INSERT INTO workload_ledger_evidence/.test(sql));
   assert.equal(inserted.length, 3);
   assert.ok(inserted.every(({ params }) => params[3] === 'live-write-capture' && params[8] === true));

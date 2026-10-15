@@ -63,6 +63,19 @@ const becomes = (value) => (before, after) => before !== value && after === valu
 const decreases = (before, after) => typeof before === 'number' && typeof after === 'number' && after < before;
 // Task-103: SharePoint tenant sharing, narrowest to widest.
 const SHAREPOINT_SHARING = ['disabled', 'existingExternalUserSharingOnly', 'externalUserSharingOnly', 'externalUserAndGuestSharing'];
+// Gap 5: SharePoint site app grant roles, narrowest to widest. Graph reads a full
+// control grant back as `owner`. A role set ranks as its widest role; -1 when a
+// role is unknown (never ranked below a known one by mistake: callers refuse it).
+const SITE_APP_ROLES = ['read', 'write', 'manage', 'fullcontrol'];
+const SITE_ROLE_ALIASES = { owner: 'fullcontrol' };
+export function siteRoleRank(roles) {
+  const list = (Array.isArray(roles) ? roles : []).map((role) => SITE_ROLE_ALIASES[String(role).toLowerCase()] ?? String(role).toLowerCase());
+  if (list.length === 0 || list.some((role) => !SITE_APP_ROLES.includes(role))) return -1;
+  return Math.max(...list.map((role) => SITE_APP_ROLES.indexOf(role)));
+}
+/** The one role Graph is sent for a rank (the widest role of the set). */
+export const siteRoleAt = (rank) => SITE_APP_ROLES[rank];
+const raisesSiteRole = (before, after) => siteRoleRank(after) > (before == null ? -1 : siteRoleRank(before));
 const listOf = (value) => (Array.isArray(value) ? value.map((item) => String(item).toLowerCase()) : []);
 const removesEntry = (before, after) => listOf(before).some((item) => !listOf(after).includes(item));
 const addsEntry = (before, after) => listOf(after).some((item) => !listOf(before).includes(item));
@@ -158,6 +171,11 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('sharingDomainRestrictionMode', 'externally-sharing', widens(['allowList', 'blockList', 'none'])),
     rule('sharingBlockedDomainList', 'externally-sharing', removesEntry),
     rule('sharingAllowedDomainList', 'externally-sharing', addsEntry),
+  ] },
+  // Gap 5: a SharePoint site app grant (Sites.Selected). Creating one, or raising
+  // its role, gives an application access to the site's content.
+  sharepointSiteAppGrant: { reviewed: true, judgesCreates: true, rules: [
+    rule('roles', 'externally-sharing', raisesSiteRole),
   ] },
   // Task-104: Teams team settings. Giving guests channel rights, or making a team
   // discoverable to everyone, widens who reaches the team's content.

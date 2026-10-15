@@ -122,6 +122,9 @@ for (const descriptor of DESCRIPTORS) {
   register(descriptor, graphNativeAdapter(descriptor.type));
 }
 
+/** The reason recorded on a type the tenant cannot have (issue #309). */
+export const MISSING_PREREQUISITE = 'missing prerequisite (licence or tenant feature)';
+
 // Issue #289: Graph answers some types with a refusal that says the tenant
 // lacks the licence or feature for them, not that KEEL lacks a permission:
 // 403 "Insufficient license" (lifecycle workflows need Entra ID Governance) and
@@ -191,6 +194,8 @@ function errorDetail(error) {
  *                    page cap cut it); the observed count is kept but the
  *                    entry fails completeness
  *   failed         — nothing was read; cardinality is unknown, never zero
+ *   unavailable    — nothing was read because the tenant lacks the licence
+ *                    or feature for the type; not a failure, never a zero
  * Evidence fields are null when they were not observed — nothing is invented.
  */
 function outcomeEntry(raw) {
@@ -204,6 +209,20 @@ function outcomeEntry(raw) {
   if (raw.error) {
     const detail = errorDetail(raw.error);
     const partial = (raw.pages ?? 0) > 0 || (Array.isArray(raw.items) && raw.items.length > 0);
+    // Issue #309: a type the tenant has no licence or feature for is recorded
+    // as unavailable, not failed, so the run can still succeed. Only a refusal
+    // before any page was read counts; any other error still fails.
+    if (!partial && unavailableOnTenant(raw.error)) {
+      return {
+        ...base,
+        outcome: 'unavailable',
+        itemCount: null,
+        reason: MISSING_PREREQUISITE,
+        error: detail.message,
+        httpStatus: detail.httpStatus,
+        graphCode: detail.graphCode,
+      };
+    }
     return {
       ...base,
       outcome: partial ? 'partial' : 'failed',

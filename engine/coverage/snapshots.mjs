@@ -12,7 +12,7 @@
 import { OBSERVATION_CONTRACT_VERSION, readObservation } from '../contracts/observation.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 
-export const OUTCOME_STATES = Object.freeze(['complete', 'complete-empty', 'partial', 'failed', 'not-requested']);
+export const OUTCOME_STATES = Object.freeze(['complete', 'complete-empty', 'partial', 'failed', 'not-requested', 'unavailable']);
 
 export const TYPE_COVERAGE_CTES = `
   completed_snapshots AS (

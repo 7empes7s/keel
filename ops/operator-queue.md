@@ -3988,7 +3988,7 @@ item that needs it stays untouched.
   `engine/discovery/transport.mjs`, which refuses anything but a body-less GET to graph.microsoft.com before it is sent.
   Bodies are counted and dropped. It writes one `discovery_run` (and its items) to the KEEL database, nothing else.
 - Needs: `test -f /opt/keel-live/cli/keel-discover.mjs` and the schema applied (`discovery_run` table exists).
-- Status: todo
+- Status: in-progress
 - Result:
 - Do (no tenant writes, no approvals, no consent, no new grants):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`

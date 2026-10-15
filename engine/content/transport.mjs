@@ -65,3 +65,55 @@ export function contentReadTransport(tokenSource, fetchImpl = globalThis.fetch, 
     return { status: response.status, headers, body: json };
   };
 }
+
+/**
+ * The SharePoint REST transport the sites backup reads site permissions through
+ * (groups, members, admins and role assignments, which Graph does not return). It runs
+ * as the Collector: reading role assignments needs Sites.FullControl.All on SharePoint,
+ * which the Collector holds and the read-only Content Reader does not. Like the Graph
+ * transport it can only read: a non-GET request, a request body, any host but the
+ * tenant's own SharePoint host, or a path outside a site's /_api/ is refused before
+ * anything is sent. Answers are JSON (odata=nometadata).
+ *
+ *   tokenSource() returns a token for https://<tenantHost>/.default, as a string or
+ *   { accessToken, expiresAt }. It is renewed like the Graph token.
+ */
+export function sharePointReadTransport(tokenSource, fetchImpl = globalThis.fetch, { tenantHost, now = () => Date.now() } = {}) {
+  if (typeof tenantHost !== 'string' || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(tenantHost)) {
+    throw new TypeError('tenantHost must be the tenant\'s SharePoint host, such as contoso.sharepoint.com');
+  }
+  const host = tenantHost.toLowerCase();
+  let token = null;
+  const renew = async () => {
+    const issued = await tokenSource();
+    token = typeof issued === 'string'
+      ? { accessToken: issued, expiresAt: Infinity }
+      : { accessToken: issued?.accessToken, expiresAt: Number.isFinite(issued?.expiresAt) ? issued.expiresAt : Infinity };
+    if (typeof token.accessToken !== 'string' || !token.accessToken) throw new Error('the SharePoint token source returned no token');
+  };
+  return async (url, { method = 'GET', body } = {}) => {
+    const verb = String(method).toUpperCase();
+    if (verb !== 'GET' || body !== undefined) throw new Error(`site permission backup is read-only: refused ${verb} ${url}`);
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.port || parsed.hostname.toLowerCase() !== host) {
+      throw new Error(`site permission backup reads ${host} only: refused ${url}`);
+    }
+    if (!/\/_api\//i.test(parsed.pathname)) throw new Error(`site permission backup reads the SharePoint REST API only: refused ${url}`);
+    if (!token || now() >= token.expiresAt - RENEW_BEFORE_MS) await renew();
+    const send = () => fetchImpl(parsed.href, {
+      method: 'GET', redirect: 'error',
+      headers: { accept: 'application/json;odata=nometadata', authorization: `Bearer ${token.accessToken}` },
+    });
+    let response = await send();
+    if (response.status === 401) {
+      await response.body?.cancel?.();
+      await renew();
+      response = await send();
+    }
+    const headers = Object.fromEntries(response.headers.entries());
+    const text = await response.text();
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+    return { status: response.status, headers, body: json };
+  };
+}

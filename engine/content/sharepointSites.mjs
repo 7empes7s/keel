@@ -12,8 +12,8 @@
  *    never asked for anything else: assertSitesRequest() refuses a non-GET method, a path
  *    outside the list below, or a query key outside $select/$expand/$top/$skiptoken.
  *  - Nothing readable is skipped, nothing unreadable is silent. Parts Graph can't return
- *    (SharePoint groups and user role assignments, item attachments, item version history,
- *    navigation) are listed on every site as `missing` with the reason. A denied or failed
+ *    (item attachments, item version history, navigation) are listed on every site as
+ *    `missing` with the reason. A denied or failed
  *    read is recorded where it happened and makes the run `partial`, never `complete`.
  *  - Tenant scope comes from configuration. A site whose id or URL names another host is
  *    recorded out of scope and never read.
@@ -26,6 +26,14 @@
  *    full pass, which marks deleted whatever it no longer sees.
  *  - Bounded. Items are stored page by page, so memory does not grow with a list's size.
  *    `maxSites`, `maxDepth` and `maxPages` cap a run, and a capped run is `partial`.
+ *  - Site permissions (SharePoint groups and their members, site collection admins,
+ *    permission levels and role assignments on the site and on each list with unique
+ *    permissions) come from the SharePoint REST API, which Graph does not cover. Reading
+ *    role assignments needs Sites.FullControl.All on SharePoint, which the read-only
+ *    Content Reader does not hold, so the caller passes `permissionsTransport` built
+ *    on the Collector's certificate (it holds that role). Those reads are GETs on the
+ *    allow-list in PERMISSION_API_PATHS, on the tenant host only; assertPermissionsRequest()
+ *    refuses anything else. Without that transport the part is declared missing.
  *  - Storage goes through the content store interface: putItem(stream, meta) -> { ref, ... }.
  *    Each object is stored as canonical JSON (sorted keys), so an unchanged object
  *    hashes the same on every run and the store deduplicates it.
@@ -62,15 +70,40 @@ const ALLOWED_QUERY = new Set(['$select', '$expand', '$top', '$skiptoken', '$del
 export const SITE_STATE_VERSION = 1;
 export const LIST_STATE_VERSION = 1;
 
-// Parts of a site Graph v1.0 does not return. Recorded on every site so a backup never
-// looks complete when it is not.
+// Parts of a site this backup does not read. Recorded on every site so a backup never
+// looks complete when it is not. One of the two permission parts below is added too.
 export const MISSING_PARTS = Object.freeze([
   { part: 'site-app-permissions', reason: 'app-only Graph needs Sites.FullControl.All to read site app grants; the Content Reader stays read-only (Sites.Read.All)' },
-  { part: 'site-groups-and-user-permissions', reason: 'Graph returns only app grants; SharePoint groups and user role assignments need the SharePoint REST API, which is not qualified' },
   { part: 'list-item-attachments', reason: 'binary route: attachments are on the SharePoint REST API, not Graph' },
   { part: 'list-item-versions', reason: 'not read in this release: only the current version of each list item is stored' },
   { part: 'navigation-and-features', reason: 'Graph does not expose site navigation or activated features' },
 ]);
+
+// Without a SharePoint REST transport, groups and role assignments are not read at all.
+export const SITE_PERMISSIONS_MISSING = Object.freeze({
+  part: 'site-groups-and-user-permissions',
+  reason: 'SharePoint groups and role assignments need the SharePoint REST API as the Collector; no SharePoint transport was given to this run',
+});
+// With it, only permissions broken on single items and folders are left out.
+export const ITEM_PERMISSIONS_MISSING = Object.freeze({
+  part: 'item-unique-permissions',
+  reason: 'unique permissions on single list items and folders are not read; file sharing in libraries is backed up with the files',
+});
+
+// The SharePoint REST reads for site permissions, relative to <site>/_api/. Nothing else is requested.
+export const PERMISSION_API_PATHS = Object.freeze([
+  /^web$/i,
+  /^web\/(roledefinitions|sitegroups|siteusers|roleassignments|lists)$/i,
+  /^web\/sitegroups\/getbyid\([0-9]+\)\/users$/i,
+  new RegExp(`^web/lists\\(guid'${GUID}'\\)/roleassignments$`, 'i'),
+]);
+const PERMISSION_QUERY = new Set(['$select', '$expand', '$filter', '$top', '$skiptoken']);
+const PRINCIPAL_SELECT = 'Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName';
+const GROUP_SELECT = 'Id,Title,Description,LoginName,OwnerTitle,AllowMembersEditMembership,AllowRequestToJoinLeave,'
+  + 'AutoAcceptRequestToJoinLeave,OnlyAllowMembersViewMembership,RequestToJoinLeaveEmailSetting';
+const ROLE_DEFINITION_SELECT = 'Id,Name,Description,Hidden,RoleTypeKind,Order,BasePermissions';
+const ROLE_ASSIGNMENT_QUERY = '$expand=Member,RoleDefinitionBindings'
+  + '&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name';
 
 // List templates whose files live in a drive.
 const LIBRARY_TEMPLATES = new Set(['documentLibrary', 'pictureLibrary', 'webPageLibrary', 'assetLibrary', 'formLibrary', 'mySiteDocumentLibrary']);
@@ -91,6 +124,27 @@ export function assertSitesRequest(url, method = 'GET') {
     if (!ALLOWED_QUERY.has(key)) throw new Error(`sharepoint sites: refused query ${key}`);
   }
   return path;
+}
+
+/**
+ * Throws unless the request is a GET on the tenant's own SharePoint host, under a site's
+ * /_api/, on an allow-listed path with allow-listed query keys. Returns the site path and
+ * API path, lower case, so a next page can be held to the same read.
+ */
+export function assertPermissionsRequest(url, method = 'GET', tenantHost) {
+  if (method !== 'GET') throw new Error(`sharepoint sites: refused ${method}: this backup is read-only`);
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:' || parsed.port || parsed.hostname.toLowerCase() !== String(tenantHost).toLowerCase()) {
+    throw new Error(`sharepoint sites: refused ${parsed.origin}: not the tenant's SharePoint host`);
+  }
+  const path = decodeURIComponent(parsed.pathname);
+  const at = path.toLowerCase().indexOf('/_api/');
+  const api = at < 0 ? null : path.slice(at + '/_api/'.length);
+  if (api === null || !PERMISSION_API_PATHS.some((pattern) => pattern.test(api))) throw new Error(`sharepoint sites: refused ${path}: not an allow-listed read`);
+  for (const key of parsed.searchParams.keys()) {
+    if (!PERMISSION_QUERY.has(key)) throw new Error(`sharepoint sites: refused query ${key}`);
+  }
+  return `${path.slice(0, at)}|${api}`.toLowerCase();
 }
 
 /** True when a site belongs to the configured tenant host, by both its id and its URL. */
@@ -123,9 +177,9 @@ function failure(error) {
  * The read side: one GET (with Retry-After) and a pager that refuses a next page on any
  * other path. Every URL passes assertSitesRequest before the transport sees it.
  */
-function createReader({ transport, sleep, maxPages, maxRetries = 3, counters }) {
+function createReader({ transport, sleep, maxPages, maxRetries = 3, counters, assert = assertSitesRequest }) {
   async function get(url) {
-    assertSitesRequest(url, 'GET');
+    assert(url, 'GET');
     for (let attempt = 0; ; attempt += 1) {
       counters.requests += 1;
       const response = await transport(url, { method: 'GET' });
@@ -151,7 +205,7 @@ function createReader({ transport, sleep, maxPages, maxRetries = 3, counters }) 
   }
 
   async function* pages(url) {
-    const firstPath = assertSitesRequest(url, 'GET');
+    const firstPath = assert(url, 'GET');
     let next = url;
     let count = 0;
     while (next) {
@@ -163,9 +217,10 @@ function createReader({ transport, sleep, maxPages, maxRetries = 3, counters }) 
       const body = await get(next);
       count += 1;
       yield Array.isArray(body.value) ? body.value : [];
-      const link = body['@odata.nextLink'];
+      // Graph names the next page @odata.nextLink; SharePoint REST (nometadata) odata.nextLink.
+      const link = body['@odata.nextLink'] ?? body['odata.nextLink'];
       if (!link) return;
-      if (assertSitesRequest(link, 'GET') !== firstPath) throw new Error(`refused a next page outside ${firstPath}`);
+      if (assert(link, 'GET') !== firstPath) throw new Error(`refused a next page outside ${firstPath}`);
       next = link;
     }
   }
@@ -200,9 +255,13 @@ const enc = encodeURIComponent;
  *   settings and page eTags (key `site:<siteId>`) and each list's item delta
  *   (key `items:<siteId>/<listId>`) between runs. Without it every run reads every item.
  * - siteFilter(site) narrows the run (for example to `KEEL-RT-` sites for a live check).
+ * - permissionsTransport(url, { method: 'GET' }) -> { status, headers, body } reads the
+ *   SharePoint REST API on the tenant host (JSON, odata=nometadata). When given, each
+ *   site's groups, members, admins and role assignments are stored as `site/permissions`.
  */
 export async function backupSharePointSites({
   transport, store, tenantRef, tenantHost, backupLibrary, libraryState = null, deltaState = null, siteFilter = () => true,
+  permissionsTransport = null,
   sleep = async () => {}, now = () => new Date(),
   maxSites = DEFAULT_MAX_SITES, maxDepth = DEFAULT_MAX_DEPTH, maxPages = DEFAULT_MAX_PAGES,
 }) {
@@ -216,6 +275,9 @@ export async function backupSharePointSites({
   const loadState = async (key) => (deltaState ? deltaState.load(key) : null);
   const saveState = async (key, state) => { if (deltaState) await deltaState.save(key, state); };
   const reader = createReader({ transport, sleep, maxPages, counters });
+  const permissionsReader = permissionsTransport
+    ? createReader({ transport: permissionsTransport, sleep, maxPages, counters, assert: (url, method) => assertPermissionsRequest(url, method, tenantHost) })
+    : null;
   const startedAt = now().toISOString();
   // The drive backup reads its own paths, but it gets a transport that still refuses
   // anything except a Graph GET. Response headers reach it as a plain object with
@@ -300,7 +362,7 @@ export async function backupSharePointSites({
     const entry = {
       siteId, webUrl: discovered.webUrl ?? null, displayName: discovered.displayName ?? null, parentSiteId,
       refs: {}, reads: {}, lists: [], pages: null, subsites: null,
-      missing: MISSING_PARTS.map((part) => ({ ...part })),
+      missing: [...MISSING_PARTS, permissionsReader ? ITEM_PERMISSIONS_MISSING : SITE_PERMISSIONS_MISSING].map((part) => ({ ...part })),
     };
     // Each read records its own status; a failure in one never hides the others.
     const read = async (name, fn) => {
@@ -319,6 +381,14 @@ export async function backupSharePointSites({
     await read('contentTypes', async () => {
       entry.refs.contentTypes = await putSetting('site/contentTypes', await reader.all(`${base}/contentTypes`));
     });
+
+    if (permissionsReader) {
+      await read('permissions', async () => {
+        const { value, failed } = await readSitePermissions(discovered.webUrl);
+        entry.refs.permissions = await putSetting('site/permissions', value);
+        if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
+      });
+    }
 
     // Subsites go on the queue; each is backed up as a site of its own.
     await read('subsites', async () => {
@@ -365,6 +435,80 @@ export async function backupSharePointSites({
     // A part that failed this run is left out, so the next run stores it again.
     await saveState(stateKey, next);
     return entry;
+  }
+
+  /**
+   * One site's permissions through SharePoint REST: its permission levels, the site
+   * collection's groups with their members, its admins, and the role assignments on the
+   * site and on each list that breaks inheritance. A subsite that inherits records
+   * `roleAssignments: null`. Every list is sorted, so an unchanged site stores nothing.
+   * A failed group member or list read is recorded on that group or list and makes the
+   * read partial; the rest is still stored.
+   */
+  async function readSitePermissions(webUrl) {
+    const api = `${String(webUrl).replace(/\/+$/, '')}/_api`;
+    const byId = (a, b) => Number(a.id ?? a.principalId) - Number(b.id ?? b.principalId);
+    const principal = (p) => ({
+      id: p?.Id ?? null, title: p?.Title ?? null, loginName: p?.LoginName ?? null, email: p?.Email || null,
+      principalType: p?.PrincipalType ?? null, isSiteAdmin: p?.IsSiteAdmin ?? null, userPrincipalName: p?.UserPrincipalName ?? null,
+    });
+    const assignments = (rows) => rows.map((row) => ({
+      principalId: row.PrincipalId ?? row.Member?.Id ?? null,
+      member: { id: row.Member?.Id ?? null, title: row.Member?.Title ?? null, loginName: row.Member?.LoginName ?? null, principalType: row.Member?.PrincipalType ?? null },
+      roles: (row.RoleDefinitionBindings ?? []).map((role) => ({ id: role.Id ?? null, name: role.Name ?? null })).sort(byId),
+    })).sort(byId);
+    const failed = [];
+
+    const web = await permissionsReader.get(`${api}/web?$select=Id,Url,HasUniqueRoleAssignments`);
+    const roleDefinitions = (await permissionsReader.all(`${api}/web/roledefinitions?$select=${ROLE_DEFINITION_SELECT}`))
+      .map((role) => ({
+        id: role.Id ?? null, name: role.Name ?? null, description: role.Description ?? null, hidden: role.Hidden ?? null,
+        roleTypeKind: role.RoleTypeKind ?? null, order: role.Order ?? null,
+        basePermissions: role.BasePermissions ? { high: String(role.BasePermissions.High), low: String(role.BasePermissions.Low) } : null,
+      })).sort(byId);
+    const groups = [];
+    for (const group of await permissionsReader.all(`${api}/web/sitegroups?$select=${GROUP_SELECT}`)) {
+      const entry = {
+        id: group.Id ?? null, title: group.Title ?? null, description: group.Description ?? null, loginName: group.LoginName ?? null,
+        ownerTitle: group.OwnerTitle ?? null, allowMembersEditMembership: group.AllowMembersEditMembership ?? null,
+        allowRequestToJoinLeave: group.AllowRequestToJoinLeave ?? null, autoAcceptRequestToJoinLeave: group.AutoAcceptRequestToJoinLeave ?? null,
+        onlyAllowMembersViewMembership: group.OnlyAllowMembersViewMembership ?? null, requestToJoinLeaveEmailSetting: group.RequestToJoinLeaveEmailSetting ?? null,
+        members: null,
+      };
+      try {
+        entry.members = (await permissionsReader.all(`${api}/web/sitegroups/GetById(${Number(group.Id)})/users?$select=${PRINCIPAL_SELECT}`)).map(principal).sort(byId);
+      } catch (error) {
+        entry.membersRead = failure(error);
+        failed.push({ what: `members of ${entry.title ?? entry.id}`, ...entry.membersRead });
+      }
+      groups.push(entry);
+    }
+    groups.sort(byId);
+    const siteCollectionAdmins = (await permissionsReader.all(`${api}/web/siteusers?$filter=IsSiteAdmin eq true&$select=${PRINCIPAL_SELECT}`))
+      .map(principal).sort(byId);
+    const hasUnique = web.HasUniqueRoleAssignments === true;
+    const roleAssignments = hasUnique ? assignments(await permissionsReader.all(`${api}/web/roleassignments?${ROLE_ASSIGNMENT_QUERY}`)) : null;
+    const lists = [];
+    for (const list of await permissionsReader.all(`${api}/web/lists?$select=Id,Title,Hidden,HasUniqueRoleAssignments`)) {
+      if (list.HasUniqueRoleAssignments !== true) continue;
+      const entry = { id: String(list.Id ?? '').toLowerCase(), title: list.Title ?? null, hidden: list.Hidden ?? null, roleAssignments: null };
+      try {
+        if (!new RegExp(`^${GUID}$`, 'i').test(entry.id)) throw new Error(`not a list id: ${entry.id}`);
+        entry.roleAssignments = assignments(await permissionsReader.all(`${api}/web/lists(guid'${entry.id}')/roleassignments?${ROLE_ASSIGNMENT_QUERY}`));
+      } catch (error) {
+        entry.read = failure(error);
+        failed.push({ what: `list ${entry.title ?? entry.id}`, ...entry.read });
+      }
+      lists.push(entry);
+    }
+    lists.sort((a, b) => a.id.localeCompare(b.id));
+    return {
+      value: {
+        web: { id: web.Id ?? null, url: web.Url ?? null, hasUniqueRoleAssignments: hasUnique },
+        roleDefinitions, groups, siteCollectionAdmins, roleAssignments, lists,
+      },
+      failed,
+    };
   }
 
   async function backupList(list, { siteId, base, container, putSetting }) {

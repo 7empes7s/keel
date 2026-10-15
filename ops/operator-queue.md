@@ -2751,8 +2751,12 @@ item that needs it stays untouched.
 ### Q59: Add Tasks.ReadWrite.All to the Restorer's manifest, so Marouane can consent (Planner fixture)
 - Drafted by the "Planner test plan" thread (2026-10-15). Q58 could not create a KEEL-RT- plan: the Restorer holds no
   Tasks.* permission, and app-only plan creation needs Graph application `Tasks.ReadWrite.All`.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 00:33 UTC. A Restorer manifest change only: one merged PATCH (204). No appRoleAssignment, no consent; nothing removed
+  (read back: 0 entries lost). Global admin not used.
+  - **Tasks.ReadWrite.All: added** to the Microsoft Graph entry of the Keel Restorer's requiredResourceAccess (appId 12f8942f…).
+  - Held-but-missing entries: none. The Restorer holds 54 Graph application roles, and all 54 were already in the manifest.
+  - The Graph manifest now has 55. **Manifest minus held: only Tasks.ReadWrite.All**, so Marouane's consent click adds just that one.
 - Needs: none. Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Consent stays with Marouane.
 - **Manifest only.** As the Restorer, GET the Keel Restorer application (appId 12f8942f…), MERGE, PATCH once: add Graph
   application permission `Tasks.ReadWrite.All` (resolve its id from the Microsoft Graph SP's `appRoles`, type Role) to the
@@ -2765,8 +2769,10 @@ item that needs it stays untouched.
 
 ### Q60: Create the KEEL-RT- Planner plan fixture and check the Content Reader can read it
 - Drafted by the "Planner test plan" thread (2026-10-15).
-- Status: todo
-- Result:
+- Status: blocked: waiting on consent
+- Result: Checked 2026-10-15 00:34 UTC. The Restorer's SP does not hold Tasks.ReadWrite.All yet (Q59 put it in the manifest; consent not granted),
+  and its token has no Tasks.* role. Nothing written. Waiting on Marouane: Entra > App registrations > **Keel Restorer** >
+  API permissions > Grant admin consent. The click adds only Tasks.ReadWrite.All.
 - Needs: Q59 done, and Marouane's admin consent for the Restorer. First check that the Restorer's SP holds
   `Tasks.ReadWrite.All` as an appRoleAssignment. If not, set `blocked: waiting on consent` and stop (the thread re-sends).
 - **One tenant write area: Planner in the `KEEL-RT-20260908 Collaboration Hub` group.** No permission or consent changes.

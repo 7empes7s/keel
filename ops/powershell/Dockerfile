@@ -30,10 +30,12 @@ ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
 # was byte-for-byte the same size as the bare base image.
 # MicrosoftTeams is pinned: an unpinned rebuild on 2026-10-05 pulled 8.0.0, a major
 # version Teams capture has not been tested on. Bump it on purpose, with a live check.
+# ExchangeOnlineManagement is pinned to 3.10.1, the version the Exchange and Purview
+# live captures were taken at (#339); a floor alone let a rebuild change it.
 RUN pwsh -NoLogo -NoProfile -NonInteractive -Command " \
       \$ErrorActionPreference = 'Stop'; \
       Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
-      Install-Module -Name ExchangeOnlineManagement -MinimumVersion 3.0.0 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
+      Install-Module -Name ExchangeOnlineManagement -RequiredVersion 3.10.1 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Install-Module -Name MicrosoftTeams -RequiredVersion 7.9.0 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Install-Module -Name PnP.PowerShell -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Write-Host 'module install complete:'; \
@@ -41,6 +43,9 @@ RUN pwsh -NoLogo -NoProfile -NonInteractive -Command " \
     " \
     && rm -rf /tmp/* /root/.cache /root/.local/share/powershell/CommandAnalysisCache 2>/dev/null || true
 
+# jobQueue.mjs mounts the deployed ops/powershell read-only over /app, so these
+# copies are used only when the image is run by hand; the allowlist a job sees is
+# always the deployed one (#339).
 WORKDIR /app
 COPY run-job.sh /app/run-job.sh
 COPY probe-workloads.ps1 /app/probe-workloads.ps1

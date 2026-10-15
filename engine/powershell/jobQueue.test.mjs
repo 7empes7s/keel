@@ -5,7 +5,8 @@
 
 import { strict as assert } from 'node:assert';
 import { EventEmitter } from 'node:events';
-import { runJob, JobQueueError, DEFAULT_MEMORY } from './jobQueue.mjs';
+import { fileURLToPath } from 'node:url';
+import { runJob, JobQueueError, DEFAULT_MEMORY, defaultScriptMount } from './jobQueue.mjs';
 
 /**
  * Builds a fake ChildProcess-shaped object. Emits its scripted stdout/stderr
@@ -194,6 +195,28 @@ async function run() {
     await assert.rejects(() => runJob(null), TypeError);
     await assert.rejects(() => runJob('nope'), TypeError);
     await assert.rejects(() => runJob(['array']), TypeError);
+  }
+
+  // 8. The deployed ops/powershell is mounted read-only over /app, so the cmdlet
+  //    allowlist a job sees is never a stale copy baked into the image (#339).
+  {
+    let args;
+    const spawnFn = (bin, a) => { args = a; return makeFakeChild({ stdoutChunks: ['[]'] }); };
+    await runJob({ mode: 'probe' }, { spawnFn });
+    const mount = defaultScriptMount();
+    assert.equal(mount, fileURLToPath(new URL('../../ops/powershell', import.meta.url)));
+    assert.ok(args.includes(`${mount}:/app:ro`), 'the deployed scripts must be mounted read-only over /app');
+    assert.ok(args.indexOf(`${mount}:/app:ro`) < args.length - 1, 'the mount comes before the image');
+
+    await runJob({ mode: 'probe' }, { spawnFn, scriptMount: null });
+    assert.ok(!args.some((a) => String(a).endsWith(':/app:ro')), 'scriptMount null keeps the image copy');
+
+    let spawned = false;
+    await assert.rejects(
+      () => runJob({ mode: 'probe' }, { spawnFn: () => { spawned = true; return makeFakeChild(); }, scriptMount: '/nonexistent/keel-scripts' }),
+      (err) => err instanceof JobQueueError && err.code === 'SCRIPTS_MISSING',
+    );
+    assert.equal(spawned, false, 'nothing runs when the scripts are missing');
   }
 
   console.log('jobQueue.test.mjs — all assertions passed (offline, no Docker)');

@@ -11,7 +11,9 @@
  *  - `family` names the collector family the write restores, `readBack` that family's
  *    read operation, which must be enabled for the write to run.
  *  - `identity` says how the object is named to the cmdlet: `guid` (-Identity <Guid>,
- *    Exchange and Purview objects), `policy` (-Identity as Teams answered it, `Global`
+ *    Exchange and Purview objects), `object-name` (-Identity <Name>, for an Exchange
+ *    cmdlet that refuses a Guid: Set-QuarantinePolicy fails its Identity argument
+ *    transformation on one, #339), `policy` (-Identity as Teams answered it, `Global`
  *    or `Tag:<name>`), `name` (-Identity <name> for a New- of a named Teams policy).
  *  - Fields were declared from Microsoft's cmdlet documentation, not measured live.
  *    A value the cmdlet transport cannot carry (an object, a list of non-strings) is
@@ -91,8 +93,8 @@ family(EXO, EXO_DOCS, {
 const EXTENDED = 'exchange-extended';
 const RECIPIENT_SCOPE = ['Priority', 'Comments', 'SentTo', 'SentToMemberOf', 'RecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'ExceptIfRecipientDomainIs'];
 const SENDER_SCOPE = ['Priority', 'Comments', 'From', 'FromMemberOf', 'SenderDomainIs', 'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs'];
-const extended = (name, prefix, read, set, resourceType, fields) => family(EXO, EXO_DOCS, {
-  workload: EXTENDED, prefix: `exchange-extended.${prefix}`, family: name, resourceType, readBack: `exchange-extended.${read}`, set, fields,
+const extended = (name, prefix, read, set, resourceType, fields, identity = 'guid') => family(EXO, EXO_DOCS, {
+  workload: EXTENDED, prefix: `exchange-extended.${prefix}`, family: name, resourceType, readBack: `exchange-extended.${read}`, set, identity, fields,
 });
 extended('outboundSpamPolicy', 'outbound-spam-policy', 'outbound-spam-policies', 'Set-HostedOutboundSpamFilterPolicy', 'exchangeOutboundSpamPolicy', [
   'AdminDisplayName', 'RecipientLimitExternalPerHour', 'RecipientLimitInternalPerHour', 'RecipientLimitPerDay', 'ActionWhenThresholdReached',
@@ -107,11 +109,11 @@ extended('antiPhishRule', 'anti-phish-rule', 'anti-phish-rules', 'Set-AntiPhishR
 extended('antiMalwareRule', 'anti-malware-rule', 'anti-malware-rules', 'Set-MalwareFilterRule', 'exchangeAntiMalwareRule', RECIPIENT_SCOPE);
 extended('quarantinePolicy', 'quarantine-policy', 'quarantine-policies', 'Set-QuarantinePolicy', 'exchangeQuarantinePolicy', [
   'EndUserQuarantinePermissionsValue', 'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress',
-]);
+], 'object-name');
 extended('globalQuarantineSettings', 'quarantine-global-settings', 'quarantine-global-settings', 'Set-QuarantinePolicy', 'exchangeGlobalQuarantineSettings', [
   'EndUserSpamNotificationFrequencyInDays', 'EndUserSpamNotificationCustomFromAddress', 'MultiLanguageSetting', 'MultiLanguageCustomDisclaimer',
   'MultiLanguageSenderName', 'OrganizationBrandingEnabled',
-]);
+], 'object-name');
 extended('journalRule', 'journal-rule', 'journal-rules', 'Set-JournalRule', 'exchangeJournalRule', ['Recipient', 'JournalEmailAddress', 'Scope']);
 extended('mobileDevicePolicy', 'mobile-device-policy', 'mobile-device-policies', 'Set-MobileDeviceMailboxPolicy', 'exchangeMobileDevicePolicy', [
   'AllowNonProvisionableDevices', 'PasswordEnabled', 'AlphanumericPasswordRequired', 'AllowSimplePassword', 'MinPasswordLength',

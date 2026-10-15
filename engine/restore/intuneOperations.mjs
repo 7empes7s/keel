@@ -50,6 +50,10 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
+import { resolveSymbol } from '../graph/resolver.mjs';
+import {
+  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue,
+} from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
 
@@ -589,4 +593,274 @@ export function buildIntuneLedger() {
       docs: entry.docs[operation],
     })))),
   });
+}
+
+// ======================================================= Wave 2 IDO records
+//
+// Intune types written through the writer registry (engine/restore/
+// recordWriter.mjs), not the built-in applyIntuneWrite branch above:
+//
+//  - app protection (managedAppPolicy, by subtype: iOS and Android) and app
+//    configuration (targetedManagedAppConfiguration for managed apps,
+//    mobileAppConfiguration for managed devices): create, update, delete. A
+//    protection or managed-app configuration is created only when the backup
+//    holds its target apps, which are written through /targetApps; one created
+//    without them would protect nothing. A device app configuration names its
+//    apps by id, and each must exist in the target before anything is written.
+//  - Windows feature, quality and driver update profiles, assignment filters,
+//    scope tags (never the built-in Default tag) and notification message
+//    templates with their localized messages (wave 1 CAT-INTUNE, PR #254).
+//  - policy delete for the three built-in policy types and the types above
+//    that have assignments: a policy that is still assigned is never deleted
+//    (removing it would unprotect every device it applies to); its assignments
+//    must be removed first, by hand.
+//
+// Assignments are written with the policy through /assign when a restore
+// attaches the backup's assignment read (resource.assignments), exactly as for
+// the built-in types. Secrets and credential profiles are manual, as above.
+
+const APP_POLICY_SERVER_FIELDS = ['apps', 'assignments', 'deploymentSummary', 'deployedAppCount', 'isAssigned', 'version'];
+const UPDATE_PROFILE_SERVER_FIELDS = ['assignments', 'deployableContentDisplayName', 'endOfSupportDate', 'releaseDateDisplayText',
+  'deviceReporting', 'newUpdates', 'inventorySyncStatus', 'driverInventories'];
+
+/** App protection subtypes with a write route; anything else in the shared list is manual. */
+export const APP_PROTECTION_COLLECTIONS = Object.freeze({
+  iosManagedAppProtection: '/deviceAppManagement/iosManagedAppProtections',
+  androidManagedAppProtection: '/deviceAppManagement/androidManagedAppProtections',
+});
+
+const appIdentity = (app) => JSON.stringify(normalised(withoutAnnotations(app?.mobileAppIdentifier ?? null)));
+const appSet = (apps) => new Set((apps ?? []).map(appIdentity));
+
+/** The /targetApps body for a policy's apps. */
+export function targetAppsBody(payload) {
+  const body = {
+    apps: (payload?.apps ?? []).map((app) => ({
+      '@odata.type': '#microsoft.graph.managedMobileApp',
+      mobileAppIdentifier: withoutAnnotations({ ...(app?.mobileAppIdentifier ?? {}), '@odata.type': app?.mobileAppIdentifier?.['@odata.type'] }),
+      ...(app?.version ? { version: app.version } : {}),
+    })),
+  };
+  if (payload?.appGroupType) body.appGroupType = payload.appGroupType;
+  return body;
+}
+
+function secretRefusal(resource, verb) {
+  if (verb === 'delete') return null;
+  const payload = resource.payload;
+  const subtype = credentialSubtype(payload);
+  if (subtype) {
+    return { outcome: 'skipped', reason: `manual: this is a ${subtype} profile, which carries credentials or certificates Graph never returns; restore it by hand so nothing is written as a blank` };
+  }
+  const secrets = intuneSecretFields(payload);
+  if (secrets.length > 0) {
+    return { outcome: 'skipped', reason: `manual: the policy holds values Graph never returns (passwords, keys, certificates or encrypted settings) at ${secrets.join(', ')}; restore it by hand so they are never written as blanks` };
+  }
+  return null;
+}
+
+/** Managed-app policies (protection, configuration) need their apps to be created. */
+function managedAppRefusal(resource, verb) {
+  const secret = secretRefusal(resource, verb);
+  if (secret) return secret;
+  if (verb === 'create' && !Array.isArray(resource.payload?.apps)) {
+    return {
+      outcome: 'failed',
+      reason: 'the backup does not hold this policy\'s target apps, and a policy created without them protects nothing; take a new backup that reads its apps, then restore',
+    };
+  }
+  return null;
+}
+
+/** Writes a managed-app policy's apps when they differ (always on create). */
+async function targetAppsAfterWrite(io, { payload, verb, targetId, live, resource }) {
+  const out = { changes: {} };
+  if (Array.isArray(payload?.apps)) {
+    const path = `${recordObjectPath(resource.record, payload, targetId)}`;
+    const current = verb === 'create' ? new Set() : appSet((await io.retryOperation(() => io.writer.read('v1.0', `${path}?$expand=apps`)))?.body?.apps);
+    const want = appSet(payload.apps);
+    if (verb === 'create' || current.size !== want.size || [...want].some((app) => !current.has(app))) {
+      const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/targetApps`, { method: 'POST', body: targetAppsBody(payload) }));
+      if (!result.ok) return { error: `writing the policy's target apps failed: ${outcomeDetail(result)}` };
+      const check = await readUntil(io, 'v1.0', `${path}?$expand=apps`, (r) => recordNotFound(r)
+        || (r?.ok === true && !sameApps(appSet(r.body?.apps), want)), io.readOptions);
+      if (check?.ok !== true || !sameApps(appSet(check.body?.apps), want)) return { error: 'post-state: the target apps did not read back as written' };
+      out.changes.apps = 'written';
+    }
+  }
+  const assigned = await assignmentsAfterWrite(io, { payload, verb, targetId, live, resource });
+  if (assigned?.error) return assigned;
+  if (assigned?.changes) Object.assign(out.changes, assigned.changes);
+  return out;
+}
+
+const sameApps = (left, right) => left.size === right.size && [...left].every((app) => right.has(app));
+
+/**
+ * Writes a policy's assignments through /assign when the restore attached the
+ * backup's assignment read and it differs from live; otherwise leaves them.
+ */
+async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) {
+  const record = resource.record;
+  if (!record.assignmentType) return null;
+  const plan = assignmentPlan(resource, (symbol) => {
+    const result = resolveSymbol(symbol, resource.referenceContext ?? { targetIndex: new Map(), mappingTable: new Map(), runProvenance: new Map() });
+    if (!result.resolved || result.via === 'global-constant') return null;
+    return result.stale ? { stale: true } : result.targetId;
+  });
+  if (plan.state === 'not-observed') return { changes: { assignments: plan.reason } };
+  if (plan.state === 'refused') return { error: plan.reason };
+  for (const filterId of plan.filters) {
+    const found = await io.retryOperation(() => io.writer.read('beta', ASSIGNMENT_FILTER_PATH(filterId)));
+    if (found?.ok !== true) return { error: `dependency: an assignment filter this policy uses ${recordNotFound(found) ? 'does not exist in the target' : 'could not be read'}` };
+  }
+  const base = recordObjectPath(record, payload, targetId);
+  let current = new Set();
+  if (verb !== 'create') {
+    const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
+    if (listed?.ok !== true) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
+    current = liveAssignmentIdentities(listed.body?.value ?? []);
+  }
+  if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
+  const body = { assignments: plan.assignments.map((assignment) => ({ '@odata.type': record.assignmentType, ...assignment })) };
+  const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/assign`, { method: 'POST', body }));
+  if (!result.ok) return { error: `assigning the policy failed: ${outcomeDetail(result)}` };
+  const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
+    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? []))), io.readOptions);
+  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? []))) {
+    return { error: 'post-state: the assignments did not read back as written' };
+  }
+  return { changes: { assignments: 'written' } };
+}
+
+/** A device app configuration's apps must exist in the target (by id). */
+async function mobileAppsExist(io, { payload }) {
+  for (const appId of payload?.targetedMobileApps ?? []) {
+    const found = await io.retryOperation(() => io.writer.read('v1.0', `/deviceAppManagement/mobileApps/${encodeURIComponent(appId)}?$select=id`));
+    if (found?.ok !== true) return `the app ${appId} this configuration targets ${recordNotFound(found) ? 'does not exist in the target' : 'could not be read'}`;
+  }
+  return null;
+}
+
+/** A policy that is still assigned is never deleted. */
+async function unassignedDeleteGuard(io, { resource, path }) {
+  const listed = await io.retryOperation(() => io.writer.read(resource.record.version, `${path}/assignments`));
+  if (listed?.ok !== true) return `manual: the policy's assignments could not be read (${outcomeDetail(listed)}), so it is not deleted`;
+  const count = (listed.body?.value ?? []).length;
+  if (count > 0) {
+    return `manual: the policy is assigned (${count} assignment${count === 1 ? '' : 's'}), and deleting it would unprotect every device it applies to; remove its assignments by hand, then restore again`;
+  }
+  return null;
+}
+
+/** Localized messages of a notification template: added or updated by locale, never removed. */
+async function localizedMessagesAfterWrite(io, { payload, verb, targetId, live }) {
+  if (!Array.isArray(payload?.localizedNotificationMessages)) return null;
+  const base = `/deviceManagement/notificationMessageTemplates/${encodeURIComponent(targetId)}/localizedNotificationMessages`;
+  const fieldsOf = (message) => ({ locale: message.locale, subject: message.subject, messageTemplate: message.messageTemplate, isDefault: message.isDefault ?? false });
+  const have = new Map((verb === 'create' ? [] : live?.localizedNotificationMessages ?? []).map((message) => [lower(message.locale), message]));
+  const written = [];
+  for (const message of payload.localizedNotificationMessages) {
+    const want = fieldsOf(message);
+    const current = have.get(lower(message.locale));
+    if (current && sameValue(fieldsOf(current), want)) continue;
+    const request = current
+      ? { path: `${base}/${encodeURIComponent(current.id)}`, method: 'PATCH', body: { subject: want.subject, messageTemplate: want.messageTemplate, isDefault: want.isDefault } }
+      : { path: base, method: 'POST', body: want };
+    const result = await io.retryOperation(() => io.writer.write('v1.0', request.path, { method: request.method, body: request.body }));
+    if (!result.ok) return { error: `writing the ${message.locale} message failed: ${outcomeDetail(result)}` };
+    written.push(message.locale);
+  }
+  if (written.length === 0) return null;
+  const check = await io.retryOperation(() => io.writer.read('v1.0', base));
+  const got = new Map((check?.body?.value ?? []).map((message) => [lower(message.locale), fieldsOf(message)]));
+  const wrong = payload.localizedNotificationMessages.filter((message) => !sameValue(got.get(lower(message.locale)), fieldsOf(message))).map((message) => message.locale);
+  if (check?.ok !== true || wrong.length > 0) return { error: `post-state: the ${wrong.join(', ') || 'localized'} messages did not read back as written` };
+  return { changes: { localizedMessages: written } };
+}
+
+const lower = (value) => String(value ?? '').toLowerCase();
+
+function builtInScopeTag(resource, verb) {
+  const payload = verb === 'delete' ? resource.live?.payload ?? resource.payload : resource.payload;
+  if (payload?.isBuiltIn === true || String(payload?.id) === '0') {
+    return { outcome: 'skipped', reason: 'built-in: the Default scope tag exists in every tenant and is never written' };
+  }
+  return null;
+}
+
+const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
+
+/** The Wave 2 Intune records (resourceType -> record). */
+export const INTUNE_EXTENDED_RECORDS = Object.freeze({
+  // Delete only: create and update stay on the built-in path above.
+  ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
+    resourceType: entry.resourceType, version: entry.version, collection: entry.collection, operations: ['delete'],
+    permission: entry.permission, ...DELETE_POLICY,
+  })])),
+  managedAppPolicy: defineRecord({
+    resourceType: 'managedAppPolicy', version: 'v1.0', odataType: 'required', operations: ['create', 'update', 'delete'],
+    collectionFor: (payload) => APP_PROTECTION_COLLECTIONS[stripGraph(payload?.['@odata.type'])] ?? null,
+    excluded: APP_POLICY_SERVER_FIELDS, refusal: managedAppRefusal, afterWrite: targetAppsAfterWrite,
+    assignmentType: '#microsoft.graph.targetedManagedAppPolicyAssignment', permission: 'DeviceManagementApps.ReadWrite.All', ...DELETE_POLICY,
+  }),
+  targetedManagedAppConfiguration: defineRecord({
+    resourceType: 'targetedManagedAppConfiguration', version: 'v1.0', collection: '/deviceAppManagement/targetedManagedAppConfigurations',
+    operations: ['create', 'update', 'delete'], excluded: APP_POLICY_SERVER_FIELDS, refusal: managedAppRefusal, afterWrite: targetAppsAfterWrite,
+    assignmentType: '#microsoft.graph.targetedManagedAppPolicyAssignment', permission: 'DeviceManagementApps.ReadWrite.All', ...DELETE_POLICY,
+  }),
+  mobileAppConfiguration: defineRecord({
+    resourceType: 'mobileAppConfiguration', version: 'v1.0', collection: '/deviceAppManagement/mobileAppConfigurations', odataType: 'required',
+    operations: ['create', 'update', 'delete'], excluded: ['assignments', 'deviceStatuses', 'userStatuses', 'deviceStatusSummary', 'userStatusSummary', 'version'],
+    refusal: secretRefusal, preflight: mobileAppsExist, afterWrite: assignmentsAfterWrite,
+    assignmentType: '#microsoft.graph.managedDeviceMobileAppConfigurationAssignment', permission: 'DeviceManagementApps.ReadWrite.All', ...DELETE_POLICY,
+  }),
+  ...Object.fromEntries(['windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile'].map((resourceType) => [resourceType, defineRecord({
+    resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update', 'delete'],
+    excluded: UPDATE_PROFILE_SERVER_FIELDS, permission: 'DeviceManagementConfiguration.ReadWrite.All', ...DELETE_POLICY,
+  })])),
+  assignmentFilter: defineRecord({
+    resourceType: 'assignmentFilter', version: 'beta', collection: '/deviceManagement/assignmentFilters', operations: ['create', 'update'],
+    createOnly: ['platform'], excluded: ['payloads'], permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  roleScopeTag: defineRecord({
+    resourceType: 'roleScopeTag', version: 'beta', collection: '/deviceManagement/roleScopeTags', operations: ['create', 'update'],
+    excluded: ['isBuiltIn', 'assignments'], refusal: builtInScopeTag, permission: 'DeviceManagementRBAC.ReadWrite.All',
+  }),
+  notificationMessageTemplate: defineRecord({
+    resourceType: 'notificationMessageTemplate', version: 'v1.0', collection: '/deviceManagement/notificationMessageTemplates',
+    readQuery: '$expand=localizedNotificationMessages', operations: ['create', 'update'], excluded: ['localizedNotificationMessages'],
+    afterWrite: localizedMessagesAfterWrite, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
+});
+
+/** Intune types read in wave 1 that no record can write in full, and why. */
+export const INTUNE_BEST_EFFORT = Object.freeze({
+  deviceManagementScript: 'the script body is returned only by a per-script read that is not backed up',
+  deviceShellScript: 'the script body is returned only by a per-script read that is not backed up',
+  deviceHealthScript: 'the detection and remediation script bodies are returned only by a per-script read that is not backed up',
+  deviceComplianceScript: 'the detection script body is returned only by a per-script read that is not backed up',
+  groupPolicyConfiguration: 'each setting\'s presentation values are on a per-setting route that is not backed up',
+  groupPolicyUploadedDefinitionFile: 'the ADMX and ADML file content is returned only per file and is not backed up',
+  windowsAutopilotDeviceIdentity: 'the hardware hash is never returned; a device is re-imported from the device itself',
+  deviceManagementRoleAssignment: 'it grants Intune admin access to groups by id; remapping them is not qualified',
+});
+
+/** One write of a Wave 2 Intune record. */
+export async function applyIntuneExtendedWrite(writer, resource, verb, ctx = {}) {
+  const record = INTUNE_EXTENDED_RECORDS[resource.resourceType];
+  if (!record) return { failed: { naturalKey: resource.naturalKey, error: `${resource.resourceType} has no Intune record` } };
+  // Child steps read the record and the reference context from the resource.
+  return applyRecordWrite(writer, record, { ...resource, record, referenceContext: ctx.referenceContext }, verb, ctx);
+}
+
+/** (resourceType, operation, path) of every Wave 2 Intune record. */
+export function intuneExtendedOperations() {
+  return Object.freeze(Object.values(INTUNE_EXTENDED_RECORDS).flatMap((record) => record.operations.map((operation) => Object.freeze({
+    resourceType: record.resourceType, operation, path: record.collection ?? '/deviceAppManagement/managedAppPolicies',
+  }))));
+}
+
+export function buildIntuneExtendedLedger() {
+  return Object.freeze({ contractVersion: INTUNE_OPERATIONS_CONTRACT_VERSION, operations: recordLedger(Object.values(INTUNE_EXTENDED_RECORDS)) });
 }

@@ -3937,3 +3937,23 @@ item that needs it stays untouched.
      (secret scan first, as Q39). No PR.
 - **Report:** A's before/after resource counts; B; step 2 exit code and verify; step 3 import lines; step 4 check; per round
   the plan line, outcome and approval ids; steps 6 and 7 results; the evidence commit; anything left in the tenant.
+
+### Q81: Retention prune dry run on the box (read-only, after #282)
+- Drafted by the "Backup retention rules" thread (2026-10-15). Code: PR #282. `cli/keel-prune.mjs` without `--apply` is a
+  dry run: it plans with the retention policies (default 14 daily, 8 weekly, 12 monthly, 7 yearly), saves one row in
+  `retention_prune_report` and deletes nothing. Marouane said go for real deletes; this report is the check before the
+  change that makes the scheduled prune delete is merged.
+- Needs: /opt/keel-live at the merge of PR #282 or later (`test -f /opt/keel-live/engine/store/rotation.mjs`), and the
+  schema applied (`retention_prune_report` exists).
+- Status: todo
+- Result:
+- Do (no tenant access, no deletes):
+  1. `set -a; . /etc/keel/db.env; set +a; node /opt/keel-live/cli/keel-prune.mjs --report /tmp/keel-prune-report.json`
+     (never with `--apply`). Report the exit code and every stdout line.
+  2. From the report file: count of `snapshots.entries` and of `snapshots.delete`; `snapshots.kept`; `content.delete`
+     length, `content.chunks` length, `content.freedBytes`, `content.kept`, `content.singleVersionItems`; `policies`;
+     `holds`. Also the oldest and newest `at` among the snapshots it would delete, and the 3 newest kept snapshots with reasons.
+  3. Sanity: say whether any snapshot the report would delete is newer than 14 days (expect only snapshots that are
+     not the newest of their day, week, month or year), and whether the newest complete snapshot is kept.
+  4. `SELECT job_kind, enabled, next_due_at FROM schedule WHERE job_kind = 'prune'` (column names as in the schema).
+- **Report:** steps 1–4. Nothing is deleted by this item.

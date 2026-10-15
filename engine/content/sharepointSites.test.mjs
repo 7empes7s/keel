@@ -44,6 +44,7 @@ function memoryStore() {
   };
 }
 
+const itemsDeltaLink = (siteId, listId, token = 'latest-1') => `${G}/sites/${encodeURIComponent(siteId)}/lists/${listId}/items/delta?token=${token}`;
 const site = (id, name) => ({ id, name, displayName: name, webUrl: `https://${id.split(',')[0]}/sites/${name}` });
 
 function fixtureRoutes() {
@@ -61,15 +62,15 @@ function fixtureRoutes() {
     ] },
     [`/sites/${ROOT}/lists/${LIST}/columns`]: { value: [{ id: 'col-2', name: 'Title' }] },
     [`/sites/${ROOT}/lists/${LIST}/contentTypes`]: { value: [{ id: '0x0100', name: 'Item' }] },
-    [`/sites/${ROOT}/lists/${LIST}/items`]: [
-      { value: [{ id: '1', eTag: 'e1', fields: { Title: 'one' } }, { id: '2', eTag: 'e2', fields: { Title: 'two' } }], '@odata.nextLink': `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items?$expand=fields&$skiptoken=2` },
-      { value: [{ id: '3', eTag: 'e3', fields: { Title: 'three' } }] },
+    [`/sites/${ROOT}/lists/${LIST}/items/delta`]: [
+      { value: [{ id: '1', eTag: 'e1', fields: { Title: 'one' } }, { id: '2', eTag: 'e2', fields: { Title: 'two' } }], '@odata.nextLink': `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/delta?token=page-2` },
+      { value: [{ id: '3', eTag: 'e3', fields: { Title: 'three' } }], '@odata.deltaLink': itemsDeltaLink(ROOT, LIST) },
     ],
     [`/sites/${ROOT}/lists/${LIB}/columns`]: { value: [] },
     [`/sites/${ROOT}/lists/${LIB}/contentTypes`]: { value: [{ id: '0x0101', name: 'Document' }] },
-    [`/sites/${ROOT}/lists/${LIB}/items`]: { value: [{ id: '1', eTag: 'd1', fields: { FileLeafRef: 'KEEL-RT-a.docx', Region: 'EU' } }] },
+    [`/sites/${ROOT}/lists/${LIB}/items/delta`]: { value: [{ id: '1', eTag: 'd1', fields: { FileLeafRef: 'KEEL-RT-a.docx', Region: 'EU' } }], '@odata.deltaLink': itemsDeltaLink(ROOT, LIB) },
     [`/sites/${ROOT}/lists/${LIB}/drive`]: { id: 'b!drive-1', driveType: 'documentLibrary' },
-    [`/sites/${ROOT}/pages/microsoft.graph.sitePage`]: { value: [{ id: PAGE, name: 'Home.aspx' }] },
+    [`/sites/${ROOT}/pages/microsoft.graph.sitePage`]: { value: [{ id: PAGE, name: 'Home.aspx', eTag: 'p1' }] },
     [`/sites/${ROOT}/pages/${PAGE}/microsoft.graph.sitePage`]: { id: PAGE, title: 'Home', eTag: 'p1', canvasLayout: { horizontalSections: [{ id: '1', columns: [{ webparts: [{ id: 'wp', innerHtml: '<p>Hi</p>' }] }] }] } },
     [`/sites/${SUB}`]: sub,
     [`/sites/${SUB}/columns`]: { value: [] },
@@ -78,12 +79,12 @@ function fixtureRoutes() {
     [`/sites/${SUB}/lists`]: { value: [{ id: SUBLIST, displayName: 'KEEL-RT-Sub list', list: { template: 'genericList' } }] },
     [`/sites/${SUB}/lists/${SUBLIST}/columns`]: { value: [] },
     [`/sites/${SUB}/lists/${SUBLIST}/contentTypes`]: { value: [] },
-    [`/sites/${SUB}/lists/${SUBLIST}/items`]: { value: [{ id: '1', eTag: 's1', fields: { Title: 'sub' } }] },
+    [`/sites/${SUB}/lists/${SUBLIST}/items/delta`]: { value: [{ id: '1', eTag: 's1', fields: { Title: 'sub' } }], '@odata.deltaLink': itemsDeltaLink(SUB, SUBLIST) },
     [`/sites/${SUB}/pages/microsoft.graph.sitePage`]: { value: [] },
   };
 }
 
-// A fake Graph: answers from the routes; a route that is an array is paged by $skiptoken.
+// A fake Graph: answers from the routes; a route that is an array is paged by $skiptoken or token.
 function fakeGraph(routes, { override = {} } = {}) {
   const requests = [];
   const transport = async (url, { method, headers } = {}) => {
@@ -93,7 +94,7 @@ function fakeGraph(routes, { override = {} } = {}) {
     if (override[path]) return override[path](parsed);
     const route = routes[path];
     if (route === undefined) return { status: 404, headers: {}, body: { error: { code: 'itemNotFound' } } };
-    if (Array.isArray(route)) return { status: 200, headers: {}, body: route[parsed.searchParams.get('$skiptoken') ? 1 : 0] };
+    if (Array.isArray(route)) return { status: 200, headers: {}, body: route[parsed.searchParams.get('$skiptoken') || parsed.searchParams.get('token') ? 1 : 0] };
     return { status: 200, headers: {}, body: route };
   };
   return { transport, requests };
@@ -158,11 +159,13 @@ test('every request is a GET on an allow-listed path, and other hosts are never 
 });
 
 test('assertSitesRequest refuses writes, content paths outside the list, other hosts and unknown query keys', () => {
-  const ok = `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items?$expand=fields`;
+  const ok = `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/delta?$expand=fields&token=abc`;
   assert.doesNotThrow(() => assertSitesRequest(ok));
   assert.throws(() => assertSitesRequest(ok, 'POST'), /read-only/);
   assert.throws(() => assertSitesRequest(ok, 'PATCH'), /read-only/);
-  assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/1`), /not an allow-listed read/);
+  assert.doesNotThrow(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/1?$expand=fields`));
+  assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items?$expand=fields`), /not an allow-listed read/);
+  assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/1/versions`), /not an allow-listed read/);
   assert.throws(() => assertSitesRequest(`${G}/drives/b!x/items/root/children`), /not an allow-listed read/);
   // Site app grants need Sites.FullControl.All; the read-only reader declares them missing instead (#264).
   assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/permissions`), /not an allow-listed read/);
@@ -173,7 +176,7 @@ test('assertSitesRequest refuses writes, content paths outside the list, other h
 
 test('a denied read is partial coverage and the rest of the site is still captured', async () => {
   const { transport } = fakeGraph(fixtureRoutes(), {
-    override: { [`/sites/${ROOT}/lists/${LIST}/items`]: () => ({ status: 403, headers: {}, body: {} }) },
+    override: { [`/sites/${ROOT}/lists/${LIST}/items/delta`]: () => ({ status: 403, headers: {}, body: {} }) },
   });
   const store = memoryStore();
   const result = await backupSharePointSites({ transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
@@ -288,7 +291,7 @@ test('throttling honours Retry-After', async () => {
 
 test('a next page on another path is refused', async () => {
   const routes = fixtureRoutes();
-  routes[`/sites/${ROOT}/lists/${LIST}/items`][0]['@odata.nextLink'] = `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIB}/items?$skiptoken=2`;
+  routes[`/sites/${ROOT}/lists/${LIST}/items/delta`][0]['@odata.nextLink'] = `${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIB}/items/delta?token=2`;
   const { transport } = fakeGraph(routes);
   const result = await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
   const list = result.sites[0].lists.find((entry) => entry.listId === LIST);
@@ -333,4 +336,142 @@ test('Retry-After is read from a fetch-style Headers object too', async () => {
   });
   await backupSharePointSites({ transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), sleep: async (ms) => { waits.push(ms); } });
   assert.deepEqual(waits, [3000]);
+});
+
+// Change-only repeat runs: list item delta, page eTags and unchanged settings.
+function memoryDeltaState() {
+  const rows = new Map();
+  return {
+    rows,
+    async load(key) { return rows.has(key) ? structuredClone(rows.get(key)) : null; },
+    async save(key, state) { rows.set(key, structuredClone(state)); },
+  };
+}
+const LIST_DELTA = `/sites/${ROOT}/lists/${LIST}/items/delta`;
+const deltaPage = (value, token = 'latest-2') => () => ({ status: 200, headers: {}, body: { value, '@odata.deltaLink': itemsDeltaLink(ROOT, LIST, token) } });
+const unchangedDeltas = () => Object.fromEntries([[ROOT, LIST], [ROOT, LIB], [SUB, SUBLIST]].map(([siteId, listId]) => [
+  `/sites/${siteId}/lists/${listId}/items/delta`,
+  (parsed) => ({ status: 200, headers: {}, body: { value: [], '@odata.deltaLink': itemsDeltaLink(siteId, listId, parsed.searchParams.get('token') ?? 'x') } }),
+]));
+
+test('a repeat run reads only changes: saved delta links, no unchanged page fetched, nothing stored', async () => {
+  const store = memoryStore();
+  const deltaState = memoryDeltaState();
+  const options = { store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState };
+  const first = await backupSharePointSites({ transport: fakeGraph(fixtureRoutes()).transport, ...options });
+  assert.equal(first.outcome, 'complete');
+  assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).deltaLink, itemsDeltaLink(ROOT, LIST));
+  const before = store.items.length;
+
+  const second = fakeGraph(fixtureRoutes(), { override: unchangedDeltas() });
+  const again = await backupSharePointSites({ transport: second.transport, ...options });
+  assert.equal(again.outcome, 'complete');
+  assert.equal(again.counters.stored, 0);
+  assert.equal(store.items.length, before);
+  assert.ok(again.counters.unchanged > 0);
+  // Every list read resumed from its saved delta link, and the unchanged page was not fetched.
+  const itemReads = second.requests.filter((request) => request.url.includes('/items'));
+  assert.equal(itemReads.length, 3);
+  assert.ok(itemReads.every((request) => new URL(request.url).searchParams.get('token') === 'latest-1'));
+  assert.ok(!second.requests.some((request) => request.url.includes(`/pages/${PAGE}/`)));
+});
+
+test('a changed and a deleted item are the only list items stored on a repeat run', async () => {
+  const store = memoryStore();
+  const deltaState = memoryDeltaState();
+  const options = { store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState };
+  await backupSharePointSites({ transport: fakeGraph(fixtureRoutes()).transport, ...options });
+  const before = store.items.length;
+  const { transport } = fakeGraph(fixtureRoutes(), { override: {
+    ...unchangedDeltas(),
+    [LIST_DELTA]: deltaPage([{ id: '2', eTag: 'e2b', fields: { Title: 'two, edited' } }, { id: '3', deleted: { state: 'deleted' } }]),
+  } });
+  const result = await backupSharePointSites({ transport, ...options });
+  const added = store.items.slice(before);
+  assert.deepEqual(added.map((item) => [item.itemKey, item.version]), [[`list/${LIST}/item/2`, 'e2b'], [`list/${LIST}/item/3`, 'deleted:e3']]);
+  assert.equal(JSON.parse(String(await store.getItem(added[1].ref))).deleted, true);
+  const list = result.sites[0].lists.find((entry) => entry.listId === LIST);
+  assert.equal(list.items, 1);
+  assert.equal(list.itemsDeleted, 1);
+  assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).items['3'], null);
+});
+
+test('an expired delta link starts one full pass that marks unseen items deleted', async () => {
+  const store = memoryStore();
+  const deltaState = memoryDeltaState();
+  const options = { store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState };
+  await backupSharePointSites({ transport: fakeGraph(fixtureRoutes()).transport, ...options });
+  const before = store.items.length;
+  const { transport, requests } = fakeGraph(fixtureRoutes(), { override: {
+    ...unchangedDeltas(),
+    [LIST_DELTA]: (parsed) => (parsed.searchParams.get('token')
+      ? { status: 410, headers: {}, body: { error: { code: 'resyncRequired' } } }
+      : deltaPage([{ id: '1', eTag: 'e1', fields: { Title: 'one' } }, { id: '2', eTag: 'e2', fields: { Title: 'two' } }])()),
+  } });
+  const result = await backupSharePointSites({ transport, ...options });
+  assert.equal(result.outcome, 'complete');
+  assert.equal(result.counters.resyncs, 1);
+  // Items 1 and 2 are unchanged, so only item 3's deletion is stored.
+  assert.deepEqual(store.items.slice(before).map((item) => item.itemKey), [`list/${LIST}/item/3`]);
+  assert.equal(requests.filter((request) => request.url.includes(`/lists/${LIST}/items`)).length, 2);
+});
+
+test('a stale saved link Graph answers 400 starts one full pass; a second 400 fails the read', async () => {
+  const deltaState = memoryDeltaState();
+  await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: itemsDeltaLink(ROOT, LIST, 'stale'), fullPass: null, items: {} });
+  const routes = fixtureRoutes();
+  const stale = fakeGraph(routes, { override: { [LIST_DELTA]: (parsed) => (parsed.searchParams.get('token') === 'stale' ? { status: 400, headers: {}, body: {} } : deltaPage([{ id: '1', eTag: 'e1', fields: { Title: 'one' } }])()) } });
+  const result = await backupSharePointSites({ transport: stale.transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState });
+  assert.equal(result.sites[0].lists.find((entry) => entry.listId === LIST).reads.items.status, 'observed');
+  assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).deltaLink, itemsDeltaLink(ROOT, LIST, 'latest-2'));
+
+  const broken = fakeGraph(routes, { override: { [LIST_DELTA]: () => ({ status: 400, headers: {}, body: {} }) } });
+  await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: itemsDeltaLink(ROOT, LIST, 'stale'), fullPass: null, items: {} });
+  const failed = await backupSharePointSites({ transport: broken.transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState });
+  assert.equal(failed.sites[0].lists.find((entry) => entry.listId === LIST).reads.items.status, 'failed');
+  assert.equal(failed.outcome, 'partial');
+});
+
+test('a delta item without fields is read on its own, and a saved link for another list is never followed', async () => {
+  const deltaState = memoryDeltaState();
+  await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: itemsDeltaLink(ROOT, LIB, 'other'), fullPass: null, items: {} });
+  const store = memoryStore();
+  const { transport, requests } = fakeGraph({
+    ...fixtureRoutes(),
+    [`/sites/${ROOT}/lists/${LIST}/items/7`]: { id: '7', eTag: 'e7', fields: { Title: 'seven' } },
+  }, { override: { [LIST_DELTA]: deltaPage([{ id: '7', eTag: 'e7' }]) } });
+  await backupSharePointSites({ transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState });
+  assert.ok(!requests.some((request) => request.url.includes('token=other')));
+  const ref = store.items.find((item) => item.itemKey === `list/${LIST}/item/7`).ref;
+  assert.equal(JSON.parse(String(await store.getItem(ref))).fields.Title, 'seven');
+});
+
+test('a changed page is fetched again on a repeat run', async () => {
+  const store = memoryStore();
+  const deltaState = memoryDeltaState();
+  const options = { store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState };
+  const withTag = (tag) => { const routes = fixtureRoutes(); routes[`/sites/${ROOT}/pages/microsoft.graph.sitePage`] = { value: [{ id: PAGE, name: 'Home.aspx', eTag: tag }] }; return routes; };
+  await backupSharePointSites({ transport: fakeGraph(withTag('p1')).transport, ...options });
+  const same = fakeGraph(withTag('p1'), { override: unchangedDeltas() });
+  await backupSharePointSites({ transport: same.transport, ...options });
+  assert.ok(!same.requests.some((request) => request.url.includes(`/pages/${PAGE}/`)));
+  const changed = fakeGraph(withTag('p2'), { override: unchangedDeltas() });
+  await backupSharePointSites({ transport: changed.transport, ...options });
+  assert.ok(changed.requests.some((request) => request.url.includes(`/pages/${PAGE}/`)));
+});
+
+test('a delta item gone before its own read is a deletion, and a next link in another case is followed', async () => {
+  const deltaState = memoryDeltaState();
+  await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: null, fullPass: null, items: { 8: 'e8' } });
+  const store = memoryStore();
+  const upper = `${G}/sites/${encodeURIComponent(ROOT.toUpperCase())}/lists/${LIST.toUpperCase()}/items/delta?token=page-2`;
+  const { transport } = fakeGraph(fixtureRoutes(), { override: {
+    [LIST_DELTA]: () => ({ status: 200, headers: {}, body: { value: [{ id: '1', eTag: 'e1', fields: { Title: 'one' } }], '@odata.nextLink': upper } }),
+    [`/sites/${ROOT.toUpperCase()}/lists/${LIST.toUpperCase()}/items/delta`]: deltaPage([{ id: '8', eTag: 'e8b' }]),
+  } });
+  const result = await backupSharePointSites({ transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), deltaState });
+  const list = result.sites[0].lists.find((entry) => entry.listId === LIST);
+  assert.equal(list.reads.items.status, 'observed');
+  assert.equal(list.itemsDeleted, 1);
+  assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).items['8'], null);
 });

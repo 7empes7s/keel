@@ -118,6 +118,11 @@ async function collectSites(client, context) {
       load: (where) => syncState.load(libraryKey(where)),
       save: ({ state, ...where }) => syncState.save({ ...libraryKey(where), state }),
     },
+    // Site settings and page eTags (`site:`) and list item delta links (`items:`).
+    deltaState: {
+      load: (key) => syncState.load({ tenantRef, workload: 'sharepoint-sites', key }),
+      save: (key, state) => syncState.save({ tenantRef, workload: 'sharepoint-sites', key, state }),
+    },
   });
   const reasons = [];
   if (result.discovery?.status !== 'observed') reasons.push(`site discovery: ${result.discovery?.error ?? result.discovery?.status}`);

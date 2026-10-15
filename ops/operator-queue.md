@@ -3660,7 +3660,33 @@ item that needs it stays untouched.
   `/etc/keel/tenant.json` (it already holds Office 365 SharePoint Online Sites.FullControl.All, 678536fe…), through a
   GET-only transport limited to the tenant host and `/_api/web/...`. Everything else still reads as the Content Reader.
 - Needs: /opt/keel-live at 79f6385 or later (`grep -q sharePointReadTransport /opt/keel-live/engine/content/transport.mjs`).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 14:01–14:06 UTC on **B = 14aa4f51** (includes 79f6385; `sharePointReadTransport` present). Read-only: the Content Reader,
+  plus the Collector certificate for SharePoint REST GETs. No permission, consent or fixture change. Global admin not used.
+  - **2.** `/etc/keel/tenant.json` has certPath and keyPath: **yes**.
+  - **3. Run A**, exit 0:
+    `exchange-mail: succeeded (8 items, 6489 bytes)`, `onedrive: succeeded (0 items, 0 bytes)`,
+    `sharepoint-sites: succeeded (4 items, 19942 bytes)`, `teams: succeeded (11 items, 271885 bytes)`,
+    `planner: succeeded (8 items, 11975 bytes)`.
+  - **4. site/permissions:** 1 row in each of the **4** KEEL-RT- site containers. Read back through the content store (decrypted, same key):
+    - **KEEL-RT-20261004:** hasUniqueRoleAssignments true.
+      - Groups: Owners (1), Visitors (0), Members (0). Site collection admins 1.
+      - Role assignments 3 (Full Control, Read, Edit).
+      - Lists with unique permissions: TaxonomyHiddenList, User Information List, Converted Forms.
+    - **KEEL-RT-20260908 Collaboration Hub:** hasUniqueRoleAssignments true.
+      - Groups: Owners (2), Visitors (0), Members (1), plus one SharingLinks.<…>.OrganizationView group (0). Admins 1.
+      - Role assignments 4 (Full Control, Read, Edit, Limited Access).
+      - Unique lists: Converted Forms, User Information List, TaxonomyHiddenList, Documents.
+    - **…Finance Private** (channel site): hasUniqueRoleAssignments true.
+      - Groups: Owners (1), Visitors (0), Members (1). Admins 1.
+      - Role assignments 3 (Full Control, Read, Edit). Unique lists: User Information List.
+    - **…Partner Shared** (channel site): hasUniqueRoleAssignments true.
+      - Groups: Owners (1), Visitors (0), Members (1). Admins 1.
+      - Role assignments 3 (Full Control, Read, Edit). Unique lists: User Information List.
+    - Each item holds groups, lists, roleAssignments, roleDefinitions, siteCollectionAdmins and web.
+  - **5. Run B**, exit 0: `sharepoint-sites: succeeded (0 items, 0 bytes)`; the other lines are as in A, with exchange-mail at 0 items.
+    site/permissions rows: 4 before and 4 after, so **0 new** (change-only).
+  - No denied or failed permission read.
 - **Read-only against the tenant.** No permission, consent or fixture changes. Global admin not used.
 - **Do:**
   1. Record the commit `/opt/keel-live` is deployed at and confirm the check above. If it has not arrived within 30 minutes
@@ -3685,7 +3711,7 @@ item that needs it stays untouched.
   Never wider than the backup, never narrows or removes. Both writes (`sharepoint.site-permissions.add`, `.update`) are
   **off** until the capture below is imported.
 - Needs: /opt/keel-live at cc6404a or later (`test -f /opt/keel-live/engine/restore/workloads/sharepointSiteGrants.mjs`).
-- Status: todo
+- Status: in-progress
 - **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
   Global admin not used. **Restorer permissions:** none to add (it holds Graph Sites.FullControl.All, Q26). If Graph
   refuses a write with 403, report blocked with what Graph names; do not grant anything.

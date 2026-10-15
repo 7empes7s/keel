@@ -3660,7 +3660,7 @@ item that needs it stays untouched.
   `/etc/keel/tenant.json` (it already holds Office 365 SharePoint Online Sites.FullControl.All, 678536fe…), through a
   GET-only transport limited to the tenant host and `/_api/web/...`. Everything else still reads as the Content Reader.
 - Needs: /opt/keel-live at 79f6385 or later (`grep -q sharePointReadTransport /opt/keel-live/engine/content/transport.mjs`).
-- Status: todo
+- Status: in-progress
 - **Read-only against the tenant.** No permission, consent or fixture changes. Global admin not used.
 - **Do:**
   1. Record the commit `/opt/keel-live` is deployed at and confirm the check above. If it has not arrived within 30 minutes

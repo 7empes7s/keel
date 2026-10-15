@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "homeRealmDiscoveryPolicy",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "c3b5f6c84ae90c2d800e17bed1277a92eab8d360",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-15T10:36:36.610Z",
+  "restoreRef": "4a284813-5dea-88e8-a150-f8046e666506",
+  "naturalKey": "homeRealmDiscoveryPolicy:fcf56864-574e-8ee3-a999-d18346b4bb1f",
+  "fixtureKind": "named-object",
+  "captureSha256": "2fb665244efb98c8a8874e48bb3e0de7a84fcded722050a9b1d0b29d0a9d385b",
+  "proofRef": "docs/release/qualifications/entra-live/homeRealmDiscoveryPolicy.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "3cb55011af638a56b90e27a31570e85d5a0a31aa2be5a374ee40c3769609c381"
+    }
+  }
+}

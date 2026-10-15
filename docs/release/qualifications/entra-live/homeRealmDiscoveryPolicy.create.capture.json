@@ -1,0 +1,32 @@
+{
+  "restoreRef": "4a284813-5dea-88e8-a150-f8046e666506",
+  "entry": {
+    "naturalKey": "homeRealmDiscoveryPolicy:fcf56864-574e-8ee3-a999-d18346b4bb1f",
+    "resourceType": "homeRealmDiscoveryPolicy",
+    "operation": "create",
+    "targetId": "07a3d045-c4b0-8f42-a2ac-dce91e4059ce",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-15T10:36:36.610Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "fcf56864-574e-8ee3-a999-d18346b4bb1f",
+      "definition": [
+        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":true,\"PreferredDomain\":\"federated.example.edu\",\"AlternateIdLogin\":{\"Enabled\":true}}}"
+      ],
+      "displayName": "KEEL-RT-W2-homeRealmDiscoveryPolicy",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    },
+    "postState": {
+      "id": "07a3d045-c4b0-8f42-a2ac-dce91e4059ce",
+      "definition": [
+        "{\"HomeRealmDiscoveryPolicy\":{\"AccelerateToFederatedDomain\":true,\"PreferredDomain\":\"federated.example.edu\",\"AlternateIdLogin\":{\"Enabled\":true}}}"
+      ],
+      "displayName": "KEEL-RT-W2-homeRealmDiscoveryPolicy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/homeRealmDiscoveryPolicies/$entity",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    }
+  }
+}

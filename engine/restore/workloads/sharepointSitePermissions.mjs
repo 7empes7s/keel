@@ -30,7 +30,8 @@
  *  - Verified. After writing, the site is read back and every write must show.
  *  - Idempotent. Once restored, a new dry run plans nothing, and the same artifact run
  *    again is stale and writes nothing.
- *  - On the test tenant only a KEEL-RT- site is planned.
+ *  - On the test tenant only a KEEL-RT- site is planned, and only KEEL-RT- levels, groups and users
+ *    are written (fixtureGuard.mjs); anything else is refused at plan time and before each write.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -40,6 +41,7 @@ import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { fixtureProblem } from './fixtureGuard.mjs';
 
 export const SITE_PERMISSIONS_RESTORE = 'sharepoint-site-permissions';
 export const ROLE_DEFINITION_ADD = 'sharepoint.site-role-definitions.add';
@@ -183,6 +185,28 @@ export function withinBackup(operation, backup) {
     }
     default:
       return false;
+  }
+}
+
+// The account part of a claims sign-in name (i:0#.f|membership|keel-rt-x@contoso.com -> keel-rt-x).
+const accountName = (loginName) => String(loginName ?? '').split('|').pop().split('@')[0];
+
+/**
+ * Why the fixture guard (fixtureGuard.mjs, #317) refuses this write, or null. On the test
+ * tenant every object a write creates or names must be a KEEL-RT- fixture: the level, the
+ * group, the user, and the principal a role is granted to (a built-in level may be granted).
+ */
+export function sitePermissionFixtureProblem(operation, { tenantRef, testTenantRefs }) {
+  const check = (label, names) => fixtureProblem({ tenantRef, testTenantRefs, label, names });
+  switch (operation.operationId) {
+    case ROLE_DEFINITION_ADD: return check('the permission level', [operation.roleDefinition?.name]);
+    case GROUP_ADD: return check('the group', [operation.group?.title]);
+    case GROUP_MEMBER_ADD: return check('the group', [operation.group]) ?? check('the member', [accountName(operation.principal?.loginName)]);
+    case SITE_ADMIN_ADD: return check('the admin', [accountName(operation.principal?.loginName)]);
+    case ROLE_ASSIGNMENT_ADD: return operation.principal?.kind === 'group'
+      ? check('the group granted', [operation.principal.title])
+      : check('the user granted', [accountName(operation.principal?.loginName)]);
+    default: return check('the write', [null]);
   }
 }
 
@@ -348,13 +372,21 @@ export function planSitePermissionsRestore({ source, live, tenantHost, siteId, t
   for (const operation of operations) {
     if (!withinBackup(operation, backup)) throw new Error(`refusing a write the backup does not hold: ${operation.naturalKey}`);
   }
-  const { effects, refusals } = classifyContentEffects(operations.map((operation) => ({
+  const notFixtures = [];
+  for (const operation of [...operations]) {
+    const problem = sitePermissionFixtureProblem(operation, { tenantRef, testTenantRefs });
+    if (!problem) continue;
+    notFixtures.push({ naturalKey: operation.naturalKey, reason: `not-a-fixture: ${problem}` });
+    operations.splice(operations.indexOf(operation), 1);
+  }
+  const { effects, refusals: effectRefusals } = classifyContentEffects(operations.map((operation) => ({
     naturalKey: operation.naturalKey,
     resourceType: RESOURCE_TYPE,
     verb: 'create',
     payload: { grantsAccess: GRANTS_ACCESS.has(operation.operationId) },
     live: { state: 'absent' },
   })));
+  const refusals = [...effectRefusals, ...notFixtures];
 
   const plan = {
     workload: SITE_PERMISSIONS_RESTORE,
@@ -607,6 +639,8 @@ export async function executeSitePermissionsRestore(client, {
   const ids = siteIds(live);
   let writes = 0;
   for (const operation of plan.operations) {
+    const notFixture = sitePermissionFixtureProblem(operation, { tenantRef, testTenantRefs });
+    if (notFixture) return done({ outcome: 'refused', writes, reasons: [notFixture] });
     const before = requests.length;
     const result = await sendSitePermissionWrite(counted, { webUrl: plan.webUrl, operation, ids });
     writes += requests.length - before;

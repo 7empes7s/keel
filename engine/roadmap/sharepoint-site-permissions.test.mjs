@@ -28,7 +28,7 @@ import { assertSitePermissionsRequest, sitePermissionsWriteTransport } from '../
 import {
   GROUP_ADD, GROUP_MEMBER_ADD, ROLE_ASSIGNMENT_ADD, ROLE_DEFINITION_ADD, SITE_ADMIN_ADD, SITE_PERMISSIONS_ITEM, SITE_PERMISSIONS_RESTORE,
   SITE_PERMISSION_WRITE_OPERATIONS, createSitePermissionsRestoreArtifact, executeSitePermissionsRestore, loadSitePermissionsSource,
-  planSitePermissionsRestore, readLiveSitePermissions, sitePermissionsPlanDigest, withinBackup,
+  planSitePermissionsRestore, readLiveSitePermissions, sitePermissionFixtureProblem, sitePermissionsPlanDigest, withinBackup,
 } from '../restore/workloads/sharepointSitePermissions.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -159,7 +159,17 @@ test('the plan refuses another tenant, another site and a non KEEL-RT site on th
   assert.throws(() => planSitePermissionsRestore({ source: { ...source, siteId: `${HOST},a,b` }, live, tenantHost: HOST, siteId: SITE, tenantRef: 'sha256:x', testTenantRefs: [] }), /another site/);
   assert.throws(() => planSitePermissionsRestore({ source, live: { ...live, web: { ...live.web, url: `https://${HOST}/sites/HR` } }, tenantHost: HOST, siteId: SITE, tenantRef: 'sha256:x', testTenantRefs: [] }), /not the site in the backup/);
   // The same site is fine on the test tenant (KEEL-RT-); a site named otherwise is refused there.
-  assert.ok(planSitePermissionsRestore({ source, live, tenantHost: HOST, siteId: SITE, tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT] }));
+  const onTest = planSitePermissionsRestore({ source, live, tenantHost: HOST, siteId: SITE, tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT] });
+  // There, every level, group and user written must be a KEEL-RT- fixture too (#317); these are not.
+  const offTest = planSitePermissionsRestore({ source, live, tenantHost: HOST, siteId: SITE, tenantRef: 'sha256:x', testTenantRefs: [TEST_TENANT] });
+  assert.equal(onTest.operations.length, 0);
+  assert.deepEqual(onTest.refusals.map((row) => row.naturalKey).sort(), offTest.operations.map((operation) => operation.naturalKey).sort());
+  assert.ok(onTest.refusals.every((row) => row.reason.startsWith('not-a-fixture: ')));
+  const guard = (operation) => sitePermissionFixtureProblem(operation, { tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT] });
+  assert.equal(guard({ operationId: 'sharepoint.site-group-members.add', group: 'KEEL-RT-20261015 Members', principal: { loginName: login('keel-rt-tester') } }), null);
+  assert.equal(guard({ operationId: 'sharepoint.site-role-assignments.add', principal: { kind: 'group', title: 'KEEL-RT-perm group' }, role: 'Read' }), null);
+  assert.match(guard({ operationId: 'sharepoint.site-group-members.add', group: 'KEEL-RT-20261015 Members', principal: { loginName: login('alice') } }), /the member \(alice\) is not one/);
+  assert.match(guard({ operationId: 'sharepoint.site-admins.add', principal: { loginName: login('erin') } }), /the admin/);
   const hr = (value) => ({ ...value, web: { ...value.web, url: `https://${HOST}/sites/HR` } });
   assert.throws(() => planSitePermissionsRestore({
     source: { ...source, value: hr(source.value) }, live: hr(live), tenantHost: HOST, siteId: SITE, tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT],

@@ -1,0 +1,667 @@
+/**
+ * Wave 2 WKLD: qualified restore of workload settings written by one cmdlet per object:
+ * mail flow rules and connectors, the Exchange settings READ-EXO added, Teams org-wide,
+ * voice and live event policies, and Purview retention and DLP.
+ *
+ * One plan covers one workload's recorded collection, or the objects named in it. Each
+ * changed object is one DISTINCT operation with its own qualification, outcome and
+ * evidence row (writeDeclarations.mjs):
+ *  - update: one Set- cmdlet with the declared fields that differ;
+ *  - add:    one New- cmdlet for a named Teams policy (`Tag:<name>`) that no longer
+ *            exists. A policy name is its identity, so the policy comes back as itself;
+ *            who it was assigned to is not restored (it is listed).
+ * Everything else stays manual, and nothing is deleted:
+ *  - a field KEEL does not write, or whose value the cmdlet transport cannot carry (an
+ *    object, a list of non-strings), is listed with both values;
+ *  - an object keyed by a Guid that no longer exists is not recreated (it would get a
+ *    new Guid, and its conditions are not all typed); one that is new is never deleted;
+ *  - a rule's on/off State, set by Enable-/Disable- cmdlets, is listed.
+ *
+ * Rules:
+ *  - Immutable plan, persisted as a restore_dry_run artifact; the task-66 approval and
+ *    promotion checks are the existing ones.
+ *  - Disabled until qualified, per operation, by the qualification the caller passes
+ *    (workloadWriteQualification once qualification.mjs spreads WKLD_WRITE_OPERATIONS).
+ *  - Content effect guard. A change that shortens retention, releases a hold, deletes
+ *    mail or widens who sees content is a classified effect (WORKLOAD_EFFECT_RULES).
+ *    Its operation runs only with the separate, current high-impact approval of
+ *    exactly these effects; without it the operation is blocked and nothing is sent.
+ *  - Preservation lock. A target, or the policy a rule belongs to, that reports a lock
+ *    is refused at plan time and again before writing; a platform lock refusal is
+ *    recorded and never retried.
+ *  - No overwrite. Every target is re-read first; a change since the plan makes only
+ *    that target's operation `stale`.
+ *  - Errors are structured; an ambiguous outcome is reconciled by re-reading and is
+ *    never sent a second time.
+ */
+import { createHash, randomUUID } from 'node:crypto';
+
+import { structuredFailure } from '../../collect/workloads/exchange.mjs';
+import { lockState } from '../../collect/workloads/purview.mjs';
+import { appendEvidence } from '../../govern/evidence.mjs';
+import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
+import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
+import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
+
+export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Fields that name or date the object rather than configure it.
+const NOT_COMPARED = new Set(['Identity', 'Guid', 'WhenChangedUTC', 'DistributionStatus', 'IsValidated']);
+// Per-resource metadata the collectors store beside the fields.
+const META = ['identity', 'kind', 'lock', 'parent', 'parentStatus', 'parentPolicy', 'case'];
+
+function canonical(value) {
+  if (value === undefined) return 'null';
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+const sha256 = (value) => createHash('sha256').update(canonical(value)).digest('hex');
+const same = (a, b) => canonical(a ?? null) === canonical(b ?? null);
+const truthy = (value) => value === true || value === 'true' || value === 'True';
+
+function deepFreeze(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+
+// ------------------------------------------------------------ content effects
+
+const listOf = (value) => (Array.isArray(value) ? value.map((item) => String(item).toLowerCase()) : value === null || value === undefined || value === '' ? [] : [String(value).toLowerCase()]);
+const addsEntry = (before, after) => listOf(after).some((item) => !listOf(before).includes(item));
+const changes = (before, after) => !same(before, after);
+const enabledToDisabled = (before, after) => truthy(before) && !truthy(after);
+const disabledToEnabled = (before, after) => !truthy(before) && truthy(after);
+const becomes = (...values) => (before, after) => {
+  const wanted = values.map((value) => value.toLowerCase());
+  return wanted.includes(String(after ?? '').toLowerCase()) && !wanted.includes(String(before ?? '').toLowerCase());
+};
+const leaves = (...values) => (before, after) => becomes(...values)(after, before);
+/** A duration in days: a number, a day count in a string, or "d.hh:mm:ss"; Infinity for Unlimited; null when unreadable. */
+function days(value) {
+  if (typeof value === 'number') return value;
+  const text = String(value ?? '').trim();
+  if (/^unlimited$/i.test(text)) return Infinity;
+  if (/^\d+$/.test(text)) return Number(text);
+  const match = /^(?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})$/.exec(text);
+  return match ? Number(match[1] ?? 0) + Number(match[2]) / 24 + Number(match[3]) / 1440 + Number(match[4]) / 86400 : null;
+}
+// A changed duration that cannot be read is treated as shorter: the safe direction.
+const shortens = (before, after) => {
+  const b = days(before);
+  const a = days(after);
+  return b === null || a === null ? true : a < b;
+};
+const rule = (field, effect, when) => Object.freeze({ field, effect, when });
+const SHARING = 'externally-sharing';
+const RETENTION = 'retention-reducing';
+const HOLD = 'hold-releasing';
+const IRREVERSIBLE = 'irreversible';
+const opensToEveryone = (field) => rule(field, SHARING, becomes('Everyone', 'EveryoneInCompanyIncludingGuests'));
+
+/**
+ * The dangerous transitions of each written type. A written field whose NAME looks
+ * content-bearing must have a rule here or a reason in BENIGN_FIELDS (checked below
+ * and by the test), the same discipline as safety/contentEffects.mjs. Declared from
+ * Microsoft's documentation, not measured.
+ */
+export const WORKLOAD_EFFECT_RULES = Object.freeze({
+  // Mail that a rule deletes, or copies or sends to someone new, is lost or disclosed.
+  exchangeTransportRule: [
+    rule('DeleteMessage', IRREVERSIBLE, disabledToEnabled),
+    rule('RedirectMessageTo', SHARING, addsEntry),
+    rule('BlindCopyTo', SHARING, addsEntry),
+    rule('AddToRecipients', SHARING, addsEntry),
+    rule('RouteMessageOutboundConnector', SHARING, changes),
+  ],
+  // Recipients a connector scans and drops lose that mail.
+  exchangeInboundConnector: [rule('ScanAndDropRecipients', IRREVERSIBLE, addsEntry)],
+  // A connector routes mail through the hosts it names.
+  exchangeOutboundConnector: [rule('SmartHosts', SHARING, addsEntry), rule('Enabled', SHARING, disabledToEnabled), rule('RecipientDomains', SHARING, changes)],
+  exchangeOutboundSpamPolicy: [
+    rule('AutoForwardingMode', SHARING, becomes('On')),
+    rule('BccSuspiciousOutboundAdditionalRecipients', SHARING, addsEntry),
+  ],
+  // A journal rule copies every matching message to its journal address.
+  exchangeJournalRule: [rule('JournalEmailAddress', SHARING, changes), rule('Recipient', SHARING, changes), rule('Scope', SHARING, changes)],
+  exchangeRetentionPolicyTag: [
+    rule('AgeLimitForRetention', RETENTION, shortens),
+    rule('RetentionAction', IRREVERSIBLE, becomes('DeleteAndAllowRecovery', 'PermanentlyDelete')),
+    rule('RetentionEnabled', RETENTION, disabledToEnabled),
+  ],
+  // Which tags apply decides what is deleted when; KEEL does not judge a new set.
+  exchangeRetentionPolicy: [rule('RetentionPolicyTagLinks', RETENTION, changes)],
+  teamsMeetingPolicy: [
+    rule('NewMeetingRecordingExpirationDays', RETENTION, shortens),
+    rule('AllowAnonymousUsersToJoinMeeting', SHARING, disabledToEnabled),
+    rule('AllowAnonymousUsersToStartMeeting', SHARING, disabledToEnabled),
+    rule('AllowExternalNonTrustedMeetingChat', SHARING, disabledToEnabled),
+    rule('AllowExternalParticipantGiveRequestControl', SHARING, disabledToEnabled),
+  ],
+  teamsFederationConfiguration: [
+    rule('AllowFederatedUsers', SHARING, disabledToEnabled),
+    rule('AllowTeamsConsumer', SHARING, disabledToEnabled),
+    rule('AllowTeamsConsumerInbound', SHARING, disabledToEnabled),
+    rule('AllowPublicUsers', SHARING, disabledToEnabled),
+    rule('RestrictTeamsConsumerToExternalUserProfiles', SHARING, enabledToDisabled),
+    rule('BlockAllSubdomains', SHARING, enabledToDisabled),
+    rule('ExternalAccessWithTrialTenants', SHARING, becomes('Allowed')),
+  ],
+  // Guest access, mail into channels and third-party storage move content outside.
+  teamsClientConfiguration: [
+    rule('AllowGuestUser', SHARING, disabledToEnabled),
+    rule('AllowEmailIntoChannel', SHARING, disabledToEnabled),
+    ...['AllowDropBox', 'AllowBox', 'AllowGoogleDrive', 'AllowShareFile', 'AllowEgnyte'].map((field) => rule(field, SHARING, disabledToEnabled)),
+  ],
+  teamsCallingPolicy: [rule('CallRecordingExpirationDays', RETENTION, shortens)],
+  teamsLiveEventsPolicy: [opensToEveryone('BroadcastAttendeeVisibilityMode')],
+  teamsEventsPolicy: [opensToEveryone('EventAccessType'), opensToEveryone('TownhallEventAttendeeAccess')],
+  // Turning a retention policy or rule off releases what it preserved.
+  purviewRetentionPolicy: [rule('Enabled', HOLD, enabledToDisabled)],
+  purviewRetentionRule: [
+    rule('RetentionDuration', RETENTION, shortens),
+    rule('RetentionComplianceAction', IRREVERSIBLE, leaves('Keep')),
+    rule('ExpirationDateOption', RETENTION, changes),
+    rule('ContentMatchQuery', RETENTION, changes),
+  ],
+  // A DLP policy or rule that stops blocking, or lets users override, lets content out.
+  purviewDlpPolicy: [rule('Mode', SHARING, leaves('Enable'))],
+  purviewDlpRule: [
+    rule('Disabled', SHARING, disabledToEnabled),
+    rule('BlockAccess', SHARING, enabledToDisabled),
+    rule('BlockAccessScope', SHARING, changes),
+    rule('NotifyAllowOverride', SHARING, addsEntry),
+  ],
+  purviewRetentionLabel: [rule('RetentionDuration', RETENTION, shortens)],
+});
+
+// Written fields whose names look content-bearing but are not, and why.
+export const BENIGN_FIELDS = Object.freeze({
+  RecipientLimitExternalPerHour: 'a sending rate limit; it never deletes or discloses mail',
+  SharedSipAddressSpace: 'hybrid SIP routing between Teams and on-premises; not who sees content',
+  ExternalLocationLookupMode: 'emergency address lookup for remote workers',
+  ExternalAccessPrefix: 'the digit dialled for an outside line',
+  RetentionDurationDisplayHint: 'the unit the portal shows a retention duration in',
+  ActionWhenThresholdReached: 'what happens to a sender over the outbound limit ("threshold", not a hold)',
+  AllowPowerPointSharing: 'presenting slides to the people already in the meeting',
+  AllowWatermarkForScreenSharing: 'a watermark on a shared screen; it only adds protection',
+  MusicOnHoldEnabledType: 'music played to a caller on hold; no content is kept or disclosed',
+});
+// The field-name heuristic of safety/contentEffects.mjs (unreviewed types).
+const DANGEROUS_FIELD = /retention|hold|preserv|shar(e|ing)|guest|external|invite|wipe|purge|anonymous|public/i;
+
+/** Every declared written field whose name looks content-bearing and has neither a rule nor a reason. */
+export function unreviewedWrittenFields(declarations = WKLD_WRITE_OPERATIONS, rules = WORKLOAD_EFFECT_RULES) {
+  const missing = [];
+  for (const [id, write] of Object.entries(declarations)) {
+    const covered = new Set((rules[write.resourceType] ?? []).map((entry) => entry.field));
+    for (const field of write.fields) if (DANGEROUS_FIELD.test(field) && !covered.has(field) && !BENIGN_FIELDS[field]) missing.push(`${id}:${field}`);
+  }
+  return missing;
+}
+{
+  const missing = unreviewedWrittenFields();
+  if (missing.length) throw new Error(`written fields with no content-effect review: ${missing.join(', ')}`);
+}
+
+/** Classified effects of planned operations ({ naturalKey, resourceType, verb, payload, live }). Creates are not judged: a new policy is assigned to nobody. */
+export function classifyWorkloadEffects(resources) {
+  const effects = [];
+  for (const { naturalKey, resourceType, verb, payload, live } of resources) {
+    if (verb !== 'update') continue;
+    for (const entry of WORKLOAD_EFFECT_RULES[resourceType] ?? []) {
+      const before = live?.payload?.[entry.field] ?? null;
+      const after = payload?.[entry.field] ?? null;
+      if (same(before, after) || !entry.when(before, after)) continue;
+      effects.push({ naturalKey, resourceType, field: entry.field, effect: entry.effect, before, after, disclosure: disclosureFor(entry.effect) });
+    }
+  }
+  const order = (effect) => `${effect.naturalKey}|${effect.field}`;
+  return effects.sort((left, right) => order(left).localeCompare(order(right)));
+}
+
+// ------------------------------------------------------------ declarations
+
+/** The families of one workload KEEL writes: { family: { update, add } } by operation id. */
+export function writeFamilies(workload, declarations = WKLD_WRITE_OPERATIONS) {
+  const families = {};
+  for (const [id, write] of Object.entries(declarations)) {
+    if (write.workload !== workload) continue;
+    families[write.family] ??= { update: null, add: null };
+    families[write.family][id.endsWith('.add') ? 'add' : 'update'] = id;
+  }
+  return families;
+}
+
+/** The write cmdlets, the parameters each may take, and their module: what run-cmdlet.ps1 allows. */
+export function writeCmdletParameters(declarations = WKLD_WRITE_OPERATIONS) {
+  const cmdlets = {};
+  for (const write of Object.values(declarations)) {
+    const entry = cmdlets[write.method] ??= { module: write.module, session: write.session, parameters: new Set(['Identity']) };
+    if (entry.session !== write.session) throw new Error(`${write.method} is declared in two sessions`);
+    for (const field of write.fields) entry.parameters.add(field);
+  }
+  return Object.fromEntries(Object.entries(cmdlets).map(([name, entry]) => [name, { ...entry, parameters: [...entry.parameters].sort() }]));
+}
+const WRITE_CMDLETS = writeCmdletParameters();
+
+export class WorkloadWriteScopeError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WorkloadWriteScopeError';
+  }
+}
+
+/** Runs one declared write cmdlet through the bounded job transport; anything else is refused unsent. */
+export async function workloadWriteCmdlet({ cmdlet, parameters = {} }, powershell = {}) {
+  const allowed = WRITE_CMDLETS[cmdlet];
+  if (!allowed) throw new WorkloadWriteScopeError(`${cmdlet} is not a workload write KEEL runs`);
+  for (const name of Object.keys(parameters)) {
+    if (!allowed.parameters.includes(name)) throw new WorkloadWriteScopeError(`${cmdlet} does not take ${name} from KEEL`);
+  }
+  const { tenantConfigPath = null, ...options } = powershell;
+  return runCmdlet({ module: allowed.module, cmdlet, parameters, tenantConfigPath }, { ...options, allowedCmdlets: new Set([cmdlet]) });
+}
+
+/** True when the cmdlet transport can carry the value: a scalar, or a list of strings. */
+function sendable(value) {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+// ------------------------------------------------------------ source and live
+
+/** A recorded collection of `workload`, as the planner reads it, or null. */
+export async function loadWorkloadSource(client, { tenantRef, collectionId, workload }) {
+  const { rows: [run] } = await client.query(
+    `SELECT * FROM workload_collection WHERE id::text = $1 AND tenant_ref = $2 AND workload = $3`,
+    [String(collectionId), tenantRef, workload],
+  );
+  if (!run) return null;
+  const { rows } = await client.query(
+    `SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`,
+    [run.id],
+  );
+  return {
+    collectionId: run.id,
+    outcome: run.outcome,
+    observedTo: new Date(run.observed_to).toISOString(),
+    observations: rows.map((row) => {
+      const fields = { ...row.fields };
+      const meta = {};
+      for (const key of META) if (key in fields) { meta[key] = fields[key]; delete fields[key]; }
+      return { resourceKey: row.resource_key, ...meta, fields, fieldCoverage: row.field_coverage ?? {} };
+    }),
+  };
+}
+
+const fingerprint = (entry) => sha256({ fields: entry.fields, fieldCoverage: entry.fieldCoverage, lock: entry.lock ?? null });
+const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked';
+/** The family read failed or was not available, so nothing in it is known now. */
+function familyGap(live, family) {
+  return [...(live?.failures ?? []), ...(live?.unavailable ?? [])].find((item) => item.family === family) ?? null;
+}
+function liveEntry(live, key) {
+  return (live?.resources ?? []).find((item) => item.resourceKey === key) ?? null;
+}
+/** The policy a retention or DLP rule belongs to, when it reports a lock now. */
+function lockedParent(live, entry) {
+  if (!entry?.parentPolicy) return false;
+  return (live?.resources ?? []).some((item) => item.identity === entry.parentPolicy && !String(item.kind).endsWith('Rule') && isLocked(item));
+}
+
+function identityParameters(write, observation) {
+  if (write.identity === 'guid') return { Identity: observation.identity };
+  if (write.identity === 'name') return { Identity: String(observation.fields.Identity).replace(/^tag:/i, '') };
+  return { Identity: observation.fields.Identity };
+}
+
+// ------------------------------------------------------------ planning
+
+export function workloadSettingsPlanDigest(plan) {
+  const { digest, ...rest } = plan;
+  return sha256(rest);
+}
+
+/** The changes for one present object, and the manual entries it adds. */
+function planFields(write, { observation, current, manual }) {
+  const changes = [];
+  const writable = new Set(write.fields);
+  for (const field of Object.keys(observation.fieldCoverage).sort()) {
+    if (NOT_COMPARED.has(field)) continue;
+    const sourceStatus = observation.fieldCoverage[field]?.status ?? 'unknown';
+    const liveStatus = current.fieldCoverage?.[field]?.status ?? 'unknown';
+    const before = current.fields?.[field] ?? null;
+    const after = observation.fields?.[field] ?? null;
+    if (sourceStatus !== 'observed' || liveStatus !== 'observed') {
+      if (sourceStatus === liveStatus && same(before, after)) continue;
+      manual.push({ resourceKey: observation.resourceKey, field, reason: `${sourceStatus} in the source and ${liveStatus} in the live read, so there is no value KEEL can compare` });
+      continue;
+    }
+    if (same(before, after)) continue;
+    if (!writable.has(field)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: field === 'State' || field === 'Enabled'
+        ? 'turning this on or off is a separate Enable-/Disable- step an administrator takes'
+        : 'KEEL does not write this setting; an administrator applies it' });
+      continue;
+    }
+    if (!sendable(after)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the value is structured, and KEEL only sends text, numbers, switches and lists of text; an administrator applies it' });
+      continue;
+    }
+    changes.push({ field, before, after });
+  }
+  return changes;
+}
+
+/** The fields a re-created policy is sent with: every written field the source observed and KEEL can send. */
+function createFields(write, observation, manual) {
+  const fields = [];
+  for (const field of write.fields) {
+    if (observation.fieldCoverage[field]?.status !== 'observed') continue;
+    const after = observation.fields[field] ?? null;
+    if (!sendable(after)) {
+      manual.push({ resourceKey: observation.resourceKey, field, after, reason: 'the value is structured, so the re-created policy is sent without it; an administrator applies it' });
+      continue;
+    }
+    if (after === null) continue;
+    fields.push({ field, before: null, after });
+  }
+  return fields;
+}
+
+/**
+ * Builds the frozen plan. `source` is a recorded collection of `workload`
+ * (loadWorkloadSource); `live` is the workload's read run now. `targets` names
+ * resource keys to restore; empty means every object of a written family in the source.
+ */
+export function planWorkloadSettingsRestore({ workload, source, live, tenantId, targets = [], declarations = WKLD_WRITE_OPERATIONS }) {
+  if (!source?.collectionId) throw new TypeError('a workload restore needs a recorded source collection');
+  if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
+  if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
+  const families = writeFamilies(workload, declarations);
+  if (Object.keys(families).length === 0) throw new Error(`KEEL declares no write for ${workload}`);
+  const observations = source.observations ?? [];
+  const named = [...new Set((targets ?? []).map((key) => String(key).toLowerCase()))];
+  const keys = named.length
+    ? named
+    : [...new Set([
+      ...observations.filter((item) => families[item.kind]).map((item) => item.resourceKey),
+      ...(live?.resources ?? []).filter((item) => families[item.kind]).map((item) => item.resourceKey),
+    ])].sort();
+
+  const manual = [];
+  const operations = [];
+  const resources = [];
+  const refusals = [];
+  const liveFingerprints = {};
+  for (const key of keys) {
+    const observation = observations.find((item) => item.resourceKey === key) ?? null;
+    const current = liveEntry(live, key);
+    const family = observation?.kind ?? current?.kind ?? null;
+    const ops = family ? families[family] : null;
+    if (!ops?.update) {
+      manual.push({ resourceKey: key, field: null, reason: observation || current ? 'KEEL has no writer for this kind of object; an administrator restores it' : 'neither the source nor the live read has this object' });
+      continue;
+    }
+    const gap = familyGap(live, family);
+    if (gap) {
+      manual.push({ resourceKey: key, field: null, reason: `the live ${family} read was ${gap.status}, so no change is planned`, error: gap.error ?? null });
+      liveFingerprints[key] = null;
+      continue;
+    }
+    liveFingerprints[key] = current ? fingerprint(current) : 'absent';
+    if (current && (isLocked(current) || lockedParent(live, current))) {
+      refusals.push({ naturalKey: `${workload}:${key}`, reason: `preservation-locked: ${key} or its policy is under a platform preservation lock; KEEL never changes it` });
+      continue;
+    }
+    if (!observation) {
+      manual.push({ resourceKey: key, field: null, reason: 'the source has no observation of this object (it is newer); KEEL never deletes it' });
+      continue;
+    }
+    const write = declarations[ops.update];
+    let op;
+    if (!current) {
+      const policyName = ops.add && /^tag:/i.test(String(observation.fields.Identity ?? ''));
+      if (!policyName) {
+        manual.push({ resourceKey: key, field: null, reason: 'it no longer exists; KEEL does not re-create it (it would get a new identity, and not every condition is held); an administrator re-creates it' });
+        continue;
+      }
+      const add = declarations[ops.add];
+      const fields = createFields(add, observation, manual);
+      manual.push({ resourceKey: key, field: null, reason: 'the re-created policy is assigned to nobody; an administrator assigns it again' });
+      op = { kind: 'add', operationId: ops.add, cmdlet: add.method, changes: fields, parameters: { ...identityParameters(add, observation), ...Object.fromEntries(fields.map(({ field, after }) => [field, after])) } };
+    } else {
+      const fields = planFields(write, { observation, current, manual });
+      if (!fields.length) continue;
+      op = { kind: 'update', operationId: ops.update, cmdlet: write.method, changes: fields, parameters: { ...identityParameters(write, current), ...Object.fromEntries(fields.map(({ field, after }) => [field, after])) } };
+    }
+    const naturalKey = `${workload}:${key}`;
+    operations.push({ key, family, resourceKey: key, naturalKey, ...op });
+    resources.push({
+      naturalKey, resourceType: write.resourceType, verb: op.kind,
+      payload: { ...(current?.fields ?? {}), ...Object.fromEntries(op.changes.map(({ field, after }) => [field, after])) },
+      live: current ? { state: 'present', payload: current.fields } : { state: 'absent' },
+    });
+  }
+
+  const plan = {
+    workload,
+    tenantId: tenantId.toLowerCase(),
+    targets: keys,
+    source: { collectionId: source.collectionId, observedTo: source.observedTo ?? null, outcome: source.outcome },
+    operations,
+    manual,
+    excluded: [],
+    contentEffects: classifyWorkloadEffects(resources),
+    refusals,
+    liveFingerprints,
+  };
+  plan.digest = workloadSettingsPlanDigest(plan);
+  return deepFreeze(plan);
+}
+
+/** Persists the plan as an immutable dry-run artifact. */
+export async function createWorkloadSettingsArtifact(client, { tenantRef, plan, requestedBy, id = randomUUID() }) {
+  const configPath = `workload:${plan.workload}`;
+  return createDryRunArtifact(client, {
+    id,
+    tenantRef,
+    snapshotId: null,
+    selection: plan.targets.map((key) => `${plan.workload}:${key}`),
+    closureKeys: [...new Set([...plan.targets.map((key) => `${plan.workload}:${key}`), ...plan.operations.map((op) => op.naturalKey)])],
+    targetTenantId: plan.tenantId,
+    collectorConfigPath: configPath,
+    targetConfigPath: configPath,
+    reconciliationResources: null,
+    waves: [],
+    patches: [],
+    guardRefusals: plan.refusals,
+    results: { operations: plan.operations.length, manual: plan.manual.length },
+    currentStateFingerprint: sha256(plan.liveFingerprints),
+    digest: plan.digest,
+    status: plan.refusals.length ? 'refused' : 'completed',
+    requestedBy,
+    contentEffects: plan.contentEffects,
+    workloadRestore: plan,
+  });
+}
+
+// ------------------------------------------------------------ execution
+
+/**
+ * Promotes one approved artifact. `read({ powershell })` re-reads the workload live;
+ * `qualifications` maps each write operationId to its qualification.
+ * Plan outcomes: refused, no-change, disabled, blocked-content-effect, verified, partial.
+ * Operation outcomes: disabled, blocked-content-effect, refused, stale, failed,
+ * verification-failed, verified.
+ */
+export async function executeWorkloadSettingsRestore(client, { tenantRef, artifactId, tenantId, workload, read, powershell = {}, qualifications = {}, actor = null }) {
+  const artifact = await getDryRunArtifact(client, { id: artifactId, tenantRef });
+  const by = actor ?? artifact?.requestedBy ?? 'keel';
+  const finish = async (result) => {
+    await appendEvidence(client, {
+      tenantRef, kind: WORKLOAD_SETTINGS_EVIDENCE_KIND,
+      subject: { artifactId, operationId: `${workload}.restore`, outcome: result.outcome, operations: result.operations.map(({ key, outcome }) => ({ key, outcome })), reasons: result.reasons ?? [] },
+      actor: by,
+    });
+    return result;
+  };
+  const refuse = (reason) => finish({ outcome: 'refused', operations: [], reasons: [reason] });
+
+  const plan = artifact?.workloadRestore ?? null;
+  if (!plan || plan.workload !== workload) return refuse(`no ${workload} restore plan with this id`);
+  const promotable = validateArtifactForApproval(artifact);
+  if (!promotable.ok) return refuse(promotable.reason);
+  if (workloadSettingsPlanDigest(plan) !== plan.digest || artifact.digest !== plan.digest || !same(artifact.contentEffects ?? [], plan.contentEffects)) {
+    return refuse('the stored plan no longer matches its digest; a new dry run is required');
+  }
+  if (String(tenantId ?? '').toLowerCase() !== plan.tenantId) return refuse(`the plan targets tenant ${plan.tenantId}, not ${tenantId}`);
+  if (plan.operations.length === 0) return finish({ outcome: 'no-change', operations: [], reasons: ['the live configuration already matches the source'] });
+
+  const results = new Map();
+  const settle = async (op, result) => {
+    const full = { writes: 0, verified: [], ...result };
+    results.set(op.key, { key: op.key, kind: op.kind, operationId: op.operationId, ...full });
+    await appendEvidence(client, {
+      tenantRef,
+      kind: WORKLOAD_SETTINGS_EVIDENCE_KIND,
+      subject: {
+        artifactId, operationId: op.operationId, kind: op.kind, target: op.resourceKey,
+        outcome: full.outcome, writes: full.writes, attempts: full.attempts ?? full.writes, verified: full.verified, reasons: full.reasons, error: full.error ?? null,
+      },
+      actor: by,
+    });
+  };
+
+  let runnable = [];
+  for (const op of plan.operations) {
+    const qualification = qualifications[op.operationId];
+    if (qualification?.operationId !== op.operationId || qualification.enabled !== true) {
+      await settle(op, { outcome: 'disabled', reasons: [...(qualification?.reasons ?? [`no write qualification was supplied for ${op.operationId}`])] });
+    } else runnable.push(op);
+  }
+  const affected = (op) => plan.contentEffects.some((effect) => effect.naturalKey === op.naturalKey);
+  if (runnable.some(affected)) {
+    try {
+      await assertContentEffectApproval(client, { artifact, effects: plan.contentEffects });
+    } catch (error) {
+      for (const op of runnable.filter(affected)) await settle(op, { outcome: 'blocked-content-effect', reasons: [error.message] });
+      runnable = runnable.filter((op) => !affected(op));
+    }
+  }
+  if (runnable.length) {
+    // Re-read: nothing an operation touches may have changed since the dry run.
+    const live = await read({ powershell });
+    for (const op of runnable) {
+      const family = op.family;
+      const entry = familyGap(live, family) ? undefined : liveEntry(live, op.resourceKey);
+      const now = entry === undefined ? null : entry ? fingerprint(entry) : 'absent';
+      if (now === null || now !== plan.liveFingerprints[op.resourceKey]) {
+        await settle(op, { outcome: 'stale', reasons: [`the live ${family} changed since the dry run, or could not be re-read; a new dry run is required`] });
+        continue;
+      }
+      if (entry && (isLocked(entry) || lockedParent(live, entry))) {
+        await settle(op, { outcome: 'refused', reasons: ['the object or its policy now reports a preservation lock; KEEL never changes it'] });
+        continue;
+      }
+      await runOperation(op, { powershell, read, settle });
+    }
+  }
+
+  const operations = plan.operations.map((op) => results.get(op.key));
+  const outcomes = new Set(operations.map((op) => op.outcome));
+  let outcome = 'partial';
+  for (const single of ['verified', 'disabled', 'blocked-content-effect']) if (outcomes.size === 1 && outcomes.has(single)) outcome = single;
+  return finish({ outcome, operations, reasons: [] });
+}
+
+async function verify(op, { powershell, read, settle }, { ambiguous, cause }) {
+  let entry = null;
+  try {
+    const live = await read({ powershell });
+    entry = familyGap(live, op.family) ? null : liveEntry(live, op.resourceKey);
+  } catch (error) {
+    cause = cause ?? error.message;
+  }
+  if (!entry) {
+    await settle(op, { outcome: ambiguous ? 'failed' : 'verification-failed', writes: 1, attempts: 1, reasons: [`the write ${ambiguous ? `had an unknown outcome (${cause}) and was not resent;` : 'was sent, but'} the object could not be read back`] });
+    return;
+  }
+  const verified = [];
+  const mismatched = [];
+  for (const { field, after } of op.changes) {
+    (entry.fieldCoverage?.[field]?.status === 'observed' && same(entry.fields[field], after) ? verified : mismatched).push(field);
+  }
+  if (!mismatched.length) {
+    await settle(op, {
+      outcome: 'verified', writes: 1, attempts: 1, verified,
+      reasons: ambiguous ? [`the write outcome was unknown (${cause}); the re-read shows it applied, so it was not resent`] : [],
+    });
+    return;
+  }
+  await settle(op, {
+    outcome: ambiguous ? 'failed' : 'verification-failed', writes: 1, attempts: 1, verified,
+    reasons: ambiguous
+      ? [`the write outcome was unknown (${cause}) and the re-read does not show it; it was not resent`]
+      : mismatched.map((field) => `${field} did not read back as written`),
+  });
+}
+
+async function runOperation(op, context) {
+  try {
+    await workloadWriteCmdlet({ cmdlet: op.cmdlet, parameters: op.parameters }, context.powershell);
+  } catch (error) {
+    if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') {
+      const failed = structuredFailure(error);
+      if (isPreservationLockFailure({ error: error.detail })) {
+        await context.settle(op, { outcome: 'refused', writes: 1, attempts: 1, reasons: ['the platform refused the change because of a preservation lock; KEEL never retries or works around it'], error: failed.error });
+        return;
+      }
+      await context.settle(op, {
+        outcome: failed.status === 'denied' ? 'refused' : 'failed', writes: 1, attempts: 1,
+        reasons: [`${op.cmdlet} failed: ${error.detail.message}; nothing is retried automatically`], error: failed.error,
+      });
+      return;
+    }
+    if (error instanceof WorkloadWriteScopeError || error instanceof TypeError) {
+      await context.settle(op, { outcome: 'refused', reasons: [error.message] });
+      return;
+    }
+    // No answer (timeout, crash, malformed output): reconcile by reading, never resend.
+    await verify(op, context, { ambiguous: true, cause: error.message });
+    return;
+  }
+  await verify(op, context, { ambiguous: false, cause: null });
+}
+
+// ------------------------------------------------------------ dispatch entries
+
+/**
+ * The dispatch.mjs entry for one workload. `read({ powershell, families })` is the
+ * workload's own read-only collector; only the families KEEL writes are re-read.
+ */
+export function workloadSettingsRestore({ workload, label, read }) {
+  const families = Object.keys(writeFamilies(workload));
+  const readWritten = ({ powershell }) => read({ powershell, families });
+  return Object.freeze({
+    label,
+    operations: Object.freeze(Object.keys(WKLD_WRITE_OPERATIONS).filter((id) => WKLD_WRITE_OPERATIONS[id].workload === workload)),
+    usage: '--collection <id> [--target <key> ...]',
+    async plan(client, { tenantRef, tenantId, request, connection }) {
+      if (typeof request.collectionId !== 'string' || !request.collectionId) throw new Error('--collection <id> is required for this workload');
+      const source = await loadWorkloadSource(client, { tenantRef, collectionId: request.collectionId, workload });
+      if (!source) throw new Error(`no recorded ${label} collection ${request.collectionId} for this tenant`);
+      const live = await readWritten({ powershell: connection.powershell });
+      return planWorkloadSettingsRestore({ workload, source, live, tenantId, targets: request.targets ?? [] });
+    },
+    create: createWorkloadSettingsArtifact,
+    execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications }) => executeWorkloadSettingsRestore(client, {
+      tenantRef, artifactId, tenantId, workload, read: readWritten, powershell: connection.powershell, qualifications,
+    }),
+  });
+}

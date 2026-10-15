@@ -1,6 +1,8 @@
 /**
  * Gap register W2: the one table cli/keel-restore.mjs uses to plan and promote a
- * workload restore (SharePoint, Exchange, Teams, Purview).
+ * workload restore (SharePoint, Exchange, Teams, Purview, and from Wave 2 WKLD mail
+ * flow, the Exchange settings READ-EXO added, Teams org-wide and voice policies,
+ * Purview retention and DLP, and retention labels: cmdletSettings.mjs).
  *
  * A workload artifact has no snapshot and no credential files of its own: its
  * config paths are the marker `workload:<name>`. Its plan is in
@@ -13,6 +15,12 @@ import { PURVIEW_WORKLOAD, loadPurviewCollection, readPurview } from '../../coll
 import { SHAREPOINT_WORKLOAD } from '../../collect/workloads/sharepoint.mjs';
 import { EXCHANGE_WORKLOAD } from '../../collect/workloads/exchange.mjs';
 import { TEAMS_WORKLOAD } from '../../collect/workloads/teams.mjs';
+import { EXCHANGE_EXTENDED_WORKLOAD, readExchangeExtended } from '../../collect/workloads/exchangeExtended.mjs';
+import { MAIL_FLOW_WORKLOAD, readMailFlow } from '../../collect/workloads/mailFlow.mjs';
+import { PURVIEW_EXTENDED_WORKLOAD, readPurviewExtended } from '../../collect/workloads/purviewExtended.mjs';
+import { RETENTION_DLP_WORKLOAD, readRetentionDlp } from '../../collect/workloads/purviewRetentionDlp.mjs';
+import { TEAMS_EXTENDED_WORKLOAD, readTeamsExtended } from '../../collect/workloads/teamsExtended.mjs';
+import { TEAMS_POLICY_WORKLOAD, readTeamsPolicies } from '../../collect/workloads/teamsPolicies.mjs';
 import {
   SHAREPOINT_WRITE_OPERATION, createSharePointRestoreArtifact, executeSharePointRestore, loadSharePointSource,
   planSharePointRestore, readLiveSettings,
@@ -25,6 +33,7 @@ import {
   TEAMS_WRITE_OPERATIONS, createTeamsRestoreArtifact, executeTeamsRestore, loadTeamsSource, planTeamsRestore, readLiveTeam,
 } from './teams.mjs';
 import { PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact, executePurviewRestore, planPurviewRestore } from './purview.mjs';
+import { workloadSettingsRestore } from './cmdletSettings.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -111,6 +120,13 @@ export const WORKLOAD_RESTORES = Object.freeze({
       tenantRef, artifactId, tenantId, powershell: connection.powershell, qualifications,
     }),
   }),
+  // Wave 2 WKLD: one Set- (or New-) cmdlet per object, re-read with the workload's own collector.
+  [MAIL_FLOW_WORKLOAD]: workloadSettingsRestore({ workload: MAIL_FLOW_WORKLOAD, label: 'Mail flow', read: readMailFlow }),
+  [EXCHANGE_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: EXCHANGE_EXTENDED_WORKLOAD, label: 'Exchange settings', read: readExchangeExtended }),
+  [TEAMS_POLICY_WORKLOAD]: workloadSettingsRestore({ workload: TEAMS_POLICY_WORKLOAD, label: 'Teams org-wide policies', read: readTeamsPolicies }),
+  [TEAMS_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: TEAMS_EXTENDED_WORKLOAD, label: 'Teams voice and live event policies', read: readTeamsExtended }),
+  [RETENTION_DLP_WORKLOAD]: workloadSettingsRestore({ workload: RETENTION_DLP_WORKLOAD, label: 'Purview retention and DLP', read: readRetentionDlp }),
+  [PURVIEW_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: PURVIEW_EXTENDED_WORKLOAD, label: 'Purview retention labels', read: readPurviewExtended }),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

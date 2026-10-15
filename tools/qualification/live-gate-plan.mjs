@@ -32,6 +32,7 @@ import { CATALOG } from '../tenant-probe/catalog.mjs';
 import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mjs';
 import { buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
+import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
 
 export const LIVE_GATE_PLAN_VERSION = 1;
@@ -238,6 +239,17 @@ function blastRadiusOf(resourceType) {
   return CATALOG.find((entry) => entry.type === base)?.blastRadius ?? 'access-affecting';
 }
 
+/**
+ * Issue #295: id-keyed types that still carry a display name of their own. The
+ * token lifetime, token issuance, claims mapping and home realm discovery
+ * policies are keyed by id (names are not unique) but point at no principal or
+ * role, so the capture checks their display name (KEEL-RT-...) as for a named
+ * object, never --allow-by-reference.
+ */
+const NAMED_ID_KEY_TYPES = new Set(Object.values(DIRECTORY_POLICY_RECORDS)
+  .filter((record) => record.family === 'sts-policy')
+  .map((record) => record.resourceType));
+
 /** The reviewed guidance for a type, or generic guidance derived from the catalogue. */
 export function guidanceFor(resourceType) {
   const reviewed = FIXTURE_GUIDANCE[resourceType];
@@ -253,15 +265,18 @@ export function guidanceFor(resourceType) {
   }
   const singleton = SINGLETON_TYPES.has(resourceType);
   const lockout = TENANT_POLICY_LOCKOUT.has(resourceType) || blastRadiusOf(resourceType) === 'tenant-lockout';
+  const idKeyed = ID_KEY_TYPES.has(resourceType);
+  const namedById = idKeyed && NAMED_ID_KEY_TYPES.has(resourceType);
   return {
     reviewed: false,
-    kind: singleton ? 'tenant-setting' : ID_KEY_TYPES.has(resourceType) ? 'by-reference' : 'named-object',
+    kind: singleton ? 'tenant-setting' : idKeyed && !namedById ? 'by-reference' : 'named-object',
     lockout,
-    // An id-keyed type has no name to make disposable: the operator picks the object.
+    // An id-keyed type with no name of its own has nothing to make disposable: the operator picks the object.
     fixture: singleton ? `the tenant's one ${resourceType} object`
-      : ID_KEY_TYPES.has(resourceType) ? `an existing ${resourceType} that only touches KEEL-RT fixtures (it has no name of its own)`
-        : `a disposable ${resourceType} named ${FIXTURE_PREFIX}-${resourceType}`,
-    select: singleton ? resourceType : ID_KEY_TYPES.has(resourceType) ? `the ${resourceType} id KEEL shows` : `${FIXTURE_PREFIX}-${resourceType}`,
+      : namedById ? `a disposable ${resourceType} whose display name starts KEEL-RT- (it is keyed by its id)`
+        : idKeyed ? `an existing ${resourceType} that only touches KEEL-RT fixtures (it has no name of its own)`
+          : `a disposable ${resourceType} named ${FIXTURE_PREFIX}-${resourceType}`,
+    select: singleton ? resourceType : idKeyed ? `the ${resourceType} id KEEL shows` : `${FIXTURE_PREFIX}-${resourceType}`,
     drift: 'change one field the restore writes (see the type\'s operation record)',
     breakGlass: lockout ? 'Not reviewed for this type yet: treat it as able to lock people out. Get decision D-148a extended to this type before running it.' : null,
     note: 'No reviewed guidance yet for this type: read its roadmap doc before running, and add an entry to FIXTURE_GUIDANCE.',

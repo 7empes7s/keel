@@ -4335,7 +4335,7 @@ item that needs it stays untouched.
   `git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q90 && git archive 247842d ops/powershell | tar -x -C /tmp/keel-q90`, then
   `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /tmp/keel-q90/ops/powershell:/app:ro keel-powershell:latest` with the job JSON
   on stdin. Every step is one run-cmdlet job as the Restorer, with `"tenantConfigPath":"/etc/keel/exchange-restorer.json"` (as in Q89).
-- Status: todo
+- Status: in-progress
 - Do (test tenant only; one tenant-wide object, written back to its own current value):
   1. `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"Get-QuarantinePolicy","parameters":{"QuarantinePolicyType":"GlobalQuarantinePolicy"},"tenantConfigPath":"/etc/keel/exchange-restorer.json"}`.
      Report `ok`, the number of objects and the current `OrganizationBrandingEnabled` (true or false).

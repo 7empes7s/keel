@@ -2794,3 +2794,26 @@ item that needs it stays untouched.
   `GET /v1.0/planner/plans/<planId>/tasks` lists the task. Allow a minute for Planner to propagate; retry a few times.
 - Do not run content-collect; the nightly 01:00 UTC job picks the plan up.
 - **Report:** group id, plan id, bucket id and task id (first 8 characters), and the two GET results (status and counts).
+
+### Q61: Confirm the Collector can call the Power Platform and Fabric read-only admin APIs (read-only)
+- Drafted by the "Power Platform + Fabric check" thread (2026-10-15). Marouane reported at 06:47 UTC that he ran
+  `New-PowerAppManagementApp` for the KEEL Collector (appId 87aa77c4…; it returned that appId) and turned on the Fabric
+  setting "Service principals can access read-only admin APIs" for `KEEL-RT-collector-fabric-readers`. Follows Q57's two
+  optional checks, which were both 403 before this.
+- Status: todo
+- Needs: none.
+- **Read-only.** Nothing created, granted, changed or removed. Use the Collector's own token (client credentials) for every
+  call below, except the group-membership read, which may use the Restorer.
+- **Do:**
+  1. **Group:** confirm the Collector SP is still the only member of `KEEL-RT-collector-fabric-readers` (2e66e1b2…).
+  2. **Power Platform** (token audience `https://service.powerapps.com/`, falling back to `https://api.bap.microsoft.com/`):
+     `GET https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01`.
+     Report status and environment count. If 403, also retry once after 5 minutes (registration can lag).
+  3. **Fabric / Power BI** (token audience `https://analysis.windows.net/powerbi/api`):
+     - `GET https://api.powerbi.com/v1.0/myorg/admin/groups?$top=1`
+     - `GET https://api.fabric.microsoft.com/v1/admin/workspaces` (audience `https://api.fabric.microsoft.com`)
+     Report status and item count for each. If 401/403, retry once after 15 minutes (Fabric says settings take up to 15 min).
+     If still refused, check whether the Collector's manifest holds any **Power BI Service** application permissions that
+     need admin consent (Microsoft refuses read-only admin API calls from an SP that has them) and list them.
+- **Report:** group membership; per call the status code and count (or the error code and message, with no tokens);
+  a one-line verdict each for "Power Platform management app works" and "Fabric read-only admin APIs work".

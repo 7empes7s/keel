@@ -2835,8 +2835,58 @@ item that needs it stays untouched.
 - Drafted by the "Second test content backup" thread (2026-10-15). Follows Q58 (first run, 3 partial) and Q60 (Planner
   fixture KEEL-RT-20261015-plan now exists). Fixes since Q58: #265 (e5a773f, site permissions declared not read),
   #266 (b70b9dc, Teams partial reason names the failed part), #267 (80a040a, mail folder delta without wellKnownName).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Runs A (07:01) and B (07:04) on 2026-10-15. **Exit 1 both times**, only because exchange-mail is still partial (new bug #268).
+  The other 4 workloads succeeded. Content reads used the Content Reader through contentReadTransport (GET only), with Q58's
+  reader and scope files. Nothing was written to the tenant. Global admin not used.
+  - **Deployed:** /opt/keel-live at d58a2fb4 (the merge of #267; it carries #265 and #266).
+  - **The 01:00 UTC nightly: it did not run.** There is no `content-collect` schedule. The schedule table holds only api-drift,
+    collect tier1/2/3, prune and workload-collect, and the job table has no `content-collect` job ever. The scheduler's 01:00 tick
+    started 1 job, the hourly configuration `collect` (succeeded 01:00:02–01:01:48). The "nightly content job" needs a
+    schedule row before it exists (`cadence.mjs` defines content-collect as every 4 h, but nothing is scheduled).
+    - Baseline before A: exchange-mail 2 / 892, group-conversations 3 / 9496, onedrive 2 / 1771, sharepoint-sites 865 / 2710798,
+      teams 11 / 257267. Sync keys: exchange-mail 2, onedrive 1, sharepoint-sites 28.
+  - **Mail fixture (step 3): not created.** alice's Inbox is still empty (0), but the Restorer has no Mail.ReadWrite or Mail.Send
+    (only MailboxSettings.ReadWrite), so it cannot put a message there.
+  - **Run A**, exit 1:
+      exchange-mail: partial (0 items, 0 bytes): keel-rt-20260908-alice@techinsiderbytes.com (user): 1 read(s) failed (400 BadRequest Parsing OData Select and Expand failed: Could not find a property named 'wellKnownName' on type 'microsoft.graph.mailFolder'.)
+      onedrive: succeeded (0 items, 0 bytes)
+      sharepoint-sites: succeeded (855 items, 2690849 bytes)
+      teams: succeeded (11 items, 272325 bytes)
+      planner: succeeded (8 items, 11975 bytes)
+    - Read-back: exchange-mail 2 / 892, group-conversations 3 / 9496, onedrive 2 / 1771, **planner 5 / 2479**,
+      sharepoint-sites 889 / 2735364, teams 22 / 529592. Sync keys: exchange-mail 2, onedrive 1, sharepoint-sites 28.
+    - Mark 8 Project Team is no longer partial (teams succeeded).
+  - **Fixture check after A:**
+    - exchange-mail: **no mail folders.** Only alice's calendars and todo-lists, from Q58.
+    - onedrive: KEEL-RT-20261015-onedrive.txt (drive-content and drive-record) found.
+    - sharepoint-sites: the 4 KEEL-RT sites found (4 site containers).
+    - teams: KEEL-RT-20260908 Collaboration Hub found.
+    - planner: all found in container group:9263e1d4…: plan KEEL-RT-20261015-plan, planDetails, bucket KEEL-RT-20261015-bucket,
+      task KEEL-RT-20261015-task, taskDetails. That is 5 rows; the line's 8 items include the 3 group-conversations items, deduplicated.
+  - **Run B** (right after A, no tenant change), exit 1:
+      exchange-mail: partial (0 items, 0 bytes): keel-rt-20260908-alice@techinsiderbytes.com (user): 1 read(s) failed (400 BadRequest Parsing OData Select and Expand failed: Could not find a property named 'wellKnownName' on type 'microsoft.graph.mailFolder'.)
+      onedrive: succeeded (0 items, 0 bytes)
+      sharepoint-sites: succeeded (853 items, 2685218 bytes)
+      teams: succeeded (11 items, 272325 bytes)
+      planner: succeeded (8 items, 11975 bytes)
+    - Read-back: exchange-mail 2 / 892, group-conversations 3 / 9496, onedrive 2 / 1771, planner 5 / 2479,
+      sharepoint-sites 889 / 2735364, **teams 33 / 801917**. Sync keys: unchanged.
+  - **New content_item rows, A to B:**
+    - exchange-mail: 0 (stuck, see below).
+    - onedrive: 0 rows / 0 bytes. Delta token reused (1 key); it read 0 items.
+    - sharepoint-sites: 0 new rows. 28 sync keys exist, but it reports 853 items read on B, about the same as A's 855. So it
+      re-walks the sites and libraries each run and deduplicates on store; it is not delta-only.
+    - planner and group-conversations: 0 new rows. No sync keys (no Planner delta in v1.0), so they are re-read and deduplicated.
+    - **teams: +11 rows / +272,325 bytes (new_bytes 272,677).** Every team gets a new version and sha256 each run with no change,
+      and there are no sync keys. **#269.**
+    - **Re-read everything on B:** teams (and stores everything again), sharepoint-sites, planner and group-conversations
+      (re-read, nothing stored). Delta-only: onedrive.
+  - **Errors:**
+    - **#268**: the Q58 failure saved the old `mailFolders/delta?$select=...wellKnownName...` URL as the resume cursor in
+      content_sync_state (exchange-mail, mailbox/<alice>). walkDelta reuses it, so the #267 fix never takes effect.
+      No CLI reset exists, and I did not edit the DB by hand. Commented on #267.
+    - **#269**: the Teams snapshot is not deterministic (as above).
 - Needs: Q58 done, Q60 done.
 - **Read-only against the tenant**, except the optional fixture mail in step 3. Content reads go through the GET-only
   `contentReadTransport` as the KEEL Content Reader, with the reader and scope files Q58 left in place. No permission or consent changes.

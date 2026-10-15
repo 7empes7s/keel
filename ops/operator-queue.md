@@ -4284,7 +4284,33 @@ item that needs it stays untouched.
   `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /opt/keel-live/ops/powershell:/app:ro keel-powershell:latest`
   with the job JSON on stdin. Every step is one run-cmdlet job as the Restorer:
   `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"<cmdlet>","parameters":{...},"tenantConfigPath":"/etc/keel/restorer.json"}`.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 20:52–21:00 UTC. Restorer through run-cmdlet, image `keel-powershell:latest` with `/opt/keel-live/ops/powershell` mounted
+  over /app. **No change**: every Set- sent the value step 1 read, and none succeeded anyway. Global admin not used.
+  - Note: `/etc/keel/restorer.json` has no `organization`, so EXO refused it ("Organization cannot be null for certificate based
+    connections"). The probe used `/etc/keel/exchange-restorer.json`, the **same Restorer app** (same clientId) with the organization, as the capture does.
+  - **1.** `Get-QuarantinePolicy {"QuarantinePolicyType":"GlobalQuarantinePolicy"}`: **ok true, 1 object, OrganizationBrandingEnabled = False.**
+  - **2.** Set-QuarantinePolicy, Identity = the full Identity `<org>.onmicrosoft.com\DefaultGlobalPolicy`: **ok false**.
+    - message: `||The operation couldn't be performed because object '<org>.onmicrosoft.com\DefaultGlobalPolicy' couldn't be found on '<EXO server>'.`
+    - errorId: `[],Write-ErrorMessage`
+  - **3.** Identity = the DistinguishedName `CN=DefaultGlobalPolicy,CN=Quarantine Settings,CN=Transport Settings,…`: **ok false**.
+    The message is the same as step 2 (it resolves the DN to `<org>.onmicrosoft.com\DefaultGlobalPolicy`, then "couldn't be found");
+    errorId `[],Write-ErrorMessage`.
+  - **4.** Identity = ExchangeObjectId: **ok false**.
+    - message: `Cannot process argument transformation on parameter 'Identity'. Cannot convert value "<guid>" to type
+      "Microsoft.Exchange.Configuration.Tasks.QuarantineTagIdParameter". Error: "The format of the value you specified in the objectId
+      parameter isn't valid. Check the value, and then try again. …`
+    - errorId: `[],Write-ErrorMessage`
+  - **5.** Identity = the real Guid: **ok false**, the same message as step 4 (QuarantineTagIdParameter conversion); errorId `[],Write-ErrorMessage`.
+  - **6.** Get again: **ok true, OrganizationBrandingEnabled = False**, unchanged.
+  - **Reading:** the Restorer can **read** the global object (step 1), but Set-QuarantinePolicy resolves none of Name, `DefaultGlobalTag`
+    (Q88), full Identity, DN, ExchangeObjectId or Guid. Set's Identity binder is `QuarantineTagIdParameter`, which rejects GUIDs outright,
+    and every name form is "not found".
+    - Possibly the global quarantine settings in this tenant were never initialized as a writable QuarantineTag. A person opening
+      Defender > Quarantine policies > Global settings and saving once may create it. Or the global settings may need a different
+      cmdlet, path or parameter set.
+    - Until then, `exchange-extended.quarantine-global-settings.update` can't be proven on this tenant.
+  - Commented on #339.
 - Do (test tenant only; one tenant-wide object, written back to its own current value):
   1. `Get-QuarantinePolicy` with `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`. Note the object's `Identity`, `DistinguishedName`,
      `ExchangeObjectId`, `Guid` and the current `OrganizationBrandingEnabled` (true or false). Report `ok`, the number of objects and the

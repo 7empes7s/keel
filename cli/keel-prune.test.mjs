@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect, createSnapshot, insertResourceVersion } from '../engine/store/db.mjs';
@@ -23,7 +23,7 @@ const tenantRef = `sha256:${createHash('sha256').update(tenantId).digest('hex').
 const cliPath = new URL('./keel-prune.mjs', import.meta.url).pathname;
 function runCli(...extraArgs) {
   return execFileSync('node', [cliPath, '--config', configPath, '--db-url', url, ...extraArgs], {
-    encoding: 'utf8',
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
 
@@ -39,7 +39,11 @@ try {
   client = await connect(url);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const oldEnough = new Date(Date.now() - 30 * DAY_MS); // beyond the tier1 7-day window
+// The default policy keeps the newest snapshot of each day, week, month and year, so
+// an earlier snapshot of the same old day is the one that goes.
+const oldDay = new Date(Date.now() - 30 * DAY_MS).toISOString().slice(0, 10);
+const oldEnough = new Date(`${oldDay}T12:00:00Z`);
+const earlierThatDay = new Date(`${oldDay}T10:00:00Z`);
 
 async function seedSnapshot(suffix, startedAt) {
   const snapshotId = await createSnapshot(client, { tenantRef });
@@ -68,13 +72,13 @@ const snapshotCount = async () =>
 const snapshotExists = async (id) =>
   (await client.query('SELECT 1 FROM snapshot WHERE id = $1', [id])).rows.length === 1;
 
-// Older than its tier's retention window, referenced by nothing → prunable.
-const prunableSnapshotId = await seedSnapshot('prunable', oldEnough);
-// Older than the window, but pinned by the ACTIVE BASELINE → must survive.
+// Not the newest of its day, week, month or year, referenced by nothing → prunable.
+const prunableSnapshotId = await seedSnapshot('prunable', earlierThatDay);
+// The newest of that day, and pinned by the ACTIVE BASELINE → must survive.
 const baselineSnapshotId = await seedSnapshot('baseline', oldEnough);
 const baselineId = await createBaseline(client, { tenantRef, setBy: 'test-operator' });
 await seedBaselineFromSnapshot(client, { baselineId, snapshotId: baselineSnapshotId });
-// Older than the window, but held by an active incident retention pin → must
+// Also that day, and held by an active incident retention pin → must
 // survive, and the dry run must not list it either.
 const pinnedSnapshotId = await seedSnapshot('pinned', oldEnough);
 const { rows: incidentRows } = await client.query(
@@ -86,20 +90,37 @@ await client.query(
    VALUES ($1, $2, $3, 'held', 'test-operator')`,
   [tenantRef, incidentRows[0].id, pinnedSnapshotId],
 );
-// Inside its retention window → must survive.
+// Today's snapshot → must survive.
 const recentSnapshotId = await seedSnapshot('recent', new Date());
 
-// --dry-run reports the prunable set but deletes nothing.
+// A run without --apply (the schedule's run) and --dry-run both report the
+// prunable set, save a report, and delete nothing.
 const countBeforeDryRun = await snapshotCount();
-const dryRunOut = runCli('--dry-run');
-assert.match(dryRunOut, /would prune 1 snapshot\(s\)/);
-assert.ok(dryRunOut.includes(prunableSnapshotId));
-assert.ok(!dryRunOut.includes(pinnedSnapshotId));
+for (const dryRunOut of [runCli(), runCli('--dry-run')]) {
+  assert.match(dryRunOut, /would prune 1 snapshot\(s\)/);
+  assert.match(dryRunOut, /would prune 0 content version\(s\)/);
+  assert.match(dryRunOut, /policies: default: 14 daily, 8 weekly, 12 monthly, 7 yearly/);
+  assert.ok(dryRunOut.includes(prunableSnapshotId));
+  assert.ok(!dryRunOut.includes(pinnedSnapshotId));
+}
 assert.equal(await snapshotCount(), countBeforeDryRun);
 assert.ok(await snapshotExists(prunableSnapshotId));
+const { rows: reports } = await client.query(
+  'SELECT mode, snapshots_deleted FROM retention_prune_report WHERE tenant_ref = $1 ORDER BY created_at',
+  [tenantRef],
+);
+assert.deepEqual(reports, [{ mode: 'dry-run', snapshots_deleted: 1 }, { mode: 'dry-run', snapshots_deleted: 1 }]);
+assert.throws(() => runCli('--apply', '--dry-run'), /cannot be used together/);
 
-// Real run prunes exactly the unreferenced expired snapshot.
-const out = runCli();
+// --report writes the same report to a file.
+const reportPath = join(configDir, 'report.json');
+runCli('--report', reportPath);
+const written = JSON.parse(readFileSync(reportPath, 'utf8'));
+assert.deepEqual(written.snapshots.delete, [prunableSnapshotId]);
+assert.equal(written.mode, 'dry-run');
+
+// --apply prunes exactly the snapshot the dry run listed.
+const out = runCli('--apply');
 assert.match(out, /pruned 1 snapshot\(s\)/);
 assert.ok(out.includes(prunableSnapshotId));
 assert.equal(await snapshotExists(prunableSnapshotId), false);

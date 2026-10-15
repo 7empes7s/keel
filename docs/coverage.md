@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 19 are full, 68 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 45 at least in part; the other 49 are restored by hand from the backup.
+KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 67 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 43 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -28,7 +28,7 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Delegated app consents | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Delegated app consents | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External identity providers | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Certificate sign-in settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Built-in admin roles | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
@@ -71,8 +71,8 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 - **Enterprise apps.** Recreates an enterprise app for its app registration, puts reviewed settings back on an existing one, and removes an app added since the backup.
   - *Not brought back:* client secrets (Microsoft never returns it); certificates (Microsoft never returns it); whether sign-in is on, which a restore reports and never changes (in the backup, but KEEL does not write it yet).
   - *You do:* Whether an app can sign in is shown as a difference and changed by hand. Enterprise apps for Microsoft services and managed identities are never removed by KEEL.
-- **Delegated app consents** (not built yet). A consent is a decision someone made to trust an app. KEEL has not yet built a safe way to grant it again.
-  - *You do:* Use the backup to see which apps had consent, then grant it again in the Entra admin center after review.
+- **Delegated app consents.** Grants delegated consent again with the permissions the backup had, as part of an approved restore, and changes a consent back. A re-run never adds a second consent.
+  - *You do:* Removing a consent added since the backup is done by hand. A consent for an app that was recreated in the same restore is granted by hand.
 - **External identity providers** (Microsoft limit). Microsoft never lets anyone read the client secret of an identity provider.
   - *Not brought back:* client secret (Microsoft never returns it).
   - *You do:* Recreate the provider in the Entra admin center using the settings in the backup, and enter a fresh secret from the provider.
@@ -158,13 +158,13 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Device join and registration settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
 | External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| App consent policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| App consent policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Token claims mapping | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Token claims mapping | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Sign-in routing (home realm discovery) | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Token issuance policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -193,25 +193,25 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
   - *You do:* The sign-up user flows themselves are restored by hand (see guest sign-up user flows).
-- **App consent policies** (not built yet). Microsoft's built-in policies cannot be changed, and the rules inside custom ones are stored separately. KEEL has not built a safe writer for them.
-  - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet).
-  - *You do:* Recreate custom consent policies by hand using the backup.
+- **App consent policies.** Recreates custom app consent policies and puts their name and description back, with their include and exclude rules when the backup holds them (tested against a simulated tenant only).
+  - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app consent policy (set by Microsoft).
+  - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet, and extra rules added since the backup, are set by hand.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
 - **Idle sign-out policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy by hand using the backup.
-- **Token claims mapping** (not built yet). The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.
-  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy by hand using the backup, then assign it to the same apps.
-- **Sign-in routing (home realm discovery)** (not built yet). This decides where federated users are sent to sign in, so a wrong write breaks sign-in. Its link to each app is stored separately.
-  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy by hand using the backup, assign it to the same apps, and test a federated sign-in.
-- **Token issuance policy** (not built yet). The whole policy is backed up, but its link to each app is stored separately and KEEL has no safe restore for it yet.
-  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy by hand using the backup, then assign it to the same apps.
-- **Token lifetime policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
-  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy by hand using the backup.
+- **Token claims mapping.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
+  - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.
+- **Sign-in routing (home realm discovery).** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
+  - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it. Test a federated sign-in after the restore.
+- **Token issuance policy.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
+  - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.
+- **Token lifetime policy.** Recreates the policy and puts its name and settings back (tested against a simulated tenant only).
+  - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet); being the organization default (KEEL recreates it as an ordinary policy) (in the backup, but KEEL does not write it yet).
+  - *You do:* Which apps use the policy is set again by hand. A policy that was the organization default comes back as an ordinary one; make it the default again by hand after checking it.
 - **Staged rollout of sign-in features** (not built yet). Which groups a rollout covers is stored separately, and KEEL has not built a safe writer for it.
   - *Not brought back:* which groups the rollout covers (stored separately and not in the backup yet).
   - *You do:* Recreate the rollout by hand using the backup, then add the same groups.

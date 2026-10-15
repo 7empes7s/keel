@@ -20,8 +20,8 @@ import {
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../contracts/fieldProjection.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { applyPatches, applyWave } from '../restore/applyEngine.mjs';
-import { ThrottleGovernor } from '../restore/throttleGovernor.mjs';
 import { writerFor } from '../restore/writers/registry.mjs';
+import { ThrottleGovernor } from '../restore/throttleGovernor.mjs';
 import { decideVerb, verbCapability } from '../reconcile/verb.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
@@ -90,6 +90,13 @@ const REGISTERED = Object.freeze({
   assignmentFilter: ['create', 'update'],
   roleScopeTag: ['create', 'update'],
   notificationMessageTemplate: ['create', 'update'],
+  // Wave 2 ENTRA: directory policies and delegated consents.
+  tokenLifetimePolicy: ['create', 'update'],
+  tokenIssuancePolicy: ['create', 'update'],
+  claimsMappingPolicy: ['create', 'update'],
+  homeRealmDiscoveryPolicy: ['create', 'update'],
+  permissionGrantPolicy: ['create', 'update'],
+  oauth2PermissionGrant: ['create', 'update'],
 });
 
 function governor() {
@@ -155,7 +162,7 @@ test('every registered operation is fixture-tested with a named proof and correc
       assert.equal(typeof capability.proofRef, 'string');
       assert.ok(capability.proofRef.length > 0, `${resourceType} ${operation} must name its proof`);
       assert.equal(capability.credentialMode, 'restorer');
-      // A pair with a registered writer (Wave 2) names that writer; every other one is applyWave's own.
+      // Wave 2: a pair with a registered writer names that writer's handler.
       assert.equal(capability.handler, writerFor(resourceType, operation)?.handler ?? 'engine/restore/applyEngine.mjs#applyWave');
       assert.equal(capability.idOutcome, operation === 'create' ? 'server-assigned' : operation === 'delete' ? 'terminal' : 'preserved');
       assert.equal(capability.path, graphPathFor(resourceType));
@@ -199,7 +206,8 @@ test('mutation pin: a real Graph collection path never implies write capability'
     assert.equal(graphPathFor(entry.type), null, `${entry.type} must have no registered write path`);
     checked += 1;
   }
-  assert.ok(checked > CATALOG.length / 2, 'this pin must exercise the bulk of the catalogue, not a token sample');
+  // Wave 2 registered more than half the catalogue, so the floor is now a third.
+  assert.ok(checked > CATALOG.length / 3, 'this pin must exercise a large share of the catalogue, not a token sample');
 });
 
 test('mutation pin: descriptor.remappable never gates a capability claim', () => {

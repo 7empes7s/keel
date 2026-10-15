@@ -12,6 +12,10 @@
  *     `since` is inclusive (an item stored in that millisecond is listed again, never
  *     dropped). `after` is an exact cursor: the { createdAt, id } of the last row read;
  *     rows sort by (createdAt, id), so paging with it neither repeats nor skips.
+ *   orphanedChunks(ids) -> the chunks only these items hold: [{ id, objectName, storedBytes }]
+ *   deleteItems(ids) -> { items, chunks }: deletes the items, then the chunks no other
+ *     item holds (Wave 2 RET's prune; same chunk rule as orphanedChunks). The storage
+ *     objects of those chunks are left in place: adapters have no delete yet.
  * A row is { id, tenantRef, workload, container, itemKey, version, metadata, sha256,
  * bytes, chunks: [[chunkId, plainBytes], ...], keyId, newBytes, createdAt }.
  */
@@ -34,6 +38,22 @@ export function createPgContentIndex(client) {
       WHERE tenant_ref = $1 AND workload = $2 AND container = $3 AND item_key = $4 AND version = $5`,
     [tenantRef, workload, container, itemKey, version],
   )).rows[0]);
+  // A chunk of a doomed item is orphaned when no other item, of any tenant, lists it.
+  const orphanedChunks = async (ids) => (await client.query(
+    `WITH doomed AS (SELECT unnest($1::uuid[]) AS id),
+     candidates AS (
+       SELECT DISTINCT c.entry->>0 AS chunk_id
+       FROM content_item i JOIN doomed d ON d.id = i.id CROSS JOIN LATERAL jsonb_array_elements(i.chunks) AS c(entry)),
+     still_held AS (
+       SELECT DISTINCT c.entry->>0 AS chunk_id
+       FROM content_item i CROSS JOIN LATERAL jsonb_array_elements(i.chunks) AS c(entry)
+       WHERE i.id NOT IN (SELECT id FROM doomed) AND c.entry->>0 IN (SELECT chunk_id FROM candidates))
+     SELECT ch.id, ch.object_name, ch.stored_bytes
+     FROM content_chunk ch JOIN candidates k ON k.chunk_id = ch.id
+     WHERE ch.id NOT IN (SELECT chunk_id FROM still_held)
+     ORDER BY ch.id`,
+    [ids],
+  )).rows.map((row) => ({ id: row.id, objectName: row.object_name, storedBytes: Number(row.stored_bytes) }));
   return Object.freeze({
     async hasChunk(id) {
       return (await client.query('SELECT 1 FROM content_chunk WHERE id = $1', [id])).rowCount > 0;
@@ -71,6 +91,13 @@ export function createPgContentIndex(client) {
       );
       return rows.map(fromRow);
     },
+    orphanedChunks,
+    async deleteItems(ids) {
+      const chunks = await orphanedChunks(ids);
+      const { rowCount } = await client.query('DELETE FROM content_item WHERE id = ANY($1::uuid[])', [ids]);
+      await client.query('DELETE FROM content_chunk WHERE id = ANY($1::text[])', [chunks.map(({ id }) => id)]);
+      return { items: rowCount, chunks };
+    },
   });
 }
 
@@ -81,6 +108,14 @@ export function createMemoryContentIndex({ now = () => new Date() } = {}) {
   const keyOf = ({ tenantRef, workload, container, itemKey, version }) => JSON.stringify([tenantRef, workload, container, itemKey, version]);
   const byKey = new Map();
   let sequence = 0;
+  const orphanedChunks = (ids) => {
+    const doomed = new Set(ids);
+    const held = new Set();
+    for (const row of items.values()) if (!doomed.has(row.id)) for (const [chunkId] of row.chunks) held.add(chunkId);
+    const out = new Set();
+    for (const id of doomed) for (const [chunkId] of items.get(id)?.chunks ?? []) if (!held.has(chunkId) && chunks.has(chunkId)) out.add(chunkId);
+    return [...out].sort().map((id) => ({ id, objectName: chunks.get(id).objectName, storedBytes: chunks.get(id).storedBytes }));
+  };
   return Object.freeze({
     chunks,
     items,
@@ -106,6 +141,20 @@ export function createMemoryContentIndex({ now = () => new Date() } = {}) {
         .filter((row) => row.container === container && (!since || row.createdAt >= since) && past(row)
           && (!tenantRef || row.tenantRef === tenantRef) && (!workload || row.workload === workload))
         .slice(0, limit);
+    },
+    async orphanedChunks(ids) { return orphanedChunks(ids); },
+    async deleteItems(ids) {
+      const chunkRows = orphanedChunks(ids);
+      let deleted = 0;
+      for (const id of ids) {
+        const row = items.get(id);
+        if (!row) continue;
+        items.delete(id);
+        byKey.delete(keyOf(row));
+        deleted += 1;
+      }
+      for (const { id } of chunkRows) chunks.delete(id);
+      return { items: deleted, chunks: chunkRows };
     },
   });
 }

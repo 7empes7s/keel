@@ -1131,6 +1131,9 @@ export async function runRestore({
     let completionItems = [];
     if (mode === 'enforce' && artifact) {
       const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
+      // Wave 2 ENTRA: a writer's follow-up steps (missing parts of an
+      // incomplete configuration) become named completion items.
+      const followUpByKey = new Map(results.applied.filter((entry) => Array.isArray(entry.followUp)).map((entry) => [entry.naturalKey, entry.followUp]));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))
         .filter((resource) => resource?.recovery
@@ -1138,7 +1141,8 @@ export async function runRestore({
             || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))
         .map((resource) => ({
           naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery.mechanism,
-          enforcementPending: enforcementPendingFor(resource),
+          enforcementPending: enforcementPendingFor(resource), payload: resource.payload,
+          ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
         }));
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {

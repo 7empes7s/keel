@@ -4219,7 +4219,25 @@ item that needs it stays untouched.
   - Every job now mounts `/opt/keel-live/ops/powershell` read-only over `/app`, so `keel-powershell:latest` runs the deployed
     run-cmdlet allowlist. No thin image is needed. The Dockerfile pins ExchangeOnlineManagement 3.10.1; no rebuild is needed.
 - Needs: `/opt/keel-live` at 82f852a or later (`git -C /opt/keel-live log -1 --format=%h` or the deployed build stamp).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 20:00–20:08 UTC on B = 82f852a9, with the default image `keel-powershell:latest` (the deployed ops/powershell is
+  mounted over /app) and `--allow-tenant-wide-test-writes --module-version 3.10.1`. Test tenant only; Restorer EXO app-only. Global admin not used.
+  - **1. Capture: exit 0.**
+    - `exchange-extended.quarantine-global-settings.update`: **not proven**. ok false; readBackVerified and restoredToOriginal n/a
+      (nothing written).
+      - error: `Set-QuarantinePolicy failed: Set-QuarantinePolicy: ||The operation couldn't be performed because object
+        'DefaultGlobalPolicy' couldn't be found on '<EXO server>'.`
+      - A read as the Collector (`Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy`) returns Name **DefaultGlobalPolicy**
+        (Identity <org>\DefaultGlobalPolicy, type GlobalQuarantineTag). So #342 sends the Name, but Set-QuarantinePolicy needs the fixed
+        identity **DefaultGlobalTag** for the global settings, as Microsoft documents.
+    - `exchange-extended.quarantine-policy.update`: **skipped**, "no KEEL-RT- object of this kind in the tenant".
+    - Also proven again: `exchange-extended.connection-filter-policy.update` (tenant-wide, written, read back, put back).
+    - No exit 3; needsManualRevert [].
+  - **2. verify --require-live:** exit 0 (ok, no failures).
+  - **3.** PR **#344** (`claude/live-evidence-workload-writers-2`, automerge) with the record and .capture.json. It replaces #338's
+    exchange-extended record. Import from that checkout: `workload-writers-exchange-extended-live-acceptance.json` imported
+    (writes 1); refused [].
+  - Commented on #339.
 - Do (test tenant only; the same put-back writes as your last exchange-extended run):
   1. The exchange-extended capture, exactly as your last run, with `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`, and the
      default image `keel-powershell:latest` (not the wkld thin image), at the deployed build.

@@ -4,10 +4,12 @@ export function snapshotHasFullCoverage(snapshot) {
   const digest = snapshot?.coverage_digest;
   // Current collectors explicitly mark out-of-tier types as not-requested.
   // Require at least one successful read, and no failed/partial/unknown entry.
+  // A type the tenant has no licence or feature for (unavailable, #309) is not
+  // a failed read, so it does not hold back drift detection.
   return snapshot?.status === 'complete' && digest && typeof digest === 'object'
     && !Array.isArray(digest) && Object.keys(digest).length > 0
     && Object.values(digest).some((entry) => ['complete', 'complete-empty'].includes(entry?.outcome))
-    && Object.values(digest).every((entry) => ['complete', 'complete-empty', 'not-requested'].includes(entry?.outcome));
+    && Object.values(digest).every((entry) => ['complete', 'complete-empty', 'not-requested', 'unavailable'].includes(entry?.outcome));
 }
 
 // Scan terminal collect jobs, including exit-1 partial collections. The collection CLI

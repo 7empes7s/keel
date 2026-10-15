@@ -177,12 +177,17 @@ async function collectTeams(client, context) {
   if (result.discovery?.status !== 'observed') reasons.push(`team discovery: ${result.discovery?.error ?? result.discovery?.status}`);
   if (result.discovery?.capped) reasons.push('more teams than one run reads; the rest was not read');
   for (const team of result.teams ?? []) {
-    const statuses = [
-      team.settings?.status, team.installedApps?.status, team.channels?.status,
-      ...(team.channels?.items ?? []).flatMap((item) => [item.settings?.status, item.members?.status, item.tabs?.status, item.files?.status]),
-    ];
-    const bad = statuses.filter((status) => status === 'denied' || status === 'failed').length;
-    if (bad) reasons.push(`${team.fields?.displayName ?? team.teamId}: ${bad} part(s) not read`);
+    const parts = [
+      ['team settings', team.settings], ['installed apps', team.installedApps], ['channel list', team.channels],
+      ...(team.channels?.items ?? []).flatMap((item) => {
+        const channel = `channel ${item.fields?.displayName ?? item.channelId}`;
+        return [[`${channel} settings`, item.settings], [`${channel} members`, item.members], [`${channel} tabs`, item.tabs], [`${channel} files`, item.files]];
+      }),
+    ].filter(([, read]) => read?.status === 'denied' || read?.status === 'failed');
+    if (parts.length) {
+      const [name, read] = parts[0];
+      reasons.push(`${team.fields?.displayName ?? team.teamId}: ${parts.length} part(s) not read, first ${name}: ${read.status}${read.error ? ` (${read.error})` : ''}`);
+    }
   }
   return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
 }

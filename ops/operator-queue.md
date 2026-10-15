@@ -3945,7 +3945,7 @@ item that needs it stays untouched.
   change that makes the scheduled prune delete is merged.
 - Needs: /opt/keel-live at the merge of PR #282 or later (`test -f /opt/keel-live/engine/store/rotation.mjs`), and the
   schema applied (`retention_prune_report` exists).
-- Status: todo
+- Status: in-progress
 - Result:
 - Do (no tenant access, no deletes):
   1. `set -a; . /etc/keel/db.env; set +a; node /opt/keel-live/cli/keel-prune.mjs --report /tmp/keel-prune-report.json`

@@ -340,10 +340,11 @@ export async function restoreMail({ store, transport, journal, plan, target, act
     if (item.kind === 'mail') {
       const mime = await readBytes(store, item.ref);
       const path = `${owner}/mailFolders/${seg(containerTarget)}/messages`;
-      const rebuilt = item.isDraft ? null : receivedMessageFromMime(mime, { receivedDateTime: item.receivedDateTime });
+      const rebuilt = item.isDraft ? null : receivedMessageFromMime(mime, { receivedDateTime: item.receivedDateTime, internetMessageId: item.internetMessageId });
       if (rebuilt?.payload) return created(await send('POST', path, { body: rebuilt.payload }), 'creating the message');
+      const id = created(await send('POST', path, { body: mime.toString('base64'), headers: { 'content-type': 'text/plain' } }), 'creating the message');
       if (rebuilt?.keepMime) report.incomplete.push({ kind: item.kind, itemKey: item.itemKey, missing: ['received-state'], reason: `restored as a draft: ${rebuilt.keepMime}` });
-      return created(await send('POST', path, { body: mime.toString('base64'), headers: { 'content-type': 'text/plain' } }), 'creating the message');
+      return id;
     }
     const json = await readJson(store, item.ref);
     if (item.kind === 'calendar') return created(await send('POST', `${owner}/calendars/${seg(containerTarget)}/events`, { body: eventPayload(json) }), 'creating the event');

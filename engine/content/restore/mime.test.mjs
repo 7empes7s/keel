@@ -101,3 +101,26 @@ test('encoded words and address edge cases', () => {
   assert.deepEqual(parseAddresses('undisclosed-recipients:;'), []);
   assert.deepEqual(parseAddresses('"Quote \\"Q\\"" <q@contoso.test>'), [{ emailAddress: { name: 'Quote "Q"', address: 'q@contoso.test' } }]);
 });
+
+test('review cases: a part with no headers, a split multibyte word, a prefix boundary, a split HTML body, a fallback id', () => {
+  const noHeaders = receivedMessageFromMime(Buffer.from('Content-Type: multipart/mixed; boundary=B\r\n\r\n--B\r\n\r\nLine one\r\n\r\nLine two\r\n--B--\r\n'));
+  assert.equal(noHeaders.payload.body.content, 'Line one\r\n\r\nLine two');
+  assert.equal(decodeWords('=?UTF-8?B?w6nD?= =?UTF-8?B?qQ==?='), 'éé');
+  const nested = [
+    'Content-Type: multipart/mixed; boundary=b', '', '--b', 'Content-Type: multipart/alternative; boundary=b-alt', '',
+    '--b-alt', 'Content-Type: text/plain', '', 'plain', '--b-alt', 'Content-Type: text/html', '', '<p>html</p>', '--b-alt--',
+    '--b--', '',
+  ].join('\r\n');
+  const prefixed = receivedMessageFromMime(Buffer.from(nested));
+  assert.deepEqual(prefixed.payload.body, { contentType: 'html', content: '<p>html</p>' });
+  assert.equal(prefixed.payload.attachments, undefined, 'the inner alternative is not cut by the outer boundary');
+  const apple = [
+    'Content-Type: multipart/related; boundary=r', '', '--r', 'Content-Type: text/html', '', '<p>one</p>',
+    '--r', 'Content-Type: image/png', 'Content-ID: <i@x>', 'Content-Transfer-Encoding: base64', '', 'iVBORw0K',
+    '--r', 'Content-Type: text/html', '', '<p>two</p>', '--r--', '',
+  ].join('\r\n');
+  const split = receivedMessageFromMime(Buffer.from(apple), { internetMessageId: '<KEEL-RT-backup@contoso.test>' });
+  assert.equal(split.payload.body.content, '<p>one</p><p>two</p>');
+  assert.deepEqual(split.payload.attachments.map((a) => a.contentId), ['i@x']);
+  assert.equal(prop(split.payload, 'String 0x1035'), '<KEEL-RT-backup@contoso.test>', 'no Message-ID header: the backed-up id');
+});

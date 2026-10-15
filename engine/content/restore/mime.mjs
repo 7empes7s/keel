@@ -49,6 +49,9 @@ const headerText = (bytes) => {
 /** Splits an entity into its raw header block and body. */
 function splitEntity(buf) {
   const text = buf.toString('latin1');
+  // A part may have no headers at all (RFC 2046): it then starts with the blank line.
+  if (text.startsWith('\r\n')) return { head: Buffer.alloc(0), body: buf.subarray(2) };
+  if (text.startsWith('\n')) return { head: Buffer.alloc(0), body: buf.subarray(1) };
   const crlf = text.indexOf('\r\n\r\n');
   const lf = text.indexOf('\n\n');
   if (crlf < 0 && lf < 0) return { head: buf, body: Buffer.alloc(0) };
@@ -71,13 +74,25 @@ const header = (headers, name) => headers.find(([key]) => key === name)?.[1] ?? 
 /** RFC 2047 encoded words. */
 export function decodeWords(value) {
   if (!value) return value ?? '';
+  const wordBytes = (encoding, data) => (encoding.toUpperCase() === 'B'
+    ? Buffer.from(data, 'base64')
+    : Buffer.from(data.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))), 'latin1'));
+  // Adjacent words in one charset are decoded together: some mailers split a multibyte
+  // character across two words.
   return value
     .replace(/(=\?[^?]+\?[bBqQ]\?[^?]*\?=)\s+(?==\?[^?]+\?[bBqQ]\?[^?]*\?=)/g, '$1')
-    .replace(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g, (_, charset, encoding, data) => {
-      const bytes = encoding.toUpperCase() === 'B'
-        ? Buffer.from(data, 'base64')
-        : Buffer.from(data.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (__, hex) => String.fromCharCode(parseInt(hex, 16))), 'latin1');
-      return decodeText(bytes, charset.split('*')[0]);
+    .replace(/(?:=\?[^?]+\?[bBqQ]\?[^?]*\?=)+/g, (run) => {
+      let out = '';
+      let charset = null;
+      let pending = [];
+      const flush = () => { if (pending.length) out += decodeText(Buffer.concat(pending), charset); pending = []; };
+      for (const [, label, encoding, data] of run.matchAll(/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g)) {
+        const next = label.split('*')[0].toLowerCase();
+        if (next !== charset) { flush(); charset = next; }
+        pending.push(wordBytes(encoding, data));
+      }
+      flush();
+      return out;
     });
 }
 
@@ -193,7 +208,10 @@ function splitMultipart(body, boundary) {
     const found = text.indexOf(delimiter, at);
     if (found < 0) break;
     const lineStart = found === 0 || text[found - 1] === '\n';
-    if (!lineStart) { at = found + delimiter.length; continue; }
+    // The delimiter is the whole line: "--b" must not match "--b-alt".
+    const lineEnd = text.indexOf('\n', found);
+    const whole = /^(--)?[ \t]*\r?$/.test(text.slice(found + delimiter.length, lineEnd < 0 ? undefined : lineEnd));
+    if (!lineStart || !whole) { at = found + delimiter.length; continue; }
     if (start >= 0) parts.push(body.subarray(start, found - (text[found - 2] === '\r' ? 2 : 1)));
     const closing = text.startsWith('--', found + delimiter.length);
     if (closing) return parts;
@@ -223,6 +241,8 @@ function walk(buf, found, depth = 0) {
   if (isText && disposition.value !== 'attachment' && !filename) {
     const slot = type.value === 'text/html' ? 'html' : 'text';
     if (found[slot] === null) { found[slot] = decodeText(content, type.params.charset); return; }
+    // Apple Mail splits one HTML body into several inline parts around inline images.
+    if (slot === 'html') { found.html += decodeText(content, type.params.charset); return; }
   }
   const fallbackName = type.value === 'message/rfc822' ? 'message.eml'
     : type.value === 'text/calendar' ? 'invite.ics'
@@ -242,7 +262,7 @@ function walk(buf, found, depth = 0) {
  * Builds the create payload for one backed-up message.
  * Returns { payload } or { keepMime: reason } when the message must stay a MIME create.
  */
-export function receivedMessageFromMime(bytes, { receivedDateTime = null, maxPayloadBytes = MAX_JSON_PAYLOAD_BYTES } = {}) {
+export function receivedMessageFromMime(bytes, { receivedDateTime = null, internetMessageId = null, maxPayloadBytes = MAX_JSON_PAYLOAD_BYTES } = {}) {
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   const { head } = splitEntity(buf);
   const headers = parseHeaders(head);
@@ -261,7 +281,8 @@ export function receivedMessageFromMime(bytes, { receivedDateTime = null, maxPay
   const xPriority = Number.parseInt(header(headers, 'x-priority') ?? '', 10);
   const importance = priority === 'high' || xPriority === 1 || xPriority === 2 ? 'high'
     : priority === 'low' || xPriority === 4 || xPriority === 5 ? 'low' : 'normal';
-  const messageId = header(headers, 'message-id');
+  // The backed-up id is the one a resumed run looks the message up by.
+  const messageId = header(headers, 'message-id') ?? internetMessageId;
   const from = parseAddresses(header(headers, 'from'))[0];
   const sender = parseAddresses(header(headers, 'sender'))[0];
 

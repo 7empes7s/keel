@@ -69,7 +69,7 @@ try {
   assert.deepEqual(report.summary, {
     covered: DESCRIPTORS.length - 2, failed: 1,
     notCovered: CATALOG.length - DESCRIPTORS.length, neverCollected: 1,
-    stale: 0,
+    stale: 0, unavailable: 0,
   });
   assert.equal(report.tenantRef, tenantRef);
   assert.equal(report.generatedAt, now.toISOString());
@@ -84,6 +84,20 @@ try {
     const result = (await buildCoverageReport(client, options)).types.find((t) => t.type === 'namedLocation');
     assert.equal(result.status, entry === undefined ? 'never-collected' : 'failed');
     assert.equal(result.covered, false);
+  }
+  // A type the tenant has no licence or feature for (#309) keeps its raw 'failed'
+  // status, but the summary counts it as unavailable, never as a failure.
+  {
+    const changed = structuredClone(coverageDigest);
+    changed.namedLocation = { outcome: 'unavailable', itemCount: null, httpStatus: 403 };
+    await saveDigest(changed);
+    const result = await buildCoverageReport(client, options);
+    const namedLocation = result.types.find((t) => t.type === 'namedLocation');
+    assert.equal(namedLocation.status, 'failed');
+    assert.equal(namedLocation.outcome, 'unavailable');
+    assert.equal(result.summary.failed, 1, 'only roleAssignment failed');
+    assert.equal(result.summary.unavailable, 1);
+    assert.equal(result.summary.covered, DESCRIPTORS.length - 3);
   }
   // A claimed completion with missing/invalid cardinality also fails closed.
   for (const itemCount of [null, -1, '0', 0.5]) {
@@ -210,7 +224,7 @@ try {
       assert.equal(entry.covered, true);
       assert.equal(entry.itemCount, 6);
       assert.deepEqual(entry.lastCollectedAt, new Date(collectedAt));
-      assert.deepEqual(result.summary, { covered: 1, failed: 0, notCovered: 0, neverCollected: 0, stale: Number(expected) });
+      assert.deepEqual(result.summary, { covered: 1, failed: 0, notCovered: 0, neverCollected: 0, stale: Number(expected), unavailable: 0 });
     }
     // Failed observations age too; stale is not a substitute for failure.
     await client.query('UPDATE snapshot SET coverage_digest = $2 WHERE id = $1', [id, {
@@ -219,7 +233,7 @@ try {
     const failed = await buildCoverageReport(client, { ...staleOptions, now: new Date(now.getTime() + 1) });
     assert.equal(failed.types[0].status, 'failed');
     assert.equal(failed.types[0].stale, true);
-    assert.deepEqual(failed.summary, { covered: 0, failed: 1, notCovered: 0, neverCollected: 0, stale: 1 });
+    assert.deepEqual(failed.summary, { covered: 0, failed: 1, notCovered: 0, neverCollected: 0, stale: 1, unavailable: 0 });
   }
 } finally {
   await client?.end();

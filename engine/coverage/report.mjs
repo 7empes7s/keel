@@ -177,7 +177,10 @@ export async function buildCoverageReport(client, { tenantRef, catalog, descript
     workloadProof: await loadProofExpiry(client, { tenantRef, now: new Date(generatedAt) }),
     summary: {
       covered: types.filter((t) => t.status === 'covered').length,
-      failed: types.filter((t) => t.status === 'failed').length,
+      // A type Microsoft refused for a missing licence or tenant feature keeps its raw
+      // 'failed' status but is counted as unavailable, never as a failure (#336).
+      failed: types.filter((t) => t.status === 'failed' && t.outcome !== 'unavailable').length,
+      unavailable: types.filter((t) => t.outcome === 'unavailable').length,
       notCovered: types.filter((t) => t.status === 'not-covered').length,
       neverCollected: types.filter((t) => t.status === 'never-collected').length,
       stale: types.filter((t) => t.stale).length,

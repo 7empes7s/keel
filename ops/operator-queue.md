@@ -3858,7 +3858,7 @@ item that needs it stays untouched.
   transport that allows only those POSTs on the one site.
 - Needs: A has no deploy dependency. B needs /opt/keel-live at the merge of PR #332 or later
   (`test -f /opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs`).
-- Status: todo
+- Status: in-progress
 - **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
   Global admin not used. Never touch CA policies, break-glass accounts or Marouane's account. No consent is granted.
 - **A. Collector manifest (Entra, one PATCH as the Restorer):** the Collector already holds Office 365 SharePoint Online

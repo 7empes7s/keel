@@ -436,7 +436,12 @@ try {
   );
   await assert.rejects(
     requestApproval(client, { tenantRef, action: 'baseline-activate', params: { naturalKey: 'group:alpha' }, requestedBy: restorer, executor: 'cli' }),
-    /only a restore can be carried out with the CLI/,
+    /only a restore or a content restore can be carried out with the CLI/,
+  );
+  // Wave 2: a content restore is not a worker job kind, so it is CLI-only.
+  await assert.rejects(
+    requestApproval(client, { tenantRef, action: 'content-restore', params: { mailbox: 'KEEL-RT-mail' }, requestedBy: restorer }),
+    /carried out with the CLI only/,
   );
   assert.equal((await client.query(`SELECT count(*)::int AS n FROM approval_request`)).rows[0].n, requestCountBefore, 'a refused request writes nothing');
 
@@ -467,6 +472,20 @@ try {
     tenantRef, action: 'restore', params: { artifactId: randomUUID() }, requestedBy: restorer, executor: 'cli',
   });
   await assert.rejects(approveRequest(client, { tenantRef, id: cliMissingArtifact.id, decidedBy: 'principal-approver' }), PromotionRefusedError);
+
+  // Wave 2: a content restore (keel-content-restore mail or files) files a CLI-executed
+  // approval. Approving it closes the request and mints no job; self-approval is refused.
+  const jobsBeforeContentRestore = (await jobRows()).length;
+  const contentRequest = await requestApproval(client, {
+    tenantRef, action: 'content-restore', params: { kind: 'mail', mailbox: 'KEEL-RT-mail' }, requestedBy: restorer, executor: 'cli',
+  });
+  assert.equal(contentRequest.executor, 'cli');
+  assert.equal(contentRequest.action, 'content-restore');
+  await assert.rejects(approveRequest(client, { tenantRef, id: contentRequest.id, decidedBy: restorer }), SelfApprovalError);
+  const contentDecision = await approveRequest(client, { tenantRef, id: contentRequest.id, decidedBy: 'principal-approver' });
+  assert.equal(contentDecision.request.status, 'approved');
+  assert.equal(contentDecision.job, null, 'a content restore approval mints no job');
+  assert.equal((await jobRows()).length, jobsBeforeContentRestore);
 
   // Who carries out a restore follows how its dry run was planned: a worker dry-run
   // job (the portal's dry run or undo plan) means the worker; none means the CLI.

@@ -254,6 +254,46 @@ test('an app consent policy is recreated under its id with the include rules the
   assert.deepEqual(result.applied[0].followUp, [], 'the backup held the rules, so nothing is left');
 });
 
+test('a just-created app consent policy that 404s its rules until it replicates still gets them (issue #294)', async () => {
+  const graph = directoryGraph();
+  const write = graph.write;
+  let notYet = 3;
+  graph.write = async (version, path, request) => {
+    if (/\/includes$/.test(path) && notYet > 0) {
+      notYet -= 1;
+      graph.bodies.push({ method: request.method, path, body: request.body });
+      return { ok: false, status: 404, body: { error: { code: 'Request_ResourceNotFound' } } };
+    }
+    return write(version, path, request);
+  };
+  const result = await run(graph, [grantResource('create')], {
+    readAfterWriteOptions: { attempts: 1, delayMs: 0, replicationDelayMs: 0 },
+  });
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied[0].targetId, 'keel-rt-low-risk');
+  assert.equal(graph.bodies.filter((w) => w.path.endsWith('/includes')).length, 4, 'three 404s, then the write lands');
+  assert.equal(graph.objects.get('/policies/permissionGrantPolicies/keel-rt-low-risk/includes').value.length, 1);
+});
+
+test('an app consent policy whose rules keep 404ing fails after the replication wait, and other errors fail at once', async () => {
+  for (const [status, expected] of [[404, 3], [400, 1]]) {
+    const graph = directoryGraph();
+    const write = graph.write;
+    graph.write = async (version, path, request) => {
+      if (/\/includes$/.test(path)) {
+        graph.bodies.push({ method: request.method, path, body: request.body });
+        return { ok: false, status, body: { error: { code: 'x' } } };
+      }
+      return write(version, path, request);
+    };
+    const result = await run(graph, [grantResource('create')], {
+      readAfterWriteOptions: { attempts: 1, delayMs: 0, replicationAttempts: 3, replicationDelayMs: 0 },
+    });
+    assert.equal(result.failed.length, 1, String(status));
+    assert.equal(graph.bodies.filter((w) => w.path.endsWith('/includes')).length, expected, String(status));
+  }
+});
+
 test('an app consent policy without its rules in the backup leaves a step to set them', async () => {
   const graph = directoryGraph();
   const { includes: _i, excludes: _e, ...bare } = grantPolicy();

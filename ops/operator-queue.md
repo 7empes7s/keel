@@ -4059,8 +4059,63 @@ item that needs it stays untouched.
   grants the Collector already holds. The hint is only set on 401/403 answers, from Graph's own message or else from a
   documented path-prefix table, so the 400/404 lines are not where it comes from. This item shows the real reasons.
 - Needs: Q82 done (discovery run 1 stored).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 19:25 UTC. Read-only: DB SELECTs on discovery run 1, and the Collector token's \`roles\` claim (role names only; the
+  token was never printed). No tenant writes, grants or approvals.
+  - **1. Unreadable items by reason, HTTP status and grant source** (run 1):
+    reason     | http_status | grant_source | count 
+    ---------------+-------------+--------------+-------
+     missing-grant |         403 |              |   170
+     not-listable  |         400 |              |   168
+     not-listable  |         404 |              |   165
+     missing-grant |         403 | documented   |   148
+     error         |         500 |              |    43
+     not-licensed  |         403 |              |    37
+     missing-grant |         401 | documented   |    34
+     missing-grant |         403 | graph        |    11
+     missing-grant |         401 |              |     8
+     not-licensed  |         400 |              |     7
+     not-listable  |         501 |              |     7
+     error         |         206 |              |     7
+     not-listable  |         405 |              |     5
+     error         |         503 |              |     4
+     error         |         410 |              |     2
+     error         |         502 |              |     2
+     error         |         412 |              |     2
+    (17 rows)
+  - **2. Top 401/403 messages** (first 12 of 25; message | count):
+    UnknownError: | 101
+    accessDenied: Access is denied to the requested resource. | 37
+    UnknownError: {"errorCode":"403","message":"The token does not have one or more required security scopes."} | 22
+    Forbidden: Authentication failed with status code 403 (Forbidden). | 16
+    Access denied: Insufficient license to complete this operation. User workflows require an Entra ID Governance license. Agent-related workflows require | 13
+    Forbidden: Tenant is not onboarded to Microsoft Defender for Identity. After license is purchased, first login to portal and sensor are required. For  | 13
+    forbidden: Authorization failed because of missing requirement(s). | 11
+    Authorization_RequestDenied: Insufficient privileges to complete the operation. | 11
+    accessDenied: Caller does not have required permissions for this API | 8
+    notAllowed: Your account does not have access to this report or data. Please contact your organization administrator to ensure you have a valid licens | 8
+    Forbidden: Insufficient permissions | 7
+    AccessDenied: Required roles claim values are not provided. | 6
+    - Also in the 25: Defender for Identity not onboarded (13); Entra ID Governance licence (13); AADB2C "not a B2C directory" (4);
+      TenantEnabledInAadRoleMigration (6); Graph-named missing scopes such as NetworkAccess.Read.All, RiskPreventionProviders.Read.All,
+      DirectoryRecommendations.Read.All and TeamsTelephoneNumber.ReadWrite.All.
+  - **3. Rows that hint at a grant the Collector holds** (40 rows shown): all \`missing_grant = DeviceManagementConfiguration.Read.All\`,
+    all \`/deviceManagement/...\` paths. 30 of the 40 are \`/deviceManagement/virtualEndpoint/*\` (Cloud PC), answering
+    "accessDenied: Access is denied to the requested resource". The others are chromeOSOnboardingSettings, cloudCertificationAuthority,
+    hardwarePasswordDetails, managedDeviceWindowsOSImages, monitoring/alertRecords and alertRules, remoteAssistanceSettings,
+    serviceNowConnections and zebraFota* ("Unauthorized: An error has occurred", "UnknownError:" or Forbidden).
+  - **4. Collector token roles** (45):
+    APIConnectors.Read.All, AccessReview.Read.All, AdministrativeUnit.Read.All, Agreement.Read.All, Application.Read.All, AuditLog.Read.All, CustomAuthenticationExtension.Read.All, CustomSecAttributeDefinition.Read.All, DeviceManagementApps.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementManagedDevices.Read.All, DeviceManagementRBAC.Read.All, DeviceManagementScripts.Read.All, DeviceManagementServiceConfig.Read.All, Directory.Read.All, Domain.Read.All, EntitlementManagement.Read.All, ExternalConnection.Read.All, Group.Read.All, GroupMember.Read.All, IdentityProvider.Read.All, IdentityRiskEvent.Read.All, IdentityUserFlow.Read.All, InformationProtectionPolicy.Read.All, LifecycleWorkflows.Read.All, MailboxSettings.Read, MultiTenantOrganization.Read.All, Organization.Read.All, Place.Read.All, Policy.Read.All, Policy.Read.PermissionGrant, Printer.Read.All, Reports.Read.All, RoleManagement.Read.All, RoleManagement.Read.Directory, SecurityEvents.Read.All, ServiceHealth.Read.All, SharePointTenantSettings.Read.All, Sites.FullControl.All, Sites.Read.All, Team.ReadBasic.All, TeamMember.Read.All, TeamSettings.Read.All, TeamworkTag.Read.All, User.Read.All.
+  - **Reading:**
+    - The misleading hints are the \`grant_source = documented\` rows (148 at 403, 34 at 401). Discovery fills them from its path-prefix
+      table: \`/deviceManagement/*\` maps to DeviceManagementConfiguration.Read.All, which the token holds.
+    - The real causes are other scopes (Cloud PC needs CloudPC.Read.All; alert records DeviceManagementConfiguration plus a licence),
+      licences or features (Defender for Identity, Governance, B2C, Windows 365), or service-side errors. That fits step 2: 101 have a
+      bare \`UnknownError:\`.
+    - The 11 \`grant_source = graph\` rows name scopes Graph itself asked for.
+    - Suggestion: only say "needs <grant>" when the token lacks that grant (compare with step 4). Otherwise report "denied (holds
+      <grant>; likely another scope or a licence)", and add \`/deviceManagement/virtualEndpoint\` → CloudPC.Read.All to the table.
+  - No open PR from the "Discovery unreadable reason" thread found, so no PR comment.
 - Do (read only: no tenant writes, no grants, no approvals; never print the token itself):
   1. `set -a; . /etc/keel/db.env; set +a; psql "$KEEL_DB_URL" -c "SELECT reason, http_status, grant_source, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' GROUP BY 1,2,3 ORDER BY 4 DESC"`
   2. `psql "$KEEL_DB_URL" -c "SELECT left(message, 160) AS message, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' AND http_status IN (401, 403) GROUP BY 1 ORDER BY 2 DESC LIMIT 25"`

@@ -3504,7 +3504,7 @@ item that needs it stays untouched.
   messages are now created as received messages (PR_MESSAGE_FLAGS read, not unsent) with their original received and sent
   times, instead of the MIME create that Exchange stores as a draft dated now. Closes the Q68 finding (#293).
 - Needs: /opt/keel-live at 847edbf or later. Q68 done (content-restorer.json exists).
-- Status: todo (waiting on deploy)
+- Status: in-progress
 - Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
   Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
   runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.

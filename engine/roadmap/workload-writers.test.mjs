@@ -90,6 +90,9 @@ const MODULE_TABLES = {
 };
 const moduleAllowlist = (module) => Object.assign({}, ...MODULE_TABLES[module].map(allowlist));
 
+const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector'];
+const effectsOf = (plan) => plan.contentEffects.map((effect) => `${effect.field}:${effect.effect}`).sort();
+
 let guidSeq = 0;
 const guid = () => `00000000-0000-4000-8000-${String(guidSeq += 1).padStart(12, '0')}`;
 const getKey = (spec) => `${spec.cmdlet}${spec.parameters?.QuarantinePolicyType ? `:${spec.parameters.QuarantinePolicyType}` : ''}`;
@@ -261,6 +264,9 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   const tenantRef = nextTenant();
   const live = fakeTenant('exchange-mail-flow');
   const rule = live.state['Get-TransportRule'][0];
+  // A rule with no deleting, copying or sending action: its Mode is not a content effect.
+  for (const action of TRANSPORT_ACTIONS) rule[action] = null;
+  rule.DeleteMessage = false;
   rule.Mode = 'Enforce';
   rule.Conditions = ['KEEL-RT-condition'];
   const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
@@ -419,6 +425,72 @@ test('a change after the plan makes only that object stale', async (t) => {
     ['exchange-extended.address-list.update', 'stale'], ['exchange-extended.journal-rule.update', 'verified'],
   ]);
   assert.deepEqual(live.writes.map((write) => write.cmdlet), ['Set-JournalRule']);
+});
+
+test('effects: a never-expiring recording, recording turned on, and a deleting rule moved to Enforce', async (t) => {
+  const client = await schemaClient(t);
+  // -1 means a recording never expires: restoring it is not a shortening, losing it is.
+  const tenantRef = nextTenant();
+  const org = fakeTenant('teams-org-policies');
+  const meeting = org.state['Get-CsTeamsMeetingPolicy'][0];
+  Object.assign(meeting, { NewMeetingRecordingExpirationDays: -1, AllowCloudRecording: true, ExplicitRecordingConsent: false });
+  const source = await recordSource(client, tenantRef, 'teams-org-policies', org);
+  Object.assign(meeting, { NewMeetingRecordingExpirationDays: 60, AllowCloudRecording: false, ExplicitRecordingConsent: true });
+  const restore = await planned(client, tenantRef, 'teams-org-policies', { source, live: org });
+  assert.deepEqual(effectsOf(restore.plan), ['AllowCloudRecording:externally-sharing', 'ExplicitRecordingConsent:externally-sharing']);
+
+  const tenant2 = nextTenant();
+  const other = fakeTenant('teams-org-policies');
+  other.state['Get-CsTeamsMeetingPolicy'][0].NewMeetingRecordingExpirationDays = 60;
+  const otherSource = await recordSource(client, tenant2, 'teams-org-policies', other);
+  other.state['Get-CsTeamsMeetingPolicy'][0].NewMeetingRecordingExpirationDays = -1;
+  const shorter = await planned(client, tenant2, 'teams-org-policies', { source: otherSource, live: other });
+  assert.deepEqual(effectsOf(shorter.plan), ['NewMeetingRecordingExpirationDays:retention-reducing']);
+
+  // A rule that deletes mail reaches more mail when it moves from Audit to Enforce.
+  const tenant3 = nextTenant();
+  const mail = fakeTenant('exchange-mail-flow');
+  const rule = mail.state['Get-TransportRule'][0];
+  for (const action of TRANSPORT_ACTIONS) rule[action] = null;
+  Object.assign(rule, { DeleteMessage: true, Mode: 'Enforce' });
+  const mailSource = await recordSource(client, tenant3, 'exchange-mail-flow', mail);
+  rule.Mode = 'Audit';
+  const enforce = await planned(client, tenant3, 'exchange-mail-flow', { source: mailSource, live: mail });
+  assert.deepEqual(effectsOf(enforce.plan), ['Mode:irreversible']);
+});
+
+test('a write with no answer that did not apply is failed once and never resent', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('exchange-extended');
+  const source = await recordSource(client, tenantRef, 'exchange-extended', live);
+  live.state['Get-AddressList'][0].DisplayName = 'renamed';
+  const { artifact } = await planned(client, tenantRef, 'exchange-extended', { source, live });
+  const crashing = fakeTenant('exchange-extended', { state: live.state, hooks: { cmdlet: () => 'crash' } });
+  const result = await execute(client, tenantRef, 'exchange-extended', artifact, crashing);
+  assert.deepEqual(result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
+  assert.match(result.operations[0].reasons[0], /not resent/);
+  assert.equal(crashing.writes.length, 1);
+  assert.equal(live.state['Get-AddressList'][0].DisplayName, 'renamed');
+});
+
+test('a rule whose policy was not read, or a read stopped at its limit, plans nothing', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('purview-retention-dlp');
+  const source = await recordSource(client, tenantRef, 'purview-retention-dlp', live);
+  const rule = live.state['Get-RetentionComplianceRule'][0];
+  rule.Comment = 'changed';
+  const read = await readFor('purview-retention-dlp')({ powershell: live.powershell });
+  // The policy is missing from the live read: its lock is unknown, so the rule is not changed.
+  const withoutPolicy = { ...read, resources: read.resources.filter((item) => item.kind !== 'retentionPolicy') };
+  const orphan = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: withoutPolicy, tenantId: TENANT });
+  assert.ok(orphan.operations.every((op) => op.family !== 'retentionRule'));
+  assert.ok(orphan.manual.some((item) => /preservation lock is unknown/.test(item.reason)));
+  // A capped read may have missed objects: every family is a gap.
+  const capped = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: { ...read, discovery: { ...read.discovery, capped: true } }, tenantId: TENANT });
+  assert.deepEqual(capped.operations, []);
+  assert.ok(capped.manual.every((item) => /capped at its object limit/.test(item.reason)));
 });
 
 // ------------------------------------------------------------ declarations

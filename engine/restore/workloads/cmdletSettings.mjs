@@ -81,6 +81,7 @@ const becomes = (...values) => (before, after) => {
   return wanted.includes(String(after ?? '').toLowerCase()) && !wanted.includes(String(before ?? '').toLowerCase());
 };
 const leaves = (...values) => (before, after) => becomes(...values)(after, before);
+const nonEmpty = (value) => listOf(value).length > 0;
 /** A duration in days: a number, a day count in a string, or "d.hh:mm:ss"; Infinity for Unlimited; null when unreadable. */
 function days(value) {
   if (typeof value === 'number') return value;
@@ -91,40 +92,66 @@ function days(value) {
   return match ? Number(match[1] ?? 0) + Number(match[2]) / 24 + Number(match[3]) / 1440 + Number(match[4]) / 86400 : null;
 }
 // A changed duration that cannot be read is treated as shorter: the safe direction.
-const shortens = (before, after) => {
-  const b = days(before);
-  const a = days(after);
+const shorterBy = (read) => (before, after) => {
+  const b = read(before);
+  const a = read(after);
   return b === null || a === null ? true : a < b;
 };
+const shortens = shorterBy(days);
+// Teams recording expiry: -1 means the recording never expires.
+const expiryDays = (value) => {
+  const read = typeof value === 'string' && /^-\d+$/.test(value.trim()) ? Number(value) : days(value);
+  return typeof read === 'number' && read < 0 ? Infinity : read;
+};
+const expiresSooner = shorterBy(expiryDays);
+// An audience that names anyone beyond the invited people in the organization.
+const widensAudience = (before, after) => !same(before, after) && /everyone|external|guest|anonym|public/i.test(String(after ?? ''));
 const rule = (field, effect, when) => Object.freeze({ field, effect, when });
 const SHARING = 'externally-sharing';
 const RETENTION = 'retention-reducing';
 const HOLD = 'hold-releasing';
 const IRREVERSIBLE = 'irreversible';
-const opensToEveryone = (field) => rule(field, SHARING, becomes('Everyone', 'EveryoneInCompanyIncludingGuests'));
+// `when(before, after, { from, to })`: from and to are the whole object before and after the write.
+const whileSet = (field, test) => (before, after, { to }) => test(before, after) && nonEmpty(to?.[field]);
 
 /**
  * The dangerous transitions of each written type. A written field whose NAME looks
- * content-bearing must have a rule here or a reason in BENIGN_FIELDS (checked below
- * and by the test), the same discipline as safety/contentEffects.mjs. Declared from
- * Microsoft's documentation, not measured.
+ * content-bearing must have a rule here, an object rule below, or a reason in
+ * BENIGN_FIELDS (checked at load and by the test), the same discipline as
+ * safety/contentEffects.mjs. Declared from Microsoft's documentation, not measured.
  */
 export const WORKLOAD_EFFECT_RULES = Object.freeze({
-  // Mail that a rule deletes, or copies or sends to someone new, is lost or disclosed.
+  // Mail that a rule deletes, or copies, reports or sends to someone new, is lost or
+  // disclosed. Every other change to a rule that carries such an action is judged by
+  // the object rule below.
   exchangeTransportRule: [
     rule('DeleteMessage', IRREVERSIBLE, disabledToEnabled),
     rule('RedirectMessageTo', SHARING, addsEntry),
     rule('BlindCopyTo', SHARING, addsEntry),
     rule('AddToRecipients', SHARING, addsEntry),
+    rule('ModerateMessageByUser', SHARING, addsEntry),
+    rule('GenerateIncidentReport', SHARING, changes),
     rule('RouteMessageOutboundConnector', SHARING, changes),
   ],
-  // Recipients a connector scans and drops lose that mail.
-  exchangeInboundConnector: [rule('ScanAndDropRecipients', IRREVERSIBLE, addsEntry)],
-  // A connector routes mail through the hosts it names.
-  exchangeOutboundConnector: [rule('SmartHosts', SHARING, addsEntry), rule('Enabled', SHARING, disabledToEnabled), rule('RecipientDomains', SHARING, changes)],
+  // Recipients a connector scans and drops lose that mail, from the moment it is on.
+  exchangeInboundConnector: [
+    rule('ScanAndDropRecipients', IRREVERSIBLE, addsEntry),
+    rule('Enabled', IRREVERSIBLE, whileSet('ScanAndDropRecipients', disabledToEnabled)),
+  ],
+  // A connector routes mail through the hosts it names; each of these sends more mail there.
+  exchangeOutboundConnector: [
+    rule('SmartHosts', SHARING, addsEntry),
+    rule('Enabled', SHARING, disabledToEnabled),
+    rule('RecipientDomains', SHARING, changes),
+    rule('IsTransportRuleScoped', SHARING, enabledToDisabled),
+    rule('UseMXRecord', SHARING, enabledToDisabled),
+    rule('RouteAllMessagesViaOnPremises', SHARING, changes),
+    rule('AllAcceptedDomains', SHARING, changes),
+  ],
   exchangeOutboundSpamPolicy: [
     rule('AutoForwardingMode', SHARING, becomes('On')),
     rule('BccSuspiciousOutboundAdditionalRecipients', SHARING, addsEntry),
+    rule('BccSuspiciousOutboundMail', SHARING, whileSet('BccSuspiciousOutboundAdditionalRecipients', disabledToEnabled)),
   ],
   // A journal rule copies every matching message to its journal address.
   exchangeJournalRule: [rule('JournalEmailAddress', SHARING, changes), rule('Recipient', SHARING, changes), rule('Scope', SHARING, changes)],
@@ -136,11 +163,31 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   // Which tags apply decides what is deleted when; KEEL does not judge a new set.
   exchangeRetentionPolicy: [rule('RetentionPolicyTagLinks', RETENTION, changes)],
   teamsMeetingPolicy: [
-    rule('NewMeetingRecordingExpirationDays', RETENTION, shortens),
+    rule('NewMeetingRecordingExpirationDays', RETENTION, expiresSooner),
     rule('AllowAnonymousUsersToJoinMeeting', SHARING, disabledToEnabled),
     rule('AllowAnonymousUsersToStartMeeting', SHARING, disabledToEnabled),
     rule('AllowExternalNonTrustedMeetingChat', SHARING, disabledToEnabled),
     rule('AllowExternalParticipantGiveRequestControl', SHARING, disabledToEnabled),
+    rule('AllowMeetingRegistration', SHARING, disabledToEnabled),
+    rule('WhoCanRegister', SHARING, widensAudience),
+    rule('StreamingAttendeeMode', SHARING, changes),
+    // Recordings and transcripts are new copies of what was said, shared with the meeting.
+    rule('AllowCloudRecording', SHARING, disabledToEnabled),
+    rule('AllowTranscription', SHARING, disabledToEnabled),
+    rule('ExplicitRecordingConsent', SHARING, enabledToDisabled),
+  ],
+  teamsGuestMeetingConfiguration: [rule('AllowTranscription', SHARING, disabledToEnabled)],
+  // Letting people delete messages and chats lets content go before retention sees it.
+  teamsMessagingPolicy: [
+    rule('AllowUserDeleteMessage', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowUserDeleteChat', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowOwnerDeleteMessage', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowFullChatPermissionUserToDeleteAnyMessage', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowGroupChatJoinLinks', SHARING, disabledToEnabled),
+  ],
+  teamsGuestMessagingConfiguration: [
+    rule('AllowUserDeleteMessage', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowUserDeleteChat', IRREVERSIBLE, disabledToEnabled),
   ],
   teamsFederationConfiguration: [
     rule('AllowFederatedUsers', SHARING, disabledToEnabled),
@@ -155,28 +202,74 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   teamsClientConfiguration: [
     rule('AllowGuestUser', SHARING, disabledToEnabled),
     rule('AllowEmailIntoChannel', SHARING, disabledToEnabled),
+    rule('RestrictedSenderList', SHARING, changes),
     ...['AllowDropBox', 'AllowBox', 'AllowGoogleDrive', 'AllowShareFile', 'AllowEgnyte'].map((field) => rule(field, SHARING, disabledToEnabled)),
   ],
-  teamsCallingPolicy: [rule('CallRecordingExpirationDays', RETENTION, shortens)],
-  teamsLiveEventsPolicy: [opensToEveryone('BroadcastAttendeeVisibilityMode')],
-  teamsEventsPolicy: [opensToEveryone('EventAccessType'), opensToEveryone('TownhallEventAttendeeAccess')],
+  teamsCallingPolicy: [
+    rule('CallRecordingExpirationDays', RETENTION, expiresSooner),
+    rule('AllowCallForwardingToPhone', SHARING, disabledToEnabled),
+    rule('AllowCallForwardingToUser', SHARING, disabledToEnabled),
+    rule('AllowCallRedirect', SHARING, changes),
+    rule('AllowCloudRecordingForCalls', SHARING, disabledToEnabled),
+    rule('AllowTranscriptionForCalling', SHARING, disabledToEnabled),
+  ],
+  // A voicemail transcript is mailed as text; a translation sends it to a translation service.
+  teamsVoicemailPolicy: [
+    rule('EnableTranscription', SHARING, disabledToEnabled),
+    rule('EnableTranscriptionTranslation', SHARING, disabledToEnabled),
+  ],
+  teamsLiveEventsPolicy: [
+    rule('BroadcastAttendeeVisibilityMode', SHARING, widensAudience),
+    rule('BroadcastRecordingMode', SHARING, changes),
+    rule('AllowBroadcastTranscription', SHARING, disabledToEnabled),
+  ],
+  teamsEventsPolicy: [
+    rule('EventAccessType', SHARING, widensAudience),
+    rule('TownhallEventAttendeeAccess', SHARING, widensAudience),
+    ...['RecordingForTownhall', 'RecordingForWebinar', 'TranscriptionForTownhall', 'TranscriptionForWebinar'].map((field) => rule(field, SHARING, changes)),
+  ],
   // Turning a retention policy or rule off releases what it preserved.
   purviewRetentionPolicy: [rule('Enabled', HOLD, enabledToDisabled)],
   purviewRetentionRule: [
     rule('RetentionDuration', RETENTION, shortens),
-    rule('RetentionComplianceAction', IRREVERSIBLE, leaves('Keep')),
+    // Any move to a deleting action, or away from keeping, deletes or stops preserving content.
+    rule('RetentionComplianceAction', IRREVERSIBLE, (before, after) => /delete/i.test(String(after ?? '')) || (/keep/i.test(String(before ?? '')) && !/keep/i.test(String(after ?? '')))),
     rule('ExpirationDateOption', RETENTION, changes),
     rule('ContentMatchQuery', RETENTION, changes),
   ],
-  // A DLP policy or rule that stops blocking, or lets users override, lets content out.
-  purviewDlpPolicy: [rule('Mode', SHARING, leaves('Enable'))],
+  // A DLP policy or rule that stops blocking, lets users override, or reports to someone new lets content out.
+  purviewDlpPolicy: [rule('Mode', SHARING, leaves('Enable')), rule('Priority', SHARING, changes)],
   purviewDlpRule: [
     rule('Disabled', SHARING, disabledToEnabled),
     rule('BlockAccess', SHARING, enabledToDisabled),
     rule('BlockAccessScope', SHARING, changes),
     rule('NotifyAllowOverride', SHARING, addsEntry),
+    rule('GenerateIncidentReport', SHARING, addsEntry),
+    rule('IncidentReportContent', SHARING, changes),
+    rule('StopPolicyProcessing', SHARING, disabledToEnabled),
+    rule('Priority', SHARING, changes),
   ],
   purviewRetentionLabel: [rule('RetentionDuration', RETENTION, shortens)],
+});
+
+/**
+ * Object rules: a change to any field of an object that carries a destructive or
+ * sharing action. A transport rule that deletes, copies, redirects, moderates or
+ * reports mail reaches more mail when its Mode moves to Enforce or a condition or
+ * exception is widened or cleared, so every such change needs the approval.
+ */
+const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector'];
+const NOT_JUDGED = new Set(['Comments', 'Priority', 'DeleteMessage', ...TRANSPORT_ACTIONS]);
+export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
+  exchangeTransportRule: Object.freeze({
+    covers: 'every written field',
+    effects(from, to, changed) {
+      const deletes = truthy(from?.DeleteMessage) || truthy(to?.DeleteMessage);
+      const armed = deletes || TRANSPORT_ACTIONS.some((field) => nonEmpty(from?.[field]) || nonEmpty(to?.[field]));
+      if (!armed) return [];
+      return changed.filter((field) => !NOT_JUDGED.has(field)).map((field) => ({ field, effect: deletes ? IRREVERSIBLE : SHARING }));
+    },
+  }),
 });
 
 // Written fields whose names look content-bearing but are not, and why.
@@ -190,14 +283,36 @@ export const BENIGN_FIELDS = Object.freeze({
   AllowPowerPointSharing: 'presenting slides to the people already in the meeting',
   AllowWatermarkForScreenSharing: 'a watermark on a shared screen; it only adds protection',
   MusicOnHoldEnabledType: 'music played to a caller on hold; no content is kept or disclosed',
+  AllowEngagementReport: 'an attendance report for the organizer of their own meeting',
+  AllowCommunicationComplianceEndUserReporting: 'lets users report a message to their own compliance team',
+  AllowSecurityEndUserReporting: 'lets users report a message to their own security team',
+  NotifyOutboundSpam: 'notifies the administrators named in the policy; no message content leaves the tenant',
+  NotifyOutboundSpamRecipients: 'the administrators told that a sender was blocked; no message content is sent',
+  ReportSeverityLevel: 'the severity shown on a DLP alert inside the tenant',
+  UseMicrosoftECDN: 'which network delivers a town hall stream to its own audience',
+  RecipientLimitInternalPerHour: 'a sending rate limit; it never deletes or discloses mail',
+  RecipientLimitPerDay: 'a sending rate limit; it never deletes or discloses mail',
+  IPBlockList: 'addresses whose inbound mail is refused; no content is deleted or sent out',
+  RecipientDomainIs: 'which recipients a protection rule covers; no content is deleted or sent out',
+  ExceptIfRecipientDomainIs: 'which recipients a protection rule skips; no content is deleted or sent out',
+  IncludeMessagesFromBlockedSenderAddress: 'whether a user\'s own quarantine notice lists mail from blocked senders',
+  AdminMailRecipients: 'administrators told that a device was quarantined; no message content is sent',
+  RecipientFilter: 'which directory entries an address list shows; no mail content',
+  IncludedRecipients: 'which recipient types an address list shows; no mail content',
+  AllowScopedPeopleSearchandAccess: 'limits people search to the user\'s address book; it only narrows',
+  EnableTranscriptionProfanityMasking: 'masks words in a transcript; it only removes',
+  EnableUserOverride: 'lets a user hide their own number on outbound calls; it only withholds',
+  BlockIncomingPstnCallerID: 'hides the caller\'s number from the person called; it only withholds',
 });
-// The field-name heuristic of safety/contentEffects.mjs (unreviewed types).
-const DANGEROUS_FIELD = /retention|hold|preserv|shar(e|ing)|guest|external|invite|wipe|purge|anonymous|public/i;
+// The field-name heuristic of safety/contentEffects.mjs (unreviewed types), widened
+// with the ways these workloads delete, forward, copy, report or route content.
+const DANGEROUS_FIELD = /retention|hold|preserv|shar(e|ing)|guest|external|invite|wipe|purge|anonymous|public|delete|forward|redirect|copy|bcc|journal|report|regist|stream|link|route|drop|smarthost|record|transcri|recipient|scope|override|block/i;
 
 /** Every declared written field whose name looks content-bearing and has neither a rule nor a reason. */
-export function unreviewedWrittenFields(declarations = WKLD_WRITE_OPERATIONS, rules = WORKLOAD_EFFECT_RULES) {
+export function unreviewedWrittenFields(declarations = WKLD_WRITE_OPERATIONS, rules = WORKLOAD_EFFECT_RULES, objects = WORKLOAD_OBJECT_EFFECTS) {
   const missing = [];
   for (const [id, write] of Object.entries(declarations)) {
+    if (objects[write.resourceType]) continue;
     const covered = new Set((rules[write.resourceType] ?? []).map((entry) => entry.field));
     for (const field of write.fields) if (DANGEROUS_FIELD.test(field) && !covered.has(field) && !BENIGN_FIELDS[field]) missing.push(`${id}:${field}`);
   }
@@ -213,11 +328,21 @@ export function classifyWorkloadEffects(resources) {
   const effects = [];
   for (const { naturalKey, resourceType, verb, payload, live } of resources) {
     if (verb !== 'update') continue;
+    const from = live?.payload ?? {};
+    const to = payload ?? {};
+    const push = (field, effect) => {
+      if (effects.some((item) => item.naturalKey === naturalKey && item.field === field)) return;
+      effects.push({ naturalKey, resourceType, field, effect, before: from[field] ?? null, after: to[field] ?? null, disclosure: disclosureFor(effect) });
+    };
     for (const entry of WORKLOAD_EFFECT_RULES[resourceType] ?? []) {
-      const before = live?.payload?.[entry.field] ?? null;
-      const after = payload?.[entry.field] ?? null;
-      if (same(before, after) || !entry.when(before, after)) continue;
-      effects.push({ naturalKey, resourceType, field: entry.field, effect: entry.effect, before, after, disclosure: disclosureFor(entry.effect) });
+      const before = from[entry.field] ?? null;
+      const after = to[entry.field] ?? null;
+      if (!same(before, after) && entry.when(before, after, { from, to })) push(entry.field, entry.effect);
+    }
+    const object = WORKLOAD_OBJECT_EFFECTS[resourceType];
+    if (object) {
+      const changed = Object.keys(to).filter((field) => !same(from[field] ?? null, to[field] ?? null));
+      for (const { field, effect } of object.effects(from, to, changed)) push(field, effect);
     }
   }
   const order = (effect) => `${effect.naturalKey}|${effect.field}`;
@@ -303,15 +428,24 @@ const fingerprint = (entry) => sha256({ fields: entry.fields, fieldCoverage: ent
 const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked';
 /** The family read failed or was not available, so nothing in it is known now. */
 function familyGap(live, family) {
-  return [...(live?.failures ?? []), ...(live?.unavailable ?? [])].find((item) => item.family === family) ?? null;
+  const gap = [...(live?.failures ?? []), ...(live?.unavailable ?? [])].find((item) => item.family === family) ?? null;
+  if (gap) return gap;
+  // A read stopped at its object limit may have missed this object; nothing absent from it is known.
+  return live?.discovery?.capped ? { family, status: 'capped at its object limit' } : null;
 }
 function liveEntry(live, key) {
   return (live?.resources ?? []).find((item) => item.resourceKey === key) ?? null;
 }
-/** The policy a retention or DLP rule belongs to, when it reports a lock now. */
-function lockedParent(live, entry) {
-  if (!entry?.parentPolicy) return false;
-  return (live?.resources ?? []).some((item) => item.identity === entry.parentPolicy && !String(item.kind).endsWith('Rule') && isLocked(item));
+/**
+ * The lock of the policy a retention or DLP rule belongs to: 'none' (no parent),
+ * 'locked', 'clear', or 'unknown' when the parent is not in the live read, so its
+ * lock cannot be known and the rule is never changed.
+ */
+function parentLock(live, entry) {
+  if (!entry?.parentPolicy) return 'none';
+  const parent = (live?.resources ?? []).find((item) => item.identity === entry.parentPolicy && !String(item.kind).endsWith('Rule'));
+  if (!parent) return 'unknown';
+  return isLocked(parent) ? 'locked' : 'clear';
 }
 
 function identityParameters(write, observation) {
@@ -415,8 +549,12 @@ export function planWorkloadSettingsRestore({ workload, source, live, tenantId, 
       continue;
     }
     liveFingerprints[key] = current ? fingerprint(current) : 'absent';
-    if (current && (isLocked(current) || lockedParent(live, current))) {
+    if (current && (isLocked(current) || parentLock(live, current) === 'locked')) {
       refusals.push({ naturalKey: `${workload}:${key}`, reason: `preservation-locked: ${key} or its policy is under a platform preservation lock; KEEL never changes it` });
+      continue;
+    }
+    if (current && parentLock(live, current) === 'unknown') {
+      manual.push({ resourceKey: key, field: null, reason: `its policy ${current.parentPolicy} was not in the live read, so its preservation lock is unknown; no change is planned` });
       continue;
     }
     if (!observation) {
@@ -554,23 +692,23 @@ export async function executeWorkloadSettingsRestore(client, { tenantRef, artifa
       runnable = runnable.filter((op) => !affected(op));
     }
   }
-  if (runnable.length) {
-    // Re-read: nothing an operation touches may have changed since the dry run.
-    const live = await read({ powershell });
-    for (const op of runnable) {
-      const family = op.family;
-      const entry = familyGap(live, family) ? undefined : liveEntry(live, op.resourceKey);
-      const now = entry === undefined ? null : entry ? fingerprint(entry) : 'absent';
-      if (now === null || now !== plan.liveFingerprints[op.resourceKey]) {
-        await settle(op, { outcome: 'stale', reasons: [`the live ${family} changed since the dry run, or could not be re-read; a new dry run is required`] });
-        continue;
-      }
-      if (entry && (isLocked(entry) || lockedParent(live, entry))) {
-        await settle(op, { outcome: 'refused', reasons: ['the object or its policy now reports a preservation lock; KEEL never changes it'] });
-        continue;
-      }
-      await runOperation(op, { powershell, read, settle });
+  // Re-read just before each write: nothing it touches may have changed since the dry run.
+  for (const op of runnable) {
+    const family = op.family;
+    let live = null;
+    try { live = await read({ powershell }); } catch { live = null; }
+    const entry = !live || familyGap(live, family) ? undefined : liveEntry(live, op.resourceKey);
+    const now = entry === undefined ? null : entry ? fingerprint(entry) : 'absent';
+    const parent = entry ? parentLock(live, entry) : 'none';
+    if (now === null || now !== plan.liveFingerprints[op.resourceKey] || parent === 'unknown') {
+      await settle(op, { outcome: 'stale', reasons: [`the live ${family} or its policy changed since the dry run, or could not be re-read; a new dry run is required`] });
+      continue;
     }
+    if (entry && (isLocked(entry) || parent === 'locked')) {
+      await settle(op, { outcome: 'refused', reasons: ['the object or its policy now reports a preservation lock; KEEL never changes it'] });
+      continue;
+    }
+    await runOperation(op, { powershell, read, settle });
   }
 
   const operations = plan.operations.map((op) => results.get(op.key));

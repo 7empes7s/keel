@@ -96,20 +96,27 @@ trigger from before the schedules migration: `cli/keel-schedules-migrate.mjs` di
 `keel-schedules-check-timers.sh` fails while it is enabled. Do not enable it; that would run the
 prune twice and break the check. `keel-prune.service` stays installed for a manual run.
 
-A prune deletes a snapshot (with its resource versions, references and relationship
-observations) only when the snapshot is older than its tier's window and nothing else points at
-it.
+Every prune run first saves a report (`retention_prune_report`): what would go, what stays and
+why. **The scheduled run is a dry run and deletes nothing.** Only `keel-prune.mjs --apply` deletes,
+and it deletes exactly what its own report lists. Nothing runs `--apply` until Marouane says go.
 
-| Tier | Captured | Kept in the database | Snapshots kept |
-| --- | --- | --- | --- |
-| tier1 | hourly | 7 days | about 168 |
-| tier2 | daily | 90 days | about 90 |
-| tier3 | weekly | 365 days | about 52 |
+What routine retention keeps is a rotation policy (`engine/store/rotation.mjs`), per tenant,
+workload, container or item; the most specific one wins:
 
-A snapshot's tier is the highest criticality among its resources; an empty or failed snapshot
-counts as tier1. Once the offsite timer above is running, its 30-day copies of the nightly
-database dump still hold a pruned tier1 snapshot, so the oldest tier1 recovery point is about a
-month there, but only a week inside KEEL itself.
+| Rule | Keeps |
+| --- | --- |
+| daily / weekly / monthly / yearly N | the newest backup of each of the newest N days, ISO weeks, months, years that have one |
+| keep within N days | every backup newer than N days |
+| keep forever | everything in scope |
+
+The default, until a policy is set, is 14 daily, 8 weekly, 12 monthly, 7 yearly. Settings
+snapshots rotate per tier (workload `config`, container `tier1`..`tier3`); an unfinished snapshot is
+kept for a day, then goes. Content rotates per item over its stored versions; an item's newest
+version is always kept, and a chunk goes only when no kept item (of any tenant) still lists it.
+Pruned chunks leave the index; their storage objects stay until the storage adapters can delete.
+
+A legal hold (`legal_hold`, set with `placeLegalHold`) keeps everything in its scope (tenant,
+workload, container or item) until it is released with a reason.
 
 A snapshot is always kept while any of these point at it: a baseline (active or superseded), a
 drift (open or dispositioned), a plan, a restore dry run, a resource symbol or lineage alias
@@ -121,10 +128,10 @@ To see what the next prune would delete, without deleting anything:
 
 ```sh
 set -a; . /etc/keel/db.env; set +a
-node /opt/keel/cli/keel-prune.mjs --dry-run
+node /opt/keel/cli/keel-prune.mjs --report /tmp/keel-prune-report.json
 ```
 
-To stop pruning, turn the `prune` schedule off on the Schedules page.
+To stop the daily report, turn the `prune` schedule off on the Schedules page.
 
 ## Round-trip rehearsal
 

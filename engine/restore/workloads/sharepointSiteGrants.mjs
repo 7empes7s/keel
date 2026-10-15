@@ -28,7 +28,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 
-import { SHAREPOINT_WORKLOAD, SITE_FIELDS } from '../../collect/workloads/sharepoint.mjs';
+import { SITE_FIELDS } from '../../collect/workloads/sharepoint.mjs';
 import { WORKLOAD_DESCRIPTORS, readGraphConfiguration } from '../../collect/workloadContract.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
@@ -36,6 +36,7 @@ import {
   assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure, siteRoleAt, siteRoleRank,
 } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { loadSharePointSource } from './sharepoint.mjs';
 
 export const SITE_GRANTS_RESTORE = 'sharepoint-site-grants';
 export const SITE_GRANT_ADD = 'sharepoint.site-permissions.add';
@@ -283,6 +284,22 @@ export async function executeSiteGrantsRestore(client, {
   }
   if (liveGrantsFingerprint(live) !== plan.liveFingerprint) {
     return done({ outcome: 'stale', reasons: ['the site grants changed since the dry run; a new dry run is required'] });
+  }
+  // The stored plan must be exactly what the recorded backup and these grants give:
+  // an edited plan (another app, a wider role) never reaches Graph, even with a
+  // recomputed digest and its approved content effects left as they were.
+  let source;
+  try {
+    source = await loadSharePointSource(client, { tenantRef, collectionId: plan.source.collectionId });
+  } catch (error) {
+    return done({ outcome: 'failed', reasons: [`could not re-load the source collection: ${error.message}`] });
+  }
+  let replanned = null;
+  try {
+    replanned = source ? planSiteGrantsRestore({ source, live, tenantHost: plan.tenantHost, siteId: plan.siteId }) : null;
+  } catch { replanned = null; }
+  if (replanned?.digest !== plan.digest) {
+    return done({ outcome: 'refused', reasons: ['the stored plan is not what the recorded backup gives; a new dry run is required'] });
   }
 
   let writes = 0;

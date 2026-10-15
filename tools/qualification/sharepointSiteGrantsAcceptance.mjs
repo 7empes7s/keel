@@ -120,6 +120,9 @@ export function validateSiteGrantsLiveSubject(evidence, { tenantRef, build } = {
     if (capture.role !== SITE_GRANTS_CAPTURE_ROLES[id]) failures.push(`${id}: wrote ${capture.role ?? 'no role'}, not ${SITE_GRANTS_CAPTURE_ROLES[id]}`);
     if (capture.ok !== true) failures.push(`${id}: the write failed`);
     if (capture.readBackVerified !== true) failures.push(`${id}: the write was not read back as written`);
+    if (id === SITE_GRANT_ADD && !String(capture.grantedName ?? '').startsWith(FIXTURE_APP_PREFIX)) {
+      failures.push(`${id}: the granted app did not read back as a ${FIXTURE_APP_PREFIX}* test application`);
+    }
     failures.push(...captureTimeProblems(id, capture.capturedAt, observedAt));
   }
 

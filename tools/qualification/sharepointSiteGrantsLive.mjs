@@ -193,6 +193,12 @@ async function grantAndRaise({ transport, siteId, appId, appName, writes, log, n
     log.values.granted = true;
     const shown = await readBack(add.role);
     add.readBackVerified = Boolean(shown);
+    // The app Graph granted must itself be named KEEL-RT-, not only the name typed.
+    add.grantedName = shown?.applications?.[0]?.displayName ?? null;
+    if (shown && !String(add.grantedName ?? '').startsWith(FIXTURE_APP_PREFIX)) {
+      update.error = `the granted app reads back as ${add.grantedName ?? 'no name'}, not a ${FIXTURE_APP_PREFIX} test app; nothing more was written, remove the grant by hand`;
+      return;
+    }
     const permissionId = shown?.id ?? created.body?.id;
     if (!permissionId) { update.error = 'the new grant has no id to update'; return; }
     const raised = await transport(`${url}/${encodeURIComponent(permissionId)}`, { method: 'PATCH', body: { roles: [update.role] } });

@@ -158,6 +158,7 @@ test('a tampered, unsigned or other-tenant record imports nothing', async () => 
     extraWrite: resign((e) => { e.subject.requests.push({ ...e.subject.requests.find((r) => r.method === 'POST') }); }),
     collectorWrites: resign((e) => { e.subject.requests.find((r) => r.method === 'PATCH').credential = 'collector'; }),
     notFixtureApp: resign((e) => { e.subject.application.displayName = 'Payroll'; }),
+    grantedOtherApp: resign((e) => { e.subject.writes[0].grantedName = 'Payroll'; }),
     synthetic: resign((e) => { e.subject.writes[1].synthetic = true; }),
     sameCredential: resign((e) => { e.subject.credentials.restorer = e.subject.credentials.collector; }),
   };

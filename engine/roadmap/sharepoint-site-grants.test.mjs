@@ -19,7 +19,7 @@ import { loadSharePointSource } from '../restore/workloads/sharepoint.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import {
   SITE_GRANTS_RESTORE, SITE_GRANT_ADD, SITE_GRANT_UPDATE, SITE_GRANT_WRITE_OPERATIONS, createSiteGrantsRestoreArtifact,
-  executeSiteGrantsRestore, planSiteGrantsRestore, readLiveSiteGrants, withinBackup,
+  executeSiteGrantsRestore, planSiteGrantsRestore, readLiveSiteGrants, siteGrantsPlanDigest, withinBackup,
 } from '../restore/workloads/sharepointSiteGrants.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -282,6 +282,21 @@ test('a grant changed after the dry run, a tampered plan or a refused write stop
   const tampered = await executeSiteGrantsRestore(client, { tenantRef, artifactId: other.id, tenantHost: HOST, transport: clean.transport, qualifications: qualify(tenantRef) });
   assert.equal(tampered.outcome, 'refused');
   assert.equal(clean.requests.length, 0);
+
+  // A plan re-written to a wider role and another app, with its digest recomputed and
+  // its approved content effects left alone, is not what the backup gives: refused.
+  const forged = fakeSite(LIVE);
+  const { artifact: fourth, plan: fourthPlan } = await planned(client, tenantRef, forged);
+  await approve(client, tenantRef, fourth, fourthPlan);
+  const edited = structuredClone(fourthPlan);
+  Object.assign(edited.operations[0].backup, { roles: ['fullcontrol'], applications: [{ id: APP_E.id, displayName: null }] });
+  Object.assign(edited.operations[0].body, { roles: ['fullcontrol'], grantedToIdentities: [{ application: { id: APP_E.id } }] });
+  edited.digest = siteGrantsPlanDigest(edited);
+  await client.query(`UPDATE restore_dry_run SET workload_restore = $2, digest = $3 WHERE id = $1`, [fourth.id, JSON.stringify(edited), edited.digest]);
+  const forgedRun = await executeSiteGrantsRestore(client, { tenantRef, artifactId: fourth.id, tenantHost: HOST, transport: forged.transport, qualifications: qualify(tenantRef) });
+  assert.equal(forgedRun.outcome, 'refused');
+  assert.match(forgedRun.reasons[0], /not what the recorded backup gives/);
+  assert.equal(forged.writes().length, 0);
 
   // A refused write is reported and nothing after it is sent.
   const locked = fakeSite(LIVE, { onWrite: () => ({ status: 403, headers: {}, body: { error: { code: 'accessDenied', message: 'Blocked by PreservationLock policy' } } }) });

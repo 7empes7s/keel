@@ -12,6 +12,17 @@ export const ROLE_CAPABILITIES = Object.freeze({
   admin: Object.freeze(['users', 'roles', 'policies', 'configuration']),
 });
 
+// Wave 2 capability names. No role grants them yet: RBAC assigns them, so until
+// then deny-by-default refuses every one of them.
+export const WAVE2_CAPABILITIES = Object.freeze([
+  'discover', 'export', 'template-apply', 'content-backup', 'content-restore', 'automation',
+]);
+
+// Every capability name KEEL knows, granted or not.
+export const CAPABILITIES = Object.freeze([
+  ...new Set([...Object.values(ROLE_CAPABILITIES).flat(), ...WAVE2_CAPABILITIES]),
+].sort());
+
 export function capabilitiesForRole(role) {
   return ROLE_CAPABILITIES[role] ?? [];
 }

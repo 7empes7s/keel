@@ -3113,7 +3113,7 @@ item that needs it stays untouched.
 - Drafted by the "Wave 2 live checks" thread (2026-10-15). Code: compare, PR #283 and its review fixes #285
   (`cli/keel-compare.mjs`, `engine/govern/compare.mjs`). Only live check left for that package.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/cli/keel-compare.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Read-only.** The live side runs the Collector's GETs and stores nothing. No tenant, host or DB writes.
 - Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):

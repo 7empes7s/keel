@@ -3444,7 +3444,16 @@ item that needs it stays untouched.
 - Drafted by the "#296 automatic reply schedule" thread (2026-10-15). Fix: PR #299, master 95408f8. When automatic replies
   are not scheduled, compare now ignores their scheduled start and end, which Graph sets to the current hour on every read.
 - Needs: /opt/keel-live at 95408f8 or later (recorded the same way as Q66 step 1).
-- Status: todo
+- Status: done
+- Result: Done 2026-10-15 12:44 UTC, read-only (Collector GETs, DB reads). No writes.
+  - **1.** /opt/keel-live at **14dc79a1**, which includes 95408f8 (#299).
+  - **2.** Principal: "Marouane Defili (Entra ID)" (bac8d59b…), as Q66.
+  - **3.** `keel-compare.mjs live --json`: **exit 0**. **0 differences**, from snapshot ee92b539… (12:00:14Z) to the tenant now.
+    - Settings: added 0, removed 0, **changed 0**, unchanged 1476 (notCompared 65: the tier-2/3 types the hourly snapshot doesn't
+      request, as in Q66).
+    - Workloads: added 0, removed 0, **changed 0**, unchanged 56 (notCompared 7: disabled workloads).
+    - Content: 0 added, 0 removed, 0 changed.
+  - Commented on #296.
 - **Read-only.** Same as Q66 steps 1, 2 and 4 only: the Collector's GETs and DB reads. No tenant, host or DB writes.
 - Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):
   1. Record the commit `/opt/keel-live` is deployed at.

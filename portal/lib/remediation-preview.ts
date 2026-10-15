@@ -3,17 +3,22 @@ import { readFileSync } from "node:fs";
 
 import { runRemediate } from "../../cli/keel-remediate.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
+import { restoreCredentialPaths } from "@/lib/restore-config";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Same server-owned Collector default as the remediate worker. The request cannot
-// supply credentials, tenant identity, a computed plan, or guard overrides.
-function collectorConfig() {
-  return JSON.parse(readFileSync("/etc/keel/tenant-target.json", "utf8"));
+// Same server-owned Collector file as the remediate worker (the shared credential
+// default, or KEEL_COLLECTOR_CONFIG_PATH). The request cannot supply credentials,
+// tenant identity, a computed plan, or guard overrides.
+export function collectorConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  readFile: (path: string) => string = (path) => readFileSync(path, "utf8"),
+) {
+  return JSON.parse(readFile(restoreCredentialPaths(env).collectorConfig));
 }
 
 export function remediationSelection(deps: GuardDeps & {
-  collectorConfig?: typeof collectorConfig;
+  collectorConfig?: () => ReturnType<typeof collectorConfig>;
   engineDependencies?: Record<string, unknown>;
 } = {}) {
   return guarded(
@@ -36,7 +41,7 @@ export function remediationSelection(deps: GuardDeps & {
           status: 404, headers: { "cache-control": "no-store" },
         });
       }
-      const config = (deps.collectorConfig ?? collectorConfig)();
+      const config = (deps.collectorConfig ?? (() => collectorConfig()))();
       const ref = `sha256:${createHash("sha256").update(config.tenantId).digest("hex").slice(0, 16)}`;
       if (ref !== tenantRef) throw new Error("remediation Collector tenant does not match portal tenant");
 

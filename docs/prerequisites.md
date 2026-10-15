@@ -179,6 +179,12 @@ KEEL uses three app registrations. A Global Administrator grants admin consent f
 - **Power Platform:** an administrator registers the Collector once as a management application (`New-PowerAppManagementApp`).
   Until then, Power Platform reads return 403 (live).
 
+### Microsoft approval
+
+- **Teams channel messages.** Microsoft's export API for them (`ChannelMessage.Read.All`) is a protected API: Microsoft has to
+  approve each app before it can read messages. Once approved, the permission is added to the content reader and consented like the
+  others. Until then, KEEL backs up teams, channels, tabs and apps, but not the messages.
+
 ### Storage
 
 - **Content store:** a directory on the KEEL host, plus a 32-byte content key file. The content is encrypted with that key, so
@@ -198,5 +204,3 @@ Nothing can recreate these, with KEEL or any other tool:
   - lifecycle workflow and provisioning run history;
   - who accepted terms of use or terms and conditions (users are asked again);
   - each member tenant's acceptance of a multitenant organization.
-- **Teams channel messages, until Microsoft approves access.** The export API is a protected API that needs Microsoft's approval.
-  Until then, KEEL backs up teams, channels, tabs and apps, but not messages.

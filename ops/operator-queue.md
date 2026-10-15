@@ -4060,7 +4060,7 @@ item that needs it stays untouched.
   documented path-prefix table, so the 400/404 lines are not where it comes from. This item shows the real reasons.
 - Needs: Q82 done (discovery run 1 stored).
 - Status: done
-- Result: Done 2026-10-15 19:25 UTC. Read-only: DB SELECTs on discovery run 1, and the Collector token's \`roles\` claim (role names only; the
+- Result: Done 2026-10-15 19:25 UTC. Read-only: DB SELECTs on discovery run 1, and the Collector token's `roles` claim (role names only; the
   token was never printed). No tenant writes, grants or approvals.
   - **1. Unreadable items by reason, HTTP status and grant source** (run 1):
     reason     | http_status | grant_source | count 
@@ -4099,22 +4099,22 @@ item that needs it stays untouched.
     - Also in the 25: Defender for Identity not onboarded (13); Entra ID Governance licence (13); AADB2C "not a B2C directory" (4);
       TenantEnabledInAadRoleMigration (6); Graph-named missing scopes such as NetworkAccess.Read.All, RiskPreventionProviders.Read.All,
       DirectoryRecommendations.Read.All and TeamsTelephoneNumber.ReadWrite.All.
-  - **3. Rows that hint at a grant the Collector holds** (40 rows shown): all \`missing_grant = DeviceManagementConfiguration.Read.All\`,
-    all \`/deviceManagement/...\` paths. 30 of the 40 are \`/deviceManagement/virtualEndpoint/*\` (Cloud PC), answering
+  - **3. Rows that hint at a grant the Collector holds** (40 rows shown): all `missing_grant = DeviceManagementConfiguration.Read.All`,
+    all `/deviceManagement/...` paths. 30 of the 40 are `/deviceManagement/virtualEndpoint/*` (Cloud PC), answering
     "accessDenied: Access is denied to the requested resource". The others are chromeOSOnboardingSettings, cloudCertificationAuthority,
     hardwarePasswordDetails, managedDeviceWindowsOSImages, monitoring/alertRecords and alertRules, remoteAssistanceSettings,
     serviceNowConnections and zebraFota* ("Unauthorized: An error has occurred", "UnknownError:" or Forbidden).
   - **4. Collector token roles** (45):
     APIConnectors.Read.All, AccessReview.Read.All, AdministrativeUnit.Read.All, Agreement.Read.All, Application.Read.All, AuditLog.Read.All, CustomAuthenticationExtension.Read.All, CustomSecAttributeDefinition.Read.All, DeviceManagementApps.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementManagedDevices.Read.All, DeviceManagementRBAC.Read.All, DeviceManagementScripts.Read.All, DeviceManagementServiceConfig.Read.All, Directory.Read.All, Domain.Read.All, EntitlementManagement.Read.All, ExternalConnection.Read.All, Group.Read.All, GroupMember.Read.All, IdentityProvider.Read.All, IdentityRiskEvent.Read.All, IdentityUserFlow.Read.All, InformationProtectionPolicy.Read.All, LifecycleWorkflows.Read.All, MailboxSettings.Read, MultiTenantOrganization.Read.All, Organization.Read.All, Place.Read.All, Policy.Read.All, Policy.Read.PermissionGrant, Printer.Read.All, Reports.Read.All, RoleManagement.Read.All, RoleManagement.Read.Directory, SecurityEvents.Read.All, ServiceHealth.Read.All, SharePointTenantSettings.Read.All, Sites.FullControl.All, Sites.Read.All, Team.ReadBasic.All, TeamMember.Read.All, TeamSettings.Read.All, TeamworkTag.Read.All, User.Read.All.
   - **Reading:**
-    - The misleading hints are the \`grant_source = documented\` rows (148 at 403, 34 at 401). Discovery fills them from its path-prefix
-      table: \`/deviceManagement/*\` maps to DeviceManagementConfiguration.Read.All, which the token holds.
+    - The misleading hints are the `grant_source = documented` rows (148 at 403, 34 at 401). Discovery fills them from its path-prefix
+      table: `/deviceManagement/*` maps to DeviceManagementConfiguration.Read.All, which the token holds.
     - The real causes are other scopes (Cloud PC needs CloudPC.Read.All; alert records DeviceManagementConfiguration plus a licence),
       licences or features (Defender for Identity, Governance, B2C, Windows 365), or service-side errors. That fits step 2: 101 have a
-      bare \`UnknownError:\`.
-    - The 11 \`grant_source = graph\` rows name scopes Graph itself asked for.
+      bare `UnknownError:`.
+    - The 11 `grant_source = graph` rows name scopes Graph itself asked for.
     - Suggestion: only say "needs <grant>" when the token lacks that grant (compare with step 4). Otherwise report "denied (holds
-      <grant>; likely another scope or a licence)", and add \`/deviceManagement/virtualEndpoint\` → CloudPC.Read.All to the table.
+      <grant>; likely another scope or a licence)", and add `/deviceManagement/virtualEndpoint` → CloudPC.Read.All to the table.
   - No open PR from the "Discovery unreadable reason" thread found, so no PR comment.
 - Do (read only: no tenant writes, no grants, no approvals; never print the token itself):
   1. `set -a; . /etc/keel/db.env; set +a; psql "$KEEL_DB_URL" -c "SELECT reason, http_status, grant_source, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' GROUP BY 1,2,3 ORDER BY 4 DESC"`

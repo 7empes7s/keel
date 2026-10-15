@@ -32,6 +32,7 @@ import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { HASH_VERSION, canonicalHash } from '../cir/canonicalHash.mjs';
 import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
 import { collectWithOutcomes } from '../collect/entraAdapter.mjs';
+import { EXCHANGE_WORKLOAD, comparableMailboxSetting } from '../collect/workloads/exchange.mjs';
 import { loadSymbolContext } from '../store/resourceSymbols.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { comparedSettings, semanticChange } from './semanticDrift.mjs';
@@ -226,12 +227,17 @@ export function compareSettings(left, right, { portable = false } = {}) {
   return { totals: { ...totals, notCompared: notCompared.length, unmatched: unmatched.length }, groups, notCompared, unmatched };
 }
 
+/** One workload field as two reads are compared: read-time noise is left out. */
+function comparableField(workload, group, field, value) {
+  return workload === EXCHANGE_WORKLOAD && group === 'mailboxSettings' ? comparableMailboxSetting(field, value) : value;
+}
+
 /** A workload observation's fields as `group.field` paths (identity is not a setting). */
-function flattenFields(fields) {
+function flattenFields(fields, workload) {
   const out = new Map();
   for (const [group, value] of Object.entries(fields ?? {})) {
     if (group === 'identity' || value === null || value === undefined) continue;
-    if (isPlainObject(value)) for (const [field, inner] of Object.entries(value)) out.set(`${group}.${field}`, inner ?? null);
+    if (isPlainObject(value)) for (const [field, inner] of Object.entries(value)) out.set(`${group}.${field}`, comparableField(workload, group, field, inner ?? null));
     else out.set(group, value);
   }
   return out;
@@ -282,8 +288,8 @@ export function compareWorkloads(left, right, { portable = false } = {}) {
         if (leftComplete) { counts.added += 1; items.push({ resourceKey, changeType: 'added' }); } else counts.unverified += 1;
         continue;
       }
-      const fa = flattenFields(a.fields);
-      const fb = flattenFields(b.fields);
+      const fa = flattenFields(a.fields, workload);
+      const fb = flattenFields(b.fields, workload);
       const fields = [];
       for (const path of [...new Set([...fa.keys(), ...fb.keys()])].sort()) {
         if (!fa.has(path) || !fb.has(path) || !observed(a.fieldCoverage, path) || !observed(b.fieldCoverage, path)) {

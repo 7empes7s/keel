@@ -18,7 +18,7 @@ import {
   administrativePatchRefusal, administrativePostStateRefusal, administrativeWriteRefusal, isAdministrativeGoverned,
 } from './administrativeOperations.mjs';
 import { isPreservationLockFailure } from '../safety/contentEffects.mjs';
-import { recordPriorState, recordWriteOutcome, classifyWriteOutcome } from './rollbackJournal.mjs';
+import { recordPriorState, recordWriteOutcome, classifyWriteOutcome, listJournal } from './rollbackJournal.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, recordSignInPath } from '../safety/signInPathGate.mjs';
 import { lockoutDeleteRefusal } from '../safety/lockoutDeleteGate.mjs';
@@ -206,7 +206,12 @@ export async function retryThrottledGraphOperation(operation, {
     ? Math.min(Math.max(maxAttempts, 1), THROTTLE_RETRY_MAX_ATTEMPTS)
     : THROTTLE_RETRY_MAX_ATTEMPTS;
   let result;
+  let sleptOwnDelay = false;
   for (let attempt = 1; attempt <= attemptsLimit; attempt += 1) {
+    // Wave 2 RST: a Retry-After another concurrent write observed pauses this
+    // one too, so the wave backs off together instead of each write hitting it.
+    const paused = sleptOwnDelay ? 0 : (governor.pauseRemainingSeconds?.(targetTenant, 'entra', operationClass) ?? 0);
+    if (paused > 0) await sleep(paused);
     await governor.acquire(targetTenant, 'entra', operationClass);
     result = await operation();
     if (!isThrottleResponse(result)) return result;
@@ -215,6 +220,7 @@ export async function retryThrottledGraphOperation(operation, {
     const delay = retryDelaySeconds(result);
     governor.observeRetryAfter(targetTenant, 'entra', operationClass, delay);
     await sleep(delay);
+    sleptOwnDelay = true;
   }
   return result;
 }
@@ -320,6 +326,65 @@ function outcomeDetailWithBody(result) {
   return `${detail}: ${text.slice(0, 2000)}`;
 }
 
+/** Wave 2 RST: how many independent resources of one wave are written at once
+ * by default. The throttle governor still paces every Graph call. */
+export const DEFAULT_WAVE_CONCURRENCY = 8;
+
+/** Wave 2 RST: resources that read or change the sign-in path run one at a
+ * time, never alongside each other or the rest of the wave. */
+function runsAlone(resource) {
+  return resource.blastRadius === 'tenant-lockout'
+    || resource.resourceType === 'conditionalAccessPolicy'
+    || isTenantPolicyGoverned(resource.resourceType);
+}
+
+/** Run `task` over `items`, at most `limit` at a time. After a task throws, no
+ * new task starts; the ones in flight finish and the first error is rethrown. */
+async function runBounded(items, limit, task) {
+  let next = 0;
+  let error = null;
+  const worker = async () => {
+    while (error === null && next < items.length) {
+      const item = items[next];
+      next += 1;
+      try {
+        await task(item);
+      } catch (err) {
+        if (error === null) error = err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  if (error !== null) throw error;
+}
+
+/** Wave 2 RST: the latest journal entry per natural key that this same run
+ * (restoreRef and runId) wrote before, so a killed run resumes instead of
+ * writing again. Empty for a dry run or a run without a promoted artifact. */
+async function priorJournalEntries(rollbackClient, { restoreRef, runId, mode }) {
+  const entries = new Map();
+  if (!rollbackClient || !restoreRef || !runId || mode === 'dry-run') return entries;
+  let rows;
+  try {
+    rows = await listJournal(rollbackClient, { restoreRef });
+  } catch {
+    return entries;
+  }
+  for (const entry of rows ?? []) {
+    if (entry.runId === runId && entry.naturalKey) entries.set(entry.naturalKey, entry);
+  }
+  return entries;
+}
+
+function unfinishedAttempt(resource, prior) {
+  const where = prior.targetId ? ` on ${prior.targetId}` : '';
+  return {
+    naturalKey: resource.naturalKey,
+    error: `resume: an earlier attempt of this run to ${prior.operation ?? 'write'} ${resource.naturalKey}${where} did not finish (${prior.outcome}); KEEL does not write it again — check the object and reconcile it by hand`,
+    ...(resource.resourceType === 'conditionalAccessPolicy' ? { policyMayBeOn: true } : {}),
+  };
+}
+
 /** Spec §7.1, §9.3, §11.5. An apply is not complete until it reads the state
  * back and confirms it — this function is where that rule lives. */
 export async function applyWave(writer, governor, wave, {
@@ -361,6 +426,9 @@ export async function applyWave(writer, governor, wave, {
   // Task-152: { attempts, delayMs } for the restored policy's read-back and
   // follow-up update; injectable so fixtures never wait in real time.
   readAfterWriteOptions = {},
+  // Wave 2 RST: how many independent resources of this wave are written at
+  // once. 1 is the serial path.
+  concurrency = DEFAULT_WAVE_CONCURRENCY,
 }) {
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
@@ -389,17 +457,39 @@ export async function applyWave(writer, governor, wave, {
     operationClass: 'write',
     ...throttleRetryOptions,
   });
+  const priorEntries = await priorJournalEntries(rollbackClient, { restoreRef, runId, mode });
+  // A converged object reads back as the desired state: equal hashes, or a
+  // difference only where an empty value meets an absent field.
+  const converged = (desiredView, liveView, resourceType) => canonicalHash(liveView, resourceType) === canonicalHash(desiredView, resourceType)
+    || residualDiff(desiredView, liveView, resourceType).length === 0;
 
   // Q45: the Conditional Access policies this wave writes (never a noop or a delete).
   const restoredPolicyKeys = new Set(wave
     .filter((resource) => resource.resourceType === 'conditionalAccessPolicy' && resource.verb !== 'noop' && resource.verb !== 'delete')
     .map((resource) => resource.naturalKey));
 
-  for (const resource of wave) {
+  const applyOne = async (resource, { applied, skipped, failed, notRemediable }) => {
     if (resource.verb === 'noop') {
       applied.push({ naturalKey: resource.naturalKey, targetId: resource.targetId ?? null });
-      continue;
+      return;
     }
+    // Wave 2 RST: what this same run already did to this resource, if it ran before.
+    const prior = priorEntries.get(resource.naturalKey) ?? null;
+    // A governed writer reads and writes several parts, so a resumed one is
+    // trusted only when its journal says it finished; an unfinished create is
+    // never sent again. Every gate above has already run.
+    const resumedGoverned = () => {
+      if (!prior || prior.outcome === 'failed') return false;
+      if (prior.outcome === 'succeeded') {
+        applied.push({ naturalKey: resource.naturalKey, targetId: prior.targetId ?? resource.targetId ?? null, resumed: true });
+        return true;
+      }
+      if (prior.operation === 'create') {
+        failed.push(unfinishedAttempt(resource, prior));
+        return true;
+      }
+      return false;
+    };
 
     // Roadmap task-52: fail closed before any guard, journal write or writer
     // call — an unevidenced (resourceType, verb) pair must never reach
@@ -418,7 +508,7 @@ export async function applyWave(writer, governor, wave, {
       (administrativeRefusal.outcome === 'skipped' ? skipped : failed).push(administrativeRefusal.outcome === 'skipped'
         ? { naturalKey: resource.naturalKey, reason: administrativeRefusal.reason }
         : { naturalKey: resource.naturalKey, error: administrativeRefusal.reason });
-      continue;
+      return;
     }
 
     const capabilityGate = verbCapability(resource.resourceType, effectiveVerb);
@@ -427,7 +517,7 @@ export async function applyWave(writer, governor, wave, {
         naturalKey: resource.naturalKey,
         error: `unsupported operation: ${resource.resourceType} ${effectiveVerb} is not a registered write capability (claim: ${capabilityGate.capability?.claim ?? 'unsupported'})`,
       });
-      continue;
+      return;
     }
 
     // Roadmap task-108: a policy-governed type writes only the subtype its proof
@@ -438,7 +528,7 @@ export async function applyWave(writer, governor, wave, {
       (policyRefusal.outcome === 'skipped' ? skipped : failed).push(policyRefusal.outcome === 'skipped'
         ? { naturalKey: resource.naturalKey, reason: policyRefusal.reason }
         : { naturalKey: resource.naturalKey, error: policyRefusal.reason });
-      continue;
+      return;
     }
 
     // Roadmap task-149: a tenant-wide policy writes only through its operation
@@ -451,7 +541,7 @@ export async function applyWave(writer, governor, wave, {
       (tenantPolicyRefusal.outcome === 'skipped' ? skipped : failed).push(tenantPolicyRefusal.outcome === 'skipped'
         ? { naturalKey: resource.naturalKey, reason: tenantPolicyRefusal.reason, ...(tenantPolicyRefusal.completion ? { completion: tenantPolicyRefusal.completion } : {}) }
         : { naturalKey: resource.naturalKey, error: tenantPolicyRefusal.reason });
-      continue;
+      return;
     }
 
     // Issue #155: an Intune policy holding values Graph never returns is manual,
@@ -461,7 +551,7 @@ export async function applyWave(writer, governor, wave, {
       (intuneRefusal.outcome === 'skipped' ? skipped : failed).push(intuneRefusal.outcome === 'skipped'
         ? { naturalKey: resource.naturalKey, reason: intuneRefusal.reason }
         : { naturalKey: resource.naturalKey, error: intuneRefusal.reason });
-      continue;
+      return;
     }
 
     // Roadmap task-151: a custom role, an eligibility or PIM settings write only
@@ -472,7 +562,7 @@ export async function applyWave(writer, governor, wave, {
       (adminRoleRefusal.outcome === 'skipped' ? skipped : failed).push(adminRoleRefusal.outcome === 'skipped'
         ? { naturalKey: resource.naturalKey, reason: adminRoleRefusal.reason }
         : { naturalKey: resource.naturalKey, error: adminRoleRefusal.reason });
-      continue;
+      return;
     }
 
     // Roadmap task-64: a planned recovery mechanism is re-checked here, so a
@@ -483,7 +573,7 @@ export async function applyWave(writer, governor, wave, {
       (recoveryRefusal.outcome === 'failed' ? failed : skipped).push(recoveryRefusal.outcome === 'failed'
         ? { naturalKey: resource.naturalKey, error: recoveryRefusal.reason }
         : { naturalKey: resource.naturalKey, reason: recoveryRefusal.reason });
-      continue;
+      return;
     }
 
     // Roadmap task-61: an edge is never written through its parent. A group
@@ -498,7 +588,7 @@ export async function applyWave(writer, governor, wave, {
           naturalKey: resource.naturalKey,
           error: `relationship-via-parent refused: ${resource.resourceType} payload carries ${smuggled.join(', ')} — edges are written only through qualified $ref operations`,
         });
-        continue;
+        return;
       }
     }
 
@@ -511,15 +601,16 @@ export async function applyWave(writer, governor, wave, {
       const handler = capabilityGate.capability?.handler;
       if (handler !== registeredWriter.handler) {
         failed.push({ naturalKey: resource.naturalKey, error: `${resource.resourceType} ${effectiveVerb}: the capability names ${handler}, not the registered writer ${registeredWriter.handler}` });
-        continue;
+        return;
       }
       const guarded = { ...resource, payload: resource.live?.payload ?? resource.payload };
       const guard = effectiveVerb === 'delete' ? refuseUnsafeDeletion(guarded, deletionGuardOptions) : refuseIfSynced(guarded);
-      if (guard.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: guard.reason }); continue; }
+      if (guard.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: guard.reason }); return; }
       if (effectiveVerb === 'delete' && resource.blastRadius === 'tenant-lockout') {
         skipped.push({ naturalKey: resource.naturalKey, reason: 'a tenant-lockout delete is never written through a registered writer' });
-        continue;
+        return;
       }
+      if (resumedGoverned()) return;
       const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
         mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
         now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure,
@@ -536,31 +627,34 @@ export async function applyWave(writer, governor, wave, {
       if (!outcome?.applied && !outcome?.skipped && !outcome?.failed && !outcome?.notRemediable) {
         failed.push({ naturalKey: resource.naturalKey, error: `${registeredWriter.handler} reported no outcome` });
       }
-      continue;
+      return;
     }
 
     // Issue #155: an Intune policy is written through its operation record, with
     // its assignments through /assign.
     if (isIntuneGoverned(resource.resourceType)) {
+      if (resumedGoverned()) return;
       const outcome = await applyIntuneWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, existingTargetIds,
       });
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
-      continue;
+      return;
     }
 
     if (isTenantPolicyGoverned(resource.resourceType)) {
+      if (resumedGoverned()) return;
       const outcome = await applyTenantPolicyWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, targetTenant,
       });
       if (outcome.applied) applied.push(pendingApproval ? { ...outcome.applied, pendingApproval } : outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
       if (outcome.signInPathSection) intendedSignInSections.add(outcome.signInPathSection);
-      continue;
+      return;
     }
 
     if (isAdminRoleGoverned(resource.resourceType)) {
+      if (resumedGoverned()) return;
       const outcome = await applyAdminRoleWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, now: now(),
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
@@ -568,7 +662,7 @@ export async function applyWave(writer, governor, wave, {
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.failed) failed.push(outcome.failed);
       if (outcome.notRemediable) notRemediable.push(outcome.notRemediable);
-      continue;
+      return;
     }
 
     if (resource.verb === 'delete') {
@@ -578,7 +672,7 @@ export async function applyWave(writer, governor, wave, {
       }, deletionGuardOptions);
       if (deletionCheck.refused) {
         skipped.push({ naturalKey: resource.naturalKey, reason: deletionCheck.reason });
-        continue;
+        return;
       }
       const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
       const isLockoutDelete = resource.blastRadius === 'tenant-lockout';
@@ -589,19 +683,23 @@ export async function applyWave(writer, governor, wave, {
         );
         if (lockoutRefusal) {
           skipped.push({ naturalKey: resource.naturalKey, reason: lockoutRefusal });
-          continue;
+          return;
         }
         lockoutDeletesPlanned.push({ resourceType: resource.resourceType, naturalKey: resource.naturalKey, targetId });
       }
 
       if (!targetId) {
         failed.push({ naturalKey: resource.naturalKey, error: 'delete has no targetId' });
-        continue;
+        return;
       }
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
-        continue;
+        return;
+      }
+      if (prior?.outcome === 'succeeded') {
+        applied.push({ naturalKey: resource.naturalKey, targetId, resumed: true });
+        return;
       }
 
       const journal = await journalBeforeMutation(rollbackClient, {
@@ -611,15 +709,22 @@ export async function applyWave(writer, governor, wave, {
       });
       if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to delete: rollback journal write failed' });
-        continue;
+        return;
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const deleteResult = await retryOperation(() => writer.write('v1.0', path, { method: 'DELETE', body: {} }));
+      // Resumed: the earlier attempt's delete landed before the run was killed.
+      if (prior && isNotFound(deleteResult)) {
+        await noteOutcome(rollbackClient, journal, 'succeeded', { detail: 'absent (resumed)' });
+        if (isLockoutDelete) lockoutDeletesVerified.push(targetId);
+        applied.push({ naturalKey: resource.naturalKey, targetId, resumed: true });
+        return;
+      }
       if (!deleteResult.ok) {
         await noteOutcome(rollbackClient, journal, classifyWriteOutcome(deleteResult), { detail: outcomeDetail(deleteResult) });
         failed.push(graphFailure(resource.naturalKey, deleteResult));
-        continue;
+        return;
       }
 
       const reRead = await readAfterWrite(writer, 'v1.0', path, (r) => r?.ok === true && r.body?.deletedDateTime == null, { retryOperation });
@@ -629,24 +734,25 @@ export async function applyWave(writer, governor, wave, {
       if (!isAbsent && !isSoftDeleted) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live ?? null, detail: 'delete did not verify' });
         failed.push({ naturalKey: resource.naturalKey, error: 'delete did not verify as absent or soft-deleted' });
-        continue;
+        return;
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { detail: isAbsent ? 'absent' : 'soft-deleted' });
       if (isLockoutDelete) lockoutDeletesVerified.push(targetId);
       applied.push({ naturalKey: resource.naturalKey, targetId });
-      continue;
+      return;
     }
 
     const syncCheck = refuseIfSynced({
       ...resource,
       payload: resource.live?.payload ?? resource.payload,
     });
-    if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); continue; }
+    if (syncCheck.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: syncCheck.reason }); return; }
 
     // Roadmap task-150: a user is written only through its reviewed attribute
     // allowlist, plus add-only licence assignment.
     if (isUserGoverned(resource.resourceType)) {
+      if (resumedGoverned()) return;
       const outcome = await applyUserWrite(writer, resource, effectiveVerb, {
         mode, retryOperation, rollbackClient, runId, restoreRef, readAfterWriteOptions,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey),
@@ -654,7 +760,7 @@ export async function applyWave(writer, governor, wave, {
       if (outcome.applied) applied.push(outcome.applied);
       if (outcome.skipped) skipped.push(outcome.skipped);
       if (outcome.failed) failed.push(outcome.failed);
-      continue;
+      return;
     }
 
     if (resource.verb === 'restore-soft-deleted') {
@@ -662,11 +768,11 @@ export async function applyWave(writer, governor, wave, {
       const deletedItemId = resource.deletedItemId ?? resource.live?.deletedItemId;
       if (!targetId) {
         failed.push({ naturalKey: resource.naturalKey, error: 'restore has no targetId' });
-        continue;
+        return;
       }
       if (!deletedItemId) {
         failed.push({ naturalKey: resource.naturalKey, error: 'restore has no deletedItemId' });
-        continue;
+        return;
       }
 
       let desired = resource.payload;
@@ -676,12 +782,12 @@ export async function applyWave(writer, governor, wave, {
         desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
-        continue;
+        return;
       }
       const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, desired);
       if (remapRefusal) {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
-        continue;
+        return;
       }
 
       // Task-152 review: Microsoft restores a deleted policy in the state it was
@@ -690,19 +796,27 @@ export async function applyWave(writer, governor, wave, {
       const isPolicy = resource.resourceType === 'conditionalAccessPolicy';
       if (resource.live?.ambiguous) {
         skipped.push({ naturalKey: resource.naturalKey, reason: 'ambiguous: several deleted objects share this name — restore refused' });
-        continue;
+        return;
       }
       if (isPolicy) {
         const refusal = deletedPolicyRestoreRefusal(resource, lockoutGate);
         if (refusal) {
           skipped.push({ naturalKey: resource.naturalKey, reason: refusal });
-          continue;
+          return;
         }
       }
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
-        continue;
+        return;
+      }
+      if (prior && prior.outcome === 'succeeded') {
+        applied.push({ naturalKey: resource.naturalKey, targetId, resumed: true });
+        return;
+      }
+      if (prior && prior.outcome !== 'failed') {
+        failed.push(unfinishedAttempt(resource, prior));
+        return;
       }
 
       const journal = await journalBeforeMutation(rollbackClient, {
@@ -712,7 +826,7 @@ export async function applyWave(writer, governor, wave, {
       });
       if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to restore: rollback journal write failed' });
-        continue;
+        return;
       }
 
       // Roadmap task-152: a Conditional Access policy is restored from its own
@@ -728,7 +842,7 @@ export async function applyWave(writer, governor, wave, {
       if (!restoreResult.ok) {
         await noteOutcome(rollbackClient, journal, classifyWriteOutcome(restoreResult), { detail: outcomeDetail(restoreResult) });
         failed.push(graphFailure(resource.naturalKey, restoreResult));
-        continue;
+        return;
       }
       if (restoreResult.body?.id !== targetId) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: restoreResult.body ?? null, detail: 'restore returned a different objectId' });
@@ -736,7 +850,7 @@ export async function applyWave(writer, governor, wave, {
           naturalKey: resource.naturalKey,
           error: 'restore returned a different objectId — references would be broken',
         });
-        continue;
+        return;
       }
 
       const path = `${pathFor(resource.resourceType)}/${targetId}`;
@@ -753,7 +867,7 @@ export async function applyWave(writer, governor, wave, {
       if (reRead?.ok === false && !isPolicy) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'restored object could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
-        continue;
+        return;
       }
       // A policy that could not be re-read is still written report-only below.
       let live = reRead?.ok === false ? null : (reRead?.body ?? reRead);
@@ -765,7 +879,7 @@ export async function applyWave(writer, governor, wave, {
       if (live && matchesDesired(live)) {
         await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
         applied.push({ naturalKey: resource.naturalKey, targetId });
-        continue;
+        return;
       }
 
       const payload = writableProjection(desired, resource.resourceType);
@@ -776,12 +890,12 @@ export async function applyWave(writer, governor, wave, {
       if (!updateResult.ok) {
         if (isPolicy) {
           await policyMayBeOn(`the report-only update failed: ${outcomeDetail(updateResult)}`, live, updateResult);
-          continue;
+          return;
         }
         // The restore landed (the object is back); only the follow-up PATCH did not.
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: `restored; follow-up update ${outcomeDetail(updateResult)}` });
         failed.push(graphFailure(resource.naturalKey, updateResult));
-        continue;
+        return;
       }
 
       const updateReRead = await readAfterWrite(writer, 'v1.0', path, (r) =>
@@ -789,16 +903,16 @@ export async function applyWave(writer, governor, wave, {
       if (updateReRead?.ok === false) {
         if (isPolicy) {
           await policyMayBeOn('the policy could not be read back after the report-only update', live, updateReRead);
-          continue;
+          return;
         }
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'restored; follow-up update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, updateReRead));
-        continue;
+        return;
       }
       live = updateReRead?.body ?? updateReRead;
       if (isPolicy && live?.state !== REPORT_ONLY) {
         await policyMayBeOn(`it reads back as ${live?.state ?? 'an unknown state'}`, live);
-        continue;
+        return;
       }
       if (!matchesDesired(live)) {
         const liveView = verificationView(live, resource.resourceType);
@@ -807,7 +921,7 @@ export async function applyWave(writer, governor, wave, {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
           applied.push({ naturalKey: resource.naturalKey, targetId });
-          continue;
+          return;
         }
         const immutable = immutableDrift(desiredView, liveView, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
@@ -815,23 +929,23 @@ export async function applyWave(writer, governor, wave, {
         ))) {
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'not-remediable residual' });
           notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
-          continue;
+          return;
         }
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'residual drift after update' });
         failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
-        continue;
+        return;
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
       applied.push({ naturalKey: resource.naturalKey, targetId });
-      continue;
+      return;
     }
 
     if (resource.verb === 'update') {
       const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
       if (!targetId) {
         failed.push({ naturalKey: resource.naturalKey, error: 'update has no targetId' });
-        continue;
+        return;
       }
 
       let desired = resource.payload;
@@ -841,12 +955,12 @@ export async function applyWave(writer, governor, wave, {
         desired = rewriteReferences(desired, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
       } catch (err) {
         failed.push({ naturalKey: resource.naturalKey, error: err.message });
-        continue;
+        return;
       }
       const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, desired);
       if (remapRefusal) {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
-        continue;
+        return;
       }
       // Verification compares what a write can set: server-owned fields, OData
       // annotations and nulls are left out on both sides (verificationView).
@@ -856,12 +970,30 @@ export async function applyWave(writer, governor, wave, {
         : isAdministrativeGoverned(resource.resourceType) ? administrativePatchRefusal(resource.resourceType, payload) : null;
       if (patchRefusal) {
         failed.push({ naturalKey: resource.naturalKey, error: patchRefusal });
-        continue;
+        return;
       }
 
       if (mode === 'dry-run') {
         applied.push({ naturalKey: resource.naturalKey, targetId });
-        continue;
+        return;
+      }
+
+      const path = `${pathFor(resource.resourceType)}/${targetId}`;
+      // Wave 2 RST: an update whose target already holds the desired state is
+      // not written. A resumed run reads the target fresh; otherwise the live
+      // state the plan read is used, at no extra call.
+      let liveBefore = resource.live?.payload ?? null;
+      if (prior) {
+        const current = await retryOperation(() => writer.read('v1.0', path));
+        liveBefore = current?.ok === false ? null : (current?.body ?? current ?? null);
+      }
+      // A group's own licences are not in the compared view, so one still
+      // missing a licence is written.
+      const licencesMissing = resource.resourceType === 'group' && liveBefore
+        && licencePlan(desired, liveBefore, { resourceType: 'group' }).add.length > 0;
+      if (liveBefore && !licencesMissing && converged(normalisedDesired, verificationView(forVerification(liveBefore, resource), resource.resourceType), resource.resourceType)) {
+        applied.push({ naturalKey: resource.naturalKey, targetId, unchanged: true, ...(prior ? { resumed: true } : {}) });
+        return;
       }
 
       const journal = await journalBeforeMutation(rollbackClient, {
@@ -871,15 +1003,14 @@ export async function applyWave(writer, governor, wave, {
       });
       if (!journal.ok) {
         failed.push({ naturalKey: resource.naturalKey, error: 'refusing to update: rollback journal write failed' });
-        continue;
+        return;
       }
 
-      const path = `${pathFor(resource.resourceType)}/${targetId}`;
       const writeResult = await writeAfterCreate(writer, 'v1.0', path, { method: 'PATCH', body: payload }, { retryOperation });
       if (!writeResult.ok) {
         await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
         failed.push(graphFailure(resource.naturalKey, writeResult));
-        continue;
+        return;
       }
       // Roadmap task-150: a group's own licences are restored add-only.
       if (resource.resourceType === 'group') {
@@ -890,7 +1021,7 @@ export async function applyWave(writer, governor, wave, {
         if (licenceFailure) {
           await noteOutcome(rollbackClient, journal, 'uncertain', { detail: `updated; licences ${licenceFailure.error}` });
           failed.push({ naturalKey: resource.naturalKey, ...licenceFailure });
-          continue;
+          return;
         }
       }
 
@@ -899,7 +1030,7 @@ export async function applyWave(writer, governor, wave, {
       if (reRead?.ok === false) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { detail: 'update could not be re-read' });
         failed.push(graphFailure(resource.naturalKey, reRead));
-        continue;
+        return;
       }
       const live = verificationView(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
       // Roadmap task-109: a governed update also verifies its own post-state
@@ -911,7 +1042,7 @@ export async function applyWave(writer, governor, wave, {
       if (postStateRefusal) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'administrative post-state did not verify' });
         failed.push({ naturalKey: resource.naturalKey, error: postStateRefusal });
-        continue;
+        return;
       }
 
       if (canonicalHash(live, resource.resourceType) !== canonicalHash(normalisedDesired, resource.resourceType)) {
@@ -920,7 +1051,7 @@ export async function applyWave(writer, governor, wave, {
           // The hashes differ only where an empty array or object meets an absent field.
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'converged: only empty values differ' });
           applied.push({ naturalKey: resource.naturalKey, targetId });
-          continue;
+          return;
         }
         const immutable = immutableDrift(normalisedDesired, live, resource.resourceType);
         if (residual.length > 0 && residual.every((path) => immutable.some(
@@ -928,16 +1059,16 @@ export async function applyWave(writer, governor, wave, {
         ))) {
           await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live, detail: 'not-remediable residual' });
           notRemediable.push({ naturalKey: resource.naturalKey, status: 'not-remediable', immutable });
-          continue;
+          return;
         }
         await noteOutcome(rollbackClient, journal, 'uncertain', { postState: live, detail: 'residual drift after update' });
         failed.push({ naturalKey: resource.naturalKey, error: 'residual drift after update', residual });
-        continue;
+        return;
       }
 
       await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
       applied.push({ naturalKey: resource.naturalKey, targetId });
-      continue;
+      return;
     }
 
     let payload = resource.payload;
@@ -947,17 +1078,17 @@ export async function applyWave(writer, governor, wave, {
       payload = rewriteReferences(payload, withExplicitReferences(resource), referenceContext, resource.naturalKey, resource.resourceType);
     } catch (err) {
       failed.push({ naturalKey: resource.naturalKey, error: err.message });
-      continue;
+      return;
     }
     const remapRefusal = unqualifiedRemapping(resource, effectiveVerb, beforeRewrite, payload);
     if (remapRefusal) {
       failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
-      continue;
+      return;
     }
 
     const existingId = existingTargetIds.get(resource.naturalKey);
     if (existingId) {
-      if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
+      if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); return; }
       const path = `${pathFor(resource.resourceType)}/${existingId}`;
       const reRead = await retryOperation(() => writer.read('v1.0', path));
       if (reRead?.ok === false) {
@@ -967,26 +1098,16 @@ export async function applyWave(writer, governor, wave, {
           failure.attempts = reRead.attempts;
         }
         failed.push(failure);
-        continue;
+        return;
       }
       const actualHash = canonicalHash(forVerification(reRead?.body ?? reRead, resource), resource.resourceType);
       const desiredHash = canonicalHash(payload, resource.resourceType);
-      if (actualHash === desiredHash) { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); continue; }
+      if (actualHash === desiredHash) { applied.push({ naturalKey: resource.naturalKey, targetId: existingId }); return; }
       failed.push({ naturalKey: resource.naturalKey, error: `conflict: ${existingId} exists in target but actual hash ${actualHash} does not match desired hash ${desiredHash} — manual reconciliation required` });
-      continue;
+      return;
     }
 
-    if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null }); continue; }
-
-    const journal = await journalBeforeMutation(rollbackClient, {
-      runId, restoreRef, resource, operation: 'create',
-      priorState: null,
-      intendedState: payload,
-    });
-    if (!journal.ok) {
-      failed.push({ naturalKey: resource.naturalKey, error: 'refusing to create: rollback journal write failed' });
-      continue;
-    }
+    if (mode === 'dry-run') { applied.push({ naturalKey: resource.naturalKey, targetId: null }); return; }
 
     const path = pathFor(resource.resourceType);
     // Roadmap task-107: for a type with CREATE_EXCLUDED_FIELDS the body leaves out
@@ -1002,11 +1123,41 @@ export async function applyWave(writer, governor, wave, {
     // The same body is what verification below compares against.
     const createBody = policyCreate ? policyCreate.body
       : withoutFields(createBodyProjection(payload, resource.resourceType), createExcluded ?? []);
+
+    // Wave 2 RST: a create this run already sent is never sent again. One whose
+    // object reads back as the body it wrote counts as applied; anything else
+    // (no id recorded, gone, or different) is left for a person to reconcile.
+    if (prior && prior.operation === 'create' && prior.outcome !== 'failed') {
+      const existing = prior.targetId ? await retryOperation(() => writer.read('v1.0', `${path}/${prior.targetId}`)) : null;
+      if (existing && existing.ok !== false) {
+        const body = existing.body ?? existing;
+        const desiredView = verificationView(createBody, resource.resourceType);
+        const createdLive = onlyFields(verificationView(forVerification(body, resource), resource.resourceType), desiredView);
+        if (residualDiff(desiredView, createdLive, resource.resourceType).length === 0) {
+          const identifiers = createdIdentifiers(resource.resourceType, body, body);
+          applied.push({ naturalKey: resource.naturalKey, targetId: prior.targetId, resumed: true, ...(identifiers ? { identifiers } : {}) });
+          return;
+        }
+      }
+      failed.push(unfinishedAttempt(resource, prior));
+      return;
+    }
+
+    const journal = await journalBeforeMutation(rollbackClient, {
+      runId, restoreRef, resource, operation: 'create',
+      priorState: null,
+      intendedState: payload,
+    });
+    if (!journal.ok) {
+      failed.push({ naturalKey: resource.naturalKey, error: 'refusing to create: rollback journal write failed' });
+      return;
+    }
+
     const writeResult = await retryOperation(() => writer.write('v1.0', path, { method: 'POST', body: createBody }));
     if (!writeResult.ok) {
       await noteOutcome(rollbackClient, journal, classifyWriteOutcome(writeResult), { detail: outcomeDetail(writeResult) });
       failed.push(graphFailure(resource.naturalKey, writeResult));
-      continue;
+      return;
     }
 
     const targetId = writeResult.body.id;
@@ -1021,14 +1172,14 @@ export async function applyWave(writer, governor, wave, {
       if (licenceFailure) {
         await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: `created; licences ${licenceFailure.error}` });
         failed.push({ naturalKey: resource.naturalKey, ...licenceFailure });
-        continue;
+        return;
       }
     }
     const reRead = await readAfterWrite(writer, 'v1.0', `${path}/${targetId}`, isNotFound, { retryOperation });
     if (reRead?.ok === false) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, detail: 'created object could not be re-read' });
       failed.push(graphFailure(resource.naturalKey, reRead));
-      continue;
+      return;
     }
     // A create verifies the fields it wrote: what Graph assigns or defaults on
     // its own (server-owned fields, OData annotations, nulls, any property the
@@ -1043,7 +1194,7 @@ export async function applyWave(writer, governor, wave, {
       const desiredHash = canonicalHash(desiredView, resource.resourceType);
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created object did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: `verification hash mismatch after write to ${targetId}: actual hash ${actualHash}, desired hash ${desiredHash}`, residual });
-      continue;
+      return;
     }
 
     // Roadmap task-107: a created object's alternate identifiers (an
@@ -1054,19 +1205,38 @@ export async function applyWave(writer, governor, wave, {
     if (subtypeRefusal) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created subtype did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: subtypeRefusal });
-      continue;
+      return;
     }
 
     const identifiers = createdIdentifiers(resource.resourceType, writeResult.body, reRead?.body ?? reRead);
     if (identifiers === false) {
       await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState: reRead?.body ?? reRead, detail: 'created identifiers did not verify' });
       failed.push({ naturalKey: resource.naturalKey, error: `created ${resource.resourceType} ${targetId} did not read back the identifiers its create returned` });
-      continue;
+      return;
     }
     await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
     const entry = identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId };
     if (policyCreate?.unknown.length > 0) entry.unwrittenFields = policyCreate.unknown;
     applied.push(entry);
+  };
+
+  // Wave 2 RST: resources inside one wave do not depend on each other, so they
+  // run concurrently, bounded by `concurrency` and paced by the governor. A
+  // resource that reads or changes the sign-in path (a tenant-lockout delete,
+  // a Conditional Access policy, a tenant-wide policy) still runs one at a
+  // time, in wave order, after the others: the lockout gate judges each one
+  // against the ones before it. Results keep wave order whatever finishes first.
+  const lanes = wave.map((resource) => ({ resource, sink: { applied: [], skipped: [], failed: [], notRemediable: [] } }));
+  const limit = Number.isInteger(concurrency) && concurrency > 1 ? concurrency : 1;
+  const alone = limit === 1 ? lanes : lanes.filter((lane) => runsAlone(lane.resource));
+  const together = limit === 1 ? [] : lanes.filter((lane) => !runsAlone(lane.resource));
+  await runBounded(together, limit, (lane) => applyOne(lane.resource, lane.sink));
+  for (const lane of alone) await applyOne(lane.resource, lane.sink);
+  for (const { sink } of lanes) {
+    applied.push(...sink.applied);
+    skipped.push(...sink.skipped);
+    failed.push(...sink.failed);
+    notRemediable.push(...sink.notRemediable);
   }
 
   if (signInPathGate) {

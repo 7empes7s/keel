@@ -47,6 +47,7 @@ const KEY = 'workload-writers-test-key';
 const TENANT = '00000000-0000-4000-8000-0000000000e1';
 const tenantRef = tenantRefFor(TENANT);
 const build = 'build-wkld-capture';
+const ORG = 'keelrt.onmicrosoft.com';
 const VERSIONS = { ExchangeOnlineManagement: '3.5.0', MicrosoftTeams: '6.0.0' };
 const GRANTS = {
   collector: { permissions: ['Exchange.ManageAsApp'], roles: ['Global Reader'] },
@@ -72,7 +73,7 @@ function allowlist(variable) {
     .map(([, name, entries]) => [name, [...entries.matchAll(/'([A-Za-z0-9]+)'/g)].map((match) => match[1])]));
 }
 const MODULE_TABLES = {
-  ExchangeOnlineManagement: ['AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedExchangeWrites', 'AllowedPurviewWrites'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedExchangeWrites', 'AllowedPurviewWrites'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsWrites'],
 };
 const moduleAllowlist = (module) => Object.assign({}, ...MODULE_TABLES[module].map(allowlist));
@@ -123,8 +124,9 @@ function writeTargets(workload) {
 }
 
 /** A fake tenant behind the real job transport. `hooks.cmdlet` may return { error } or 'crash'. */
-function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}) {
+function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organization = ORG, organizationTenant = TENANT } = {}) {
   const { module } = WRITTEN_WORKLOADS[workload];
+  if (module === 'ExchangeOnlineManagement') state['Get-OrganizationConfig'] ??= [{ Name: organization, ExternalDirectoryOrganizationId: organizationTenant }];
   const targets = writeTargets(workload);
   const writes = [];
   const container = fakeCmdletContainer({
@@ -153,7 +155,7 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}
 
 let suffixSeq = 0;
 const capture = (workload, live, extra = {}) => captureWorkloadWrites({
-  workload, collector: live.powershell, restorer: live.powershell, directoryTenantId: TENANT, configTenants: { collector: TENANT, restorer: TENANT },
+  workload, collector: live.powershell, restorer: live.powershell, directoryTenantId: TENANT, configs: { collector: { tenantId: TENANT, organization: ORG }, restorer: { tenantId: TENANT, organization: ORG } },
   tenantRef, build, credentials: { collector: 'app:collector', restorer: 'app:restorer' }, grants: GRANTS,
   moduleVersion: VERSIONS[WRITTEN_WORKLOADS[workload].module], sleep: async () => {}, readBackAttempts: 2, readBackDelayMs: 0,
   suffix: () => `t${suffixSeq += 1}`, ...extra,
@@ -262,6 +264,21 @@ test('a record that names a non-fixture object, a content-bearing field or an un
   assert.match(failures(resign((record) => { record.subject.grants.restorer.roles = []; return record; })), /lacks role Exchange Administrator/);
   assert.match(failures(resign((record) => { record.subject.writes.push(structuredClone(record.subject.writes[0])); return record; })), /captured twice/);
   assert.match(failures(resign((record) => { record.subject.writes = []; return record; })), /proves nothing/);
+  // A write no capture made: another object, another field, or more sends than a capture needs.
+  const inbound = (record) => record.subject.writes.find((item) => item.operationId === 'mailflow.inbound-connector.update');
+  const send = (record, parameters) => { record.subject.requests.push({ credential: 'restorer', cmdlet: 'Set-InboundConnector', parameters, outcome: 'ok' }); return record; };
+  assert.match(failures(resign((record) => send(record, { Identity: '00000000-0000-4000-8000-00000000ffff', Comment: inbound(record).target }))), /no capture accounts for this write/);
+  assert.match(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: 'something else' }))), /no capture accounts for this write/);
+  assert.match(failures(resign((record) => send(record, { Identity: inbound(record).identity, Comment: inbound(record).target }))), /no capture accounts for this write/);
+  assert.match(failures(resign((record) => { inbound(record).identity = 'Global'; return record; })), /not the KEEL-RT- fixture recorded/);
+  // A field whose effect depends on the rest of the object (Enabled while ScanAndDropRecipients is set) is never a capture's.
+  assert.match(failures(resign((record) => { Object.assign(inbound(record), { field: 'Enabled', type: 'switch', before: false, target: true }); return record; })), /Enabled is not a field a capture may write/);
+  assert.match(failures(resign((record) => { record.subject.refusals.remove.sent = true; return record; })), /remove probe was not refused/);
+  assert.match(failures(resign((record) => { delete record.subject.organization; return record; })), /not shown to be one Exchange organization/);
+  assert.match(failures(resign((record) => { record.subject.organization.restorer.name = 'other.onmicrosoft.com'; return record; })), /not shown to be one Exchange organization/);
+  assert.match(failures(resign((record) => { record.subject.organization.restorer.tenantId = 'ffffffff-0000-4000-8000-000000000000'; return record; })), /reported another tenant/);
+  // A request carrying both a read and a cmdlet is a write.
+  assert.match(failures(resign((record) => send(record, { Identity: 'Global', Comment: 'x' }) && Object.assign(record.subject.requests.at(-1), { read: 'exchange-mail-flow', credential: 'collector' }) && record)), /no capture accounts for this write/);
   // Unsigned: never live.
   const { proof: { runner, ...proof }, ...unsigned } = evidence;
   assert.equal(ledgerEvidenceFromWorkloadWritesAcceptance({ ...unsigned, proof }, { tenantRef, build, hmacKey: KEY, evidenceDir: dir }).ok, false);
@@ -288,6 +305,68 @@ test('a write that is not put back is not proof and is reported for a manual fix
   assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
   const seam = ledgerEvidenceFromWorkloadWritesAcceptance(evidence, { tenantRef, build, hmacKey: KEY, evidenceDir: dir });
   assert.deepEqual(seam.writes.map((item) => item.operationId).sort(), ['mailflow.outbound-connector.update', 'mailflow.transport-rule.update']);
+});
+
+test('the setting is put back even when its read-back fails', async () => {
+  let crashes = 0;
+  let written = false;
+  const live = fakeTenant('exchange-mail-flow', {
+    hooks: {
+      cmdlet({ cmdlet, parameters }) {
+        if (cmdlet === 'Set-InboundConnector' && String(parameters.Comment).startsWith('KEEL capture')) written = true;
+        if (cmdlet === 'Get-InboundConnector' && written && crashes < 2) { crashes += 1; return 'crash'; }
+        return null;
+      },
+    },
+  });
+  const before = structuredClone(live.state['Get-InboundConnector']);
+  const { evidence, needsManualRevert } = await signedCapture('exchange-mail-flow', live);
+  const inbound = evidence.subject.writes.find((item) => item.operationId === 'mailflow.inbound-connector.update');
+  assert.equal(crashes, 2);
+  assert.equal(inbound.readBackVerified, false);
+  assert.equal(inbound.restoredToOriginal, true);
+  assert.equal(live.writes.filter((write) => write.cmdlet === 'Set-InboundConnector').length, 2, 'the write and its put-back');
+  assert.deepEqual(live.state['Get-InboundConnector'], before);
+  assert.deepEqual(needsManualRevert, []);
+});
+
+test('nothing is written when the two Exchange sessions are not one organization', async () => {
+  const collector = fakeTenant('exchange-extended');
+  const restorer = fakeTenant('exchange-extended', { organization: 'other.onmicrosoft.com' });
+  const result = await capture('exchange-extended', collector, { restorer: restorer.powershell });
+  assert.deepEqual([collector.writes, restorer.writes], [[], []]);
+  assert.equal(result.record.subject.writes.length, 0);
+  assert.match(result.record.subject.skipped[0].reason, /not the organization the tenant configs name.*nothing was written/);
+
+  // Both sessions agree, but on another organization than the configs name.
+  const elsewhere = fakeTenant('exchange-extended', { organization: 'other.onmicrosoft.com' });
+  const moved = await capture('exchange-extended', elsewhere);
+  assert.deepEqual(elsewhere.writes, []);
+  assert.match(moved.record.subject.skipped[0].reason, /not the organization the tenant configs name/);
+
+  // A session that reports another tenant id is refused; one that reports none is bound by the config.
+  const foreign = fakeTenant('exchange-extended', { organizationTenant: '00000000-0000-4000-8000-0000000000ff' });
+  assert.match((await capture('exchange-extended', foreign)).record.subject.skipped[0].reason, /belongs to another tenant/);
+  assert.deepEqual(foreign.writes, []);
+  const silent = fakeTenant('exchange-extended', { organizationTenant: '' });
+  const { evidence, dir } = await signedCapture('exchange-extended', silent);
+  assert.equal(evidence.subject.organization.tenantIdSource, 'config');
+  assert.ok(silent.writes.length > 0);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
+  const configs = { collector: { tenantId: TENANT, organization: ORG }, restorer: { tenantId: TENANT, organization: 'other.onmicrosoft.com' } };
+  await assert.rejects(capture('exchange-extended', collector, { configs }), /same Exchange organization; nothing was sent/);
+});
+
+test('a writer record captured at another module version than the read proof it is imported with is refused', async () => {
+  const { dir } = await signedCapture('exchange-mail-flow');
+  const client = { query: async () => ({ rows: [] }) };
+  const read = { file: 'exchange-read.json', seam: () => ({ ok: true, reads: [], writes: [], grants: null, restorerGrants: null, runtime: { modules: { ExchangeOnlineManagement: '3.10.1' } } }) };
+  const writer = (await importSeams()).find((entry) => entry.file === workloadWritesRecordFile('exchange-mail-flow'));
+  const readFile = (path) => (path.endsWith('exchange-read.json') ? '{}' : readFileSync(path, 'utf8'));
+  const result = await importLedgerInputs(client, { tenantRef, dir, seams: [read, writer], verify: { hmacKey: KEY }, readFile });
+  assert.deepEqual(result.imported.map((item) => item.file), ['exchange-read.json']);
+  assert.match(result.refused[0].failures[0], /ExchangeOnlineManagement 3\.5\.0, but the read proof in this import is at 3\.10\.1/);
+  assert.equal(result.exitCode, 1);
 });
 
 test('a locked retention policy and its rules are never written; a family with no fixture is skipped', async () => {
@@ -322,7 +401,7 @@ test('a policy with no text field changes a switch only when the classifier find
 
 test('nothing is sent when a config names another tenant, the first read fails, or the capture is not confirmed', async () => {
   const live = fakeTenant('teams-org-policies');
-  await assert.rejects(capture('teams-org-policies', live, { configTenants: { collector: TENANT, restorer: '00000000-0000-4000-8000-0000000000ff' } }), /restorer config does not name the managed tenant/);
+  await assert.rejects(capture('teams-org-policies', live, { configs: { collector: { tenantId: TENANT }, restorer: { tenantId: '00000000-0000-4000-8000-0000000000ff' } } }), /restorer config does not name the managed tenant/);
   assert.deepEqual(live.writes, []);
 
   const broken = fakeTenant('teams-org-policies', { hooks: { cmdlet: ({ cmdlet }) => (cmdlet.startsWith('Get-') ? 'crash' : null) } });

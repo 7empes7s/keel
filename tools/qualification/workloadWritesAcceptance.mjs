@@ -16,7 +16,7 @@
  * widen who sees content.
  */
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
-import { classifyWorkloadEffects } from '../../engine/restore/workloads/cmdletSettings.mjs';
+import { classifyWorkloadEffects, WORKLOAD_EFFECT_RULES } from '../../engine/restore/workloads/cmdletSettings.mjs';
 import { exchangeSecretProblems } from './exchangeAcceptance.mjs';
 
 export const WORKLOAD_WRITES_LIVE_GATE = 'workload-writers-live-acceptance';
@@ -30,6 +30,7 @@ export const CAPTURE_TEXT_FIELDS = Object.freeze(['Comments', 'Comment', 'Descri
 export const CAPTURE_CREATE_PREFIX = `${WORKLOAD_FIXTURE_PREFIX}capture-`;
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // A capture belongs to the record it is in: no older than this before observedAt.
 const CAPTURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CLOCK_SKEW_MS = 5 * 60 * 1000;
@@ -74,10 +75,15 @@ function effectsOf(write, from, to) {
   return classifyWorkloadEffects([{ naturalKey: 'capture', resourceType: write.resourceType, verb: 'update', payload: to, live: { state: 'present', payload: from } }]);
 }
 
-/** Text fields first, then (on a policy only) switches. */
+/**
+ * Text fields first, then (on a policy only) switches. A field with an effect rule is
+ * never a candidate: some rules depend on other fields of the object (an inbound
+ * connector's Enabled while ScanAndDropRecipients is set), which the check cannot see.
+ */
 function candidateFields(write) {
-  const text = CAPTURE_TEXT_FIELDS.filter((field) => write.fields.includes(field));
-  const switches = /Rule$/.test(write.resourceType) ? [] : write.fields.filter((field) => !text.includes(field));
+  const ruled = new Set((WORKLOAD_EFFECT_RULES[write.resourceType] ?? []).map((entry) => entry.field));
+  const text = CAPTURE_TEXT_FIELDS.filter((field) => write.fields.includes(field) && !ruled.has(field));
+  const switches = /Rule$/.test(write.resourceType) ? [] : write.fields.filter((field) => !text.includes(field) && !ruled.has(field));
   return [...text.map((field) => ({ field, type: 'text' })), ...switches.map((field) => ({ field, type: 'switch' }))];
 }
 
@@ -122,6 +128,28 @@ function timeProblems(label, capturedAt, observedAt) {
   return [];
 }
 
+/** Whether `capture.identity` (what was sent as -Identity) can only be the recorded fixture. */
+export function identityNamesFixture(write, capture) {
+  const kind = String(capture?.operationId ?? '').endsWith('.add') ? 'add' : 'update';
+  const identity = capture.identity;
+  if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
+  if (kind === 'add' || write.identity === 'name') return identity === capture.fixture;
+  if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
+  return GUID_RE.test(identity);
+}
+
+/** Whether a write request is one a capture made: its cmdlet, its object, its one field, its value or the put-back. */
+function requestFits(capture, request) {
+  const parameters = request?.parameters;
+  if (request?.cmdlet !== capture?.method || !parameters || typeof parameters !== 'object') return false;
+  const keys = Object.keys(parameters).sort();
+  if (capture.field === 'Identity' || keys.length !== 2 || keys.join() !== ['Identity', capture.field].sort().join()) return false;
+  if (parameters.Identity !== capture.identity) return false;
+  const value = parameters[capture.field];
+  if (capture.kind === 'add') return value === capture.target;
+  return sameValue(value, capture.target) || sameValue(value, capture.before);
+}
+
 /**
  * What makes one write capture unacceptable in a record: a write that is not declared,
  * not on a fixture, not a harmless field, or not of this record. Any of these fails
@@ -141,8 +169,13 @@ function structuralProblems(capture, { workload, moduleVersion, observedAt }) {
   if (kind === 'add' && !String(capture.fixture ?? '').toUpperCase().startsWith(CAPTURE_CREATE_PREFIX.toUpperCase())) {
     problems.push(`${id}: a created policy must be named ${CAPTURE_CREATE_PREFIX}*`);
   }
+  if (!identityNamesFixture(write, capture)) problems.push(`${id}: the object named to ${write.method} is not the ${WORKLOAD_FIXTURE_PREFIX} fixture recorded`);
   if (!write.fields.includes(capture.field) || !captureFieldAllowed(write, capture.field, capture.type)) {
     problems.push(`${id}: ${capture.field ?? 'no field'} is not a field a capture may write`);
+  } else if (capture.type === 'switch' && (typeof capture.before !== 'boolean' || capture.target !== !capture.before)) {
+    problems.push(`${id}: a switch capture must flip a true/false value`);
+  } else if (capture.type === 'text' && (typeof capture.target !== 'string' || !(capture.before === null || capture.before === undefined || typeof capture.before === 'string'))) {
+    problems.push(`${id}: a text capture must write text over text`);
   } else if (kind === 'update') {
     const from = { [capture.field]: capture.before ?? null };
     const to = { [capture.field]: capture.target ?? null };
@@ -214,13 +247,34 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
   // Every write sent: a declared Set-/New- of this workload, by the restorer. Reads: the workload's collector.
   const methods = new Set(declared.operations.map((id) => WKLD_WRITE_OPERATIONS[id].method));
   for (const request of Array.isArray(subject.requests) ? subject.requests : []) {
-    if (request?.read !== undefined) {
+    if (request?.read !== undefined && request?.cmdlet === undefined) {
       if (request.read !== workload) failures.push(`a read of ${request.read} is not this workload's collector`);
       if (request.credential !== 'collector') failures.push(`a read was sent with the ${request.credential} credential, not the collector`);
     } else if (!methods.has(request?.cmdlet)) failures.push(`${request?.cmdlet ?? 'an unnamed cmdlet'} is not a declared ${workload} write`);
     else if (request.credential !== 'restorer') failures.push(`${request.cmdlet} was sent with the ${request.credential} credential, not the restorer`);
   }
   if (!Array.isArray(subject.requests)) failures.push('the record lists no requests');
+
+  // Exchange and Purview sessions connect by organization: both must have answered as one,
+  // of this tenant where they reported a tenant id (workloadWritesLive.mjs).
+  if (declared.module === 'ExchangeOnlineManagement') {
+    const org = subject.organization ?? {};
+    const sessions = [org.collector, org.restorer];
+    const tenant = typeof subject.directoryTenantId === 'string' ? subject.directoryTenantId.toLowerCase() : null;
+    if (sessions.some((item) => typeof item?.name !== 'string' || !item.name) || org.collector.name.toLowerCase() !== org.restorer.name.toLowerCase()) {
+      failures.push('the collector and restorer sessions were not shown to be one Exchange organization');
+    } else if (!tenant || sessions.some((item) => item.tenantId != null && item.tenantId !== tenant)) {
+      failures.push('an Exchange session reported another tenant');
+    } else if (!['organization', 'config'].includes(org.tenantIdSource) || (org.tenantIdSource === 'organization' && sessions.some((item) => item.tenantId !== tenant))) {
+      failures.push('the Exchange organization\'s tenant source is not recorded');
+    }
+  }
+
+  // Both refusal probes must have been refused here, before anything was sent.
+  const refusals = subject.refusals ?? {};
+  for (const key of ['remove', 'undeclaredParameter']) {
+    if (refusals[key]?.refused !== true || refusals[key]?.sent !== false) failures.push(`the ${key} probe was not refused before sending`);
+  }
 
   const observedAt = Date.parse(evidence.observedAt ?? '');
   const writes = Array.isArray(subject.writes) ? subject.writes : [];
@@ -229,6 +283,14 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
     if (seen.has(capture?.operationId)) failures.push(`${capture.operationId}: captured twice`);
     seen.add(capture?.operationId);
     failures.push(...structuralProblems(capture, { workload, moduleVersion, observedAt }));
+  }
+  // Every write sent belongs to a capture: one request per add, a write and its put-back per update.
+  const used = new Map();
+  for (const request of Array.isArray(subject.requests) ? subject.requests : []) {
+    if (request?.read !== undefined && request?.cmdlet === undefined) continue;
+    const capture = writes.find((item) => requestFits(item, request) && (used.get(item) ?? 0) < (item.kind === 'add' ? 1 : 2));
+    if (!capture) failures.push(`${request?.cmdlet ?? 'a cmdlet'} on ${request?.parameters?.Identity ?? 'an unnamed object'}: no capture accounts for this write`);
+    else used.set(capture, (used.get(capture) ?? 0) + 1);
   }
   if (provenWrites(subject).length === 0) failures.push('no write was captured, read back and put back: the record proves nothing');
   return failures;

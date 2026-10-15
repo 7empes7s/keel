@@ -26,6 +26,9 @@
  *    compared. A preservation-lock refusal is reported, never retried.
  *  - No content. This never reads or writes files, list items or messages, and makes
  *    no claim that content is recovered.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). These settings are tenant-wide, so on
+ *    the test tenant a change is refused unless the dry run was made with the separate
+ *    tenant-wide option (off by default), at plan time and again before writing.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -35,6 +38,7 @@ import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 
 export const SHAREPOINT_WRITE_OPERATION = 'sharepoint.tenant-settings.update';
 export const SHAREPOINT_RESTORE_EVIDENCE_KIND = 'workload-restore';
@@ -87,13 +91,20 @@ export function workloadPlanDigest(plan) {
   return sha256(rest);
 }
 
+/** The fixture guard for the tenant settings: tenant-wide, so only the tenant-wide option lets them through. */
+function tenantWideProblem({ tenantRef, testTenantRefs, allowTenantWide }) {
+  return fixtureProblem({ tenantRef, testTenantRefs, label: 'the SharePoint tenant settings', tenantWide: true, allowTenantWide });
+}
+
 /**
  * Builds the frozen plan. `source` is a recorded task-102 collection
  * ({ collectionId, tenantHost, outcome, observedTo, observations: [{ resourceKey, fields, fieldCoverage }] });
- * `live` is the tenant settings body read now.
+ * `live` is the tenant settings body read now. `tenantRef` decides the fixture guard;
+ * `allowTenantWide` is the separate tenant-wide option, recorded in the plan.
  */
-export function planSharePointRestore({ source, live, tenantHost }) {
+export function planSharePointRestore({ source, live, tenantHost, tenantRef, testTenantRefs = TEST_TENANT_REFS, allowTenantWide = false }) {
   if (!source?.collectionId) throw new TypeError('a SharePoint restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('a SharePoint restore plan needs the tenant');
   if (typeof tenantHost !== 'string' || source.tenantHost !== tenantHost) {
     throw new Error('the source collection was taken from a different SharePoint tenant');
   }
@@ -137,12 +148,15 @@ export function planSharePointRestore({ source, live, tenantHost }) {
     }
   }
 
+  const notFixture = changes.length ? tenantWideProblem({ tenantRef, testTenantRefs, allowTenantWide }) : null;
+  if (notFixture) changes.length = 0;
   const body = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
-  const { effects, refusals } = changes.length
+  const { effects, refusals: effectRefusals } = changes.length
     ? classifyContentEffects([{
       naturalKey: NATURAL_KEY, resourceType: RESOURCE_TYPE, verb: 'update', payload: { ...live, ...body }, live: { state: 'present', payload: live },
     }])
     : { effects: [], refusals: [] };
+  const refusals = [...effectRefusals, ...(notFixture ? [{ naturalKey: NATURAL_KEY, reason: `not-a-fixture: ${notFixture}` }] : [])];
 
   const plan = {
     workload: SHAREPOINT_WORKLOAD,
@@ -155,6 +169,8 @@ export function planSharePointRestore({ source, live, tenantHost }) {
     contentEffects: effects,
     refusals,
     liveFingerprint: liveSettingsFingerprint(live),
+    // Only a plan made with the option carries it, so other plans keep their digest.
+    ...(allowTenantWide === true ? { allowTenantWide: true } : {}),
   };
   plan.digest = workloadPlanDigest(plan);
   return deepFreeze(plan);
@@ -229,7 +245,7 @@ async function record(client, { tenantRef, artifactId, actor, result }) {
  * verification-failed, verified. Only the last two follow a write.
  */
 export async function executeSharePointRestore(client, {
-  tenantRef, artifactId, tenantHost, transport, qualification, actor = null, sleep,
+  tenantRef, artifactId, tenantHost, transport, qualification, actor = null, sleep, testTenantRefs = TEST_TENANT_REFS,
 }) {
   const requests = [];
   const counted = async (url, init) => { requests.push({ url, method: init?.method ?? 'GET' }); return transport(url, init); };
@@ -257,6 +273,9 @@ export async function executeSharePointRestore(client, {
     return done({ outcome: 'disabled', reasons: [...(qualification?.reasons ?? ['no write qualification was supplied'])] });
   }
   if (plan.operations.length === 0) return done({ outcome: 'no-change', reasons: ['the live settings already match the source'] });
+  // The fixture guard again, before anything is read or written.
+  const notFixture = tenantWideProblem({ tenantRef, testTenantRefs, allowTenantWide: plan.allowTenantWide === true });
+  if (notFixture) return done({ outcome: 'refused', reasons: [notFixture] });
   try {
     await assertContentEffectApproval(client, { artifact, effects: plan.contentEffects });
   } catch (error) {

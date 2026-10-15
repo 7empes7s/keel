@@ -31,6 +31,9 @@
  *    that target's operation `stale`.
  *  - Errors are structured; an ambiguous outcome is reconciled by re-reading and is
  *    never sent a second time.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant the label or policy
+ *    written, and every label a policy publishes again, must be a KEEL-RT- fixture, at
+ *    plan time and again before writing.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -43,6 +46,7 @@ import { appendEvidence } from '../../govern/evidence.mjs';
 import { CmdletError } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 
 export const PURVIEW_LABEL_WRITE = 'purview.label.update';
 export const PURVIEW_POLICY_WRITE = 'purview.label-policy.update';
@@ -149,12 +153,29 @@ function planTarget({ observation, live, manual }) {
 }
 
 /**
+ * Why the fixture guard refuses this operation, or null. `entries` are the object as
+ * read live and as recorded; each is known by its Name. A policy's added labels are
+ * fixtures too.
+ */
+function purviewFixtureProblem(op, entries, { tenantRef, testTenantRefs }) {
+  const label = op.group === 'policy' ? 'the label policy' : 'the label';
+  for (const entry of entries) {
+    const problem = fixtureProblem({ tenantRef, testTenantRefs, label, names: [entry?.fields?.Name] });
+    if (problem) return problem;
+  }
+  const added = op.changes.find((change) => change.field === 'AddLabels')?.after ?? [];
+  return added.length ? fixtureProblem({ tenantRef, testTenantRefs, label: 'a label published', names: added }) : null;
+}
+
+/**
  * Builds the frozen plan. `source` is a recorded task-106 collection
  * (loadPurviewCollection); `live` is readPurview(...) read now. `targets` lists the
  * label and policy resource keys to restore (`label:{id}`, `label-policy:{id}`).
+ * `tenantRef` decides the fixture guard.
  */
-export function planPurviewRestore({ source, live, tenantId, targets }) {
+export function planPurviewRestore({ source, live, tenantId, targets, tenantRef, testTenantRefs = TEST_TENANT_REFS }) {
   if (!source?.collectionId) throw new TypeError('a Purview restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('a Purview restore plan needs the tenant');
   if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
   if (!Array.isArray(targets) || targets.length === 0) throw new TypeError('name at least one label or label policy to restore');
@@ -165,6 +186,7 @@ export function planPurviewRestore({ source, live, tenantId, targets }) {
   const excluded = [];
   const operations = [];
   const resources = [];
+  const notFixtures = [];
   const lock = {};
   const liveFingerprints = {};
   const failedGroups = new Set((live?.failures ?? []).map((failure) => failure.group));
@@ -192,10 +214,16 @@ export function planPurviewRestore({ source, live, tenantId, targets }) {
     if (!changes.length) continue;
     const spec = OPERATIONS[group];
     const values = Object.fromEntries(changes.map(({ field, after }) => [field, after]));
-    operations.push({
+    const op = {
       key: `${group}:${key}`, kind: group, group, resourceKey: key, operationId: spec.operationId, naturalKey: `purview:${key}`,
       cmdlet: spec.cmdlet, changes, parameters: { Identity: current.id, ...values },
-    });
+    };
+    const notFixture = purviewFixtureProblem(op, [current, observation], { tenantRef, testTenantRefs });
+    if (notFixture) {
+      notFixtures.push({ naturalKey: op.naturalKey, reason: `not-a-fixture: ${notFixture}` });
+      continue;
+    }
+    operations.push(op);
     const payload = group === 'policy'
       ? { ...current.fields, Labels: [...list(current.fields.Labels), ...values.AddLabels ?? []] }
       : { ...current.fields, ...values };
@@ -217,7 +245,7 @@ export function planPurviewRestore({ source, live, tenantId, targets }) {
     excluded,
     lock,
     contentEffects: classified.effects,
-    refusals: classified.refusals,
+    refusals: [...classified.refusals, ...notFixtures],
     liveFingerprints,
   };
   plan.digest = purviewPlanDigest(plan);
@@ -270,7 +298,9 @@ async function recordOperation(client, { tenantRef, artifactId, actor, op, resul
  * Operation outcomes: disabled, blocked-content-effect, refused, stale, failed,
  * verification-failed, verified.
  */
-export async function executePurviewRestore(client, { tenantRef, artifactId, tenantId, powershell = {}, qualifications = {}, actor = null }) {
+export async function executePurviewRestore(client, {
+  tenantRef, artifactId, tenantId, powershell = {}, qualifications = {}, actor = null, testTenantRefs = TEST_TENANT_REFS,
+}) {
   const artifact = await getDryRunArtifact(client, { id: artifactId, tenantRef });
   const by = actor ?? artifact?.requestedBy ?? 'keel';
   const finish = async (result) => {
@@ -317,7 +347,7 @@ export async function executePurviewRestore(client, { tenantRef, artifactId, ten
       runnable = runnable.filter((item) => !plan.contentEffects.some((effect) => effect.naturalKey === item.naturalKey));
     }
   }
-  if (runnable.length) await runOperations(plan, runnable, { powershell, settle });
+  if (runnable.length) await runOperations(plan, runnable, { powershell, settle, tenantRef, testTenantRefs });
 
   const operations = plan.operations.map((op) => results.get(op.key));
   const outcomes = new Set(operations.map((op) => op.outcome));
@@ -333,7 +363,7 @@ const liveEntry = (live, op) => (live.failures.some((failure) => failure.group =
   ? null
   : live.resources.find((item) => item.resourceKey === op.resourceKey) ?? null);
 
-async function runOperations(plan, runnable, { powershell, settle }) {
+async function runOperations(plan, runnable, { powershell, settle, tenantRef, testTenantRefs }) {
   // Re-read: nothing an operation touches may have changed since the dry run.
   const live = await readPurview({ powershell });
   for (const op of runnable) {
@@ -344,6 +374,12 @@ async function runOperations(plan, runnable, { powershell, settle }) {
     }
     if (entry.lock === 'locked') {
       await settle(op, { outcome: 'refused', reasons: ['the object now reports a preservation lock; KEEL never changes a locked label or policy'] });
+      continue;
+    }
+    // The fixture guard again, on the object as read now.
+    const notFixture = purviewFixtureProblem(op, [entry], { tenantRef, testTenantRefs });
+    if (notFixture) {
+      await settle(op, { outcome: 'refused', reasons: [notFixture] });
       continue;
     }
     await runCmdletOperation(op, { powershell, settle });

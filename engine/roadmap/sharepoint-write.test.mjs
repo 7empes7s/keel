@@ -18,6 +18,7 @@ import { after, test } from 'node:test';
 import { grantRole } from '../authz/administration.mjs';
 import { recordSharePointRun } from '../collect/workloads/sharepoint.mjs';
 import { WORKLOAD_WRITE_OPERATIONS, buildOperationLedger, workloadWriteQualification } from '../coverage/qualification.mjs';
+import { OPERATOR_TEST_TENANT_POLICY, standingPolicyRefusal } from '../govern/approvalPolicy.mjs';
 import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import {
   SHAREPOINT_RESTORE_EVIDENCE_KIND, SHAREPOINT_WRITE_OPERATION, createSharePointRestoreArtifact, executeSharePointRestore,
@@ -26,6 +27,7 @@ import {
 import { ContentEffectApprovalError, approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -116,7 +118,7 @@ const qualified = (tenantRef) => workloadWriteQualification(SHAREPOINT_WRITE_OPE
 
 async function planned(client, tenantRef, live, { requester } = {}) {
   const source = await recordSource(client, tenantRef);
-  const plan = planSharePointRestore({ source, live, tenantHost: HOST });
+  const plan = planSharePointRestore({ source, live, tenantHost: HOST, tenantRef });
   const requestedBy = requester ?? await principal(client, `${tenantRef}-requester`, 'restorer');
   const artifact = await createSharePointRestoreArtifact(client, { tenantRef, plan, requestedBy });
   return { plan, artifact, requestedBy };
@@ -129,7 +131,7 @@ test('the plan writes only the supported tenant fields; site settings stay manua
   const tenantRef = nextTenant();
   const source = await recordSource(client, tenantRef, { coverage: { sharingBlockedDomainList: 'denied' } });
   const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing', sharingBlockedDomainList: ['contoso-rival.com'], deletedUserPersonalSiteRetentionPeriodInDays: 30 };
-  const plan = planSharePointRestore({ source, live, tenantHost: HOST });
+  const plan = planSharePointRestore({ source, live, tenantHost: HOST, tenantRef });
 
   assert.equal(plan.operations.length, 1);
   assert.deepEqual(plan.operations[0].body, { sharingCapability: 'externalUserSharingOnly' });
@@ -148,7 +150,7 @@ test('the plan writes only the supported tenant fields; site settings stay manua
   assert.ok(Object.isFrozen(plan) && Object.isFrozen(plan.operations[0].body));
   assert.throws(() => { plan.operations[0].body.sharingCapability = 'disabled'; }, TypeError);
   // A source from another SharePoint tenant is refused.
-  assert.throws(() => planSharePointRestore({ source, live, tenantHost: 'fabrikam.sharepoint.com' }), /different SharePoint tenant/);
+  assert.throws(() => planSharePointRestore({ source, live, tenantHost: 'fabrikam.sharepoint.com', tenantRef }), /different SharePoint tenant/);
 });
 
 test('workload types never enter Entra waves', () => {
@@ -299,4 +301,50 @@ test('a preservation-lock refusal is reported once and never retried', async (t)
   const tampered = await executeSharePointRestore(client, { tenantRef, artifactId: other.id, tenantHost: HOST, transport: clean.transport, qualification: qualified(tenantRef) });
   assert.equal(tampered.outcome, 'refused');
   assert.equal(clean.requests.length, 0);
+});
+
+// ------------------------------------------------------- test tenant fixtures
+
+test('on the test tenant the tenant settings are tenant-wide: refused unless the separate option is on, at plan time and before writing', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const testTenantRefs = [tenantRef];
+  const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
+  const source = await recordSource(client, tenantRef);
+  const requestedBy = await principal(client, `${tenantRef}-requester`, 'restorer');
+
+  const off = planSharePointRestore({ source, live, tenantHost: HOST, tenantRef, testTenantRefs });
+  assert.deepEqual(off.operations, []);
+  assert.equal(off.refusals.length, 1);
+  assert.match(off.refusals[0].reason, /^not-a-fixture: .*tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/);
+  assert.equal(off.allowTenantWide, undefined);
+  assert.equal((await createSharePointRestoreArtifact(client, { tenantRef, plan: off, requestedBy })).status, 'refused');
+  // Off the test tenant nothing changes, and the plan keeps its digest.
+  const customer = planSharePointRestore({ source, live, tenantHost: HOST, tenantRef, testTenantRefs: [] });
+  assert.equal(customer.operations.length, 1);
+  assert.equal(customer.digest, planSharePointRestore({ source, live, tenantHost: HOST, tenantRef }).digest);
+  assert.throws(() => planSharePointRestore({ source, live, tenantHost: HOST }), /needs the tenant/);
+
+  // With the option the change is planned, recorded in the plan, and needs a person's approval.
+  const on = planSharePointRestore({ source, live, tenantHost: HOST, tenantRef, testTenantRefs, allowTenantWide: true });
+  assert.equal(on.operations.length, 1);
+  assert.equal(on.allowTenantWide, true);
+  const artifact = await createSharePointRestoreArtifact(client, { tenantRef, plan: on, requestedBy });
+  assert.equal(artifact.status, 'completed');
+  const covered = { tenantRef, targetTenantId: HOST, workloadRestore: customer };
+  const refs = [tenantRef, tenantRefFor(HOST)];
+  const request = { action: 'restore' };
+  assert.equal(standingPolicyRefusal({ policy: OPERATOR_TEST_TENANT_POLICY, tenantRef, request, artifact: covered, testTenantRefs: refs }), null);
+  assert.match(standingPolicyRefusal({ policy: OPERATOR_TEST_TENANT_POLICY, tenantRef, request, artifact: { ...covered, workloadRestore: on }, testTenantRefs: refs }), /a person approves it/);
+  const graph = fakeSharePoint(live);
+  const written = await executeSharePointRestore(client, { tenantRef, artifactId: artifact.id, tenantHost: HOST, transport: graph.transport, qualification: qualified(tenantRef), testTenantRefs });
+  assert.equal(written.outcome, 'verified', written.reasons.join('; '));
+
+  // A plan made where the guard did not apply never writes the test tenant's settings.
+  const older = await createSharePointRestoreArtifact(client, { tenantRef, plan: customer, requestedBy });
+  const untouched = fakeSharePoint(live);
+  const refused = await executeSharePointRestore(client, { tenantRef, artifactId: older.id, tenantHost: HOST, transport: untouched.transport, qualification: qualified(tenantRef), testTenantRefs });
+  assert.equal(refused.outcome, 'refused');
+  assert.match(refused.reasons[0], /KEEL-RT- fixtures/);
+  assert.equal(untouched.requests.length, 0);
 });

@@ -67,7 +67,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const tenantHost = required(request.tenantHost, '--tenant-host <host>');
       const recorded = await source(loadSharePointSource, client, { tenantRef, collectionId: request.collectionId }, 'SharePoint');
       const live = await readLiveSettings({ transport: connection.transport, sleep });
-      return planSharePointRestore({ source: recorded, live, tenantHost });
+      return planSharePointRestore({ source: recorded, live, tenantHost, tenantRef, allowTenantWide: request.allowTenantWide === true });
     },
     create: createSharePointRestoreArtifact,
     // The plan's host is used because the restorer's tenant was already matched
@@ -105,7 +105,9 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const live = await readLiveExchange({
         transport: connection.transport, powershell: connection.powershell, mailbox, includeOrganization, sleep,
       });
-      return planExchangeRestore({ source: recorded, live, tenantId, mailbox, includeOrganization });
+      return planExchangeRestore({
+        source: recorded, live, tenantId, tenantRef, mailbox, includeOrganization, allowTenantWide: request.allowTenantWide === true,
+      });
     },
     create: createExchangeRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications, sleep }) => executeExchangeRestore(client, {
@@ -120,7 +122,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const teamId = required(request.teamId, '--team <team id>');
       const recorded = await source(loadTeamsSource, client, { tenantRef, collectionId: request.collectionId }, 'Teams');
       const live = await readLiveTeam({ transport: connection.transport, teamId, sleep });
-      return planTeamsRestore({ source: recorded, live, tenantId, teamId });
+      return planTeamsRestore({ source: recorded, live, tenantId, teamId, tenantRef });
     },
     create: createTeamsRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications, sleep }) => executeTeamsRestore(client, {
@@ -134,7 +136,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
     async plan(client, { tenantRef, tenantId, request, connection }) {
       const recorded = await source(loadPurviewCollection, client, { tenantRef, collectionId: request.collectionId }, 'Purview');
       const live = await readPurview({ powershell: connection.powershell });
-      return planPurviewRestore({ source: recorded, live, tenantId, targets: request.targets ?? [] });
+      return planPurviewRestore({ source: recorded, live, tenantId, targets: request.targets ?? [], tenantRef });
     },
     create: createPurviewRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications }) => executePurviewRestore(client, {

@@ -256,11 +256,11 @@ async function recordedSource(client, tenantRef, tenant = sourceTenant()) {
   const { run } = await collectPurview(client, { tenantRef, ledger, powershell: tenant.powershell, now: () => NOW });
   return loadPurviewCollection(client, { tenantRef, collectionId: run.id });
 }
-async function planned(client, tenantRef, live, targets, source = null) {
+async function planned(client, tenantRef, live, targets, source = null, guard = {}) {
   const recorded = source ?? await recordedSource(client, tenantRef);
   const read = await readPurview({ powershell: live.powershell });
   live.calls.length = 0;
-  const plan = planPurviewRestore({ source: recorded, live: read, tenantId: TENANT, targets });
+  const plan = planPurviewRestore({ source: recorded, live: read, tenantId: TENANT, targets, tenantRef, ...guard });
   const artifact = await createPurviewRestoreArtifact(client, { tenantRef, plan, requestedBy: await principal(client, 'requester') });
   return { plan, artifact };
 }
@@ -675,4 +675,60 @@ test('a preservation lock refuses, at plan time, before writing and from the pla
   assert.deepEqual(platform.writes(), ['Set-LabelPolicy']);
   const [row] = await evidenceRows(client, tenant3);
   assert.equal(row.error.errorId, 'PreservationLockException');
+});
+
+// ------------------------------------------------------- test tenant fixtures
+
+test('on the test tenant only KEEL-RT- labels and policies are written, and a policy publishes only KEEL-RT- labels again', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const guard = { testTenantRefs: [tenantRef] };
+  const targets = [`label:${CONFIDENTIAL}`, `label-policy:${POLICY}`];
+
+  // Real labels and a real policy: nothing is planned.
+  const real = await planned(client, tenantRef, fakeTenant({
+    labels: [label(CONFIDENTIAL, 'Confidential', { DisplayName: 'Conf' }), label(PUBLIC, 'Public')],
+    policies: [policy({ Labels: ['Confidential'] })],
+  }), targets, null, guard);
+  assert.deepEqual(real.plan.operations, []);
+  assert.deepEqual(real.plan.refusals.map((refusal) => refusal.naturalKey), targets.map((key) => `purview:${key}`));
+  assert.match(real.plan.refusals[0].reason, /^not-a-fixture: .*the label \(Confidential\) is not one/);
+  assert.match(real.plan.refusals[1].reason, /^not-a-fixture: .*the label policy \(Global label policy\) is not one/);
+  assert.equal(real.artifact.status, 'refused');
+
+  // Fixtures: both are written and verified.
+  const fixtureLabels = (extra = {}) => [label(CONFIDENTIAL, 'KEEL-RT-Confidential', extra), label(PUBLIC, 'KEEL-RT-Public')];
+  const fixturePolicy = (labels) => policy({ Name: 'KEEL-RT-Policy', Labels: labels });
+  const source = await recordedSource(client, tenantRef, fakeTenant({ labels: fixtureLabels(), policies: [fixturePolicy(['KEEL-RT-Confidential', 'KEEL-RT-Public'])] }));
+  const live = fakeTenant({ labels: fixtureLabels({ DisplayName: 'Conf' }), policies: [fixturePolicy(['KEEL-RT-Confidential'])] });
+  const { plan, artifact } = await planned(client, tenantRef, live, targets, source, guard);
+  assert.deepEqual(plan.refusals, []);
+  assert.deepEqual(plan.operations.map((op) => op.cmdlet), ['Set-Label', 'Set-LabelPolicy']);
+  const result = await executePurviewRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, powershell: live.powershell, qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef] });
+  assert.equal(result.outcome, 'verified');
+  assert.deepEqual(live.writes(), ['Set-Label', 'Set-LabelPolicy']);
+
+  // A fixture policy never publishes a label that is not a fixture again.
+  const mixedSource = await recordedSource(client, tenantRef, fakeTenant({
+    labels: [label(CONFIDENTIAL, 'KEEL-RT-Confidential'), label(PUBLIC, 'Public')], policies: [fixturePolicy(['KEEL-RT-Confidential', 'Public'])],
+  }));
+  const mixed = await planned(client, tenantRef, fakeTenant({
+    labels: [label(CONFIDENTIAL, 'KEEL-RT-Confidential'), label(PUBLIC, 'Public')], policies: [fixturePolicy(['KEEL-RT-Confidential'])],
+  }), [`label-policy:${POLICY}`], mixedSource, guard);
+  assert.deepEqual(mixed.plan.operations, []);
+  assert.match(mixed.plan.refusals[0].reason, /a label published \(Public\) is not one/);
+  assert.throws(() => planPurviewRestore({ source, live: { resources: [], failures: [] }, tenantId: TENANT, targets }), /needs the tenant/);
+});
+
+test('on the test tenant the guard runs again before each Purview write', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // A plan made where the guard did not apply (an older plan) still never writes a real label.
+  const live = fakeTenant({ labels: [label(CONFIDENTIAL, 'Confidential', { DisplayName: 'Conf' }), label(PUBLIC, 'Public')] });
+  const { plan, artifact } = await planned(client, tenantRef, live, [`label:${CONFIDENTIAL}`], null, { testTenantRefs: [] });
+  assert.equal(plan.operations.length, 1);
+  const result = await executePurviewRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, powershell: live.powershell, qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef] });
+  assert.deepEqual(result.operations.map((op) => op.outcome), ['refused']);
+  assert.match(result.operations[0].reasons[0], /KEEL-RT- fixtures/);
+  assert.deepEqual(live.writes(), []);
 });

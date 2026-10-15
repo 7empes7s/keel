@@ -2929,7 +2929,30 @@ item that needs it stays untouched.
 ### Q63: Let the Restorer write mail only in keel-rt- test mailboxes, place one test message in alice's Inbox, rerun the backup
 - Drafted by the "Scoped mail write for test email" thread (2026-10-15). Q62 step 3 could not create the mail fixture: the
   Restorer has no mail write permission. #268 (stale mail delta cursor) is fixed by PR #270 (merge 7b2f2d2).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 07:47–07:52 UTC. Credentials: the Restorer (EXO PowerShell app-only, plus Graph); the Content Reader for the backup.
+  Global admin not used. No Entra Mail.* permission, manifest change or appRoleAssignment.
+  - **Step 1:** the Restorer SP holds 55 Graph roles. Mail-related: only MailboxSettings.ReadWrite; no Mail.Read*, Mail.ReadWrite or Mail.Send.
+  - **Step 2:** `Get-Mailbox` has no `-RecipientPreviewFilter` in EXO V3, so the preview used `Get-Recipient -RecipientPreviewFilter`.
+    - Preview, 2 recipients, both keel-rt-: keel-rt-20260908-alice and keel-rt-20260908-collaboration (the hub group's mailbox).
+    - Created (none existed): EXO service principal "Keel Restorer"; management scope **KEEL-RT-test-mailboxes**
+      (RecipientRestrictionFilter `PrimarySmtpAddress -like 'keel-rt-*'`); role assignment **KEEL-RT-restorer-mail-rw**
+      (Application Mail.ReadWrite, CustomResourceScope KEEL-RT-test-mailboxes, enabled).
+  - **Step 3:** Test-ServicePrincipalAuthorization: alice, Application Mail.ReadWrite **InScope=True**. The non-test mailbox
+    AdeleV (a Microsoft demo user; not break-glass, the admin or Marouane), **InScope=False**.
+  - **Step 4:** POST to alice's Inbox: **201 on the first try at 07:48:00 UTC** (no propagation wait). Message AAMkAGEw…,
+    subject KEEL-RT-20261015-mail, isDraft false. 1 message with that subject.
+  - **Step 5:** `GET /users/AdeleV…/mailFolders/inbox/messages?$top=1` as the Restorer: **403 ErrorAccessDenied**. The assignment is kept.
+  - **Step 6:** /opt/keel-live at 811d7e65, which includes 7b2f2d2 (#270). The run's **exit code was 0**:
+      exchange-mail: succeeded (9 items, 3327 bytes)
+      onedrive: succeeded (0 items, 0 bytes)
+      sharepoint-sites: succeeded (853 items, 2685218 bytes)
+      teams: succeeded (11 items, 271885 bytes)
+      planner: succeeded (8 items, 11975 bytes)
+    - exchange-mail: 11 rows / 4219 bytes, up from 2 / 892: 8 mailFolder rows and 1 message, plus calendars and todo-lists.
+      The message row's item_key equals the Graph id of KEEL-RT-20261015-mail (kind message, isDraft false, message/rfc822).
+      So #268 is fixed by #270, and the stale cursor was replaced.
+    - teams again stored +11 rows (33 → 44) with no change: #269 still open.
 - Needs: none. Decision: D-Q63 (filled).
 - **Rules:** test tenant. The only permission change is the Exchange RBAC for Applications setup below, for the Keel Restorer
   (appId 12f8942f-c4d0-4a0d-aee1-efe928b1de54, SP object id 8cd199c9-a96e-4666-924f-aa0ca6910f32). **Do not** add Graph

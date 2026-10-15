@@ -75,6 +75,19 @@ try {
   assert.equal(await can(client, boundary, 'read', until), false);
   assert.equal(await can(client, boundary, 'read', new Date(until.getTime() - 1)), true);
 
+  // --- a grant made in the same millisecond as the check is live (#307) ---
+  // active_from defaults to Postgres now() (microseconds); `at` is a JS Date (milliseconds).
+  const sameMs = await addPrincipal({ email: 'same-ms@example.com' });
+  const checkedAt = new Date(Date.now() - 60_000);
+  await client.query(
+    `INSERT INTO role_grant (principal_id, role, active_from, active_until, granted_by, reason)
+     VALUES ($1, 'viewer', $2::timestamptz + interval '500 microseconds',
+             $2::timestamptz + interval '60000500 microseconds', 'test', 'test grant')`,
+    [sameMs.id, checkedAt],
+  );
+  assert.equal(await can(client, sameMs, 'read', checkedAt), true);
+  assert.equal(await can(client, sameMs, 'read', new Date(checkedAt.getTime() + 60_000)), false);
+
   // --- a null active_until is open-ended ---
   const openEnded = await addPrincipal({ email: 'open@example.com' });
   await grant({ principalId: openEnded.id, role: 'restorer', activeFrom: past, activeUntil: null });

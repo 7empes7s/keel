@@ -32,6 +32,7 @@ import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { withExplicitReferences } from '../coverage/qualification.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
+import { followUpSteps } from './bestEffortRecreate.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
@@ -277,6 +278,9 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     ? Object.keys(body).filter((field) => field !== '@odata.type' && field !== 'id')
     : changedRecordFields(record, payload, before, verb);
 
+  // A recreate lists the parts the backup cannot give back (ENTRA's
+  // best-effort rule), worked out before anything is written.
+  const followUp = verb === 'create' ? { followUp: followUpSteps(resource.resourceType, payload, { decision: 'automated' }) } : {};
   if (verb === 'create') {
     const existingId = ctx.existingTargetIds?.get(naturalKey);
     if (existingId) {
@@ -293,7 +297,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
-  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields } } };
+  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields }, ...followUp } };
   if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };
 
   const entry = await journal(ctx, resource, { operation: verb, targetId, priorState: before, intendedState: body });
@@ -354,6 +358,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
       naturalKey, targetId,
       changes,
       ...(extra?.completion?.length ? { completion: extra.completion } : {}),
+      ...followUp,
     },
   };
 }

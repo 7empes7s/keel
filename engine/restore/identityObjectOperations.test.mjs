@@ -232,6 +232,11 @@ test('a lifecycle workflow is created switched off, with its tasks, and turning 
   assert.equal(post.body.tasks[0].id, undefined);
   for (const field of ['id', 'version', 'createdBy']) assert.equal(field in post.body, false, field);
   assert.deepEqual(result.applied.completion.map((item) => item.requirement), ['isEnabled', 'isSchedulingEnabled']);
+  // The best-effort rule: the parts the backup cannot give back are named, with where to do them.
+  const switching = result.applied.followUp.find((step) => /Switching the workflow on/.test(step.part));
+  assert.equal(switching.actionable, true);
+  assert.match(switching.portalPath, /Lifecycle workflows/);
+  assert.ok(result.applied.followUp.some((step) => step.actionable === false), 'run history is listed as a record only');
 });
 
 test('a lifecycle workflow update never switches it on, and writes changed tasks as a new version', async () => {

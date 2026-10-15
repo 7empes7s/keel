@@ -4053,3 +4053,18 @@ item that needs it stays untouched.
   2. `SELECT job_kind, tier, cadence, cron_override, enabled, next_due_at FROM schedule ORDER BY job_kind, tier`.
      Expect `discover` enabled with next_due_at 2026-10-19 04:00 UTC and the other rows unchanged.
 - **Report:** steps 1-2. The first scheduled run is 2026-10-19 04:00 UTC; a later thread checks its job row.
+
+### Q85: Why discovery's unreadable types say "needs <grant>" (read-only, DB query plus the Collector's token roles)
+- Drafted by the "Discovery unreadable reason" thread (2026-10-15). Q82 printed `needs <grant>` on unreadable types for
+  grants the Collector already holds. The hint is only set on 401/403 answers, from Graph's own message or else from a
+  documented path-prefix table, so the 400/404 lines are not where it comes from. This item shows the real reasons.
+- Needs: Q82 done (discovery run 1 stored).
+- Status: todo
+- Result:
+- Do (read only: no tenant writes, no grants, no approvals; never print the token itself):
+  1. `set -a; . /etc/keel/db.env; set +a; psql "$KEEL_DB_URL" -c "SELECT reason, http_status, grant_source, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' GROUP BY 1,2,3 ORDER BY 4 DESC"`
+  2. `psql "$KEEL_DB_URL" -c "SELECT left(message, 160) AS message, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' AND http_status IN (401, 403) GROUP BY 1 ORDER BY 2 DESC LIMIT 25"`
+  3. `psql "$KEEL_DB_URL" -c "SELECT source, name, missing_grant, left(message, 200) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' AND missing_grant IN ('DeviceManagementConfiguration.Read.All','SecurityEvents.Read.All','Directory.Read.All','Reports.Read.All','Policy.Read.All') ORDER BY missing_grant, name LIMIT 40"`
+  4. The Collector's granted application roles, read from its token's `roles` claim (prints the role names only):
+     `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+- **Report:** the output of steps 1-4 in Result, and a comment on the PR from the "Discovery unreadable reason" thread if one is open.

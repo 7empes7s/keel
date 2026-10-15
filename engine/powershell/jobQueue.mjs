@@ -17,14 +17,19 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IMAGE = 'keel-powershell:latest';
 export const DEFAULT_MEMORY = '1g';
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 export const DEFAULT_CREDENTIAL_MOUNT = '/etc/keel';
-/** The deployed container scripts (run-job.sh, run-cmdlet.ps1, probe-workloads.ps1). */
-export const DEFAULT_SCRIPT_MOUNT = fileURLToPath(new URL('../../ops/powershell', import.meta.url));
+/**
+ * The deployed container scripts (run-job.sh, run-cmdlet.ps1, probe-workloads.ps1).
+ * A function, as catalogue.mjs does: a `new URL(literal, import.meta.url)` makes the
+ * portal's bundler resolve the directory as a module.
+ */
+export const defaultScriptMount = () => join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'ops', 'powershell');
 export const CONTAINER_SCRIPT_DIR = '/app';
 
 export class JobQueueError extends Error {
@@ -91,7 +96,7 @@ export async function runJob(job, options = {}) {
     memory = DEFAULT_MEMORY,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     credentialMount = DEFAULT_CREDENTIAL_MOUNT,
-    scriptMount = DEFAULT_SCRIPT_MOUNT,
+    scriptMount = defaultScriptMount(),
     dockerBin = 'docker',
     spawnFn = spawn,
   } = options;

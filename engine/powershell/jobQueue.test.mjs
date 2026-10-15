@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { EventEmitter } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { runJob, JobQueueError, DEFAULT_MEMORY, DEFAULT_SCRIPT_MOUNT } from './jobQueue.mjs';
+import { runJob, JobQueueError, DEFAULT_MEMORY, defaultScriptMount } from './jobQueue.mjs';
 
 /**
  * Builds a fake ChildProcess-shaped object. Emits its scripted stdout/stderr
@@ -203,9 +203,10 @@ async function run() {
     let args;
     const spawnFn = (bin, a) => { args = a; return makeFakeChild({ stdoutChunks: ['[]'] }); };
     await runJob({ mode: 'probe' }, { spawnFn });
-    assert.equal(DEFAULT_SCRIPT_MOUNT, fileURLToPath(new URL('../../ops/powershell', import.meta.url)));
-    assert.ok(args.includes(`${DEFAULT_SCRIPT_MOUNT}:/app:ro`), 'the deployed scripts must be mounted read-only over /app');
-    assert.ok(args.indexOf(`${DEFAULT_SCRIPT_MOUNT}:/app:ro`) < args.length - 1, 'the mount comes before the image');
+    const mount = defaultScriptMount();
+    assert.equal(mount, fileURLToPath(new URL('../../ops/powershell', import.meta.url)));
+    assert.ok(args.includes(`${mount}:/app:ro`), 'the deployed scripts must be mounted read-only over /app');
+    assert.ok(args.indexOf(`${mount}:/app:ro`) < args.length - 1, 'the mount comes before the image');
 
     await runJob({ mode: 'probe' }, { spawnFn, scriptMount: null });
     assert.ok(!args.some((a) => String(a).endsWith(':/app:ro')), 'scriptMount null keeps the image copy');

@@ -4253,7 +4253,23 @@ item that needs it stays untouched.
   settings' read Name (DefaultGlobalPolicy). PR #346 (merged as 244756b) sends the documented fixed identity `-Identity DefaultGlobalTag`
   for `exchange-extended.quarantine-global-settings.update`, only on the one tenant-wide object.
 - Needs: `/opt/keel-live` at 244756b or later.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 20:30–20:38 UTC on B = 244756bd (includes #346), run exactly as Q87: default image, `--allow-tenant-wide-test-writes`,
+  `--module-version 3.10.1`. Test tenant only. Global admin not used.
+  - **Capture: exit 0. verify --require-live: exit 0.** No exit 3; needsManualRevert [].
+  - `exchange-extended.quarantine-global-settings.update`: **still not proven**. ok false, readBackVerified false, restoredToOriginal false
+    (nothing written). Field OrganizationBrandingEnabled, scope tenant-wide.
+    - error: `Set-QuarantinePolicy failed: … The operation couldn't be performed because object 'DefaultGlobalTag' couldn't be found on '<EXO server>'.`
+  - `exchange-extended.quarantine-policy.update`: skipped (no KEEL-RT- quarantine policy).
+  - `exchange-extended.connection-filter-policy.update`: proven again.
+  - **Read as the Collector**, `Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy`: 1 object. Name `DefaultGlobalPolicy`, Identity
+    `<org>.onmicrosoft.com\DefaultGlobalPolicy`, DistinguishedName `CN=DefaultGlobalPolicy,CN=Quarantine Settings,CN=Transport Settings,…`,
+    a Guid and ExchangeObjectId present, type GlobalQuarantineTag.
+    - So in this tenant neither `DefaultGlobalTag` (Q88) nor the bare Name `DefaultGlobalPolicy` (Q87) resolves for Set-QuarantinePolicy.
+    - Untested candidates: the full Identity `<org>.onmicrosoft.com\DefaultGlobalPolicy`, or the object's real Guid. Q67's "a Guid is
+      refused" came from the pseudonymized value.
+    - Not tried here: I didn't improvise writes outside the tool.
+  - Record not committed: it proves only what PR #344 already holds. Commented on #339.
 - Do: exactly Q87's steps 1-3 (default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`),
   with the record going to a new evidence PR that replaces #344's exchange-extended record if #344 has merged, or onto #344 if it is open.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,

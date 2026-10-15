@@ -3107,8 +3107,8 @@ item that needs it stays untouched.
   5. Same command with `--json`, and report from it only: `mode`, the snapshot it compared, the difference count,
      and the list of types or workloads marked "not compared" (with the reason).
   6. Refusal check: the same `live` command with a principal that does not hold `read` (or a random uuid). Expect exit 2.
-  7. Portal: open `/compare` once as Marouane's principal is not needed; instead `curl -s -o /dev/null -w '%{http_code}'`
-     `http://127.0.0.1:<portal port>/api/compare` without a session and report the code (expect 401 or 403, not 200).
+  7. Portal gate: `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:<keel-portal's local port>/api/compare`
+     with no session, and report the code (expect 401 or 403, never 200).
 - **Report:** the deployed commit; exit codes of steps 3, 4 and 6; the step 5 fields; anything that looks wrong
   (a type shown as removed that you know still exists is a bug: name the type). No ids, tokens or payload values.
 

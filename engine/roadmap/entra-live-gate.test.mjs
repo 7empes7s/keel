@@ -617,14 +617,14 @@ test('the CLIs refuse without the signing key and print the plan', async () => {
 // Last: it changes the registry for the rest of this file.
 test('a newly registered write appears in the plan with no edit to the generator', () => {
   const before = buildLiveGatePlan();
-  assert.ok(!before.steps.some((step) => step.id === 'servicePrincipal:update'));
-  registerOperationCapability({ resourceType: 'servicePrincipal', operation: 'update', path: '/servicePrincipals', handler: 'fixture#handler', idOutcome: 'preserved' });
-  recordFixtureProof('servicePrincipal', 'update', 'engine/roadmap/entra-live-gate.test.mjs');
+  assert.ok(!before.steps.some((step) => step.id === 'application:delete'));
+  registerOperationCapability({ resourceType: 'application', operation: 'delete', path: '/applications', handler: 'fixture#handler', idOutcome: 'terminal' });
+  recordFixtureProof('application', 'delete', 'engine/roadmap/entra-live-gate.test.mjs');
   const after = buildLiveGatePlan();
   assert.equal(after.operationCount, before.operationCount + 1);
-  const added = after.steps.find((step) => step.id === 'servicePrincipal:update');
+  const added = after.steps.find((step) => step.id === 'application:delete');
   assert.ok(added);
-  assert.match(added.promote, /servicePrincipal\.update\.json/);
+  assert.match(added.promote, /application\.delete\.json/);
 });
 
 // Q46: a branding file upload (#199, gap M6) is its own write, journaled

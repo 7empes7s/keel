@@ -21,6 +21,7 @@ import { FIELD_PROJECTION_CONTRACT_VERSION } from '../contracts/fieldProjection.
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { applyPatches, applyWave } from '../restore/applyEngine.mjs';
 import { ThrottleGovernor } from '../restore/throttleGovernor.mjs';
+import { writerFor } from '../restore/writers/registry.mjs';
 import { decideVerb, verbCapability } from '../reconcile/verb.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { collectSnapshot } from '../collect/snapshot.mjs';
@@ -36,7 +37,8 @@ const REGISTERED = Object.freeze({
   conditionalAccessPolicy: ['create', 'update', 'delete', 'restore-soft-deleted'],
   // Roadmap task-107: the first application/service-principal subset.
   application: ['create', 'update', 'restore-soft-deleted'],
-  servicePrincipal: ['create'],
+  // Wave 2 IDO: service principal update and delete.
+  servicePrincipal: ['create', 'update', 'delete'],
   // Roadmap task-108: custom authentication strengths only.
   authenticationStrengthPolicy: ['create', 'update'],
   // Roadmap task-109: the administrative-configuration subset.
@@ -50,8 +52,9 @@ const REGISTERED = Object.freeze({
   crossTenantAccessPolicyConfigurationDefault: ['update'],
   crossTenantAccessPolicyPartner: ['create', 'update'],
   adminConsentRequestPolicy: ['update'],
-  // Roadmap task-150: users are updated and restored in place, never created.
-  user: ['update', 'restore-soft-deleted'],
+  // Roadmap task-150: users are updated and restored in place; Wave 2 IDO
+  // recreates a permanently deleted user with sign-in off.
+  user: ['create', 'update', 'restore-soft-deleted'],
   // Issue #156: basic tenant settings.
   organizationalBranding: ['update'],
   organizationalBrandingLocalization: ['update'],
@@ -62,9 +65,31 @@ const REGISTERED = Object.freeze({
   roleEligibilitySchedule: ['create'],
   unifiedRoleManagementPolicy: ['update'],
   // Issue #155: Intune compliance, device configuration and settings catalog.
-  deviceCompliancePolicy: ['create', 'update'],
-  deviceConfiguration: ['create', 'update'],
-  configurationPolicy: ['create', 'update'],
+  // Wave 2 IDO adds an unassigned policy's delete.
+  deviceCompliancePolicy: ['create', 'update', 'delete'],
+  deviceConfiguration: ['create', 'update', 'delete'],
+  configurationPolicy: ['create', 'update', 'delete'],
+  // Wave 2 IDO: identity governance objects and settings, app credential policies.
+  lifecycleWorkflow: ['create', 'update'],
+  lifecycleWorkflowCustomTaskExtension: ['create', 'update'],
+  lifecycleManagementSettings: ['update'],
+  attributeSet: ['update'],
+  customSecurityAttributeDefinition: ['update'],
+  accessPackageCatalog: ['create', 'update'],
+  entitlementManagementSettings: ['update'],
+  appManagementPolicy: ['create', 'update'],
+  multiTenantOrganization: ['update'],
+  // Wave 2 IDO: Intune app protection and configuration, filters, scope tags,
+  // Windows update profiles and notification templates.
+  managedAppPolicy: ['create', 'update', 'delete'],
+  targetedManagedAppConfiguration: ['create', 'update', 'delete'],
+  mobileAppConfiguration: ['create', 'update', 'delete'],
+  windowsFeatureUpdateProfile: ['create', 'update', 'delete'],
+  windowsQualityUpdateProfile: ['create', 'update', 'delete'],
+  windowsDriverUpdateProfile: ['create', 'update', 'delete'],
+  assignmentFilter: ['create', 'update'],
+  roleScopeTag: ['create', 'update'],
+  notificationMessageTemplate: ['create', 'update'],
 });
 
 function governor() {
@@ -130,7 +155,8 @@ test('every registered operation is fixture-tested with a named proof and correc
       assert.equal(typeof capability.proofRef, 'string');
       assert.ok(capability.proofRef.length > 0, `${resourceType} ${operation} must name its proof`);
       assert.equal(capability.credentialMode, 'restorer');
-      assert.equal(capability.handler, 'engine/restore/applyEngine.mjs#applyWave');
+      // A pair with a registered writer (Wave 2) names that writer; every other one is applyWave's own.
+      assert.equal(capability.handler, writerFor(resourceType, operation)?.handler ?? 'engine/restore/applyEngine.mjs#applyWave');
       assert.equal(capability.idOutcome, operation === 'create' ? 'server-assigned' : operation === 'delete' ? 'terminal' : 'preserved');
       assert.equal(capability.path, graphPathFor(resourceType));
       assert.equal(capability.contractVersion, CAPABILITY_CONTRACT_VERSION);
@@ -193,7 +219,7 @@ test('mutation pin: descriptor.remappable never gates a capability claim', () =>
   assert.equal(capabilityFor('test-remap-independent-widget', 'update').claim, 'declared');
   // user is remappable: false yet registered (task-150): its claims follow registration alone.
   assert.equal(capabilityFor('user', 'update').claim, 'fixture-tested', 'registration, not remappable, decides the claim');
-  assert.equal(capabilityFor('user', 'create').claim, 'unsupported', 'an unregistered user operation stays unsupported');
+  assert.equal(capabilityFor('user', 'delete').claim, 'unsupported', 'an unregistered user operation stays unsupported');
 });
 
 // ---------------------------------------------------------------------------

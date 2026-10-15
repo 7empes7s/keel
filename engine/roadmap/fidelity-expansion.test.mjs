@@ -146,7 +146,8 @@ test('adversarial inventory edits are refused: a research-needed family cannot b
 test('only the qualified subset is enabled; every sibling verb stays refused before any write', async () => {
   assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor('application', operation).claim)),
     ['create', 'update', 'restore-soft-deleted']);
-  assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor('servicePrincipal', operation).claim)), ['create']);
+  // Wave 2 IDO added service principal update and delete (identityObjectOperations.test.mjs).
+  assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor('servicePrincipal', operation).claim)), ['create', 'update', 'delete']);
   for (const operation of ['create', 'update', 'restore-soft-deleted']) {
     const capability = capabilityFor('application', operation);
     assert.equal(capability.claim, 'fixture-tested');
@@ -160,7 +161,7 @@ test('only the qualified subset is enabled; every sibling verb stays refused bef
     simulationPassed: true, deletionGuardOptions: { breakGlassUserIds: [], breakGlassGroupIds: [], keelAppIds: [], caPolicies: [] },
   });
   assert.match(deleted.failed[0]?.error ?? '', /unsupported operation: application delete/);
-  for (const verb of ['update', 'delete', 'restore-soft-deleted']) {
+  for (const verb of ['restore-soft-deleted']) {
     const refused = await run(graph, [{
       naturalKey: 'servicePrincipal:source-appid', resourceType: 'servicePrincipal', verb, targetId: 'sp-1', deletedItemId: 'sp-1',
       payload: { appId: 'source-appid', accountEnabled: false }, references: [], blastRadius: 'access-affecting',
@@ -311,9 +312,11 @@ test('the identity batch runner drives every qualified operation through applyWa
   assert.ok(kinds.includes('credential') && kinds.includes('certificate'), 'the report lists the irrecoverable credential steps');
   const spCreate = report.operations.find((op) => op.resourceType === 'servicePrincipal' && op.operation === 'create');
   assert.deepEqual(spCreate.writes, ['POST /servicePrincipals']);
-  // Roadmap task-150: a user is restored in place; create stays refused.
+  // Roadmap task-150: a user is restored in place; Wave 2 IDO recreates one
+  // with sign-in off, and delete stays refused.
   assert.ok(report.operations.some((op) => op.resourceType === 'user' && op.operation === 'update' && op.result === 'passed'));
-  assert.ok(report.refused.some((entry) => entry.resourceType === 'user' && entry.operation === 'create'));
+  assert.ok(report.operations.some((op) => op.resourceType === 'user' && op.operation === 'create' && op.result === 'passed'));
+  assert.ok(report.refused.some((entry) => entry.resourceType === 'user' && entry.operation === 'delete'));
   // Roadmap task-151: custom roles, eligibility create and PIM settings pass;
   // role delete and eligibility removal stay refused.
   for (const [type, operation, write] of [

@@ -42,6 +42,10 @@ import { schemaSql } from '../store/loadSchema.mjs';
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const PROOF = 'engine/roadmap/intune-restore.test.mjs';
 const RESTORABLE = Object.freeze(['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']);
+// Wave 2 IDO: an unassigned policy is deleted, and the app protection and app
+// configuration types are written, by intuneOperations.mjs's record writer.
+const WAVE2_PROOF = 'engine/restore/intuneExtended.test.mjs';
+const WAVE2_AUTOMATED = Object.freeze(['managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration']);
 const INTUNE_TYPES = Object.freeze([
   'deviceConfiguration', 'deviceCompliancePolicy', 'configurationPolicy', 'deviceEnrollmentConfiguration',
   'windowsAutopilotDeploymentProfile', 'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration',
@@ -164,7 +168,7 @@ function assertNoServerOwned(body, label) {
 
 // ------------------------------------------------------------------ registry
 
-test('compliance, device configuration and settings catalog create/update are fixture-tested; delete stays unsupported', () => {
+test('compliance, device configuration and settings catalog create/update/delete are fixture-tested; soft-delete restore stays unsupported', () => {
   for (const resourceType of RESTORABLE) {
     for (const operation of OPERATIONS) {
       const capability = capabilityFor(resourceType, operation);
@@ -172,6 +176,9 @@ test('compliance, device configuration and settings catalog create/update are fi
         assert.equal(capability.claim, 'fixture-tested', `${resourceType} ${operation}`);
         assert.equal(capability.proofRef, PROOF);
         assert.equal(capability.path, INTUNE_RECORDS[resourceType].collection);
+      } else if (operation === 'delete') {
+        assert.equal(capability.claim, 'fixture-tested', `${resourceType} ${operation}`);
+        assert.equal(capability.proofRef, WAVE2_PROOF);
       } else {
         assert.equal(capability.claim, 'unsupported', `${resourceType} ${operation}`);
       }
@@ -191,7 +198,8 @@ test('no Intune type is left unknown: every other one is manual with a plain rea
     assert.notEqual(decision.decision, 'unknown', `${type} has an explicit decision`);
     assert.ok(decision.reason.length > 20, `${type} says why`);
     assert.doesNotMatch(decision.reason, /[0-9a-f]{8}-[0-9a-f]{4}-/i, `${type}: no raw id in the reason`);
-    if (!RESTORABLE.includes(type)) {
+    if (WAVE2_AUTOMATED.includes(type)) assert.equal(decision.decision, 'automated', type);
+    else if (!RESTORABLE.includes(type)) {
       assert.equal(decision.decision, 'manual', type);
       const row = ledger.types.find((entry) => entry.resourceType === type);
       assert.ok(row.operations.every((op) => op.decision === 'manual'), `${type} has no supported operation`);
@@ -204,7 +212,7 @@ test('no Intune type is left unknown: every other one is manual with a plain rea
 
 test('the fixture harness drives every Intune record through applyWave', async () => {
   const results = await runFixtureHarness({ types: RESTORABLE });
-  assert.equal(results.length, 6);
+  assert.equal(results.length, 9);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   const settingsUpdate = results.find((result) => result.resourceType === 'configurationPolicy' && result.operation === 'update');
   assert.ok(settingsUpdate.writes.includes('PUT /deviceManagement/configurationPolicies/fixture-existing'));

@@ -3226,7 +3226,39 @@ item that needs it stays untouched.
   /mnt/project-files/handoff/wave2/MAILR/HANDOFF.md (cloud side).
 - Needs: `test -f /opt/keel-live/cli/keel-content-restore.mjs`. Q63 done (Restorer has Exchange RBAC
   Application Mail.ReadWrite scoped to `keel-rt-*` mailboxes). Q64 done (alice's mailbox is in the content store).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 10:15–10:20 UTC. Writes only in keel-rt-20260908-alice's mailbox. Global admin not used; no permission granted.
+  **isDraft = true on both restored messages (#293).**
+  - **B:** step 1–2 on eb59e2d0 (it has #275). The auto-deploy switched to **c3b5f6c8** at 10:15:56, so steps 3–5 ran on c3b5f6c.
+  - **Restorer appId:** 12f8942f… (Keel Restorer). `/etc/keel/content-restorer.json` did not exist, so I created it
+    (root, 600; tenantId, certPath and keyPath copied from restorer.json).
+  - <A> alice; <T> 2026-10-15T10:15:23Z; <R> Entra principal bac8d59b…; <P> approver 2a47535a…. All approvals were filed by
+    <R> and self-approved as <P> under the standing authorization.
+  - **1. Plan** (exit 0): containers 10; items mail 1, calendar 0, contacts 0, todo 0; notRestorable [].
+  - **2. Copy restore, mail** (approval **be8c1e51**): exit 0.
+    `{"label":"Restored 2026-10-15","restored":1,"kept":{"unchanged":0,"newer":0},"alreadyDone":0,"notRestorable":0,"failed":0,"writes":10,"status":"completed"}`
+    - The top-level folder `Restored 2026-10-15` holds the 8 default folders (Archive, Conversation History, Deleted Items, Drafts,
+      Inbox, Junk Email, Outbox, Sent Items). Its Inbox holds the copy of KEEL-RT-20261015-mail.
+    - **Copy `isDraft`: true** (the original was false). receivedDateTime became 10:15:43Z (the original was 07:48:01Z).
+  - **3. Re-run** (same approval): exit 0, restored 0, alreadyDone 1, **writes 0**, completed.
+  - **4. Into the original folder:**
+    - Graph DELETE on the original returned 204. It went to Recoverable Items, not Deleted Items, so Deleted Items stayed empty.
+    - The `--into original --kinds mail` run (approval **754f0009**): exit 0.
+      `{"restored":1,"kept":{"unchanged":0,"newer":0},"alreadyDone":0,"failed":0,"writes":1,"status":"completed"}`
+    - The message is back **in the Inbox** (parentFolderId = Inbox). **isDraft: true**; receivedDateTime 10:16:14Z.
+    - kept.unchanged is 0 because the Inbox held no other item.
+  - **5. Calendar, contacts, To Do** (copy; approval **9e570594**): **exit 1**. The plan had 0 items for all three.
+    `{"restored":0,"failed":1,"writes":2,"status":"failed","errors":[{"container":"calendar:…","error":"creating calendar Restored 2026-10-15 - Calendar failed: 403 ErrorAccessDenied Access is denied. Check credentials and try again."}]}`
+    - calendar: **403**. The Q63 Exchange RBAC scope is Application Mail.ReadWrite only.
+    - todo: the empty container "Restored 2026-10-15 - Tasks" was created (Graph Tasks.ReadWrite.All, from Q60).
+    - contacts: nothing written. The Restorer's own contactFolders read is also 403.
+  - **6. Cleanup:**
+    - Deleted the `Restored 2026-10-15` mail folder tree (204; also gone from Deleted Items).
+    - Deleted the To Do list "Restored 2026-10-15 - Tasks" (204).
+    - No calendar or contact folder was created, and no KEEL-RT-20261015-mail copy was in Deleted Items.
+    - **Left:** one KEEL-RT-20261015-mail in alice's Inbox (the step-4 restore; isDraft true). The deleted original is in
+      Recoverable Items.
+  - GitHub: **#293** (restored mail is a draft, and the received time is the restore time; with the fix options). Commented on #275.
 - **Test tenant only.** Same hard rules and requester/approver split as Q45. Under the 2026-10-14 standing authorization,
   keel-operator approves these test-tenant restores itself; log every approval id here. Write only into
   keel-rt-20260908-alice's mailbox. Grant no permission: if Graph answers 403 for a kind, record it and go on.

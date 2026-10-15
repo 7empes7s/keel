@@ -2751,7 +2751,7 @@ item that needs it stays untouched.
 ### Q59: Add Tasks.ReadWrite.All to the Restorer's manifest, so Marouane can consent (Planner fixture)
 - Drafted by the "Planner test plan" thread (2026-10-15). Q58 could not create a KEEL-RT- plan: the Restorer holds no
   Tasks.* permission, and app-only plan creation needs Graph application `Tasks.ReadWrite.All`.
-- Status: todo
+- Status: in-progress
 - Result:
 - Needs: none. Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Consent stays with Marouane.
 - **Manifest only.** As the Restorer, GET the Keel Restorer application (appId 12f8942f…), MERGE, PATCH once: add Graph

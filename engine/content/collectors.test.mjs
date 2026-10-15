@@ -171,6 +171,22 @@ test('a library that finished with file warnings makes the sites run partial and
   assert.ok(![...syncState.rows.keys()].some((key) => key.includes('covered:')), 'a partial library is not recorded as covering its Teams folders');
 });
 
+test('a team whose channel list cannot be read makes the Teams run partial and says which part and why', async () => {
+  const tenant = fixtureTenant();
+  const transport = contentReadTransport(async () => 'KEEL-RT-token', async (href, init) => {
+    const path = decodeURIComponent(new URL(href).pathname);
+    if (path === `/v1.0/teams/${TEAM_OTHER}/channels`) return json({ error: { code: 'NotFound', message: 'no thread' } }, 404);
+    return tenant.fetchImpl(href, init);
+  });
+  const teams = CONTENT_COLLECTORS.find((entry) => entry.workload === 'teams');
+  const result = await teams.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store: createMemoryContentStore(), transport,
+    sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.deepEqual(result.reasons, [`other team: 1 part(s) not read, first channel list: failed (GET /v1.0/teams/${TEAM_OTHER}/channels: HTTP 404)`]);
+});
+
 test('OneDrive backup reports users without a drive as skipped and fails only when nothing synced', async () => {
   const tenant = fixtureTenant();
   const store = createMemoryContentStore();

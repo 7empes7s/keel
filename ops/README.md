@@ -111,8 +111,8 @@ workload, container or item; the most specific one wins:
 
 The default, until a policy is set, is 14 daily, 8 weekly, 12 monthly, 7 yearly. Settings
 snapshots rotate per tier (workload `config`, container `tier1`..`tier3`); an unfinished snapshot is
-kept for a day, then goes. Content rotates per item over its stored versions; an item's newest
-version is always kept, and a chunk goes only when no kept item (of any tenant) still lists it.
+kept for a week, then goes. Content rotates per item over its stored versions, each kind of row
+(file bytes, metadata record, removal tombstone) on its own; the newest row of each kind is always kept, and a chunk goes only when no kept item (of any tenant) still lists it.
 Pruned chunks leave the index; their storage objects stay until the storage adapters can delete.
 
 A legal hold (`legal_hold`, set with `placeLegalHold`) keeps everything in its scope (tenant,

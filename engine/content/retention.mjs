@@ -2,10 +2,13 @@
  * Wave 2 RET: which stored content item versions a prune removes, and why.
  *
  * Each item (tenant, workload, container, item key) rotates its own versions under the
- * most specific policy covering it (engine/store/rotation.mjs). The newest version of
- * an item is always kept, so an item's last known content never goes; an item with
- * one version is never a candidate. A legal hold on the tenant, workload, container or
- * item keeps every version in its scope. A chunk goes only when no kept item, of any
+ * most specific policy covering it (engine/store/rotation.mjs). One item key can hold
+ * more than one kind of row: a file's bytes and its metadata record (drive), or a
+ * message and its removal tombstone (mail). Each kind (metadata.kind; tombstones are
+ * their own kind) rotates on its own, so a newer record or tombstone never pushes out
+ * the content it describes. The newest row of each kind is always kept, so an item's
+ * last known content never goes; an item with one version is never a candidate. A
+ * legal hold on the tenant, workload, container or item keeps every version in its scope. A chunk goes only when no kept item, of any
  * tenant, still lists it (engine/content/index.mjs orphanedChunks).
  */
 import { createPgContentIndex } from './index.mjs';
@@ -13,15 +16,16 @@ import { matchingHolds, reasonKind, resolvePolicy, rotationReasons } from '../st
 
 export async function planContentRetention(client, { tenantRef, now, policies = [], holds = [] }) {
   const at = new Date(now);
-  // Only items with more than one version can lose any; newest first within an item.
+  // Only items with more than one version can lose any; newest first within an item's kind.
   const { rows } = await client.query(
-    `SELECT i.id, i.workload, i.container, i.item_key, i.version, i.created_at
+    `SELECT i.id, i.workload, i.container, i.item_key, i.version, i.created_at,
+            CASE WHEN i.metadata->>'removed' = 'true' THEN 'removed' ELSE coalesce(i.metadata->>'kind', '') END AS family
      FROM content_item i
      WHERE i.tenant_ref = $1
        AND EXISTS (SELECT 1 FROM content_item j
                    WHERE j.tenant_ref = i.tenant_ref AND j.workload = i.workload AND j.container = i.container
                      AND j.item_key = i.item_key AND j.id <> i.id)
-     ORDER BY i.workload, i.container, i.item_key, i.created_at DESC, i.id DESC`,
+     ORDER BY i.workload, i.container, i.item_key, family, i.created_at DESC, i.id DESC`,
     [tenantRef],
   );
   const { rows: [{ n: singleVersionItems }] } = await client.query(
@@ -34,7 +38,8 @@ export async function planContentRetention(client, { tenantRef, now, policies = 
   const groups = [];
   for (const row of rows) {
     const last = groups.at(-1);
-    if (last && last[0].workload === row.workload && last[0].container === row.container && last[0].item_key === row.item_key) last.push(row);
+    if (last && last[0].workload === row.workload && last[0].container === row.container && last[0].item_key === row.item_key
+      && last[0].family === row.family) last.push(row);
     else groups.push([row]);
   }
 

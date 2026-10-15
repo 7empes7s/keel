@@ -18,8 +18,9 @@ export { DEFAULT_ROTATION } from './rotation.mjs';
 
 // Settings snapshots in a policy or hold scope: workload 'config', container = tier.
 export const SNAPSHOT_WORKLOAD = 'config';
-// An unfinished snapshot this young may still be running, so it is kept.
-const IN_PROGRESS_MS = 24 * 60 * 60 * 1000;
+// An unfinished snapshot this young may still be running, so it is kept (the old
+// tier1 window, so a slow collect is never pruned under its own feet).
+const IN_PROGRESS_MS = 7 * 24 * 60 * 60 * 1000;
 
 // The old per-tier "keep N days" rule, still accepted as `policy` by the snapshot planner.
 const DEFAULT_RETENTION_DAYS = {

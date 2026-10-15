@@ -70,13 +70,13 @@ test('hourly snapshots rotate to one a day; a legal hold blocks prune until rele
   assert.ok(single.id);
 });
 
-test('a policy on one snapshot keeps it forever; an unfinished snapshot is kept a day, then goes', async () => {
+test('a policy on one snapshot keeps it forever; an unfinished snapshot is kept a week, then goes', async () => {
   const tenantRef = 'sha256:retention-policy-item';
   await setRetentionPolicy(client, { tenantRef, policy: { daily: 1 }, setBy: 'test-operator' });
   const old = await seed(tenantRef, new Date(now - 40 * 24 * HOUR));
   const newest = await seed(tenantRef, now);
-  const running = await seed(tenantRef, new Date(now - HOUR), { completed: false });
-  const abandoned = await seed(tenantRef, new Date(now - 3 * 24 * HOUR), { completed: false });
+  const running = await seed(tenantRef, new Date(now - 6 * 24 * HOUR), { completed: false });
+  const abandoned = await seed(tenantRef, new Date(now - 8 * 24 * HOUR), { completed: false });
   const forever = await seed(tenantRef, new Date(now - 30 * 24 * HOUR));
   await setRetentionPolicy(client, { tenantRef, workload: 'config', container: 'tier1', itemKey: forever, policy: { keepForever: true }, setBy: 'test-operator' });
 

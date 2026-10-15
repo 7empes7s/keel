@@ -29,13 +29,13 @@ async function addChunk(name) {
   );
 }
 
-async function addVersion({ tenantRef, workload = 'exchange-mail', container, itemKey, version, daysAgo, chunks }) {
+async function addVersion({ tenantRef, workload = 'exchange-mail', container, itemKey, version, daysAgo, chunks, metadata = {} }) {
   for (const name of chunks) await addChunk(name);
   const { rows: [row] } = await client.query(
-    `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'k1', $9) RETURNING id`,
+    `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id, created_at, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'k1', $9, $10) RETURNING id`,
     [tenantRef, workload, container, itemKey, version, chunkId(`${itemKey}:${version}`), chunks.length * 10,
-      JSON.stringify(chunks.map((name) => [chunkId(name), 10])), new Date(now - daysAgo * DAY)],
+      JSON.stringify(chunks.map((name) => [chunkId(name), 10])), new Date(now - daysAgo * DAY), metadata],
   );
   return row.id;
 }
@@ -100,6 +100,24 @@ test('versions rotate per item; a shared chunk survives; holds and keep-forever 
   await assert.rejects(releaseLegalHold(client, { tenantRef, holdId: hold.id, reason: 'again', releasedBy: 'test-operator' }), /not found/);
   const afterRelease = await runPrune(client, { tenantRef, now });
   assert.deepEqual(afterRelease.report.content.delete.map((d) => d.id), [c1]);
+});
+
+test("a file's record and a removal tombstone never push out the content they describe", async () => {
+  const tenantRef = 'sha256:content-retention-kinds';
+  // A drive file: its bytes, then its metadata record a moment later under the same key.
+  const bytes1 = await addVersion({ tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'f', version: 'v1', daysAgo: 0.002, chunks: ['f-v1'], metadata: { kind: 'drive-content' } });
+  const record1 = await addVersion({ tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'f', version: 'record:a', daysAgo: 0.001, chunks: ['f-rec-a'], metadata: { kind: 'drive-record' } });
+  // A message stored, then removed the same day.
+  const message = await addVersion({ tenantRef, container: 'KEEL-RT-mbx-1', itemKey: 'm', version: 'ck1', daysAgo: 0.5, chunks: ['m-1'], metadata: { kind: 'message' } });
+  const tombstone = await addVersion({ tenantRef, container: 'KEEL-RT-mbx-1', itemKey: 'm', version: 'removed@x', daysAgo: 0.1, chunks: ['m-gone'], metadata: { removed: true } });
+  // Older bytes and records of the same file rotate within their own kind.
+  const bytes0 = await addVersion({ tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'f', version: 'v0', daysAgo: 0.003, chunks: ['f-v0'], metadata: { kind: 'drive-content' } });
+  const record0 = await addVersion({ tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'f', version: 'record:0', daysAgo: 0.0025, chunks: ['f-rec-0'], metadata: { kind: 'drive-record' } });
+
+  const { report } = await runPrune(client, { tenantRef, now });
+  assert.deepEqual(report.content.delete.map((d) => d.id).sort(), [bytes0, record0].sort());
+  assert.deepEqual(report.content.kept, { 'latest version': 4 });
+  for (const id of [bytes1, record1, message, tombstone]) assert.ok(!report.content.delete.some((d) => d.id === id));
 });
 
 test('a policy or hold scope must name a known workload, and nest', async () => {

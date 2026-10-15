@@ -865,6 +865,35 @@ being triggered by queue updates.
   - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
   Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
 
+### Q75: App consent policy update converges to the backup after #312 (permissionGrantPolicy update, plus the S1 dry run)
+- Drafted by the "consent policy convergence" thread (2026-10-15). Fix: PR #312, master 321435f. An update now removes
+  include and exclude rules added since the backup (narrowing first), and the read-back checks the whole rule sets, so
+  a rule left behind fails the item. A dry run now plans an STS policy that the run would adopt as a noop
+  ("adopts live <id>"), not `create recreate`.
+- Needs: /opt/keel-live at 321435f or later (`grep -q conditionSetsPostStateRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
+  Can run in the same sitting as Q73 (same fixture).
+- Status: todo
+- **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
+  standing authorization; log every approval id here. No permission to add (Q26).
+- Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not
+  referenced by any authorization policy setting. Reuse it from Q73 if still there, or create it fresh.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Re-take plan-B (`live-gate-plan.mjs`) and use only its permissionGrantPolicy update step.
+  2. Take snapshot S with the fixture as above. Drift it the Q67 way: remove the (delegated, low) include and add
+     (delegated, medium) in its place.
+  3. Restore from S selecting only that policy, dry run, approve, `--enforce`. Expect **applied 1, failed 0**, and the
+     policy reading back with exactly 1 include, (delegated, low); the medium one is gone. `entraLive.mjs capture` the
+     `update`.
+  4. **Re-run check:** dry run from S again. Expect 0 planned writes for the policy.
+  5. Optional, only if Q67's STS fixtures exist again (no new setup for this): a dry run from a snapshot taken before they
+     were recreated should list them as noop "adopts live <id>", not `create recreate`. Otherwise skip and say so.
+  6. Commit the update evidence (`permissionGrantPolicy.update.json` and `.capture.json`) on `claude/live-evidence-w2-entra`
+     (secret scan first), replacing the demoted record only if this capture verifies, and run `operations.mjs --live-evidence`
+     on that directory.
+  7. Cleanup: delete `keel-rt-w2-consent`. Report anything left.
+- **Report:** B; the enforce summary line; read-back include list; the step 4 planned-write count; step 5 result or skipped;
+  approval ids; the evidence commit and the `live evidence` line for the update. Comment the result on #294.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

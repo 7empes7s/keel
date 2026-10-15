@@ -27,6 +27,9 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   // holds the narrower content-backup (Wave 2 RBAC), but the job stays on 'collect':
   // the scheduler identity that runs it nightly holds collect and configuration only.
   'content-collect': 'collect',
+  // Wave 1 DISC: read-only tenant discovery. A GET-only Graph transport counts what the
+  // tenant holds; it writes one discovery run to the database, never tenant state.
+  discover: 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',
   'baseline-activate': 'baseline-create',

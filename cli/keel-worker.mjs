@@ -50,6 +50,9 @@ export const JOB_TIMEOUT_MS = Object.freeze({
   // Wave 1 CONT: a night's content delta (mail, files, sites) streams through throttled
   // Graph reads; the run resumes from its delta state, so the ceiling only bounds a hang.
   'content-collect': 6 * 60 * 60 * 1000,
+  // Wave 1 DISC: up to 5000 Graph paths, a few pages each, at four at a time with every
+  // throttle waited out in full.
+  discover: 3 * 60 * 60 * 1000,
 });
 const PROCESS_GROUP_TERM_GRACE_MS = 5 * 1000;
 const PROCESS_GROUP_POLL_MS = 25;
@@ -315,6 +318,23 @@ export const JOB_HANDLERS = {
       if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
       if (params.reader !== undefined) args.push('--reader', requireString(params.reader, 'params.reader'));
       if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
+      if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
+      return args;
+    },
+  },
+  // Wave 1 DISC: scheduled tenant discovery. Read-only: every request goes through a
+  // GET-only Graph transport and the run is stored in the database. Params can only point
+  // it at an operator-written tenant config; tenantRef is what the scheduler sends and is
+  // checked against the config.
+  discover: {
+    script: join(__dirname, 'keel-discover.mjs'),
+    argsFor(params = {}) {
+      if (params === null || typeof params !== 'object' || Array.isArray(params)
+          || Object.keys(params).some((key) => !['config', 'tenantRef'].includes(key))) {
+        throw new Error('discover params may contain only config and tenantRef');
+      }
+      const args = ['run'];
+      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       return args;
     },

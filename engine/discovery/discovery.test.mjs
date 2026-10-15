@@ -14,6 +14,12 @@ import { discoverablePaths, parseMetadata } from './metadata.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from './store.mjs';
 import { DiscoveryWriteRefused, assertReadOnly, readOnlyGraph } from './transport.mjs';
 import { main as discoverCli } from '../../cli/keel-discover.mjs';
+import { JOB_HANDLERS, JOB_TIMEOUT_MS } from '../../cli/keel-worker.mjs';
+import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
+import { enqueue } from '../jobs/queue.mjs';
+import { nextDueAt, validateSchedule } from '../schedules/cadence.mjs';
+import { initialSchedules } from '../store/scheduleSeed.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 
 const TENANT_REF = 'sha256:discovery-test';
 const fixed = () => new Date('2026-10-14T12:00:00.000Z');
@@ -309,6 +315,52 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     assert.ok(lines.some((line) => line.includes('/print/printers: missing-grant (403), needs Printer.Read.All')));
     assert.ok(!tenant.calls.some((call) => call.url.includes('$metadata')));
     assert.equal(await discoverCli(['nonsense'], { logger: { log() {} } }), 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('discover is a valid weekly schedule, a schema job kind, a collect capability and a worker dispatch', async () => {
+  const seed = initialSchedules(new Date('2026-10-15T18:00:00Z')).find((row) => row.jobKind === 'discover');
+  assert.deepEqual(seed.cadence, { every: 'week', n: 1, atTime: '04:00' });
+  assert.equal(seed.cronOverride, '0 4 * * 1');
+  assert.equal(seed.nextDueAt.toISOString(), '2026-10-19T04:00:00.000Z', 'the next Monday, 04:00 UTC');
+  const row = { job_kind: 'discover', tier: null, cadence: seed.cadence, cron_override: seed.cronOverride };
+  assert.doesNotThrow(() => validateSchedule(row));
+  assert.equal(nextDueAt(row, seed.nextDueAt).toISOString(), '2026-10-26T04:00:00.000Z');
+  assert.throws(() => validateSchedule({ ...row, tier: 'tier1' }), /invalid schedule tier/);
+  assert.throws(() => validateSchedule({ ...row, cron_override: '0 */6 * * *' }), /schedule_minimum_interval/, 'more often than daily is refused');
+
+  assert.equal(capabilityForJobKind('discover'), 'collect');
+  const job = await enqueue(client, { kind: 'discover', params: { tenantRef: 'sha256:x' }, requestedBy: 'scheduler-test', idempotencyKey: `disc-${Date.now()}` });
+  assert.equal(job.kind, 'discover', 'the schema CHECK accepts the kind');
+
+  const handler = JOB_HANDLERS.discover;
+  assert.ok(handler.script.endsWith('cli/keel-discover.mjs'));
+  assert.notEqual(handler.acceptsDbUrl, false, 'the worker passes its database to the run');
+  assert.deepEqual(handler.argsFor({ tenantRef: 'sha256:x' }), ['run', '--tenant-ref', 'sha256:x']);
+  assert.deepEqual(handler.argsFor({ config: '/etc/keel/tenant.json' }), ['run', '--config', '/etc/keel/tenant.json']);
+  assert.throws(() => handler.argsFor({ tenantRef: 'sha256:x', versions: 'beta' }), /may contain only/);
+  assert.throws(() => handler.argsFor({ tenantRef: 'sha256:x', 'no-store': true }), /may contain only/);
+  assert.ok(JOB_TIMEOUT_MS.discover > JOB_TIMEOUT_MS.default);
+});
+
+test('a scheduled run for another tenant is refused before any request; the matching tenant runs', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'keel-discover-'));
+  try {
+    writeFileSync(join(dir, 'v1.0.xml'), fixtureMetadata());
+    writeFileSync(join(dir, 'tenant.json'), JSON.stringify({ tenantId: 'fixture-tenant' }));
+    const tenant = fixtureTenant();
+    const options = {
+      fetchImpl: tenant.fetchImpl, getTokenFn: async () => ({ accessToken: 'cli-token' }), now: fixed,
+      connectFn: async () => { throw new Error('the database must not be touched'); },
+      logger: { log() {} },
+    };
+    const base = ['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store'];
+    await assert.rejects(discoverCli([...base, '--tenant-ref', 'sha256:another'], options), /another tenant/);
+    assert.equal(tenant.calls.length, 0, 'nothing was sent');
+    assert.equal(await discoverCli([...base, '--tenant-ref', tenantRefFor('fixture-tenant')], options), 0);
+    assert.ok(tenant.calls.length > 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

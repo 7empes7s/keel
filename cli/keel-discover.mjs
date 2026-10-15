@@ -4,7 +4,7 @@
 // node keel-discover.mjs run  [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //                             [--versions v1.0,beta] [--metadata-dir DIR]
 //                             [--powershell-commands FILE] [--out FILE] [--no-store]
-//                             [--page-cap 5] [--concurrency 4]
+//                             [--page-cap 5] [--concurrency 4] [--tenant-ref REF]
 // node keel-discover.mjs show [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //
 // Wave 1 DISC: what the tenant holds that Keel could back up.
@@ -23,6 +23,8 @@
 //         --out writes the inventory as JSON (the operator commits it); --no-store skips
 //         the database.
 //         Exits 1 when a Graph source could not be read in full.
+//         --tenant-ref is what the scheduled `discover` job sends; a run for another tenant
+//         than the config names is refused before any request.
 //   show  prints the latest stored run: totals, then every uncatalogued and unreadable type.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -102,11 +104,15 @@ export async function main(argv = process.argv.slice(2), {
 } = {}) {
   const command = argv[0];
   if (!['run', 'show'].includes(command) || argv.includes('--help')) {
-    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE] [--out FILE] [--no-store]');
+    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE] [--out FILE] [--no-store] [--tenant-ref REF]');
     return command === undefined || argv.includes('--help') ? 0 : 2;
   }
   const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
   const tenantRef = tenantRefFor(config.tenantId);
+  const requested = arg(argv, 'tenant-ref');
+  if (requested !== undefined && requested !== tenantRef) {
+    throw new Error('the job names another tenant than the tenant config: refusing to discover');
+  }
   const store = command === 'show' || !argv.includes('--no-store');
   const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
   if (store && !dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env, pass --db-url, or use --no-store)');

@@ -16,7 +16,8 @@
 //  - let the run send a write;
 //  - report an expired proof as current.
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { after, test } from 'node:test';
 
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
@@ -352,11 +353,16 @@ test('import stores only records that verify; the committed records need the sig
   // The real seams on the committed 2026-10-07 records without the signing key: nothing is stored.
   const committedTenant = JSON.parse(readFileSync(new URL('../../docs/release/qualifications/exchange-live-acceptance.json', import.meta.url), 'utf8')).tenantRef;
   await client.query('DELETE FROM workload_ledger_evidence WHERE tenant_ref = $1', [committedTenant]);
+  const realDir = new URL('../../docs/release/qualifications/', import.meta.url).pathname;
+  const realSeams = await importSeams();
   const real = await importLedgerInputs(client, {
-    tenantRef: committedTenant, dir: new URL('../../docs/release/qualifications/', import.meta.url).pathname,
-    seams: await importSeams(), verify: { hmacKey: null, now: NOW },
+    tenantRef: committedTenant, dir: realDir, seams: realSeams, verify: { hmacKey: null, now: NOW },
   });
   assert.equal(real.imported.length, 0);
-  assert.equal(real.refused.length, 4);
+  // Every committed record is refused: the four read proofs and each optional writer
+  // record captured so far. Optional records not captured yet are absent, not refused.
+  const committed = realSeams.filter((entry) => existsSync(join(realDir, entry.file))).map((entry) => entry.file);
+  assert.ok(committed.length >= 4);
+  assert.deepEqual(real.refused.map((entry) => entry.file).sort(), committed.sort());
   assert.deepEqual((await loadLedgerInputs(client, { tenantRef: committedTenant })).reads, []);
 });

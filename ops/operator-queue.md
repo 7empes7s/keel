@@ -2929,7 +2929,7 @@ item that needs it stays untouched.
 ### Q63: Let the Restorer write mail only in keel-rt- test mailboxes, place one test message in alice's Inbox, rerun the backup
 - Drafted by the "Scoped mail write for test email" thread (2026-10-15). Q62 step 3 could not create the mail fixture: the
   Restorer has no mail write permission. #268 (stale mail delta cursor) is fixed by PR #270 (merge 7b2f2d2).
-- Status: todo
+- Status: in-progress
 - Needs: none. Decision: D-Q63 (filled).
 - **Rules:** test tenant. The only permission change is the Exchange RBAC for Applications setup below, for the Keel Restorer
   (appId 12f8942f-c4d0-4a0d-aee1-efe928b1de54, SP object id 8cd199c9-a96e-4666-924f-aa0ca6910f32). **Do not** add Graph

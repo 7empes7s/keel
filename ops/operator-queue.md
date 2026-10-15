@@ -4140,7 +4140,28 @@ item that needs it stays untouched.
   calling, voice routing, dial plan, emergency, call park, voicemail, broadcast and events policies all worked. This item finds
   out whether the refusal is about meeting-policy writes in general, about New- only, or about the Restorer's role.
 - Needs: nothing. Use the same PowerShell image and run-cmdlet scripts the writer capture used (MicrosoftTeams 7.9.0).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 19:38–19:45 UTC. Restorer through the run-cmdlet plane (image keel-powershell:wkld-20261015: the same scripts as the
+  writer capture, MicrosoftTeams 7.9.0). No tenant change: the only New- failed again.
+  - **1.** `New-CsTeamsMeetingPolicy {"Identity":"KEEL-RT-mtg-82080df3"}` (no Description): **ok false**.
+    - message: `{"code":"Forbidden","message":"You are not authorized to perform this action","action":"Please refer to documentation. CorrelationId: <id>","errorCode":40301}`
+    - errorId: `Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.NewTeamsMeetingPolicyCmdlet`. Nothing was created.
+  - **2.** `Set-CsTeamsMeetingPolicy {"Identity":"KEEL-RT-missing-mtg","Description":"x"}`: **ok false**, not found.
+    - message: `{"code":"ClientError","message":"\"KEEL-RT-missing-mtg\" not found",…,"errorCode":40407}`
+    - errorId: `ClientError,Microsoft.Teams.Policy.Administration.Cmdlets.Core.SetTeamsMeetingPolicyCmdlet`.
+    - **Not a 403**, so the Restorer is allowed to update meeting policies.
+  - **3.** Control, `Set-CsTeamsMessagingPolicy {"Identity":"KEEL-RT-missing-msg","Description":"x"}`: **ok false**, the same 40407 "not found".
+    errorId `ClientError,Microsoft.Teams.Policy.Administration.Cmdlets.Core.SetTeamsMessagingPolicyCmdlet`, the same
+    Teams.Policy.Administration service as the meeting cmdlets.
+  - **4.** `Get-CsTeamsMeetingPolicy`: **ok true, 7 policies.**
+  - **5.** Restorer directory roles, all tenant-wide (`/`): Compliance Administrator, Security Administrator, Exchange Administrator,
+    Intune Administrator, **Teams Administrator**, Knowledge Administrator, Compliance Data Administrator, SharePoint Administrator.
+  - **Reading:** the refusal is specific to **creating** a meeting policy. Read and update go through, through the same service, with
+    Teams Administrator held tenant-wide. Messaging and the 10 voice families accepted New- in the capture, so this is a service-side
+    restriction on New-CsTeamsMeetingPolicy for app-only callers, not a missing KEEL role.
+    - Option: drop `teams.meeting-policy.add` from app-only writes (recreate by hand), and prove `teams.meeting-policy.update` on a
+      KEEL-RT- meeting policy a person creates once.
+  - Commented on #339.
 - Do (read-only, or calls that cannot change anything: the only New- is retried on a fresh KEEL-RT- name and is the exact call
   that already failed; the Set- calls name a policy that does not exist, so they can only fail):
   Each step is one run-cmdlet job as the Restorer:

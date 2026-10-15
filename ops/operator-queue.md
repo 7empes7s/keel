@@ -3325,7 +3325,7 @@ item that needs it stays untouched.
   /mnt/project-files/handoff/wave2/FILER/HANDOFF.md (cloud side).
 - Needs: `test -f /opt/keel-live/cli/keel-content-restore-files.mjs` (a build with #274). Q68 done (it created
   `/etc/keel/content-restorer.json` for the Restorer).
-- Status: todo
+- Status: in-progress
 - **Test tenant only.** Same hard rules and requester/approver split as Q68. Under the 2026-10-14 standing authorization,
   keel-operator approves these test-tenant restores itself; log every approval id here. Write only into the
   `KEEL-RT-20261004` communication site (Q8) and its default document library. Grant no permission: if Graph answers 403,
@@ -3359,7 +3359,7 @@ item that needs it stays untouched.
   the Q63 RBAC assignment KEEL-RT-restorer-mail-rw covers Application Mail.ReadWrite only.
 - Needs: Q63 done (scope KEEL-RT-test-mailboxes and the Exchange SP "Keel Restorer" exist). Q68 done
   (`/etc/keel/content-restorer.json` exists). Can run alongside Q69 (different workload, different site).
-- Status: todo
+- Status: in-progress
 - Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Same shape as D-Q63: Exchange RBAC for
   Applications on the existing KEEL-RT-test-mailboxes scope only. No consent click is needed.
 - **Rules:** test tenant. The only permission changes are the two role assignments below. **Do not** add Graph

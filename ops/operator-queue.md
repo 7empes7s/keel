@@ -4045,8 +4045,16 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at 40d2af0 or later (`grep -q "'discover'" /opt/keel-live/engine/store/scheduleSeed.mjs`), the
   schema applied (`job_kind_check` accepts `discover`: `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'job_kind_check'`),
   and keel-worker restarted on that build.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 19:31 UTC on B = 40d2af01. No tenant access; the only write is the one schedule row.
+  - Checks: `scheduleSeed.mjs` includes `'discover'`; `job_kind_check` accepts `discover`; keel-worker restarted at 19:23:30 UTC on this build.
+  - **1.** `keel-schedules-migrate.mjs --tenant-ref sha256:f7b3959300856957 --kinds discover`: **exit 0**. Output:
+    `PASS: keel-backup-tier1.timer disabled and inactive`, `PASS: keel-backup-tier2.timer disabled and inactive`,
+    `PASS: keel-backup-tier3.timer disabled and inactive`, `PASS: keel-prune.timer disabled and inactive`.
+  - **2.** The schedule table now has 8 rows. The diff against before is one added line, nothing else changed:
+    `discover | | {"n": 1, "every": "week", "atTime": "04:00"} | 0 4 * * 1 | enabled | 2026-10-19 04:00:00+00`.
+    The other rows are unchanged: api-drift (weekly Mon 03:00), collect tier1 (hourly), tier2 (daily 00:00), tier3 (weekly Mon 00:00),
+    content-collect (daily 01:00), prune (daily 00:00) and workload-collect (daily 02:00), all enabled.
 - Do (no tenant access, no writes besides the one schedule row):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && node cli/keel-schedules-migrate.mjs --tenant-ref <live tenantRef> --kinds discover`.
      It inserts only the `discover` row and leaves every other row as is. Report the exit code and output.

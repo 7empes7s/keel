@@ -397,6 +397,8 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:**
 
 - Put back: SharePoint tenant sharing and site settings
+- Add back: SharePoint site-level app permission grants
+- Put back: SharePoint site-level app permission grants
 
 **You do:** Settings KEEL does not restore are changed by hand in the SharePoint admin center using the backup.
 

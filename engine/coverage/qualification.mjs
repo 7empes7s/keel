@@ -416,6 +416,32 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     rbac: Object.freeze({ permissions: ['SharePointTenantSettings.ReadWrite.All'], roles: ['SharePoint Administrator'] }),
     source: `${DOCS}/sharepointsettings-update?view=graph-rest-1.0`,
   }),
+  // Gap 5 (site permissions audit, 2026-10-15): site app grants (Sites.Selected).
+  // Add re-creates a grant missing since the backup; update raises a grant's role
+  // back to the backup's. Neither ever grants more than the backup held, and KEEL
+  // never removes a grant. Each has its own proof.
+  'sharepoint.site-permissions.add': Object.freeze({
+    workload: 'sharepoint-site-settings',
+    resourceType: 'sharepointSiteAppGrant',
+    method: 'POST',
+    endpoint: '/sites/{site-id}/permissions',
+    version: 'v1.0',
+    readBack: 'sharepoint.site-permissions',
+    fields: Object.freeze(['roles', 'grantedToIdentities']),
+    rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+    source: `${DOCS}/site-post-permissions?view=graph-rest-1.0`,
+  }),
+  'sharepoint.site-permissions.update': Object.freeze({
+    workload: 'sharepoint-site-settings',
+    resourceType: 'sharepointSiteAppGrant',
+    method: 'PATCH',
+    endpoint: '/sites/{site-id}/permissions/{permission-id}',
+    version: 'v1.0',
+    readBack: 'sharepoint.site-permissions',
+    fields: Object.freeze(['roles']),
+    rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+    source: `${DOCS}/site-update-permission?view=graph-rest-1.0`,
+  }),
   // Roadmap task-104: Teams settings and structural membership. Each is its own
   // operation with its own proof. `requires` names the SharePoint write: Teams
   // activates only after SharePoint is qualified, and SharePoint proof is never

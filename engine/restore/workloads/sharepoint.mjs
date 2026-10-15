@@ -6,8 +6,8 @@
  * task-102 reader observes. Everything else stays manual:
  *  - per-site settings (sharing, lock state, labels) need the SharePoint admin
  *    interface, which is not qualified;
- *  - site app permission grants hand an application access to content, so they
- *    are re-granted by a person;
+ *  - site app permission grants are restored per site by sharepointSiteGrants.mjs,
+ *    behind its own qualification and the content-effect approval;
  *  - server-owned fields (ids, URLs, timestamps) are never written.
  *
  * Rules:
@@ -55,7 +55,7 @@ const SERVER_OWNED_SITE_FIELDS = Object.freeze(['createdDateTime', 'lastModified
 const MANUAL_SITE_REASON = Object.freeze({
   displayName: 'site properties are not written by KEEL; rename the site in SharePoint',
   name: 'site properties are not written by KEEL; the site URL name is changed in SharePoint admin',
-  appPermissionGrants: 'an app permission grant hands an application access to site content; a person re-grants it',
+  appPermissionGrants: 'restored per site by the sharepoint-site-grants restore (--site), once that write is qualified; until then a person re-grants it',
 });
 
 function canonical(value) {

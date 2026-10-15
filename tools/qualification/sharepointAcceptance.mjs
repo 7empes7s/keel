@@ -89,7 +89,7 @@ export function secretProblems(value, path = '$') {
   return problems;
 }
 
-function captureTimeProblems(label, capturedAt, observedAt) {
+export function captureTimeProblems(label, capturedAt, observedAt) {
   const at = Date.parse(capturedAt ?? '');
   if (Number.isNaN(at)) return [`${label}: no valid capture time`];
   if (Number.isNaN(observedAt)) return [];
@@ -103,7 +103,7 @@ function missing(held, needed) {
   return needed.filter((item) => !have.has(item));
 }
 
-function siteIdOf(path) {
+export function siteIdOf(path) {
   const match = /^\/sites\/([^/?]+)/.exec(path);
   if (!match) return null;
   const id = decodeURIComponent(match[1]);

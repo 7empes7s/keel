@@ -33,6 +33,7 @@
 // plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
 // one recorded workload collection, as a dry run (gap register W2). Workload options:
 //   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
+//   sharepoint-site-grants     --tenant-host <host>.sharepoint.com --site <site id> (one site's app grants)
 //   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
@@ -1759,6 +1760,7 @@ export async function main({
         mailbox: arg('mailbox', undefined, argv),
         includeOrganization: flag('include-organization', argv),
         teamId: arg('team', undefined, argv),
+        siteId: arg('site', undefined, argv),
         targets: argAll('target', argv),
       },
       collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),

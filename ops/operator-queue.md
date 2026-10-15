@@ -3002,7 +3002,7 @@ item that needs it stays untouched.
 - Drafted by the "Forced backup with all fixes" thread (2026-10-15). Marouane asked to force a backup now.
   Fixes to prove live: #270 (mail cursor, 7b2f2d2), #271 (Teams snapshot deterministic, 811d7e6),
   #273 (SharePoint list items via delta, 55d8b63).
-- Status: queued
+- Status: in-progress
 - Needs: none.
 - **Read-only against the tenant.** Content reads go through the GET-only `contentReadTransport` as the KEEL Content Reader,
   with Q58's reader and scope files. No permission, consent or fixture changes. Global admin not used.

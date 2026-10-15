@@ -164,6 +164,8 @@ export function identityNamesFixture(write, capture) {
   const identity = capture.identity;
   if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
   if (kind === 'add' || write.identity === 'name' || write.identity === 'object-name') return identity === capture.fixture;
+  // A fixed identity names the one tenant-wide object, never a fixture.
+  if (write.identity === 'fixed') return capture.scope === 'tenant-wide' && identity === write.fixedIdentity;
   if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture && identity.toLowerCase() === 'global';
   if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
   return GUID_RE.test(identity);

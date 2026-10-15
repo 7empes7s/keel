@@ -492,7 +492,7 @@ export function workloadTarget(write, family, entry) {
   const fields = entry?.fields ?? {};
   const identity = String(fields.Identity ?? entry?.identity ?? '');
   // Exchange and Purview objects are named by their Name, whether the cmdlet takes their Guid or that Name.
-  const exchange = write.identity === 'guid' || write.identity === 'object-name';
+  const exchange = ['guid', 'object-name', 'fixed'].includes(write.identity);
   const tenantWide = TENANT_WIDE_FAMILIES.has(family)
     || (!exchange && !/^tag:/i.test(identity))
     || ['IsDefault', 'IsDefaultGlobalAddressList', 'IsBuiltInProtection'].some((field) => truthy(fields[field]));
@@ -513,6 +513,7 @@ function targetProblem(write, family, entries, { key, tenantRef, testTenantRefs,
 function identityParameters(write, observation) {
   if (write.identity === 'guid') return { Identity: observation.identity };
   if (write.identity === 'object-name') return { Identity: observation.fields.Name };
+  if (write.identity === 'fixed') return { Identity: write.fixedIdentity };
   if (write.identity === 'name') return { Identity: String(observation.fields.Identity).replace(/^tag:/i, '') };
   return { Identity: observation.fields.Identity };
 }

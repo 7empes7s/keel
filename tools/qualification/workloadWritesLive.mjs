@@ -59,14 +59,15 @@ import { readRetentionDlp } from '../../engine/collect/workloads/purviewRetentio
 import { readTeamsExtended } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { readTeamsPolicies } from '../../engine/collect/workloads/teamsPolicies.mjs';
 import { CmdletError } from '../../engine/powershell/jobQueue.mjs';
-import { workloadWriteCmdlet, writeFamilies } from '../../engine/restore/workloads/cmdletSettings.mjs';
+import { workloadTarget, workloadWriteCmdlet, writeFamilies } from '../../engine/restore/workloads/cmdletSettings.mjs';
+import { TENANT_WIDE_OPTION, onTestTenant } from '../../engine/restore/workloads/fixtureGuard.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   CAPTURE_CREATE_PREFIX, WORKLOAD_WRITES_CREDENTIAL_MODE, WORKLOAD_WRITES_LIVE_GATE, WORKLOAD_WRITES_LIVE_OPERATION,
-  WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, chooseCaptureChange, fixtureNameOf, identityNamesFixture, isFixtureName, provenWrites, sameValue,
+  WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, TENANT_WIDE_WRITES, chooseCaptureChange, fixtureNameOf, identityNamesFixture, isFixtureName, provenWrites, sameValue,
   workloadWritesRecordFile,
 } from './workloadWritesAcceptance.mjs';
 
@@ -90,7 +91,7 @@ function knownWorkload(workload) {
 }
 
 /** Offline: what a capture of `workload` would send, family by family. */
-export function workloadWritesCapturePlan({ workload, includeCreates = true }) {
+export function workloadWritesCapturePlan({ workload, includeCreates = true, allowTenantWide = false }) {
   knownWorkload(workload);
   const steps = [
     { step: 0, credential: 'none', refused: 'a Remove- cmdlet (KEEL never deletes; refused before sending)' },
@@ -104,7 +105,10 @@ export function workloadWritesCapturePlan({ workload, includeCreates = true }) {
       steps.push({ step: 2, credential: 'collector', read: family, operationId: ops.add, note: 'read back' });
     }
     const write = WKLD_WRITE_OPERATIONS[ops.update];
-    steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: 'the first KEEL-RT- object with no lock; skipped when there is none' });
+    const tenantWide = allowTenantWide && TENANT_WIDE_WRITES.includes(ops.update);
+    steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: tenantWide
+      ? 'the first KEEL-RT- object with no lock; with none, the tenant-wide setting when it is the only object'
+      : 'the first KEEL-RT- object with no lock; skipped when there is none' });
     steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: '<the fixture>', '<a comment, description or switch>': '<marker>' }, operationId: ops.update });
     steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: 'read back' });
     steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: '<the fixture>', '<the same field>': '<original>' }, operationId: ops.update, note: 'put back' });
@@ -161,7 +165,7 @@ function identityOf(write, entry) {
  */
 export async function captureWorkloadWrites({
   workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configs = {}, tenantRef, build,
-  credentials, grants, moduleVersion, includeCreates = true, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, testTenantRefs, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000, suffix = () => randomBytes(4).toString('hex'),
 }) {
   knownWorkload(workload);
@@ -174,6 +178,7 @@ export async function captureWorkloadWrites({
     problems.push('a capture needs two separate credential references (collector, restorer)');
   }
   if (!grants?.restorer || !Array.isArray(grants.restorer.permissions) || !Array.isArray(grants.restorer.roles)) problems.push('--grants must name the restorer\'s permissions and roles');
+  if (allowTenantWide && tenantRef && !onTestTenant(tenantRef, testTenantRefs)) problems.push(`${TENANT_WIDE_OPTION} is allowed on the test tenant only; nothing was sent`);
   if (problems.length) throw new Error(problems.join('; '));
   const tenant = directoryTenantId.toLowerCase();
   for (const role of ['collector', 'restorer']) {
@@ -283,7 +288,7 @@ export async function captureWorkloadWrites({
 
   const base = (id) => ({
     operationId: id, kind: id.endsWith('.add') ? 'add' : 'update', method: WKLD_WRITE_OPERATIONS[id].method, version: moduleVersion, synthetic: false,
-    fixture: null, identity: null, field: null, type: null, before: null, target: null, final: null, contentEffects: [],
+    scope: 'fixture', fixture: null, identity: null, field: null, type: null, before: null, target: null, final: null, contentEffects: [],
     ok: false, readBackVerified: false, restoredToOriginal: false, capturedAt: null, error: null,
   });
   const familyRead = (family) => async () => {
@@ -339,21 +344,32 @@ export async function captureWorkloadWrites({
     if (!fixturesIn(resources).length && created.some((item) => item.family === family)) {
       try { resources = [...resources, ...await readFamily()]; } catch { /* still none */ }
     }
-    const candidates = fixturesIn(resources);
+    let candidates = fixturesIn(resources);
+    let scope = 'fixture';
+    // A tenant-wide setting has no KEEL-RT- name: written only when allowed, and only when it is the one object.
+    if (!candidates.length && allowTenantWide && TENANT_WIDE_WRITES.includes(ops.update)) {
+      const all = resources.filter((item) => item.kind === family);
+      if (all.length !== 1 || !workloadTarget(write, family, all[0]).tenantWide) {
+        skipped.push({ family, operationId: ops.update, reason: `a tenant-wide setting, but the read returned ${all.length} objects, not the one tenant-wide object` });
+        continue;
+      }
+      candidates = all;
+      scope = 'tenant-wide';
+    }
     const usable = candidates.map((entry) => ({ entry, lock: lockProblem(entry, resources) }));
     const pick = usable.find((item) => !item.lock);
     if (!pick) {
       skipped.push({ family, operationId: ops.update, reason: candidates.length ? `every KEEL-RT- object of this kind is unusable: ${usable[0].lock}` : 'no KEEL-RT- object of this kind in the tenant' });
       continue;
     }
-    const name = fixtureNameOf(pick.entry);
-    const change = chooseCaptureChange(write, pick.entry, { marker });
+    const name = fixtureNameOf(pick.entry) ?? (scope === 'tenant-wide' ? pick.entry.fields?.Identity ?? null : null);
+    const change = chooseCaptureChange(write, pick.entry, { marker, tenantWide: scope === 'tenant-wide' });
     if (change.reason) {
       skipped.push({ family, operationId: ops.update, fixture: name, reason: change.reason });
       continue;
     }
     const capture = base(ops.update);
-    Object.assign(capture, { fixture: name, identity: identityOf(write, pick.entry).Identity ?? null, field: change.field, type: change.type });
+    Object.assign(capture, { scope, fixture: name, identity: identityOf(write, pick.entry).Identity ?? null, field: change.field, type: change.type });
     writes.push(capture);
     await captureUpdate({ write, capture, change, key: pick.entry.resourceKey, readFamily, writeCmdlet, log, timing });
     capture.capturedAt = now().toISOString();
@@ -375,6 +391,7 @@ export async function captureWorkloadWrites({
       workload,
       directoryTenantId: tenant,
       organization,
+      tenantWide: allowTenantWide,
       execution: { transport: WORKLOAD_WRITES_TRANSPORT, module, moduleVersion },
       credentials: { collector: credentials.collector, restorer: credentials.restorer },
       grants,
@@ -478,7 +495,7 @@ export function ledgerEvidenceFromWorkloadWritesAcceptance(evidence, options = {
 
 function parseArgs(argv) {
   const [command = 'plan', ...rest] = argv;
-  const options = { command, confirm: false, includeCreates: true };
+  const options = { command, confirm: false, includeCreates: true, allowTenantWide: false };
   const names = {
     '--workload': 'workload', '--tenant-ref': 'tenantRef', '--directory-tenant-id': 'directoryTenantId',
     '--collector-ref': 'collectorRef', '--restorer-ref': 'restorerRef', '--collector-config': 'collectorConfig', '--restorer-config': 'restorerConfig',
@@ -488,6 +505,7 @@ function parseArgs(argv) {
     const arg = rest[index];
     if (arg === '--confirm-live-tenant-write') options.confirm = true;
     else if (arg === '--no-create') options.includeCreates = false;
+    else if (arg === TENANT_WIDE_OPTION) options.allowTenantWide = true;
     else if (names[arg]) options[names[arg]] = rest[++index];
     else throw new Error(`unknown argument: ${arg}`);
   }
@@ -546,6 +564,7 @@ export async function main(argv = process.argv.slice(2), {
     credentials: { collector: options.collectorRef, restorer: options.restorerRef },
     grants: JSON.parse(readFile(options.grants)),
     includeCreates: options.includeCreates,
+    allowTenantWide: options.allowTenantWide,
   });
   const { evidence, logPath } = writeWorkloadWritesFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: WORKLOAD_WRITES_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

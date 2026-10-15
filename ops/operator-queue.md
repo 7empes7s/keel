@@ -3794,3 +3794,22 @@ item that needs it stays untouched.
      (secret scan and `pseudonymize.mjs check` first), and run `operations.mjs --live-evidence` on that directory.
 - **Report:** B; per operation: promoted / refused (the exact message); the evidence commit and the `live evidence` lines.
   Comment the result on #295.
+
+### Q79: App consent policy update converges when its only include drifted (Q75 re-run, after #327)
+- Drafted by the "consent policy extra rule" thread (2026-10-15). Fix: PR #327. Q75 failed because narrowing first deleted the
+  only live include and Graph refused it (`should contain an Includes PermissionGrantConditionSet`). Now, when every live
+  include is extra, the backup's includes are added first and the last extra one is removed right after, retrying that
+  400 while the new include replicates (up to 13 x 5 s).
+- Needs: /opt/keel-live at the #327 merge or later (`grep -q isLastIncludeRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
+- Status: todo
+- **Test tenant only.** Same rules, capture tooling, requester/approver split and standing authorization as Q75; log every
+  approval id. No permission to add. Never touch CA policies, break-glass or the user's account.
+- Fixture: as Q75. Custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low),
+  not referenced by any authorization policy setting. Create it fresh.
+- Do: Q75 steps 1 to 4, 6 and 7 at the deployed build B (skip step 5). Drift: add (delegated, medium), then remove low,
+  so medium is the only include.
+  - Step 3 expects **applied 1, failed 0**, and the read-back holds exactly 1 include, (delegated, low).
+  - Step 4 expects 0 planned writes.
+- **Report:** B; the enforce summary line; the read-back include list; how many times the last DELETE was refused before it
+  landed (from the run log, if shown); the step 4 count; approval ids; the evidence commit and the `live evidence` line for
+  the update. Comment the result on #294.

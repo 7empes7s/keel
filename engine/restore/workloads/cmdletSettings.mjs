@@ -132,6 +132,13 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('ModerateMessageByUser', SHARING, addsEntry),
     rule('GenerateIncidentReport', SHARING, changes),
     rule('RouteMessageOutboundConnector', SHARING, changes),
+    // Quarantined mail is purged when quarantine retention ends; rejected mail is never delivered.
+    rule('Quarantine', IRREVERSIBLE, disabledToEnabled),
+    rule('RejectMessageReasonText', IRREVERSIBLE, (before, after) => !nonEmpty(before) && nonEmpty(after)),
+    rule('RejectMessageEnhancedStatusCode', IRREVERSIBLE, (before, after) => !nonEmpty(before) && nonEmpty(after)),
+    // Mail the rule stops encrypting, or may send without TLS, is readable outside.
+    rule('ApplyRightsProtectionTemplate', SHARING, changes),
+    rule('RouteMessageOutboundRequireTls', SHARING, enabledToDisabled),
   ],
   // Recipients a connector scans and drops lose that mail, from the moment it is on.
   exchangeInboundConnector: [
@@ -254,17 +261,19 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
 
 /**
  * Object rules: a change to any field of an object that carries a destructive or
- * sharing action. A transport rule that deletes, copies, redirects, moderates or
- * reports mail reaches more mail when its Mode moves to Enforce or a condition or
+ * sharing action. A transport rule that deletes, quarantines, rejects, copies,
+ * redirects, moderates, encrypts or reports mail reaches more (or less) mail when its Mode moves to Enforce or a condition or
  * exception is widened or cleared, so every such change needs the approval.
  */
-const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector'];
-const NOT_JUDGED = new Set(['Comments', 'Priority', 'DeleteMessage', ...TRANSPORT_ACTIONS]);
+const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector', 'ApplyRightsProtectionTemplate'];
+const TRANSPORT_LOSSES = ['RejectMessageReasonText', 'RejectMessageEnhancedStatusCode'];
+const NOT_JUDGED = new Set(['Comments', 'Priority', 'DeleteMessage', 'Quarantine', 'RouteMessageOutboundRequireTls', ...TRANSPORT_LOSSES, ...TRANSPORT_ACTIONS]);
 export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
   exchangeTransportRule: Object.freeze({
     covers: 'every written field',
     effects(from, to, changed) {
-      const deletes = truthy(from?.DeleteMessage) || truthy(to?.DeleteMessage);
+      const deletes = ['DeleteMessage', 'Quarantine'].some((field) => truthy(from?.[field]) || truthy(to?.[field]))
+        || TRANSPORT_LOSSES.some((field) => nonEmpty(from?.[field]) || nonEmpty(to?.[field]));
       const armed = deletes || TRANSPORT_ACTIONS.some((field) => nonEmpty(from?.[field]) || nonEmpty(to?.[field]));
       if (!armed) return [];
       return changed.filter((field) => !NOT_JUDGED.has(field)).map((field) => ({ field, effect: deletes ? IRREVERSIBLE : SHARING }));
@@ -293,8 +302,11 @@ export const BENIGN_FIELDS = Object.freeze({
   RecipientLimitInternalPerHour: 'a sending rate limit; it never deletes or discloses mail',
   RecipientLimitPerDay: 'a sending rate limit; it never deletes or discloses mail',
   IPBlockList: 'addresses whose inbound mail is refused; no content is deleted or sent out',
-  RecipientDomainIs: 'which recipients a protection rule covers; no content is deleted or sent out',
-  ExceptIfRecipientDomainIs: 'which recipients a protection rule skips; no content is deleted or sent out',
+  // Conditions: on a transport rule that acts on content, the object rule judges every change to them.
+  RecipientDomainIs: 'which recipients a rule covers; alone it never deletes or sends content',
+  ExceptIfRecipientDomainIs: 'which recipients a rule skips; alone it never deletes or sends content',
+  FromScope: 'whether a rule matches senders inside or outside; alone it never deletes or sends content',
+  SentToScope: 'whether a rule matches recipients inside or outside; alone it never deletes or sends content',
   IncludeMessagesFromBlockedSenderAddress: 'whether a user\'s own quarantine notice lists mail from blocked senders',
   AdminMailRecipients: 'administrators told that a device was quarantined; no message content is sent',
   RecipientFilter: 'which directory entries an address list shows; no mail content',
@@ -309,10 +321,9 @@ export const BENIGN_FIELDS = Object.freeze({
 const DANGEROUS_FIELD = /retention|hold|preserv|shar(e|ing)|guest|external|invite|wipe|purge|anonymous|public|delete|forward|redirect|copy|bcc|journal|report|regist|stream|link|route|drop|smarthost|record|transcri|recipient|scope|override|block/i;
 
 /** Every declared written field whose name looks content-bearing and has neither a rule nor a reason. */
-export function unreviewedWrittenFields(declarations = WKLD_WRITE_OPERATIONS, rules = WORKLOAD_EFFECT_RULES, objects = WORKLOAD_OBJECT_EFFECTS) {
+export function unreviewedWrittenFields(declarations = WKLD_WRITE_OPERATIONS, rules = WORKLOAD_EFFECT_RULES) {
   const missing = [];
   for (const [id, write] of Object.entries(declarations)) {
-    if (objects[write.resourceType]) continue;
     const covered = new Set((rules[write.resourceType] ?? []).map((entry) => entry.field));
     for (const field of write.fields) if (DANGEROUS_FIELD.test(field) && !covered.has(field) && !BENIGN_FIELDS[field]) missing.push(`${id}:${field}`);
   }
@@ -442,7 +453,8 @@ function liveEntry(live, key) {
  * lock cannot be known and the rule is never changed.
  */
 function parentLock(live, entry) {
-  if (!entry?.parentPolicy) return 'none';
+  // A retention or DLP rule always has a policy: one the collector could not name has an unknown lock.
+  if (!entry?.parentPolicy) return entry?.parentStatus ? 'unknown' : 'none';
   const parent = (live?.resources ?? []).find((item) => item.identity === entry.parentPolicy && !String(item.kind).endsWith('Rule'));
   if (!parent) return 'unknown';
   return isLocked(parent) ? 'locked' : 'clear';

@@ -90,7 +90,11 @@ const MODULE_TABLES = {
 };
 const moduleAllowlist = (module) => Object.assign({}, ...MODULE_TABLES[module].map(allowlist));
 
-const TRANSPORT_ACTIONS = ['RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector'];
+// Every transport rule action that deletes, holds, rejects, copies, sends, routes or encrypts mail.
+const TRANSPORT_ACTIONS = [
+  'RedirectMessageTo', 'BlindCopyTo', 'AddToRecipients', 'ModerateMessageByUser', 'GenerateIncidentReport', 'RouteMessageOutboundConnector',
+  'ApplyRightsProtectionTemplate', 'RejectMessageReasonText', 'RejectMessageEnhancedStatusCode',
+];
 const effectsOf = (plan) => plan.contentEffects.map((effect) => `${effect.field}:${effect.effect}`).sort();
 
 let guidSeq = 0;
@@ -266,7 +270,7 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   const rule = live.state['Get-TransportRule'][0];
   // A rule with no deleting, copying or sending action: its Mode is not a content effect.
   for (const action of TRANSPORT_ACTIONS) rule[action] = null;
-  rule.DeleteMessage = false;
+  Object.assign(rule, { DeleteMessage: false, Quarantine: false });
   rule.Mode = 'Enforce';
   rule.Conditions = ['KEEL-RT-condition'];
   const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
@@ -452,11 +456,22 @@ test('effects: a never-expiring recording, recording turned on, and a deleting r
   const mail = fakeTenant('exchange-mail-flow');
   const rule = mail.state['Get-TransportRule'][0];
   for (const action of TRANSPORT_ACTIONS) rule[action] = null;
-  Object.assign(rule, { DeleteMessage: true, Mode: 'Enforce' });
+  Object.assign(rule, { DeleteMessage: true, Quarantine: false, Mode: 'Enforce' });
   const mailSource = await recordSource(client, tenant3, 'exchange-mail-flow', mail);
   rule.Mode = 'Audit';
   const enforce = await planned(client, tenant3, 'exchange-mail-flow', { source: mailSource, live: mail });
   assert.deepEqual(effectsOf(enforce.plan), ['Mode:irreversible']);
+
+  // Quarantining is a loss too, both when it is turned on and on the rest of such a rule.
+  const tenant4 = nextTenant();
+  const held = fakeTenant('exchange-mail-flow');
+  const quarantine = held.state['Get-TransportRule'][0];
+  for (const action of TRANSPORT_ACTIONS) quarantine[action] = null;
+  Object.assign(quarantine, { DeleteMessage: false, Quarantine: true, Mode: 'Enforce' });
+  const heldSource = await recordSource(client, tenant4, 'exchange-mail-flow', held);
+  Object.assign(quarantine, { Quarantine: false, Mode: 'Audit' });
+  const quarantined = await planned(client, tenant4, 'exchange-mail-flow', { source: heldSource, live: held });
+  assert.deepEqual(effectsOf(quarantined.plan), ['Mode:irreversible', 'Quarantine:irreversible']);
 });
 
 test('a write with no answer that did not apply is failed once and never resent', async (t) => {
@@ -487,10 +502,28 @@ test('a rule whose policy was not read, or a read stopped at its limit, plans no
   const orphan = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: withoutPolicy, tenantId: TENANT });
   assert.ok(orphan.operations.every((op) => op.family !== 'retentionRule'));
   assert.ok(orphan.manual.some((item) => /preservation lock is unknown/.test(item.reason)));
+  // A rule the collector could not tie to any policy has an unknown lock too.
+  const unnamed = { ...read, resources: read.resources.map((item) => (item.kind === 'retentionRule' ? { ...item, parentPolicy: null, parentStatus: 'none' } : item)) };
+  const noPolicy = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: unnamed, tenantId: TENANT });
+  assert.ok(noPolicy.operations.every((op) => op.family !== 'retentionRule'));
   // A capped read may have missed objects: every family is a gap.
   const capped = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: { ...read, discovery: { ...read.discovery, capped: true } }, tenantId: TENANT });
   assert.deepEqual(capped.operations, []);
   assert.ok(capped.manual.every((item) => /capped at its object limit/.test(item.reason)));
+});
+
+test('each write re-reads first: a policy gone after the plan makes its rule stale, and nothing is sent', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('purview-retention-dlp');
+  const source = await recordSource(client, tenantRef, 'purview-retention-dlp', live);
+  live.state['Get-RetentionComplianceRule'][0].Comment = 'changed';
+  const { plan, artifact } = await planned(client, tenantRef, 'purview-retention-dlp', { source, live });
+  assert.deepEqual(plan.operations.map((op) => op.family), ['retentionRule']);
+  live.state['Get-RetentionCompliancePolicy'] = [];
+  const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, live);
+  assert.deepEqual(result.operations.map((op) => op.outcome), ['stale']);
+  assert.deepEqual(live.writes, []);
 });
 
 // ------------------------------------------------------------ declarations

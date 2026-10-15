@@ -374,6 +374,23 @@ test('Teams: a deleted named policy is re-created as itself and listed for assig
   ]);
 });
 
+test('Teams: a deleted named meeting policy is listed for an administrator, since Teams refuses its New- to the app-only Restorer', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('teams-org-policies');
+  const named = fixture('teams-org-policies', 'meetingPolicy', { identity: 'Tag:KEEL-RT-meetingPolicy' });
+  live.state['Get-CsTeamsMeetingPolicy'].push(named);
+  const source = await recordSource(client, tenantRef, 'teams-org-policies', live);
+  live.state['Get-CsTeamsMeetingPolicy'] = live.state['Get-CsTeamsMeetingPolicy'].filter((body) => body !== named);
+  assert.equal(writeFamilies('teams-org-policies').meetingPolicy.add, null);
+  const { plan } = await planned(client, tenantRef, 'teams-org-policies', { source, live });
+  assert.deepEqual(plan.operations, []);
+  const item = plan.manual.find((entry) => entry.resourceKey === 'meeting-policy:tag:keel-rt-meetingpolicy');
+  assert.match(item.reason, /Teams refuses to create meeting policies for an app-only caller/);
+  assert.deepEqual(live.writes, []);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'New-CsTeamsMeetingPolicy', parameters: { Identity: 'KEEL-RT-x' } }), WorkloadWriteScopeError);
+});
+
 test('Purview: shortening retention is held for approval, and a preservation lock refuses the policy and its rules', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();

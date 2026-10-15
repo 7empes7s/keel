@@ -36,6 +36,7 @@ import { reviewStateFor } from '../contracts/fieldProjection.mjs';
 import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey, isSupportedClaim,
 } from './capabilities.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -558,6 +559,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     requires: Object.freeze(['exchange.client-access.update']),
     source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
   }),
+  // Wave 2 WKLD: mail flow, Exchange settings, Teams org-wide and voice policies,
+  // Purview retention, DLP and retention labels (restore/workloads/writeDeclarations.mjs).
+  ...WKLD_WRITE_OPERATIONS,
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */

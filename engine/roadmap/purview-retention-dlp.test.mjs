@@ -36,6 +36,7 @@ import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger, descriptorProblems } from '.
 import { listWorkloads } from '../collect/registry.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../coverage/qualification.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import { redactPayload } from '../telemetry/events.mjs';
 import { runFixtureHarness } from '../../tools/qualification/workloads.mjs';
@@ -219,7 +220,15 @@ test('each retention and DLP read is declared, in scope, probed, read-only and s
   assert.equal(RETENTION_DLP_DESCRIPTOR.enabledByDefault, false);
   assert.equal(RETENTION_DLP_DESCRIPTOR.readOnly, true);
   assert.ok(listWorkloads().some((descriptor) => descriptor.workload === RETENTION_DLP_WORKLOAD && descriptor.enabledByDefault === false));
-  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === RETENTION_DLP_WORKLOAD), []);
+  // Wave 2 WKLD: the only writes for this workload are its declared cmdlet writes, and
+  // each needs observed grants and a live write capture before it runs.
+  const writes = Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === RETENTION_DLP_WORKLOAD);
+  assert.ok(writes.length > 0);
+  for (const [id, operation] of writes) {
+    assert.equal(operation, WKLD_WRITE_OPERATIONS[id], id);
+    assert.equal(operation.kind, 'cmdlet', id);
+    assert.equal(operation.grantsRequired, true, id);
+  }
   assert.ok(Object.keys(RETENTION_DLP_CMDLET_PARAMETERS).every((cmdlet) => cmdlet.startsWith('Get-')));
   assert.deepEqual(Object.fromEntries(Object.entries(RETENTION_DLP_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), RETENTION_DLP_ALLOWED,
     'the Node and container allowlists are identical');

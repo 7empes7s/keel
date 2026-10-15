@@ -3,8 +3,8 @@
  * READ-EXO added, Teams org-wide and voice policies, and Purview retention and DLP.
  *
  * Pure data, in the shape of WORKLOAD_WRITE_OPERATIONS (coverage/qualification.mjs),
- * which spreads it in once its owner wires it; until then nothing here is qualified
- * and the writers send nothing. Each entry is one operation with its own proof:
+ * which spreads it in. An entry runs only once workloadWriteQualification enables it
+ * (live read, observed grants, live write capture). Each entry is one operation with its own proof:
  *  - `method` is the Set- (or, for `.add`, New-) cmdlet, `fields` the parameters KEEL
  *    may send besides the identity. Everything else the read keeps is compared and,
  *    when it differs, listed for an administrator (cmdletSettings.mjs).

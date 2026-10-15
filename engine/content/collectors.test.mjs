@@ -111,10 +111,16 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   const tenant = fixtureTenant();
   const store = createMemoryContentStore();
   const syncState = createMemorySyncState();
-  const run = () => runContentCollection(null, {
-    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store, transport: tenant.transport,
-    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(syncState), logger: quiet,
-  });
+  // Each run reads an hour after the last, so nothing time-based can pass as unchanged.
+  let clock = Date.parse('2026-10-14T12:00:00Z');
+  const run = () => {
+    clock += 3600_000;
+    const at = clock;
+    return runContentCollection(null, {
+      tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store, transport: tenant.transport,
+      scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(syncState), logger: quiet, now: () => new Date(at),
+    });
+  };
 
   const first = await run();
   assert.deepEqual(first.runs.map((r) => [r.workload, r.outcome]), [
@@ -164,6 +170,10 @@ test('a content-collect run backs up every workload of a KEEL-RT- fixture tenant
   assert.equal(second.runs.find((r) => r.workload === 'sharepoint-sites').items, 0, 'an unchanged site stores nothing on a repeat run');
   const itemDeltas = tenant.calls.map((call) => new URL(call.url)).filter((url) => url.pathname.endsWith('/items/delta'));
   assert.ok(itemDeltas.length > 0 && itemDeltas.every((url) => url.searchParams.get('$deltatoken') === 'KEEL-RT-done'), itemDeltas.map(String).join('\n'));
+  // An unchanged team keeps its one stored version (#269).
+  for (const team of [TEAM_COVERED, TEAM_OTHER]) {
+    assert.equal((await store.listItems({ container: `team:${team}` })).length, 1, `${team} was stored again with no change`);
+  }
   // The drive delta carries its Prefer options through the read-only transport.
   const driveDelta = tenant.calls.find((call) => call.url.includes('/drives/KEEL-RT-drive-alice/root/delta'));
   assert.match(driveDelta.headers.prefer, /deltashowremovedasdeleted/);

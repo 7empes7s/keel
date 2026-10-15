@@ -368,3 +368,59 @@ test('a delta walk that ends without a delta link is not treated as complete', a
   assert.equal(walk.ok, false);
   assert.equal(walk.cursor, '/x/delta');
 });
+
+test('a saved query an older build wrote is dropped for the current query (#268)', async () => {
+  // Before #267 a failed first page saved its own request as the cursor, and every later
+  // run replayed that rejected $select.
+  const stale = '/x/delta?$select=id,wellKnownName';
+  const paths = [];
+  const reader = {
+    get: async (version, path) => {
+      paths.push(path);
+      if (path === stale) return { ok: false, status: 400, code: 'BadRequest', error: 'Could not find a property named wellKnownName' };
+      return { ok: true, status: 200, body: { value: [], '@odata.deltaLink': `${GRAPH}/v1.0/x/delta?$deltatoken=1` } };
+    },
+  };
+  const walk = await walkDelta(reader, 'v1.0', { initial: '/x/delta?$select=id', cursor: stale }, async () => 0);
+  assert.equal(walk.ok, true);
+  assert.deepEqual(paths, ['/x/delta?$select=id']);
+  assert.equal(walk.cursor, `${GRAPH}/v1.0/x/delta?$deltatoken=1`);
+});
+
+test('a stored Graph link that Graph rejects restarts the walk from the current query once', async () => {
+  const bad = `${GRAPH}/v1.0/x/delta?$deltatoken=old`;
+  const paths = [];
+  const reader = {
+    get: async (version, path) => {
+      paths.push(path);
+      if (path === bad) return { ok: false, status: 400, code: 'BadRequest' };
+      return { ok: true, status: 200, body: { value: [], '@odata.deltaLink': `${GRAPH}/v1.0/x/delta?$deltatoken=2` } };
+    },
+  };
+  const walk = await walkDelta(reader, 'v1.0', { initial: '/x/delta', cursor: bad }, async () => 0);
+  assert.equal(walk.ok, true);
+  assert.equal(walk.resynced, true);
+  assert.deepEqual(paths, [bad, '/x/delta']);
+});
+
+test('a 400 on the current query is reported, not retried', async () => {
+  let calls = 0;
+  const reader = { get: async () => { calls++; return { ok: false, status: 400, code: 'BadRequest' }; } };
+  const walk = await walkDelta(reader, 'v1.0', { initial: '/x/delta' }, async () => 0);
+  assert.equal(walk.ok, false);
+  assert.equal(walk.cursor, '/x/delta');
+  assert.equal(calls, 1);
+});
+
+test('a mailbox whose saved folder cursor is an old query reads its folders again (#268)', async () => {
+  const tenant = fixture();
+  const store = memoryStore();
+  const first = await run(tenant, store, {});
+  const state = structuredClone(first.state);
+  state['mailbox/u1'].mail = { folders: { cursor: '/users/u1/mailFolders/delta?$select=id,displayName,parentFolderId,wellKnownName,totalItemCount' }, messages: {} };
+  tenant.calls.length = 0;
+  const again = await run(tenant, store, state);
+  assert.equal(again.ok, true);
+  assert.ok(!tenant.routesCalled('get').some((path) => path.includes('wellKnownName')));
+  assert.match(again.state['mailbox/u1'].mail.folders.cursor, /^https:\/\/.*\$deltatoken=/);
+});

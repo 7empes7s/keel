@@ -123,6 +123,12 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'the eligibility id KEEL shows for carla and the fixture role',
     breakGlass: 'Never a built-in privileged role and never a break-glass principal: only the fixture role and the fixture user. The capture checks both names in the snapshot.',
   },
+  oauth2PermissionGrant: {
+    kind: 'by-reference',
+    fixture: `a delegated consent (consentType Principal) for a KEEL-RT- app with no other permissions, for one keel-rt- fixture user, to Microsoft Graph with scope openid only`,
+    select: 'the grant id KEEL shows for the fixture app', drift: 'change its scope (for example openid profile)',
+    note: 'The capture checks that the client app and the user are KEEL-RT fixtures (no role is involved). Never a grant for Keel\'s own apps, a non-fixture app or user, or all users.',
+  },
   namedLocation: {
     kind: 'named-object', fixture: `IP named location ${FIXTURE_PREFIX}-location (203.0.113.0/24, not trusted), referenced by no policy`,
     select: `${FIXTURE_PREFIX}-location`, drift: 'add the range 198.51.100.0/24',

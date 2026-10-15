@@ -434,6 +434,75 @@ test('a token or home realm policy is keyed by id but checked by its own display
   assert.equal(guidanceFor('oauth2PermissionGrant').kind, 'by-reference');
 });
 
+test('a delegated consent grant is checked by its client app and user, not a role (#295)', async () => {
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'oauth2PermissionGrant:update');
+  assert.equal(step.fixtureKind, 'by-reference');
+  assert.equal(guidanceFor('oauth2PermissionGrant').reviewed, true);
+  // As the collector stores them: the grant keyed by its id, its client a typed
+  // service principal symbol and its user a typed user symbol. No role anywhere.
+  // Graph's grant id is the client, resource and user object ids, base64url encoded.
+  const guidBytes = (guid) => {
+    const hex = Buffer.from(guid.replace(/-/g, ''), 'hex');
+    return Buffer.concat([hex.subarray(0, 4).reverse(), hex.subarray(4, 6).reverse(), hex.subarray(6, 8).reverse(), hex.subarray(8)]);
+  };
+  const grantId = Buffer.concat(['4a1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d', '5b2c3d4e-6f7a-4b8c-9d0e-1f2a3b4c5d6e', '6c3d4e5f-7a8b-4c9d-8e0f-2a3b4c5d6e7f']
+    .map(guidBytes)).toString('base64url');
+  // An id-keyed type's natural key is its raw id (engine/cir/naturalKey.mjs).
+  const grantKey = grantId;
+  const appId = '3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f';
+  const graphAppId = '00000003-0000-0000-c000-000000000000';
+  const snapshot = ({ appName = 'KEEL-RT-W2-app', upn = 'keel-rt-20260908-carla@fixture.example', consentType = 'Principal' } = {}) => ({
+    naturalKey: grantKey,
+    resourceType: 'oauth2PermissionGrant',
+    versions: [
+      { id: 'v-own', natural_key: grantKey, payload: { consentType, scope: 'openid' } },
+      { id: 'v-app', natural_key: `servicePrincipal:${appId}`, payload: { displayName: appName } },
+      { id: 'v-graph', natural_key: `servicePrincipal:${graphAppId}`, payload: { displayName: 'Microsoft Graph' } },
+      { id: 'v-user', natural_key: `user:${upn}`, payload: { userPrincipalName: upn } },
+    ],
+    references: [
+      { from_version: 'v-own', field_path: 'clientId', to_symbol: `servicePrincipal:${appId}` },
+      { from_version: 'v-own', field_path: 'resourceId', to_symbol: `servicePrincipal:${graphAppId}` },
+      ...(consentType === 'Principal' ? [{ from_version: 'v-own', field_path: 'principalId', to_symbol: `user:${upn}` }] : []),
+    ],
+  });
+  // A KEEL-RT client app and a keel-rt user pass, though the resource (Microsoft Graph) is no fixture.
+  assert.deepEqual(byReferenceProblems(snapshot()), []);
+  assert.deepEqual(byReferenceProblems(snapshot({ appName: 'KEEL-RT-Q80-app' })), []);
+  assert.deepEqual(byReferenceProblems(snapshot({ appName: 'Keel Restorer' })), ['the client app is not a KEEL-RT fixture']);
+  assert.deepEqual(byReferenceProblems(snapshot({ upn: 'breakglass-one@fixture.example' })), ['the user is not a KEEL-RT fixture']);
+  assert.deepEqual(byReferenceProblems(snapshot({ consentType: 'AllPrincipals' })),
+    ['the consent is not for one user (consentType Principal)', 'no user reference']);
+  const noClient = snapshot();
+  noClient.references = noClient.references.filter((ref) => ref.field_path !== 'clientId');
+  assert.deepEqual(byReferenceProblems(noClient), ['no client app reference']);
+  // Without the type, the same snapshot is still checked as a role assignment.
+  assert.ok(byReferenceProblems({ ...snapshot(), resourceType: undefined }).includes('no role reference'));
+
+  // Through the capture: the restore's snapshot holds the grant, its app and its user.
+  const restore = fixtureRestore(step, { naturalKey: grantKey });
+  const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  journal[0].targetId = grantId;
+  journal[0].priorState = { id: grantId, consentType: 'Principal', scope: 'openid profile' };
+  const grantSnapshot = (options) => {
+    const rows = snapshot(options);
+    return async () => ({ versions: rows.versions, references: rows.references });
+  };
+  const run = (options = {}, allowByReference = true) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: grantKey,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, allowByReference, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: grantSnapshot(options),
+  });
+  await assert.rejects(run({}, false), /checks that its client app and user are fixtures/);
+  const result = await run();
+  assert.equal(result.status, 'captured');
+  assert.equal(result.record.fixtureKind, 'by-reference');
+  assert.equal(grantId.length, 64);
+  assert.ok(!result.captureLog.includes(grantId), 'the grant id is pseudonymized');
+  await assert.rejects(run({ appName: 'Keel Restorer' }), /client app is not a KEEL-RT fixture/);
+  await assert.rejects(run({ consentType: 'AllPrincipals' }), /not for one user/);
+});
+
 test('an edge is captured by the checklist\'s fixture name although its key carries the typed parent (Q48)', async () => {
   // keel-restore journals an edge under its typed parent symbol: edge:group:<mail nickname>|...
   for (const id of ['group#member:edge-add', 'group#member:edge-remove', 'group#owner:edge-add', 'group#owner:edge-remove']) {

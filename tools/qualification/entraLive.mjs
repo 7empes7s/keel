@@ -190,9 +190,10 @@ export function composedKeyReferences(naturalKey) {
  * For an object with no name of its own (a role assignment or eligibility), the
  * names of what it points at, read from the restore's snapshot: the principal
  * must be a fixture, the role must be a KEEL-RT custom role (never a built-in
- * role), and a scope, if any, must be a fixture.
+ * role), and a scope, if any, must be a fixture. A delegated consent grant
+ * (oauth2PermissionGrant) is checked by its client app and its one user instead.
  */
-export function byReferenceProblems({ versions, references, naturalKey, deleted = false }) {
+export function byReferenceProblems({ versions, references, naturalKey, deleted = false, resourceType = null }) {
   const own = versions.find((version) => version.natural_key === naturalKey);
   // A delete removes an object the snapshot was taken without, so its references
   // come from its own composed key instead (role, principal and scope symbols).
@@ -226,6 +227,19 @@ export function byReferenceProblems({ versions, references, naturalKey, deleted 
   const refs = keyRefs ?? references.filter((ref) => ref.from_version === own.id);
   const find = (pattern) => refs.find((ref) => pattern.test(String(ref.field_path)));
   const problems = [];
+  if (resourceType === 'oauth2PermissionGrant') {
+    // A delegated consent grant points at no role: its client app and the one
+    // user it consents for must both be fixtures. The resource (Microsoft Graph)
+    // is not, and is not checked. A consent for all users is never a fixture.
+    const client = find(/^clientId$/i);
+    if (!client) problems.push('no client app reference');
+    else if (!DISPOSABLE.test(nameOf(client.to_symbol))) problems.push('the client app is not a KEEL-RT fixture');
+    if (own && own.payload?.consentType !== 'Principal') problems.push('the consent is not for one user (consentType Principal)');
+    const user = find(/^principalId$/i);
+    if (!user) problems.push('no user reference');
+    else if (!DISPOSABLE.test(nameOf(user.to_symbol))) problems.push('the user is not a KEEL-RT fixture');
+    return problems;
+  }
   const principal = find(/principal/i);
   const role = find(/roleDefinition/i);
   const scope = find(/directoryScope/i);
@@ -349,9 +363,10 @@ export async function captureLive({
   };
   if (guidance.kind === 'by-reference') {
     if (!allowByReference) {
-      throw new LiveGateRefusal(`${resourceType} has no name of its own: pass --allow-by-reference; the capture then checks that its principal and role are fixtures`);
+      const checked = resourceType === 'oauth2PermissionGrant' ? 'its client app and user' : 'its principal and role';
+      throw new LiveGateRefusal(`${resourceType} has no name of its own: pass --allow-by-reference; the capture then checks that ${checked} are fixtures`);
     }
-    const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey, deleted: operation === 'delete' });
+    const problems = byReferenceProblems({ ...(await loadSnapshot()), naturalKey: entry.naturalKey, deleted: operation === 'delete', resourceType });
     if (problems.length > 0) throw new LiveGateRefusal(`refusing ${resourceType} ${fixture}: ${problems.join('; ')}`);
   } else {
     const snapshotPayload = entry.priorState ? null

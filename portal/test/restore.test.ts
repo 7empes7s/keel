@@ -298,7 +298,7 @@ test("a raw selection starts a dry run, then only its completed artifact can req
   assert.deepEqual(job.params, {
     snapshotId,
     selection,
-    collectorConfig: "/etc/keel/tenant-target.json",
+    collectorConfig: "/etc/keel/tenant.json",
     targetConfig: "/etc/keel/restorer.json",
     artifactId,
   });

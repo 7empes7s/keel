@@ -31,7 +31,7 @@ import {
   CAPTURE_CREATE_PREFIX, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
 } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import {
-  captureWorkloadWrites, ledgerEvidenceFromWorkloadWritesAcceptance, main, workloadWritesCapturePlan, writeWorkloadWritesFiles,
+  captureWorkloadWrites, ledgerEvidenceFromWorkloadWritesAcceptance, main, pinnedModuleVersions, workloadWritesCapturePlan, writeWorkloadWritesFiles,
 } from '../../tools/qualification/workloadWritesLive.mjs';
 import { FAMILIES as EXCHANGE_EXTENDED_FAMILIES } from '../collect/workloads/exchangeExtended.mjs';
 import { FAMILIES as MAIL_FLOW_FAMILIES } from '../collect/workloads/mailFlow.mjs';
@@ -499,6 +499,28 @@ test('nothing is sent when a config names another tenant, the first read fails, 
   const deps = { out: () => {}, readFile: (path) => files[path], capture: () => assert.fail('sent') };
   await assert.rejects(main(args(['--out', join(tempDir(), 'teams.json')]), deps), /--out must be named workload-writers-teams-org-policies-live-acceptance.json/);
   await assert.rejects(main(args(['--out', join(tempDir(), workloadWritesRecordFile('teams-org-policies')), '--tenant-ref', 'sha256:other']), deps), /--tenant-ref is not the tenant/);
+});
+
+test('a capture records the workload\'s own module version, the one the image pins', async () => {
+  const pins = pinnedModuleVersions(readFileSync(new URL('../../ops/powershell/Dockerfile', import.meta.url), 'utf8'));
+  assert.ok(pins.MicrosoftTeams && pins.ExchangeOnlineManagement && pins.MicrosoftTeams !== pins.ExchangeOnlineManagement);
+  const files = { '/etc/keel/c.json': JSON.stringify({ tenantId: TENANT }), '/etc/keel/r.json': JSON.stringify({ tenantId: TENANT }), 'g.json': JSON.stringify(GRANTS) };
+  const args = (workload, extra = []) => ['capture', '--confirm-live-tenant-write', '--workload', workload, '--tenant-ref', tenantRef, '--directory-tenant-id', TENANT,
+    '--collector-ref', 'app:c', '--restorer-ref', 'app:r', '--collector-config', '/etc/keel/c.json', '--restorer-config', '/etc/keel/r.json',
+    '--grants', 'g.json', '--build', build, '--out', join(tempDir(), workloadWritesRecordFile(workload)), ...extra];
+  const sent = [];
+  const deps = { out: () => {}, readFile: (path) => files[path], capture: (options) => { sent.push(options.moduleVersion); throw new Error('stop'); } };
+  for (const [workload, module] of [['teams-org-policies', 'MicrosoftTeams'], ['teams-voice-policies', 'MicrosoftTeams'], ['exchange-extended', 'ExchangeOnlineManagement']]) {
+    await assert.rejects(main(args(workload), deps), /stop/);
+    assert.equal(sent.at(-1), pins[module], workload);
+    await assert.rejects(main(args(workload, ['--module-version', pins[module]]), deps), /stop/);
+    assert.equal(sent.at(-1), pins[module], workload);
+  }
+  // The Exchange module's version on a Teams capture (the 2026-10-15 records) is refused before anything is sent.
+  const count = sent.length;
+  await assert.rejects(main(args('teams-org-policies', ['--module-version', pins.ExchangeOnlineManagement]), deps), /is not the MicrosoftTeams version the image pins/);
+  await assert.rejects(main(args('teams-org-policies'), { ...deps, pins: () => ({}) }), /pins no MicrosoftTeams version/);
+  assert.equal(sent.length, count);
 });
 
 test('the offline plan names every written family and sends nothing', () => {

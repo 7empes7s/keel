@@ -11,12 +11,17 @@
  *        --workload <workload> --tenant-ref sha256:... --directory-tenant-id <guid> \
  *        --collector-ref app:<collector app id> --restorer-ref app:<restorer app id> \
  *        --collector-config /etc/keel/<collector>.json --restorer-config /etc/keel/<restorer>.json \
- *        --module-version <x.y.z> --grants grants.json \
+ *        [--module-version <x.y.z>] --grants grants.json \
  *        --out docs/release/qualifications/workload-writers-<workload>-live-acceptance.json \
  *        [--build <sha>] [--powershell-image <tag>] [--no-create]
  *
  * Workloads: exchange-mail-flow, exchange-extended, teams-org-policies,
  * teams-voice-policies, purview-retention-dlp, purview-governance.
+ *
+ * The record is bound to the version of the workload's own module (MicrosoftTeams for
+ * the Teams workloads, ExchangeOnlineManagement for the rest) that ops/powershell/Dockerfile
+ * pins. --module-version is optional; one that is not that pin is refused before anything
+ * is sent, so a Teams record can never carry the Exchange module's version.
  *
  * What a capture does, in order (and nothing else):
  *  0. offline: asks the write transport for a Remove- cmdlet and for an undeclared
@@ -516,9 +521,18 @@ function parseArgs(argv) {
 
 const powershellFor = (tenantConfigPath, image) => ({ tenantConfigPath, ...(image ? { image } : {}) });
 
+const POWERSHELL_DOCKERFILE = new URL('../../ops/powershell/Dockerfile', import.meta.url);
+
+/** The module versions the PowerShell image pins: { [module]: 'x.y.z' } from each `Install-Module -RequiredVersion`. */
+export function pinnedModuleVersions(dockerfile) {
+  const pins = {};
+  for (const [, name, version] of dockerfile.matchAll(/Install-Module\s+-Name\s+([\w.]+)\s+-RequiredVersion\s+(\d+(?:\.\d+){2,3})\b/g)) pins[name] = version;
+  return pins;
+}
+
 export async function main(argv = process.argv.slice(2), {
   out = console.log, env = process.env, readFile = (path) => readFileSync(path, 'utf8'), capture = captureWorkloadWrites,
-  powershell = powershellFor,
+  powershell = powershellFor, pins = () => pinnedModuleVersions(readFileSync(POWERSHELL_DOCKERFILE, 'utf8')),
 } = {}) {
   const options = parseArgs(argv);
   if (options.command === 'plan') {
@@ -534,7 +548,7 @@ export async function main(argv = process.argv.slice(2), {
   for (const [flag, key] of [
     ['--workload', 'workload'], ['--tenant-ref', 'tenantRef'], ['--directory-tenant-id', 'directoryTenantId'], ['--collector-ref', 'collectorRef'],
     ['--restorer-ref', 'restorerRef'], ['--collector-config', 'collectorConfig'], ['--restorer-config', 'restorerConfig'],
-    ['--module-version', 'moduleVersion'], ['--grants', 'grants'], ['--out', 'out'],
+    ['--grants', 'grants'], ['--out', 'out'],
   ]) {
     if (!options[key]) throw new Error(`capture needs ${flag}`);
   }
@@ -553,6 +567,13 @@ export async function main(argv = process.argv.slice(2), {
   if (typeof configs.collector.tenantId !== 'string' || options.tenantRef !== tenantRefFor(configs.collector.tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }
+  // Each workload records its own module's version: the one the image pins, never one typed for another module.
+  const { module } = WRITTEN_WORKLOADS[options.workload];
+  const moduleVersion = pins()[module];
+  if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
+  if (options.moduleVersion && options.moduleVersion !== moduleVersion) {
+    throw new Error(`--module-version ${options.moduleVersion} is not the ${module} version the image pins (${moduleVersion}); nothing was sent`);
+  }
   const outPath = resolve(options.out);
   const { record, captureLog, needsManualRevert } = await capture({
     workload: options.workload,
@@ -562,7 +583,7 @@ export async function main(argv = process.argv.slice(2), {
     configs,
     tenantRef: options.tenantRef,
     build,
-    moduleVersion: options.moduleVersion,
+    moduleVersion,
     credentials: { collector: options.collectorRef, restorer: options.restorerRef },
     grants: JSON.parse(readFile(options.grants)),
     includeCreates: options.includeCreates,

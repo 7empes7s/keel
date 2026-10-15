@@ -3164,27 +3164,53 @@ item that needs it stays untouched.
   (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
   claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 10:20–10:45 UTC on **B = c3b5f6c8** (resumed after #290 fixed #289). Plan re-taken at B: 106 operations,
+  107 steps; the six types are steps 73–74, 77–78 and 80–85, plus 101–102 for home realm discovery.
+  Restorer only; global admin not used; no permission added. Every approval was filed by the Entra principal and
+  self-approved by keel-operator as the Gmail approver under the 2026-10-14 standing authorization.
+  - **Live writes: all six writers work, create and update.** Read-backs equal the backup, except the consent policy's
+    extra include (see below). isOrganizationDefault stayed false throughout.
+    - The create path writes isOrganizationDefault false; no follow-up appears for it because the backups were not defaults.
+      The follow-up listed for the four policies is "Which apps the policy is assigned to".
+  - **Evidence promoted: only permissionGrantPolicy update.** The capture tool refuses the other types (**#295**).
+  - **Per type and operation:**
+
+    | type | create | update |
+    |---|---|---|
+    | tokenLifetimePolicy | restored, equal; **blocked** (capture #295) | restored, equal; **blocked** (#295) |
+    | tokenIssuancePolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
+    | claimsMappingPolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
+    | permissionGrantPolicy | **demoted** (#294) | **promoted** → live-qualified |
+    | oauth2PermissionGrant | restored, equal; **blocked** (#295: "no role reference") | restored (scope `openid profile` → `openid`); **blocked** (#295) |
+    | homeRealmDiscoveryPolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
+
+    - permissionGrantPolicy create: the include POST came 404 before the new policy replicated, so it was left with 0 of 1
+      includes (#294). A retry restored it as an update.
+    - permissionGrantPolicy update: displayName equal. The `low` include was re-added, but the drifted `medium` include was
+      **left in place**, so the live policy is wider than the backup (comment on #294).
+  - **Rounds:**
+    - Create: S1 b18b75b3. Run A1 (approval **5177667e**) created the 3 STS policies, then failed on the consent policy.
+      Retry A1b (approval **ffb3c161**) updated the consent policy and created the grant; the STS policies were adopted with no write.
+    - Update: S2 12922071, all five drifted. A2 (approval **85578eb4**): 5 updates succeeded.
+    - Home realm discovery alone: break-glass report overall `ready`. S3 6318a54e, create A3 (approval **b7d683c8**);
+      S4 6ce0f6b3, update A4 (approval **38f84f2e**).
+  - **Step 5, re-run planned writes:**
+    - From S2: tokenLifetime 0, tokenIssuance 0, claimsMapping 0, oauth2PermissionGrant 0, **permissionGrantPolicy 1** (every time,
+      because of the extra include). From S4: homeRealmDiscovery 0.
+    - From S1, the pre-create snapshot, the dry run lists the 3 STS policies as `create recreate`, though the run adopts them and writes nothing.
+  - **Cleanup:** deleted every KEEL-RT-W2 policy, `keel-rt-w2-consent`, the fixture grant, and app KEEL-RT-W2-app with its SP
+    (purged from deleted items). **Nothing left** (re-read: 0).
+  - **Evidence:** `claude/live-evidence-w2-entra` @ **e21bbc8**. Files: permissionGrantPolicy.create.json, .capture.json and .demotion.json;
+    permissionGrantPolicy.update.json and .capture.json. pseudonymize check exit 0; the secret and known-id scans are clean.
+  - **operations.mjs --live-evidence:**
+    `live evidence permissionGrantPolicy.create.json: not applied (the write was not verified by its read-back, so it cannot be promoted)`;
+    `live evidence permissionGrantPolicy.update.json: fixture-tested -> live-qualified`.
+  - GitHub: #294 (replication 404, plus widening and re-run), #295 (capture tool), comment on #286.
 - Coordinator note (2026-10-15): resume from the S1 dry run, no new setup. Needs /opt/keel-live at c3b5f6c or later
   (`grep -q unavailableOnTenant /opt/keel-live/engine/collect/entraAdapter.mjs`). The restore's current-state read now
   skips a type the tenant has no licence or feature for (403 "Insufficient license", 400 AADB2C99039) unless the
   restore touches it, so lifecycle workflows and API connectors no longer block. Re-take plan-B at the new build.
-- Result: Blocked 2026-10-15 09:50 UTC at the first dry run, by **#289**: every keel-restore aborts in its current-state read.
-  - Detail: `collectM1` throws on `lifecycleWorkflow` (403, no Entra ID Governance license). `identityApiConnector`, which
-    fails with 400 because self-service sign-up is off, would do the same. No approval was filed; no restore ran.
-  - **B:** f54fa007. Plan: /root/keel-w2/plan-B.md (63 operations, 64 steps; the six types are steps 33–42 and 58–59).
-  - **Fixtures created** (Restorer; global admin not used; all unassigned and isOrganizationDefault false):
-    - KEEL-RT-W2-tokenLifetimePolicy, KEEL-RT-W2-tokenIssuancePolicy and KEEL-RT-W2-claimsMappingPolicy.
-    - permissionGrantPolicy `keel-rt-w2-consent` (KEEL-RT-W2-consent) with one include rule (delegated, low). The authorization
-      policy does not reference it.
-    - App **KEEL-RT-W2-app** (new, no credentials, no requiredResourceAccess) and its SP. Created because the 8 existing
-      KEEL-RT-20260908 apps each list a permission in their manifest.
-    - oauth2PermissionGrant on that SP: Principal, keel-rt-20260908-ben, resource Microsoft Graph, scope `openid`.
-    - homeRealmDiscoveryPolicy: not created yet (it runs last).
-  - **Snapshot S1** b18b75b3… holds all five, including the include rule.
-  - **Create-round drift is done:** the five fixtures are deleted. None of these types has a recycle bin, so they are gone.
-    The resume point is therefore the S1 dry run: once #289 is fixed, I continue from S1 with no new setup.
-  - **Left in the tenant:** KEEL-RT-W2-app and its SP (no permissions). The five fixtures exist only in S1 now.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q45. Under the 2026-10-14
   standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here.
 - **Restorer permissions:** none to add. Q26 shows it already holds Policy.ReadWrite.ApplicationConfiguration,

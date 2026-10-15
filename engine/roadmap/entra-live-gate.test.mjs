@@ -416,6 +416,24 @@ test('a fixture name is checked anchored, on its own key or prior state only', a
   }), /not a disposable/);
 });
 
+test('a token or home realm policy is keyed by id but checked by its own display name (#295)', async () => {
+  const { steps } = buildLiveGatePlan();
+  const policyId = '12345678-1234-4234-8234-123456789abc';
+  for (const resourceType of ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy']) {
+    assert.equal(guidanceFor(resourceType).kind, 'named-object', resourceType);
+    for (const step of steps.filter((candidate) => candidate.resourceType === resourceType)) {
+      assert.ok(!step.commands.at(-1).includes('--allow-by-reference'), `${step.id}: the plan never asks for --allow-by-reference`);
+      // Any KEEL-RT name will do: queue items name fixtures under their own prefix.
+      const result = await capture(step, { naturalKey: policyId, displayName: `KEEL-RT-W2-${resourceType}` });
+      assert.equal(result.status, 'captured', step.id);
+      assert.ok(!result.captureLog.includes(policyId), `${step.id}: the policy id is pseudonymized`);
+      await assert.rejects(capture(step, { naturalKey: policyId, displayName: 'Contoso default token lifetime' }), /not a disposable/, step.id);
+    }
+  }
+  // An id-keyed object with no name of its own stays by-reference.
+  assert.equal(guidanceFor('oauth2PermissionGrant').kind, 'by-reference');
+});
+
 test('an edge is captured by the checklist\'s fixture name although its key carries the typed parent (Q48)', async () => {
   // keel-restore journals an edge under its typed parent symbol: edge:group:<mail nickname>|...
   for (const id of ['group#member:edge-add', 'group#member:edge-remove', 'group#owner:edge-add', 'group#owner:edge-remove']) {

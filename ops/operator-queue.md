@@ -2747,3 +2747,36 @@ item that needs it stays untouched.
 - **Report:** the deployed commit; the exit code; each workload's line (`exchange-mail`, `onedrive`, `sharepoint-sites`,
   `teams`, `planner`: outcome, items, bytes, reasons) verbatim from the run; the DB read-back per workload; which step-4
   fixtures were found or created; anything that failed, with the error text (no tokens or keys).
+
+### Q59: Add Tasks.ReadWrite.All to the Restorer's manifest, so Marouane can consent (Planner fixture)
+- Drafted by the "Planner test plan" thread (2026-10-15). Q58 could not create a KEEL-RT- plan: the Restorer holds no
+  Tasks.* permission, and app-only plan creation needs Graph application `Tasks.ReadWrite.All`.
+- Status: todo
+- Result:
+- Needs: none. Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Consent stays with Marouane.
+- **Manifest only.** As the Restorer, GET the Keel Restorer application (appId 12f8942f…), MERGE, PATCH once: add Graph
+  application permission `Tasks.ReadWrite.All` (resolve its id from the Microsoft Graph SP's `appRoles`, type Role) to the
+  Microsoft Graph entry of `requiredResourceAccess`. Keep every existing resource and entry; add nothing else.
+  Never create an appRoleAssignment or grant consent.
+- Also make sure every Graph application permission the Restorer already holds is in its manifest, so Marouane's consent
+  click adds only `Tasks.ReadWrite.All` and changes nothing else. Add held-but-missing ones; do not remove anything.
+- **Report:** whether Tasks.ReadWrite.All was added, any held-but-missing entries added, and the manifest-minus-held list
+  (expected: only Tasks.ReadWrite.All).
+
+### Q60: Create the KEEL-RT- Planner plan fixture and check the Content Reader can read it
+- Drafted by the "Planner test plan" thread (2026-10-15).
+- Status: todo
+- Result:
+- Needs: Q59 done, and Marouane's admin consent for the Restorer. First check that the Restorer's SP holds
+  `Tasks.ReadWrite.All` as an appRoleAssignment. If not, set `blocked: waiting on consent` and stop (the thread re-sends).
+- **One tenant write area: Planner in the `KEEL-RT-20260908 Collaboration Hub` group.** No permission or consent changes.
+- **Do (as the Restorer):**
+  1. Find the group id of team `KEEL-RT-20260908 Collaboration Hub`. If it already has a plan named `KEEL-RT-…`, reuse it.
+  2. Otherwise `POST /v1.0/planner/plans` with `{ "container": { "url": "https://graph.microsoft.com/v1.0/groups/<groupId>" },
+     "title": "KEEL-RT-20261015-plan" }`.
+  3. In it, create bucket `KEEL-RT-20261015-bucket` and one task `KEEL-RT-20261015-task` in that bucket, then PATCH the task
+     details with description `KEEL-RT planner fixture` (use the `@odata.etag` in `If-Match`).
+- **Check (as the KEEL Content Reader, GET only):** `GET /v1.0/groups/<groupId>/planner/plans` lists the plan, and
+  `GET /v1.0/planner/plans/<planId>/tasks` lists the task. Allow a minute for Planner to propagate; retry a few times.
+- Do not run content-collect; the nightly 01:00 UTC job picks the plan up.
+- **Report:** group id, plan id, bucket id and task id (first 8 characters), and the two GET results (status and counts).

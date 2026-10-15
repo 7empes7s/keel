@@ -571,6 +571,8 @@ export function renderCoverageDoc({ typeGuide = TYPE_GUIDE, workloadGuide = WORK
     '',
     'For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.',
     '',
+    'For the licences and permissions each setting needs, and a summary of what no tool can restore, see [What you need before KEEL can back up and restore](prerequisites.md).',
+    '',
     `KEEL tracks ${ledger.types.length} kinds of Entra ID and Intune settings and backs up everything it can read of each one. ${states.full} are full, ${states.incomplete} incomplete, ${states['microsoft-managed']} Microsoft-managed and ${states['not-readable']} not readable. KEEL can restore ${counts.automated} at least in part; the other ${counts.manual} are restored by hand from the backup.`,
     '',
     '## How to read this page',

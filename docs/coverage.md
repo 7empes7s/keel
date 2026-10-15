@@ -4,6 +4,8 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
+For the licences and permissions each setting needs, and a summary of what no tool can restore, see [What you need before KEEL can back up and restore](prerequisites.md).
+
 KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 67 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 43 are restored by hand from the backup.
 
 ## How to read this page

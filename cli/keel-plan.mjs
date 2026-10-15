@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
-import { collectM1 } from '../engine/collect/entraAdapter.mjs';
+import { collectM1, neededTypes } from '../engine/collect/entraAdapter.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { resolvePlan } from '../engine/graph/resolver.mjs';
 import { buildGapReport, isPlanClean } from '../engine/graph/preflight.mjs';
@@ -67,7 +67,9 @@ export async function runPlan({
 
     const targetToken = await getTokenFn(targetConfig);
     const targetReader = new GraphReaderClass(async () => targetToken);
-    const targetCollected = await collectM1Fn(targetReader);
+    // Issue #289: a type the target tenant has no licence for is skipped unless
+    // the snapshot holds resources of that type.
+    const targetCollected = await collectM1Fn(targetReader, { needed: neededTypes(resources) });
     const targetResources = canonicalizeAll(targetCollected);
     const targetIndex = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
 

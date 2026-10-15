@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { collectM1, unavailableOnTenant, M1_TYPES } from './entraAdapter.mjs';
+import { collectM1, neededTypes, unavailableOnTenant, M1_TYPES } from './entraAdapter.mjs';
 
 // Issue #289: the tenant answers lifecycle workflows with a licence refusal and
 // API connectors with a feature-not-enabled refusal, on every read.
@@ -49,3 +49,10 @@ await assert.rejects(
   () => collectM1(reader([['/identity/apiConnectors', denied]]), { needed: new Set(['group']) }),
   /collecting identityApiConnector failed: Insufficient privileges/,
 );
+
+// neededTypes reads canonical resources and stored rows alike, plus extra types.
+assert.deepEqual(
+  [...neededTypes([{ resourceType: 'group' }, { resource_type: 'namedLocation' }, { resourceType: 'group' }, {}], ['roleAssignment'])].sort(),
+  ['group', 'namedLocation', 'roleAssignment'],
+);
+assert.deepEqual([...neededTypes(undefined)], []);

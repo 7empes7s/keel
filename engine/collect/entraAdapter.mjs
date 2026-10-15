@@ -134,6 +134,19 @@ export function unavailableOnTenant(error) {
 }
 
 /**
+ * The set of types a collectM1 caller needs, for `scope.needed`: every type in
+ * `resources` (rows or canonical resources) plus `extra`.
+ */
+export function neededTypes(resources, extra = []) {
+  const types = new Set(extra);
+  for (const resource of resources ?? []) {
+    const type = resource?.resourceType ?? resource?.resource_type;
+    if (typeof type === 'string' && type) types.add(type);
+  }
+  return types;
+}
+
+/**
  * Reads every M1 type and fails on the first type it cannot read.
  * `scope.needed` (a set of types), when given, relaxes that for one case only:
  * a type the tenant has no licence or feature for, and that is not needed, is

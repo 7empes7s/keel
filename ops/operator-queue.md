@@ -2830,3 +2830,40 @@ item that needs it stays untouched.
      need admin consent (Microsoft refuses read-only admin API calls from an SP that has them) and list them.
 - **Report:** group membership; per call the status code and count (or the error code and message, with no tokens);
   a one-line verdict each for "Power Platform management app works" and "Fabric read-only admin APIs work".
+
+### Q62: Second content backup run: all five workloads after #265/#266/#267, and repeat reads are delta-only
+- Drafted by the "Second test content backup" thread (2026-10-15). Follows Q58 (first run, 3 partial) and Q60 (Planner
+  fixture KEEL-RT-20261015-plan now exists). Fixes since Q58: #265 (e5a773f, site permissions declared not read),
+  #266 (b70b9dc, Teams partial reason names the failed part), #267 (80a040a, mail folder delta without wellKnownName).
+- Status: todo
+- Result:
+- Needs: Q58 done, Q60 done.
+- **Read-only against the tenant**, except the optional fixture mail in step 3. Content reads go through the GET-only
+  `contentReadTransport` as the KEEL Content Reader, with the reader and scope files Q58 left in place. No permission or consent changes.
+- **Do:**
+  1. Record the commit `/opt/keel-live` is deployed at and confirm it includes d58a2fb (merge of #267), which also carries #265
+     and #266. If not, stop and report `blocked`.
+  2. **The 01:00 UTC nightly:** find the `content-collect` job that ran 2026-10-15 ~01:00 UTC (job table and worker journal).
+     Report its status, start/finish time, which commit was deployed when it started, and each workload's line if logged.
+     Then snapshot, as baseline: `SELECT workload, count(*), sum(bytes) FROM content_item GROUP BY workload` and
+     `content_sync_state` key count per workload.
+  3. **Mail fixture:** if alice's (`keel-rt-20260908-alice`) Inbox is still empty and the Restorer can do it, create one message
+     in her Inbox with subject `KEEL-RT-20261015-mail` and a one-line body (Restorer; the only tenant write). Otherwise say why not.
+  4. **Run A:** `node /opt/keel-live/cli/keel-content-collect.mjs run` once, as Q58 step 5 (worker's user, DB env loaded;
+     not while the scheduled job runs). Report the exit code and each workload line verbatim (`exchange-mail`, `onedrive`,
+     `sharepoint-sites`, `teams`, `planner`), including the full Teams reason for "Mark 8 Project Team" if it is still partial.
+     Read back the same two queries as step 2.
+  5. **Fixture check after run A:** confirm each appears in content_item (container or metadata name):
+     - exchange-mail: alice's mail folders and the KEEL-RT-20261015-mail message (or whatever messages her mailbox holds);
+     - onedrive: KEEL-RT-20261015-onedrive.txt;
+     - sharepoint-sites: the 4 KEEL-RT sites;
+     - teams: KEEL-RT-20260908 Collaboration Hub;
+     - planner: workload `planner`, container `group:9263e1d4…`: plan KEEL-RT-20261015-plan, its details, bucket
+       KEEL-RT-20261015-bucket, task KEEL-RT-20261015-task and its details.
+  6. **Run B:** run the same command again right after run A, with no tenant change in between. Report the exit code and each
+     workload line verbatim, then the same two queries. Per workload, report the new content_item rows and bytes between A and B
+     (expected about 0) and whether `content_sync_state` keys exist (delta tokens reused). Say which workloads, if any,
+     re-read everything on run B.
+- **Report:** the deployed commit; the nightly's outcome (step 2); for runs A and B the exit code, each workload's line verbatim,
+  and the DB read-back; the step 3 fixture write; the step 5 fixture check; the A-to-B difference per workload; any error text
+  (no tokens or keys).

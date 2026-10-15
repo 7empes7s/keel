@@ -3844,3 +3844,62 @@ item that needs it stays untouched.
 - **Report:** B; the enforce summary line; the read-back include list; how many times the last DELETE was refused before it
   landed (from the run log, if shown); the step 4 count; approval ids; the evidence commit and the `live evidence` line for
   the update. Comment the result on #294.
+
+### Q80: SharePoint site groups and permissions restore, live capture and round trip on a KEEL-RT- site (after #332), plus the Collector manifest
+- Drafted by the "Site groups restore" thread (2026-10-15). Code: PR #332. New per-site restore
+  `cli/keel-restore.mjs --workload sharepoint-site-permissions --tenant-host <host> --site <site id> [--at <ISO time>]`:
+  from the content backup's `site/permissions` item (Q76) it adds back what is missing: custom permission levels, groups,
+  group members, site collection admins and role assignments on the site and on lists with their own permissions.
+  It never removes, narrows or changes inheritance; anything wider than the backup is listed as a manual line. On the
+  test tenant it writes only KEEL-RT- sites, levels, groups and users. All five writes
+  (`sharepoint.site-role-definitions.add`, `.site-groups.add`, `.site-group-members.add`, `.site-admins.add`,
+  `.site-role-assignments.add`) are **off** until the capture below is imported. Writes go through SharePoint REST as the
+  **Restorer** certificate (`/etc/keel/restorer.json`, SharePoint Online Sites.FullControl.All, held since Q7/Q26), through a
+  transport that allows only those POSTs on the one site.
+- Needs: A has no deploy dependency. B needs /opt/keel-live at the merge of PR #332 or later
+  (`test -f /opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs`).
+- Status: todo
+- **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
+  Global admin not used. Never touch CA policies, break-glass accounts or Marouane's account. No consent is granted.
+- **A. Collector manifest (Entra, one PATCH as the Restorer):** the Collector already holds Office 365 SharePoint Online
+  `Sites.FullControl.All` (resource `00000003-0000-0ff1-ce00-000000000000`, role `678536fe-1083-478a-9c59-b99265e6b0d3`) but its
+  manifest does not list it. GET the Collector application's `requiredResourceAccess`, add that role under the SharePoint
+  resource (keep every existing resource and entry), PATCH once. Nothing removed, no consent call. Check: the manifest now
+  lists it and the service principal's appRoleAssignments are unchanged.
+- **B. Fixtures:** the existing `KEEL-RT-20261004` site only. On it, create one custom list `KEEL-RT-perm-list` and break its
+  inheritance by hand (copy role assignments). Test user: one existing `keel-rt-*` test user, not a site collection admin of
+  that site (claims form `i:0#.f|membership|<upn>`). The capture creates `KEEL-RT-perm-1 level` and `KEEL-RT-perm-1 group`.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the list above and note its id. Mint two SharePoint tokens (audience `https://<host>`), never printed:
+     `getToken(config, { scope: 'https://<host>/.default' })` from `tools/tenant-probe/auth.mjs`, with `/etc/keel/tenant.json`
+     as `KEEL_SPO_COLLECTOR_TOKEN` and `/etc/keel/restorer.json` as `KEEL_SPO_RESTORER_TOKEN`.
+  2. **Capture:** `node tools/qualification/sharepointSitePermissionsLive.mjs plan ...` first (expect 7 writes), then
+     `capture --confirm-live-tenant-write` with `--tenant-ref`, `--tenant-host`,
+     `--fixture-site-url https://<host>/sites/KEEL-RT-20261004`, `--label KEEL-RT-perm-1`, `--member <claims login>`,
+     `--list-id <list id>`, `--collector-ref`/`--restorer-ref`, `--grants`, `--docs` (doc URLs from
+     `node -e "import('./tools/qualification/sharepointSitePermissionsAcceptance.mjs').then(m=>console.log(m.requiredDocumentation()))"`),
+     `--build B`, `--out docs/release/qualifications/sharepoint-site-permissions-live-acceptance.json`.
+     Report the exit code and the verify output. If SharePoint refuses a write (401/403), report blocked with the status and
+     the path; do not grant anything.
+  3. **Import:** `node cli/keel-workload-collect.mjs import --dir <your checkout>/docs/release/qualifications` (DB env loaded).
+     Report the imported/refused lines.
+  4. **Backup:** `node /opt/keel-live/cli/keel-content-collect.mjs run` once (Q76 step 3 conditions). Confirm the newest
+     `site/permissions` row of KEEL-RT-20261004 holds the level, the group with the test user, the user as admin, and the
+     group's role on the site and on `KEEL-RT-perm-list`.
+  5. **Round trip:** by hand, delete `KEEL-RT-perm-1 group` and `KEEL-RT-perm-1 level`, and remove the test user as site
+     collection admin. Dry run as the Collector:
+     `node /opt/keel-live/cli/keel-restore.mjs --workload sharepoint-site-permissions --tenant-host <host> --site <site id> --collector-config /etc/keel/tenant.json`.
+     Expect 6 changes (level, group, member, admin, role on the site, role on the list), 0 refused. Approve the restore
+     request and its content effect (externally-sharing), then `--artifact <id> --enforce` with
+     `KEEL_COLLECTOR_CONFIG_PATH=/etc/keel/tenant.json`. Expect `verified` and the log line
+     `5 of 5 write(s) qualified`.
+  6. **Re-run check:** dry run again: expect 0 changes; promote it and expect `no-change` with no write. Promote the step 5
+     artifact again: expect `stale`, no write.
+  7. **Wider check (no write expected):** add one more `keel-rt-*` user to `KEEL-RT-perm-1 group` by hand, dry run: expect
+     0 changes and one manual line "a member now but not in the backup; KEEL never removes a member". Do not promote.
+  8. **Cleanup:** remove the test user as admin, delete `KEEL-RT-perm-1 group`, `KEEL-RT-perm-1 level` and
+     `KEEL-RT-perm-list`.
+  9. Commit the record and its `.capture.json` on `claude/live-evidence-site-permissions`, branched from `origin/master`
+     (secret scan first, as Q39). No PR.
+- **Report:** A's before/after resource counts; B; step 2 exit code and verify; step 3 import lines; step 4 check; per round
+  the plan line, outcome and approval ids; steps 6 and 7 results; the evidence commit; anything left in the tenant.

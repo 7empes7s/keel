@@ -3548,7 +3548,7 @@ item that needs it stays untouched.
 - Drafted by the "#294 consent policy" thread (2026-10-15). Fix: PR #302, master 1a33ff5. A create now waits (up to about
   60 s, on 404 only) for the new policy to replicate before posting its include and exclude rules.
 - Needs: /opt/keel-live at 1a33ff5 or later (`grep -q untilReplicated /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: todo (waiting on deploy)
+- Status: in-progress
 - Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
   Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
   runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
@@ -3608,7 +3608,7 @@ item that needs it stays untouched.
   ("adopts live <id>"), not `create recreate`.
 - Needs: /opt/keel-live at 321435f or later (`grep -q conditionSetsPostStateRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
   Can run in the same sitting as Q73 (same fixture).
-- Status: todo (waiting on deploy)
+- Status: in-progress
 - Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
   Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
   runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.

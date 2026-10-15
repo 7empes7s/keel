@@ -2800,7 +2800,7 @@ item that needs it stays untouched.
   `New-PowerAppManagementApp` for the KEEL Collector (appId 87aa77c4…; it returned that appId) and turned on the Fabric
   setting "Service principals can access read-only admin APIs" for `KEEL-RT-collector-fabric-readers`. Follows Q57's two
   optional checks, which were both 403 before this.
-- Status: todo
+- Status: in-progress
 - Needs: none.
 - **Read-only.** Nothing created, granted, changed or removed. Use the Collector's own token (client credentials) for every
   call below, except the group-membership read, which may use the Restorer.

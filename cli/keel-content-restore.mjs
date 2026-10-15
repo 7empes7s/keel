@@ -40,6 +40,7 @@ import { requestApproval } from '../engine/govern/approvals.mjs';
 import { seg } from '../engine/content/exchangeMail.mjs';
 import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
+import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
 import { DEFAULT_READER_PATH, readerProblems } from './keel-content-collect.mjs';
 
@@ -86,9 +87,8 @@ export function restorerProblems(restorer, config, reader) {
   return problems;
 }
 
-/** The content write transport from Wave 2 W2-0, with this run's target guard. */
+/** The content write transport, with this run's target guard. */
 async function defaultWriteTransport(tokenSource, { guard, fetchImpl }) {
-  const { contentWriteTransport } = await import('../engine/content/restore/transport.mjs');
   return contentWriteTransport(tokenSource, fetchImpl, { guard });
 }
 

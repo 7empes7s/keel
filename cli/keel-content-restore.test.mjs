@@ -7,6 +7,7 @@ import { schemaSql } from '../engine/store/loadSchema.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { createMemoryContentStore } from '../engine/content/store.mjs';
 import { mailRestoreRunId, normalizeMailRestoreRequest } from '../engine/content/restore/mail.mjs';
+import { approveRequest } from '../engine/govern/approvals.mjs';
 import { main, mailRequestFromArgs, restorerProblems } from './keel-content-restore.mjs';
 
 const config = { tenantId: 'KEEL-RT-tenant-id', clientId: 'collector-app' };
@@ -127,4 +128,52 @@ test('plan, gate, test-tenant guard, run and resume through the command line', a
   assert.equal(graph.writes().length, writes, 'running the approved request again writes nothing');
   const { rows: [held] } = await setup.query('SELECT status, requested_by, approved_by FROM content_restore_run WHERE id = $1', [planned.runId]);
   assert.deepEqual(held, { status: 'completed', requested_by: actor.id, approved_by: approver.id });
+});
+
+test('request, approval and run end to end, through the real write transport', async (t) => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const setup = await database.connect();
+  t.after(async () => {
+    await setup.end();
+    await database.cleanup();
+  });
+  await setup.query(schemaSql());
+  const { rows: [actor] } = await setup.query(`INSERT INTO principal (email) VALUES ('keel-rt-restorer@contoso.test') RETURNING id`);
+  const { rows: [approver] } = await setup.query(`INSERT INTO principal (email) VALUES ('keel-rt-approver@contoso.test') RETURNING id`);
+  await setup.query(`INSERT INTO role_grant (principal_id, role) VALUES ($1, 'restorer'), ($2, 'approver')`, [actor.id, approver.id]);
+  const store = await seededStore();
+  const lines = [];
+  const sent = [];
+  let next = 0;
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, method: init.method, headers: init.headers, body: init.body });
+    const path = new URL(url).pathname.replace('/v1.0', '');
+    const reply = (status, body) => new Response(body === null ? null : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    if (init.method === 'GET' && path === `/users/${USER}`) return reply(200, { id: USER, displayName: 'KEEL-RT-mailbox', mail: 'KEEL-RT-mailbox@contoso.test' });
+    if (init.method === 'POST') return reply(201, { id: `new-${++next}` });
+    return reply(404, null);
+  };
+  const deps = {
+    readFile: (path) => { if (!(path in files)) throw new Error(`no file ${path}`); return files[path]; },
+    exists: (path) => path in files,
+    connectFn: () => database.connect(),
+    env: { KEEL_DB_URL: 'test' },
+    logger: { log: (line) => lines.push(line) },
+    openStore: () => store,
+    getTokenFn: async () => 'token',
+    fetchImpl,
+    testTenantRefs: [TENANT],
+  };
+
+  assert.equal(await main(['mail', 'request', '--source-mailbox', USER, '--at', AT, '--actor', actor.id, '--justification', 'KEEL-RT- check'], deps), 0);
+  const { approvalId } = JSON.parse(lines.pop());
+  await approveRequest(setup, { tenantRef: TENANT, id: approvalId, decidedBy: approver.id });
+
+  assert.equal(await main(['mail', 'run', '--approval-id', approvalId, '--actor', actor.id], deps), 0);
+  assert.equal(JSON.parse(lines.pop()).restored, 1);
+  const message = sent.find((request) => request.method === 'POST' && request.url.endsWith('/messages'));
+  assert.equal(message.headers['content-type'], 'text/plain');
+  assert.equal(message.headers.authorization, 'Bearer token');
+  assert.equal(Buffer.from(message.body, 'base64').toString(), MIME.toString());
+  assert.ok(sent.every((request) => new URL(request.url).pathname.startsWith(`/v1.0/users/${USER}`)));
 });

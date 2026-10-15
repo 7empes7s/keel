@@ -3677,3 +3677,49 @@ item that needs it stays untouched.
   5. **Run B:** the same command again. Expect sharepoint-sites to store 0 new `site/permissions` rows (change-only).
 - **Report:** the deployed commit; step 2 yes/no; for A and B the exit code and each workload line verbatim; the step 4
   summary per site; any denied or failed permission read with its HTTP status and path (no tokens).
+
+### Q77: SharePoint site app grant restore, live capture and round trip on a KEEL-RT- site (after #321)
+- Drafted by the "Site app grant restore" thread (2026-10-15). Code: PR #321, master cc6404a. New per-site restore
+  `cli/keel-restore.mjs --workload sharepoint-site-grants --collection <id> --tenant-host <host> --site <site id>`:
+  re-creates a site app grant (Sites.Selected) missing since the backup and raises a narrowed one to the backup's role.
+  Never wider than the backup, never narrows or removes. Both writes (`sharepoint.site-permissions.add`, `.update`) are
+  **off** until the capture below is imported.
+- Needs: /opt/keel-live at cc6404a or later (`test -f /opt/keel-live/engine/restore/workloads/sharepointSiteGrants.mjs`).
+- Status: todo
+- **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
+  Global admin not used. **Restorer permissions:** none to add (it holds Graph Sites.FullControl.All, Q26). If Graph
+  refuses a write with 403, report blocked with what Graph names; do not grant anything.
+- **Fixtures:**
+  - Site: the existing `KEEL-RT-20261004` site (Q69). No other site.
+  - App: one new app registration `KEEL-RT-site-grant-app` with **no API permissions and no secret**. Fixture exception (as
+    Q67's KEEL-RT-W2-app): a Sites.Selected grant to this app on the KEEL-RT- site only. Never Keel's own apps or any other app.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the app. Make sure it holds no grant on the site (the capture refuses if it does).
+  2. **Capture:** `node tools/qualification/sharepointSiteGrantsLive.mjs plan ...` first, then `capture --confirm-live-tenant-write`
+     with `--tenant-host`, `--fixture-site-url https://<host>/sites/KEEL-RT-20261004`, `--app-id <client id>`,
+     `--app-name KEEL-RT-site-grant-app`, `--collector-ref`/`--restorer-ref`, `--grants` and `--docs` (same file shapes as the
+     gate-120 capture; the required doc URLs are printed by
+     `node -e "import('./tools/qualification/sharepointSiteGrantsAcceptance.mjs').then(m=>console.log(m.requiredDocumentation()))"`),
+     `--build B`, `--out docs/release/qualifications/sharepoint-site-grants-live-acceptance.json`. It grants the app `read`,
+     raises it to `write`, and leaves that grant in place. Report the exit code and the verify output.
+  3. **Import:** `node cli/keel-workload-collect.mjs import --dir <your checkout>/docs/release/qualifications` (DB env loaded).
+     Report the imported/refused lines. Then confirm both writes now read `enabled: true` for this tenant (the restore's
+     `--enforce` log line "SharePoint site app grants: 2 of 2 write(s) qualified" is enough).
+  4. **Backup:** `node /opt/keel-live/cli/keel-workload-collect.mjs run` once. Note collection C (sharepoint-site-settings);
+     confirm the site's `appPermissionGrants` holds the app with `write`.
+  5. **Add round:** delete the app's grant on the site by hand (Graph DELETE `/sites/{id}/permissions/{grant id}`). Dry run
+     `keel-restore.mjs --workload sharepoint-site-grants --collection C --tenant-host <host> --site <site id>
+     --collector-config /etc/keel/tenant.json`. Expect `1 change(s)`. Approve the restore request and its content effect
+     (externally-sharing, roles → write), then `--artifact <id> --enforce`. Expect `verified`; the grant reads back `write`.
+     If either approval cannot be reached for this CLI workload dry run, stop and report blocked with what was missing.
+  6. **Re-run check:** dry run again from C. Expect `0 change(s)`; promote it too and expect `no-change` with no write.
+     Promote the step 5 artifact again and expect `stale` with no write.
+  7. **Update round:** PATCH the grant to `read` by hand. Dry run from C: expect 1 change (update). Approve both, enforce,
+     expect `verified` (reads back `write`). Dry run again: expect 0.
+  8. **Wider check (no write expected):** PATCH the grant to `fullcontrol` by hand, dry run from C. Expect 0 changes and one
+     manual line "wider now than in the backup". Do not promote.
+  9. Cleanup: delete the app's grant on the site. Keep `KEEL-RT-site-grant-app` (no permissions) for the 30-day recapture.
+  10. Commit the record and its `.capture.json` on `claude/live-evidence-site-grants`, branched from `origin/master`
+      (secret scan first, as Q39). No PR.
+- **Report:** B; step 2 exit code and verify; step 3 import lines; collection C; per round the plan line, outcome, read-back
+  role and approval ids; steps 6 and 8 results; the evidence commit; anything left in the tenant.

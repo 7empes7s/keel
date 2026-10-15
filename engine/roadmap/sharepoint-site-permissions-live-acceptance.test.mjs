@@ -97,6 +97,7 @@ test('a capture writes nothing outside the fixtures, or when its fixture already
   assert.throws(() => sitePermissionsCapturePlan({ ...options, label: 'Payroll' }), /--label must be KEEL-RT-/);
   assert.throws(() => sitePermissionsCapturePlan({ ...options, member: login('alice') }), /KEEL-RT-\* test user/);
   assert.throws(() => sitePermissionsCapturePlan({ ...options, listId: 'Documents' }), /--list-id/);
+  assert.throws(() => sitePermissionsCapturePlan({ ...options, listId: undefined }), /--list-id/);
   assert.equal(sitePermissionsCapturePlan(options).filter((step) => step.method !== 'GET').length, 7);
 
   for (const [name, mutate, reason] of [
@@ -122,7 +123,7 @@ test('a capture writes nothing outside the fixtures, or when its fixture already
 
   // The CLI refuses a capture without the explicit confirmation.
   const lines = [];
-  const code = await liveMain(['capture', '--tenant-host', HOST, '--fixture-site-url', WEB_URL, '--label', LABEL, '--member', MEMBER], { out: (line) => lines.push(line) });
+  const code = await liveMain(['capture', '--tenant-host', HOST, '--fixture-site-url', WEB_URL, '--label', LABEL, '--member', MEMBER, '--list-id', LIST], { out: (line) => lines.push(line) });
   assert.equal(code, 2);
   assert.match(lines.at(-1), /--confirm-live-tenant-write/);
 });
@@ -144,6 +145,8 @@ test('a tampered, unsigned or other-tenant record imports nothing', async () => 
     removeWrite: resign((e) => { e.subject.requests.push({ ...firstPost(e), path: firstPost(e).path.replace('web/roledefinitions', 'web/roleassignments/removeroleassignment(principalid=1,roledefid=2)') }); }),
     collectorWrites: resign((e) => { firstPost(e).credential = 'collector'; }),
     oneScope: resign((e) => { e.subject.writes.find((w) => w.operationId === 'sharepoint.site-role-assignments.add').scopes = 1; }),
+    noList: resign((e) => { delete e.subject.fixture.listId; }),
+    noListWrite: resign((e) => { e.subject.requests = e.subject.requests.filter((r) => !r.path.includes('lists(guid')); }),
     notFixtureUser: resign((e) => { e.subject.fixture.member = 'i:0#.f|membership|alice@x.onmicrosoft.com'; }),
     notFixtureGroup: resign((e) => { e.subject.fixture.group = 'Owners'; }),
     otherSubject: resign((e) => { e.subject.writes[1].subject = 'Owners'; }),

@@ -29,7 +29,7 @@ import {
   SITE_GRANTS_RESTORE, SITE_GRANT_WRITE_OPERATIONS, createSiteGrantsRestoreArtifact, executeSiteGrantsRestore,
   planSiteGrantsRestore, readLiveSiteGrants,
 } from './sharepointSiteGrants.mjs';
-import { TEST_TENANT_REFS } from '../../../tools/qualification/entraLive.mjs';
+import { TEST_TENANT_REFS } from '../../govern/approvalPolicy.mjs';
 import {
   SITE_PERMISSIONS_RESTORE, SITE_PERMISSION_WRITE_OPERATIONS, createSitePermissionsRestoreArtifact, executeSitePermissionsRestore,
   loadSitePermissionsSource, planSitePermissionsRestore, readLiveSitePermissions,
@@ -118,7 +118,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
     },
     create: createSitePermissionsRestoreArtifact,
     execute: async (client, { tenantRef, artifactId, plan, connection, qualifications, contentStore, sleep }) => executeSitePermissionsRestore(client, {
-      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.sharePoint(plan.tenantHost), store: await contentStore(), testTenantRefs: TEST_TENANT_REFS, qualifications, sleep,
+      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.sharePoint(plan.tenantHost, { webUrl: plan.webUrl }), store: await contentStore(), testTenantRefs: TEST_TENANT_REFS, qualifications, sleep,
     }),
   }),
   [EXCHANGE_WORKLOAD]: Object.freeze({

@@ -4,7 +4,7 @@
  * A record holds one capture by tools/qualification/sharepointSitePermissionsLive.mjs on
  * a KEEL-RT- site: it creates a KEEL-RT- permission level and group, adds a KEEL-RT- test
  * user to the group and as a site collection admin, grants the group the level on the
- * site (and on one list when one is named), and reads each back through SharePoint REST.
+ * site and on one list, and reads each back through SharePoint REST.
  *
  * It never sends a request and never enables anything. A verified record is turned into
  * ledger evidence only by sharepointSitePermissionsLive.mjs.
@@ -28,7 +28,7 @@ const ROLE_ASSIGNMENT_ADD = 'sharepoint.site-role-assignments.add';
 export const SITE_PERMISSIONS_LIVE_WRITES = Object.freeze([ROLE_DEFINITION_ADD, GROUP_ADD, GROUP_MEMBER_ADD, SITE_ADMIN_ADD, ROLE_ASSIGNMENT_ADD]);
 export const FIXTURE_PREFIX = 'KEEL-RT-';
 // How many requests of each write a capture sends: one of each, and one role
-// assignment per scope (the site, and the list when one was named).
+// assignment per scope (the site and the list).
 const EXPECTED = Object.freeze({ roledefinitions: 1, sitegroups: 1, members: 1, admin: 1 });
 
 /** True when a sign-in name names a KEEL-RT- test user (claims or plain). */
@@ -49,10 +49,10 @@ export function requiredGrants() {
 
 const missing = (held, needed) => needed.filter((item) => !(Array.isArray(held) ? held : []).includes(item));
 
-function requestProblems(requests, { sitePath, scopes }) {
+function requestProblems(requests, { sitePath }) {
   if (!Array.isArray(requests) || requests.length === 0) return ['no request log recorded'];
   const failures = [];
-  const counts = { roledefinitions: 0, sitegroups: 0, members: 0, admin: 0, roles: 0, ensure: 0 };
+  const counts = { roledefinitions: 0, sitegroups: 0, members: 0, admin: 0, webRoles: 0, listRoles: 0, ensure: 0 };
   const prefix = `${sitePath.toLowerCase()}/_api/`;
   for (const [index, request] of requests.entries()) {
     const label = `request ${index} (${request?.method ?? '?'} ${request?.path ?? '?'})`;
@@ -74,12 +74,14 @@ function requestProblems(requests, { sitePath, scopes }) {
     else if (api === 'web/ensureuser') counts.ensure += 1;
     else if (/\/users$/.test(api)) counts.members += 1;
     else if (/^web\/siteusers\//.test(api)) counts.admin += 1;
-    else counts.roles += 1;
+    else if (api.startsWith('web/lists(')) counts.listRoles += 1;
+    else counts.webRoles += 1;
   }
   for (const [kind, expected] of Object.entries(EXPECTED)) {
     if (counts[kind] !== expected) failures.push(`expected exactly ${expected} ${kind} write, found ${counts[kind]}`);
   }
-  if (counts.roles !== scopes) failures.push(`expected exactly ${scopes} role assignment write(s), found ${counts.roles}`);
+  if (counts.webRoles !== 1) failures.push(`expected exactly 1 role assignment write on the site, found ${counts.webRoles}`);
+  if (counts.listRoles !== 1) failures.push(`expected exactly 1 role assignment write on the list, found ${counts.listRoles}`);
   if (counts.ensure > 1) failures.push(`expected at most 1 ensureuser, found ${counts.ensure}`);
   return failures;
 }
@@ -121,7 +123,9 @@ export function validateSitePermissionsLiveSubject(evidence, { tenantRef, build 
   if (!String(fixture.level ?? '').startsWith(FIXTURE_PREFIX)) failures.push(`the permission level is not a ${FIXTURE_PREFIX}* test level`);
   if (!String(fixture.group ?? '').startsWith(FIXTURE_PREFIX)) failures.push(`the group is not a ${FIXTURE_PREFIX}* test group`);
   if (!isFixtureLogin(fixture.member)) failures.push(`the user added is not a ${FIXTURE_PREFIX}* test user`);
-  const scopes = 1 + (fixture.listId ? 1 : 0);
+  // The role assignment is proven on both scopes the restore writes: the site and one list.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(fixture.listId ?? ''))) failures.push('no fixture list: the role assignment was not proven on a list');
+  const scopes = 2;
 
   const writes = Array.isArray(subject.writes) ? subject.writes : [];
   for (const id of SITE_PERMISSIONS_LIVE_WRITES) {
@@ -142,7 +146,7 @@ export function validateSitePermissionsLiveSubject(evidence, { tenantRef, build 
   if (typeof subject.captureLogSha256 !== 'string' || subject.captureLogSha256 !== evidence.proof?.artifact?.sha256) {
     failures.push('the capture log digest is not bound to the signed subject');
   }
-  if (sitePath) failures.push(...requestProblems(subject.requests, { sitePath, scopes }));
+  if (sitePath) failures.push(...requestProblems(subject.requests, { sitePath }));
   if (!Number.isInteger(subject.throttle?.retryAfterResponses) || subject.throttle.retryAfterResponses < 0) failures.push('throttle behaviour not recorded');
   const docs = Array.isArray(subject.documentation) ? subject.documentation : [];
   for (const url of requiredDocumentation()) {

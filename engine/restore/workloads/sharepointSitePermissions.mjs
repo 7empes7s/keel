@@ -205,8 +205,10 @@ export function planSitePermissionsRestore({ source, live, tenantHost, siteId, t
   }
   if (source.siteId !== siteId) throw new Error('the backup is of another site');
   if (normalUrl(live?.web?.url) !== normalUrl(backup.web.url)) throw new Error('the site read now is not the site in the backup');
-  const siteName = decodeURIComponent(webUrl.pathname.split('/').filter(Boolean).pop() ?? '');
-  const refused = targetProblems({ tenantRef, names: [siteName], testTenantRefs });
+  // Both the site collection and the site itself must be KEEL-RT- on a test tenant: an
+  // admin added on a subsite is an admin of its whole collection.
+  const parts = webUrl.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+  const refused = [parts[1] ?? '', parts.at(-1) ?? ''].flatMap((name) => targetProblems({ tenantRef, names: [name], testTenantRefs }));
   if (refused.length) throw new Error(`${refused.join('; ')}; nothing is planned`);
 
   const operations = [];

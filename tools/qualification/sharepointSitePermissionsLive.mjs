@@ -6,14 +6,14 @@
  *
  *   node tools/qualification/sharepointSitePermissionsLive.mjs plan \
  *        --tenant-host contoso.sharepoint.com --fixture-site-url https://contoso.sharepoint.com/sites/KEEL-RT-... \
- *        --label KEEL-RT-perm-1 --member 'i:0#.f|membership|keel-rt-user@contoso.onmicrosoft.com' [--list-id <guid>]
+ *        --label KEEL-RT-perm-1 --member 'i:0#.f|membership|keel-rt-user@contoso.onmicrosoft.com' --list-id <guid>
  *     Offline (the default). Prints every request a capture would send. No network.
  *
  *   KEEL_SPO_COLLECTOR_TOKEN=... KEEL_SPO_RESTORER_TOKEN=... [KEEL_QUALIFICATION_HMAC_KEY=...] \
  *   node tools/qualification/sharepointSitePermissionsLive.mjs capture --confirm-live-tenant-write \
  *        --tenant-ref sha256:... --tenant-host contoso.sharepoint.com \
  *        --fixture-site-url https://contoso.sharepoint.com/sites/KEEL-RT-... \
- *        --label KEEL-RT-perm-1 --member <claims sign-in name of a KEEL-RT- test user> [--list-id <guid>] \
+ *        --label KEEL-RT-perm-1 --member <claims sign-in name of a KEEL-RT- test user> --list-id <guid> \
  *        --collector-ref app:<collector app id> --restorer-ref app:<restorer app id> \
  *        --grants grants.json --docs docs.json \
  *        --out docs/release/qualifications/sharepoint-site-permissions-live-acceptance.json [--build <sha>]
@@ -66,7 +66,8 @@ function problems({ tenantHost, fixtureSiteUrl, label, member, listId }) {
   const found = fixtureSiteProblems({ tenantHost, fixtureSiteUrl });
   if (!/^KEEL-RT-[A-Za-z0-9-]{1,40}$/.test(String(label ?? ''))) found.push(`--label must be ${FIXTURE_PREFIX}<letters, digits or dashes>: it names the test level and group`);
   if (!isFixtureLogin(member) || !String(member).includes('|')) found.push(`--member must be the claims sign-in name of a ${FIXTURE_PREFIX}* test user (i:0#.f|membership|keel-rt-...)`);
-  if (listId !== undefined && !GUID_RE.test(String(listId))) found.push('--list-id must be a list id (a GUID)');
+  // Role assignments are restored on lists too, so the proof must cover a list.
+  if (!GUID_RE.test(String(listId ?? ''))) found.push('--list-id must be the id (a GUID) of a list with its own permissions: the role assignment is proven on the site and on that list');
   return found;
 }
 

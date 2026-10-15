@@ -467,7 +467,11 @@ export async function backupSharePointSites({
     if (permissionsReader) {
       await read('permissions', async () => {
         const { value, failed } = await readSitePermissions(permissionsReader, discovered.webUrl);
-        entry.refs.permissions = await putSetting('site/permissions', value);
+        // Versioned by run as well as content: a site that goes back to an earlier state
+        // gets a new row with this run's time, so the latest row is always the state now
+        // (the restore picks a backup by time). Unchanged permissions are still not stored.
+        const hash = createHash('sha256').update(canonicalJson(value)).digest('hex');
+        entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`);
         if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
       });
     }

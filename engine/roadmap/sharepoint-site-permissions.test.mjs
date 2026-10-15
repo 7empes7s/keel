@@ -164,6 +164,11 @@ test('the plan refuses another tenant, another site and a non KEEL-RT site on th
   assert.throws(() => planSitePermissionsRestore({
     source: { ...source, value: hr(source.value) }, live: hr(live), tenantHost: HOST, siteId: SITE, tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT],
   }), /KEEL-RT- targets/);
+  // A KEEL-RT- subsite under a site collection named otherwise is refused too.
+  const under = (value) => ({ ...value, web: { ...value.web, url: `https://${HOST}/sites/HR/KEEL-RT-sub` } });
+  assert.throws(() => planSitePermissionsRestore({
+    source: { ...source, value: under(source.value) }, live: under(live), tenantHost: HOST, siteId: SITE, tenantRef: TEST_TENANT, testTenantRefs: [TEST_TENANT],
+  }), /KEEL-RT- targets/);
 });
 
 test('inheritance is never changed and an unread backup is never guessed at', async () => {
@@ -395,6 +400,18 @@ test('the Restorer transport sends only the allow-listed site permission writes,
     [`${API}/web/lists`, { method: 'GET', body: {} }, /a GET with a body/],
     [`${API}/web/lists/getbytitle('x')/items`, { method: 'GET' }, /not an allow-listed read/],
   ]) assert.throws(() => check(url, init), reason, url);
+  // A repeated header name cannot slip a second X-HTTP-Method past the check, and an admin is never removed.
+  assert.throws(() => check(`${API}/web/siteusers/getbyid(4)`, { method: 'POST', body: { IsSiteAdmin: true }, headers: { 'X-HTTP-Method': 'MERGE', 'x-http-method': 'DELETE' } }), /repeated request header/);
+  assert.throws(() => check(`${API}/web/siteusers/getbyid(4)`, { method: 'POST', body: { IsSiteAdmin: false }, headers: { 'X-HTTP-Method': 'MERGE' } }), /never removes an admin/);
+  // Bound to one site, the transport reaches no other site on the host.
+  const bound = (url, init) => assertSitePermissionsRequest(url, init, HOST, { webUrl: WEB_URL });
+  bound(`${API}/web/sitegroups`, { method: 'POST', body: { Title: 'x' } });
+  for (const url of [
+    `https://${HOST}/sites/HR/_api/web/sitegroups`,
+    `${WEB_URL}-2/_api/web/sitegroups`,
+    `${WEB_URL}/sub/_api/web/sitegroups`,
+    `${WEB_URL}%2f..%2fHR/_api/web/sitegroups`,
+  ]) assert.throws(() => bound(url, { method: 'POST', body: { Title: 'x' } }), /is bound to/, url);
 
   const sent = [];
   const fetchImpl = async (url, init) => {

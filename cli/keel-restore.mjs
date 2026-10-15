@@ -1622,10 +1622,10 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
  */
 async function defaultWorkloadConnection({ role, config, configPath, getTokenFn }) {
   const { accessToken } = await getTokenFn(config);
-  const sharePoint = (tenantHost) => {
+  const sharePoint = (tenantHost, { webUrl = null } = {}) => {
     const token = () => getTokenFn(config, { scope: `https://${tenantHost}/.default` });
     return role === 'restorer'
-      ? sitePermissionsWriteTransport(token, globalThis.fetch, { tenantHost })
+      ? sitePermissionsWriteTransport(token, globalThis.fetch, { tenantHost, webUrl })
       : sharePointReadTransport(token, globalThis.fetch, { tenantHost });
   };
   return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath }, sharePoint };

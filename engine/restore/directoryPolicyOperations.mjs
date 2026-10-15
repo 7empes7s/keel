@@ -309,6 +309,21 @@ async function readBack(writer, version, path, isStale, { retryOperation, attemp
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
+/**
+ * Repeats `attempt` while it answers 404, for about a minute by default: the
+ * wait for a just-created directory object to replicate before a write under
+ * it can find it. Any other answer is returned at once.
+ */
+async function untilReplicated(attempt, { replicationAttempts = 13, replicationDelayMs = 5000 } = {}) {
+  let result;
+  for (let i = 0; i < replicationAttempts; i += 1) {
+    result = await attempt();
+    if (!isNotFound(result)) return result;
+    if (i < replicationAttempts - 1) await new Promise((resolve) => setTimeout(resolve, replicationDelayMs));
+  }
+  return result;
+}
+
 const lower = (value) => String(value ?? '').toLowerCase();
 
 /**
@@ -434,7 +449,10 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   }
   for (const write of conditionWrites) {
     const path = `${entry.collection}/${encodeURIComponent(targetId)}/${write.set}`;
-    const added = await retryOperation(() => writer.write(version, path, { method: 'POST', body: write.body }));
+    const post = () => retryOperation(() => writer.write(version, path, { method: 'POST', body: write.body }));
+    // Issue #294: a policy created in this run can 404 here until the
+    // directory has replicated it (10-20 s live), so the write waits for it.
+    const added = operation === 'create' ? await untilReplicated(post, readAfterWrite) : await post();
     if (!added?.ok) {
       await journalOutcome(rollbackClient, journal, classifyWriteOutcome(added), { targetId, detail: `${write.set}: ${detailOf(added)}` });
       return { failed: failure(naturalKey, added) };

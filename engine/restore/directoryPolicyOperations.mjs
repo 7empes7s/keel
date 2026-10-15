@@ -38,6 +38,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
+import { qualificationFor, remappingFor, withExplicitReferences } from '../coverage/qualification.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
@@ -308,18 +309,42 @@ async function readBack(writer, version, path, isStale, { retryOperation, attemp
 
 const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
+const lower = (value) => String(value ?? '').toLowerCase();
+
 /**
- * One write of a governed type. `ctx`:
- *   { mode, retryOperation, rollbackClient, runId, restoreRef, decision,
- *     rewrite(resource) -> payload (references rewritten; throws when one does
- *     not resolve), readAfterWrite: { attempts, delayMs } }
+ * Roadmap task-63's rule, as applyWave applies it to its built-in writers: a
+ * rewrite that moves a reference to a different id (an app recreated in this
+ * run) needs a remapping proof for this operation. Returns the reason or null.
+ */
+function remappingRefusal(resource, verb, before, after) {
+  const changed = withExplicitReferences(resource).filter((ref) => {
+    const field = ref.field.split('.')[0];
+    return lower(before?.[field]) !== lower(after?.[field]);
+  });
+  if (changed.length === 0 || remappingFor(resource.resourceType, verb).qualified) return null;
+  return `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation`;
+}
+
+/**
+ * One write of a governed type: the registered writer applyWave calls
+ * (engine/restore/writers/entra.mjs), with the registry's ctx
+ * (writers/registry.mjs): mode, retryOperation, rollbackClient, runId,
+ * restoreRef, readAfterWriteOptions and rewriteReferences(payload).
  * Returns { applied } (with `followUp` steps), { skipped } or { failed }.
  */
 export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}) {
   const {
     mode = 'enforce', retryOperation = (operation) => operation(), rollbackClient = null, runId = null, restoreRef = null,
-    decision = { decision: 'automated' }, rewrite = (r) => r.payload, readAfterWrite = {},
+    rewriteReferences = (payload) => payload, readAfterWriteOptions = {},
   } = ctx;
+  const readAfterWrite = readAfterWriteOptions;
+  const decision = qualificationFor(resource.resourceType);
+  const rewrite = (r) => {
+    const desired = rewriteReferences(r.payload);
+    const refusal = remappingRefusal(r, verb, r.payload, desired);
+    if (refusal) throw new Error(refusal);
+    return desired;
+  };
   const { naturalKey } = resource;
   const entry = DIRECTORY_POLICY_RECORDS[resource.resourceType];
   if (!entry) return { failed: { naturalKey, error: `${resource.resourceType} is not a directory policy type` } };

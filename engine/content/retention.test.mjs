@@ -120,6 +120,26 @@ test("a file's record and a removal tombstone never push out the content they de
   for (const id of [bytes1, record1, message, tombstone]) assert.ok(!report.content.delete.some((d) => d.id === id));
 });
 
+test('a file version history read in one backup rotates by each version\'s own time', async () => {
+  const tenantRef = 'sha256:content-retention-history';
+  // Five versions of one file, all stored just now, last modified on five different days.
+  const ids = [];
+  for (const [i, daysAgo] of [40, 20, 3, 2, 1].entries()) {
+    ids.push(await addVersion({
+      tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'h', version: `v${i}`, daysAgo: 0.001 * (5 - i), chunks: [`h-${i}`],
+      metadata: { kind: 'drive-content', lastModifiedDateTime: new Date(now - daysAgo * DAY).toISOString() },
+    }));
+  }
+  // A malformed time falls back to when the version was stored.
+  const odd = await addVersion({ tenantRef, workload: 'onedrive', container: 'KEEL-RT-drive', itemKey: 'h', version: 'odd', daysAgo: 30, chunks: ['h-odd'], metadata: { kind: 'drive-content', lastModifiedDateTime: 'yesterday' } });
+  await setRetentionPolicy(client, { tenantRef, workload: 'onedrive', policy: { daily: 3 }, setBy: 'test-operator' });
+  const { report } = await runPrune(client, { tenantRef, now });
+  // Kept: the three newest days (1, 2 and 3 days ago). Gone: 20 and 40 days ago, and the odd one (30 days).
+  assert.deepEqual(report.content.delete.map((d) => d.id).sort(), [ids[0], ids[1], odd].sort());
+  assert.equal(report.content.delete.find((d) => d.id === ids[0]).versionAt, new Date(now - 40 * DAY).toISOString());
+  assert.equal(report.content.delete.find((d) => d.id === ids[0]).kind, 'drive-content');
+});
+
 test('a policy or hold scope must name a known workload, and nest', async () => {
   const tenantRef = 'sha256:content-retention-scope';
   await assert.rejects(setRetentionPolicy(client, { tenantRef, workload: 'fax', policy: { daily: 1 }, setBy: 'x' }), /workload must be/);

@@ -8,8 +8,11 @@
  * their own kind) rotates on its own, so a newer record or tombstone never pushes out
  * the content it describes. The newest row of each kind is always kept, so an item's
  * last known content never goes; an item with one version is never a candidate. A
- * legal hold on the tenant, workload, container or item keeps every version in its scope. A chunk goes only when no kept item, of any
- * tenant, still lists it (engine/content/index.mjs orphanedChunks).
+ * legal hold on the tenant, workload, container or item keeps every version in its scope.
+ * A version rotates by its own time (metadata.lastModifiedDateTime, as a drive file
+ * version or a message carries it), not by when it was stored: one backup that reads a
+ * file's whole version history must not collapse it into one day. A chunk goes only when
+ * no kept item, of any tenant, still lists it (engine/content/index.mjs orphanedChunks).
  */
 import { createPgContentIndex } from './index.mjs';
 import { matchingHolds, reasonKind, resolvePolicy, rotationReasons } from '../store/rotation.mjs';
@@ -19,13 +22,15 @@ export async function planContentRetention(client, { tenantRef, now, policies = 
   // Only items with more than one version can lose any; newest first within an item's kind.
   const { rows } = await client.query(
     `SELECT i.id, i.workload, i.container, i.item_key, i.version, i.created_at,
-            CASE WHEN i.metadata->>'removed' = 'true' THEN 'removed' ELSE coalesce(i.metadata->>'kind', '') END AS family
+            CASE WHEN i.metadata->>'removed' = 'true' THEN 'removed' ELSE coalesce(i.metadata->>'kind', '') END AS family,
+            CASE WHEN i.metadata->>'lastModifiedDateTime' ~ '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$'
+                 THEN (i.metadata->>'lastModifiedDateTime')::timestamptz ELSE i.created_at END AS version_at
      FROM content_item i
      WHERE i.tenant_ref = $1
        AND EXISTS (SELECT 1 FROM content_item j
                    WHERE j.tenant_ref = i.tenant_ref AND j.workload = i.workload AND j.container = i.container
                      AND j.item_key = i.item_key AND j.id <> i.id)
-     ORDER BY i.workload, i.container, i.item_key, family, i.created_at DESC, i.id DESC`,
+     ORDER BY i.workload, i.container, i.item_key, family, version_at DESC, i.id DESC`,
     [tenantRef],
   );
   const { rows: [{ n: singleVersionItems }] } = await client.query(
@@ -50,7 +55,7 @@ export async function planContentRetention(client, { tenantRef, now, policies = 
     const scope = { workload: versions[0].workload, container: versions[0].container, itemKey: versions[0].item_key };
     const { policy, label } = resolvePolicy(policies, scope);
     const holdReasons = matchingHolds(holds, scope).map((hold) => `legal hold: ${hold.reason}`);
-    const rotation = rotationReasons(versions.map((v) => ({ id: v.id, at: new Date(v.created_at) })), policy, at);
+    const rotation = rotationReasons(versions.map((v) => ({ id: v.id, at: new Date(v.version_at) })), policy, at);
     versions.forEach((v, index) => {
       const reasons = [...(index === 0 ? ['latest version'] : []), ...holdReasons, ...rotation.get(v.id)];
       if (reasons.length) {
@@ -61,7 +66,7 @@ export async function planContentRetention(client, { tenantRef, now, policies = 
       }
       deletions.push({
         id: v.id, workload: v.workload, container: v.container, itemKey: v.item_key, version: v.version,
-        createdAt: new Date(v.created_at).toISOString(), reason: `outside policy (${label})`,
+        kind: v.family, versionAt: new Date(v.version_at).toISOString(), createdAt: new Date(v.created_at).toISOString(), reason: `outside policy (${label})`,
       });
     });
   }

@@ -42,7 +42,7 @@ const SITE_ID = new RegExp(`^${SITE}$`, 'i');
 export const ALLOWED_PATHS = Object.freeze([
   /^\/sites\/getAllSites$/,
   new RegExp(`^/sites/${SITE}$`, 'i'),
-  new RegExp(`^/sites/${SITE}/(sites|permissions|columns|contentTypes|lists)$`, 'i'),
+  new RegExp(`^/sites/${SITE}/(sites|columns|contentTypes|lists)$`, 'i'),
   new RegExp(`^/sites/${SITE}/lists/${GUID}/(columns|contentTypes|items|drive)$`, 'i'),
   new RegExp(`^/sites/${SITE}/pages/microsoft\\.graph\\.sitePage$`, 'i'),
   new RegExp(`^/sites/${SITE}/pages/${GUID}/microsoft\\.graph\\.sitePage$`, 'i'),
@@ -52,6 +52,7 @@ const ALLOWED_QUERY = new Set(['$select', '$expand', '$top', '$skiptoken']);
 // Parts of a site Graph v1.0 does not return. Recorded on every site so a backup never
 // looks complete when it is not.
 export const MISSING_PARTS = Object.freeze([
+  { part: 'site-app-permissions', reason: 'app-only Graph needs Sites.FullControl.All to read site app grants; the Content Reader stays read-only (Sites.Read.All)' },
   { part: 'site-groups-and-user-permissions', reason: 'Graph returns only app grants; SharePoint groups and user role assignments need the SharePoint REST API, which is not qualified' },
   { part: 'list-item-attachments', reason: 'binary route: attachments are on the SharePoint REST API, not Graph' },
   { part: 'list-item-versions', reason: 'not read in this release: only the current version of each list item is stored' },
@@ -276,9 +277,6 @@ export async function backupSharePointSites({
     await read('site', async () => {
       const body = await reader.get(`${base}?$select=${SITE_SELECT}`);
       entry.refs.site = await put(container, 'site', body, body.lastModifiedDateTime);
-    });
-    await read('permissions', async () => {
-      entry.refs.permissions = await put(container, 'site/permissions', await reader.all(`${base}/permissions`));
     });
     await read('columns', async () => {
       entry.refs.columns = await put(container, 'site/columns', await reader.all(`${base}/columns`));

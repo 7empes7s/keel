@@ -4253,7 +4253,7 @@ item that needs it stays untouched.
   settings' read Name (DefaultGlobalPolicy). PR #346 (merged as 244756b) sends the documented fixed identity `-Identity DefaultGlobalTag`
   for `exchange-extended.quarantine-global-settings.update`, only on the one tenant-wide object.
 - Needs: `/opt/keel-live` at 244756b or later.
-- Status: queued
+- Status: in-progress
 - Do: exactly Q87's steps 1-3 (default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`),
   with the record going to a new evidence PR that replaces #344's exchange-extended record if #344 has merged, or onto #344 if it is open.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,

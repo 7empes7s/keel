@@ -16,6 +16,11 @@
 //   { "tenantId": "...", "clientId": "...", "certPath": "...", "keyPath": "...",
 //     "contentKeyFile": "/etc/keel/content.key", "storage": { "kind": "local", "root": "/var/lib/keel/content" } }
 // contentKeyFile holds the 32-byte master key (64 hex characters); losing it loses the content.
+// Site permissions (SharePoint groups and role assignments) are read through SharePoint
+// REST as the Collector from --config, when that config has a certificate: reading role
+// assignments needs Sites.FullControl.All on SharePoint, which the Content Reader does
+// not hold. Those reads are GET-only too (sharePointReadTransport). Without a certificate
+// in --config the part is declared missing on every site.
 // Until the reader file exists (admin consent, ask 1) a run reads nothing, says what it
 // waits on, and exits 0, so the nightly schedule does not fail every night.
 import { existsSync, readFileSync } from 'node:fs';
@@ -28,7 +33,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { createLocalStorageAdapter } from '../engine/storage/local.mjs';
 import { createPgContentIndex } from '../engine/content/index.mjs';
 import { CONTENT_WORKLOADS, createContentStore, parseContentKey } from '../engine/content/store.mjs';
-import { contentReadTransport } from '../engine/content/transport.mjs';
+import { contentReadTransport, sharePointReadTransport } from '../engine/content/transport.mjs';
 import { CONTENT_COLLECTORS } from '../engine/content/collectors.mjs';
 
 export const DEFAULT_READER_PATH = '/etc/keel/content-reader.json';
@@ -62,14 +67,16 @@ export function readerProblems(reader, config) {
  * One scheduled run. A collector that throws is recorded as failed with the reason,
  * and the next one still runs. Exit code 1 when any collector failed or was partial.
  */
-export async function runContentCollection(client, { tenantRef, tenantId, store, transport, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console }) {
+export async function runContentCollection(client, {
+  tenantRef, tenantId, store, transport, sharePointTransportFor, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console,
+}) {
   const runs = [];
   if (!collectors.length) logger.log('content backup: no content collectors are registered yet; nothing was read');
   for (const entry of collectors) {
     if (!CONTENT_WORKLOADS.includes(entry.workload)) throw new Error(`content collector for unknown workload ${entry.workload}`);
     let result;
     try {
-      result = await entry.collect(client, { tenantRef, tenantId, store, transport, scope, sleep, now, logger });
+      result = await entry.collect(client, { tenantRef, tenantId, store, transport, sharePointTransportFor, scope, sleep, now, logger });
     } catch (error) {
       result = { outcome: 'failed', items: 0, bytes: 0, reasons: [String(error?.message ?? error)] };
     }
@@ -110,7 +117,10 @@ export async function main(argv = process.argv.slice(2), {
       index: createPgContentIndex(client), storage: storageFor(reader.storage), key: parseContentKey(readFile(reader.contentKeyFile)),
     });
     const transport = contentReadTransport(() => getTokenFn(reader), fetchImpl);
-    const result = await runContentCollection(client, { tenantRef, tenantId: config.tenantId, store, transport, scope, collectors, logger });
+    const sharePointTransportFor = config.certPath && config.keyPath
+      ? (tenantHost) => sharePointReadTransport(() => getTokenFn(config, { scope: `https://${tenantHost}/.default` }), fetchImpl, { tenantHost })
+      : undefined;
+    const result = await runContentCollection(client, { tenantRef, tenantId: config.tenantId, store, transport, sharePointTransportFor, scope, collectors, logger });
     return result.exitCode;
   } finally {
     await client.end();

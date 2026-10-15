@@ -149,6 +149,16 @@ function writeTargets(workload) {
  * A fake tenant for one workload behind the real jobQueue spawn path. `hooks.cmdlet`
  * may return { error }, 'crash' (nothing applied) or 'apply-then-crash'.
  */
+/**
+ * Set-QuarantinePolicy as live (#339): a quarantine policy by its Name; the global settings
+ * only as DefaultGlobalTag, though their read answers Name DefaultGlobalPolicy.
+ */
+function quarantineTarget(state, identity) {
+  const id = String(identity).toLowerCase();
+  if (id === 'defaultglobaltag') return state['Get-QuarantinePolicy:GlobalQuarantinePolicy']?.[0] ?? null;
+  return (state['Get-QuarantinePolicy'] ?? []).find((body) => String(body.Name ?? '').toLowerCase() === id) ?? null;
+}
+
 function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}) {
   const { module } = WORKLOADS[workload];
   const targets = writeTargets(workload);
@@ -169,9 +179,8 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}
         // As live (#339): Set-QuarantinePolicy fails its Identity argument transformation on a Guid; it takes the Name.
         return { error: { message: `Cannot process argument transformation on parameter 'Identity'. Cannot convert value "${Identity}"`, category: 'InvalidData', errorId: 'ParameterArgumentTransformationError,Set-QuarantinePolicy' } };
       } else {
-        const found = lists.flat().find((body) => String(body.Guid ?? '').toLowerCase() === String(Identity).toLowerCase()
-          || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase()
-          || (cmdlet === 'Set-QuarantinePolicy' && String(body.Name ?? '').toLowerCase() === String(Identity).toLowerCase()));
+        const found = cmdlet === 'Set-QuarantinePolicy' ? quarantineTarget(state, Identity) : lists.flat().find((body) => String(body.Guid ?? '').toLowerCase() === String(Identity).toLowerCase()
+          || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase());
         if (!found) return { error: { message: `The operation couldn't be performed because object '${Identity}' couldn't be found.`, category: 'NotSpecified', errorId: 'ManagementObjectNotFoundException' } };
         Object.assign(found, values, 'WhenChangedUTC' in found ? { WhenChangedUTC: NOW.toISOString() } : {});
       }

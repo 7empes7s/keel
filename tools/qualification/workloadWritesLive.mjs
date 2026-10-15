@@ -158,6 +158,7 @@ function lockProblem(entry, resources) {
 function identityOf(write, entry) {
   if (write.identity === 'guid') return { Identity: entry.identity };
   if (write.identity === 'object-name') return { Identity: entry.fields.Name };
+  if (write.identity === 'fixed') return { Identity: write.fixedIdentity };
   return { Identity: entry.fields.Identity };
 }
 
@@ -351,7 +352,8 @@ export async function captureWorkloadWrites({
     if (!fixturesIn(resources).length && created.some((item) => item.family === family)) {
       try { resources = [...resources, ...await readFamily()]; } catch { /* still none */ }
     }
-    let candidates = fixturesIn(resources);
+    // A fixed identity names the one tenant-wide object, so it is never a fixture write.
+    let candidates = write.identity === 'fixed' ? [] : fixturesIn(resources);
     let scope = 'fixture';
     // A tenant-wide setting has no KEEL-RT- name: written only when allowed, and only when it is the one object.
     if (!candidates.length && allowTenantWide && TENANT_WIDE_WRITES.includes(ops.update)) {

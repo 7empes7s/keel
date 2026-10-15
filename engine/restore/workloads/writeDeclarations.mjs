@@ -13,7 +13,9 @@
  *  - `identity` says how the object is named to the cmdlet: `guid` (-Identity <Guid>,
  *    Exchange and Purview objects), `object-name` (-Identity <Name>, for an Exchange
  *    cmdlet that refuses a Guid: Set-QuarantinePolicy fails its Identity argument
- *    transformation on one, #339), `policy` (-Identity as Teams answered it, `Global`
+ *    transformation on one, #339), `fixed` (-Identity `fixedIdentity`, for a singleton
+ *    whose Set- takes a fixed name its read does not return: the global quarantine
+ *    settings read as DefaultGlobalPolicy and are set as DefaultGlobalTag), `policy` (-Identity as Teams answered it, `Global`
  *    or `Tag:<name>`), `name` (-Identity <name> for a New- of a named Teams policy).
  *  - Fields were declared from Microsoft's cmdlet documentation, not measured live.
  *    A value the cmdlet transport cannot carry (an object, a list of non-strings) is
@@ -40,9 +42,10 @@ const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
 const entries = {};
-function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fields, addRefused = null }) {
+function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields, addRefused = null }) {
   entries[id] = Object.freeze({
-    workload, family, resourceType, kind: 'cmdlet', method, module: plane.module, session: plane.session, identity, readBack,
+    workload, family, resourceType, kind: 'cmdlet', method, module: plane.module, session: plane.session, identity,
+    ...(identity === 'fixed' ? { fixedIdentity } : {}), readBack,
     fields: Object.freeze([...fields]), rbac: plane.rbac, grantsRequired: true, requires: plane.requires,
     source: `${docs}/${method.toLowerCase()}`,
     ...(addRefused ? { addRefused } : {}),
@@ -54,8 +57,8 @@ function declare(plane, docs, { id, workload, family, resourceType, readBack, me
  * replaces `create` where the service refuses the New- for KEEL's app-only Restorer: a deleted
  * named policy is then listed for an administrator with that reason.
  */
-function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, addRefused = null, identity = 'guid', fields }) {
-  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fields, addRefused });
+function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, addRefused = null, identity = 'guid', fixedIdentity, fields }) {
+  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fixedIdentity, fields, addRefused });
   if (create) declare(plane, docs, { id: `${prefix}.add`, workload, family: name, resourceType, readBack, method: create, identity: 'name', fields });
 }
 
@@ -98,8 +101,8 @@ family(EXO, EXO_DOCS, {
 const EXTENDED = 'exchange-extended';
 const RECIPIENT_SCOPE = ['Priority', 'Comments', 'SentTo', 'SentToMemberOf', 'RecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'ExceptIfRecipientDomainIs'];
 const SENDER_SCOPE = ['Priority', 'Comments', 'From', 'FromMemberOf', 'SenderDomainIs', 'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs'];
-const extended = (name, prefix, read, set, resourceType, fields, identity = 'guid') => family(EXO, EXO_DOCS, {
-  workload: EXTENDED, prefix: `exchange-extended.${prefix}`, family: name, resourceType, readBack: `exchange-extended.${read}`, set, identity, fields,
+const extended = (name, prefix, read, set, resourceType, fields, { identity = 'guid', fixedIdentity } = {}) => family(EXO, EXO_DOCS, {
+  workload: EXTENDED, prefix: `exchange-extended.${prefix}`, family: name, resourceType, readBack: `exchange-extended.${read}`, set, identity, fixedIdentity, fields,
 });
 extended('outboundSpamPolicy', 'outbound-spam-policy', 'outbound-spam-policies', 'Set-HostedOutboundSpamFilterPolicy', 'exchangeOutboundSpamPolicy', [
   'AdminDisplayName', 'RecipientLimitExternalPerHour', 'RecipientLimitInternalPerHour', 'RecipientLimitPerDay', 'ActionWhenThresholdReached',
@@ -114,11 +117,11 @@ extended('antiPhishRule', 'anti-phish-rule', 'anti-phish-rules', 'Set-AntiPhishR
 extended('antiMalwareRule', 'anti-malware-rule', 'anti-malware-rules', 'Set-MalwareFilterRule', 'exchangeAntiMalwareRule', RECIPIENT_SCOPE);
 extended('quarantinePolicy', 'quarantine-policy', 'quarantine-policies', 'Set-QuarantinePolicy', 'exchangeQuarantinePolicy', [
   'EndUserQuarantinePermissionsValue', 'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress',
-], 'object-name');
+], { identity: 'object-name' });
 extended('globalQuarantineSettings', 'quarantine-global-settings', 'quarantine-global-settings', 'Set-QuarantinePolicy', 'exchangeGlobalQuarantineSettings', [
   'EndUserSpamNotificationFrequencyInDays', 'EndUserSpamNotificationCustomFromAddress', 'MultiLanguageSetting', 'MultiLanguageCustomDisclaimer',
   'MultiLanguageSenderName', 'OrganizationBrandingEnabled',
-], 'object-name');
+], { identity: 'fixed', fixedIdentity: 'DefaultGlobalTag' });
 extended('journalRule', 'journal-rule', 'journal-rules', 'Set-JournalRule', 'exchangeJournalRule', ['Recipient', 'JournalEmailAddress', 'Scope']);
 extended('mobileDevicePolicy', 'mobile-device-policy', 'mobile-device-policies', 'Set-MobileDeviceMailboxPolicy', 'exchangeMobileDevicePolicy', [
   'AllowNonProvisionableDevices', 'PasswordEnabled', 'AlphanumericPasswordRequired', 'AllowSimplePassword', 'MinPasswordLength',

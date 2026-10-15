@@ -125,6 +125,16 @@ function writeTargets(workload) {
   return targets;
 }
 
+/**
+ * Set-QuarantinePolicy as live (#339): a quarantine policy by its Name; the global settings
+ * only as DefaultGlobalTag, though their read answers Name DefaultGlobalPolicy.
+ */
+function quarantineTarget(state, identity) {
+  const id = String(identity).toLowerCase();
+  if (id === 'defaultglobaltag') return state['Get-QuarantinePolicy:GlobalQuarantinePolicy']?.[0] ?? null;
+  return (state['Get-QuarantinePolicy'] ?? []).find((body) => String(body.Name ?? '').toLowerCase() === id) ?? null;
+}
+
 /** A fake tenant behind the real job transport. `hooks.cmdlet` may return { error } or 'crash'. */
 function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organization = ORG, organizationTenant = TENANT } = {}) {
   const { module } = WRITTEN_WORKLOADS[workload];
@@ -149,9 +159,8 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organ
       if (cmdlet === 'Set-QuarantinePolicy' && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(Identity))) {
         return { error: { message: `Cannot process argument transformation on parameter 'Identity'. Cannot convert value "${Identity}"`, category: 'InvalidData', errorId: 'ParameterArgumentTransformationError,Set-QuarantinePolicy' } };
       }
-      const found = lists.flat().find((body) => String(body.Guid ?? '').toLowerCase() === String(Identity).toLowerCase()
-        || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase()
-        || (cmdlet === 'Set-QuarantinePolicy' && String(body.Name ?? '').toLowerCase() === String(Identity).toLowerCase()));
+      const found = cmdlet === 'Set-QuarantinePolicy' ? quarantineTarget(state, Identity) : lists.flat().find((body) => String(body.Guid ?? '').toLowerCase() === String(Identity).toLowerCase()
+        || String(body.Identity ?? '').toLowerCase() === String(Identity).toLowerCase());
       if (!found) return { error: { message: `object '${Identity}' couldn't be found.`, category: 'NotSpecified', errorId: 'ManagementObjectNotFoundException' } };
       Object.assign(found, values);
       return [];
@@ -197,7 +206,8 @@ for (const workload of Object.keys(WRITTEN_WORKLOADS)) {
         assert.ok(write.parameters.Identity.startsWith(CAPTURE_CREATE_PREFIX), write.parameters.Identity);
         continue;
       }
-      const target = all.find((body) => [body.Guid, body.Identity, ...(write.cmdlet === 'Set-QuarantinePolicy' ? [body.Name] : [])].some((id) => String(id ?? '').toLowerCase() === String(write.parameters.Identity).toLowerCase()));
+      const target = write.cmdlet === 'Set-QuarantinePolicy' ? quarantineTarget(live.state, write.parameters.Identity)
+        : all.find((body) => [body.Guid, body.Identity].some((id) => String(id ?? '').toLowerCase() === String(write.parameters.Identity).toLowerCase()));
       assert.ok(target && isFixture(target), `${write.cmdlet} wrote ${write.parameters.Identity}`);
       assert.deepEqual(Object.keys(write.parameters).filter((name) => name !== 'Identity').length, 1, 'one field per write');
     }
@@ -391,8 +401,8 @@ test('a tenant-wide setting is written only when allowed and when it is the one 
         // Settings hold switches: give each non-text field a true/false value.
         for (const field of families[family].fields) if (!TEXT.has(field) && field !== 'Identity' && field !== 'Name') body[field] = false;
         if (WORKLOADS[workload].keyed === 'guid') body.IsDefault = true;
-        // Quarantine policies are named by Name, unique across both quarantine families, as live.
-        if (family === 'globalQuarantineSettings') body.Name = 'DefaultGlobalTag';
+        // The global quarantine settings read as DefaultGlobalPolicy and are set as DefaultGlobalTag, as live.
+        if (family === 'globalQuarantineSettings') body.Name = 'DefaultGlobalPolicy';
       }
     }
     const wideOps = wide.map(([, ops]) => ops.update);
@@ -417,7 +427,7 @@ test('a tenant-wide setting is written only when allowed and when it is the one 
     }
     t.diagnostic(`${workload}: ${wideCaptures.map((item) => `${item.operationId} (${item.field})`).join(', ')}; skipped ${evidence.subject.skipped.filter((item) => wideOps.includes(item.operationId)).map((item) => `${item.operationId}: ${item.reason}`).join('; ')}`);
 
-    // Set-QuarantinePolicy is sent the Name, never the Guid it refuses (#339).
+    // The global quarantine settings are sent DefaultGlobalTag, never their Guid or read Name (#339).
     for (const write of live.writes.filter((item) => item.cmdlet === 'Set-QuarantinePolicy')) assert.equal(write.parameters.Identity, 'DefaultGlobalTag');
 
     // A switch that turns a tenant-wide protection off is never flipped.

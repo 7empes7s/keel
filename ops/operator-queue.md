@@ -3417,8 +3417,7 @@ item that needs it stays untouched.
 ### Q71: Rerun the live compare after #299 (read-only)
 - Drafted by the "#296 automatic reply schedule" thread (2026-10-15). Fix: PR #299, master 95408f8. When automatic replies
   are not scheduled, compare now ignores their scheduled start and end, which Graph sets to the current hour on every read.
-- Needs: /opt/keel-live at 95408f8 or later (`git -C` is not available on the live tree; check the deployed commit the
-  usual way).
+- Needs: /opt/keel-live at 95408f8 or later (recorded the same way as Q66 step 1).
 - Status: todo
 - **Read-only.** Same as Q66 steps 1, 2 and 4 only: the Collector's GETs and DB reads. No tenant, host or DB writes.
 - Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):

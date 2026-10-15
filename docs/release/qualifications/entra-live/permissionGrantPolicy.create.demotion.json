@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "permissionGrantPolicy",
+  "operation": "create",
+  "reason": "Live create wrote the policy but the include condition set POST returned 404 Request_ResourceNotFound (new policy not yet replicated); KEEL does not retry, so the policy was left with 0 of 1 includes (#294). A re-run repaired it as an update.",
+  "restoreRef": "162f905c-1bf1-8490-8cb4-2b1e1a615464",
+  "decidedAt": "2026-10-15T10:26:11.501Z",
+  "builderSteps": [
+    "remove the create registration for permissionGrantPolicy in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.permissionGrantPolicy.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.permissionGrantPolicy.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

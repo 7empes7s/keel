@@ -93,6 +93,8 @@ import { compensationDigestInput, planCompensation } from '../engine/restore/com
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
+import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
 import {
   WORKLOAD_RESTORES, graphTransport, isWorkloadArtifact, workloadRestoreFor,
 } from '../engine/restore/workloads/dispatch.mjs';
@@ -1607,12 +1609,26 @@ async function defaultWorkloadConnection({ config, configPath, getTokenFn }) {
 }
 
 /**
- * Which workload writes are qualified on this host. No persisted workload ledger
- * exists yet (gap register W1), so none is: every write reports `disabled` and
- * nothing is sent. The executors refuse a missing qualification on their own.
+ * Which workload writes are qualified for this tenant, from the stored workload
+ * ledger (gap W1): the live read and write captures, the restorer's observed
+ * grants and the module versions in use, rebuilt at the moment of the run so the
+ * 30-day, version and tenant rules apply now. Each operation gets its own
+ * workloadWriteQualification; a write with no live capture stays `disabled` (or
+ * `fixture-tested`), and the executors send nothing for it. A database without
+ * the ledger tables reads as no proof.
  */
-async function defaultWorkloadQualifications() {
-  return {};
+export async function defaultWorkloadQualifications(client, { tenantRef, operations = [], now = new Date() }) {
+  const { rows: [table] } = await client.query("SELECT to_regclass('workload_ledger_evidence') IS NOT NULL AS present");
+  const stored = table?.present ? await loadWorkloadLedger(client, { tenantRef, now }) : null;
+  const options = {
+    readLedger: stored?.ledger ?? null,
+    evidence: stored?.inputs.writes ?? [],
+    tenantRef,
+    now,
+    runtime: stored?.inputs.runtime ?? {},
+    grants: stored?.inputs.restorerGrants ?? null,
+  };
+  return Object.fromEntries(operations.map((operationId) => [operationId, workloadWriteQualification(operationId, options)]));
 }
 
 const WORKLOAD_SUCCESS = new Set(['verified', 'no-change']);
@@ -1655,8 +1671,11 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
     role: 'restorer', config: targetConfig, configPath: paths.targetConfig, getTokenFn: deps.getTokenFn,
   });
   const qualifications = await deps.workloadQualificationsFn(client, { tenantRef: artifact.tenantRef, operations: entry.operations });
-  if (Object.keys(qualifications ?? {}).length === 0) {
-    logger.log(`no ${entry.label} write is qualified on this host yet; nothing will be written`);
+  const enabled = Object.values(qualifications ?? {}).filter((qualification) => qualification?.enabled === true);
+  if (enabled.length === 0) {
+    logger.log(`no ${entry.label} write is qualified for this tenant yet; nothing will be written`);
+  } else {
+    logger.log(`${entry.label}: ${enabled.length} of ${entry.operations.length} write(s) qualified for this tenant`);
   }
   const result = await entry.execute(client, {
     tenantRef: artifact.tenantRef, artifactId: artifact.id, tenantId: targetConfig.tenantId, plan, connection,

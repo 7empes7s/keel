@@ -12,8 +12,9 @@
 //         containment path under them, and counts the objects each one holds. Each type
 //         is catalogued (Keel backs it up), uncatalogued (readable, not backed up yet)
 //         or unreadable (with the HTTP status, the reason and the grant it most likely
-//         needs). Every request is a GET to Microsoft Graph; anything else is refused
-//         before it is sent. Bodies are counted and dropped.
+//         needs; a refusal for a grant the app's token already holds is
+//         refused-with-grant, with no hint). Every request is a GET to Microsoft Graph;
+//         anything else is refused before it is sent. Bodies are counted and dropped.
 //         --metadata-dir reads <dir>/v1.0.xml and <dir>/beta.xml instead of fetching them.
 //         --powershell-commands names a JSON file { "<module>": ["Get-...", ...] }, as
 //         listed on the host with
@@ -34,6 +35,7 @@ import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { GRAPH_VERSIONS, discover } from '../engine/discovery/discover.mjs';
+import { tokenRoles } from '../engine/discovery/grants.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from '../engine/discovery/store.mjs';
 import { readOnlyGraph } from '../engine/discovery/transport.mjs';
 
@@ -93,7 +95,9 @@ export function describeInventory(run) {
   const unreadable = run.items.filter((item) => item.status === 'unreadable');
   if (unreadable.length) lines.push('Unreadable:');
   for (const item of unreadable) {
-    lines.push(`  ${item.source} ${item.name}: ${item.reason}${item.httpStatus ? ` (${item.httpStatus})` : ''}${item.missingGrant ? `, needs ${item.missingGrant}` : ''}`);
+    // A refusal for a held grant has no hint, so Graph's own words are the reason.
+    const said = item.reason === 'refused-with-grant' && item.message ? `; Graph said: ${item.message.slice(0, 160)}` : '';
+    lines.push(`  ${item.source} ${item.name}: ${item.reason}${item.httpStatus ? ` (${item.httpStatus})` : ''}${item.missingGrant ? `, needs ${item.missingGrant}` : ''}${said}`);
   }
   return lines;
 }
@@ -139,10 +143,13 @@ export async function main(argv = process.argv.slice(2), {
   if (powershellCommands !== null && (typeof powershellCommands !== 'object' || Array.isArray(powershellCommands))) {
     throw new Error('--powershell-commands must hold an object of module -> cmdlet names');
   }
-  const graph = readOnlyGraph(async () => (await getTokenFn(config)).accessToken, { fetchImpl });
+  // The token's roles say which grants the app holds, so a refusal for one of them is
+  // not reported as a missing grant. The token itself is never printed or stored.
+  const token = (await getTokenFn(config)).accessToken;
+  const graph = readOnlyGraph(async () => token, { fetchImpl });
   const metadata = await loadMetadata(graph, versions, { dir: arg(argv, 'metadata-dir', null), readFile });
   const run = await discover({
-    graph, metadata, powershellCommands, ...(now ? { now } : {}),
+    graph, metadata, powershellCommands, heldGrants: tokenRoles(token), ...(now ? { now } : {}),
     pageCap: positive(arg(argv, 'page-cap'), 'page-cap'), concurrency: positive(arg(argv, 'concurrency'), 'concurrency'),
   });
   for (const line of describeInventory(run)) logger.log(line);

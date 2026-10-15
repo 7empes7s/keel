@@ -9,7 +9,7 @@ import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { catalogedCmdlets, isUnderItem } from './catalogue.mjs';
 import { discover, discoverPowerShell, failureReason, probePath } from './discover.mjs';
-import { missingGrant } from './grants.mjs';
+import { holdsGrant, missingGrant, tokenRoles } from './grants.mjs';
 import { discoverablePaths, parseMetadata } from './metadata.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from './store.mjs';
 import { DiscoveryWriteRefused, assertReadOnly, readOnlyGraph } from './transport.mjs';
@@ -254,10 +254,35 @@ test('failure reasons and grant hints', () => {
   assert.equal(failureReason(400, { message: 'Tenant does not have a SPO license.' }), 'not-licensed');
   assert.equal(failureReason(400, { message: 'Requires a filter' }), 'not-listable');
   assert.equal(failureReason(500, {}), 'error');
-  assert.deepEqual(missingGrant('/deviceManagement/managedDevices', 'Forbidden'), { grant: 'DeviceManagementManagedDevices.Read.All', source: 'documented' });
-  assert.deepEqual(missingGrant('/deviceManagement/deviceConfigurations', null), { grant: 'DeviceManagementConfiguration.Read.All', source: 'documented' });
-  assert.deepEqual(missingGrant('/sites', 'Required scopes = [Sites.Read.All, Sites.ReadWrite.All]'), { grant: 'Sites.Read.All', source: 'graph' });
+  assert.deepEqual(missingGrant('/deviceManagement/managedDevices', 'Forbidden'), { grant: 'DeviceManagementManagedDevices.Read.All', source: 'documented', held: false });
+  assert.deepEqual(missingGrant('/deviceManagement/deviceConfigurations', null), { grant: 'DeviceManagementConfiguration.Read.All', source: 'documented', held: false });
+  assert.deepEqual(missingGrant('/sites', 'Required scopes = [Sites.Read.All, Sites.ReadWrite.All]'), { grant: 'Sites.Read.All', source: 'graph', held: false });
   assert.equal(missingGrant('/somethingNew', 'denied'), null);
+  assert.equal(missingGrant('/deviceManagement/virtualEndpoint/cloudPCs', 'accessDenied: Access is denied to the requested resource.').grant, 'CloudPC.Read.All');
+});
+
+test('a refusal for a grant the app already holds is refused-with-grant, never a grant hint', async () => {
+  const held = ['DeviceManagementConfiguration.Read.All', 'Sites.ReadWrite.All'];
+  assert.equal(holdsGrant(held, 'deviceManagementConfiguration.read.all'), true);
+  assert.equal(holdsGrant(held, 'Sites.Read.All'), true, 'ReadWrite covers Read');
+  assert.equal(holdsGrant(held, 'Printer.Read.All'), false);
+  assert.equal(holdsGrant(null, 'Printer.Read.All'), false);
+  assert.deepEqual(missingGrant('/deviceManagement/auditEvents', 'Forbidden', held), { grant: 'DeviceManagementConfiguration.Read.All', source: 'documented', held: true });
+  assert.deepEqual(missingGrant('/sites', 'Required scopes = [Sites.Read.All, Sites.FullControl.All]', held), { grant: 'Sites.Read.All', source: 'graph', held: true });
+  assert.deepEqual(missingGrant('/print/printers', "API requires one of 'Printer.Read.All, Printer.ReadWrite.All'", held), { grant: 'Printer.Read.All', source: 'graph', held: false });
+
+  const forbidden = { get: async () => ({ status: 403, json: { error: { code: 'Forbidden', message: 'Application is not authorized to perform this operation.' } } }) };
+  const entry = { path: '/deviceManagement/auditEvents', collection: true };
+  const unknown = await probePath(forbidden, 'beta', entry);
+  assert.deepEqual([unknown.reason, unknown.grant?.grant], ['missing-grant', 'DeviceManagementConfiguration.Read.All'], 'roles unknown: the documented hint stays');
+  const holding = await probePath(forbidden, 'beta', entry, { heldGrants: held });
+  assert.deepEqual([holding.reason, holding.grant, holding.httpStatus], ['refused-with-grant', null, 403]);
+  assert.match(holding.message, /not authorized/, "Graph's own words are kept");
+
+  const payload = Buffer.from(JSON.stringify({ roles: ['Printer.Read.All', 7] })).toString('base64url');
+  assert.deepEqual(tokenRoles(`h.${payload}.s`), ['Printer.Read.All']);
+  assert.equal(tokenRoles('opaque-token'), null);
+  assert.equal(tokenRoles(`h.${Buffer.from('{}').toString('base64url')}.s`), null);
 });
 
 test('PowerShell Get cmdlets are classified from the host list, and a missing list is not-listed', async () => {
@@ -293,6 +318,8 @@ test('a run is stored and the latest run reads back with its items', async () =>
   assert.deepEqual(flagged.items.map((item) => item.name).sort(), ['/bookingBusinesses', 'Get-JournalRule']);
   assert.equal(await loadLatestDiscovery(client, { tenantRef: 'sha256:other-tenant' }), null);
   await assert.rejects(saveDiscoveryRun(client, { tenantRef: 'raw-tenant-id', run }), TypeError);
+  const refusedWithGrant = run.items.map((item) => (item.name === '/print/printers' ? { ...item, reason: 'refused-with-grant', missingGrant: null, grantSource: null } : item));
+  assert.ok(await saveDiscoveryRun(client, { tenantRef: TENANT_REF, run: { ...run, items: refusedWithGrant } }), 'the schema accepts refused-with-grant');
 });
 
 test('the CLI runs from saved metadata, writes the inventory and stores nothing with --no-store', async () => {
@@ -315,6 +342,18 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     assert.ok(lines.some((line) => line.includes('/print/printers: missing-grant (403), needs Printer.Read.All')));
     assert.ok(!tenant.calls.some((call) => call.url.includes('$metadata')));
     assert.equal(await discoverCli(['nonsense'], { logger: { log() {} } }), 2);
+
+    // A token whose roles already hold the grant: the refusal is not blamed on a missing grant.
+    const roles = Buffer.from(JSON.stringify({ roles: ['Printer.Read.All'] })).toString('base64url');
+    const held = [];
+    assert.equal(await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store'], {
+      fetchImpl: fixtureTenant().fetchImpl, getTokenFn: async () => ({ accessToken: `h.${roles}.s` }), now: fixed,
+      connectFn: async () => { throw new Error('the database must not be touched'); },
+      logger: { log: (line) => held.push(line) },
+    }), 0);
+    const printers = held.find((line) => line.includes('/print/printers:'));
+    assert.match(printers, /\/print\/printers: refused-with-grant \(403\); Graph said: Authorization_RequestDenied: Missing role permissions/);
+    assert.ok(!printers.includes('needs'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

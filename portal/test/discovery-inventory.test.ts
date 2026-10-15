@@ -51,6 +51,7 @@ test("the discovery sentences lead with the answer", () => {
   assert.equal(typeLabel({ kind: "navigation", name: "/deviceManagement/deviceConfigurations", entityType: "deviceConfiguration" }), "Device configuration");
   assert.equal(typeLabel({ kind: "entitySet", name: "/oauth2PermissionGrants", entityType: "oAuth2PermissionGrant" }), "OAuth2 permission grant");
   assert.equal(unreadableSentence({ reason: "missing-grant", missingGrant: "Printer.Read.All", grantSource: "graph" }), "Not read: KEEL's app is not allowed to read it. It needs the Printer.Read.All permission.");
+  assert.equal(unreadableSentence({ reason: "refused-with-grant", missingGrant: null, grantSource: null }), "Not read: Microsoft refused it, although KEEL's app holds the permission this area usually needs.");
   assert.equal(unreadableSentence({ reason: "not-licensed", missingGrant: null, grantSource: null }), "Not read: the tenant is not licensed for it.");
 });
 

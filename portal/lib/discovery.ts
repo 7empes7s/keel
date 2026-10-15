@@ -113,6 +113,7 @@ export function objectCount(objects: number | null, exact: boolean | null): stri
 
 const REASONS: Record<string, string> = {
   "missing-grant": "KEEL's app is not allowed to read it",
+  "refused-with-grant": "Microsoft refused it, although KEEL's app holds the permission this area usually needs",
   "not-licensed": "the tenant is not licensed for it",
   "not-listable": "Microsoft does not list it this way",
   error: "Microsoft answered with an error",

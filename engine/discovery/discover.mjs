@@ -9,7 +9,8 @@
  *  - Counts only. A response body is read for its count and dropped; nothing a type
  *    holds is stored.
  *  - Unknown is not zero. A refused or failed read is `unreadable` with the HTTP
- *    status, the reason and the grant it most likely needs. A count that stopped at
+ *    status, the reason and the grant it most likely needs. A 401/403 for a grant the
+ *    app already holds is `refused-with-grant`, with no grant hint. A count that stopped at
  *    the page cap is a lower bound (`objectsExact: false`). A PowerShell module whose
  *    command list was not supplied is `not-listed`.
  */
@@ -23,7 +24,7 @@ export const DEFAULT_PAGE_CAP = 5;
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_PATHS = 5000;
 export const STATUSES = Object.freeze(['catalogued', 'uncatalogued', 'unreadable', 'not-listed']);
-export const REASONS = Object.freeze(['missing-grant', 'not-licensed', 'not-listable', 'error', 'too-large']);
+export const REASONS = Object.freeze(['missing-grant', 'refused-with-grant', 'not-licensed', 'not-listable', 'error', 'too-large']);
 
 // The containers content backup works through, counted from their Graph collections.
 export const CONTAINERS = Object.freeze([
@@ -54,12 +55,18 @@ export function failureReason(status, { code, message } = {}) {
  * Reads one discovered path. A collection is counted with $count when Graph gives
  * one, else by walking pages up to `pageCap`; a single object counts as one.
  * Returns { readable, objects, objectsExact, httpStatus, reason, message, grant }.
+ * `heldGrants` is the app's granted roles (null when unknown): a refusal for a grant it
+ * holds is `refused-with-grant` and carries no grant.
  */
-export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_CAP } = {}) {
+export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_CAP, heldGrants = null } = {}) {
   const fail = (response) => {
     const { code, message } = graphError(response);
-    const reason = response.tooLarge ? 'too-large' : failureReason(response.status, { code, message });
-    const grant = reason === 'missing-grant' ? missingGrant(entry.path, message) : null;
+    let reason = response.tooLarge ? 'too-large' : failureReason(response.status, { code, message });
+    let grant = reason === 'missing-grant' ? missingGrant(entry.path, message, heldGrants) : null;
+    if (grant?.held) {
+      reason = 'refused-with-grant';
+      grant = null;
+    }
     return { readable: false, objects: null, objectsExact: null, httpStatus: response.status, reason, message: code ? `${code}: ${message ?? ''}`.trim() : message, grant };
   };
   if (!entry.collection) {
@@ -114,6 +121,7 @@ async function pool(items, limit, worker) {
  */
 export async function discoverGraphVersion(graph, version, metadataText, {
   catalogued = catalogedGraphPaths(), pageCap = DEFAULT_PAGE_CAP, concurrency = DEFAULT_CONCURRENCY, maxPaths = DEFAULT_MAX_PATHS,
+  heldGrants = null,
 } = {}) {
   const source = `graph:${version}`;
   let paths;
@@ -131,7 +139,7 @@ export async function discoverGraphVersion(graph, version, metadataText, {
   const items = await pool(paths, concurrency, async (entry) => {
     let probe;
     try {
-      probe = await probePath(graph, version, entry, { pageCap });
+      probe = await probePath(graph, version, entry, { pageCap, heldGrants });
     } catch (error) {
       if (error?.name === 'DiscoveryWriteRefused') throw error;
       probe = { readable: false, objects: null, objectsExact: null, httpStatus: null, reason: 'error', message: clip(String(error?.message ?? error)), grant: null };
@@ -242,11 +250,12 @@ export function summarize(items, catalogue, extraContainers = {}) {
 /**
  * One discovery run. `metadata` is { [version]: text } for each Graph version to walk
  * (a version whose fetch failed maps to an Error and is reported `unknown`).
- * `powershellCommands` is the per-module command list, or null.
+ * `powershellCommands` is the per-module command list, or null. `heldGrants` is the
+ * app's granted roles (from its token), or null when they are not known.
  */
 export async function discover({
   graph, metadata, powershellCommands = null, catalog = CATALOG, cataloguedCmdlets, now = () => new Date(),
-  pageCap, concurrency, maxPaths, containers = true,
+  pageCap, concurrency, maxPaths, containers = true, heldGrants = null,
 }) {
   const startedAt = now();
   const catalogued = catalogedGraphPaths({ catalog });
@@ -258,7 +267,7 @@ export async function discover({
       sources.push({ source: `graph:${version}`, status: 'unknown', error: clip(String(text?.message ?? 'no metadata')), metadataVersion: null, paths: 0 });
       continue;
     }
-    const result = await discoverGraphVersion(graph, version, text, { catalogued, pageCap, concurrency, maxPaths });
+    const result = await discoverGraphVersion(graph, version, text, { catalogued, pageCap, concurrency, maxPaths, heldGrants });
     sources.push(result.source);
     items.push(...result.items);
   }
@@ -269,7 +278,7 @@ export async function discover({
     for (const container of CONTAINERS) {
       if (items.some((item) => item.source === 'graph:v1.0' && item.name.toLowerCase() === container.path.toLowerCase())) continue;
       try {
-        const probe = await probePath(graph, 'v1.0', { path: container.path, collection: true }, { pageCap });
+        const probe = await probePath(graph, 'v1.0', { path: container.path, collection: true }, { pageCap, heldGrants });
         extraContainers[container.name] = probe.readable ? { objects: probe.objects, exact: probe.objectsExact }
           : { objects: null, exact: null, reason: probe.reason, missingGrant: probe.grant?.grant ?? null };
       } catch (error) {

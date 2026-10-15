@@ -3066,8 +3066,27 @@ item that needs it stays untouched.
 - Drafted by the "Immutable Azure storage target" thread (2026-10-15). Marouane: the offsite copy must be plain files
   stored locally on Mulinux first. Code: #281 (merge 5ccdb7a), `engine/storage/targets.mjs`.
 - Needs: /opt/keel-live at 5ccdb7a or later (`test -f /opt/keel-live/engine/storage/targets.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 09:36 UTC. Host only, as root; no tenant access, no secrets.
+  - **Build:** /opt/keel-live at 5eba6fb0, which includes 5ccdb7a (#281). It arrived about 09:30; at 09:06 the live build was still ce3e00b.
+  - **1. Mount:** `/mnt/keel-copy` is /dev/sdb (ext4), its own device; / and /opt/backups are on /dev/sda1.
+    - Last runs, old path: 2026-10-14 05:00 and 2026-10-15 05:00 both shipped and sha256-verified, to /mnt/keel-copy/keel-offsite/.
+      The 10-15 copy was 783dec59…. The last 5 files there are keel-db-2026-10-11 … 10-15.sql.gz (113 MB → 219 MB). Left as is.
+  - **2.** `/etc/keel/offsite.env` did not exist, so there was nothing to back up. I created it (root, 600) with exactly the five
+    KEEL_STORAGE_TARGET* lines. The unit already reads it (`EnvironmentFile=-/etc/keel/offsite.env`).
+  - **3. Dry run:** the first try returned `offsite refused: dump manifest is not newer than last shipped manifest`, exit 1, because
+    the old path shipped today's dump at 05:00. As the item directs, I backed up the shipped manifest to
+    `/opt/backups/keel-db-shipped-manifest.json.bak-q65` and removed it. The rerun gave `DRY RUN: mulinux usable` and
+    `would ship keel-db/keel-db-2026-10-15.sql.gz`, exit 0.
+  - **4. Real run** (`systemctl start keel-offsite.service`, 09:36:34–09:36:48):
+    `keel-db/keel-db-2026-10-15.sql.gz sha256 783dec5957a93eb4645d97498b31c6d32b840005cc5c60d897a9da6eeea24b64: complete`,
+    `mulinux (local-disk): verified, published`, `keel-offsite: done via storage targets (mulinux)`.
+  - **5.** `/mnt/keel-copy/keel-store/keel-db/keel-db-2026-10-15.sql.gz` is 219414823 bytes (root, 600). Its sha256 is
+    783dec5957a93eb4645d97498b31c6d32b840005cc5c60d897a9da6eeea24b64, which **equals** the `checksum` in /opt/backups/keel-db-manifest.json.
+  - **6.** keel-offsite.timer is enabled. Next run: Fri 2026-10-16 05:00:00 UTC.
+  - Note: the storage-target path did not write a new `/opt/backups/keel-db-shipped-manifest.json` (only the .bak-q65 is there).
+    Tomorrow's 05:00 run has a newer dump, so the "not newer" guard won't block it, but this is worth checking after that run.
+  - Rollback: delete /etc/keel/offsite.env (it did not exist before) and restore the .bak-q65 manifest.
 - Do, as root (host only, no tenant, no secrets printed):
   1. `findmnt /mnt/keel-copy` (must be its own device, not the root fs). Stop and report if not.
      Also report the last 3 runs: `journalctl -u keel-offsite.service -n 40 --no-pager | tail -20`, and `ls -l /mnt/keel-copy/keel-offsite/ | tail -5`.

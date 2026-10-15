@@ -3413,3 +3413,18 @@ item that needs it stays untouched.
 - **Report:** step 1 findings; preview list and assignments created (or reused); all four
   Test-ServicePrincipalAuthorization results; fixture write times and ids; blocked-check codes; backup lines; step 7
   outputs (exit codes, JSON, approval ids); anything refused; anything left in the tenant. No tokens or keys.
+
+### Q71: Rerun the live compare after #299 (read-only)
+- Drafted by the "#296 automatic reply schedule" thread (2026-10-15). Fix: PR #299, master 95408f8. When automatic replies
+  are not scheduled, compare now ignores their scheduled start and end, which Graph sets to the current hour on every read.
+- Needs: /opt/keel-live at 95408f8 or later (`git -C` is not available on the live tree; check the deployed commit the
+  usual way).
+- Status: todo
+- **Read-only.** Same as Q66 steps 1, 2 and 4 only: the Collector's GETs and DB reads. No tenant, host or DB writes.
+- Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):
+  1. Record the commit `/opt/keel-live` is deployed at.
+  2. Use the same `read` principal as Q66.
+  3. `node /opt/keel-live/cli/keel-compare.mjs live --principal-id <id> --config /etc/keel/tenant.json --json; echo exit=$?`
+- **Report:** the deployed commit; the exit code; the difference count; settings and workloads totals (added, removed,
+  changed, unchanged). Expect **0 changed** in both. If anything is still changed, name the type or workload and field
+  path only. No ids, tokens or payload values. Comment the result on #296.

@@ -3783,7 +3783,16 @@ item that needs it stays untouched.
   an oauth2PermissionGrant by its client app (KEEL-RT- name) and its one user (keel-rt- fixture, consentType Principal),
   not by a role. It still needs `--allow-by-reference` (a grant has no name of its own); the plan's step says so.
 - Needs: /opt/keel-live at 3f969a5 or later (`grep -q "the client app is not a KEEL-RT fixture" /opt/keel-live/tools/qualification/entraLive.mjs`).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 14:18–14:22 UTC on **B = a498b1a0** (includes 3f969a5, #324). No tenant writes: recaptured from Q67's A1b (create) and A2 (update).
+  Global admin not used.
+  - **1. Plan at B:** the oauth2PermissionGrant steps show the reviewed fixture guidance ("a delegated consent (consentType Principal)
+    for a KEEL-RT- app with no other permissions, for one keel-rt- fixture user, to Microsoft Graph with scope openid only").
+  - **2–3.** `capture --allow-by-reference`: **create exit 0, update exit 0**. Both promoted → **live-qualified**.
+  - **Evidence:** `claude/live-evidence-w2-entra` @ **759584e** (2 records, their .capture.json files and logs; pseudonymize check passes, scan clean).
+  - **live evidence:**
+    live evidence oauth2PermissionGrant.create.json: fixture-tested -> live-qualified
+    live evidence oauth2PermissionGrant.update.json: fixture-tested -> live-qualified
 - **Test tenant only. No tenant writes:** this reuses Q67's restores (A1b for create, A2 for update); their journals and
   snapshots (S1, S2, which still hold KEEL-RT-W2-app and the keel-rt user) are in the KEEL database. Same capture tooling as Q67/Q74.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:

@@ -43,6 +43,7 @@ import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
 import { DEFAULT_READER_PATH, readerProblems } from './keel-content-collect.mjs';
+import { filesCommand } from './keel-content-restore-files.mjs';
 
 export const DEFAULT_RESTORER_PATH = '/etc/keel/content-restorer.json';
 
@@ -165,7 +166,7 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
 }
 
 // One line per workload. FILER adds `files` here from its own module.
-export const SUBCOMMANDS = Object.freeze({ mail: mailCommand });
+export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand });
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), exists = existsSync, connectFn = connect, getTokenFn = getToken,

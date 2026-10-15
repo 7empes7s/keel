@@ -3113,8 +3113,32 @@ item that needs it stays untouched.
 - Drafted by the "Wave 2 live checks" thread (2026-10-15). Code: compare, PR #283 and its review fixes #285
   (`cli/keel-compare.mjs`, `engine/govern/compare.mjs`). Only live check left for that package.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/cli/keel-compare.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: Done 2026-10-15 09:38–09:45 UTC, read-only (Collector GETs, DB reads). No tenant, host or DB writes.
+  - **1.** /opt/keel-live at **f54fa007** (deployed 09:38).
+  - **2.** Principal: "Marouane Defili (Entra ID)" (bac8d59b…; viewer, operator, approver, restorer and admin, scope *).
+  - **3.** `sources`: **exit 0**. It lists tenant sha256:f7b3959300856957 and its snapshots, the newest 2026-10-15T09:00:20Z (1476 objects).
+  - **4.** `live`: **exit 0**. `compare live: 44 differences`, from snapshot 92bcd02f… (2026-10-15T09:00:20.933Z) to the tenant at
+    09:38:46Z. Workloads and content: newest stored collection, not read live.
+  - **5. `--json`:**
+    - `mode`: live. Left: snapshot 92bcd02f… (09:00:20Z). Right: live, latestStored [workloads, content].
+    - Settings totals: added 0, removed 0, **changed 44**, unchanged 1432, notCompared 65, unmatched 0.
+      - **All 44 changes are false.** All are `roleAssignmentSchedule`, field `scheduleInfo.startDateTime`, which Graph returns
+        as the read time for no-expiry assignments. Filed **#287**.
+    - **Not compared, settings, 65 types** (40 Entra ID, 25 Intune):
+      - Reason for all 65: left `not-requested`. The 09:00 snapshot is an hourly tier-1 collection that does not read those
+        types; the right side is complete for 34, complete-empty for 27, failed for 4.
+      - The 4 live-read failures are tenant license or feature limits, not permissions; the Collector token holds both scopes:
+        identityApiConnector (400 AADB2C99039, self-service sign-up not enabled), and lifecycleManagementSettings,
+        lifecycleWorkflow and lifecycleWorkflowCustomTaskExtension (403, needs an Entra ID Governance license).
+      - Observation: comparing against the latest snapshot means about 65 tier-2/3 types are never compared from an hourly
+        snapshot. Using the newest snapshot that requested each type would cover them; this is a design choice for the thread.
+    - **Workloads:** 56 unchanged, 0 changed. Not compared, 7 (disabled, not qualified): exchange-extended, exchange-mail-flow,
+      power-platform-settings, purview-governance, purview-retention-dlp, teams-org-policies, teams-voice-policies.
+    - **Content:** by item, 0 added, 0 removed, 0 changed (exchange-mail 11 to 11, group-conversations 3 to 3, …).
+    - No type is shown as removed (0 removed).
+  - **6. Refusal** (random uuid principal): **exit 2**, `refused: this principal does not hold the read capability`.
+  - **7. Portal gate:** keel-portal on 127.0.0.1:3600. `GET /api/compare` with no session returns **401**; POST also returns 401.
 - **Read-only.** The live side runs the Collector's GETs and stores nothing. No tenant, host or DB writes.
 - Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):
   1. Record the commit `/opt/keel-live` is deployed at.

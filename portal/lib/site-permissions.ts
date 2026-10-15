@@ -20,6 +20,8 @@ function runFrom(row: Record<string, unknown> | undefined): SitesRun | null {
     id: String(row.id),
     outcome: row.outcome as SitesRun["outcome"],
     observedTo: new Date(row.observed_to as string | Date).toISOString(),
+    // Discovery stops at its site cap and says so; the list is then incomplete.
+    capped: (row.digest as { discovery?: { capped?: unknown } } | null)?.discovery?.capped === true,
   };
 }
 
@@ -33,7 +35,7 @@ export async function loadSitePermissions(
   { tenantRef: tenant, siteId = null, now = new Date() }: { tenantRef: string; siteId?: string | null; now?: Date },
 ): Promise<SitePermissionsData> {
   const runs = async (outcomes: string[] | null) => (await client.query(
-    `SELECT id, outcome, observed_to FROM workload_collection
+    `SELECT id, outcome, observed_to, digest FROM workload_collection
       WHERE tenant_ref = $1 AND workload = $2 AND ($3::text[] IS NULL OR outcome = ANY($3::text[]))
       ORDER BY created_at DESC, observed_to DESC LIMIT 1`,
     [tenant, SITES_WORKLOAD, outcomes],

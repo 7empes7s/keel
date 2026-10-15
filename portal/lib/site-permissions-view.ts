@@ -53,6 +53,7 @@ export interface SitesRun {
   id: string;
   outcome: "complete" | "complete-empty" | "partial" | "failed" | "disabled";
   observedTo: string;
+  capped?: boolean;
 }
 
 export interface SitePermissionsData {
@@ -186,6 +187,7 @@ export function sitesVerdict(data: SitePermissionsData): { text: string; tone: V
   }
   const failing = data.sites.filter(unreadable).length;
   if (failing) return { text: `App access on ${count(failing, "site", "sites")} could not be read.`, tone: "attention" };
+  if (data.run.capped) return { text: `Only the first ${count(data.sites.length, "site was", "sites were")} read; the read stops there, so other sites are missing.`, tone: "attention" };
   if (data.latest) return { text: `The newest SharePoint read did not finish; this shows the one from ${ago(data.run.observedTo, data.generatedAt)}.`, tone: "attention" };
   if (!data.sites.length) return { text: "The last SharePoint read found no sites.", tone: "good" };
   const withApps = data.sites.filter((site) => (site.appGrants.entries?.length ?? 0) > 0).length;

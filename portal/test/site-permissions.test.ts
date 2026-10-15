@@ -40,6 +40,9 @@ test("the loader reads the newest stored read of this tenant, one site or all, a
 
     await recordSharePointRun(client, { tenantRef: TENANT, result: run("2026-10-13T02:00:00.000Z", "complete", [site(FINANCE, "Finance", [])]) });
     const grant = { id: "aTowaS50fG1zLnNwLmV4dGVybmFs", roles: ["write"], applications: [{ id: PAYROLL_APP, displayName: "Payroll connector" }] };
+    const capped = { ...run("2026-10-14T01:00:00.000Z", "partial", []), discovery: { status: "observed", sites: 0, capped: true, maxSites: 0 } };
+    await recordSharePointRun(client, { tenantRef: TENANT, result: capped });
+    assert.equal((await loadSitePermissions(client, { tenantRef: TENANT, now })).run?.capped, true);
     const stored = await recordSharePointRun(client, { tenantRef: TENANT, result: run("2026-10-14T02:00:00.000Z", "partial", [
       site(FINANCE, "Finance", [grant]),
       site(ARCHIVE, "Archive", undefined, { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" }),
@@ -49,6 +52,7 @@ test("the loader reads the newest stored read of this tenant, one site or all, a
 
     const data = await loadSitePermissions(client, { tenantRef: TENANT, now });
     assert.equal(data.run?.id, stored.id);
+    assert.equal(data.run?.capped, false);
     assert.equal(data.latest, null);
     assert.deepEqual(data.sites.map((entry) => entry.displayName), ["Archive", "Finance"]);
     assert.deepEqual(data.sites[1].appGrants, { status: "observed", httpStatus: null, entries: [grant] });
@@ -110,6 +114,7 @@ test("the verdict never hides a failed, switched-off or unread SharePoint read",
   assert.equal(sitesVerdict({ ...base, latest: { ...RUN, outcome: "disabled" } }).tone, "attention");
   assert.deepEqual(sitesVerdict({ ...base, latest: { ...RUN, outcome: "failed" } }), { text: "The last SharePoint read failed, so site permissions are unknown.", tone: "critical" });
   assert.deepEqual(sitesVerdict({ ...base, run: RUN, sites: [FINANCE_SITE] }), { text: "1 site read; 1 has apps with access.", tone: "good" });
+  assert.deepEqual(sitesVerdict({ ...base, run: { ...RUN, capped: true }, sites: [FINANCE_SITE] }), { text: "Only the first 1 site was read; the read stops there, so other sites are missing.", tone: "attention" });
   assert.equal(sitesVerdict({ ...base, run: RUN, sites: [FINANCE_SITE], latest: { ...RUN, id: "x", outcome: "failed" } }).tone, "attention");
   for (const data of [base, { ...base, run: RUN, sites: [FINANCE_SITE] }]) {
     assert.ok(sitesVerdict(data).text.split(/\s+/).length <= 25);

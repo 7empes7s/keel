@@ -38,6 +38,7 @@ export function SiteList({ data }: { data: SitePermissionsData }) {
         {run ? <ReadTime now={data.generatedAt} run={run} /> : null}
       </div>
       <NewerRead latest={data.latest} now={data.generatedAt} />
+      {run?.capped ? <p className="action-error">{`The read stops after ${sites.length.toLocaleString("en-GB")} sites, so sites beyond that are not listed.`}</p> : null}
       {!run ? <p className="empty-state">No SharePoint read has stored any sites yet. Sites appear here after the daily SharePoint read.</p> : null}
       {run && !sites.length ? <p className="empty-state">The last read found no sites.</p> : null}
       {sites.length ? (

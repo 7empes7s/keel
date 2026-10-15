@@ -9,8 +9,11 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 
 import {
-  MISSING_PARTS, assertSitesRequest, backupSharePointSites, canonicalJson, defaultLibraryBackup,
+  ITEM_PERMISSIONS_MISSING, MISSING_PARTS, SITE_PERMISSIONS_MISSING, assertPermissionsRequest, assertSitesRequest,
+  backupSharePointSites, canonicalJson, defaultLibraryBackup,
 } from './sharepointSites.mjs';
+import { createMemoryContentStore } from './store.mjs';
+import { loadSitePermissionsSource } from '../restore/workloads/sharepointSitePermissions.mjs';
 
 const HOST = 'contoso.sharepoint.com';
 const G = 'https://graph.microsoft.com/v1.0';
@@ -139,7 +142,8 @@ test('a fixture site with a list, a page, a library and a subsite is fully captu
   assert.equal(result.sites[0].lists.find((list) => list.listId === LIST).items, 3);
 
   // What Graph can't return is listed, never silently missing.
-  assert.deepEqual(result.sites[0].missing.map((part) => part.part), MISSING_PARTS.map((part) => part.part));
+  // Without a SharePoint REST transport, groups and role assignments are declared missing.
+  assert.deepEqual(result.sites[0].missing.map((part) => part.part), [...MISSING_PARTS, SITE_PERMISSIONS_MISSING].map((part) => part.part));
   assert.ok(MISSING_PARTS.some((part) => part.part === 'site-app-permissions'));
   assert.equal(result.sites[0].reads.permissions, undefined);
 });
@@ -474,4 +478,180 @@ test('a delta item gone before its own read is a deletion, and a next link in an
   assert.equal(list.reads.items.status, 'observed');
   assert.equal(list.itemsDeleted, 1);
   assert.equal(deltaState.rows.get(`items:${ROOT}/${LIST}`).items['8'], null);
+});
+
+// SharePoint REST (site permissions): the fixture site breaks inheritance on itself and
+// on one list; its subsite inherits.
+const ROOT_URL = `https://${HOST}/sites/KEEL-RT-Site`;
+const SUB_URL = `https://${HOST}/sites/KEEL-RT-Site/Sub`;
+const UNIQUE_LIST = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+const assignment = (id, title, roles) => ({
+  PrincipalId: id, Member: { Id: id, Title: title, LoginName: title, PrincipalType: 8 },
+  RoleDefinitionBindings: roles.map(([roleId, name]) => ({ Id: roleId, Name: name })),
+});
+function permissionRoutes(webUrl, { unique }) {
+  const base = new URL(webUrl).pathname;
+  return {
+    [`${base}/_api/web`]: { Id: unique ? 'w-root' : 'w-sub', Url: webUrl, HasUniqueRoleAssignments: unique },
+    [`${base}/_api/web/roledefinitions`]: { value: [
+      { Id: 1073741829, Name: 'Full Control', Hidden: false, RoleTypeKind: 5, Order: 1, BasePermissions: { High: '2147483647', Low: '4294967295' } },
+      { Id: 1073741826, Name: 'Read', Hidden: false, RoleTypeKind: 2, Order: 128, BasePermissions: { High: '176', Low: '138612833' } },
+    ] },
+    [`${base}/_api/web/sitegroups`]: { value: [
+      { Id: 5, Title: 'KEEL-RT-Site Members', OwnerTitle: 'KEEL-RT-Site Owners', OnlyAllowMembersViewMembership: false },
+      { Id: 3, Title: 'KEEL-RT-Site Owners', OwnerTitle: 'KEEL-RT-Site Owners', OnlyAllowMembersViewMembership: false },
+    ] },
+    [`${base}/_api/web/sitegroups/GetById(3)/users`]: { value: [{ Id: 11, Title: 'KEEL-RT-Owner', LoginName: 'i:0#.f|membership|keel-rt-owner@contoso.com', PrincipalType: 1, IsSiteAdmin: true }] },
+    [`${base}/_api/web/sitegroups/GetById(5)/users`]: [
+      { value: [{ Id: 13, Title: 'KEEL-RT-Member B', PrincipalType: 1 }], 'odata.nextLink': `${webUrl}/_api/web/sitegroups/GetById(5)/users?%24skiptoken=Paged%3dTRUE%26p_ID%3d13&$select=Id` },
+      { value: [{ Id: 12, Title: 'KEEL-RT-Member A', PrincipalType: 1 }] },
+    ],
+    [`${base}/_api/web/siteusers`]: { value: [{ Id: 11, Title: 'KEEL-RT-Owner', PrincipalType: 1, IsSiteAdmin: true }] },
+    [`${base}/_api/web/roleassignments`]: { value: [assignment(5, 'KEEL-RT-Site Members', [[1073741830, 'Edit']]), assignment(3, 'KEEL-RT-Site Owners', [[1073741829, 'Full Control']])] },
+    [`${base}/_api/web/lists`]: { value: unique ? [
+      { Id: LIST, Title: 'KEEL-RT-Tasks', Hidden: false, HasUniqueRoleAssignments: false },
+      { Id: UNIQUE_LIST, Title: 'KEEL-RT-Private', Hidden: false, HasUniqueRoleAssignments: true },
+    ] : [] },
+    [`${base}/_api/web/lists(guid'${UNIQUE_LIST}')/roleassignments`]: { value: [assignment(3, 'KEEL-RT-Site Owners', [[1073741829, 'Full Control']])] },
+  };
+}
+
+function fakeSharePoint({ override = {} } = {}) {
+  const routes = { ...permissionRoutes(ROOT_URL, { unique: true }), ...permissionRoutes(SUB_URL, { unique: false }) };
+  const requests = [];
+  const transport = async (url, { method } = {}) => {
+    requests.push({ url, method });
+    const parsed = new URL(url);
+    const path = decodeURIComponent(parsed.pathname);
+    if (override[path]) return override[path](parsed);
+    const route = routes[path];
+    if (route === undefined) return { status: 404, headers: {}, body: { 'odata.error': { code: 'not found' } } };
+    if (Array.isArray(route)) return { status: 200, headers: {}, body: route[parsed.searchParams.get('$skiptoken') ? 1 : 0] };
+    return { status: 200, headers: {}, body: route };
+  };
+  return { transport, requests };
+}
+
+const storedPermissions = async (store, siteId) => {
+  const item = store.items.filter((entry) => entry.container === `site:${siteId}` && entry.itemKey === 'site/permissions').at(-1);
+  return item ? JSON.parse(String(await store.getItem(item.ref))) : null;
+};
+
+test('site groups, members, admins and role assignments are read through SharePoint REST and stored per site', async () => {
+  const sharePoint = fakeSharePoint();
+  const store = memoryStore();
+  const result = await backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: sharePoint.transport,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  assert.equal(result.outcome, 'complete');
+  assert.equal(result.sites[0].reads.permissions.status, 'observed');
+  // Groups and role assignments are read now; only item-level unique permissions are declared missing.
+  assert.deepEqual(result.sites[0].missing.map((part) => part.part), [...MISSING_PARTS, ITEM_PERMISSIONS_MISSING].map((part) => part.part));
+
+  const root = await storedPermissions(store, ROOT);
+  assert.deepEqual(root.web, { id: 'w-root', url: ROOT_URL, hasUniqueRoleAssignments: true });
+  assert.deepEqual(root.groups.map((group) => group.title), ['KEEL-RT-Site Owners', 'KEEL-RT-Site Members']);
+  // Members are read across pages and sorted.
+  assert.deepEqual(root.groups[1].members.map((member) => member.title), ['KEEL-RT-Member A', 'KEEL-RT-Member B']);
+  assert.deepEqual(root.siteCollectionAdmins.map((admin) => admin.title), ['KEEL-RT-Owner']);
+  assert.deepEqual(root.roleAssignments.map((row) => [row.principalId, row.roles.map((role) => role.name)]), [[3, ['Full Control']], [5, ['Edit']]]);
+  assert.deepEqual(root.roleDefinitions.map((role) => role.name), ['Read', 'Full Control']);
+  assert.deepEqual(root.roleDefinitions[1].basePermissions, { high: '2147483647', low: '4294967295' });
+  // Only the list that breaks inheritance is read, with its own role assignments.
+  assert.deepEqual(root.lists.map((list) => [list.id, list.title, list.roleAssignments.length]), [[UNIQUE_LIST, 'KEEL-RT-Private', 1]]);
+
+  // The subsite inherits: no role assignments of its own.
+  const sub = await storedPermissions(store, SUB);
+  assert.equal(sub.web.hasUniqueRoleAssignments, false);
+  assert.equal(sub.roleAssignments, null);
+  assert.ok(!sharePoint.requests.some((request) => request.url.startsWith(`${SUB_URL}/_api/web/roleassignments`)));
+
+  for (const request of sharePoint.requests) {
+    assert.equal(request.method, 'GET');
+    assert.doesNotThrow(() => assertPermissionsRequest(request.url, request.method, HOST));
+  }
+});
+
+test('assertPermissionsRequest refuses writes, other hosts, paths outside the list and unknown query keys', () => {
+  const ok = `${ROOT_URL}/_api/web/roleassignments?$expand=Member,RoleDefinitionBindings`;
+  assert.doesNotThrow(() => assertPermissionsRequest(ok, 'GET', HOST));
+  assert.doesNotThrow(() => assertPermissionsRequest(`${ROOT_URL}/_api/web/lists(guid'${UNIQUE_LIST}')/roleassignments`, 'GET', HOST));
+  assert.throws(() => assertPermissionsRequest(ok, 'POST', HOST), /read-only/);
+  assert.throws(() => assertPermissionsRequest(ok.replace(HOST, 'fabrikam.sharepoint.com'), 'GET', HOST), /not the tenant's SharePoint host/);
+  assert.throws(() => assertPermissionsRequest(`http://${HOST}/sites/KEEL-RT-Site/_api/web`, 'GET', HOST), /not the tenant's SharePoint host/);
+  assert.throws(() => assertPermissionsRequest(`${ROOT_URL}/_api/web/lists/getbytitle('Documents')/items`, 'GET', HOST), /not an allow-listed read/);
+  assert.throws(() => assertPermissionsRequest(`${ROOT_URL}/_api/web/sitegroups/GetById(3)/users/add`, 'GET', HOST), /not an allow-listed read/);
+  assert.throws(() => assertPermissionsRequest(`${ROOT_URL}/_api/web/getfilebyserverrelativeurl('/x')/$value`, 'GET', HOST), /not an allow-listed read/);
+  assert.throws(() => assertPermissionsRequest(`${ROOT_URL}/Shared%20Documents/a.docx`, 'GET', HOST), /not an allow-listed read/);
+  assert.throws(() => assertPermissionsRequest(`${ROOT_URL}/_api/web?$format=x`, 'GET', HOST), /refused query/);
+});
+
+test('a group whose members cannot be read is recorded on the group, the rest is stored, and the run is partial', async () => {
+  const sharePoint = fakeSharePoint({ override: { '/sites/KEEL-RT-Site/_api/web/sitegroups/GetById(5)/users': () => ({ status: 403, headers: {}, body: {} }) } });
+  const store = memoryStore();
+  const result = await backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: sharePoint.transport,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.sites[0].reads.permissions.status, 'denied');
+  const root = await storedPermissions(store, ROOT);
+  const members = root.groups.find((group) => group.id === 5);
+  assert.equal(members.members, null);
+  assert.equal(members.membersRead.httpStatus, 403);
+  assert.equal(root.groups.find((group) => group.id === 3).members.length, 1);
+  assert.equal(root.roleAssignments.length, 2);
+});
+
+test('a denied permission read leaves the rest of the site captured', async () => {
+  const sharePoint = fakeSharePoint({ override: { '/sites/KEEL-RT-Site/_api/web/roleassignments': () => ({ status: 403, headers: {}, body: {} }) } });
+  const store = memoryStore();
+  const result = await backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: sharePoint.transport,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.sites[0].reads.permissions.status, 'denied');
+  assert.ok(store.items.some((item) => item.itemKey === `page/${PAGE}`));
+  assert.equal(result.sites[1].reads.permissions.status, 'observed');
+});
+
+test('unchanged site permissions are not stored again on a repeat run', async () => {
+  const store = memoryStore();
+  const states = new Map();
+  const deltaState = { load: async (key) => states.get(key) ?? null, save: async (key, state) => { states.set(key, state); } };
+  const run = () => backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint().transport, deltaState,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  await run();
+  const before = store.items.filter((item) => item.itemKey === 'site/permissions').length;
+  assert.equal(before, 2);
+  await run();
+  assert.equal(store.items.filter((item) => item.itemKey === 'site/permissions').length, before);
+});
+
+test('site permissions that change and change back are stored again, so the latest backup is the latest state', async () => {
+  // The content store keeps one row per version; a state seen before must still be the newest row.
+  let clock = Date.parse('2026-10-15T08:00:00Z');
+  const now = () => new Date(clock);
+  const store = createMemoryContentStore({ now });
+  const states = new Map();
+  const deltaState = { load: async (key) => states.get(key) ?? null, save: async (key, state) => { states.set(key, state); } };
+  const base = new URL(ROOT_URL).pathname;
+  const admins = (title) => ({ [`${base}/_api/web/siteusers`]: () => ({ status: 200, headers: {}, body: { value: [{ Id: 11, Title: title, PrincipalType: 1, IsSiteAdmin: true }] } }) });
+  const run = async (override) => {
+    clock += 60_000;
+    await backupSharePointSites({
+      transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint({ override }).transport, deltaState,
+      store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]), now,
+    });
+  };
+  await run(admins('KEEL-RT-Owner'));
+  await run(admins('KEEL-RT-Other'));
+  await run(admins('KEEL-RT-Owner'));
+  const latest = await loadSitePermissionsSource({ store, tenantRef: 't', siteId: ROOT });
+  assert.deepEqual(latest.value.siteCollectionAdmins.map((admin) => admin.title), ['KEEL-RT-Owner']);
+  assert.equal(latest.storedAt, new Date(clock).toISOString());
 });

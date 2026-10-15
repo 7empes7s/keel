@@ -10,6 +10,7 @@ const PAGES = [
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },
   { name: "drift", hash: "/drift" },
+  { name: "drift-sites", hash: "/drift/sites" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
@@ -38,6 +39,10 @@ const PAGES = [
   { name: "ask", hash: "/ask" },
   { name: "ask-unknown", hash: "/ask/unknown" },
   { name: "emergency-changes", hash: "/emergency-changes" },
+  { name: "compare", hash: "/compare" },
+  { name: "compare-tenants", hash: "/compare/tenants" },
+  { name: "sites", hash: "/sites" },
+  { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -463,6 +468,39 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
 });
 
+// Site permissions audit, gap 2: the site list and a site's page fit a phone, long
+// names wrap, and a site's name opens its own page.
+test("site permissions fit a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await open(page, "/sites", "dark");
+  await expect(page.locator(".site-list .site-card")).toHaveCount(3);
+  await expect(page.locator(".site-list")).toContainText("App access unknown · groups and roles not read yet");
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await page.getByRole("link", { name: "Finance" }).click();
+  await expect(page.locator("main#main-content h1")).toHaveText("Finance");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("2 apps have access to this site; 1 has full control.");
+  await expect(page.getByText("Payroll connector")).toBeVisible();
+  await expect(page.getByText("KEEL does not read this site's SharePoint groups or the roles given to people yet.", { exact: false })).toBeVisible();
+  expect(await overflow()).toBeLessThanOrEqual(0);
+});
+
+// Site permissions audit: site setting changes are listed on the Changes page, fit a
+// phone, and each site's name opens its own page.
+test("site permission changes show on the Changes page and fit a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, "/drift/sites", "dark");
+  const list = page.locator(".site-change-list .site-change");
+  await expect(list).toHaveCount(2);
+  await expect(list.nth(0)).toContainText("App access changed.");
+  await expect(list.nth(0)).toContainText("Alert: open");
+  await expect(list.nth(1)).toContainText("Name and web address changed.");
+  await expect(page.getByRole("link", { name: "Review the open alert on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await list.nth(0).getByRole("link", { name: "Finance" }).click();
+  await expect(page.locator("main#main-content h1")).toHaveText("Finance");
+});
+
 // Portal experience contract, mechanical checks (roadmap task-129). They run on every
 // harness route. A route not yet rebuilt to the contract may fail them only through
 // this allowlist, which task-130 and task-131 empty; its size is asserted, so it can
@@ -492,6 +530,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
   restore: ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
+  "drift-sites": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "a1e70000-0000-4000-8000-0000000000a5", "site:contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
@@ -512,8 +551,12 @@ const RECORD_IDS: Record<string, string[]> = {
   "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "entities FIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
+  compare: ["c0a10000-0000-4000-8000-000000000001", "c0a10000-0000-4000-8000-000000000002", "conditionalAccessPolicy:Block legacy auth", "mailbox:finance@contoso.com", "drive:b!Xc9", "3e".repeat(32)],
+  "compare-tenants": ["sha256:5a1e00000000c0b2", "conditionalAccessPolicy:Require MFA for admins"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
+  sites: ["c0110000-0000-4000-8000-0000000000c5"],
+  site: ["contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002", "a9900000-0000-4000-8000-0000000000a1", "a9900000-0000-4000-8000-0000000000a2", "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE"],
 };
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {
@@ -794,6 +837,42 @@ test("ask cites its records, states unknown periods, and fits a phone", async ({
   await expect(page.locator(".ask-answer")).toContainText("This is not the same as nothing happening");
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
+
+// Wave 2 CMP: compare groups differences by service and kind with plain names, reads
+// references by name across tenants, and fits a phone and a desktop.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`compare groups differences by service and kind and fits ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/compare", "dark");
+    await expect(page.locator('[data-layer="verdict"]')).toContainText("8 differences between the two snapshots");
+    await expect(page.locator("form[method='get']")).toHaveCount(1);
+    await expect(page.locator("form[method='post']")).toHaveCount(0);
+    const settings = page.locator("section", { has: page.locator("#compare-settings-heading") });
+    await expect(settings.locator("h3").first()).toHaveText("Entra ID");
+    const policies = settings.locator("details.compare-group", { hasText: "Conditional Access policy" });
+    await policies.locator("summary").click();
+    await expect(policies).toContainText("Block legacy auth");
+    await expect(policies).toContainText("enabled for reporting but not enforced");
+    await expect(policies).toContainText("an id, an id");
+    await expect(settings).toContainText("Device configuration (Intune): First side read in full, second side failed to read.");
+    const content = page.locator("section", { has: page.locator("#compare-content-heading") });
+    await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
+    await expect(content).toContainText("Budget 2027 v2.xlsx");
+    await content.locator("details.compare-group", { hasText: "Mailbox · items › inbox" }).locator("summary").click();
+    await expect(content).toContainText("An item (message)");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await open(page, "/compare/tenants", "light");
+    await expect(page.locator('[data-layer="verdict"]')).toContainText("between the two tenants");
+    const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
+    await across.locator("details.compare-group").first().locator("summary").click();
+    await expect(across).toContainText("Break-glass admins (group)");
+    await expect(across).toContainText("an object KEEL could not name");
+    await expect(across).toContainText("Device category (Intune): 3 in the first, 2 in the second.");
+    await expect(page.locator("section", { has: page.locator("#compare-content-heading") })).toContainText("812 items in both");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
 
 // Task-93: an approved emergency change says what KEEL will hold back and until when,
 // keeps every other change on the resource in play, says what happened when one ended,

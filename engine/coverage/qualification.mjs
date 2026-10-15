@@ -36,6 +36,7 @@ import { reviewStateFor } from '../contracts/fieldProjection.mjs';
 import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey, isSupportedClaim,
 } from './capabilities.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -56,6 +57,8 @@ const incomplete = (reason) => manual(`incomplete configuration, backed up in fu
 // that), `failedAt` is the day it was decided and `fix` names what is being
 // changed. The write stays fixture-tested; the ledger row shows the failure.
 const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
+// Wave 2 ENTRA: the four token and sign-in routing policies share one writer.
+const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and definition (every definition entry must parse as JSON); a policy that was the organization default is recreated as an ordinary one and making it the default again is a follow-up step; which apps it is assigned to is set by hand; delete is not registered';
 
 /**
  * The explicit per-type decision. Reviewed by hand, never derived from
@@ -81,7 +84,7 @@ export const TYPE_DECISIONS = Object.freeze({
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; its images and stylesheet are backed up and uploaded back (fixture-tested, not yet live); adding or removing a language is by hand'),
   groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
-  user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; create stays manual because credentials are never readable'),
+  user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; Wave 2: a permanently deleted user is recreated disabled with a password nobody sees and a credentials checklist'),
   group: automated('group', 'create/update/delete/restore and member/owner edges are registered', {
     liveFailures: {
       create: failedLive('2026-10-13', 'The group was created (POST succeeded after #173), but the post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (createdDateTime, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain and the member/owner edges did not run',
@@ -93,8 +96,9 @@ export const TYPE_DECISIONS = Object.freeze({
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
-  servicePrincipal: automated('serviceprincipal', 'task-107 subset: create only, bound to its application by appId'),
-  oauth2PermissionGrant: incomplete('a consent is a trust decision; granting it again needs an approval contract'),
+  servicePrincipal: automated('serviceprincipal', 'task-107 subset: create bound to its application by appId; Wave 2: update of reviewed attributes and delete of an application\'s own service principal'),
+  // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
+  oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),
   identityProvider: manual('client secrets are never readable'),
   certificateBasedAuthConfiguration: incomplete('a wrong certificate trust setting can lock every user out, and there is no simulation gate for it yet'),
   directoryRole: manual('built-in roles are activated from templates, never authored'),
@@ -133,7 +137,7 @@ export const TYPE_DECISIONS = Object.freeze({
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
   crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
   crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
-  permissionGrantPolicy: incomplete('built-in policies are immutable, and the include and exclude rules of custom ones are separate collections not yet collected'),
+  permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extra ones removed); built-in microsoft-* policies are skipped; delete is not registered'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
   authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
@@ -141,28 +145,28 @@ export const TYPE_DECISIONS = Object.freeze({
     docs: `${DOCS}/resources/deviceregistrationpolicy?view=graph-rest-1.0`,
   }),
   activityBasedTimeoutPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  claimsMappingPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  homeRealmDiscoveryPolicy: incomplete('it routes federated sign-in, and the app assignments are a separate edge not yet collected'),
-  tokenIssuancePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  tokenLifetimePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  claimsMappingPolicy: automated('claimsmappingpolicy', STS_SUBSET),
+  homeRealmDiscoveryPolicy: automated('homerealmdiscoverypolicy', STS_SUBSET),
+  tokenIssuancePolicy: automated('tokenissuancepolicy', STS_SUBSET),
+  tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
   featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
   accessPackage: incomplete('its catalog, policies, assignments and resource roles are their own types, none of which has a writer yet'),
   connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
   // Wave 1 CAT-ENTRA: Entra governance types, backed up in full with no writer yet.
-  lifecycleWorkflow: incomplete('a workflow disables or deletes accounts on its own schedule; a restore needs a check that it cannot run against the wrong users'),
-  lifecycleWorkflowCustomTaskExtension: incomplete('it calls a Logic App in an Azure subscription that cannot be checked from this tenant'),
-  lifecycleManagementSettings: incomplete('a tenant singleton with no update writer yet'),
-  attributeSet: incomplete('an attribute set can never be deleted once created, so a create needs a review step'),
-  customSecurityAttributeDefinition: incomplete('a definition can never be deleted once created, only deactivated, so a create needs a review step'),
-  accessPackageCatalog: incomplete('the resources a catalog holds are a separate collection not yet collected'),
+  lifecycleWorkflow: automated('identitygovernance-workflow', 'Wave 2: created switched off with its tasks, updated in place or as a new version; a restore never switches a workflow on'),
+  lifecycleWorkflowCustomTaskExtension: automated('identitygovernance-customtaskextension', 'Wave 2: create and update; the Logic App it calls is checked by hand'),
+  lifecycleManagementSettings: automated('identitygovernance-lifecyclemanagementsettings', 'Wave 2: update in place'),
+  attributeSet: automated('attributeset', 'Wave 2: update only; an attribute set can never be deleted once created, so a create needs a review step'),
+  customSecurityAttributeDefinition: automated('customsecurityattributedefinition', 'Wave 2: update, and allowed values added or switched off; a definition can never be deleted once created, so a create needs a review step'),
+  accessPackageCatalog: automated('accesspackagecatalog', 'Wave 2: create and update; the resources a catalog holds are a separate collection not yet collected'),
   accessPackageAssignmentPolicy: incomplete('a policy belongs to an access package, which has no writer yet'),
   accessPackageAssignment: incomplete('an assignment is granted through a request against its policy, never copied'),
-  entitlementManagementSettings: incomplete('a tenant singleton with no update writer yet'),
+  entitlementManagementSettings: automated('entitlementmanagementsettings', 'Wave 2: update in place'),
   agreement: incomplete('the agreement documents are files on a separate route, and acceptances cannot be recreated'),
-  appManagementPolicy: incomplete('the apps and service principals a policy applies to are a separate edge not yet collected'),
+  appManagementPolicy: automated('appmanagementpolicy', 'Wave 2: create and update; the apps a policy applies to are a separate edge not yet collected'),
   tenantAppManagementPolicy: incomplete('a stricter default can block every app from adding a secret or certificate, so an update needs a review step'),
-  multiTenantOrganization: incomplete('every member tenant must accept again, which cannot be done from this tenant'),
+  multiTenantOrganization: automated('multitenantorganization', 'Wave 2: update of name and description; member tenants and their acceptance are never written'),
   b2xIdentityUserFlow: incomplete('the languages, attributes and API connector bindings of a flow are separate collections not yet collected'),
   identityApiConnector: incomplete('the connector password or certificate is never returned'),
   // Read per parent object.
@@ -172,7 +176,7 @@ export const TYPE_DECISIONS = Object.freeze({
   // Issue #155: the first Intune restore subset. Every other Intune type is
   // manual by decision, with its reason; none is left unknown.
   deviceConfiguration: automated('intune-deviceconfig-deviceconfiguration', 'issue-155 subset: create and update with assignments; profiles that carry credentials or certificates (Wi-Fi, VPN, certificate, email) and any value Graph never returns stay manual'),
-  deviceCompliancePolicy: automated('intune-deviceconfig-devicecompliancepolicy', 'issue-155 subset: create (with its actions for noncompliance) and update with assignments; delete is not registered'),
+  deviceCompliancePolicy: automated('intune-deviceconfig-devicecompliancepolicy', 'issue-155 subset: create (with its actions for noncompliance) and update with assignments; Wave 2: delete of a policy that is no longer assigned'),
   configurationPolicy: automated('intune-deviceconfigv2-devicemanagementconfigurationpolicy', 'issue-155 subset: create and update of the whole policy and its settings, with assignments, through Graph beta (the settings catalog has no v1.0 API); secret settings stay manual', { view: 'graph-rest-beta' }),
   deviceEnrollmentConfiguration: manual('the default enrollment restrictions exist in every tenant and cannot be created, and custom ones are ordered through a separate priority action KEEL does not write; restore by hand from the backup, which includes their assignments'),
   deviceManagementRoleDefinition: manual('Intune admin roles decide who can manage devices: a change needs a privilege review; their role assignments are backed up separately'),
@@ -182,22 +186,22 @@ export const TYPE_DECISIONS = Object.freeze({
   deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
   managedDevice: manual('device state, enrolled by the device, not configuration'),
   mobileApp: manual('app packages are content, not configuration, and are not backed up'),
-  managedAppPolicy: manual('app protection policies have a separate write route per platform and a list of protected apps that is not backed up; recreate by hand from the backup, which includes their assignments'),
-  targetedManagedAppConfiguration: manual('the apps it targets are set through a separate action whose list is not backed up'),
-  mobileAppConfiguration: manual('it configures one specific app, and apps are not restored'),
+  managedAppPolicy: automated('intune-mam-managedapppolicy', 'Wave 2: iOS and Android app protection create, update and delete; a create needs the protected apps in the backup, which is not read yet; other kinds stay manual'),
+  targetedManagedAppConfiguration: automated('intune-mam-targetedmanagedappconfiguration', 'Wave 2: create, update and delete; a create needs the targeted apps in the backup, which is not read yet'),
+  mobileAppConfiguration: automated('intune-apps-manageddevicemobileappconfiguration', 'Wave 2: create, update and delete when the apps it targets exist in the target; values Graph never returns stay manual'),
   // Wave 1 CAT-INTUNE: backed up read-only; no writer is built yet.
   deviceManagementScript: manual('no writer yet; the script body is read per script and assignments are not backed up'),
   deviceShellScript: manual('no writer yet; the script body is read per script and assignments are not backed up'),
   deviceHealthScript: manual('no writer yet; script bodies are read per script, Microsoft-published remediations are not tenant configuration, and assignments are not backed up'),
   deviceComplianceScript: manual('no writer yet; the script body is read per script'),
-  assignmentFilter: manual('no writer yet; a filter changes who every assignment that uses it reaches, so a change needs review'),
-  roleScopeTag: manual('no writer yet; scope tags limit what Intune admins see, and the built-in Default tag cannot be created'),
-  windowsFeatureUpdateProfile: manual('no writer yet; beta-only, and assignments are not backed up'),
-  windowsQualityUpdateProfile: manual('no writer yet; beta-only, and assignments are not backed up'),
-  windowsDriverUpdateProfile: manual('no writer yet; beta-only, and driver approvals and assignments are not backed up'),
+  assignmentFilter: automated('intune-policyset-deviceandappmanagementassignmentfilter', 'Wave 2: create and update through Graph beta; the platform is never changed', { view: 'graph-rest-beta' }),
+  roleScopeTag: automated('intune-rbac-rolescopetag', 'Wave 2: create and update through Graph beta; the built-in Default tag is never written', { view: 'graph-rest-beta' }),
+  windowsFeatureUpdateProfile: automated('intune-softwareupdate-windowsfeatureupdateprofile', 'Wave 2: create, update and delete through Graph beta; assignments are not backed up', { view: 'graph-rest-beta' }),
+  windowsQualityUpdateProfile: automated('intune-softwareupdate-windowsqualityupdateprofile', 'Wave 2: create, update and delete through Graph beta; assignments are not backed up', { view: 'graph-rest-beta' }),
+  windowsDriverUpdateProfile: automated('intune-softwareupdate-windowsdriverupdateprofile', 'Wave 2: create, update and delete through Graph beta; driver approvals and assignments are not backed up', { view: 'graph-rest-beta' }),
   groupPolicyConfiguration: manual('no writer yet; beta-only, and the values of each setting are on a separate route that is not backed up'),
   groupPolicyUploadedDefinitionFile: manual('no writer yet; the uploaded template files are read per file'),
-  notificationMessageTemplate: manual('no writer yet; the message text per language is backed up with each template'),
+  notificationMessageTemplate: automated('intune-notification-notificationmessagetemplate', 'Wave 2: create and update with the message text per language'),
   windowsAutopilotDeviceIdentity: manual('the hardware hash is never returned, so a registration is imported again from the device'),
   deviceManagementRoleAssignment: manual('Intune admin access needs a privilege review before it is granted again'),
 });
@@ -397,6 +401,29 @@ export function qualificationFor(resourceType, { decisions = TYPE_DECISIONS } = 
  * still disabled. Nothing here sends a request.
  */
 export const WORKLOAD_WRITE_EVIDENCE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// SharePoint REST writes on a site (gap 4). The version is the REST API itself, not a
+// Graph version; a capture records the same string.
+export const SHAREPOINT_REST_VERSION = 'sharepoint-rest';
+const SHAREPOINT_REST_DOCS = 'https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins';
+function sharePointSitePermissionWrite(id, name, endpoint, fields) {
+  return {
+    [id]: Object.freeze({
+      workload: 'sharepoint-site-settings',
+      resourceType: 'sharepointSitePermission',
+      name,
+      method: 'POST',
+      endpoint,
+      version: SHAREPOINT_REST_VERSION,
+      readBack: 'sharepoint.site-permissions',
+      fields: Object.freeze([...fields]),
+      rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+      source: id === 'sharepoint.site-role-definitions.add' || id === 'sharepoint.site-role-assignments.add'
+        ? `${SHAREPOINT_REST_DOCS}/set-custom-permissions-on-a-list-by-using-the-rest-interface`
+        : 'https://learn.microsoft.com/en-us/previous-versions/office/developer/sharepoint-rest-reference/dn531432(v=office.15)',
+    }),
+  };
+}
+
 export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   'sharepoint.tenant-settings.update': Object.freeze({
     workload: 'sharepoint-site-settings',
@@ -412,6 +439,47 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     rbac: Object.freeze({ permissions: ['SharePointTenantSettings.ReadWrite.All'], roles: ['SharePoint Administrator'] }),
     source: `${DOCS}/sharepointsettings-update?view=graph-rest-1.0`,
   }),
+  // Gap 5 (site permissions audit, 2026-10-15): site app grants (Sites.Selected).
+  // Add re-creates a grant missing since the backup; update raises a grant's role
+  // back to the backup's. Neither ever grants more than the backup held, and KEEL
+  // never removes a grant. Each has its own proof.
+  'sharepoint.site-permissions.add': Object.freeze({
+    workload: 'sharepoint-site-settings',
+    resourceType: 'sharepointSiteAppGrant',
+    method: 'POST',
+    endpoint: '/sites/{site-id}/permissions',
+    version: 'v1.0',
+    readBack: 'sharepoint.site-permissions',
+    fields: Object.freeze(['roles', 'grantedToIdentities']),
+    rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+    source: `${DOCS}/site-post-permissions?view=graph-rest-1.0`,
+  }),
+  'sharepoint.site-permissions.update': Object.freeze({
+    workload: 'sharepoint-site-settings',
+    resourceType: 'sharepointSiteAppGrant',
+    method: 'PATCH',
+    endpoint: '/sites/{site-id}/permissions/{permission-id}',
+    version: 'v1.0',
+    readBack: 'sharepoint.site-permissions',
+    fields: Object.freeze(['roles']),
+    rbac: Object.freeze({ permissions: ['Sites.FullControl.All'], roles: [] }),
+    source: `${DOCS}/site-update-permission?view=graph-rest-1.0`,
+  }),
+  // Gap 4 (site permissions audit, 2026-10-15): SharePoint groups, members, site
+  // collection admins, permission levels and role assignments, through SharePoint
+  // REST as the Restorer (SharePoint Online Sites.FullControl.All). Each only adds
+  // what the content backup's `site/permissions` item holds: KEEL never removes a
+  // member, admin or role, or changes an existing group or permission level.
+  // `name` is the plain-English name docs/coverage.md uses; the read-back gate is
+  // the site permissions read, and the capture reads each write back through REST.
+  ...sharePointSitePermissionWrite('sharepoint.site-role-definitions.add', 'SharePoint custom permission levels', '/_api/web/roledefinitions', ['Name', 'Description', 'Order', 'BasePermissions']),
+  ...sharePointSitePermissionWrite('sharepoint.site-groups.add', 'SharePoint site groups', '/_api/web/sitegroups', [
+    'Title', 'Description', 'AllowMembersEditMembership', 'AllowRequestToJoinLeave', 'AutoAcceptRequestToJoinLeave',
+    'OnlyAllowMembersViewMembership', 'RequestToJoinLeaveEmailSetting']),
+  ...sharePointSitePermissionWrite('sharepoint.site-group-members.add', 'SharePoint site group members', '/_api/web/sitegroups/getbyid({group-id})/users', ['LoginName']),
+  ...sharePointSitePermissionWrite('sharepoint.site-admins.add', 'SharePoint site collection admins', '/_api/web/siteusers/getbyid({user-id})', ['IsSiteAdmin']),
+  ...sharePointSitePermissionWrite('sharepoint.site-role-assignments.add', 'SharePoint role assignments on sites and lists',
+    '/_api/web/roleassignments/addroleassignment(principalid={principal-id},roledefid={role-id})', []),
   // Roadmap task-104: Teams settings and structural membership. Each is its own
   // operation with its own proof. `requires` names the SharePoint write: Teams
   // activates only after SharePoint is qualified, and SharePoint proof is never
@@ -555,6 +623,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
     requires: Object.freeze(['exchange.client-access.update']),
     source: 'https://learn.microsoft.com/en-us/powershell/module/exchange/set-labelpolicy',
   }),
+  // Wave 2 WKLD: mail flow, Exchange settings, Teams org-wide and voice policies,
+  // Purview retention, DLP and retention labels (restore/workloads/writeDeclarations.mjs).
+  ...WKLD_WRITE_OPERATIONS,
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */
@@ -697,14 +768,14 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // ---- identity and applications (task-107)
   application: subset('identity-application', 'POST /applications; PATCH /applications/{id}; POST /directory/deletedItems/{id}/restore', APP_RW,
     'create, update and soft-delete restore are fixture-tested; delete is refused; secrets and certificates are never written and a recreate opens credential completion items'),
-  servicePrincipal: subset('identity-application', 'POST /servicePrincipals', APP_RW,
-    'create is fixture-tested and takes the appId of its application (remapped when the application was recreated); update, delete and soft-delete restore are not qualified'),
-  user: subset('identity-application', 'PATCH /users/{id}; POST /directory/deletedItems/{id}/restore; POST /users/{id}/assignLicense', 'User.ReadWrite.All',
-    'update of reviewed attributes, soft-delete restore and add-only licence assignment are fixture-tested; create is by hand because passwords and MFA methods are never readable, and synced users are refused'),
+  servicePrincipal: subset('identity-application', 'POST /servicePrincipals; PATCH /servicePrincipals/{id}; DELETE /servicePrincipals/{id}', APP_RW,
+    'create is fixture-tested and takes the appId of its application (remapped when the application was recreated); update of reviewed attributes and delete of an application\'s own service principal are fixture-tested; soft-delete restore is not qualified'),
+  user: subset('identity-application', 'PATCH /users/{id}; POST /directory/deletedItems/{id}/restore; POST /users/{id}/assignLicense; POST /users', 'User.ReadWrite.All',
+    'update of reviewed attributes, soft-delete restore, add-only licence assignment and a disabled recreate with a credentials checklist are fixture-tested; synced and guest users are refused'),
   group: subset('identity-application', 'POST/PATCH/DELETE /groups', 'Group.ReadWrite.All', 'registered before task-107'),
   contact: byHand('identity-application', null, 'none', 'organizational contacts are directory-synchronised and read-only in Graph'),
-  oauth2PermissionGrant: research('identity-application', 'POST /oauth2PermissionGrants', 'DelegatedPermissionGrant.ReadWrite.All',
-    'delegated consent is a grant decision, not configuration; re-granting needs an approval contract that does not exist yet'),
+  oauth2PermissionGrant: subset('identity-application', 'POST /oauth2PermissionGrants; PATCH /oauth2PermissionGrants/{id}', 'DelegatedPermissionGrant.ReadWrite.All',
+    'create and update are fixture-tested; a grant is written only inside an approved restore, matched on app, resource, consent type and user, and its scopes are written as backed up; delete is refused'),
   identityProvider: byHand('identity-application', 'POST /identity/identityProviders', 'IdentityProvider.ReadWrite.All', 'client secrets are never readable'),
   certificateBasedAuthConfiguration: research('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
     'tenant-lockout blast radius; no simulation gate for certificate trust changes exists'),
@@ -729,24 +800,24 @@ export const EXPANSION_INVENTORY = Object.freeze({
   connectedOrganization: research('identity-application', 'POST /identityGovernance/entitlementManagement/connectedOrganizations', 'EntitlementManagement.ReadWrite.All',
     'identity sources reference external tenants that cannot be verified from this tenant'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
-  lifecycleWorkflow: research('identity-application', 'POST /identityGovernance/lifecycleWorkflows/workflows', 'LifecycleWorkflows.ReadWrite.All',
-    'a workflow disables or deletes accounts on its own schedule; a restore needs a check that it cannot run against the wrong users'),
-  lifecycleWorkflowCustomTaskExtension: research('identity-application', 'POST /identityGovernance/lifecycleWorkflows/customTaskExtensions', 'LifecycleWorkflows.ReadWrite.All',
-    'it calls a Logic App in an Azure subscription that cannot be verified from this tenant'),
-  lifecycleManagementSettings: research('identity-application', 'PATCH /identityGovernance/lifecycleWorkflows/settings', 'LifecycleWorkflows.ReadWrite.All',
-    'a tenant singleton; an update contract has not been built'),
-  attributeSet: research('identity-application', 'POST /directory/attributeSets', 'CustomSecAttributeDefinition.ReadWrite.All',
-    'attribute sets cannot be deleted once created, so a create needs a review step that does not exist yet'),
-  customSecurityAttributeDefinition: research('identity-application', 'POST /directory/customSecurityAttributeDefinitions', 'CustomSecAttributeDefinition.ReadWrite.All',
-    'definitions cannot be deleted once created, only deactivated, so a create needs a review step that does not exist yet'),
-  accessPackageCatalog: research('identity-application', 'POST /identityGovernance/entitlementManagement/catalogs', 'EntitlementManagement.ReadWrite.All',
-    'the resources a catalog holds are a separate collection that is not backed up'),
+  lifecycleWorkflow: subset('identity-application', 'POST /identityGovernance/lifecycleWorkflows/workflows; PATCH .../{id}; POST .../{id}/createNewVersion', 'LifecycleWorkflows.ReadWrite.All',
+    'create (switched off) and update are fixture-tested; switching a workflow on is always left to a person'),
+  lifecycleWorkflowCustomTaskExtension: subset('identity-application', 'POST /identityGovernance/lifecycleWorkflows/customTaskExtensions; PATCH .../{id}', 'LifecycleWorkflows.ReadWrite.All',
+    'create and update are fixture-tested; the Logic App it calls cannot be verified from this tenant'),
+  lifecycleManagementSettings: subset('identity-application', 'PATCH /identityGovernance/lifecycleWorkflows/settings', 'LifecycleWorkflows.ReadWrite.All',
+    'update of the tenant singleton is fixture-tested'),
+  attributeSet: subset('identity-application', 'PATCH /directory/attributeSets/{id}', 'CustomSecAttributeDefinition.ReadWrite.All',
+    'update is fixture-tested; attribute sets cannot be deleted once created, so a create needs a review step that does not exist yet'),
+  customSecurityAttributeDefinition: subset('identity-application', 'PATCH /directory/customSecurityAttributeDefinitions/{id}; POST/PATCH .../{id}/allowedValues', 'CustomSecAttributeDefinition.ReadWrite.All',
+    'update and allowed values are fixture-tested; definitions cannot be deleted once created, so a create needs a review step that does not exist yet'),
+  accessPackageCatalog: subset('identity-application', 'POST /identityGovernance/entitlementManagement/catalogs; PATCH .../{id}', 'EntitlementManagement.ReadWrite.All',
+    'create and update are fixture-tested; the resources a catalog holds are a separate collection that is not backed up'),
   accessPackageAssignmentPolicy: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentPolicies', 'EntitlementManagement.ReadWrite.All',
     'a policy belongs to an access package, which is not restored yet'),
   accessPackageAssignment: research('identity-application', 'POST /identityGovernance/entitlementManagement/assignmentRequests', 'EntitlementManagement.ReadWrite.All',
     'an assignment is granted through a request against its policy, never copied, and access packages are not restored yet'),
-  entitlementManagementSettings: research('identity-application', 'PATCH /identityGovernance/entitlementManagement/settings', 'EntitlementManagement.ReadWrite.All',
-    'a tenant singleton; an update contract has not been built'),
+  entitlementManagementSettings: subset('identity-application', 'PATCH /identityGovernance/entitlementManagement/settings', 'EntitlementManagement.ReadWrite.All',
+    'update of the tenant singleton is fixture-tested'),
   agreement: research('identity-application', 'POST /identityGovernance/termsOfUse/agreements', 'Agreement.ReadWrite.All',
     'the agreement documents are files on a separate route that is not backed up, and acceptances cannot be recreated'),
   b2xIdentityUserFlow: research('identity-application', 'POST /identity/b2xUserFlows', 'IdentityUserFlow.ReadWrite.All',
@@ -783,8 +854,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update of the default B2B collaboration, direct connect, inbound trust, consent and tenant restriction settings is fixture-tested'),
   crossTenantAccessPolicyPartner: subset('policy', 'POST /policies/crossTenantAccessPolicy/partners; PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}', 'Policy.ReadWrite.CrossTenantAccess',
     'create and update are fixture-tested and keyed by the partner tenantId; Graph refuses a tenantId that does not exist; delete is refused'),
-  permissionGrantPolicy: research('policy', 'POST /policies/permissionGrantPolicies', 'Policy.ReadWrite.PermissionGrant',
-    'built-in microsoft-* policies are immutable; includes and excludes are separate collections with no qualified writer'),
+  permissionGrantPolicy: subset('policy', 'POST /policies/permissionGrantPolicies; PATCH /policies/permissionGrantPolicies/{id}; POST .../{id}/includes|excludes', 'Policy.ReadWrite.PermissionGrant',
+    'create and update of custom policies are fixture-tested; include and exclude rules are made to match the backup when it holds them (missing ones added, extra ones removed) and the whole rule sets are read back; built-in microsoft-* policies are skipped; delete is refused'),
   adminConsentRequestPolicy: subset('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
     'update (a PUT of every writable field) is fixture-tested for the same tenant; reviewer queries are written as observed and are never remapped to another tenant'),
   // Issue #156: basic tenant settings in the policy family.
@@ -794,23 +865,23 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up only: device join and registration settings, including whether joining needs MFA, are changed by hand so an admin is never locked out of joining devices and MFA is never weakened silently'),
   activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
     'definition is a JSON string KEEL does not parse; a tenant-wide default and per-application assignment are not distinguished'),
-  claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'assignment to service principals is a separate edge with no qualified writer; the definition string is unparsed'),
-  homeRealmDiscoveryPolicy: research('policy', 'POST /policies/homeRealmDiscoveryPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'changes federated sign-in routing; assignment is a separate edge; definition string is unparsed'),
-  tokenIssuancePolicy: research('policy', 'POST /policies/tokenIssuancePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'assignment to applications is a separate edge; the definition string is unparsed'),
-  tokenLifetimePolicy: research('policy', 'POST /policies/tokenLifetimePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'a tenant-wide default and per-application assignment are not distinguished; the definition string is unparsed'),
+  claimsMappingPolicy: subset('policy', 'POST /policies/claimsMappingPolicies; PATCH /policies/claimsMappingPolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  homeRealmDiscoveryPolicy: subset('policy', 'POST /policies/homeRealmDiscoveryPolicies; PATCH /policies/homeRealmDiscoveryPolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  tokenIssuancePolicy: subset('policy', 'POST /policies/tokenIssuancePolicies; PATCH /policies/tokenIssuancePolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  tokenLifetimePolicy: subset('policy', 'POST /policies/tokenLifetimePolicies; PATCH /policies/tokenLifetimePolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
   featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout',
     'staged rollout of sign-in features; applies-to group membership is a separate edge with no qualified writer'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.
-  appManagementPolicy: research('policy', 'POST /policies/appManagementPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'assignment to applications and service principals is a separate edge with no qualified writer'),
+  appManagementPolicy: subset('policy', 'POST /policies/appManagementPolicies; PATCH .../{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update are fixture-tested; assignment to applications and service principals is a separate edge with no qualified writer'),
   tenantAppManagementPolicy: research('policy', 'PATCH /policies/defaultAppManagementPolicy', 'Policy.ReadWrite.ApplicationConfiguration',
     'a stricter default can block every app from adding a secret or certificate; an update needs a review step that does not exist yet'),
-  multiTenantOrganization: research('policy', 'PATCH /tenantRelationships/multiTenantOrganization', 'MultiTenantOrganization.ReadWrite.All',
-    'its member tenants must each accept, which cannot be done from this tenant'),
+  multiTenantOrganization: subset('policy', 'PATCH /tenantRelationships/multiTenantOrganization', 'MultiTenantOrganization.ReadWrite.All',
+    'update of name and description is fixture-tested; member tenants must each accept, which cannot be done from this tenant'),
   crossTenantIdentitySyncPolicyPartner: research('policy', 'PUT /policies/crossTenantAccessPolicy/partners/{tenantId}/identitySynchronization', 'Policy.ReadWrite.CrossTenantAccess',
     'it turns on user sync from a partner tenant; an update needs a review step that does not exist yet'),
   // ---- administrative configuration (task-109)
@@ -836,12 +907,12 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // Issue #155: records, routes and the assignment writer live in
   // engine/restore/intuneOperations.mjs. The other Intune types are manual by
   // decision (TYPE_DECISIONS gives each reason); their assignments are backed up.
-  deviceConfiguration: subset('device-management', 'POST /deviceManagement/deviceConfigurations; PATCH /deviceManagement/deviceConfigurations/{id}; POST .../{id}/assign', 'DeviceManagementConfiguration.ReadWrite.All',
-    'create and update with assignments are fixture-tested; credential and certificate profiles and any value Graph never returns stay manual; delete is refused'),
-  deviceCompliancePolicy: subset('device-management', 'POST /deviceManagement/deviceCompliancePolicies; PATCH .../{id}; POST .../{id}/scheduleActionsForRules; POST .../{id}/assign', 'DeviceManagementConfiguration.ReadWrite.All',
-    'create (with its actions for noncompliance, which Graph requires) and update with assignments are fixture-tested; delete is refused'),
-  configurationPolicy: subset('device-management', 'POST /deviceManagement/configurationPolicies (beta); PUT .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'create and update of the whole policy and its settings with assignments are fixture-tested through Graph beta, the only version with the settings catalog; secret settings stay manual; delete is refused'),
+  deviceConfiguration: subset('device-management', 'POST /deviceManagement/deviceConfigurations; PATCH /deviceManagement/deviceConfigurations/{id}; POST .../{id}/assign; DELETE .../{id}', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update with assignments, and delete of an unassigned profile, are fixture-tested; credential and certificate profiles and any value Graph never returns stay manual'),
+  deviceCompliancePolicy: subset('device-management', 'POST /deviceManagement/deviceCompliancePolicies; PATCH .../{id}; POST .../{id}/scheduleActionsForRules; POST .../{id}/assign; DELETE .../{id}', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create (with its actions for noncompliance, which Graph requires) and update with assignments, and delete of an unassigned policy, are fixture-tested'),
+  configurationPolicy: subset('device-management', 'POST /deviceManagement/configurationPolicies (beta); PUT .../{id} (beta); POST .../{id}/assign (beta); DELETE .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update of the whole policy and its settings with assignments, and delete of an unassigned policy, are fixture-tested through Graph beta, the only version with the settings catalog; secret settings stay manual'),
   deviceEnrollmentConfiguration: byHand('device-management', 'POST /deviceManagement/deviceEnrollmentConfigurations', 'DeviceManagementServiceConfig.ReadWrite.All',
     'default enrollment restrictions cannot be created and priority is a separate action; restored by hand'),
   deviceManagementRoleDefinition: byHand('device-management', 'POST /deviceManagement/roleDefinitions', 'DeviceManagementRBAC.ReadWrite.All',
@@ -856,12 +927,12 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'beta-only, replaced by the settings catalog; intent settings are not backed up'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
   mobileApp: byHand('device-management', 'POST /deviceAppManagement/mobileApps', 'DeviceManagementApps.ReadWrite.All', 'app packages are content, not configuration'),
-  managedAppPolicy: byHand('device-management', 'POST /deviceAppManagement/{platform}ManagedAppProtections', 'DeviceManagementApps.ReadWrite.All',
-    'one write route per platform; the protected apps list is not backed up'),
-  targetedManagedAppConfiguration: byHand('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations', 'DeviceManagementApps.ReadWrite.All',
-    'its targeted apps are a separate action whose list is not backed up'),
-  mobileAppConfiguration: byHand('device-management', 'POST /deviceAppManagement/mobileAppConfigurations', 'DeviceManagementApps.ReadWrite.All',
-    'it configures one specific app, and apps are not restored'),
+  managedAppPolicy: subset('device-management', 'POST /deviceAppManagement/{ios|android}ManagedAppProtections; PATCH .../{id}; POST .../{id}/targetApps; POST .../{id}/assign; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
+    'create, update and delete of iOS and Android protection are fixture-tested; a create needs the protected apps list, which is not backed up yet'),
+  targetedManagedAppConfiguration: subset('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations; PATCH .../{id}; POST .../{id}/targetApps; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
+    'create, update and delete are fixture-tested; a create needs the targeted apps list, which is not backed up yet'),
+  mobileAppConfiguration: subset('device-management', 'POST /deviceAppManagement/mobileAppConfigurations; PATCH .../{id}; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
+    'create, update and delete are fixture-tested; every app it targets must already exist in the target'),
   // Wave 1 CAT-INTUNE: backed up read-only; manual until a writer is built.
   deviceManagementScript: byHand('device-management', 'POST /deviceManagement/deviceManagementScripts (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up; a writer needs the script body from a per-script read and its assignments'),
@@ -871,22 +942,22 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; a writer needs both script bodies from a per-script read and must skip Microsoft-published scripts'),
   deviceComplianceScript: byHand('device-management', 'POST /deviceManagement/deviceComplianceScripts (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up; a writer needs the script body from a per-script read'),
-  assignmentFilter: byHand('device-management', 'POST /deviceManagement/assignmentFilters (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up; filters must be back before the assignments that use them'),
-  roleScopeTag: byHand('device-management', 'POST /deviceManagement/roleScopeTags (beta)', 'DeviceManagementRBAC.ReadWrite.All',
-    'backed up; the built-in Default tag cannot be created'),
-  windowsFeatureUpdateProfile: byHand('device-management', 'POST /deviceManagement/windowsFeatureUpdateProfiles (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up; assignments are not backed up'),
-  windowsQualityUpdateProfile: byHand('device-management', 'POST /deviceManagement/windowsQualityUpdateProfiles (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up; assignments are not backed up'),
-  windowsDriverUpdateProfile: byHand('device-management', 'POST /deviceManagement/windowsDriverUpdateProfiles (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up; driver approvals and assignments are not backed up'),
+  assignmentFilter: subset('device-management', 'POST /deviceManagement/assignmentFilters (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update are fixture-tested; the platform is never changed'),
+  roleScopeTag: subset('device-management', 'POST /deviceManagement/roleScopeTags (beta); PATCH .../{id} (beta)', 'DeviceManagementRBAC.ReadWrite.All',
+    'create and update are fixture-tested; the built-in Default tag is never written'),
+  windowsFeatureUpdateProfile: subset('device-management', 'POST /deviceManagement/windowsFeatureUpdateProfiles (beta); PATCH/DELETE .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create, update and delete are fixture-tested; assignments are not backed up'),
+  windowsQualityUpdateProfile: subset('device-management', 'POST /deviceManagement/windowsQualityUpdateProfiles (beta); PATCH/DELETE .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create, update and delete are fixture-tested; assignments are not backed up'),
+  windowsDriverUpdateProfile: subset('device-management', 'POST /deviceManagement/windowsDriverUpdateProfiles (beta); PATCH/DELETE .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create, update and delete are fixture-tested; driver approvals and assignments are not backed up'),
   groupPolicyConfiguration: byHand('device-management', 'POST /deviceManagement/groupPolicyConfigurations (beta); POST .../{id}/updateDefinitionValues (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up with its settings; the values of each setting are on a separate route that is not backed up'),
   groupPolicyUploadedDefinitionFile: byHand('device-management', 'POST /deviceManagement/groupPolicyUploadedDefinitionFiles (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up; the file content is read per file'),
-  notificationMessageTemplate: byHand('device-management', 'POST /deviceManagement/notificationMessageTemplates', 'DeviceManagementServiceConfig.ReadWrite.All',
-    'backed up with its message text per language'),
+  notificationMessageTemplate: subset('device-management', 'POST /deviceManagement/notificationMessageTemplates; PATCH .../{id}; POST/PATCH .../{id}/localizedNotificationMessages', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'create and update with the message text per language are fixture-tested'),
   windowsAutopilotDeviceIdentity: byHand('device-management', 'POST /deviceManagement/importedWindowsAutopilotDeviceIdentities', 'DeviceManagementServiceConfig.ReadWrite.All',
     'the hardware hash is never returned, so a registration is imported again from the device'),
   deviceManagementRoleAssignment: byHand('device-management', 'POST /deviceManagement/roleAssignments', 'DeviceManagementRBAC.ReadWrite.All',

@@ -1,6 +1,8 @@
 /**
  * Gap register W2: the one table cli/keel-restore.mjs uses to plan and promote a
- * workload restore (SharePoint, Exchange, Teams, Purview).
+ * workload restore (SharePoint settings, site app grants and site permissions, Exchange, Teams, Purview, and from Wave 2 WKLD mail
+ * flow, the Exchange settings READ-EXO added, Teams org-wide and voice policies,
+ * Purview retention and DLP, and retention labels: cmdletSettings.mjs).
  *
  * A workload artifact has no snapshot and no credential files of its own: its
  * config paths are the marker `workload:<name>`. Its plan is in
@@ -13,10 +15,25 @@ import { PURVIEW_WORKLOAD, loadPurviewCollection, readPurview } from '../../coll
 import { SHAREPOINT_WORKLOAD } from '../../collect/workloads/sharepoint.mjs';
 import { EXCHANGE_WORKLOAD } from '../../collect/workloads/exchange.mjs';
 import { TEAMS_WORKLOAD } from '../../collect/workloads/teams.mjs';
+import { EXCHANGE_EXTENDED_WORKLOAD, readExchangeExtended } from '../../collect/workloads/exchangeExtended.mjs';
+import { MAIL_FLOW_WORKLOAD, readMailFlow } from '../../collect/workloads/mailFlow.mjs';
+import { PURVIEW_EXTENDED_WORKLOAD, readPurviewExtended } from '../../collect/workloads/purviewExtended.mjs';
+import { RETENTION_DLP_WORKLOAD, readRetentionDlp } from '../../collect/workloads/purviewRetentionDlp.mjs';
+import { TEAMS_EXTENDED_WORKLOAD, readTeamsExtended } from '../../collect/workloads/teamsExtended.mjs';
+import { TEAMS_POLICY_WORKLOAD, readTeamsPolicies } from '../../collect/workloads/teamsPolicies.mjs';
 import {
   SHAREPOINT_WRITE_OPERATION, createSharePointRestoreArtifact, executeSharePointRestore, loadSharePointSource,
   planSharePointRestore, readLiveSettings,
 } from './sharepoint.mjs';
+import {
+  SITE_GRANTS_RESTORE, SITE_GRANT_WRITE_OPERATIONS, createSiteGrantsRestoreArtifact, executeSiteGrantsRestore,
+  planSiteGrantsRestore, readLiveSiteGrants,
+} from './sharepointSiteGrants.mjs';
+import { TEST_TENANT_REFS } from '../../govern/approvalPolicy.mjs';
+import {
+  SITE_PERMISSIONS_RESTORE, SITE_PERMISSION_WRITE_OPERATIONS, createSitePermissionsRestoreArtifact, executeSitePermissionsRestore,
+  loadSitePermissionsSource, planSitePermissionsRestore, readLiveSitePermissions,
+} from './sharepointSitePermissions.mjs';
 import {
   EXCHANGE_WRITE_OPERATIONS, createExchangeRestoreArtifact, executeExchangeRestore, loadExchangeSource,
   planExchangeRestore, readLiveExchange,
@@ -25,6 +42,7 @@ import {
   TEAMS_WRITE_OPERATIONS, createTeamsRestoreArtifact, executeTeamsRestore, loadTeamsSource, planTeamsRestore, readLiveTeam,
 } from './teams.mjs';
 import { PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact, executePurviewRestore, planPurviewRestore } from './purview.mjs';
+import { workloadSettingsRestore } from './cmdletSettings.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -54,7 +72,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const tenantHost = required(request.tenantHost, '--tenant-host <host>');
       const recorded = await source(loadSharePointSource, client, { tenantRef, collectionId: request.collectionId }, 'SharePoint');
       const live = await readLiveSettings({ transport: connection.transport, sleep });
-      return planSharePointRestore({ source: recorded, live, tenantHost });
+      return planSharePointRestore({ source: recorded, live, tenantHost, tenantRef, allowTenantWide: request.allowTenantWide === true });
     },
     create: createSharePointRestoreArtifact,
     // The plan's host is used because the restorer's tenant was already matched
@@ -62,6 +80,45 @@ export const WORKLOAD_RESTORES = Object.freeze({
     execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSharePointRestore(client, {
       tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.transport,
       qualification: qualifications[SHAREPOINT_WRITE_OPERATION], sleep,
+    }),
+  }),
+  // Gap 5: one site's app grants, from the same sharepoint-site-settings collection.
+  [SITE_GRANTS_RESTORE]: Object.freeze({
+    label: 'SharePoint site app grants',
+    operations: SITE_GRANT_WRITE_OPERATIONS,
+    usage: '--collection <id> --tenant-host <host>.sharepoint.com --site <site id>',
+    async plan(client, { tenantRef, request, connection, sleep }) {
+      const tenantHost = required(request.tenantHost, '--tenant-host <host>');
+      const siteId = required(request.siteId, '--site <site id>');
+      const recorded = await source(loadSharePointSource, client, { tenantRef, collectionId: request.collectionId }, 'SharePoint');
+      const live = await readLiveSiteGrants({ transport: connection.transport, siteId, sleep });
+      return planSiteGrantsRestore({ source: recorded, live, tenantHost, siteId, tenantRef });
+    },
+    create: createSiteGrantsRestoreArtifact,
+    execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSiteGrantsRestore(client, {
+      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.transport, qualifications, sleep,
+    }),
+  }),
+  // Gap 4: one site's groups, members, admins, permission levels and role assignments,
+  // from the content backup's site/permissions item (the latest, or the last at --at),
+  // through SharePoint REST.
+  [SITE_PERMISSIONS_RESTORE]: Object.freeze({
+    label: 'SharePoint site groups and permissions',
+    operations: SITE_PERMISSION_WRITE_OPERATIONS,
+    usage: '--tenant-host <host>.sharepoint.com --site <site id> [--at <ISO time>]',
+    async plan(client, { tenantRef, request, connection, contentStore, sleep }) {
+      const tenantHost = required(request.tenantHost, '--tenant-host <host>');
+      const siteId = required(request.siteId, '--site <site id>');
+      const store = await contentStore();
+      const recorded = await loadSitePermissionsSource({ store, tenantRef, siteId, at: request.at ?? null });
+      if (!recorded) throw new Error(`the content backup holds no site permissions for ${siteId}${request.at ? ` at or before ${request.at}` : ''}`);
+      if (typeof recorded.value?.web?.url !== 'string') throw new Error('the backup holds no site URL');
+      const live = await readLiveSitePermissions({ transport: connection.sharePoint(tenantHost), tenantHost, webUrl: recorded.value.web.url, sleep });
+      return planSitePermissionsRestore({ source: recorded, live, tenantHost, siteId, tenantRef, testTenantRefs: TEST_TENANT_REFS });
+    },
+    create: createSitePermissionsRestoreArtifact,
+    execute: async (client, { tenantRef, artifactId, plan, connection, qualifications, contentStore, sleep }) => executeSitePermissionsRestore(client, {
+      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.sharePoint(plan.tenantHost, { webUrl: plan.webUrl }), store: await contentStore(), testTenantRefs: TEST_TENANT_REFS, qualifications, sleep,
     }),
   }),
   [EXCHANGE_WORKLOAD]: Object.freeze({
@@ -75,7 +132,9 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const live = await readLiveExchange({
         transport: connection.transport, powershell: connection.powershell, mailbox, includeOrganization, sleep,
       });
-      return planExchangeRestore({ source: recorded, live, tenantId, mailbox, includeOrganization });
+      return planExchangeRestore({
+        source: recorded, live, tenantId, tenantRef, mailbox, includeOrganization, allowTenantWide: request.allowTenantWide === true,
+      });
     },
     create: createExchangeRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications, sleep }) => executeExchangeRestore(client, {
@@ -90,7 +149,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const teamId = required(request.teamId, '--team <team id>');
       const recorded = await source(loadTeamsSource, client, { tenantRef, collectionId: request.collectionId }, 'Teams');
       const live = await readLiveTeam({ transport: connection.transport, teamId, sleep });
-      return planTeamsRestore({ source: recorded, live, tenantId, teamId });
+      return planTeamsRestore({ source: recorded, live, tenantId, teamId, tenantRef });
     },
     create: createTeamsRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications, sleep }) => executeTeamsRestore(client, {
@@ -104,13 +163,20 @@ export const WORKLOAD_RESTORES = Object.freeze({
     async plan(client, { tenantRef, tenantId, request, connection }) {
       const recorded = await source(loadPurviewCollection, client, { tenantRef, collectionId: request.collectionId }, 'Purview');
       const live = await readPurview({ powershell: connection.powershell });
-      return planPurviewRestore({ source: recorded, live, tenantId, targets: request.targets ?? [] });
+      return planPurviewRestore({ source: recorded, live, tenantId, targets: request.targets ?? [], tenantRef });
     },
     create: createPurviewRestoreArtifact,
     execute: (client, { tenantRef, artifactId, tenantId, connection, qualifications }) => executePurviewRestore(client, {
       tenantRef, artifactId, tenantId, powershell: connection.powershell, qualifications,
     }),
   }),
+  // Wave 2 WKLD: one Set- (or New-) cmdlet per object, re-read with the workload's own collector.
+  [MAIL_FLOW_WORKLOAD]: workloadSettingsRestore({ workload: MAIL_FLOW_WORKLOAD, label: 'Mail flow', read: readMailFlow }),
+  [EXCHANGE_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: EXCHANGE_EXTENDED_WORKLOAD, label: 'Exchange settings', read: readExchangeExtended }),
+  [TEAMS_POLICY_WORKLOAD]: workloadSettingsRestore({ workload: TEAMS_POLICY_WORKLOAD, label: 'Teams org-wide policies', read: readTeamsPolicies }),
+  [TEAMS_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: TEAMS_EXTENDED_WORKLOAD, label: 'Teams voice and live event policies', read: readTeamsExtended }),
+  [RETENTION_DLP_WORKLOAD]: workloadSettingsRestore({ workload: RETENTION_DLP_WORKLOAD, label: 'Purview retention and DLP', read: readRetentionDlp }),
+  [PURVIEW_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: PURVIEW_EXTENDED_WORKLOAD, label: 'Purview retention labels', read: readPurviewExtended }),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

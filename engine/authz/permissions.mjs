@@ -3,17 +3,21 @@
 // The role -> capability matrix (§3.2), as code rather than rows in the database, so the
 // whole matrix is auditable in one place and assertable by a test. Deny by default: a
 // role not listed here grants nothing, and nothing is granted except through a role.
+//
+// Wave 2 RBAC grants the Wave 2 capabilities:
+//   operator  discover, content-backup, export  (read-only collection and copies out)
+//   restorer  content-restore, template-apply   (writes to a tenant)
+//   admin     automation                        (configures what runs unattended)
 export const ROLE_CAPABILITIES = Object.freeze({
   viewer: Object.freeze(['read']),
-  operator: Object.freeze(['collect', 'backup', 'baseline-create', 'dispose-accept']),
+  operator: Object.freeze(['collect', 'backup', 'baseline-create', 'dispose-accept', 'discover', 'content-backup', 'export']),
   approver: Object.freeze(['approve']),
   investigator: Object.freeze(['investigate']),
-  restorer: Object.freeze(['restore', 'remediate', 'rollback']),
-  admin: Object.freeze(['users', 'roles', 'policies', 'configuration']),
+  restorer: Object.freeze(['restore', 'remediate', 'rollback', 'content-restore', 'template-apply']),
+  admin: Object.freeze(['users', 'roles', 'policies', 'configuration', 'automation']),
 });
 
-// Wave 2 capability names. No role grants them yet: RBAC assigns them, so until
-// then deny-by-default refuses every one of them.
+// Wave 2 capability names (W2-0); the roles above grant each of them.
 export const WAVE2_CAPABILITIES = Object.freeze([
   'discover', 'export', 'template-apply', 'content-backup', 'content-restore', 'automation',
 ]);

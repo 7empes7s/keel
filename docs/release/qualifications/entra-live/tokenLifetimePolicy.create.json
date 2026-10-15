@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "tokenLifetimePolicy",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "c3b5f6c84ae90c2d800e17bed1277a92eab8d360",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-15T10:22:36.559Z",
+  "restoreRef": "162f905c-1bf1-8490-8cb4-2b1e1a615464",
+  "naturalKey": "tokenLifetimePolicy:8e24c64d-23e4-81ee-8a8d-c5ac91898803",
+  "fixtureKind": "named-object",
+  "captureSha256": "6a44abd4e152219eb01d67389c04af8e8f13eac9c254f7d4330cb64dc6018b38",
+  "proofRef": "docs/release/qualifications/entra-live/tokenLifetimePolicy.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "3addc8066cd23971ccad895252e9bd40b35925f3100a7addb6f2b13ec2c10ade"
+    }
+  }
+}

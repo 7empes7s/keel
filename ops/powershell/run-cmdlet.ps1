@@ -19,8 +19,9 @@
 
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
-  engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs and
-  engine/roadmap/purview-retention-dlp.test.mjs (which play this contract); it has not
+  engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
+  engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
+  (which play this contract); it has not
   been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
@@ -149,6 +150,77 @@ $AllowedPurviewExtended = @{
     'Get-CaseHoldRule'               = @('Policy')
 }
 
+# Wave 2 WKLD: workload configuration writes, one Set- (or New- for a named Teams
+# policy) per object, each with the identity and the declared fields only
+# (engine/restore/workloads/writeDeclarations.mjs; the restore test checks these lists
+# match it exactly). No Remove-, Enable-, Disable- or Grant- cmdlet.
+$AllowedExchangeWrites = @{
+    'Set-ActiveSyncDeviceAccessRule'     = @('Identity', 'AccessLevel')
+    'Set-ActiveSyncOrganizationSettings' = @('Identity', 'AdminMailRecipients', 'AllowAccessForUnSupportedPlatform', 'DefaultAccessLevel', 'OtaNotificationMailInsert', 'UserMailInsert')
+    'Set-AddressBookPolicy'              = @('Identity', 'AddressLists', 'GlobalAddressList', 'OfflineAddressBook', 'RoomList')
+    'Set-AddressList'                    = @('Identity', 'ConditionalCompany', 'ConditionalCustomAttribute1', 'ConditionalCustomAttribute2', 'ConditionalDepartment', 'ConditionalStateOrProvince', 'DisplayName', 'IncludedRecipients', 'RecipientFilter')
+    'Set-AntiPhishRule'                  = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-AtpPolicyForO365'               = @('Identity', 'AllowSafeDocsOpen', 'EnableATPForSPOTeamsODB', 'EnableSafeDocs')
+    'Set-GlobalAddressList'              = @('Identity', 'ConditionalCompany', 'ConditionalCustomAttribute1', 'ConditionalCustomAttribute2', 'ConditionalDepartment', 'ConditionalStateOrProvince', 'IncludedRecipients', 'RecipientFilter')
+    'Set-HostedConnectionFilterPolicy'   = @('Identity', 'AdminDisplayName', 'EnableSafeList', 'IPAllowList', 'IPBlockList')
+    'Set-HostedContentFilterRule'        = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-HostedOutboundSpamFilterPolicy' = @('Identity', 'ActionWhenThresholdReached', 'AdminDisplayName', 'AutoForwardingMode', 'BccSuspiciousOutboundAdditionalRecipients', 'BccSuspiciousOutboundMail', 'NotifyOutboundSpam', 'NotifyOutboundSpamRecipients', 'RecipientLimitExternalPerHour', 'RecipientLimitInternalPerHour', 'RecipientLimitPerDay')
+    'Set-HostedOutboundSpamFilterRule'   = @('Identity', 'Comments', 'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs', 'From', 'FromMemberOf', 'Priority', 'SenderDomainIs')
+    'Set-InboundConnector'               = @('Identity', 'AssociatedAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'ConnectorType', 'EFSkipIPs', 'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'Enabled', 'RequireTls', 'RestrictDomainsToCertificate', 'RestrictDomainsToIPAddresses', 'ScanAndDropRecipients', 'SenderDomains', 'SenderIPAddresses', 'TlsSenderCertificateName', 'TreatMessagesAsInternal', 'TrustedOrganizations')
+    'Set-JournalRule'                    = @('Identity', 'JournalEmailAddress', 'Recipient', 'Scope')
+    'Set-MalwareFilterRule'              = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-MobileDeviceMailboxPolicy'      = @('Identity', 'AllowBluetooth', 'AllowBrowser', 'AllowCamera', 'AllowHTMLEmail', 'AllowNonProvisionableDevices', 'AllowPOPIMAPEmail', 'AllowSimplePassword', 'AllowStorageCard', 'AllowTextMessaging', 'AllowWiFi', 'AlphanumericPasswordRequired', 'AttachmentsEnabled', 'DeviceEncryptionEnabled', 'MaxPasswordFailedAttempts', 'MinPasswordComplexCharacters', 'MinPasswordLength', 'PasswordEnabled', 'PasswordHistory', 'PasswordRecoveryEnabled', 'RequireDeviceEncryption', 'RequireStorageCardEncryption')
+    'Set-OfflineAddressBook'             = @('Identity', 'AddressLists')
+    'Set-OutboundConnector'              = @('Identity', 'AllAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'ConnectorType', 'Enabled', 'IsTransportRuleScoped', 'RecipientDomains', 'RouteAllMessagesViaOnPremises', 'SenderRewritingEnabled', 'SmartHosts', 'TestMode', 'TlsDomain', 'TlsSettings', 'UseMXRecord')
+    'Set-QuarantinePolicy'               = @('Identity', 'ESNEnabled', 'EndUserQuarantinePermissionsValue', 'EndUserSpamNotificationCustomFromAddress', 'EndUserSpamNotificationFrequencyInDays', 'IncludeMessagesFromBlockedSenderAddress', 'MultiLanguageCustomDisclaimer', 'MultiLanguageSenderName', 'MultiLanguageSetting', 'OrganizationBrandingEnabled')
+    'Set-RetentionPolicy'                = @('Identity', 'RetentionPolicyTagLinks')
+    'Set-RetentionPolicyTag'             = @('Identity', 'AgeLimitForRetention', 'Comment', 'RetentionAction', 'RetentionEnabled')
+    'Set-SafeAttachmentRule'             = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-SafeLinksRule'                  = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-TransportRule'                  = @('Identity', 'ActivationDate', 'AddToRecipients', 'ApplyHtmlDisclaimerFallbackAction', 'ApplyHtmlDisclaimerLocation', 'ApplyHtmlDisclaimerText', 'ApplyRightsProtectionTemplate', 'AttachmentExtensionMatchesWords', 'AttachmentHasExecutableContent', 'BlindCopyTo', 'Comments', 'DeleteMessage', 'ExceptIfFrom', 'ExceptIfRecipientDomainIs', 'ExceptIfSenderDomainIs', 'ExceptIfSenderIpRanges', 'ExceptIfSentTo', 'ExpiryDate', 'From', 'FromAddressContainsWords', 'FromScope', 'GenerateIncidentReport', 'HeaderContainsMessageHeader', 'HeaderContainsWords', 'Mode', 'ModerateMessageByUser', 'PrependSubject', 'Priority', 'Quarantine', 'RecipientDomainIs', 'RedirectMessageTo', 'RejectMessageEnhancedStatusCode', 'RejectMessageReasonText', 'RouteMessageOutboundConnector', 'RouteMessageOutboundRequireTls', 'RuleErrorAction', 'SenderAddressLocation', 'SenderDomainIs', 'SenderIpRanges', 'SentTo', 'SentToScope', 'SetHeaderName', 'SetHeaderValue', 'SetSCL', 'StopRuleProcessing', 'SubjectContainsWords', 'SubjectOrBodyContainsWords')
+}
+
+$AllowedPurviewWrites = @{
+    'Set-ComplianceTag'             = @('Identity', 'Comment', 'Notes', 'RetentionDuration')
+    'Set-DlpCompliancePolicy'       = @('Identity', 'Comment', 'Mode', 'Priority')
+    'Set-DlpComplianceRule'         = @('Identity', 'BlockAccess', 'BlockAccessScope', 'Comment', 'Disabled', 'GenerateAlert', 'GenerateIncidentReport', 'IncidentReportContent', 'NotifyAllowOverride', 'NotifyEmailCustomText', 'NotifyPolicyTipCustomText', 'NotifyUser', 'NotifyUserType', 'Priority', 'ReportSeverityLevel', 'StopPolicyProcessing')
+    'Set-RetentionCompliancePolicy' = @('Identity', 'Comment', 'Enabled')
+    'Set-RetentionComplianceRule'   = @('Identity', 'Comment', 'ContentMatchQuery', 'ExpirationDateOption', 'RetentionComplianceAction', 'RetentionDuration', 'RetentionDurationDisplayHint')
+}
+
+$AllowedTeamsWrites = @{
+    'New-CsCallingLineIdentity'                = @('Identity', 'BlockIncomingPstnCallerID', 'CallingIDSubstitute', 'CompanyName', 'Description', 'EnableUserOverride', 'ResourceAccount', 'ServiceNumber')
+    'New-CsOnlineVoicemailPolicy'              = @('Identity', 'Description', 'EnableEditingCallAnswerRulesSetting', 'EnableTranscription', 'EnableTranscriptionProfanityMasking', 'EnableTranscriptionTranslation', 'PrimarySystemPromptLanguage', 'SecondarySystemPromptLanguage')
+    'New-CsOnlineVoiceRoutingPolicy'           = @('Identity', 'Description', 'OnlinePstnUsages')
+    'New-CsTeamsCallingPolicy'                 = @('Identity', 'AllowCallForwardingToPhone', 'AllowCallForwardingToUser', 'AllowCallGroups', 'AllowCallRedirect', 'AllowCloudRecordingForCalls', 'AllowDelegation', 'AllowPrivateCalling', 'AllowSIPDevicesCalling', 'AllowTranscriptionForCalling', 'AllowVoicemail', 'AllowWebPSTNCalling', 'AutoAnswerEnabledType', 'BusyOnBusyEnabledType', 'CallRecordingExpirationDays', 'Description', 'InboundFederatedCallRoutingTreatment', 'InboundPstnCallRoutingTreatment', 'LiveCaptionsEnabledTypeForCalling', 'MusicOnHoldEnabledType', 'PopoutAppPathForIncomingPstnCalls', 'PopoutForIncomingPstnCalls', 'PreventTollBypass', 'SpamFilteringEnabledType')
+    'New-CsTeamsCallParkPolicy'                = @('Identity', 'AllowCallPark', 'Description', 'ParkTimeoutSeconds', 'PickupRangeEnd', 'PickupRangeStart')
+    'New-CsTeamsEmergencyCallingPolicy'        = @('Identity', 'Description', 'EnhancedEmergencyServiceDisclaimer', 'ExternalLocationLookupMode', 'NotificationDialOutNumber', 'NotificationGroup', 'NotificationMode')
+    'New-CsTeamsEmergencyCallRoutingPolicy'    = @('Identity', 'AllowEnhancedEmergencyServices', 'Description')
+    'New-CsTeamsEventsPolicy'                  = @('Identity', 'AllowEmailEditing', 'AllowTownhalls', 'AllowWebinars', 'Description', 'EventAccessType', 'RecordingForTownhall', 'RecordingForWebinar', 'TownhallChatExperience', 'TownhallEventAttendeeAccess', 'TranscriptionForTownhall', 'TranscriptionForWebinar', 'UseMicrosoftECDN')
+    'New-CsTeamsMeetingBroadcastPolicy'        = @('Identity', 'AllowBroadcastScheduling', 'AllowBroadcastTranscription', 'BroadcastAttendeeVisibilityMode', 'BroadcastRecordingMode', 'Description')
+    'New-CsTeamsMeetingPolicy'                 = @('Identity', 'AllowAnonymousUsersToJoinMeeting', 'AllowAnonymousUsersToStartMeeting', 'AllowBreakoutRooms', 'AllowChannelMeetingScheduling', 'AllowCloudRecording', 'AllowEngagementReport', 'AllowExternalNonTrustedMeetingChat', 'AllowExternalParticipantGiveRequestControl', 'AllowIPAudio', 'AllowIPVideo', 'AllowMeetNow', 'AllowMeetingReactions', 'AllowMeetingRegistration', 'AllowOutlookAddIn', 'AllowPSTNUsersToBypassLobby', 'AllowParticipantGiveRequestControl', 'AllowPowerPointSharing', 'AllowPrivateMeetNow', 'AllowPrivateMeetingScheduling', 'AllowTranscription', 'AllowWatermarkForCameraVideo', 'AllowWatermarkForScreenSharing', 'AllowWhiteboard', 'Description', 'DesignatedPresenterRoleMode', 'ExplicitRecordingConsent', 'IPAudioMode', 'IPVideoMode', 'LiveCaptionsEnabledType', 'MediaBitRateKb', 'MeetingChatEnabledType', 'NewMeetingRecordingExpirationDays', 'StreamingAttendeeMode', 'VideoFiltersMode', 'WhoCanRegister')
+    'New-CsTeamsMessagingPolicy'               = @('Identity', 'AllowCommunicationComplianceEndUserReporting', 'AllowFullChatPermissionUserToDeleteAnyMessage', 'AllowGiphy', 'AllowGiphyDisplay', 'AllowGroupChatJoinLinks', 'AllowImmersiveReader', 'AllowMemes', 'AllowOwnerDeleteMessage', 'AllowPasteInternetImage', 'AllowPriorityMessages', 'AllowRemoveUser', 'AllowSecurityEndUserReporting', 'AllowSmartCompose', 'AllowSmartReply', 'AllowStickers', 'AllowUrlPreviews', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'AllowUserTranslation', 'AllowVideoMessages', 'AudioMessageEnabledType', 'ChannelsInChatListEnabledType', 'ChatPermissionRole', 'Description', 'GiphyRatingType', 'ReadReceiptsEnabledType')
+    'New-CsTenantDialPlan'                     = @('Identity', 'Description', 'ExternalAccessPrefix', 'OptimizeDeviceDialing', 'SimpleName')
+    'Set-CsCallingLineIdentity'                = @('Identity', 'BlockIncomingPstnCallerID', 'CallingIDSubstitute', 'CompanyName', 'Description', 'EnableUserOverride', 'ResourceAccount', 'ServiceNumber')
+    'Set-CsOnlineVoicemailPolicy'              = @('Identity', 'Description', 'EnableEditingCallAnswerRulesSetting', 'EnableTranscription', 'EnableTranscriptionProfanityMasking', 'EnableTranscriptionTranslation', 'PrimarySystemPromptLanguage', 'SecondarySystemPromptLanguage')
+    'Set-CsOnlineVoiceRoutingPolicy'           = @('Identity', 'Description', 'OnlinePstnUsages')
+    'Set-CsTeamsCallingPolicy'                 = @('Identity', 'AllowCallForwardingToPhone', 'AllowCallForwardingToUser', 'AllowCallGroups', 'AllowCallRedirect', 'AllowCloudRecordingForCalls', 'AllowDelegation', 'AllowPrivateCalling', 'AllowSIPDevicesCalling', 'AllowTranscriptionForCalling', 'AllowVoicemail', 'AllowWebPSTNCalling', 'AutoAnswerEnabledType', 'BusyOnBusyEnabledType', 'CallRecordingExpirationDays', 'Description', 'InboundFederatedCallRoutingTreatment', 'InboundPstnCallRoutingTreatment', 'LiveCaptionsEnabledTypeForCalling', 'MusicOnHoldEnabledType', 'PopoutAppPathForIncomingPstnCalls', 'PopoutForIncomingPstnCalls', 'PreventTollBypass', 'SpamFilteringEnabledType')
+    'Set-CsTeamsCallParkPolicy'                = @('Identity', 'AllowCallPark', 'Description', 'ParkTimeoutSeconds', 'PickupRangeEnd', 'PickupRangeStart')
+    'Set-CsTeamsClientConfiguration'           = @('Identity', 'AllowBox', 'AllowDropBox', 'AllowEgnyte', 'AllowEmailIntoChannel', 'AllowGoogleDrive', 'AllowGuestUser', 'AllowOrganizationTab', 'AllowResourceAccountSendMessage', 'AllowRoleBasedChatPermissions', 'AllowScopedPeopleSearchandAccess', 'AllowShareFile', 'AllowSkypeBusinessInterop', 'ContentPin', 'ResourceAccountContentAccess', 'RestrictedSenderList')
+    'Set-CsTeamsEmergencyCallingPolicy'        = @('Identity', 'Description', 'EnhancedEmergencyServiceDisclaimer', 'ExternalLocationLookupMode', 'NotificationDialOutNumber', 'NotificationGroup', 'NotificationMode')
+    'Set-CsTeamsEmergencyCallRoutingPolicy'    = @('Identity', 'AllowEnhancedEmergencyServices', 'Description')
+    'Set-CsTeamsEventsPolicy'                  = @('Identity', 'AllowEmailEditing', 'AllowTownhalls', 'AllowWebinars', 'Description', 'EventAccessType', 'RecordingForTownhall', 'RecordingForWebinar', 'TownhallChatExperience', 'TownhallEventAttendeeAccess', 'TranscriptionForTownhall', 'TranscriptionForWebinar', 'UseMicrosoftECDN')
+    'Set-CsTeamsGuestCallingConfiguration'     = @('Identity', 'AllowPrivateCalling')
+    'Set-CsTeamsGuestMeetingConfiguration'     = @('Identity', 'AllowIPVideo', 'AllowMeetNow', 'AllowTranscription', 'LiveCaptionsEnabledType')
+    'Set-CsTeamsGuestMessagingConfiguration'   = @('Identity', 'AllowGiphy', 'AllowImmersiveReader', 'AllowMemes', 'AllowStickers', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'GiphyRatingType')
+    'Set-CsTeamsMeetingBroadcastConfiguration' = @('Identity', 'AllowSdnProviderForBroadcastMeeting', 'SdnApiTemplateUrl', 'SdnLicenseId', 'SdnName', 'SupportURL')
+    'Set-CsTeamsMeetingBroadcastPolicy'        = @('Identity', 'AllowBroadcastScheduling', 'AllowBroadcastTranscription', 'BroadcastAttendeeVisibilityMode', 'BroadcastRecordingMode', 'Description')
+    'Set-CsTeamsMeetingPolicy'                 = @('Identity', 'AllowAnonymousUsersToJoinMeeting', 'AllowAnonymousUsersToStartMeeting', 'AllowBreakoutRooms', 'AllowChannelMeetingScheduling', 'AllowCloudRecording', 'AllowEngagementReport', 'AllowExternalNonTrustedMeetingChat', 'AllowExternalParticipantGiveRequestControl', 'AllowIPAudio', 'AllowIPVideo', 'AllowMeetNow', 'AllowMeetingReactions', 'AllowMeetingRegistration', 'AllowOutlookAddIn', 'AllowPSTNUsersToBypassLobby', 'AllowParticipantGiveRequestControl', 'AllowPowerPointSharing', 'AllowPrivateMeetNow', 'AllowPrivateMeetingScheduling', 'AllowTranscription', 'AllowWatermarkForCameraVideo', 'AllowWatermarkForScreenSharing', 'AllowWhiteboard', 'Description', 'DesignatedPresenterRoleMode', 'ExplicitRecordingConsent', 'IPAudioMode', 'IPVideoMode', 'LiveCaptionsEnabledType', 'MediaBitRateKb', 'MeetingChatEnabledType', 'NewMeetingRecordingExpirationDays', 'StreamingAttendeeMode', 'VideoFiltersMode', 'WhoCanRegister')
+    'Set-CsTeamsMessagingPolicy'               = @('Identity', 'AllowCommunicationComplianceEndUserReporting', 'AllowFullChatPermissionUserToDeleteAnyMessage', 'AllowGiphy', 'AllowGiphyDisplay', 'AllowGroupChatJoinLinks', 'AllowImmersiveReader', 'AllowMemes', 'AllowOwnerDeleteMessage', 'AllowPasteInternetImage', 'AllowPriorityMessages', 'AllowRemoveUser', 'AllowSecurityEndUserReporting', 'AllowSmartCompose', 'AllowSmartReply', 'AllowStickers', 'AllowUrlPreviews', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'AllowUserTranslation', 'AllowVideoMessages', 'AudioMessageEnabledType', 'ChannelsInChatListEnabledType', 'ChatPermissionRole', 'Description', 'GiphyRatingType', 'ReadReceiptsEnabledType')
+    'Set-CsTenantDialPlan'                     = @('Identity', 'Description', 'ExternalAccessPrefix', 'OptimizeDeviceDialing', 'SimpleName')
+    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowPublicUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
+}
+
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
 # No file, folder or list-item cmdlet is allowed.
 $AllowedPnP = @{
@@ -200,6 +272,9 @@ elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $ses
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
+elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }
+elseif ($AllowedPurviewWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewWrites[$name] }
+elseif ($AllowedTeamsWrites.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsWrites[$name] }
 else { Out-Failure -Message "cmdlet $name is not allowed" -ErrorId 'CmdletNotAllowed' }
 $params = @{}
 if ($null -ne $job['parameters']) {

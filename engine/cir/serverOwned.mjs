@@ -97,6 +97,17 @@ SERVER_OWNED.set('configurationPolicy', new Set([
 // every restore whose closure reaches the organization fail on a false change.
 SERVER_OWNED.set('organization', new Set(['directorySizeQuota']));
 
+// Issue #288: for an active assignment with no expiry, Graph returns the time of
+// the read as its start, so the value moves on every collection. The type has no
+// write path, and an assignment's real window is its expiration.
+SERVER_OWNED.set('roleAssignmentSchedule', new Set(['scheduleInfo.startDateTime']));
+
+// Issue #294 (Q79): Graph gives each include and exclude rule of an app consent
+// policy a new id whenever the rule is created, so a policy recreated exactly as
+// backed up still had other ids and planned a write. The writer already matches
+// rules by their fields alone (directoryPolicyOperations.mjs conditionSetDifference).
+SERVER_OWNED.set('permissionGrantPolicy', new Set(['includes.id', 'excludes.id']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

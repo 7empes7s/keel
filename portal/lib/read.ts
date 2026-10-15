@@ -154,6 +154,12 @@ export const DATA_SURFACES = {
   askPage: { capability: "read", source: "ask/page.tsx", entityScoped: true },
   // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
   readinessPage: { capability: "read", source: "readiness/page.tsx" },
+  // Wave 2 CMP: compare two snapshots or two tenants. Tenant-wide readers only.
+  compareApi: { capability: "read", source: "api/compare/route.ts" },
+  comparePage: { capability: "read", source: "compare/page.tsx" },
+  // Site permissions audit, gap 2: each SharePoint site's stored permissions. Tenant-wide readers only.
+  sitesPage: { capability: "read", source: "sites/page.tsx" },
+  sitePage: { capability: "read", source: "sites/[id]/page.tsx" },
 } as const;
 
 export interface DataSurface {

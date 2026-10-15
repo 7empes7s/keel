@@ -18,17 +18,25 @@ export function changeSentence(item: Pick<DriftRecord, "naturalKey" | "changeTyp
 }
 
 /** "37 changes since the baseline set 2 days ago; 2 could lock out administrators." */
-export function changesVerdict(items: DriftRecord[], baselineSetAt: string | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
-  if (baselineSetAt === null) return { text: "No baseline is active, so KEEL cannot tell what changed.", tone: "critical" };
+export function changesVerdict(items: DriftRecord[], baselineSetAt: string | null, now: string, siteChangesWaiting = 0): { text: string; tone: "good" | "attention" | "critical" } {
+  const sites = `${siteChangesWaiting} site permission ${siteChangesWaiting === 1 ? "change waits" : "changes wait"} for review`;
+  if (baselineSetAt === null) {
+    return { text: `No baseline is active, so KEEL cannot tell what changed${siteChangesWaiting ? `; ${sites}` : ""}.`, tone: "critical" };
+  }
   const since = `since the baseline set ${ago(baselineSetAt, now)}`;
-  if (items.length === 0) return { text: `Nothing has changed ${since}.`, tone: "good" };
+  if (items.length === 0) {
+    return siteChangesWaiting
+      ? { text: `Nothing has changed ${since}, but ${sites}.`, tone: "attention" }
+      : { text: `Nothing has changed ${since}.`, tone: "good" };
+  }
   const lockout = items.filter((item) => item.blastRadius === "tenant-lockout").length;
   const count = `${items.length} ${items.length === 1 ? "change" : "changes"} ${since}`;
   if (lockout) return { text: `${count}; ${lockout} could lock out administrators.`, tone: "critical" };
   const access = items.filter((item) => item.blastRadius === "access-affecting").length;
+  const tail = siteChangesWaiting ? `, and ${sites}` : "";
   return access
-    ? { text: `${count}; ${access} ${access === 1 ? "affects" : "affect"} access.`, tone: "attention" }
-    : { text: `${count}; none affects access.`, tone: "attention" };
+    ? { text: `${count}; ${access} ${access === 1 ? "affects" : "affect"} access${tail}.`, tone: "attention" }
+    : { text: `${count}; none affects access${tail}.`, tone: "attention" };
 }
 
 /** "conditions.users.excludeGroups" → "Conditions › users › exclude groups". */

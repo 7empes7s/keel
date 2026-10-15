@@ -25,8 +25,9 @@
  *    sends nothing; the others still run and report their own outcome.
  *  - Exact approval for widening changes (guest channel rights, discoverability,
  *    adding a guest).
- *  - Tenant identity. The plan names the tenant; the live team must still belong to
- *    it. A member is identified by (tenantId, userId) in planning, retry and
+ *  - Tenant identity. The plan names the tenant; a live team that names another tenant
+ *    is refused. The live body usually names none, so the plan then needs the managed
+ *    tenant's own source collection to have observed the team. A member is identified by (tenantId, userId) in planning, retry and
  *    verification, so a same-id user in another tenant never counts as restored.
  *  - No overwrite. Settings and members are re-read first; a change since the plan
  *    is `stale`.
@@ -35,6 +36,9 @@
  *    re-reading the members; it is never sent a second time.
  *  - Removal needs a complete Teams membership read, in the source and live. Group
  *    membership completeness never authorizes a Teams membership change.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant the team, and every
+ *    member added, changed or removed, must be a KEEL-RT- fixture, at plan time and again
+ *    before writing.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -46,6 +50,7 @@ import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { assertContentEffectApproval, classifyContentEffects, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 
 export const TEAMS_SETTINGS_WRITE = 'teams.settings.update';
 export const TEAMS_MEMBER_ADD = 'teams.membership.add';
@@ -87,6 +92,10 @@ function canonical(value) {
 const sha256 = (value) => createHash('sha256').update(canonical(value)).digest('hex');
 const same = (a, b) => canonical(a ?? null) === canonical(b ?? null);
 const lower = (value) => (typeof value === 'string' ? value.toLowerCase() : null);
+// The live GET /teams/{id} body usually carries no `tenantId` (#292). A body that
+// names another tenant is always refused; a body that names none is checked
+// against the source collection instead (see planTeamsRestore).
+const namesOtherTenant = (team, tenant) => team?.tenantId != null && lower(team.tenantId) !== tenant;
 
 function deepFreeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -124,22 +133,34 @@ function memberAddBody(member) {
   };
 }
 
+/** Why the fixture guard refuses this operation on a team named `teamName`, or null. */
+function teamsFixtureProblem(op, teamName, { tenantRef, testTenantRefs }) {
+  return fixtureProblem({ tenantRef, testTenantRefs, label: 'the team', names: [teamName] })
+    ?? (op.member ? fixtureProblem({ tenantRef, testTenantRefs, label: 'the member', names: [op.member.displayName] }) : null);
+}
+
 /**
  * Builds the frozen plan for one team. `source` is a recorded task-104 collection
  * ({ collectionId, tenantId, outcome, observedTo, observations: [{ resourceKey, fields, fieldCoverage }] });
- * `live` is { team, members, membersComplete } read now.
+ * `live` is { team, members, membersComplete } read now. `tenantRef` decides the fixture guard.
  */
-export function planTeamsRestore({ source, live, tenantId, teamId }) {
+export function planTeamsRestore({ source, live, tenantId, teamId, tenantRef, testTenantRefs = TEST_TENANT_REFS }) {
   if (!source?.collectionId) throw new TypeError('a Teams restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('a Teams restore plan needs the tenant');
   if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
   if (typeof teamId !== 'string' || !GUID_RE.test(teamId)) throw new TypeError('teamId must be a team id (a GUID)');
   const tenant = tenantId.toLowerCase();
   const team = teamId.toLowerCase();
   if (lower(source.tenantId) !== tenant) throw new Error('the source collection was taken from a different tenant');
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
-  if (lower(live?.team?.tenantId) !== tenant) throw new Error('the live team does not belong to the managed tenant');
+  if (!live?.team || namesOtherTenant(live.team, tenant)) throw new Error('the live team does not belong to the managed tenant');
 
   const observation = (source.observations ?? []).find((entry) => entry.resourceKey === `team:${team}`);
+  // Without a tenantId in the live body, the proof of tenancy is the source: the
+  // managed tenant's own collection listed this team.
+  if (live.team.tenantId == null && (!observation || lower(live.team.id) !== team)) {
+    throw new Error('the live team names no tenant and the source collection has no observation of it, so it cannot be confirmed as the managed tenant\'s');
+  }
   const resourceKey = `team:${team}`;
   const manual = [];
   const excluded = TEAMS_EXCLUDED_CONTENT.map((field) => ({ resourceKey, field, reason: 'Teams content: messages, chats, channel posts and files are never read or restored' }));
@@ -168,8 +189,13 @@ export function planTeamsRestore({ source, live, tenantId, teamId }) {
     if (observation.fieldCoverage?.[field]?.status !== 'observed') continue;
     if (!same(observation.fields?.[field], live.team?.[field])) manual.push({ resourceKey, field, reason: MANUAL_PROPERTY_REASON[field] });
   }
+  const guard = (op) => {
+    const problem = teamsFixtureProblem(op, live.team.displayName, { tenantRef, testTenantRefs });
+    if (problem) refusals.push({ naturalKey: op.naturalKey, reason: `not-a-fixture: ${problem}` });
+    return !problem;
+  };
   if (settingsChanges.length) {
-    operations.push({
+    const settingsOp = {
       key: `settings:${team}`,
       kind: 'settings',
       operationId: TEAMS_SETTINGS_WRITE,
@@ -178,7 +204,9 @@ export function planTeamsRestore({ source, live, tenantId, teamId }) {
       path: `/teams/${team}`,
       changes: settingsChanges,
       body: Object.fromEntries(settingsChanges.map(({ field, after }) => [field, after])),
-    });
+    };
+    if (!guard(settingsOp)) settingsChanges.length = 0;
+    else operations.push(settingsOp);
   }
 
   // Group membership is its own observation. It is reported, never used here.
@@ -249,6 +277,8 @@ export function planTeamsRestore({ source, live, tenantId, teamId }) {
         member: { userId: member.userId, tenantId: member.tenantId, roles: member.roles, membershipId: member.membershipId, displayName: member.displayName },
       });
     }
+    // Only fixture members are written, so the owner check below sees what would run.
+    memberOps.splice(0, memberOps.length, ...memberOps.filter(guard));
     // Owners never drop to zero: Teams refuses it, and a half-applied set would strand the team.
     const after = new Map(current.map((member) => [memberIdentity(member), member]));
     for (const op of memberOps) {
@@ -428,6 +458,7 @@ function memberMatches(op, members) {
  */
 export async function executeTeamsRestore(client, {
   tenantRef, artifactId, tenantId, transport, qualifications = {}, actor = null, sleep = async () => {},
+  testTenantRefs = TEST_TENANT_REFS,
 }) {
   const requests = [];
   const counted = guardedTransport(transport, requests);
@@ -477,7 +508,7 @@ export async function executeTeamsRestore(client, {
       approved = false;
       for (const op of runnable) await settle(op, { outcome: 'blocked-content-effect', reasons: [error.message] });
     }
-    if (approved) await runOperations(plan, runnable, { counted, sleep, settle });
+    if (approved) await runOperations(plan, runnable, { counted, sleep, settle, tenantRef, testTenantRefs });
   }
 
   const operations = plan.operations.map((op) => results.get(op.key));
@@ -490,7 +521,7 @@ export async function executeTeamsRestore(client, {
   return finish({ outcome, operations, reasons: [] });
 }
 
-async function runOperations(plan, runnable, { counted, sleep, settle }) {
+async function runOperations(plan, runnable, { counted, sleep, settle, tenantRef, testTenantRefs }) {
   // Re-read the team: it must still belong to the planned tenant, and nothing may
   // have changed since the dry run.
   let live;
@@ -500,7 +531,7 @@ async function runOperations(plan, runnable, { counted, sleep, settle }) {
     for (const op of runnable) await settle(op, { outcome: 'failed', reasons: [`could not re-read the team before writing: ${error.message}`] });
     return;
   }
-  if (lower(live.team?.tenantId) !== plan.tenantId) {
+  if (!live.team || namesOtherTenant(live.team, plan.tenantId)) {
     for (const op of runnable) await settle(op, { outcome: 'refused', reasons: ['the team no longer belongs to the planned tenant'] });
     return;
   }
@@ -508,6 +539,9 @@ async function runOperations(plan, runnable, { counted, sleep, settle }) {
   const membersStale = !live.membersComplete || membersFingerprint(live.members) !== plan.liveFingerprints.members;
 
   for (const op of runnable) {
+    // The fixture guard again, on the team as read now and the member about to be written.
+    const notFixture = teamsFixtureProblem(op, live.team.displayName, { tenantRef, testTenantRefs });
+    if (notFixture) { await settle(op, { outcome: 'refused', reasons: [notFixture] }); continue; }
     if (op.kind === 'settings') {
       if (settingsStale) { await settle(op, { outcome: 'stale', reasons: ['the team settings changed since the dry run; a new dry run is required'] }); continue; }
       await runSettings(op, plan, { counted, sleep, settle });
@@ -536,7 +570,7 @@ async function runSettings(op, plan, { counted, sleep, settle }) {
     await settle(op, { outcome: 'verification-failed', writes: 1, attempts, reasons: [`the write was sent but could not be read back: ${error.message}`] });
     return;
   }
-  if (lower(after?.tenantId) !== plan.tenantId) {
+  if (!after || namesOtherTenant(after, plan.tenantId)) {
     await settle(op, { outcome: 'verification-failed', writes: 1, attempts, reasons: ['the read-back team does not belong to the planned tenant'] });
     return;
   }

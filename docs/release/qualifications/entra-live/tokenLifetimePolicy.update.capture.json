@@ -1,0 +1,40 @@
+{
+  "restoreRef": "5eae4f2c-d9ef-82a5-9113-c2bd36f32520",
+  "entry": {
+    "naturalKey": "tokenLifetimePolicy:8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+    "resourceType": "tokenLifetimePolicy",
+    "operation": "update",
+    "targetId": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-15T10:30:34.456Z",
+    "priorState": {
+      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "definition": [
+        "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"4:00:00\"}}"
+      ],
+      "displayName": "KEEL-RT-W2-tokenLifetimePolicy-drift",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    },
+    "intendedState": {
+      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "definition": [
+        "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
+      ],
+      "displayName": "KEEL-RT-W2-tokenLifetimePolicy",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    },
+    "postState": {
+      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "definition": [
+        "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
+      ],
+      "displayName": "KEEL-RT-W2-tokenLifetimePolicy",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenLifetimePolicies/$entity",
+      "deletedDateTime": null,
+      "isOrganizationDefault": false
+    }
+  }
+}

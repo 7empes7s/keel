@@ -19,9 +19,12 @@
 
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
+import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualification/sharepointSiteGrantsAcceptance.mjs';
+import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
+import { WORKLOAD_WRITES_LIVE_GATE, validateWorkloadWritesLiveSubject } from '../qualification/workloadWritesAcceptance.mjs';
 import { SENTINEL_LIVE_GATE, validateSentinelLiveSubject } from '../qualification/sentinelAcceptance.mjs';
 import { SERVICENOW_LIVE_GATE, validateServiceNowLiveSubject } from '../qualification/servicenowAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
@@ -713,6 +716,20 @@ const GATE_VALIDATORS = {
   [DRILL_LIVE_GATE]: validateDrillLiveAcceptanceSubject,
   // Task-120: SharePoint configuration workload live acceptance.
   [SHAREPOINT_LIVE_GATE]: validateSharePointLiveSubject,
+  // Gap 5: SharePoint site app grant writes; needs both proofs (runner signature and capture log).
+  [SITE_GRANTS_LIVE_GATE]: (evidence, context) => {
+    const failures = validateSiteGrantsLiveSubject(evidence, context);
+    if (!context.artifact.ok) failures.push(`site grant capture log required (${context.artifact.reason})`);
+    if (!verifyRunnerProof(evidence, evidence.proof?.runner, context).ok) failures.push('site grant runner proof required');
+    return failures;
+  },
+  // Gap 4: SharePoint site permission writes; needs both proofs (runner signature and capture log).
+  [SITE_PERMISSIONS_LIVE_GATE]: (evidence, context) => {
+    const failures = validateSitePermissionsLiveSubject(evidence, context);
+    if (!context.artifact.ok) failures.push(`site permissions capture log required (${context.artifact.reason})`);
+    if (!verifyRunnerProof(evidence, evidence.proof?.runner, context).ok) failures.push('site permissions runner proof required');
+    return failures;
+  },
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
@@ -722,6 +739,9 @@ const GATE_VALIDATORS = {
   // Task-123: OneDrive and Purview live acceptance; needs both proofs and a verified task-122 record.
   [ONEDRIVE_PURVIEW_LIVE_GATE]: (evidence, context) => validateOneDrivePurviewLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
+  // Wave 2 WKLD: one live write per writer family; needs both proofs (runner signature and capture log).
+  [WORKLOAD_WRITES_LIVE_GATE]: (evidence, context) => validateWorkloadWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-117: Sentinel workspace ingestion; needs both proofs (runner signature and capture log).
   [SENTINEL_LIVE_GATE]: (evidence, context) => validateSentinelLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),

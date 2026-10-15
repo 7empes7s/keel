@@ -15,9 +15,11 @@
 //           transport refuses anything but GET, and each collector keeps its own
 //           read-only allowlist. Each run is a workload snapshot a restore can use.
 //   import  reads the four signed live acceptance records (SharePoint, Teams, Exchange,
-//           OneDrive and Purview), verifies each through its own import seam, and stores
-//           the evidence rows, the collector and restorer grants and the module versions.
-//           A record that does not verify stores nothing. Run it after every recapture.
+//           OneDrive and Purview), and each Wave 2 writer capture record present (one per
+//           written workload), the site app grant and site permissions records (absent ones are listed, not refused), verifies each through
+//           its own import seam, and stores the evidence rows, the collector and restorer
+//           grants and the module versions. A record that does not verify stores nothing.
+//           Run it after every recapture.
 //           Each record is verified at the build it was captured on, not the running
 //           build (see importLedgerInputs). --build, when given, names the running build
 //           for the report only.
@@ -43,6 +45,7 @@ import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
+import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -150,27 +153,58 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
         result: { workload: step.workload, outcome: 'failed', observedFrom: at, observedTo: at, reasons },
       });
     }
-    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons });
+    // A workload that raises drift compares this run with its previous one. A failed
+    // detection fails the job but never the collection, which is already stored.
+    let drift;
+    try {
+      const found = await detectWorkloadDrift(client, { collectionId: run.id });
+      drift = { status: found.status, changes: found.drift.length };
+    } catch (error) {
+      drift = { status: 'failed', error: String(error?.message ?? error) };
+    }
+    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift });
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
+    if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} drift change(s) since the previous run`);
+    if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });
   for (const entry of proof.filter((item) => item.status !== 'current')) logger.log(entry.message);
-  const exitCode = runs.some((item) => ['failed', 'partial'].includes(item.outcome)) ? 1 : 0;
+  const exitCode = runs.some((item) => ['failed', 'partial'].includes(item.outcome) || item.drift.status === 'failed') ? 1 : 0;
   return { tenantRef, runs, proof, exitCode };
 }
 
-/** The four live acceptance records and the import seam each one goes through. */
+/**
+ * The live acceptance records and the import seam each one goes through. The four
+ * workload records are required; a Wave 2 writer capture record is optional until
+ * its workload has been captured (`optional`), so its absence is listed, not refused.
+ */
 export async function importSeams() {
   const [{ ledgerEvidenceFromAcceptance }, { ledgerEvidenceFromTeamsAcceptance }, { ledgerEvidenceFromExchangeAcceptance },
-    { ledgerEvidenceFromOneDrivePurviewAcceptance }] = await Promise.all([
+    { ledgerEvidenceFromOneDrivePurviewAcceptance }, { ledgerEvidenceFromWorkloadWritesAcceptance },
+    { WRITTEN_WORKLOADS, workloadWritesRecordFile }, { ledgerEvidenceFromSiteGrantsAcceptance },
+    { SITE_GRANTS_RECORD_FILE }, { ledgerEvidenceFromSitePermissionsAcceptance }, { SITE_PERMISSIONS_RECORD_FILE }] = await Promise.all([
     import('../tools/qualification/sharepointLive.mjs'), import('../tools/qualification/teamsLive.mjs'),
     import('../tools/qualification/exchangeLive.mjs'), import('../tools/qualification/onedrivePurviewLive.mjs'),
+    import('../tools/qualification/workloadWritesLive.mjs'), import('../tools/qualification/workloadWritesAcceptance.mjs'),
+    import('../tools/qualification/sharepointSiteGrantsLive.mjs'), import('../tools/qualification/sharepointSiteGrantsAcceptance.mjs'),
+    import('../tools/qualification/sharepointSitePermissionsLive.mjs'), import('../tools/qualification/sharepointSitePermissionsAcceptance.mjs'),
   ]);
   return [
     { file: 'sharepoint-live-acceptance.json', seam: ledgerEvidenceFromAcceptance },
     { file: 'teams-live-acceptance.json', seam: ledgerEvidenceFromTeamsAcceptance },
     { file: 'exchange-live-acceptance.json', seam: ledgerEvidenceFromExchangeAcceptance },
     { file: 'onedrive-purview-live-acceptance.json', seam: ledgerEvidenceFromOneDrivePurviewAcceptance },
+    // A record proves only the workload its file is named for.
+    ...Object.keys(WRITTEN_WORKLOADS).map((workload) => ({
+      file: workloadWritesRecordFile(workload), optional: true,
+      seam: (record, options) => (record?.subject?.workload === workload
+        ? ledgerEvidenceFromWorkloadWritesAcceptance(record, options)
+        : { ok: false, failures: [`the record is for ${record?.subject?.workload ?? 'no workload'}, not ${workload}`] }),
+    })),
+    // Gap 5: the site app grant writes, optional until captured.
+    { file: SITE_GRANTS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSiteGrantsAcceptance },
+    // Gap 4: the site group, member, admin, level and role assignment writes, optional until captured.
+    { file: SITE_PERMISSIONS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSitePermissionsAcceptance },
   ];
 }
 
@@ -203,14 +237,31 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
   const { build: runningBuild = null, ...checks } = verify;
   const imported = [];
   const refused = [];
-  for (const { file, seam } of seams) {
+  const absent = [];
+  for (const { file, seam, optional = false } of seams) {
     const path = join(dir, file);
     let record;
-    try { record = JSON.parse(readFile(path)); } catch (error) { refused.push({ file, failures: [`unreadable: ${error.message}`] }); continue; }
+    try { record = JSON.parse(readFile(path)); } catch (error) {
+      if (optional && error?.code === 'ENOENT') { absent.push(file); continue; }
+      refused.push({ file, failures: [`unreadable: ${error.message}`] });
+      continue;
+    }
     const evidenceBuild = typeof record?.build === 'string' && record.build ? record.build : null;
     const result = seam(record, { ...checks, build: evidenceBuild, tenantRef, evidenceDir: dir });
     if (!result.ok) { refused.push({ file, evidenceBuild, failures: result.failures }); continue; }
-    imported.push({ file, evidenceBuild, ...result });
+    imported.push({ file, evidenceBuild, optional, ...result });
+  }
+  // One version is stored per module. A writer capture taken at another version than the
+  // read proof imported with it would replace it and void that proof, so it is refused instead.
+  const versions = Object.assign({}, ...imported.filter((item) => !item.optional).map((item) => item.runtime?.modules ?? {}));
+  for (const item of imported.filter((entry) => entry.optional)) {
+    const clash = Object.entries(item.runtime?.modules ?? {}).find(([module, version]) => versions[module] !== undefined && versions[module] !== version);
+    if (clash) {
+      imported.splice(imported.indexOf(item), 1);
+      refused.push({ file: item.file, evidenceBuild: item.evidenceBuild, failures: [`captured at ${clash[0]} ${clash[1]}, but the read proof in this import is at ${versions[clash[0]]}: capture again at that version`] });
+      continue;
+    }
+    Object.assign(versions, item.runtime?.modules ?? {});
   }
   const evidence = imported.flatMap((item) => [...item.reads, ...item.writes]);
   const grants = union(imported.map((item) => item.grants));
@@ -222,6 +273,7 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
     runningBuild,
     imported: imported.map((item) => ({ file: item.file, evidenceBuild: item.evidenceBuild, reads: item.reads.length, writes: item.writes.length })),
     refused,
+    absent,
     exitCode: refused.length ? 1 : 0,
   };
 }

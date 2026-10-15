@@ -35,11 +35,15 @@
  *    category, errorId } in its evidence row, never an empty success. An ambiguous
  *    outcome (timeout, lost answer, 5xx) is reconciled by re-reading; it is never
  *    sent a second time.
+ *  - Test tenant fixtures only (fixtureGuard.mjs). On the test tenant the mailbox must be
+ *    a KEEL-RT- fixture, and the organization configuration, being tenant-wide, needs a
+ *    dry run made with the separate tenant-wide option (off by default). Checked at plan
+ *    time and again before each write.
  */
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
-  COMPLIANCE_HOLD_FIELDS, EXCHANGE_EXCLUDED_CONTENT, EXCHANGE_GROUPS, EXCHANGE_WORKLOAD, assertExchangeRequest, exchangeCmdlet,
+  COMPLIANCE_HOLD_FIELDS, EXCHANGE_EXCLUDED_CONTENT, EXCHANGE_GROUPS, EXCHANGE_WORKLOAD, assertExchangeRequest, comparableMailboxSetting, exchangeCmdlet,
   mailboxIdentity, mailboxKey, readMailbox, readOrganization, structuredFailure,
 } from '../../collect/workloads/exchange.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
@@ -47,6 +51,7 @@ import { appendEvidence } from '../../govern/evidence.mjs';
 import { CmdletError } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
 
 export const EXCHANGE_MAILBOX_SETTINGS_WRITE = 'exchange.mailbox-settings.update';
 export const EXCHANGE_CLIENT_ACCESS_WRITE = 'exchange.client-access.update';
@@ -110,7 +115,14 @@ function groupObserved(entry, group) {
 
 /** The live state of one group as KEEL compares it; null when not fully read. */
 export function groupFingerprint(entry, group) {
-  return groupObserved(entry, group) ? sha256(entry.fields[group]) : null;
+  return groupObserved(entry, group) ? sha256(comparableGroup(group, entry.fields[group])) : null;
+}
+
+/** One field as two reads are compared (issue #296: read-time noise is left out). */
+const comparable = (group, field, value) => (group === 'mailboxSettings' ? comparableMailboxSetting(field, value) : value);
+function comparableGroup(group, values) {
+  if (group !== 'mailboxSettings' || !values || typeof values !== 'object') return values;
+  return Object.fromEntries(Object.entries(values).map(([field, value]) => [field, comparable(group, field, value)]));
 }
 
 /** True when a hold Purview or an administrator owns applies to the mailbox now. */
@@ -132,7 +144,7 @@ function planGroup(group, { observation, live, resourceKey, manual, excluded }) 
     }
     const after = observation.fields?.[group]?.[field] ?? null;
     const before = live.fields?.[group]?.[field] ?? null;
-    if (same(before, after)) continue;
+    if (same(comparable(group, field, before), comparable(group, field, after))) continue;
     if (!writable.includes(field)) {
       manual.push({ resourceKey, field: `${group}.${field}`, reason: MANUAL_REASON[group] ?? 'KEEL does not write this setting' });
       continue;
@@ -140,6 +152,13 @@ function planGroup(group, { observation, live, resourceKey, manual, excluded }) 
     changes.push({ field, before, after });
   }
   return changes;
+}
+
+/** Why the fixture guard refuses writing this target (a mailbox, or the organization when null), or null. */
+function exchangeFixtureProblem(identity, { tenantRef, testTenantRefs, allowTenantWide }) {
+  return identity === null
+    ? fixtureProblem({ tenantRef, testTenantRefs, label: 'the Exchange organization configuration', tenantWide: true, allowTenantWide })
+    : fixtureProblem({ tenantRef, testTenantRefs, label: 'the mailbox', names: [identity] });
 }
 
 function operationFor(group, { changes, identity }) {
@@ -158,10 +177,14 @@ function operationFor(group, { changes, identity }) {
  * Builds the frozen plan. `source` is a recorded task-105 collection ({ collectionId,
  * outcome, observedTo, observations: [{ resourceKey, fields, fieldCoverage }] });
  * `live` is { mailbox: readMailbox(...), organization: readOrganization(...) | null }
- * read now. `tenantId` is the managed tenant the plan is bound to.
+ * read now. `tenantId` is the managed tenant the plan is bound to. `tenantRef` decides
+ * the fixture guard; `allowTenantWide` is the separate tenant-wide option, recorded in the plan.
  */
-export function planExchangeRestore({ source, live, tenantId, mailbox, includeOrganization = false }) {
+export function planExchangeRestore({
+  source, live, tenantId, tenantRef, mailbox, includeOrganization = false, testTenantRefs = TEST_TENANT_REFS, allowTenantWide = false,
+}) {
   if (!source?.collectionId) throw new TypeError('an Exchange restore needs a recorded source collection');
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new TypeError('an Exchange restore plan needs the tenant');
   if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
   const identity = mailboxIdentity(mailbox);
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
@@ -189,6 +212,11 @@ export function planExchangeRestore({ source, live, tenantId, mailbox, includeOr
       const changes = planGroup(group, { observation, live: entry, resourceKey, manual, excluded });
       if (!changes.length) continue;
       const op = operationFor(group, { changes, identity: targetIdentity });
+      const notFixture = exchangeFixtureProblem(targetIdentity, { tenantRef, testTenantRefs, allowTenantWide });
+      if (notFixture) {
+        refusals.push({ naturalKey: op.naturalKey, reason: `not-a-fixture: ${notFixture}` });
+        continue;
+      }
       operations.push(op);
       resources.push({
         naturalKey: op.naturalKey, resourceType: OPERATIONS[group].resourceType, verb: 'update',
@@ -225,6 +253,8 @@ export function planExchangeRestore({ source, live, tenantId, mailbox, includeOr
       retention: groupFingerprint(live.mailbox, 'retention'),
       organization: includeOrganization ? groupFingerprint(live.organization, 'organization') : null,
     },
+    // Only a plan made with the option carries it, so other plans keep their digest.
+    ...(allowTenantWide === true ? { allowTenantWide: true } : {}),
   };
   plan.digest = exchangePlanDigest(plan);
   return deepFreeze(plan);
@@ -317,6 +347,7 @@ export function heldBack(op, plan, approval) {
  */
 export async function executeExchangeRestore(client, {
   tenantRef, artifactId, tenantId, transport, powershell = {}, qualifications = {}, actor = null, sleep = async () => {},
+  testTenantRefs = TEST_TENANT_REFS,
 }) {
   const requests = [];
   const counted = async (url, init) => {
@@ -380,7 +411,7 @@ export async function executeExchangeRestore(client, {
     }
     runnable = cleared;
   }
-  if (runnable.length) await runOperations(plan, runnable, { counted, powershell, sleep, settle });
+  if (runnable.length) await runOperations(plan, runnable, { counted, powershell, sleep, settle, tenantRef, testTenantRefs });
 
   const operations = plan.operations.map((op) => results.get(op.key));
   const outcomes = new Set(operations.map((op) => op.outcome));
@@ -392,7 +423,7 @@ export async function executeExchangeRestore(client, {
   return finish({ outcome, operations, reasons: [] });
 }
 
-async function runOperations(plan, runnable, { counted, powershell, sleep, settle }) {
+async function runOperations(plan, runnable, { counted, powershell, sleep, settle, tenantRef, testTenantRefs }) {
   // Re-read: nothing an operation touches may have changed since the dry run.
   let live;
   try {
@@ -402,6 +433,12 @@ async function runOperations(plan, runnable, { counted, powershell, sleep, settl
     return;
   }
   for (const op of runnable) {
+    // The fixture guard again, on the target about to be written.
+    const notFixture = exchangeFixtureProblem(op.identity, { tenantRef, testTenantRefs, allowTenantWide: plan.allowTenantWide === true });
+    if (notFixture) {
+      await settle(op, { outcome: 'refused', reasons: [notFixture] });
+      continue;
+    }
     const entry = op.group === 'organization' ? live.organization : live.mailbox;
     if (groupFingerprint(entry, op.group) !== plan.liveFingerprints[op.group]) {
       await settle(op, { outcome: 'stale', reasons: [`the live ${op.group} changed since the dry run, or could not be fully re-read; a new dry run is required`] });
@@ -440,7 +477,7 @@ async function verify(op, plan, context, { attempts, ambiguous, cause }) {
   }
   const verified = [];
   const mismatched = [];
-  for (const { field, after } of op.changes) (same(entry.fields[op.group]?.[field], after) ? verified : mismatched).push(field);
+  for (const { field, after } of op.changes) (same(comparable(op.group, field, entry.fields[op.group]?.[field]), comparable(op.group, field, after)) ? verified : mismatched).push(field);
   if (!mismatched.length) {
     await context.settle(op, {
       outcome: 'verified', writes: 1, attempts, verified,

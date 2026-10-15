@@ -78,6 +78,16 @@ function secretSettings(payload) {
   return found;
 }
 
+// Wave 2 ENTRA: a part the backup may already hold (a later read can add it).
+const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArray(payload?.[field])) ? [] : always(payload));
+const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
+const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
+// Token lifetime, token issuance, claims mapping and home realm discovery policies.
+const STS_POLICY_MISSING = Object.freeze([
+  part('Which apps the policy is assigned to', 'other-route'),
+  part('Being the organization default (KEEL recreates it as an ordinary policy)', 'not-written', organizationDefault),
+]);
+
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
 /**
@@ -106,9 +116,9 @@ export const COMPLETENESS = Object.freeze({
   servicePrincipal: { missing: [
     part('Client secrets', 'secret', credentialItems('passwordCredentials')),
     part('Certificates', 'secret', credentialItems('keyCredentials')),
-    part('Changed settings on an existing enterprise app', 'not-written'),
+    part('Whether sign-in is on, which a restore reports and never changes', 'not-written'),
   ] },
-  oauth2PermissionGrant: { whole: 'not-written' },
+  oauth2PermissionGrant: {},
   identityProvider: { whole: 'not-written', missing: [part('Client secret', 'secret', always)] },
   certificateBasedAuthConfiguration: { whole: 'not-written' },
   directoryRole: { managed: true },
@@ -123,15 +133,15 @@ export const COMPLETENESS = Object.freeze({
   accessPackage: { whole: 'not-written' },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
-  lifecycleWorkflow: { whole: 'not-written', missing: [part('Run history and the users each run processed', 'read-only')] },
-  lifecycleWorkflowCustomTaskExtension: { whole: 'not-written', missing: [part('The Logic App it calls', 'other-route')] },
-  lifecycleManagementSettings: { whole: 'not-written' },
-  attributeSet: { whole: 'not-written' },
-  customSecurityAttributeDefinition: { whole: 'not-written', missing: [part('The values assigned to users and apps', 'other-route')] },
-  accessPackageCatalog: { whole: 'not-written', missing: [part('The groups, apps and sites in the catalog', 'other-route')] },
+  lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only'), part('Switching the workflow on, which a restore leaves to a person', 'not-written')] },
+  lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route')] },
+  lifecycleManagementSettings: {},
+  attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
+  customSecurityAttributeDefinition: { missing: [part('The values assigned to users and apps', 'other-route'), part('An attribute that no longer exists, which needs a review before it is created', 'not-written')] },
+  accessPackageCatalog: { missing: [part('The groups, apps and sites in the catalog', 'other-route')] },
   accessPackageAssignmentPolicy: { whole: 'not-written', missing: [part('Approval and request history', 'read-only')] },
   accessPackageAssignment: { whole: 'not-written', missing: [part('The original request and its approval', 'read-only')] },
-  entitlementManagementSettings: { whole: 'not-written' },
+  entitlementManagementSettings: {},
   agreement: { whole: 'not-written', missing: [part('The agreement documents', 'binary-route'), part('Who accepted the terms', 'read-only')] },
   b2xIdentityUserFlow: { whole: 'not-written', missing: [part('Its languages, sign-up attributes and API connector links', 'other-route')] },
   identityApiConnector: { whole: 'not-written', missing: [part('Password or certificate', 'secret', always)] },
@@ -156,18 +166,18 @@ export const COMPLETENESS = Object.freeze({
   crossTenantAccessPolicyPartner: {},
   deviceRegistrationPolicy: { whole: 'not-written' },
   authenticationFlowsPolicy: {},
-  permissionGrantPolicy: { whole: 'not-written', missing: [part('The include and exclude rules of a custom policy', 'other-route')] },
+  permissionGrantPolicy: { missing: [part('The include and exclude rules of a custom policy', 'other-route', heldUnless(['includes', 'excludes'])), part('A built-in app consent policy', 'microsoft-managed', builtInGrantPolicy)] },
   adminConsentRequestPolicy: {},
   activityBasedTimeoutPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  claimsMappingPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  homeRealmDiscoveryPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  tokenIssuancePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  tokenLifetimePolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
+  claimsMappingPolicy: { missing: STS_POLICY_MISSING },
+  homeRealmDiscoveryPolicy: { missing: STS_POLICY_MISSING },
+  tokenIssuancePolicy: { missing: STS_POLICY_MISSING },
+  tokenLifetimePolicy: { missing: STS_POLICY_MISSING },
   featureRolloutPolicy: { whole: 'not-written', missing: [part('Which groups the rollout covers', 'other-route')] },
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
-  appManagementPolicy: { whole: 'not-written', missing: [part('Which apps the policy is assigned to', 'other-route')] },
+  appManagementPolicy: { missing: [part('Which apps the policy is assigned to', 'other-route')] },
   tenantAppManagementPolicy: { whole: 'not-written' },
-  multiTenantOrganization: { whole: 'not-written', missing: [part('Each member tenant\'s acceptance', 'read-only')] },
+  multiTenantOrganization: { missing: [part('Each member tenant\'s acceptance', 'read-only')] },
   crossTenantIdentitySyncPolicyPartner: { whole: 'not-written' },
 
   // ---- Intune device management
@@ -182,22 +192,22 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
   managedDevice: { managed: true },
   mobileApp: { whole: 'not-written', missing: [part('The app package', 'binary-route')] },
-  managedAppPolicy: { whole: 'not-written', missing: [part('The list of protected apps', 'other-route')] },
-  targetedManagedAppConfiguration: { whole: 'not-written', missing: [part('The apps it targets', 'other-route')] },
-  mobileAppConfiguration: { whole: 'not-written' },
+  managedAppPolicy: { missing: [part('The list of protected apps, which a new policy needs', 'other-route'), part('Windows protection policies', 'not-written')] },
+  targetedManagedAppConfiguration: { missing: [part('The apps it targets, which a new configuration needs', 'other-route')] },
+  mobileAppConfiguration: {},
   // Wave 1 CAT-INTUNE. Assignments of these types are on a separate route.
   deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
   deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
   deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Who the remediation is assigned to', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
   deviceComplianceScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
-  assignmentFilter: { whole: 'not-written' },
-  roleScopeTag: { whole: 'not-written', missing: [part('The built-in Default tag', 'microsoft-managed')] },
-  windowsFeatureUpdateProfile: { whole: 'not-written', missing: [part('Who the profile is assigned to', 'other-route')] },
-  windowsQualityUpdateProfile: { whole: 'not-written', missing: [part('Who the profile is assigned to', 'other-route')] },
-  windowsDriverUpdateProfile: { whole: 'not-written', missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
+  assignmentFilter: {},
+  roleScopeTag: { missing: [part('The built-in Default tag', 'microsoft-managed')] },
+  windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'other-route')] },
+  windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'other-route')] },
+  windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
   groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route'), part('Who the template is assigned to', 'other-route')] },
   groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
-  notificationMessageTemplate: { whole: 'not-written' },
+  notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
   deviceManagementRoleAssignment: { whole: 'not-written' },
 });

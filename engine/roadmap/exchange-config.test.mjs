@@ -34,7 +34,7 @@ import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import {
   EXCHANGE_CLIENT_ACCESS_WRITE, EXCHANGE_MAILBOX_SETTINGS_WRITE, EXCHANGE_ORGANIZATION_WRITE, EXCHANGE_RESTORE_EVIDENCE_KIND,
   EXCHANGE_RETENTION_WRITE, EXCHANGE_WRITE_OPERATIONS, createExchangeRestoreArtifact, executeExchangeRestore, loadExchangeSource,
-  planExchangeRestore, readLiveExchange,
+  groupFingerprint, planExchangeRestore, readLiveExchange,
 } from '../restore/workloads/exchange.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -264,13 +264,13 @@ async function recordSource(client, tenantRef, { mailbox = mailboxState(), ident
   return { source: await loadExchangeSource(client, { tenantRef, collectionId: run.id }), result, run };
 }
 
-async function planned(client, tenantRef, { source, exchange, identity = MAILBOX, includeOrganization = true, requester } = {}) {
+async function planned(client, tenantRef, { source, exchange, identity = MAILBOX, includeOrganization = true, requester, guard = {} } = {}) {
   const recorded = source ?? (await recordSource(client, tenantRef, { identity })).source;
   const live = await readLiveExchange({ transport: exchange.transport, powershell: exchange.powershell, mailbox: identity, includeOrganization });
   exchange.requests.length = 0;
   exchange.calls.length = 0;
   exchange.jobs.length = 0;
-  const plan = planExchangeRestore({ source: recorded, live, tenantId: TENANT, mailbox: identity, includeOrganization });
+  const plan = planExchangeRestore({ source: recorded, live, tenantId: TENANT, tenantRef, mailbox: identity, includeOrganization, ...guard });
   const requestedBy = requester ?? await principal(client, `${tenantRef}-requester`, 'restorer');
   const artifact = await createExchangeRestoreArtifact(client, { tenantRef, plan, requestedBy });
   return { plan, artifact, requestedBy };
@@ -422,7 +422,7 @@ test('cmdlet output errors persist structured and are never an empty success', a
   const { source: fine } = await recordSource(client, tenantRef);
   const liveFailing = fakeExchange({ hooks: { cmdlet: ({ cmdlet }) => (cmdlet === 'Get-Mailbox' ? 'crash' : null) } });
   const failingLive = await readLiveExchange({ transport: liveFailing.transport, powershell: liveFailing.powershell, mailbox: MAILBOX });
-  const noBasis = planExchangeRestore({ source: fine, live: failingLive, tenantId: TENANT, mailbox: MAILBOX });
+  const noBasis = planExchangeRestore({ source: fine, live: failingLive, tenantId: TENANT, tenantRef, mailbox: MAILBOX });
   assert.ok(noBasis.manual.some((item) => item.field === 'retention' && item.error?.code === 'NONZERO_EXIT'));
 
   // A write the cmdlet rejects is `failed` with the structured error in its evidence row.
@@ -621,4 +621,79 @@ test('a hold-releasing operation refuses without qualified approval, and never o
   const refused = await executeExchangeRestore(client, { tenantRef, artifactId: purviewArtifact.id, tenantId: TENANT, transport: purview.transport, powershell: purview.powershell, qualifications: qualifications(tenantRef) });
   assert.equal(refused.outcome, 'refused');
   assert.deepEqual(purview.writes(), []);
+});
+
+test('issue #296: an unscheduled automatic reply\'s schedule is read-time noise, so it plans no write and never makes a plan stale', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // Graph reports the current hour, and that hour a day later, while replies are not scheduled.
+  const replies = (hour, status = 'disabled') => ({ automaticRepliesSetting: {
+    ...SETTINGS.automaticRepliesSetting, status,
+    scheduledStartDateTime: { dateTime: `2026-10-15T${hour}:00:00.0000000`, timeZone: 'UTC' },
+    scheduledEndDateTime: { dateTime: `2026-10-16T${hour}:00:00.0000000`, timeZone: 'UTC' },
+  } });
+  const { source } = await recordSource(client, tenantRef, { mailbox: mailboxState({ settings: replies('02') }) });
+  const readAt = async (hour, status) => {
+    const exchange = fakeExchange({ mailboxes: { [MAILBOX]: mailboxState({ settings: replies(hour, status) }) } });
+    return readLiveExchange({ transport: exchange.transport, powershell: exchange.powershell, mailbox: MAILBOX, includeOrganization: false });
+  };
+  const live = await readAt('10');
+  const plan = planExchangeRestore({ source, live, tenantId: TENANT, tenantRef, mailbox: MAILBOX });
+  assert.deepEqual(plan.operations, [], 'only the unscheduled times moved');
+  assert.equal(groupFingerprint((await readAt('11')).mailbox, 'mailboxSettings'), plan.liveFingerprints.mailboxSettings, 'a later re-read is not a change');
+
+  // Once scheduled, the window is the setting and a move is real.
+  const scheduled = await readAt('10', 'scheduled');
+  assert.notEqual(groupFingerprint((await readAt('11', 'scheduled')).mailbox, 'mailboxSettings'), groupFingerprint(scheduled.mailbox, 'mailboxSettings'));
+  const replan = planExchangeRestore({ source, live: scheduled, tenantId: TENANT, tenantRef, mailbox: MAILBOX });
+  assert.deepEqual(replan.operations.map((op) => op.changes.map((change) => change.field)), [['automaticRepliesSetting']]);
+});
+
+// ------------------------------------------------------- test tenant fixtures
+
+test('on the test tenant only a KEEL-RT- mailbox is written, and the organization only with the tenant-wide option', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const testTenantRefs = [tenantRef];
+  const { source } = await recordSource(client, tenantRef);
+
+  const off = await planned(client, tenantRef, { source, exchange: drifted(), guard: { testTenantRefs } });
+  assert.deepEqual(off.plan.operations.map((op) => op.operationId), [EXCHANGE_MAILBOX_SETTINGS_WRITE, EXCHANGE_CLIENT_ACCESS_WRITE]);
+  assert.deepEqual(off.plan.refusals.map((refusal) => refusal.naturalKey), ['exchange:organization:organization']);
+  assert.match(off.plan.refusals[0].reason, /^not-a-fixture: .*organization configuration is tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/);
+  assert.equal(off.artifact.status, 'refused');
+
+  const on = await planned(client, tenantRef, { source, exchange: drifted(), guard: { testTenantRefs, allowTenantWide: true } });
+  assert.deepEqual(on.plan.refusals, []);
+  assert.equal(on.plan.allowTenantWide, true);
+  assert.ok(on.plan.operations.some((op) => op.operationId === EXCHANGE_ORGANIZATION_WRITE));
+
+  // A mailbox that is not a fixture is never planned on the test tenant; elsewhere it is.
+  const adele = 'adele@contoso.test';
+  const { source: adeleSource } = await recordSource(client, tenantRef, { identity: adele });
+  const real = await planned(client, tenantRef, { source: adeleSource, exchange: drifted({ identity: adele }), identity: adele, includeOrganization: false, guard: { testTenantRefs } });
+  assert.deepEqual(real.plan.operations, []);
+  assert.ok(real.plan.refusals.length > 0 && real.plan.refusals.every((refusal) => /^not-a-fixture: .*the mailbox \(adele@contoso\.test\) is not one/.test(refusal.reason)));
+  const customer = await planned(client, tenantRef, { source: adeleSource, exchange: drifted({ identity: adele }), identity: adele, includeOrganization: false, guard: { testTenantRefs: [] } });
+  assert.ok(customer.plan.operations.length > 0);
+  assert.throws(() => planExchangeRestore({ source, live: { mailbox: null }, tenantId: TENANT, mailbox: MAILBOX }), /needs the tenant/);
+});
+
+test('on the test tenant the guard runs again before each Exchange write', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // A plan made where the guard did not apply (an older plan) still never writes the organization.
+  const exchange = drifted();
+  const { plan, artifact } = await planned(client, tenantRef, { exchange, guard: { testTenantRefs: [] } });
+  assert.ok(plan.operations.some((op) => op.operationId === EXCHANGE_ORGANIZATION_WRITE));
+  const result = await executeExchangeRestore(client, {
+    tenantRef, artifactId: artifact.id, tenantId: TENANT, transport: exchange.transport, powershell: exchange.powershell,
+    qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef],
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(byKind(result, 'organization').outcome, 'refused');
+  assert.match(byKind(result, 'organization').reasons[0], /KEEL-RT- fixtures/);
+  assert.equal(byKind(result, 'client-access').outcome, 'verified');
+  assert.deepEqual(exchange.writes().sort(), ['PATCH mailboxSettings', 'Set-CASMailbox'].sort());
+  assert.equal(exchange.state.organization.MailTipsLargeAudienceThreshold, 26, 'never written');
 });

@@ -8,7 +8,8 @@ import { canonicalHash } from "../../engine/cir/canonicalHash.mjs";
 import { applyWave } from "../../engine/restore/applyEngine.mjs";
 import { runRemediate } from "../../cli/keel-remediate.mjs";
 import { guardedAction, guardedApprovalDecision } from "@/lib/action";
-import { remediationSelection } from "@/lib/remediation-preview";
+import { collectorConfig, remediationSelection } from "@/lib/remediation-preview";
+import { DEFAULT_COLLECTOR_CONFIG_PATH } from "../../engine/restore/credentialPaths.mjs";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { POST } from "@/app/api/actions/remediate/selection/route";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -224,4 +225,13 @@ test("missing safety evidence is a refusal; failed live collection is unavailabl
   collectorFailure = true;
   try { assert.equal((await previewRoute(request(selection("Synced")))).status, 503); }
   finally { collectorFailure = false; }
+});
+
+test("preview reads the shared Collector default, or the configured override", () => {
+  const read: string[] = [];
+  const readFile = (path: string) => { read.push(path); return JSON.stringify(config); };
+  assert.deepEqual(collectorConfig({ ...process.env, KEEL_COLLECTOR_CONFIG_PATH: "" }, readFile), config);
+  assert.deepEqual(collectorConfig({ ...process.env, KEEL_COLLECTOR_CONFIG_PATH: "/srv/keel/collector.json" }, readFile), config);
+  assert.deepEqual(read, [DEFAULT_COLLECTOR_CONFIG_PATH, "/srv/keel/collector.json"]);
+  assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, "/etc/keel/tenant.json");
 });

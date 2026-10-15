@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-restore.mjs
 //
-// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant-target.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
+// node keel-restore.mjs --plan <id> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json [--enforce] [--accept-degradation]
 // node keel-restore.mjs --snapshot-id <id> --select <naturalKey> [--select <naturalKey>...] --collector-config ... --target-config ... [--enforce]
 //
 // node keel-restore.mjs --snapshot-id <id> --delete <naturalKey> [--delete <naturalKey>...] --collector-config ... --target-config ... [--persist-artifact <id>]
@@ -29,16 +29,27 @@
 // only by promoting that artifact with --artifact <id> --enforce after an approver
 // other than the requester approved it; the break-glass lockout gate runs at both.
 //
-// node keel-restore.mjs --workload <name> --collection <id> <workload options> --collector-config <path> [--persist-artifact <id>] [--requested-by <who>]
+// node keel-restore.mjs --workload <name> --collection <id> <workload options> [--collector-config <path>] [--persist-artifact <id>] [--requested-by <who>]
 // plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
 // one recorded workload collection, as a dry run (gap register W2). Workload options:
 //   sharepoint-site-settings   --tenant-host <host>.sharepoint.com
+//   sharepoint-site-grants     --tenant-host <host>.sharepoint.com --site <site id> (one site's app grants)
+//   sharepoint-site-permissions --tenant-host <host>.sharepoint.com --site <site id> [--at <ISO time>]
+//                              (one site's groups, members, admins, permission levels and role
+//                              assignments, from the content backup; no --collection)
 //   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
+//   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
+//   DLP and labels: [--target <key> ...].
+// On the test tenant every workload restore writes only KEEL-RT- fixtures (a mailbox,
+// team, member, label, policy or site named KEEL-RT-*); --allow-tenant-wide-test-writes
+// also plans tenant-wide objects (a Global policy, the SharePoint tenant settings, the
+// Exchange organization configuration), and such a plan needs a person's approval.
 // It is executed only by promoting that artifact with --artifact <id> --enforce after an
 // approver other than the requester approved it; the credential files are the
-// server's (engine/restore/credentialPaths.mjs), never argv.
+// server's (engine/restore/credentialPaths.mjs), never argv. The dry run reads with the
+// server's collector file too unless --collector-config names another.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -93,6 +104,13 @@ import { compensationDigestInput, planCompensation } from '../engine/restore/com
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
+import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
+import { createPgContentIndex } from '../engine/content/index.mjs';
+import { createContentStore, parseContentKey } from '../engine/content/store.mjs';
+import { sharePointReadTransport } from '../engine/content/transport.mjs';
+import { sitePermissionsWriteTransport } from '../engine/restore/workloads/sharepointRest.mjs';
+import { createLocalStorageAdapter } from '../engine/storage/local.mjs';
 import {
   WORKLOAD_RESTORES, graphTransport, isWorkloadArtifact, workloadRestoreFor,
 } from '../engine/restore/workloads/dispatch.mjs';
@@ -309,6 +327,7 @@ export async function runRestore({
     workloadRestores = WORKLOAD_RESTORES,
     workloadConnection: workloadConnectionFn = defaultWorkloadConnection,
     workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
+    contentStore: contentStoreFn = defaultContentStore,
     credentialPaths: credentialPathsFn = credentialPaths,
     sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
@@ -451,6 +470,8 @@ export async function runRestore({
     }
     const workloadDeps = {
       workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, getTokenFn, sleep,
+      // Opened only by a restore whose backup is in the content store (site permissions).
+      contentStore: () => contentStoreFn({ client, readFile }),
     };
     if (workloadRestore !== undefined) {
       return await planWorkloadRun({
@@ -604,7 +625,10 @@ export async function runRestore({
     // Re-collect the target's CURRENT state — not what planning saw — so a retry
     // after a partial failure treats already-created resources as done instead
     // of re-creating them (spec §9.3; see Task 17's idempotency fix).
-    const targetCollected = await collectM1Fn(targetReader);
+    // Issue #289: a type the tenant has no licence for is skipped unless this
+    // restore touches it, so one unlicensed workload does not block every restore.
+    const neededTypes = new Set(resources.map((resource) => resource.resourceType));
+    const targetCollected = await collectM1Fn(targetReader, { needed: neededTypes });
     const targetResources = canonicalizeAllFn(targetCollected);
     const existingTargetIds = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
     const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
@@ -1131,6 +1155,9 @@ export async function runRestore({
     let completionItems = [];
     if (mode === 'enforce' && artifact) {
       const byKey = new Map(resources.map((resource) => [resource.naturalKey, resource]));
+      // Wave 2 ENTRA: a writer's follow-up steps (missing parts of an
+      // incomplete configuration) become named completion items.
+      const followUpByKey = new Map(results.applied.filter((entry) => Array.isArray(entry.followUp)).map((entry) => [entry.naturalKey, entry.followUp]));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))
         .filter((resource) => resource?.recovery
@@ -1138,7 +1165,8 @@ export async function runRestore({
             || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))
         .map((resource) => ({
           naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery.mechanism,
-          enforcementPending: enforcementPendingFor(resource),
+          enforcementPending: enforcementPendingFor(resource), payload: resource.payload,
+          ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
         }));
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {
@@ -1157,7 +1185,8 @@ export async function runRestore({
     // live after recovery is never reported as a clean restore.
     let incidentChecks = [];
     if (mode === 'enforce' && artifact && incidentRecovery) {
-      const reread = await collectM1Fn(targetReader);
+      const checkedTypes = incidentRecovery.postRestoreChecks.map((check) => String(check.naturalKey).split(':')[0]);
+      const reread = await collectM1Fn(targetReader, { needed: new Set([...neededTypes, ...checkedTypes]) });
       const collectedTypes = Array.isArray(reread) ? reread.map((entry) => entry?.[0]).filter((type) => typeof type === 'string') : [];
       incidentChecks = evaluatePostRestoreChecks(incidentRecovery.postRestoreChecks, canonicalizeAllFn(reread), { collectedTypes });
       await recordPostRestoreChecks(client, {
@@ -1252,7 +1281,8 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   }
   const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
   const targetReader = new deps.GraphReaderClass(async () => collectorToken);
-  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const needed = new Set(entries.map((entry) => entry.resourceType));
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader, { needed }));
   const current = new Map(targetResources.map((resource) => [resource.naturalKey, { targetId: resource.sourceId, payload: resource.payload }]));
   const plan = planCompensation({ restoreRef: forward.id, entries, current });
   const order = plan.operations.map((op) => op.naturalKey);
@@ -1423,7 +1453,7 @@ async function buildEnforcement({ client, forward, naturalKey, collectorConfig, 
   );
   const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
   const targetReader = new deps.GraphReaderClass(async () => collectorToken);
-  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader));
+  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader, { needed: new Set(['conditionalAccessPolicy']) }));
   const current = targetResources.find((resource) => resource.naturalKey === naturalKey && resource.resourceType === 'conditionalAccessPolicy');
   const live = current ? { targetId: current.sourceId, payload: current.payload } : null;
   const snapshotPayload = rows[0]?.payload ?? null;
@@ -1591,19 +1621,57 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
 
 // ------------------------------------------------------------- workload restores (W2)
 
-/** Production connection for a workload run: a Graph transport and the cmdlet job options. */
-async function defaultWorkloadConnection({ config, configPath, getTokenFn }) {
+/**
+ * Production connection for a workload run: a Graph transport, the cmdlet job options
+ * and, for the site permissions restore, a SharePoint REST transport on the tenant host
+ * (a certificate token for that host). The collector's can only read; the restorer's
+ * can only send the allow-listed site permission writes (sitePermissionsWriteTransport).
+ */
+async function defaultWorkloadConnection({ role, config, configPath, getTokenFn }) {
   const { accessToken } = await getTokenFn(config);
-  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath } };
+  const sharePoint = (tenantHost, { webUrl = null } = {}) => {
+    const token = () => getTokenFn(config, { scope: `https://${tenantHost}/.default` });
+    return role === 'restorer'
+      ? sitePermissionsWriteTransport(token, globalThis.fetch, { tenantHost, webUrl })
+      : sharePointReadTransport(token, globalThis.fetch, { tenantHost });
+  };
+  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath }, sharePoint };
+}
+
+/** The content store named in the content reader file (where the content backup lives). */
+async function defaultContentStore({ client, readFile, readerPath = process.env.KEEL_CONTENT_READER_PATH || '/etc/keel/content-reader.json' }) {
+  let reader;
+  try { reader = JSON.parse(readFile(readerPath, 'utf8')); } catch (error) {
+    throw new Error(`this restore reads the content backup named in ${readerPath}, which could not be read: ${error.message}`);
+  }
+  if (!reader?.storage?.root || !reader?.contentKeyFile) throw new Error(`${readerPath} names no content store (storage.root and contentKeyFile)`);
+  return createContentStore({
+    index: createPgContentIndex(client), storage: createLocalStorageAdapter({ root: reader.storage.root }),
+    key: parseContentKey(readFile(reader.contentKeyFile, 'utf8')),
+  });
 }
 
 /**
- * Which workload writes are qualified on this host. No persisted workload ledger
- * exists yet (gap register W1), so none is: every write reports `disabled` and
- * nothing is sent. The executors refuse a missing qualification on their own.
+ * Which workload writes are qualified for this tenant, from the stored workload
+ * ledger (gap W1): the live read and write captures, the restorer's observed
+ * grants and the module versions in use, rebuilt at the moment of the run so the
+ * 30-day, version and tenant rules apply now. Each operation gets its own
+ * workloadWriteQualification; a write with no live capture stays `disabled` (or
+ * `fixture-tested`), and the executors send nothing for it. A database without
+ * the ledger tables reads as no proof.
  */
-async function defaultWorkloadQualifications() {
-  return {};
+export async function defaultWorkloadQualifications(client, { tenantRef, operations = [], now = new Date() }) {
+  const { rows: [table] } = await client.query("SELECT to_regclass('workload_ledger_evidence') IS NOT NULL AS present");
+  const stored = table?.present ? await loadWorkloadLedger(client, { tenantRef, now }) : null;
+  const options = {
+    readLedger: stored?.ledger ?? null,
+    evidence: stored?.inputs.writes ?? [],
+    tenantRef,
+    now,
+    runtime: stored?.inputs.runtime ?? {},
+    grants: stored?.inputs.restorerGrants ?? null,
+  };
+  return Object.fromEntries(operations.map((operationId) => [operationId, workloadWriteQualification(operationId, options)]));
 }
 
 const WORKLOAD_SUCCESS = new Set(['verified', 'no-change']);
@@ -1615,9 +1683,11 @@ async function planWorkloadRun({ client, request, collectorConfig, collectorConf
   const connection = await deps.workloadConnectionFn({
     role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
   });
-  const plan = await entry.plan(client, { tenantRef, tenantId: collectorConfig.tenantId, request, connection, sleep: deps.sleep });
+  const plan = await entry.plan(client, {
+    tenantRef, tenantId: collectorConfig.tenantId, request, connection, contentStore: deps.contentStore, sleep: deps.sleep,
+  });
   const artifact = await entry.create(client, {
-    tenantRef, plan, requestedBy: requestedBy ?? null, ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
+    tenantRef, plan, requestedBy: requestedBy ?? 'keel-restore', ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
   });
   logger.log(`${entry.label} restore plan: ${plan.operations.length} change(s), ${plan.manual.length} manual, ${plan.refusals.length} refused`);
   logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);
@@ -1646,12 +1716,15 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
     role: 'restorer', config: targetConfig, configPath: paths.targetConfig, getTokenFn: deps.getTokenFn,
   });
   const qualifications = await deps.workloadQualificationsFn(client, { tenantRef: artifact.tenantRef, operations: entry.operations });
-  if (Object.keys(qualifications ?? {}).length === 0) {
-    logger.log(`no ${entry.label} write is qualified on this host yet; nothing will be written`);
+  const enabled = Object.values(qualifications ?? {}).filter((qualification) => qualification?.enabled === true);
+  if (enabled.length === 0) {
+    logger.log(`no ${entry.label} write is qualified for this tenant yet; nothing will be written`);
+  } else {
+    logger.log(`${entry.label}: ${enabled.length} of ${entry.operations.length} write(s) qualified for this tenant`);
   }
   const result = await entry.execute(client, {
     tenantRef: artifact.tenantRef, artifactId: artifact.id, tenantId: targetConfig.tenantId, plan, connection,
-    qualifications: qualifications ?? {}, sleep: deps.sleep,
+    qualifications: qualifications ?? {}, contentStore: deps.contentStore, sleep: deps.sleep,
   });
   logger.log(`${entry.label} restore: ${result.outcome}`);
   if (!WORKLOAD_SUCCESS.has(result.outcome)) {
@@ -1721,8 +1794,10 @@ export async function main({
     if (mode === 'enforce') {
       throw new Error('--workload is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
     }
-    const collectorConfigPath = arg('collector-config', undefined, argv);
-    if (!collectorConfigPath) throw new Error('--collector-config <path> required (the workload dry run reads with the collector)');
+    // The dry run reads with the collector: the server's file (credentialPaths, the
+    // same one its promotion reads) unless the operator names another.
+    const collectorConfigPath = arg('collector-config', undefined, argv)
+      ?? (dependencies?.credentialPaths ?? credentialPaths)().collectorConfig;
     return runRestore({
       workloadRestore: {
         workload,
@@ -1731,7 +1806,10 @@ export async function main({
         mailbox: arg('mailbox', undefined, argv),
         includeOrganization: flag('include-organization', argv),
         teamId: arg('team', undefined, argv),
+        siteId: arg('site', undefined, argv),
+        at: arg('at', undefined, argv),
         targets: argAll('target', argv),
+        allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
       },
       collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),
       collectorConfigPath,

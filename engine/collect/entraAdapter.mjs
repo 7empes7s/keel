@@ -66,7 +66,11 @@ function graphNativeAdapter(type) {
     collectRaw,
     async collect(reader, scope = {}) {
       const { items, error, capped } = await collectRaw(reader, scope);
-      if (error) throw new Error(`collecting ${type} failed: ${redactSecrets(error.error ?? error.message ?? error.status)}`);
+      if (error) {
+        const failure = new Error(`collecting ${type} failed: ${redactSecrets(error.error ?? error.message ?? error.status)}`);
+        if (unavailableOnTenant(error)) failure.unavailableOnTenant = true;
+        throw failure;
+      }
       if (capped) throw new Error(`collecting ${type} failed: pagination incomplete`);
       if (!Array.isArray(items)) throw new Error(`collecting ${type} failed: missing items`);
       return items;
@@ -118,12 +122,53 @@ for (const descriptor of DESCRIPTORS) {
   register(descriptor, graphNativeAdapter(descriptor.type));
 }
 
+/** The reason recorded on a type the tenant cannot have (issue #309). */
+export const MISSING_PREREQUISITE = 'missing prerequisite (licence or tenant feature)';
+
+// Issue #289: Graph answers some types with a refusal that says the tenant
+// lacks the licence or feature for them, not that KEEL lacks a permission:
+// 403 "Insufficient license" (lifecycle workflows need Entra ID Governance) and
+// 400 AADB2C99039 (API connectors need self-service sign-up).
+export function unavailableOnTenant(error) {
+  if (!error) return false;
+  const message = String(error.error ?? error.message ?? '');
+  if (error.status === 403 && /insufficient licen[cs]e/i.test(message)) return true;
+  return error.code === 'AADB2C99039' || /\bAADB2C99039\b/.test(message);
+}
+
+/**
+ * The set of types a collectM1 caller needs, for `scope.needed`: every type in
+ * `resources` (rows or canonical resources) plus `extra`.
+ */
+export function neededTypes(resources, extra = []) {
+  const types = new Set(extra);
+  for (const resource of resources ?? []) {
+    const type = resource?.resourceType ?? resource?.resource_type;
+    if (typeof type === 'string' && type) types.add(type);
+  }
+  return types;
+}
+
+/**
+ * Reads every M1 type and fails on the first type it cannot read.
+ * `scope.needed` (a set of types), when given, relaxes that for one case only:
+ * a type the tenant has no licence or feature for, and that is not needed, is
+ * left out of the result (not read, never an invented empty list). A needed
+ * type that is unavailable still fails, naming the type.
+ */
 export async function collectM1(reader, scope = {}) {
+  const { needed, ...rest } = scope;
   const collected = [];
-  const context = { ...scope };
+  const context = { ...rest };
   for (const type of M1_TYPES) {
     const { adapter } = get(type);
-    const items = await adapter.collect(reader, context);
+    let items;
+    try {
+      items = await adapter.collect(reader, context);
+    } catch (error) {
+      if (needed instanceof Set && error?.unavailableOnTenant === true && !needed.has(type)) continue;
+      throw error;
+    }
     collected.push([type, items]);
     if (type === 'organization') {
       context.tenantId ??= items[0]?.id;
@@ -149,6 +194,8 @@ function errorDetail(error) {
  *                    page cap cut it); the observed count is kept but the
  *                    entry fails completeness
  *   failed         — nothing was read; cardinality is unknown, never zero
+ *   unavailable    — nothing was read because the tenant lacks the licence
+ *                    or feature for the type; not a failure, never a zero
  * Evidence fields are null when they were not observed — nothing is invented.
  */
 function outcomeEntry(raw) {
@@ -162,6 +209,20 @@ function outcomeEntry(raw) {
   if (raw.error) {
     const detail = errorDetail(raw.error);
     const partial = (raw.pages ?? 0) > 0 || (Array.isArray(raw.items) && raw.items.length > 0);
+    // Issue #309: a type the tenant has no licence or feature for is recorded
+    // as unavailable, not failed, so the run can still succeed. Only a refusal
+    // before any page was read counts; any other error still fails.
+    if (!partial && unavailableOnTenant(raw.error)) {
+      return {
+        ...base,
+        outcome: 'unavailable',
+        itemCount: null,
+        reason: MISSING_PREREQUISITE,
+        error: detail.message,
+        httpStatus: detail.httpStatus,
+        graphCode: detail.graphCode,
+      };
+    }
     return {
       ...base,
       outcome: partial ? 'partial' : 'failed',

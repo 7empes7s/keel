@@ -47,9 +47,10 @@ export const TEAMS_DESCRIPTOR = Object.freeze({
 
 // Settings groups: what the task-104 restore may write back.
 export const TEAM_SETTING_FIELDS = Object.freeze(['memberSettings', 'guestSettings', 'messagingSettings', 'funSettings', 'discoverySettings']);
-// Properties: observed, never written by KEEL.
+// Properties: observed, never written by KEEL. `tenantId` is not one: the live
+// GET /teams/{id} body omits it, and the tenant comes from configuration (#292).
 export const TEAM_PROPERTY_FIELDS = Object.freeze([
-  'displayName', 'description', 'visibility', 'isArchived', 'classification', 'specialization', 'webUrl', 'createdDateTime', 'tenantId',
+  'displayName', 'description', 'visibility', 'isArchived', 'classification', 'specialization', 'webUrl', 'createdDateTime',
 ]);
 // Content a team body can carry when expanded, or that a careless reader could fetch.
 // Never read, never stored, never counted as configuration.
@@ -178,6 +179,8 @@ export async function readTeams({ transport, tenantId, maxTeams = DEFAULT_MAX_TE
     } catch (error) {
       settingsError = error;
     }
+    // `/teams` only lists the signed-in tenant's teams, so a body without `tenantId`
+    // is in scope. A body that names another tenant is still refused.
     if (body && typeof body.tenantId === 'string' && body.tenantId.toLowerCase() !== tenant) {
       // Another tenant's team: recorded, never read further.
       teams.delete(entry.teamId);

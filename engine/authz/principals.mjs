@@ -30,6 +30,9 @@ export async function findPrincipalById(client, id) {
 
 // Task 90: the active grants with their parsed scope. A grant whose scope does not
 // parse is dropped here, so a malformed scope can never read as central.
+// `at` is a JS Date (millisecond precision) while active_from defaults to Postgres
+// now() (microsecond precision). Comparing the window at millisecond precision keeps
+// a grant made in the same millisecond as the check active (issue #307).
 async function activeScopedRoles(client, principal, at) {
   const { rows } = await client.query(
     `SELECT rg.role, rg.scope
@@ -37,8 +40,8 @@ async function activeScopedRoles(client, principal, at) {
        JOIN principal p ON p.id = rg.principal_id
       WHERE rg.principal_id = $1
         AND p.disabled_at IS NULL
-        AND rg.active_from <= $2
-        AND (rg.active_until IS NULL OR rg.active_until > $2)`,
+        AND date_trunc('milliseconds', rg.active_from) <= $2
+        AND (rg.active_until IS NULL OR date_trunc('milliseconds', rg.active_until) > $2)`,
     [principal.id, at],
   );
   return rows.map((row) => ({ role: row.role, scope: parseGrantScope(row.scope) })).filter((row) => row.scope);

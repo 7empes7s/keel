@@ -59,7 +59,13 @@ import { valueVerdict, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
+import { CompareView } from "@/components/compare-view";
+import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
+import { SiteDetail, SiteList } from "@/components/site-permissions";
+import { SiteChanges } from "@/components/site-changes";
+import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
+import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -1034,8 +1040,153 @@ function askPage(data: AskData) {
     <div data-layer="explanation"><AskView data={data} question={data.answer?.question ?? ""} /></div></>;
 }
 
+// Wave 2 CMP: two snapshots of this tenant, and this tenant against another.
+const CMP_SNAP_OLD = "c0a10000-0000-4000-8000-000000000001";
+const CMP_SNAP_NEW = "c0a10000-0000-4000-8000-000000000002";
+const CMP_SNAP_OTHER = "c0a10000-0000-4000-8000-000000000003";
+const COMPARE_TENANTS: CompareTenant[] = [
+  { tenantRef: "sha256:5a1e00000000c0a1", label: "This tenant", own: true, snapshots: [
+    { id: CMP_SNAP_NEW, completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 },
+    { id: CMP_SNAP_OLD, completedAt: "2026-10-01T09:10:00Z", resourceCount: 4809 },
+  ] },
+  { tenantRef: "sha256:5a1e00000000c0b2", label: "Other tenant 1", own: false, snapshots: [{ id: CMP_SNAP_OTHER, completedAt: "2026-10-02T06:00:00Z", resourceCount: 3120 }] },
+];
+const COMPARE_SNAPSHOTS: CompareResult = {
+  version: 1, mode: "snapshots", portable: false, generatedAt: now,
+  left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_OLD, at: "2026-10-01T09:10:00Z" },
+  right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
+  settings: {
+    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 1, unmatched: 0 },
+    groups: [
+      { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 0, changed: 1, unchanged: 11, total: 1, items: [
+        { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 2, fields: [
+          { path: "state", kind: "changed", before: "enabled", after: "enabledForReportingButNotEnforced" },
+          { path: "conditions.users.excludeGroups", kind: "changed", before: ["b1ea0000-0000-4000-8000-000000000001"], after: ["b1ea0000-0000-4000-8000-000000000001", "f1aa0000-0000-4000-8000-000000000002"] },
+        ] },
+      ] },
+      { service: "Entra ID", resourceType: "group", added: 1, removed: 1, changed: 1, unchanged: 210, total: 3, items: [
+        { naturalKey: "group:Old project team", name: "Old project team", changeType: "removed", blastRadius: "access-affecting" },
+        { naturalKey: "group:Finance", name: "Finance", changeType: "changed", blastRadius: "access-affecting", fieldsTotal: 1, fields: [{ path: "securityEnabled", kind: "changed", before: true, after: false }] },
+        { naturalKey: "group:KEEL-RT-Contractors", name: "KEEL-RT-Contractors", changeType: "added", blastRadius: "access-affecting" },
+      ] },
+    ],
+    notCompared: [{ resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" }],
+    unmatched: [],
+  },
+  workloads: {
+    totals: { added: 0, removed: 0, changed: 1, unchanged: 41, notCompared: 1 },
+    groups: [
+      { service: "Exchange Online", workload: "exchange-mailbox-settings", state: "compared", added: 0, removed: 0, changed: 1, unchanged: 41, unverified: 0, unverifiedFields: 2, total: 1,
+        left: { collectionId: "c0a10000-0000-4000-8000-0000000000e1", outcome: "complete", at: "2026-10-01T09:00:00Z" },
+        right: { collectionId: "c0a10000-0000-4000-8000-0000000000e2", outcome: "complete", at: "2026-10-02T09:00:00Z" },
+        items: [{ resourceKey: "mailbox:finance@contoso.com", changeType: "changed", fieldsTotal: 1, fields: [{ path: "mailboxSettings.ForwardingSmtpAddress", kind: "changed", before: null, after: "smtp:outside@example.com" }] }] },
+      { service: "Teams", workload: "teams-org-policies", state: "not-compared", reason: "collection-failed",
+        left: { collectionId: "c0a10000-0000-4000-8000-0000000000e3", outcome: "complete", at: "2026-10-01T09:00:00Z" },
+        right: { collectionId: "c0a10000-0000-4000-8000-0000000000e4", outcome: "failed", at: "2026-10-02T09:00:00Z" } },
+    ],
+  },
+  content: {
+    by: "item", totals: { added: 1, removed: 1, changed: 1 }, shown: 3, total: 3,
+    groups: [
+      { service: "OneDrive", workload: "onedrive", leftItems: 1204, rightItems: 1204, added: 1, removed: 1, changed: 0, containers: [
+        { container: "drive:b!Xc9", added: 1, removed: 1, changed: 0, items: [
+          { itemKey: "01ABCDEF", name: "Budget 2027.xlsx", kind: "drive-content", changeType: "removed", beforeSha256: "3e".repeat(32), afterSha256: null, beforeBytes: 48211, afterBytes: null },
+          { itemKey: "01ABCDEG", name: "Budget 2027 v2.xlsx", kind: "drive-content", changeType: "added", beforeSha256: null, afterSha256: "4f".repeat(32), beforeBytes: null, afterBytes: 49302 },
+        ] },
+      ] },
+      { service: "Exchange Online", workload: "exchange-mail", leftItems: 30211, rightItems: 30211, added: 0, removed: 0, changed: 1, containers: [
+        { container: "mailbox/c0a10000-0000-4000-8000-0000000000f1/items/inbox", added: 0, removed: 0, changed: 1, items: [
+          { itemKey: "AAMkAD1", name: null, kind: "message", changeType: "changed", beforeSha256: "5a".repeat(32), afterSha256: "6b".repeat(32), beforeBytes: 18200, afterBytes: 18342 },
+        ] },
+      ] },
+    ],
+  },
+};
+const COMPARE_TENANTS_RESULT: CompareResult = {
+  version: 1, mode: "tenants", portable: true, generatedAt: now,
+  left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
+  right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0b2", snapshotId: CMP_SNAP_OTHER, at: "2026-10-02T06:00:00Z" },
+  settings: {
+    totals: { added: 0, removed: 1, changed: 1, unchanged: 3010, notCompared: 0, unmatched: 1 },
+    groups: [
+      { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 1, changed: 1, unchanged: 10, total: 2, items: [
+        { naturalKey: "conditionalAccessPolicy:Require MFA for admins", name: "Require MFA for admins", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 1, fields: [
+          { path: "conditions.users.excludeGroups", kind: "changed", before: ["ref:group:Break-glass admins"], after: ["ref:group:Break-glass admins", "ref:unresolved"] },
+        ] },
+        { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "removed", blastRadius: "tenant-lockout" },
+      ] },
+    ],
+    notCompared: [],
+    unmatched: [{ resourceType: "deviceCategory", service: "Intune", left: 3, right: 2 }],
+  },
+  workloads: { totals: { added: 0, removed: 0, changed: 0, unchanged: 0, notCompared: 0 }, groups: [] },
+  content: { by: "holdings", totals: { inBoth: 812, onlyLeft: 31, onlyRight: 4 }, groups: [
+    { service: "SharePoint", workload: "sharepoint-sites", leftItems: 843, rightItems: 816, leftBytes: 912_334_120, rightBytes: 880_102_400, inBoth: 812, onlyLeft: 31, onlyRight: 4 },
+  ] },
+};
+const COMPARE: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_OLD, to: CMP_SNAP_NEW }, result: COMPARE_SNAPSHOTS, problem: null };
+const COMPARE_ACROSS: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_NEW, to: CMP_SNAP_OTHER }, result: COMPARE_TENANTS_RESULT, problem: null };
+
+function comparePage(data: CompareData) {
+  const verdict = compareVerdict(data);
+  return <>{header("Changes", "Compare", "Put two snapshots side by side, or two tenants: settings, workload settings and stored content.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><CompareView data={data} /></div></>;
+}
+
+// Site permissions audit, gap 2: each SharePoint site's stored permissions.
+const SITE_HOST = "contoso.sharepoint.com";
+const SITE_FINANCE = `${SITE_HOST},5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002`;
+const SITE_ARCHIVE = `${SITE_HOST},5e170000-0000-4000-8000-000000000003,5e170000-0000-4000-8000-000000000004`;
+const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e170000-0000-4000-8000-000000000006`;
+const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
+const SITES: SitePermissionsData = {
+  generatedAt: now,
+  run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
+  latest: null,
+  sites: [
+    sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
+      { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
+    sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
+    ] }, { appPermissionGrants: SITE_READ }),
+    sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+  ],
+};
+
+// Site permissions audit: site settings that changed between two daily reads.
+const SITE_CHANGES: SiteChangesData = { days: 30, changes: [
+  { id: "d1a00000-0000-4000-8000-0000000000d1", resourceKey: `site:${SITE_FINANCE}`, siteId: SITE_FINANCE, name: "Finance", changeType: "modified",
+    fields: ["appPermissionGrants"], blastRadius: "access-affecting", seenAt: "2026-10-02T02:00:00Z",
+    collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4",
+    alertId: "a1e70000-0000-4000-8000-0000000000a5", alertState: "open" },
+  { id: "d1a00000-0000-4000-8000-0000000000d2", resourceKey: `site:${SITE_ARCHIVE}`, siteId: SITE_ARCHIVE, name: "Records archive with a long name that wraps on a phone", changeType: "modified",
+    fields: ["displayName", "webUrl"], blastRadius: "cosmetic", seenAt: "2026-10-01T02:00:00Z",
+    collectionId: "c0110000-0000-4000-8000-0000000000c4", previousCollectionId: "c0110000-0000-4000-8000-0000000000c3",
+    alertId: "a1e70000-0000-4000-8000-0000000000a6", alertState: "acknowledged" },
+] };
+
+function sitesPage() {
+  const verdict = sitesVerdict(SITES);
+  return <>{header("Protect", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><SiteList data={SITES} /></div></>;
+}
+
+function sitePage(path: string) {
+  const id = decodeURIComponent(path.slice("/sites/".length));
+  const site = SITES.sites.find((entry) => entry.siteId === id);
+  if (!site) return null;
+  const verdict = siteVerdict(site);
+  return <>{header("Protect", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
+  if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
     case "/activity": return <>{header("Activity", "Activity", "What KEEL has done and who decided what, newest first.")}
@@ -1075,18 +1226,25 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return reportsPage(VALUE_REPORT);
     case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
+    case "/sites": return sitesPage();
+    case "/compare": return comparePage(COMPARE);
+    case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
-    case "/drift": {
-      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now);
+    case "/drift":
+    case "/drift/sites": {
+      // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
+      const sites = path === "/drift/sites" ? SITE_CHANGES : null;
+      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <BaselineContext baseline={BASELINES[0]} now={now} />
           <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
-        </div></>;
+        </div>
+        {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }

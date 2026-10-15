@@ -40,12 +40,14 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
   Protect: [
     { href: "/protect", label: "Protect", gate: null, aliases: "backups coverage configuration types" },
     { href: "/schedules", label: "Schedules", gate: "canRead" },
+    { href: "/sites", label: "Sites", gate: "canRead", aliases: "sharepoint site permissions app access grants groups roles" },
     { href: "/backups", label: "Backups", gate: null, hidden: true },
     { href: "/coverage", label: "Configuration types", gate: null, hidden: true },
   ],
   Changes: [
     { href: "/drift", label: "Changes", gate: null, aliases: "drift" },
     { href: "/baselines", label: "Baselines", gate: null },
+    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare snapshots tenants differences side by side" },
     { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
     { href: "/alerts", label: "Alerts", gate: "canRead", aliases: "alerts inbox acknowledge escalation" },
     { href: "/emergency-changes", label: "Emergency changes", gate: "canApprove", aliases: "emergency deviation change intent approved change window" },

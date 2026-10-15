@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "claimsMappingPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "c3b5f6c84ae90c2d800e17bed1277a92eab8d360",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-15T10:30:24.406Z",
+  "restoreRef": "5eae4f2c-d9ef-82a5-9113-c2bd36f32520",
+  "naturalKey": "claimsMappingPolicy:1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+  "fixtureKind": "named-object",
+  "captureSha256": "dca96921277e40f9d9dfe89fd38960fbd9da7ac2ef65fa6d03154f531fde5311",
+  "proofRef": "docs/release/qualifications/entra-live/claimsMappingPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "af8d7a27fcc9233eb881c9510714ea1789cad86a85590411f503394c0b619bdd"
+    }
+  }
+}

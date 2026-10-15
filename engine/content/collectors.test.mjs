@@ -5,7 +5,7 @@ import { driveTransport, mailReader } from './collectorTransports.mjs';
 import { backupOneDrives } from './onedrives.mjs';
 import { createMemoryContentStore } from './store.mjs';
 import { createMemorySyncState } from './syncState.mjs';
-import { contentReadTransport } from './transport.mjs';
+import { contentReadTransport, sharePointReadTransport } from './transport.mjs';
 import { runContentCollection } from '../../cli/keel-content-collect.mjs';
 
 const GRAPH = 'https://graph.microsoft.com';
@@ -250,4 +250,52 @@ test('the adapters keep every request a Graph GET and only pass read headers', a
   const locked = await drive({ method: 'GET', url: `${GRAPH}/v1.0/drives/d/items/i/content` });
   assert.deepEqual([locked.status, locked.body], [423, { error: { code: 'resourceLocked' } }]);
   assert.ok(seen.every((call) => call.init.method === 'GET'));
+});
+
+test('the sites run reads site permissions through a GET-only SharePoint transport on the tenant host', async () => {
+  const tenant = fixtureTenant();
+  const sharePointCalls = [];
+  const tokens = [];
+  const sharePointFetch = async (href, init) => {
+    sharePointCalls.push({ href, init });
+    const path = decodeURIComponent(new URL(href).pathname);
+    if (path === '/sites/KEEL-RT-site/_api/web') return json({ Id: 'w1', Url: `https://${HOST}/sites/KEEL-RT-site`, HasUniqueRoleAssignments: true });
+    if (path === '/sites/KEEL-RT-site/_api/web/sitegroups') return json({ value: [{ Id: 3, Title: 'KEEL-RT-site Owners' }] });
+    if (path === '/sites/KEEL-RT-site/_api/web/sitegroups/GetById(3)/users') return json({ value: [{ Id: 11, Title: 'KEEL-RT-alice' }] });
+    if (path === '/sites/KEEL-RT-site/_api/web/roleassignments') {
+      return json({ value: [{ PrincipalId: 3, Member: { Id: 3, Title: 'KEEL-RT-site Owners' }, RoleDefinitionBindings: [{ Id: 1073741829, Name: 'Full Control' }] }] });
+    }
+    return json({ value: [] });
+  };
+  const sharePointTransportFor = (tenantHost) => sharePointReadTransport(async () => { tokens.push(tenantHost); return 'KEEL-RT-sp-token'; }, sharePointFetch, { tenantHost });
+  const sites = CONTENT_COLLECTORS.find((entry) => entry.workload === 'sharepoint-sites');
+  const store = createMemoryContentStore();
+  const result = await sites.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store, transport: tenant.transport, sharePointTransportFor, scope: { namePrefix: 'KEEL-RT-' },
+    sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(result.outcome, 'succeeded', JSON.stringify(result.reasons));
+  assert.deepEqual(tokens, [HOST]);
+  assert.ok(sharePointCalls.length >= 7);
+  for (const call of sharePointCalls) {
+    assert.equal(call.init.method, 'GET');
+    assert.equal(new URL(call.href).hostname, HOST);
+    assert.equal(call.init.headers.accept, 'application/json;odata=nometadata');
+    assert.equal(call.init.headers.authorization, 'Bearer KEEL-RT-sp-token');
+  }
+  const stored = (await store.listItems({ container: `site:${SITE}`, tenantRef: 'sha256:KEEL-RT', workload: 'sharepoint-sites' })).filter((item) => item.itemKey === 'site/permissions');
+  assert.equal(stored.length, 1);
+});
+
+test('the SharePoint transport refuses writes, bodies, other hosts and paths outside /_api/', async () => {
+  const sent = [];
+  const transport = sharePointReadTransport(async () => 'KEEL-RT-token', async (href) => { sent.push(href); return json({ value: [] }); }, { tenantHost: HOST });
+  await assert.rejects(transport(`https://${HOST}/sites/x/_api/web`, { method: 'POST' }), /read-only/);
+  await assert.rejects(transport(`https://${HOST}/sites/x/_api/web`, { body: '{}' }), /read-only/);
+  await assert.rejects(transport('https://fabrikam.sharepoint.com/sites/x/_api/web'), /reads keelrt.sharepoint.com only/);
+  await assert.rejects(transport(`https://${HOST}/sites/x/Shared%20Documents/a.docx`), /REST API only/);
+  await assert.rejects(transport('https://graph.microsoft.com/v1.0/sites/root'), /only/);
+  assert.deepEqual(sent, []);
+  assert.equal((await transport(`https://${HOST}/sites/x/_api/web`)).status, 200);
+  assert.throws(() => sharePointReadTransport(async () => 't', undefined, { tenantHost: 'evil.example' }), /tenantHost/);
 });

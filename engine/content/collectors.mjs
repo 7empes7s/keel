@@ -9,6 +9,9 @@
  *   bytes, reasons }. `store` is the content store (putItem, getItem, listItems), `transport`
  *   the read-only content transport (./transport.mjs), `scope` the content scope file.
  *   Delta state lives in content_sync_state (./syncState.mjs); `syncState` replaces it in tests.
+ *   `sharePointTransportFor(tenantHost)`, when given, returns the SharePoint REST transport
+ *   (./transport.mjs sharePointReadTransport, as the Collector) the sites collector reads
+ *   site groups and role assignments through; without it they are declared missing.
  *   A collector never writes to the tenant.
  *
  * The scope file (/etc/keel/content-scope.json) is optional:
@@ -110,9 +113,11 @@ async function collectSites(client, context) {
   const { store, tally } = counted(context.store);
   const send = graphTransport(transport);
   const prefix = prefixOf(scope);
+  const tenantHost = await tenantHostOf(send, scope);
   const libraryKey = ({ siteId, listId, driveId }) => ({ tenantRef, workload: 'sharepoint-sites', key: `library:${siteId}/${listId}/${driveId}` });
   const result = await backupSharePointSites({
-    transport: send, store, tenantRef, tenantHost: await tenantHostOf(send, scope), sleep, now,
+    transport: send, store, tenantRef, tenantHost, sleep, now,
+    permissionsTransport: context.sharePointTransportFor ? context.sharePointTransportFor(tenantHost) : null,
     siteFilter: prefix ? (site) => [site.displayName, site.name].some((name) => typeof name === 'string' && name.toLowerCase().startsWith(prefix.toLowerCase())) : undefined,
     libraryState: {
       load: (where) => syncState.load(libraryKey(where)),

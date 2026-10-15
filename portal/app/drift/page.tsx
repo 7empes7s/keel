@@ -4,12 +4,15 @@ import { headers } from "next/headers";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { DriftTable } from "@/components/drift-table";
 import { PageHeader } from "@/components/page-header";
+import { SiteChanges } from "@/components/site-changes";
 import { BaselineContext } from "@/components/baseline-context";
 import { Verdict } from "@/components/verdict";
 import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { displayItems, getDriftData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
+import { getSiteChanges } from "@/lib/site-permissions";
 import type { DriftData } from "@/lib/types";
 
 const DESCRIPTION = "What changed in the tenant since the active baseline, and what to do about each change.";
@@ -22,8 +25,13 @@ export default async function DriftPage() {
     .filter((capability) => capability.length > 0);
 
   let data: DriftData;
+  // Site settings are tenant-wide, so only a central administrator sees their changes.
+  let siteChanges: SiteChangesData | null;
   try {
-    data = await getDriftData(access.scope);
+    [data, siteChanges] = await Promise.all([
+      getDriftData(access.scope),
+      access.scope.central ? getSiteChanges() : Promise.resolve(null),
+    ]);
   } catch {
     return (
       <>
@@ -33,7 +41,9 @@ export default async function DriftPage() {
     );
   }
 
-  const verdict = changesVerdict(data.items, data.baseline?.setAt ?? null, data.generatedAt);
+  const verdict = changesVerdict(
+    data.items, data.baseline?.setAt ?? null, data.generatedAt, siteChanges?.changes.filter(waitingForReview).length ?? 0,
+  );
   return (
     <>
       <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Changes" />
@@ -52,6 +62,11 @@ export default async function DriftPage() {
           ) : null}
           <BaselineContext baseline={data.baseline} now={data.generatedAt} />
           <DriftTable capabilities={capabilities} items={displayItems(data.items)} now={data.generatedAt} summary={data.summary} />
+        </div>
+      ) : null}
+      {siteChanges ? (
+        <div data-layer="explanation">
+          <SiteChanges data={siteChanges} now={data.generatedAt} />
         </div>
       ) : null}
     </>

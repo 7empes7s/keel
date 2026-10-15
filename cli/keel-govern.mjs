@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
-import { collectM1 } from '../engine/collect/entraAdapter.mjs';
+import { collectM1, neededTypes } from '../engine/collect/entraAdapter.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { naturalKeyFor } from '../engine/cir/naturalKey.mjs';
@@ -213,7 +213,11 @@ async function executeRollback(plan, { driftId, client }) {
   // registration is used below only by GraphWriter after the plan is complete.
   const { accessToken } = await getToken(collector);
   const reader = new GraphReader(async () => accessToken);
-  const collected = await collectM1(reader);
+  // Issue #289: a type the tenant has no licence for is skipped unless the
+  // rollback touches it or the safety checks below read it.
+  const collected = await collectM1(reader, {
+    needed: neededTypes(plan.resources, ['conditionalAccessPolicy', 'roleAssignment']),
+  });
   const liveResources = new Map(canonicalizeAll(collected).map((resource) => [resource.naturalKey, resource]));
   const softDeletableTypes = [...new Set(plan.resources
     .map((resource) => resource.resourceType)

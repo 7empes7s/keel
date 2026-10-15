@@ -1642,7 +1642,7 @@ async function planWorkloadRun({ client, request, collectorConfig, collectorConf
   });
   const plan = await entry.plan(client, { tenantRef, tenantId: collectorConfig.tenantId, request, connection, sleep: deps.sleep });
   const artifact = await entry.create(client, {
-    tenantRef, plan, requestedBy: requestedBy ?? null, ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
+    tenantRef, plan, requestedBy: requestedBy ?? 'keel-restore', ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
   });
   logger.log(`${entry.label} restore plan: ${plan.operations.length} change(s), ${plan.manual.length} manual, ${plan.refusals.length} refused`);
   logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);

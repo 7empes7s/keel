@@ -138,7 +138,7 @@ async function dryRun(client, live, { requestedBy = 'requester', options } = {})
     argv: [
       'node', 'keel-restore.mjs', '--workload', 'sharepoint-site-settings', '--collection', String(collectionId),
       '--tenant-host', HOST, '--collector-config', '/fixtures/collector.json',
-      '--persist-artifact', artifactId, '--requested-by', requestedBy,
+      '--persist-artifact', artifactId, ...(requestedBy === null ? [] : ['--requested-by', requestedBy]),
     ],
     readFile, dbUrl: database.url, dependencies: deps.dependencies, logger: quiet,
   });
@@ -182,6 +182,19 @@ test('--workload plans a dry run from the recorded collection, with the collecto
   assert.equal(artifact.tenantRef, TENANT);
   assert.equal(artifact.requestedBy, 'requester');
   assert.equal(artifact.workloadRestore.digest, result.workloadRestore.digest);
+});
+
+test('--workload without --requested-by persists the dry run under the keel-restore default', async (t) => {
+  // keel-operator found the dry run crashed here: the plan was built, then the
+  // artifact insert failed on a null requested_by.
+  const client = await schemaClient(t);
+  const live = { ...SOURCE_SETTINGS, sharingCapability: 'externalUserAndGuestSharing' };
+  const { result, artifactId } = await dryRun(client, live, { requestedBy: null });
+
+  assert.equal(result.mode, 'dry-run');
+  assert.equal(result.status, 'completed');
+  const artifact = await getDryRunArtifactById(client, { id: artifactId });
+  assert.equal(artifact.requestedBy, 'keel-restore');
 });
 
 test('--workload is a dry run only, and refuses an unknown workload or a missing option', async (t) => {

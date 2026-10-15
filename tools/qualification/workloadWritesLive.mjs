@@ -50,7 +50,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
+import { exchangeCmdlet, structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
 import { readExchangeExtended } from '../../engine/collect/workloads/exchangeExtended.mjs';
 import { readMailFlow } from '../../engine/collect/workloads/mailFlow.mjs';
 import { lockState } from '../../engine/collect/workloads/purview.mjs';
@@ -113,14 +113,23 @@ export function workloadWritesCapturePlan({ workload, includeCreates = true }) {
   return steps;
 }
 
+/** Reads until `matches`; a read that fails counts as no match and is retried. */
 async function readUntil(readOnce, matches, { sleep, attempts, delayMs }) {
   let found = null;
+  let error = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt) await sleep(delayMs);
-    found = await readOnce();
-    if (matches(found)) return { found, matched: true };
+    try {
+      found = await readOnce();
+      error = null;
+    } catch (failure) {
+      found = null;
+      error = failure;
+      continue;
+    }
+    if (matches(found)) return { found, matched: true, error: null };
   }
-  return { found, matched: false };
+  return { found, matched: false, error };
 }
 
 const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked';
@@ -143,12 +152,15 @@ function identityOf(write, entry) {
 
 /**
  * Runs a capture. `collector` and `restorer` are the runCmdlet options for each
- * identity's tenant config; `configTenants` the tenant id each config names. Returns
+ * identity's tenant config; `configs` what each config names: { tenantId, organization }.
+ * Exchange and Purview sessions connect by `organization`, so for them both sessions
+ * must answer as one organization, and one that reports a tenant id must report the
+ * managed tenant's, before anything is written. Returns
  * the unsigned record and the capture log, with tenant ids pseudonymized; it never
  * signs and never writes files.
  */
 export async function captureWorkloadWrites({
-  workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configTenants = {}, tenantRef, build,
+  workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configs = {}, tenantRef, build,
   credentials, grants, moduleVersion, includeCreates = true, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000, suffix = () => randomBytes(4).toString('hex'),
 }) {
@@ -165,8 +177,15 @@ export async function captureWorkloadWrites({
   if (problems.length) throw new Error(problems.join('; '));
   const tenant = directoryTenantId.toLowerCase();
   for (const role of ['collector', 'restorer']) {
-    const named = configTenants[role];
+    const named = configs[role]?.tenantId;
     if (typeof named !== 'string' || named.toLowerCase() !== tenant) throw new Error(`the ${role} config does not name the managed tenant; nothing was sent`);
+  }
+  const exchangeSession = module === 'ExchangeOnlineManagement';
+  if (exchangeSession) {
+    const [a, b] = ['collector', 'restorer'].map((role) => configs[role]?.organization);
+    if (typeof a !== 'string' || !a || typeof b !== 'string' || a.toLowerCase() !== b.toLowerCase()) {
+      throw new Error('the collector and restorer configs must name the same Exchange organization; nothing was sent');
+    }
   }
 
   const requests = [];
@@ -217,6 +236,27 @@ export async function captureWorkloadWrites({
   }
   log.values.refusalFamily = firstFamily;
 
+  // Exchange and Purview connect by organization, not tenant id: prove both sessions are one organization.
+  const organization = exchangeSession ? { collector: null, restorer: null } : null;
+  if (exchangeSession) {
+    for (const [role, powershell] of [['collector', collector], ['restorer', restorer]]) {
+      try {
+        const { output } = await exchangeCmdlet({ cmdlet: 'Get-OrganizationConfig' }, powershell);
+        const body = output.length === 1 ? output[0] : null;
+        const id = typeof body?.ExternalDirectoryOrganizationId === 'string' && body.ExternalDirectoryOrganizationId ? body.ExternalDirectoryOrganizationId.toLowerCase() : null;
+        const name = typeof body?.Name === 'string' && body.Name ? body.Name : null;
+        organization[role] = { tenantId: id, name };
+      } catch (error) {
+        organization[role] = { tenantId: null, name: null, error: error.message };
+      }
+    }
+  }
+  const organizationProblem = !exchangeSession ? null
+    : Object.values(organization).some((item) => !item.name) ? 'an Exchange session did not answer Get-OrganizationConfig'
+      : organization.collector.name.toLowerCase() !== organization.restorer.name.toLowerCase() ? 'the collector and restorer sessions belong to different Exchange organizations'
+        : Object.values(organization).some((item) => item.tenantId && item.tenantId !== tenant) ? 'an Exchange session belongs to another tenant'
+          : null;
+
   // 1. Every written family, once.
   const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs };
   const stamp = now().toISOString();
@@ -226,16 +266,19 @@ export async function captureWorkloadWrites({
   const created = [];
   let refusal = null;
   let live = null;
-  try {
-    live = await readFamilies(families.map(([family]) => family));
-  } catch (error) {
-    refusal = `the first read failed (${error.message}); nothing was written`;
+  if (organizationProblem) refusal = `${organizationProblem}; nothing was written`;
+  else {
+    try {
+      live = await readFamilies(families.map(([family]) => family));
+    } catch (error) {
+      refusal = `the first read failed (${error.message}); nothing was written`;
+    }
   }
   if (!refusal && !Object.values(refusals).every((item) => item.refused && !item.sent)) refusal = 'the write transport did not refuse a delete or an undeclared parameter; nothing was written';
 
   const base = (id) => ({
     operationId: id, kind: id.endsWith('.add') ? 'add' : 'update', method: WKLD_WRITE_OPERATIONS[id].method, version: moduleVersion, synthetic: false,
-    fixture: null, field: null, type: null, before: null, target: null, final: null, contentEffects: [],
+    fixture: null, identity: null, field: null, type: null, before: null, target: null, final: null, contentEffects: [],
     ok: false, readBackVerified: false, restoredToOriginal: false, capturedAt: null, error: null,
   });
   const familyRead = (family) => async () => {
@@ -260,7 +303,7 @@ export async function captureWorkloadWrites({
       const add = WKLD_WRITE_OPERATIONS[ops.add];
       const capture = base(ops.add);
       const name = `${CAPTURE_CREATE_PREFIX}${suffix()}`;
-      Object.assign(capture, { fixture: name, field: 'Description', type: 'text', target: marker });
+      Object.assign(capture, { fixture: name, identity: name, field: 'Description', type: 'text', target: marker });
       try {
         await writeCmdlet(add.method, { Identity: name, Description: marker });
         capture.ok = true;
@@ -305,7 +348,7 @@ export async function captureWorkloadWrites({
       continue;
     }
     const capture = base(ops.update);
-    Object.assign(capture, { fixture: name, field: change.field, type: change.type });
+    Object.assign(capture, { fixture: name, identity: identityOf(write, pick.entry).Identity ?? null, field: change.field, type: change.type });
     writes.push(capture);
     await captureUpdate({ write, capture, change, key: pick.entry.resourceKey, readFamily, writeCmdlet, log, timing });
     capture.capturedAt = now().toISOString();
@@ -326,6 +369,7 @@ export async function captureWorkloadWrites({
     subject: {
       workload,
       directoryTenantId: tenant,
+      organization,
       execution: { transport: WORKLOAD_WRITES_TRANSPORT, module, moduleVersion },
       credentials: { collector: credentials.collector, restorer: credentials.restorer },
       grants,
@@ -344,6 +388,8 @@ export async function captureWorkloadWrites({
 async function captureUpdate({ write, capture, change, key, readFamily, writeCmdlet, log, timing }) {
   const readEntry = async () => (await readFamily()).find((item) => item.resourceKey === key) ?? null;
   const state = (log.values[capture.operationId] = { written: false });
+  let identity = null;
+  let putBack = null;
   try {
     // Re-read just before writing: the original is what the object holds now.
     const now = await readEntry();
@@ -353,35 +399,37 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     if (!sameValue(original, change.before)) { capture.error = `${change.field} changed since the first read; nothing was written`; return; }
     capture.before = original;
     capture.target = change.after;
-    const identity = identityOf(write, now);
+    identity = identityOf(write, now);
+    if (identity.Identity !== capture.identity) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
+    putBack = original ?? (change.type === 'text' ? '' : original);
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });
     } catch (error) {
       // A cmdlet error is a definite answer; anything else may have applied.
       if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') { capture.error = `${write.method} failed: ${error.message}`; return; }
-      state.written = true;
       capture.error = `${write.method} had no answer (${error.message}); it may have applied`;
     }
     state.written = true;
     const seen = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], change.after), timing);
     capture.readBackVerified = seen.matched;
-    // Always put the original back once a write may have applied, whatever the read-back said.
-    let revertError = null;
-    try {
-      await writeCmdlet(write.method, { ...identity, [change.field]: original ?? (change.type === 'text' ? '' : original) });
-    } catch (error) {
-      revertError = error;
-    }
-    const restored = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], original), timing);
-    capture.restoredToOriginal = restored.matched;
-    capture.final = restored.found?.fields?.[change.field] ?? null;
-    capture.ok = capture.error === null && revertError === null;
-    if (!restored.matched) capture.error = `PUTTING THE SETTING BACK FAILED${revertError ? ` (${revertError.message})` : ''}: set ${change.field} on ${capture.fixture} to ${JSON.stringify(original)} by hand`;
   } catch (error) {
     capture.error ??= error.message;
-    if (state.written && capture.restoredToOriginal !== true) {
-      capture.error = `THE ${change.field} SETTING ON ${capture.fixture} MAY NOT BE BACK (${error.message}): check it by hand`;
-    }
+  }
+  if (!state.written) return;
+  // Always put the original back once a write may have applied, whatever the read-back said.
+  let revertError = null;
+  try {
+    await writeCmdlet(write.method, { ...identity, [change.field]: putBack });
+  } catch (error) {
+    revertError = error;
+  }
+  const restored = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], capture.before), timing);
+  capture.restoredToOriginal = restored.matched;
+  capture.final = restored.found?.fields?.[change.field] ?? null;
+  capture.ok = capture.error === null && revertError === null;
+  if (!restored.matched) {
+    const why = revertError?.message ?? restored.error?.message ?? null;
+    capture.error = `PUTTING THE SETTING BACK FAILED${why ? ` (${why})` : ''}: set ${change.field} on ${capture.fixture} to ${JSON.stringify(capture.before)} by hand`;
   }
 }
 
@@ -472,11 +520,12 @@ export async function main(argv = process.argv.slice(2), {
   }
   const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
   if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
-  const configTenants = {
-    collector: JSON.parse(readFile(options.collectorConfig)).tenantId,
-    restorer: JSON.parse(readFile(options.restorerConfig)).tenantId,
+  const configOf = (path) => {
+    const { tenantId, organization } = JSON.parse(readFile(path));
+    return { tenantId, organization };
   };
-  if (typeof configTenants.collector !== 'string' || options.tenantRef !== tenantRefFor(configTenants.collector)) {
+  const configs = { collector: configOf(options.collectorConfig), restorer: configOf(options.restorerConfig) };
+  if (typeof configs.collector.tenantId !== 'string' || options.tenantRef !== tenantRefFor(configs.collector.tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }
   const outPath = resolve(options.out);
@@ -485,7 +534,7 @@ export async function main(argv = process.argv.slice(2), {
     collector: powershell(options.collectorConfig, options.image),
     restorer: powershell(options.restorerConfig, options.image),
     directoryTenantId: options.directoryTenantId,
-    configTenants,
+    configs,
     tenantRef: options.tenantRef,
     build,
     moduleVersion: options.moduleVersion,

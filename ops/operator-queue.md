@@ -3159,7 +3159,7 @@ item that needs it stays untouched.
   (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
   claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q45. Under the 2026-10-14
   standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here.

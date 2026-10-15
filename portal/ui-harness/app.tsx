@@ -63,6 +63,8 @@ import { CompareView } from "@/components/compare-view";
 import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
+import { SiteChanges } from "@/components/site-changes";
+import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
@@ -1153,6 +1155,18 @@ const SITES: SitePermissionsData = {
   ],
 };
 
+// Site permissions audit: site settings that changed between two daily reads.
+const SITE_CHANGES: SiteChangesData = { days: 30, changes: [
+  { id: "d1a00000-0000-4000-8000-0000000000d1", resourceKey: `site:${SITE_FINANCE}`, siteId: SITE_FINANCE, name: "Finance", changeType: "modified",
+    fields: ["appPermissionGrants"], blastRadius: "access-affecting", seenAt: "2026-10-02T02:00:00Z",
+    collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4",
+    alertId: "a1e70000-0000-4000-8000-0000000000a5", alertState: "open" },
+  { id: "d1a00000-0000-4000-8000-0000000000d2", resourceKey: `site:${SITE_ARCHIVE}`, siteId: SITE_ARCHIVE, name: "Records archive with a long name that wraps on a phone", changeType: "modified",
+    fields: ["displayName", "webUrl"], blastRadius: "cosmetic", seenAt: "2026-10-01T02:00:00Z",
+    collectionId: "c0110000-0000-4000-8000-0000000000c4", previousCollectionId: "c0110000-0000-4000-8000-0000000000c3",
+    alertId: "a1e70000-0000-4000-8000-0000000000a6", alertState: "acknowledged" },
+] };
+
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
   return <>{header("Protect", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
@@ -1219,14 +1233,18 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
-    case "/drift": {
-      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now);
+    case "/drift":
+    case "/drift/sites": {
+      // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
+      const sites = path === "/drift/sites" ? SITE_CHANGES : null;
+      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
       return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <BaselineContext baseline={BASELINES[0]} now={now} />
           <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
-        </div></>;
+        </div>
+        {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }

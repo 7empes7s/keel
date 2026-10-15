@@ -163,7 +163,8 @@ function siteCoverage(tenantRef, syncState) {
       if (!siteId || !driveId) return null;
       const covered = await syncState.load(coverageKey(tenantRef, siteId, driveId));
       if (!covered?.lastSyncedAt) return null;
-      return { coveredBy: `site:${siteId}`, driveId, itemId: itemId ?? null, lastSyncedAt: covered.lastSyncedAt };
+      // No sync time in the answer: it is stored in the team document, and a time that moves each run would version every team again (#269).
+      return { coveredBy: `site:${siteId}`, driveId, itemId: itemId ?? null };
     },
   });
 }

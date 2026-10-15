@@ -53,14 +53,16 @@ export class CompareError extends Error {
   }
 }
 
-const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GUID_ANYWHERE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const HAS_GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const READ = new Set(['complete', 'complete-empty']);
 const CHANGE_ORDER = { removed: 0, changed: 1, added: 2 };
 
 // Ids that are the same in every tenant (global templates, branding languages) stay
 // matchable; every other id-keyed type is tenant-bound.
 const GLOBAL_ID_TYPES = new Set(['directorySettingTemplate', 'directoryRoleTemplate', 'organizationalBrandingLocalization']);
-export const TENANT_BOUND_TYPES = new Set([...ID_KEY_TYPES].filter((type) => !GLOBAL_ID_TYPES.has(type)));
+// Users are keyed by UPN, which carries the tenant's own domain.
+export const TENANT_BOUND_TYPES = new Set([...[...ID_KEY_TYPES].filter((type) => !GLOBAL_ID_TYPES.has(type)), 'user']);
 
 const CATALOG_PATH = new Map(CATALOG.map((entry) => [entry.type, entry.path ?? '']));
 
@@ -96,9 +98,13 @@ export function typeOutcome(coverage, type) {
 
 const comparable = (outcome) => outcome === 'unknown' || READ.has(outcome);
 
-/** Replaces every GUID-shaped string with a mask, so id-only differences vanish. */
+/**
+ * Masks every GUID, also inside a longer string ("ref:servicePrincipal:<appId>"), so
+ * id-only differences vanish. A reference to a global constant (a Microsoft app or
+ * role the same in every tenant) keeps its id: it names the same thing everywhere.
+ */
 function maskIds(value) {
-  if (typeof value === 'string') return GUID.test(value) ? '<id>' : value;
+  if (typeof value === 'string') return value.startsWith('ref:global:') ? value : value.replace(GUID_ANYWHERE, '<id>');
   if (Array.isArray(value)) return value.map(maskIds);
   if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, maskIds(inner)]));
   return value;
@@ -176,9 +182,16 @@ export function compareSettings(left, right, { portable = false } = {}) {
     }
     const group = { service, resourceType, added: 0, removed: 0, changed: 0, unchanged: 0, total: 0, items: [] };
     const keys = [...new Set([...before.keys(), ...after.keys()])].sort();
+    const unkeyed = { left: 0, right: 0 };
     for (const naturalKey of keys) {
       const was = before.get(naturalKey);
       const now = after.get(naturalKey);
+      // Across tenants, a key holding an id (an app registered in one tenant, a key
+      // that fell back to the object's id) found on one side only cannot be matched.
+      if (portable && (!was || !now) && HAS_GUID.test(naturalKey)) {
+        unkeyed[was ? 'left' : 'right'] += 1;
+        continue;
+      }
       if (was && !now) {
         group.removed += 1;
         group.items.push({ naturalKey, name: nameOf(was.payload), changeType: 'removed', blastRadius: was.blast_radius ?? null });
@@ -201,6 +214,7 @@ export function compareSettings(left, right, { portable = false } = {}) {
         : fieldDifferences(resourceType, was.payload, now.payload);
       group.items.push({ naturalKey, name: nameOf(now.payload) ?? nameOf(was.payload), changeType: 'changed', blastRadius: now.blast_radius ?? null, ...differences });
     }
+    if (unkeyed.left || unkeyed.right) unmatched.push({ resourceType, service, ...unkeyed });
     for (const key of ['added', 'removed', 'changed', 'unchanged']) totals[key] += group[key];
     if (group.added + group.removed + group.changed === 0) continue;
     group.items.sort((a, b) => CHANGE_ORDER[a.changeType] - CHANGE_ORDER[b.changeType] || a.naturalKey.localeCompare(b.naturalKey));
@@ -253,11 +267,13 @@ export function compareWorkloads(left, right, { portable = false } = {}) {
     const rightComplete = READ.has(now.outcome);
     const before = new Map(was.observations.map((row) => [row.resourceKey, row]));
     const after = new Map(now.observations.map((row) => [row.resourceKey, row]));
-    const counts = { added: 0, removed: 0, changed: 0, unchanged: 0, unverified: 0, unverifiedFields: 0 };
+    const counts = { added: 0, removed: 0, changed: 0, unchanged: 0, unverified: 0, unverifiedFields: 0, unmatched: 0 };
     const items = [];
     for (const resourceKey of [...new Set([...before.keys(), ...after.keys()])].sort()) {
       const a = before.get(resourceKey);
       const b = after.get(resourceKey);
+      // Across tenants a key holding an id (site:<id>) cannot be matched.
+      if (portable && (!a || !b) && HAS_GUID.test(resourceKey)) { counts.unmatched += 1; continue; }
       if (a && !b) {
         if (rightComplete) { counts.removed += 1; items.push({ resourceKey, changeType: 'removed' }); } else counts.unverified += 1;
         continue;
@@ -310,16 +326,30 @@ async function loadWorkloadSide(client, { tenantRef, at }) {
   return sides;
 }
 
-// The newest version of each content item at a time; a deleted or removed marker
-// means the item is gone at that time.
+// Each content item at a time. Whether it still exists comes from its newest row: a
+// deleted or removed marker in the metadata, or a SharePoint list item's
+// `deleted:<version>` version, means it is gone. Its bytes come from its newest row
+// that is not a drive record, since OneDrive and library files store the file and a
+// small record under the same key, the record written last.
 const LATEST_CONTENT = (tenant, at) => `
-  SELECT * FROM (
-    SELECT DISTINCT ON (workload, container, item_key) workload, container, item_key, sha256, bytes, metadata
-      FROM content_item
-     WHERE tenant_ref = ${tenant} AND created_at <= ${at}
-     ORDER BY workload, container, item_key, created_at DESC, id DESC
-  ) latest
-  WHERE NOT (coalesce(metadata->>'deleted', '') = 'true' OR coalesce(metadata->>'removed', '') = 'true')`;
+  SELECT latest.workload, latest.container, latest.item_key,
+         coalesce(body.sha256, latest.sha256) AS sha256, coalesce(body.bytes, latest.bytes) AS bytes,
+         coalesce(body.metadata, '{}'::jsonb) || latest.metadata AS metadata
+    FROM (
+      SELECT DISTINCT ON (workload, container, item_key) workload, container, item_key, sha256, bytes, metadata, version
+        FROM content_item
+       WHERE tenant_ref = ${tenant} AND created_at <= ${at}
+       ORDER BY workload, container, item_key, created_at DESC, id DESC
+    ) latest
+    LEFT JOIN LATERAL (
+      SELECT sha256, bytes, metadata FROM content_item c
+       WHERE c.tenant_ref = ${tenant} AND c.created_at <= ${at} AND c.workload = latest.workload
+         AND c.container = latest.container AND c.item_key = latest.item_key
+         AND coalesce(c.metadata->>'kind', '') <> 'drive-record'
+       ORDER BY c.created_at DESC, c.id DESC LIMIT 1
+    ) body ON true
+   WHERE NOT (coalesce(latest.metadata->>'deleted', '') = 'true' OR coalesce(latest.metadata->>'removed', '') = 'true'
+              OR latest.version LIKE 'deleted:%')`;
 
 const CONTENT_DIFF = `
   WITH l AS (${LATEST_CONTENT('$1', '$2')}), r AS (${LATEST_CONTENT('$3', '$4')}),

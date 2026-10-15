@@ -6,7 +6,7 @@ import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import {
-  CompareError, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
+  CompareError, compareContentHoldings, compareContentItems, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
   differenceCount, listCompareSources, portablePayload,
 } from './compare.mjs';
 
@@ -231,4 +231,56 @@ test('pure rules: unknown coverage is compared, differing hash versions are repr
   const workloads = compareWorkloads(new Map(), new Map([['purview-labels', { collectionId: 'c', outcome: 'complete', at: T1, observations: [] }]]));
   assert.equal(workloads.groups[0].reason, 'not-collected');
   assert.equal(differenceCount({ settings: same, workloads, content: null }).total, 0);
+});
+
+test('a deleted list item is gone, and a drive file is compared by its file, not its record', async () => {
+  const C = 'sha256:00000000000000c3';
+  const D = 'sha256:00000000000000d4';
+  // A SharePoint list item deleted by its version marker; its metadata says nothing.
+  await putContent(C, { workload: 'sharepoint-sites', container: 'site:s1', itemKey: 'list/l1/item/7', version: 'e1', sha: '1', metadata: { contentType: 'application/json' }, at: T1 });
+  await putContent(C, { workload: 'sharepoint-sites', container: 'site:s1', itemKey: 'list/l1/item/7', version: 'deleted:e1', sha: '2', metadata: { contentType: 'application/json' }, at: new Date('2026-10-01T12:00:00Z') });
+  // The same file in both tenants, each followed by its own (different) record.
+  for (const [tenant, record] of [[C, '3'], [D, '4']]) {
+    await putContent(tenant, { workload: 'onedrive', container: 'drive:x', itemKey: 'f', version: 'v1', sha: '9', bytes: 5000, metadata: { kind: 'drive-content' }, at: T1 });
+    await putContent(tenant, { workload: 'onedrive', container: 'drive:x', itemKey: 'f', version: `record:${record}`, sha: record, bytes: 120, metadata: { kind: 'drive-record', name: 'KEEL-RT-same.docx' }, at: new Date('2026-10-01T07:00:00Z') });
+  }
+  // A new record alone (a rename) on C later does not make the file differ.
+  await putContent(C, { workload: 'onedrive', container: 'drive:x', itemKey: 'f', version: 'record:5', sha: '5', bytes: 121, metadata: { kind: 'drive-record', name: 'KEEL-RT-renamed.docx' }, at: new Date('2026-10-01T15:00:00Z') });
+
+  const items = await compareContentItems(client, { tenantRef: C, leftAt: new Date('2026-10-01T08:00:00Z'), rightAt: T2 });
+  assert.deepEqual(items.totals, { added: 0, removed: 1, changed: 0 });
+  assert.equal(items.groups.find((g) => g.workload === 'sharepoint-sites').containers[0].items[0].itemKey, 'list/l1/item/7');
+
+  const holdings = await compareContentHoldings(client, { leftTenantRef: C, leftAt: T2, rightTenantRef: D, rightAt: T2 });
+  const drive = holdings.groups.find((g) => g.workload === 'onedrive');
+  assert.equal(drive.inBoth, 1, 'the same file in two tenants is held by both');
+  assert.equal(drive.leftBytes, 5000, 'bytes are the file, not its record');
+  assert.equal(holdings.groups.find((g) => g.workload === 'sharepoint-sites'), undefined, 'a deleted list item is not held');
+});
+
+test('across tenants, ids inside references and keys never count as differences', () => {
+  const row = (key, type, payload, references = []) => ({ natural_key: key, resource_type: type, payload, payload_hash: key, hash_version: 2, blast_radius: 'tenant-lockout', references });
+  const ca = (app) => row('conditionalAccessPolicy:KEEL-RT-App', 'conditionalAccessPolicy',
+    { displayName: 'KEEL-RT-App', conditions: { applications: { includeApplications: [app] } } },
+    [{ field_path: 'conditions.applications.includeApplications[0]', to_symbol: `servicePrincipal:${app}` }]);
+  const office = 'global:Office365';
+  const result = compareSettings(
+    { rows: [ca(guid(201)), row(`application:${guid(301)}`, 'application', { displayName: 'KEEL-RT-Own' }), row('user:a@one.example', 'user', { displayName: 'A' }),
+      row('conditionalAccessPolicy:KEEL-RT-Global', 'conditionalAccessPolicy', { displayName: 'KEEL-RT-Global', x: guid(400) }, [{ field_path: 'x', to_symbol: office }])], coverage: null },
+    { rows: [ca(guid(202)), row(`application:${guid(302)}`, 'application', { displayName: 'KEEL-RT-Own' }), row('user:a@two.example', 'user', { displayName: 'A' }),
+      row('conditionalAccessPolicy:KEEL-RT-Global', 'conditionalAccessPolicy', { displayName: 'KEEL-RT-Global', x: guid(401) }, [{ field_path: 'x', to_symbol: 'global:Teams' }])], coverage: null },
+    { portable: true },
+  );
+  const items = Object.fromEntries(result.groups.flatMap((g) => g.items.map((item) => [item.naturalKey, item])));
+  assert.equal(items['conditionalAccessPolicy:KEEL-RT-App'], undefined, 'the same app named by two tenant ids is the same');
+  assert.equal(items['conditionalAccessPolicy:KEEL-RT-Global'].changeType, 'changed', 'two different global apps still differ');
+  assert.equal(result.totals.added + result.totals.removed, 0, 'an id-keyed object on one side is not added or removed');
+  assert.deepEqual(result.unmatched.map((entry) => [entry.resourceType, entry.left, entry.right]).sort(), [['application', 1, 1], ['user', 1, 1]]);
+  const sites = compareWorkloads(
+    new Map([['sharepoint-site-settings', { collectionId: 'a', outcome: 'complete', at: T1, observations: [{ resourceKey: `site:${guid(500)}`, fields: {}, fieldCoverage: {} }] }]]),
+    new Map([['sharepoint-site-settings', { collectionId: 'b', outcome: 'complete', at: T1, observations: [{ resourceKey: `site:${guid(501)}`, fields: {}, fieldCoverage: {} }] }]]),
+    { portable: true },
+  );
+  assert.equal(sites.groups[0].unmatched, 2);
+  assert.equal(sites.totals.added + sites.totals.removed, 0);
 });

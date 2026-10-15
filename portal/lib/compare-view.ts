@@ -67,6 +67,7 @@ export interface WorkloadGroup {
   unchanged?: number;
   unverified?: number;
   unverifiedFields?: number;
+  unmatched?: number;
   total?: number;
   items?: WorkloadItem[];
 }
@@ -205,10 +206,14 @@ export function compareVerdict(data: CompareData): { text: string; tone: "good" 
   if (data.problem) return { text: "One of the chosen snapshots is not available. Choose another pair.", tone: "attention" };
   if (!data.result) return { text: "Choose two snapshots to compare.", tone: "attention" };
   const { total } = differenceTotals(data.result);
-  const notCompared = (data.result.settings?.totals.notCompared ?? 0) + (data.result.workloads?.totals.notCompared ?? 0);
+  // Kinds or workloads not compared, objects that cannot be matched across tenants, and
+  // workload resources one side read only in part all leave something unchecked.
+  const workloadGaps = (data.result.workloads?.groups ?? []).reduce((sum, group) => sum + (group.unverified ?? 0) + (group.unmatched ?? 0), 0);
+  const notCompared = (data.result.settings?.totals.notCompared ?? 0) + (data.result.settings?.totals.unmatched ?? 0)
+    + (data.result.workloads?.totals.notCompared ?? 0) + workloadGaps;
   const two = data.result.portable ? "the two tenants" : "the two snapshots";
   if (total === 0 && notCompared === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
-  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(notCompared, "kind")} could not be compared.`, tone: "attention" };
+  if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(notCompared, "part")} could not be compared.`, tone: "attention" };
   return { text: `${plural(total, "difference")} between ${two}.`, tone: "attention" };
 }
 

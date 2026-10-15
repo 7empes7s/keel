@@ -197,6 +197,7 @@ function WorkloadGroupView({ group, index }: { group: WorkloadGroup; index: numb
             );
           })}
           {group.unverified ? <li className="compare-note">{group.unverified} could not be checked, because one side read only part of the workload.</li> : null}
+          {group.unmatched ? <li className="compare-note">{group.unmatched} are known only by an id each tenant gives them, so they cannot be matched across tenants.</li> : null}
           {group.unverifiedFields ? <li className="compare-note">{group.unverifiedFields} settings were not read on both sides and are not compared.</li> : null}
         </ul>
       </details>

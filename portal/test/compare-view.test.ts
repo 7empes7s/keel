@@ -53,6 +53,9 @@ test("the verdict counts differences, and says when nothing differs", () => {
   const same = compareSettings({ rows: [], coverage: null }, { rows: [], coverage: null }) as SettingsSection;
   assert.deepEqual(compareVerdict({ ...data, result: result(same) }), { text: "Nothing differs between the two snapshots.", tone: "good" });
   assert.equal(compareVerdict({ ...data, result: null, problem: "too-few-snapshots" }).tone, "attention");
+  // Objects that cannot be matched across tenants are never "nothing differs".
+  const unmatched = { ...same, totals: { ...same.totals, unmatched: 1 }, unmatched: [{ resourceType: "user", service: "Entra ID", left: 3, right: 2 }] };
+  assert.equal(compareVerdict({ ...data, result: { ...result(unmatched), portable: true } }).tone, "attention");
 
   const html = renderToStaticMarkup(createElement(CompareView, { data }));
   assert.match(html, /Finance/);

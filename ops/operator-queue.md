@@ -3061,3 +3061,32 @@ item that needs it stays untouched.
      Also check the KEEL-RT-20261015-mail message row is still present for alice.
 - **Report:** the deployed commit; for A and B the exit code, each workload line verbatim and the read-back; the per-workload
   A and B differences; any error text (no tokens or keys).
+
+### Q65: Move the nightly offsite copy to the storage target registry, on the Mulinux volume
+- Drafted by the "Immutable Azure storage target" thread (2026-10-15). Marouane: the offsite copy must be plain files
+  stored locally on Mulinux first. Code: #281 (merge 5ccdb7a), `engine/storage/targets.mjs`.
+- Needs: /opt/keel-live at 5ccdb7a or later (`test -f /opt/keel-live/engine/storage/targets.mjs`).
+- Status: todo
+- Result:
+- Do, as root (host only, no tenant, no secrets printed):
+  1. `findmnt /mnt/keel-copy` (must be its own device, not the root fs). Stop and report if not.
+     Also report the last 3 runs: `journalctl -u keel-offsite.service -n 40 --no-pager | tail -20`, and `ls -l /mnt/keel-copy/keel-offsite/ | tail -5`.
+  2. Back up `/etc/keel/offsite.env` if it exists (`cp -p ... offsite.env.bak-q65`), then make sure it holds exactly
+     these extra lines (create it mode 600 root if absent; keep any existing lines):
+     ```
+     KEEL_STORAGE_TARGETS=mulinux
+     KEEL_STORAGE_TARGET_MULINUX_KIND=local-disk
+     KEEL_STORAGE_TARGET_MULINUX_DIR=/mnt/keel-copy/keel-store
+     KEEL_STORAGE_TARGET_MULINUX_SEPARATE_FROM=/opt/backups
+     KEEL_STORAGE_TARGET_MULINUX_KEEP_DAYS=30
+     ```
+  3. `set -a; . /etc/keel/offsite.env; set +a; /opt/keel-live/ops/keel-offsite.sh --dry-run; echo exit=$?`
+     Expect `DRY RUN: mulinux usable` and exit 0. If it says `not newer` (today's dump already shipped by the old path):
+     `cp -p /opt/backups/keel-db-shipped-manifest.json /opt/backups/keel-db-shipped-manifest.json.bak-q65 && rm /opt/backups/keel-db-shipped-manifest.json`, then rerun the dry run.
+  4. `systemctl start keel-offsite.service; journalctl -u keel-offsite.service -n 20 --no-pager`. Expect
+     `...: complete`, `mulinux (local-disk): verified, published` and `done via storage targets (mulinux)`.
+  5. `ls -l /mnt/keel-copy/keel-store/keel-db/` and `sha256sum` of the new file; it must equal `checksum` in
+     `/opt/backups/keel-db-manifest.json`. Report both.
+  6. `systemctl list-timers keel-offsite.timer --no-pager` (must be enabled; next run 05:00 UTC).
+- Rollback: restore `offsite.env.bak-q65` (or delete the five lines); the old path then runs unchanged.
+- Leave `/mnt/keel-copy/keel-offsite/` (old copies) as is.

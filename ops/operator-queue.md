@@ -3546,3 +3546,22 @@ item that needs it stays untouched.
   5. Cleanup: delete `keel-rt-w2-consent`. Report anything left.
 - **Report:** B; the enforce summary line and any include-write retries in the log; read-back include count; approval ids;
   the evidence commit and the `live evidence` line for the create. Comment the result on #294.
+
+### Q74: Recapture the four token and home realm policies after #303 (no new restore)
+- Drafted by the "#295 capture tool" thread (2026-10-15). Fix: PR #303, master afd3641. `entraLive.mjs capture` now treats
+  tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy and homeRealmDiscoveryPolicy as named objects: it checks the
+  policy's own display name (KEEL-RT- prefix) and no longer needs `--allow-by-reference`.
+- Needs: /opt/keel-live at afd3641 or later (`grep -q NAMED_ID_KEY_TYPES /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
+- Status: todo
+- **Test tenant only. No tenant writes:** this reuses Q67's restores (A1, A2, A3, A4); their journals and snapshots are in the
+  KEEL database. Same capture tooling as Q67.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Re-take plan-B (`live-gate-plan.mjs`); confirm its capture commands for the four types no longer carry `--allow-by-reference`.
+  2. `entraLive.mjs capture` without `--allow-by-reference`: create from A1 and update from A2 for tokenLifetimePolicy,
+     tokenIssuancePolicy and claimsMappingPolicy; create from A3 and update from A4 for homeRealmDiscoveryPolicy.
+     `--fixture` is each policy's natural key (its id, as journaled). 8 captures.
+  3. `promote` each record that captures. Commit the records and capture logs on `claude/live-evidence-w2-entra`
+     (secret scan and `pseudonymize.mjs check` first), and run `operations.mjs --live-evidence` on that directory.
+  4. oauth2PermissionGrant is not covered (it still asks for a role reference); report it as still blocked.
+- **Report:** B; per type and operation: promoted / refused (the exact message); the evidence commit and the
+  `live evidence` lines. Comment the result on #295.

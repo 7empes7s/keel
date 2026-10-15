@@ -4036,3 +4036,20 @@ item that needs it stays untouched.
      `workload` (Q81 entries have no `kind`; group by `workload` and `version` prefix instead).
   4. Snapshot lines unchanged from Q81? (`would prune N snapshot(s)`.)
 - **Report:** steps 1–4. Nothing is deleted by this item.
+
+### Q84: Add the weekly discovery schedule row on live (after #340)
+- Drafted by the "Discovery schedule" thread (2026-10-15). PR #340 (merge 40d2af0) adds a `discover` job kind, seeded
+  weekly Monday 04:00 UTC (`cron_override '0 4 * * 1'`). It runs the same GET-only `keel-discover.mjs run` as Q82
+  (258 s there) through keel-worker. Same step as the content-collect row on 2026-10-15: the live DB only gets the row
+  when the seed is run for that kind.
+- Needs: /opt/keel-live at 40d2af0 or later (`grep -q "'discover'" /opt/keel-live/engine/store/scheduleSeed.mjs`), the
+  schema applied (`job_kind_check` accepts `discover`: `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'job_kind_check'`),
+  and keel-worker restarted on that build.
+- Status: todo
+- Result:
+- Do (no tenant access, no writes besides the one schedule row):
+  1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && node cli/keel-schedules-migrate.mjs --tenant-ref <live tenantRef> --kinds discover`.
+     It inserts only the `discover` row and leaves every other row as is. Report the exit code and output.
+  2. `SELECT job_kind, tier, cadence, cron_override, enabled, next_due_at FROM schedule ORDER BY job_kind, tier`.
+     Expect `discover` enabled with next_due_at 2026-10-19 04:00 UTC and the other rows unchanged.
+- **Report:** steps 1-2. The first scheduled run is 2026-10-19 04:00 UTC; a later thread checks its job row.

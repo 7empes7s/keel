@@ -23,8 +23,9 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   // OneDrive, Purview). It writes workload snapshots to the database, never tenant state.
   'workload-collect': 'collect',
   // Wave 1 CONT: read-only content backup as the content-reader identity. It writes
-  // encrypted chunks and the item index, never tenant state. Wave 2 RBAC adds a
-  // narrower content-backup capability.
+  // encrypted chunks and the item index, never tenant state. The operator role also
+  // holds the narrower content-backup (Wave 2 RBAC), but the job stays on 'collect':
+  // the scheduler identity that runs it nightly holds collect and configuration only.
   'content-collect': 'collect',
   backup: 'backup',
   'baseline-create': 'baseline-create',

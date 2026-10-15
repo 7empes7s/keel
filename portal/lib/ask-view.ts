@@ -201,6 +201,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   partial: "Read only in part",
   failed: "Could not be read",
   "not-requested": "Not part of this backup",
+  unavailable: "Not available on this tenant",
   "not-recorded": "Not recorded",
 };
 

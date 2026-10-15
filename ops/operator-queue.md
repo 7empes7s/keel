@@ -3159,8 +3159,23 @@ item that needs it stays untouched.
   (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
   claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: blocked: #289 (restore current-state read fails on unlicensed types)
+- Result: Blocked 2026-10-15 09:50 UTC at the first dry run, by **#289**: every keel-restore aborts in its current-state read.
+  - Detail: `collectM1` throws on `lifecycleWorkflow` (403, no Entra ID Governance license). `identityApiConnector`, which
+    fails with 400 because self-service sign-up is off, would do the same. No approval was filed; no restore ran.
+  - **B:** f54fa007. Plan: /root/keel-w2/plan-B.md (63 operations, 64 steps; the six types are steps 33–42 and 58–59).
+  - **Fixtures created** (Restorer; global admin not used; all unassigned and isOrganizationDefault false):
+    - KEEL-RT-W2-tokenLifetimePolicy, KEEL-RT-W2-tokenIssuancePolicy and KEEL-RT-W2-claimsMappingPolicy.
+    - permissionGrantPolicy `keel-rt-w2-consent` (KEEL-RT-W2-consent) with one include rule (delegated, low). The authorization
+      policy does not reference it.
+    - App **KEEL-RT-W2-app** (new, no credentials, no requiredResourceAccess) and its SP. Created because the 8 existing
+      KEEL-RT-20260908 apps each list a permission in their manifest.
+    - oauth2PermissionGrant on that SP: Principal, keel-rt-20260908-ben, resource Microsoft Graph, scope `openid`.
+    - homeRealmDiscoveryPolicy: not created yet (it runs last).
+  - **Snapshot S1** b18b75b3… holds all five, including the include rule.
+  - **Create-round drift is done:** the five fixtures are deleted. None of these types has a recycle bin, so they are gone.
+    The resume point is therefore the S1 dry run: once #289 is fixed, I continue from S1 with no new setup.
+  - **Left in the tenant:** KEEL-RT-W2-app and its SP (no permissions). The five fixtures exist only in S1 now.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q45. Under the 2026-10-14
   standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here.
 - **Restorer permissions:** none to add. Q26 shows it already holds Policy.ReadWrite.ApplicationConfiguration,

@@ -65,6 +65,13 @@ const REGISTERED = Object.freeze({
   deviceCompliancePolicy: ['create', 'update'],
   deviceConfiguration: ['create', 'update'],
   configurationPolicy: ['create', 'update'],
+  // Wave 2 ENTRA: directory policies and delegated consents.
+  tokenLifetimePolicy: ['create', 'update'],
+  tokenIssuancePolicy: ['create', 'update'],
+  claimsMappingPolicy: ['create', 'update'],
+  homeRealmDiscoveryPolicy: ['create', 'update'],
+  permissionGrantPolicy: ['create', 'update'],
+  oauth2PermissionGrant: ['create', 'update'],
 });
 
 function governor() {

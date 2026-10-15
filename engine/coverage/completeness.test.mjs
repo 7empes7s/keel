@@ -28,8 +28,18 @@ test('no type is left unknown: every catalogue type has one of the four coverage
   assert.deepEqual(Object.keys(COMPLETENESS).sort(), CATALOG.map((entry) => entry.type).sort());
 });
 
+// Wave 2 ENTRA registered writers for six of them (directoryPolicyOperations.mjs).
+const ENTRA_WRITERS = new Set(['oauth2PermissionGrant', 'permissionGrantPolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy']);
+
 test('the 14 formerly unclassified Entra types are incomplete configurations, recreated by hand until a writer exists', () => {
   for (const type of FORMERLY_UNCLASSIFIED) {
+    if (ENTRA_WRITERS.has(type)) {
+      const qualification = qualificationFor(type);
+      assert.equal(qualification.decision, 'automated', type);
+      assert.equal(qualification.completeness.recreate, 'keel', type);
+      assert.ok(!qualification.completeness.missing.some((item) => item.part === 'The whole setting'), type);
+      continue;
+    }
     const qualification = qualificationFor(type);
     assert.equal(qualification.decision, 'manual', type);
     assert.match(qualification.reason, /^incomplete configuration/, type);
@@ -64,11 +74,11 @@ test('a backup is incomplete when any object is, and lists each incomplete objec
     { resourceType: 'application', naturalKey: 'application:KEEL-RT-b', payload: { displayName: 'KEEL-RT-b' } },
     { resourceType: 'namedLocation', naturalKey: 'namedLocation:KEEL-RT-loc', payload: { displayName: 'KEEL-RT-loc' } },
     { resourceType: 'directoryRole', naturalKey: 'directoryRole:x', payload: { displayName: 'Global Reader' } },
-    { resourceType: 'claimsMappingPolicy', naturalKey: 'claimsMappingPolicy:KEEL-RT-claims', payload: { displayName: 'KEEL-RT-claims', definition: ['{}'] } },
+    { resourceType: 'activityBasedTimeoutPolicy', naturalKey: 'activityBasedTimeoutPolicy:KEEL-RT-idle', payload: { displayName: 'KEEL-RT-idle', definition: ['{}'] } },
   ];
   const backup = assessBackup(resources, decisionFor);
   assert.equal(backup.incomplete, true);
-  assert.deepEqual(backup.objects.map((object) => object.naturalKey), ['application:KEEL-RT-a', 'claimsMappingPolicy:KEEL-RT-claims']);
+  assert.deepEqual(backup.objects.map((object) => object.naturalKey), ['application:KEEL-RT-a', 'activityBasedTimeoutPolicy:KEEL-RT-idle']);
   assert.deepEqual(backup.objects[1].missing.map((item) => [item.part, item.reason]), [
     ['The whole setting', 'not-written'], ['Which apps the policy is assigned to', 'other-route'],
   ]);
@@ -107,7 +117,8 @@ test('a record cannot claim more than the decision behind it', () => {
 test('the coverage doc shows the four states and nothing "not yet investigated"', () => {
   const doc = renderCoverageDoc();
   assert.ok(!/not yet investigated/i.test(doc));
-  assert.match(doc, /\| Delegated app consents \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
+  assert.match(doc, /\| Idle sign-out policy \| [^|]+ \| Incomplete \| By hand \(not built yet\) \|/);
+  assert.match(doc, /\| Delegated app consents \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Named locations \| [^|]+ \| Full \|/);
   assert.match(doc, /\| Built-in admin roles \| [^|]+ \| Microsoft-managed \| Nothing to restore \|/);
   assert.match(doc, /client secrets \(Microsoft never returns it\)/);

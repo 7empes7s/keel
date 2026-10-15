@@ -56,6 +56,8 @@ const incomplete = (reason) => manual(`incomplete configuration, backed up in fu
 // that), `failedAt` is the day it was decided and `fix` names what is being
 // changed. The write stays fixture-tested; the ledger row shows the failure.
 const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
+// Wave 2 ENTRA: the four token and sign-in routing policies share one writer.
+const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and definition (every definition entry must parse as JSON); a policy that was the organization default is recreated as an ordinary one and making it the default again is a follow-up step; which apps it is assigned to is set by hand; delete is not registered';
 
 /**
  * The explicit per-type decision. Reviewed by hand, never derived from
@@ -94,7 +96,8 @@ export const TYPE_DECISIONS = Object.freeze({
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
   application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create only, bound to its application by appId'),
-  oauth2PermissionGrant: incomplete('a consent is a trust decision; granting it again needs an approval contract'),
+  // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
+  oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),
   identityProvider: manual('client secrets are never readable'),
   certificateBasedAuthConfiguration: incomplete('a wrong certificate trust setting can lock every user out, and there is no simulation gate for it yet'),
   directoryRole: manual('built-in roles are activated from templates, never authored'),
@@ -133,7 +136,7 @@ export const TYPE_DECISIONS = Object.freeze({
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
   crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
   crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
-  permissionGrantPolicy: incomplete('built-in policies are immutable, and the include and exclude rules of custom ones are separate collections not yet collected'),
+  permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extras left); built-in microsoft-* policies are skipped; delete is not registered'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
   authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
@@ -141,10 +144,10 @@ export const TYPE_DECISIONS = Object.freeze({
     docs: `${DOCS}/resources/deviceregistrationpolicy?view=graph-rest-1.0`,
   }),
   activityBasedTimeoutPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  claimsMappingPolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  homeRealmDiscoveryPolicy: incomplete('it routes federated sign-in, and the app assignments are a separate edge not yet collected'),
-  tokenIssuancePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
-  tokenLifetimePolicy: incomplete('the definition string is not parsed and the app assignments are a separate edge not yet collected'),
+  claimsMappingPolicy: automated('claimsmappingpolicy', STS_SUBSET),
+  homeRealmDiscoveryPolicy: automated('homerealmdiscoverypolicy', STS_SUBSET),
+  tokenIssuancePolicy: automated('tokenissuancepolicy', STS_SUBSET),
+  tokenLifetimePolicy: automated('tokenlifetimepolicy', STS_SUBSET),
   featureRolloutPolicy: incomplete('the groups a rollout applies to are a separate edge not yet collected'),
   accessReviewScheduleDefinition: incomplete('past review instances and decisions cannot be recreated; only the definition can'),
   accessPackage: incomplete('its catalog, policies, assignments and resource roles are their own types, none of which has a writer yet'),
@@ -703,8 +706,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update of reviewed attributes, soft-delete restore and add-only licence assignment are fixture-tested; create is by hand because passwords and MFA methods are never readable, and synced users are refused'),
   group: subset('identity-application', 'POST/PATCH/DELETE /groups', 'Group.ReadWrite.All', 'registered before task-107'),
   contact: byHand('identity-application', null, 'none', 'organizational contacts are directory-synchronised and read-only in Graph'),
-  oauth2PermissionGrant: research('identity-application', 'POST /oauth2PermissionGrants', 'DelegatedPermissionGrant.ReadWrite.All',
-    'delegated consent is a grant decision, not configuration; re-granting needs an approval contract that does not exist yet'),
+  oauth2PermissionGrant: subset('identity-application', 'POST /oauth2PermissionGrants; PATCH /oauth2PermissionGrants/{id}', 'DelegatedPermissionGrant.ReadWrite.All',
+    'create and update are fixture-tested; a grant is written only inside an approved restore, matched on app, resource, consent type and user, and its scopes are written as backed up; delete is refused'),
   identityProvider: byHand('identity-application', 'POST /identity/identityProviders', 'IdentityProvider.ReadWrite.All', 'client secrets are never readable'),
   certificateBasedAuthConfiguration: research('identity-application', 'POST /organization/{id}/certificateBasedAuthConfiguration', 'Organization.ReadWrite.All',
     'tenant-lockout blast radius; no simulation gate for certificate trust changes exists'),
@@ -783,8 +786,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update of the default B2B collaboration, direct connect, inbound trust, consent and tenant restriction settings is fixture-tested'),
   crossTenantAccessPolicyPartner: subset('policy', 'POST /policies/crossTenantAccessPolicy/partners; PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}', 'Policy.ReadWrite.CrossTenantAccess',
     'create and update are fixture-tested and keyed by the partner tenantId; Graph refuses a tenantId that does not exist; delete is refused'),
-  permissionGrantPolicy: research('policy', 'POST /policies/permissionGrantPolicies', 'Policy.ReadWrite.PermissionGrant',
-    'built-in microsoft-* policies are immutable; includes and excludes are separate collections with no qualified writer'),
+  permissionGrantPolicy: subset('policy', 'POST /policies/permissionGrantPolicies; PATCH /policies/permissionGrantPolicies/{id}; POST .../{id}/includes|excludes', 'Policy.ReadWrite.PermissionGrant',
+    'create and update of custom policies are fixture-tested; include and exclude rules are added when the backup holds them and extras are left; built-in microsoft-* policies are skipped; delete is refused'),
   adminConsentRequestPolicy: subset('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
     'update (a PUT of every writable field) is fixture-tested for the same tenant; reviewer queries are written as observed and are never remapped to another tenant'),
   // Issue #156: basic tenant settings in the policy family.
@@ -794,14 +797,14 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up only: device join and registration settings, including whether joining needs MFA, are changed by hand so an admin is never locked out of joining devices and MFA is never weakened silently'),
   activityBasedTimeoutPolicy: research('policy', 'POST /policies/activityBasedTimeoutPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
     'definition is a JSON string KEEL does not parse; a tenant-wide default and per-application assignment are not distinguished'),
-  claimsMappingPolicy: research('policy', 'POST /policies/claimsMappingPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'assignment to service principals is a separate edge with no qualified writer; the definition string is unparsed'),
-  homeRealmDiscoveryPolicy: research('policy', 'POST /policies/homeRealmDiscoveryPolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'changes federated sign-in routing; assignment is a separate edge; definition string is unparsed'),
-  tokenIssuancePolicy: research('policy', 'POST /policies/tokenIssuancePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'assignment to applications is a separate edge; the definition string is unparsed'),
-  tokenLifetimePolicy: research('policy', 'POST /policies/tokenLifetimePolicies', 'Policy.ReadWrite.ApplicationConfiguration',
-    'a tenant-wide default and per-application assignment are not distinguished; the definition string is unparsed'),
+  claimsMappingPolicy: subset('policy', 'POST /policies/claimsMappingPolicies; PATCH /policies/claimsMappingPolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  homeRealmDiscoveryPolicy: subset('policy', 'POST /policies/homeRealmDiscoveryPolicies; PATCH /policies/homeRealmDiscoveryPolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  tokenIssuancePolicy: subset('policy', 'POST /policies/tokenIssuancePolicies; PATCH /policies/tokenIssuancePolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
+  tokenLifetimePolicy: subset('policy', 'POST /policies/tokenLifetimePolicies; PATCH /policies/tokenLifetimePolicies/{id}', 'Policy.ReadWrite.ApplicationConfiguration',
+    'create and update of the name and definition are fixture-tested; every definition entry must parse; a recreate is never the organization default; app assignments are set by hand; delete is refused'),
   featureRolloutPolicy: research('policy', 'POST /policies/featureRolloutPolicies', 'Policy.ReadWrite.FeatureRollout',
     'staged rollout of sign-in features; applies-to group membership is a separate edge with no qualified writer'),
   // Wave 1 CAT-ENTRA: backed up; no write is qualified yet.

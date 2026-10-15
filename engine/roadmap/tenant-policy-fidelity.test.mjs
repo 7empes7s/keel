@@ -106,7 +106,8 @@ test('every record is a fixture-tested registration; no singleton is created or 
     assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor(type, operation).claim)), ['update'], type);
   }
   assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor('crossTenantAccessPolicyPartner', operation).claim)), ['create', 'update']);
-  assert.equal(capabilityFor('permissionGrantPolicy', 'update').claim, 'unsupported', 'permission grant policies stay research-needed');
+  // Wave 2 ENTRA: permission grant policies are written by directoryPolicyOperations.mjs, not here.
+  assert.ok(!TENANT_POLICY_RECORDS.some((record) => record.resourceType === 'permissionGrantPolicy'));
   const lockout = TENANT_POLICY_RECORDS.filter((record) => record.lockout).map((record) => record.resourceType).sort();
   assert.deepEqual(lockout, ['authenticationMethodsPolicy', 'authorizationPolicy', 'identitySecurityDefaultsEnforcementPolicy']);
   const inventory = buildExpansionInventory();

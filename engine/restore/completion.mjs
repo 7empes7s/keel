@@ -34,6 +34,7 @@ import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
+import { followUpSteps } from './bestEffortRecreate.mjs';
 
 export const COMPLETION_KINDS = Object.freeze(['credential', 'certificate', 'consent', 'integration', 'service-validation', 'enforcement']);
 export const COMPLETION_EVIDENCE_TYPES = Object.freeze(['ticket', 'link', 'log-reference', 'attestation']);
@@ -110,13 +111,19 @@ export const CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM = item(
  * none, except the task-152 enforcement step: `enforcementPending` is true when
  * a Conditional Access policy the snapshot had turned on was written report-only.
  */
-export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false }) {
+export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false, payload = undefined, decision = undefined, followUp = undefined }) {
   if (stateUnconfirmed) return [CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM];
   const rule = COMPLETION_RULES[resourceType] ?? DEFAULT_RULE;
   const enforcement = enforcementPending ? [CONDITIONAL_ACCESS_ENFORCEMENT_ITEM] : [];
   if (mechanism === 'recreate') {
+    // Wave 2 ENTRA: with the backed-up object, each missing part is its own
+    // named step (a client secret by name and expiry). A step with the same
+    // kind and requirement as a generic rule item replaces it.
+    const steps = recreateFollowUp({ resourceType, payload, decision, followUp });
+    const named = new Set(steps.map((step) => `${step.kind}|${step.requirement}`));
     return [
-      ...rule.recreate,
+      ...rule.recreate.filter((entry) => !named.has(`${entry.kind}|${entry.requirement}`)),
+      ...steps,
       item('integration', 'newObjectId', 'A new object id was assigned: update every external system that referenced the old id'),
       ...enforcement,
       rule.validation,
@@ -127,6 +134,29 @@ export function completionItemsFor({ resourceType, mechanism, enforcementPending
   }
   if (mechanism === 'update-existing') return enforcement;
   return [];
+}
+
+/**
+ * Wave 2 ENTRA: the follow-up items of a recreated incomplete configuration,
+ * from the writer's own steps (`followUp`) or, given the backed-up `payload`,
+ * from its completeness record. Without either there are none, as before.
+ */
+function recreateFollowUp({ resourceType, payload, decision, followUp }) {
+  let steps = followUp;
+  if (!Array.isArray(steps)) {
+    if (payload === undefined || payload === null) return [];
+    try {
+      steps = followUpSteps(resourceType, payload, decision ?? { decision: 'automated' });
+    } catch {
+      return [];
+    }
+  }
+  // A part nobody can act on (history, a Microsoft-set value) is listed with
+  // the restore's steps but is not an item to close. Any other non-secret part
+  // is set again outside KEEL, which is what an 'integration' item tracks.
+  return steps
+    .filter((step) => step.actionable !== false)
+    .map((step) => item(step.kind === 'follow-up' ? 'integration' : step.kind, step.requirement, step.description));
 }
 
 /** Resource-level state from its items. */

@@ -33,8 +33,22 @@ import { TENANT_POLICY_RECORDS, tenantPolicyRecordFor, tenantPolicyRoute } from 
 const TENANT_POLICY_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
+import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
+
+// Wave 2 ENTRA: collections a directory policy create lists to find an object
+// it made before; the fake answers them with their direct children.
+const DIRECTORY_POLICY_COLLECTIONS = new Set(Object.values(DIRECTORY_POLICY_RECORDS).map((entry) => entry.collection));
+
+const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"AccessTokenLifetime":"8:00:00"}}']);
 
 const FIXTURE_PAYLOADS = Object.freeze({
+  // Wave 2 ENTRA: directory policies and a delegated consent.
+  tokenLifetimePolicy: { displayName: 'Fixture token lifetime', definition: STS_DEFINITION, isOrganizationDefault: false },
+  tokenIssuancePolicy: { displayName: 'Fixture token issuance', definition: ['{"TokenIssuancePolicy":{"Version":1,"TokenResponseSigningPolicy":"TokenOnly"}}'], isOrganizationDefault: false },
+  claimsMappingPolicy: { displayName: 'Fixture claims mapping', definition: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true"}}'], isOrganizationDefault: false },
+  homeRealmDiscoveryPolicy: { displayName: 'Fixture sign-in routing', definition: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}'], isOrganizationDefault: false },
+  permissionGrantPolicy: { id: 'fixture-consent-policy', displayName: 'Fixture consent policy', description: 'Fixture' },
+  oauth2PermissionGrant: { clientId: 'fixture-client-sp', consentType: 'AllPrincipals', principalId: null, resourceId: 'fixture-resource-sp', scope: 'User.Read' },
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
   // Roadmap task-150: a cloud user with one direct licence.
   user: {
@@ -170,6 +184,8 @@ const FIXTURE_PAYLOADS = Object.freeze({
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
 // display name is not writable.
 const FIXTURE_DRIFT = Object.freeze({
+  // Wave 2 ENTRA: a consent that lost a scope.
+  oauth2PermissionGrant: () => ({ scope: 'openid' }),
   // Roadmap task-150: a changed department and a removed licence.
   user: () => ({ department: 'Sales', assignedLicenses: [], licenseAssignmentStates: [] }),
   groupSetting: (payload) => ({ values: payload.values.map((entry) => ({ ...entry, value: entry.value === 'true' ? 'false' : 'true' })) }),
@@ -378,6 +394,14 @@ export function fakeGraph() {
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
       if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
+      if (DIRECTORY_POLICY_COLLECTIONS.has(path)) {
+        const clientId = /clientId eq '([^']*)'/.exec(decodeURIComponent(requested.split('?')[1] ?? ''))?.[1];
+        const value = [...objects.entries()]
+          .filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/'))
+          .map(([, object]) => object)
+          .filter((object) => !clientId || object.clientId === clientId);
+        return { ok: true, status: 200, body: { value } };
+      }
       // Roadmap task-151: the eligibility collection answers a filter of
       // `field eq 'value'` terms joined by `and`.
       if (path === '/roleManagement/directory/roleEligibilitySchedules') {

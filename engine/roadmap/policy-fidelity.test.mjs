@@ -26,6 +26,7 @@ import {
 import { createProjection, writableProjection } from '../reconcile/writableProjection.mjs';
 import { applyPatches, applyWave } from '../restore/applyEngine.mjs';
 import { TENANT_POLICY_PATHS } from '../restore/tenantPolicyOperations.mjs';
+import { DIRECTORY_POLICY_RECORDS } from '../restore/directoryPolicyOperations.mjs';
 import {
   BUILT_IN_AUTHENTICATION_STRENGTH_IDS, POLICY_OPERATION_RECORDS, buildPolicyFamilyLedger, currentProjection,
   policyPatchRefusal, policyProofFor, policySubtypeOf, projectionDigestFor, qualifyPolicyLiveEvidence,
@@ -117,7 +118,8 @@ test('the policy family ledger lists every policy type; the remainder stays rese
   assert.deepEqual(byType.get('authenticationStrengthPolicy').operations[1].writableFields, ['description', 'displayName']);
 
   for (const family of ledger.families) {
-    if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation', ...Object.keys(TENANT_POLICY_PATHS)].includes(family.resourceType)) continue;
+    // Wave 2 ENTRA: the directory policy writers (directoryPolicyOperations.mjs) are tested in entra-directory-writers.test.mjs.
+    if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation', ...Object.keys(TENANT_POLICY_PATHS), ...Object.keys(DIRECTORY_POLICY_RECORDS)].includes(family.resourceType)) continue;
     // Issue #156: the device registration policy is manual by decision, not unresearched.
     if (family.status === 'manual') {
       assert.equal(qualificationFor(family.resourceType).decision, 'manual', family.resourceType);
@@ -362,5 +364,6 @@ test('the policy batch runner drives the subset through applyWave and prints the
   assert.match(text, /authenticationStrengthPolicy create: passed · claim fixture-tested · id server-assigned · subtype custom only/);
   assert.match(text, /authenticationStrengthPolicy update proof: current · writes description, displayName/);
   assert.match(text, /authenticationStrengthPolicy builtIn: refused \(immutable\)/);
-  assert.match(text, /permissionGrantPolicy: research-needed — built-in microsoft-\* policies are immutable/);
+  assert.match(text, /activityBasedTimeoutPolicy: research-needed — definition is a JSON string KEEL does not parse/);
+  assert.match(text, /permissionGrantPolicy create: passed/);
 });

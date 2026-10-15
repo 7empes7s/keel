@@ -20,6 +20,7 @@ import {
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../contracts/fieldProjection.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { applyPatches, applyWave } from '../restore/applyEngine.mjs';
+import { writerFor } from '../restore/writers/registry.mjs';
 import { ThrottleGovernor } from '../restore/throttleGovernor.mjs';
 import { decideVerb, verbCapability } from '../reconcile/verb.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
@@ -65,6 +66,13 @@ const REGISTERED = Object.freeze({
   deviceCompliancePolicy: ['create', 'update'],
   deviceConfiguration: ['create', 'update'],
   configurationPolicy: ['create', 'update'],
+  // Wave 2 ENTRA: directory policies and delegated consents.
+  tokenLifetimePolicy: ['create', 'update'],
+  tokenIssuancePolicy: ['create', 'update'],
+  claimsMappingPolicy: ['create', 'update'],
+  homeRealmDiscoveryPolicy: ['create', 'update'],
+  permissionGrantPolicy: ['create', 'update'],
+  oauth2PermissionGrant: ['create', 'update'],
 });
 
 function governor() {
@@ -130,7 +138,8 @@ test('every registered operation is fixture-tested with a named proof and correc
       assert.equal(typeof capability.proofRef, 'string');
       assert.ok(capability.proofRef.length > 0, `${resourceType} ${operation} must name its proof`);
       assert.equal(capability.credentialMode, 'restorer');
-      assert.equal(capability.handler, 'engine/restore/applyEngine.mjs#applyWave');
+      // Wave 2: a pair with a registered writer names that writer's handler.
+      assert.equal(capability.handler, writerFor(resourceType, operation)?.handler ?? 'engine/restore/applyEngine.mjs#applyWave');
       assert.equal(capability.idOutcome, operation === 'create' ? 'server-assigned' : operation === 'delete' ? 'terminal' : 'preserved');
       assert.equal(capability.path, graphPathFor(resourceType));
       assert.equal(capability.contractVersion, CAPABILITY_CONTRACT_VERSION);

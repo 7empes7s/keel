@@ -3810,7 +3810,7 @@ item that needs it stays untouched.
   include is extra, the backup's includes are added first and the last extra one is removed right after, retrying that
   400 while the new include replicates (up to 13 x 5 s).
 - Needs: /opt/keel-live at the #327 merge or later (`grep -q isLastIncludeRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - **Test tenant only.** Same rules, capture tooling, requester/approver split and standing authorization as Q75; log every
   approval id. No permission to add. Never touch CA policies, break-glass or the user's account.
 - Fixture: as Q75. Custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low),

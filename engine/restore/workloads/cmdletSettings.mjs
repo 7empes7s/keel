@@ -21,7 +21,7 @@
  *  - Immutable plan, persisted as a restore_dry_run artifact; the task-66 approval and
  *    promotion checks are the existing ones.
  *  - Disabled until qualified, per operation, by the qualification the caller passes
- *    (workloadWriteQualification once qualification.mjs spreads WKLD_WRITE_OPERATIONS).
+ *    (workloadWriteQualification; qualification.mjs spreads WKLD_WRITE_OPERATIONS).
  *  - Content effect guard. A change that shortens retention, releases a hold, deletes
  *    mail or widens who sees content is a classified effect (WORKLOAD_EFFECT_RULES).
  *    Its operation runs only with the separate, current high-impact approval of

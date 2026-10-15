@@ -27,6 +27,7 @@ import {
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger, descriptorProblems } from '../workloadContract.mjs';
 import { listWorkloads } from '../registry.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../../restore/workloads/writeDeclarations.mjs';
 import { runFixtureHarness } from '../../../tools/qualification/workloads.mjs';
 import { createIsolatedTestDatabase } from '../../test/dbTestHelper.mjs';
 import { ALL_READS, GRANTS, RUNTIME, containerAllowlist, fakeCmdletContainer, ledgerWith, notFound } from '../../test/fakeCmdletContainer.mjs';
@@ -107,7 +108,15 @@ test('each Purview governance read is declared, in scope, probed, read-only and 
 
   assert.equal(PURVIEW_EXTENDED_DESCRIPTOR.enabledByDefault, false);
   assert.ok(listWorkloads().some((descriptor) => descriptor.workload === PURVIEW_EXTENDED_WORKLOAD && descriptor.enabledByDefault === false));
-  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === PURVIEW_EXTENDED_WORKLOAD), []);
+  // Wave 2 WKLD: the only writes for this workload are its declared cmdlet writes, and
+  // each needs observed grants and a live write capture before it runs.
+  const writes = Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === PURVIEW_EXTENDED_WORKLOAD);
+  assert.ok(writes.length > 0);
+  for (const [id, operation] of writes) {
+    assert.equal(operation, WKLD_WRITE_OPERATIONS[id], id);
+    assert.equal(operation.kind, 'cmdlet', id);
+    assert.equal(operation.grantsRequired, true, id);
+  }
   assert.ok(Object.keys(ALLOWED).every((cmdlet) => cmdlet.startsWith('Get-')));
   assert.deepEqual(Object.fromEntries(Object.entries(PURVIEW_EXTENDED_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), ALLOWED);
   for (const cmdlet of [...PURVIEW_EXTENDED_EXCLUDED_CMDLETS, 'Set-ComplianceTag', 'New-CaseHoldPolicy', 'Remove-ComplianceCase', 'Get-Label']) {

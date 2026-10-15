@@ -25,6 +25,7 @@ import {
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger, descriptorProblems } from '../workloadContract.mjs';
 import { listWorkloads } from '../registry.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../../restore/workloads/writeDeclarations.mjs';
 import { runFixtureHarness } from '../../../tools/qualification/workloads.mjs';
 import { createIsolatedTestDatabase } from '../../test/dbTestHelper.mjs';
 import { ALL_READS, GRANTS, RUNTIME, containerAllowlist, fakeCmdletContainer, ledgerWith } from '../../test/fakeCmdletContainer.mjs';
@@ -97,7 +98,15 @@ test('each Teams voice read is declared, in scope, probed, read-only and ships d
   // Registered disabled; Get cmdlets only; the container holds the same allowlist.
   assert.equal(TEAMS_EXTENDED_DESCRIPTOR.enabledByDefault, false);
   assert.ok(listWorkloads().some((descriptor) => descriptor.workload === TEAMS_EXTENDED_WORKLOAD && descriptor.enabledByDefault === false));
-  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === TEAMS_EXTENDED_WORKLOAD), []);
+  // Wave 2 WKLD: the only writes for this workload are its declared cmdlet writes, and
+  // each needs observed grants and a live write capture before it runs.
+  const writes = Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === TEAMS_EXTENDED_WORKLOAD);
+  assert.ok(writes.length > 0);
+  for (const [id, operation] of writes) {
+    assert.equal(operation, WKLD_WRITE_OPERATIONS[id], id);
+    assert.equal(operation.kind, 'cmdlet', id);
+    assert.equal(operation.grantsRequired, true, id);
+  }
   assert.ok(Object.keys(TEAMS_EXTENDED_CMDLET_PARAMETERS).every((cmdlet) => cmdlet.startsWith('Get-')));
   assert.ok(Object.keys(ALLOWED).every((cmdlet) => cmdlet.startsWith('Get-')));
   assert.deepEqual(Object.fromEntries(Object.entries(TEAMS_EXTENDED_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), ALLOWED);

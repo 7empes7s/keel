@@ -4335,7 +4335,25 @@ item that needs it stays untouched.
   `git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q90 && git archive 247842d ops/powershell | tar -x -C /tmp/keel-q90`, then
   `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /tmp/keel-q90/ops/powershell:/app:ro keel-powershell:latest` with the job JSON
   on stdin. Every step is one run-cmdlet job as the Restorer, with `"tenantConfigPath":"/etc/keel/exchange-restorer.json"` (as in Q89).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 21:06–21:08 UTC. Restorer (exchange-restorer.json) through run-cmdlet, image `keel-powershell:latest` with branch
+  claude/project-thread-yw9qlk @ **247842d** `ops/powershell` (git archive into /tmp/keel-q90) mounted over /app.
+  - I reviewed the branch diff first: `pipeFrom` allows only `global-quarantine-settings`, the Get- is fixed, it requires exactly 1 object,
+    and a piped job may not send Identity.
+  - **No change.** Global admin not used. /tmp/keel-q90 removed afterwards.
+  - **1.** Get-QuarantinePolicy (GlobalQuarantinePolicy): **ok true, 1 object, OrganizationBrandingEnabled = False.**
+  - **2.** Set-QuarantinePolicy `{"OrganizationBrandingEnabled":false}` with `pipeFrom: global-quarantine-settings` (Get- piped into Set-,
+    no Identity): **ok false**.
+    - message: `||The operation couldn't be performed because object '<org>.onmicrosoft.com\DefaultGlobalPolicy' couldn't be found on '<EXO server>'.`
+    - errorId: `[Server=<EXO server>,RequestId=<guid>,TimeStamp=Thu, 15 Oct 2026 21:07:19 GMT],Write-ErrorMessage`
+  - **3.** Get again: **ok true, OrganizationBrandingEnabled = False**, unchanged.
+  - **Reading:** even Microsoft's documented pipe form can't find the object. Get-QuarantinePolicy returns it, but Set-QuarantinePolicy
+    (QuarantineTag lookup) resolves `<org>.onmicrosoft.com\DefaultGlobalPolicy` and then reports it as not found.
+    - This points at the tenant, not KEEL's identity handling: the global quarantine settings object exists for reads but not as a
+      settable QuarantineTag.
+    - Likely fix: save the global settings once in the Defender portal (Email & collaboration > Policies & rules > Threat policies >
+      Quarantine policies > Global settings), then rerun the capture.
+  - Commented on #339.
 - Do (test tenant only; one tenant-wide object, written back to its own current value):
   1. `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"Get-QuarantinePolicy","parameters":{"QuarantinePolicyType":"GlobalQuarantinePolicy"},"tenantConfigPath":"/etc/keel/exchange-restorer.json"}`.
      Report `ok`, the number of objects and the current `OrganizationBrandingEnabled` (true or false).

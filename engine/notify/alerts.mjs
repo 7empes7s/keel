@@ -430,7 +430,7 @@ export async function listAlertTransitions(client, { tenantRef, actor, alertId, 
   return rows;
 }
 
-const BLAST_SEVERITY = Object.freeze({ cosmetic: 'notice', 'access-affecting': 'warning', 'tenant-lockout': 'critical' });
+export const BLAST_SEVERITY = Object.freeze({ cosmetic: 'notice', 'access-affecting': 'warning', 'tenant-lockout': 'critical' });
 
 /**
  * Drift integration: one `baseline / drift` condition per natural key. Every drift row

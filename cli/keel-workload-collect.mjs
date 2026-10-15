@@ -45,6 +45,7 @@ import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
+import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -152,12 +153,23 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
         result: { workload: step.workload, outcome: 'failed', observedFrom: at, observedTo: at, reasons },
       });
     }
-    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons });
+    // A workload that raises drift compares this run with its previous one. A failed
+    // detection fails the job but never the collection, which is already stored.
+    let drift;
+    try {
+      const found = await detectWorkloadDrift(client, { collectionId: run.id });
+      drift = { status: found.status, changes: found.drift.length };
+    } catch (error) {
+      drift = { status: 'failed', error: String(error?.message ?? error) };
+    }
+    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift });
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
+    if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} drift change(s) since the previous run`);
+    if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });
   for (const entry of proof.filter((item) => item.status !== 'current')) logger.log(entry.message);
-  const exitCode = runs.some((item) => ['failed', 'partial'].includes(item.outcome)) ? 1 : 0;
+  const exitCode = runs.some((item) => ['failed', 'partial'].includes(item.outcome) || item.drift.status === 'failed') ? 1 : 0;
   return { tenantRef, runs, proof, exitCode };
 }
 

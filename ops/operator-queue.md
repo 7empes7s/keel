@@ -2650,7 +2650,7 @@ item that needs it stays untouched.
 - Result: Done 2026-10-15 00:12 UTC, read-only (the Restorer listed manifests and assignments via Graph GET; the Collector token was used for the two optional reads). Nothing created, granted or removed.
   - **KEEL Collector: missing none.** All 49 application roles in its manifest (Graph 45, SharePoint 2+, Exchange 1) are held;
     49 appRoleAssignments in all. The 19 that Q56 left waiting are now held.
-  - **KEEL Content Reader: NOT consented. Missing all 17**, with 0 appRoleAssignments on its SP (9fa46563…): Mail.Read,
+  - **KEEL Content Reader: consented at about 00:12 UTC; re-checked, missing none** (holds 17 of 17, no extras). Before that: NOT consented. Missing all 17**, with 0 appRoleAssignments on its SP (9fa46563…): Mail.Read,
     Calendars.Read, Contacts.Read, MailboxSettings.Read, Tasks.Read.All, User.Read.All, Group.Read.All, Files.Read.All,
     Sites.Read.All, Team.ReadBasic.All, Channel.ReadBasic.All, ChannelSettings.Read.All, ChannelMember.Read.All,
     TeamsTab.Read.All, TeamsAppInstallation.ReadForTeam.All, MailboxFolder.Read.All, MailboxItem.Read.All.

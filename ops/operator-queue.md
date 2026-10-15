@@ -3090,3 +3090,71 @@ item that needs it stays untouched.
   6. `systemctl list-timers keel-offsite.timer --no-pager` (must be enabled; next run 05:00 UTC).
 - Rollback: restore `offsite.env.bak-q65` (or delete the five lines); the old path then runs unchanged.
 - Leave `/mnt/keel-copy/keel-offsite/` (old copies) as is.
+
+### Q66: Live compare of the latest snapshot against the tenant now (read-only)
+- Drafted by the "Wave 2 live checks" thread (2026-10-15). Code: compare, PR #283 and its review fixes #285
+  (`cli/keel-compare.mjs`, `engine/govern/compare.mjs`). Only live check left for that package.
+- Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/cli/keel-compare.mjs`).
+- Status: todo
+- Result:
+- **Read-only.** The live side runs the Collector's GETs and stores nothing. No tenant, host or DB writes.
+- Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):
+  1. Record the commit `/opt/keel-live` is deployed at.
+  2. Pick a principal holding `read` (the Entra principal used for Q45 approvals is fine) and report which one, by name.
+  3. `node /opt/keel-live/cli/keel-compare.mjs sources --principal-id <id>; echo exit=$?`
+  4. `node /opt/keel-live/cli/keel-compare.mjs live --principal-id <id> --config /etc/keel/tenant.json; echo exit=$?`
+     Expect exit 0 and a result for the latest completed snapshot against the tenant now.
+  5. Same command with `--json`, and report from it only: `mode`, the snapshot it compared, the difference count,
+     and the list of types or workloads marked "not compared" (with the reason).
+  6. Refusal check: the same `live` command with a principal that does not hold `read` (or a random uuid). Expect exit 2.
+  7. Portal: open `/compare` once as Marouane's principal is not needed; instead `curl -s -o /dev/null -w '%{http_code}'`
+     `http://127.0.0.1:<portal port>/api/compare` without a session and report the code (expect 401 or 403, not 200).
+- **Report:** the deployed commit; exit codes of steps 3, 4 and 6; the step 5 fields; anything that looks wrong
+  (a type shown as removed that you know still exists is a bug: name the type). No ids, tokens or payload values.
+
+### Q67: Entra directory policy writers, live round trip on the test tenant (six types)
+- Drafted by the "Wave 2 live checks" thread (2026-10-15). Code: PR #286 (merge f54fa00). New writers, create and update
+  (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
+  claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
+- Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q45. Under the 2026-10-14
+  standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here.
+- **Restorer permissions:** none to add. Q26 shows it already holds Policy.ReadWrite.ApplicationConfiguration,
+  Policy.ReadWrite.PermissionGrant and Directory.ReadWrite.All (enough for oauth2PermissionGrant). If Graph refuses a
+  write with 403, report it as blocked with the permission Graph names; do not grant anything.
+- **Fixtures (all named `KEEL-RT-W2-...`):**
+  - tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy, homeRealmDiscoveryPolicy: one each, named
+    `KEEL-RT-W2-<type>`, with `isOrganizationDefault: false` and **not assigned to any app or service principal**.
+    Use a minimal valid definition (Graph docs examples). An unassigned, non-default policy changes no sign-in, so the
+    plan's "lockout-sensitive" label on homeRealmDiscoveryPolicy does not apply to this fixture; still run it last.
+  - permissionGrantPolicy: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include rule
+    (permissionType delegated, permissionClassification low). Not referenced by any authorization policy setting.
+  - oauth2PermissionGrant: reuse an existing grant that touches only KEEL-RT fixtures if one exists. Otherwise create one
+    on a KEEL-RT- app with no other permissions: consentType `Principal`, principal one `keel-rt-` fixture user,
+    resource Microsoft Graph, scope `openid` only. This fixture exception grants no data access; it never applies to
+    Keel's own apps or any non-fixture app or user.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-w2/plan-B.md`. Use only its steps for these six types
+     (at f54fa00: 33–42 and 58–59). Follow each step's commands (collect, restore dry run, approve, `--enforce`,
+     `entraLive.mjs capture`, promote or demote).
+  2. Create the fixtures and take snapshot S (one shared run is fine for everything except homeRealmDiscoveryPolicy).
+  3. **create round:** delete each fixture (permanently where Graph has a recycle bin), restore from S selecting all of
+     them, approve, enforce, capture each `create`. Check each reads back equal to the backup: definition, scope string,
+     include rule. For the four policies, confirm `isOrganizationDefault` was not written and the result lists it as a
+     follow-up step instead.
+  4. **update round:** change each fixture (policy definition value, display name, consent scope `openid` to
+     `openid profile`, the include rule's classification), restore from S, approve, enforce, capture each `update`.
+     Read back equal again.
+  5. **Re-run check:** restore from S once more right after step 4, dry run. Expect zero writes planned for these six
+     (each adopts its existing match). Report the planned-write count per type.
+  6. homeRealmDiscoveryPolicy last, alone, the same create and update rounds.
+  7. Cleanup: delete every `KEEL-RT-W2-*` object and the `keel-rt-w2-consent` policy, and the fixture grant if you
+     created it. Report anything left.
+  8. Commit the `*.json`, `*.capture.json` and `*.demotion.json` files under
+     `docs/release/qualifications/entra-live/` on `claude/live-evidence-w2-entra`, branched from `origin/master`.
+     Secret scan first (as Q39). No PR.
+  9. `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence ...` lines.
+- **Report:** B; per type and operation: promoted / demoted (reason) / blocked (why); the step 5 counts; approval ids;
+  the evidence branch and commit; anything left in the tenant.

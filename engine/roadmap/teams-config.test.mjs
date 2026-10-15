@@ -285,6 +285,29 @@ test('a live team body without tenantId reads complete, not partial (#292)', asy
   assert.equal('tenantId' in result.teams[0].fieldCoverage, false, 'the tenant comes from configuration, not the team body');
 });
 
+test('a live team body without tenantId plans and restores; tenancy then rests on the source (#292)', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const withoutTenant = (graph) => { delete graph.state.teams[TEAM].body.tenantId; return graph; };
+  const { plan, artifact } = await planned(client, tenantRef, { graph: withoutTenant(driftedGraph()) });
+  assert.ok(plan.operations.length > 0);
+  const graph = withoutTenant(driftedGraph());
+  const result = await executeTeamsRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, transport: graph.transport, qualifications: qualifications(tenantRef) });
+  assert.equal(byKind(result, 'settings')[0].outcome, 'verified');
+  assert.ok(graph.writes().length > 0);
+
+  // No tenantId and no observation of the team in the managed tenant's source: refused.
+  const source = await recordSource(client, tenantRef);
+  const live = await readLiveTeam({ transport: withoutTenant(driftedGraph()).transport, teamId: TEAM });
+  assert.throws(() => planTeamsRestore({ source: { ...source, observations: [] }, live, tenantId: TENANT, teamId: TEAM }), /cannot be confirmed/);
+  // A body that names another tenant is still refused when executing.
+  const { artifact: again } = await planned(client, tenantRef, { graph: withoutTenant(driftedGraph()) });
+  const moved = driftedGraph({}, { tenantId: OTHER_TENANT });
+  const refused = await executeTeamsRestore(client, { tenantRef, artifactId: again.id, tenantId: TENANT, transport: moved.transport, qualifications: qualifications(tenantRef) });
+  assert.ok(refused.operations.every((op) => op.outcome === 'refused'));
+  assert.equal(moved.writes().length, 0);
+});
+
 test('group and Teams membership completeness are independent', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();

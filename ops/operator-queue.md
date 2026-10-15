@@ -969,6 +969,14 @@ item that needs it stays untouched.
     to move along"). Consent itself stays with Marouane: keel-operator adds permissions to the app manifests only and
     never creates app role assignments or grants consent.
 
+- D-Q63 (Q63): may the Keel Restorer get mail write limited to `keel-rt-` test mailboxes, set up by keel-operator, so a
+  test message can be placed in alice's mailbox?
+  - Decision: yes (Marouane, "Scoped mail write for test email" project thread, 2026-10-15 07:44 UTC; recorded verbatim):
+    chose "Yes, operator" on the card "Give the restore app mail write on keel-rt- test mailboxes only?". The card said:
+    Exchange app scoping, role "Application Mail.ReadWrite" limited to mailboxes whose address starts with keel-rt-;
+    no tenant-wide Mail.ReadWrite grant and no consent click; keel-operator sets it up, writes one KEEL-RT- message to
+    alice's inbox, checks a non-test mailbox is denied, then reruns the mail backup.
+
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch
   the tenant or master, so it can run while Q10 waits.
@@ -2917,3 +2925,52 @@ item that needs it stays untouched.
 - **Report:** the deployed commit; the nightly's outcome (step 2); for runs A and B the exit code, each workload's line verbatim,
   and the DB read-back; the step 3 fixture write; the step 5 fixture check; the A-to-B difference per workload; any error text
   (no tokens or keys).
+
+### Q63: Let the Restorer write mail only in keel-rt- test mailboxes, place one test message in alice's Inbox, rerun the backup
+- Drafted by the "Scoped mail write for test email" thread (2026-10-15). Q62 step 3 could not create the mail fixture: the
+  Restorer has no mail write permission. #268 (stale mail delta cursor) is fixed by PR #270 (merge 7b2f2d2).
+- Status: todo
+- Needs: none. Decision: D-Q63 (filled).
+- **Rules:** test tenant. The only permission change is the Exchange RBAC for Applications setup below, for the Keel Restorer
+  (appId 12f8942f-c4d0-4a0d-aee1-efe928b1de54, SP object id 8cd199c9-a96e-4666-924f-aa0ca6910f32). **Do not** add Graph
+  `Mail.ReadWrite`, `Mail.Send` or any `Mail.*` permission to any app manifest and create no Entra appRoleAssignment: a
+  tenant-wide Entra grant would bypass the scope. The only mail write is one message in alice's Inbox. Never touch
+  break-glass, the operator's admin account or Marouane's mailbox. Global admin not used.
+- **Do:**
+  1. **Entra check (read-only):** list the Restorer SP's Graph appRoleAssignments. If it holds any `Mail.Read*`,
+     `Mail.ReadWrite` or `Mail.Send` role, stop and report `blocked` (the scope would be bypassed).
+  2. **Exchange setup**, in Exchange Online PowerShell as the Restorer (app-only, Exchange.ManageAsApp + Exchange
+     Administrator, as for Q55's role group). Reuse an object if it already exists with these exact values:
+     ```powershell
+     $appId = '12f8942f-c4d0-4a0d-aee1-efe928b1de54'; $spId = '8cd199c9-a96e-4666-924f-aa0ca6910f32'
+     $filter = "PrimarySmtpAddress -like 'keel-rt-*'"
+     Get-Mailbox -RecipientPreviewFilter $filter -ResultSize 50 | Select Name,PrimarySmtpAddress   # only keel-rt-* mailboxes, alice included
+     if (-not (Get-ServicePrincipal -Identity $spId -ErrorAction SilentlyContinue)) {
+       New-ServicePrincipal -AppId $appId -ObjectId $spId -DisplayName 'Keel Restorer' }
+     New-ManagementScope -Name 'KEEL-RT-test-mailboxes' -RecipientRestrictionFilter $filter
+     New-ManagementRoleAssignment -Name 'KEEL-RT-restorer-mail-rw' -App $spId -Role 'Application Mail.ReadWrite' -CustomResourceScope 'KEEL-RT-test-mailboxes'
+     ```
+     If the preview lists any mailbox not starting with `keel-rt-`, stop before creating anything and report `blocked`.
+     If a cmdlet is refused for the app, stop and report `blocked` with the error text.
+  3. **Authorization check (read-only):**
+     `Test-ServicePrincipalAuthorization -Identity $spId -Resource keel-rt-20260908-alice@techinsiderbytes.com` must show
+     `Application Mail.ReadWrite` with `InScope = True`. Then run it against one non-test user mailbox (not break-glass,
+     not the operator's admin, not Marouane's): `InScope = False`.
+  4. **Write the test message** (as the Restorer, Graph v1.0). RBAC for Applications can take 30 min to 2 h to take
+     effect; on 403 retry every 10 minutes for up to 2 h:
+     `POST /users/keel-rt-20260908-alice@techinsiderbytes.com/mailFolders/inbox/messages` with
+     `{"subject":"KEEL-RT-20261015-mail","body":{"contentType":"text","content":"KEEL-RT mail fixture"},
+     "singleValueExtendedProperties":[{"id":"Integer 0x0E07","value":"1"}]}` (the extended property makes it a normal
+     message, not a draft). Create it once; if a message with that subject is already in her Inbox, reuse it.
+  5. **Blocked check** (as the Restorer, after step 4 succeeds, so propagation is done): on the same non-test mailbox as
+     step 3, `GET /users/<that mailbox>/mailFolders/inbox/messages?$top=1&$select=id`. Expected 403. Do not attempt a
+     write there. Record only the status and error code, never content. If it returns 200, remove the role assignment
+     (`Remove-ManagementRoleAssignment KEEL-RT-restorer-mail-rw`) and report `failed`.
+  6. **Mail backup rerun:** confirm `/opt/keel-live` is at or after 7b2f2d2 (merge of #270); if not, wait for the deploy.
+     Then `node /opt/keel-live/cli/keel-content-collect.mjs run` once, as Q62 step 4. Report the exit code and every
+     workload line verbatim, and check content_item for the KEEL-RT-20261015-mail message (exchange-mail, alice's mailbox).
+     Expected: exchange-mail succeeded, no 400, messages > 0.
+- **Report:** step 1 assignments found; the step 2 preview list and objects created (or reused); both
+  Test-ServicePrincipalAuthorization results; the write's status, when it first succeeded and the message id (first 8
+  chars); the blocked check's status and error code; the deployed commit, exit code, workload lines and fixture row check.
+  No tokens or keys.

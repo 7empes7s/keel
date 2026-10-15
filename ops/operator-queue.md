@@ -2668,3 +2668,37 @@ item that needs it stays untouched.
   "Service principals can access read-only admin APIs" is visible as on for `KEEL-RT-collector-fabric-readers` and whether
   the Collector is a Power Platform management app, if you can read either; otherwise say "not readable".
 - **Report:** missing roles per app (or "none"), and the two optional checks.
+
+### Q58: First content backup run on the test tenant (one KEEL-RT- mailbox, OneDrive, site, team and plan)
+- Drafted by the "First test content backup" thread (2026-10-15). Follows Q57 (Content Reader holds 17 of 17).
+- Status: todo
+- Needs: Q57 done.
+- **Read-only against the tenant**, except an optional fixture plan in step 4. Every content request goes through the
+  GET-only `contentReadTransport` as the KEEL Content Reader. No permission or consent changes.
+- **Do:**
+  1. Record the commit `/opt/keel-live` is deployed at, and confirm it includes #257, #258 and #262 (content-collect
+     wiring and the content-backup prerequisites). If not, stop and report `blocked`.
+  2. Write `/etc/keel/content.key`: 32 random bytes as 64 hex characters (`openssl rand -hex 32`), mode 600, owned by the
+     user the keel worker runs as. Never print it. Losing it loses the backed-up content, so keep it in place.
+  3. Write `/etc/keel/content-reader.json` (mode 600, same owner), as `cli/keel-content-collect.mjs` documents:
+     `{ "tenantId": <tenant.json tenantId>, "clientId": <KEEL Content Reader appId>, "certPath": "/etc/keel/content-reader.crt",
+     "keyPath": "/etc/keel/content-reader.key", "contentKeyFile": "/etc/keel/content.key",
+     "storage": { "kind": "local", "root": "/var/lib/keel/content" } }`. Create `/var/lib/keel/content` (mode 700, same owner).
+     If the cert and key files are root-only, make them readable by that owner too (mode 600, no wider).
+     Write `/etc/keel/content-scope.json`: `{ "namePrefix": "KEEL-RT-", "tenantHost": "lxtj.sharepoint.com" }`, and leave it
+     in place so the nightly 01:00 UTC content-collect job stays scoped to KEEL-RT- fixtures.
+  4. Fixtures (expected, from earlier items): mailbox and OneDrive of `keel-rt-20260908-alice`; sites
+     `/sites/keel-rt-20260908-collaboration` and `/sites/KEEL-RT-20261004`; team `KEEL-RT-20260908 Collaboration Hub`.
+     Check whether that team's group has a Planner plan. If none, and the Restorer can do it, create plan
+     `KEEL-RT-20261015-plan` with one task `KEEL-RT-20261015-task` in that group; otherwise report that Planner had no plan to read.
+     Put one KEEL-RT- file in alice's OneDrive and one in the team site library only if each is empty.
+  5. Run once, as the worker's user, with the DB env loaded:
+     `node /opt/keel-live/cli/keel-content-collect.mjs run` (defaults: `/etc/keel/tenant.json`, the reader and scope files above).
+     Don't run it while the scheduled content-collect job is running; if that job fires first and runs with these files,
+     use its run as the result instead.
+     Note: Teams has no name filter, so `teams` reads every team on the test tenant (read-only).
+  6. Read back from the DB: `SELECT workload, count(*), sum(bytes) FROM content_item GROUP BY workload`, plus `content_sync_state`
+     keys per workload. Confirm the KEEL-RT- fixtures from step 4 appear (container or metadata names) for each workload.
+- **Report:** the deployed commit; the exit code; each workload's line (`exchange-mail`, `onedrive`, `sharepoint-sites`,
+  `teams`, `planner`: outcome, items, bytes, reasons) verbatim from the run; the DB read-back per workload; which step-4
+  fixtures were found or created; anything that failed, with the error text (no tokens or keys).

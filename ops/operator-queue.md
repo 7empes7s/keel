@@ -4219,7 +4219,7 @@ item that needs it stays untouched.
   - Every job now mounts `/opt/keel-live/ops/powershell` read-only over `/app`, so `keel-powershell:latest` runs the deployed
     run-cmdlet allowlist. No thin image is needed. The Dockerfile pins ExchangeOnlineManagement 3.10.1; no rebuild is needed.
 - Needs: `/opt/keel-live` at 82f852a or later (`git -C /opt/keel-live log -1 --format=%h` or the deployed build stamp).
-- Status: queued
+- Status: in-progress
 - Do (test tenant only; the same put-back writes as your last exchange-extended run):
   1. The exchange-extended capture, exactly as your last run, with `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`, and the
      default image `keel-powershell:latest` (not the wkld thin image), at the deployed build.

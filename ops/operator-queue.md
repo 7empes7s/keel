@@ -3219,3 +3219,36 @@ item that needs it stays untouched.
   9. `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence ...` lines.
 - **Report:** B; per type and operation: promoted / demoted (reason) / blocked (why); the step 5 counts; approval ids;
   the evidence branch and commit; anything left in the tenant.
+
+### Q68: Mail restore live check on the test tenant (alice's KEEL-RT- mailbox)
+- Drafted by the "Mail restore" thread (2026-10-15). Code: PR #275 (merge on master 2026-10-15 ~09:58Z), CLI
+  `cli/keel-content-restore.mjs mail plan|request|run`. Fixture-tested only so far. Handoff:
+  /mnt/project-files/handoff/wave2/MAILR/HANDOFF.md (cloud side).
+- Needs: `test -f /opt/keel-live/cli/keel-content-restore.mjs`. Q63 done (Restorer has Exchange RBAC
+  Application Mail.ReadWrite scoped to `keel-rt-*` mailboxes). Q64 done (alice's mailbox is in the content store).
+- Status: todo
+- **Test tenant only.** Same hard rules and requester/approver split as Q45. Under the 2026-10-14 standing authorization,
+  keel-operator approves these test-tenant restores itself; log every approval id here. Write only into
+  keel-rt-20260908-alice's mailbox. Grant no permission: if Graph answers 403 for a kind, record it and go on.
+- **Restorer identity:** Marouane reported the content-restore consent done on 2026-10-15 10:13 UTC. If
+  `/etc/keel/content-restorer.json` already exists, use it and report its appId. Otherwise create it (mode 600, owner as
+  the other /etc/keel files) for the Restorer: `{ "tenantId", "clientId": "12f8942f-c4d0-4a0d-aee1-efe928b1de54",
+  "certPath", "keyPath" }`, copying tenantId, certPath and keyPath from `/etc/keel/restorer.json`. Never print key material.
+- Do, as the deployed build B (`node /opt/keel-live/cli/keel-content-restore.mjs ...`, KEEL_DB_URL from /etc/keel/db.env).
+  `<A>` = alice's user id, `<T>` = the current UTC time (ISO), `<R>` requester and `<P>` approver principal ids:
+  1. **Plan (read-only):** `mail plan --source-mailbox <A> --at <T>`. Report the JSON (counts per kind, notRestorable).
+  2. **Copy restore, mail only:** `mail request --source-mailbox <A> --at <T> --kinds mail --actor <R>`, approve the
+     printed approvalId as `<P>`, then `mail run --approval-id <id> --actor <R>`. Report the exit code and the report JSON.
+     Check: a top-level folder `Restored <today>` exists in alice's mailbox with the Inbox tree under it; the copy of
+     KEEL-RT-20261015-mail is there. **Report its `isDraft`** (`GET .../messages/{id}?$select=isDraft,subject`).
+  3. **Re-run:** the same `mail run` again. Expect exit 0, `restored: 0`, `writes: 0`.
+  4. **Into the original folder:** delete KEEL-RT-20261015-mail from alice's Inbox (Graph DELETE as the Restorer; it goes to
+     Deleted Items). Then request, approve and run with `--into original --kinds mail` at the same `<T>`. Expect the message
+     back in alice's Inbox and every other Inbox item reported kept (`kept.unchanged`). Report the report JSON and the
+     restored message's `isDraft` and `parentFolderId` (Inbox or not).
+  5. **Calendar, contacts, To Do (copy):** request, approve and run `--kinds calendar,contacts,todo` at `<T>`. Report the
+     report JSON; per kind, restored or the 403/permission error Graph named.
+  6. **Cleanup:** delete the `Restored <today>` mail folder, contact folder, calendars and To Do lists the runs created,
+     and the KEEL-RT-20261015-mail copy left in Deleted Items. Keep the message restored in step 4 in the Inbox.
+- **Report:** B; the restorer appId used; steps 1–5 outputs (exit codes, report JSON, approval ids); both `isDraft`
+  values; anything refused; anything left in the tenant. No tokens or keys.

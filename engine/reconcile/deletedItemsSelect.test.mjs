@@ -97,13 +97,12 @@ test('an unprovable deadline is a blocked restore, never a planned "user create"
   assert.equal(ada.recovery.deadline, null);
   assert.equal(recoveryGate(ada, { now: NOW }).outcome, 'skipped');
 
-  // A user that is neither live nor deleted: "user create" is not registered,
-  // so the plan is an explicit manual handoff that applyWave never executes.
+  // A user that is neither live nor deleted: only a successful deleted-items
+  // read proves it, and only then is it recreated (Wave 2 IDO registers user
+  // create, with sign-in off and a credentials checklist).
   const nowhere = await buildReconciliationPlan(graphLikeReader(), [desired()], { now: NOW });
   const [missing] = nowhere.resources;
   assert.equal(missing.verb, 'create');
-  assert.equal(missing.recovery.mechanism, 'manual');
-  assert.match(missing.recovery.reason, /user create has no qualified capability.*neither live nor among the deleted items.*nothing is recreated/);
-  assert.equal(EXECUTABLE_MECHANISMS.has(missing.recovery.mechanism), false);
-  assert.equal(recoveryGate(missing, { now: NOW }).outcome, 'skipped');
+  assert.equal(missing.recovery.mechanism, 'recreate');
+  assert.equal(EXECUTABLE_MECHANISMS.has(missing.recovery.mechanism), true);
 });

@@ -32,6 +32,9 @@ import { TENANT_POLICY_RECORDS, tenantPolicyRecordFor, tenantPolicyRoute } from 
 
 const TENANT_POLICY_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
+import { IDENTITY_RECORDS } from '../../engine/restore/identityObjectOperations.mjs';
+import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.mjs';
+import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
 import { completionItemsFor } from '../../engine/restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
 
@@ -179,6 +182,54 @@ const FIXTURE_PAYLOADS = Object.freeze({
       },
     ],
   },
+  // Wave 2 IDO: identity governance objects and settings, app credential
+  // policies, and the Intune app, filter, scope tag, update and notification types.
+  lifecycleWorkflow: {
+    displayName: 'Fixture leaver', description: 'Fixture workflow', category: 'leaver', isEnabled: false, isSchedulingEnabled: false,
+    executionConditions: {
+      '@odata.type': '#microsoft.graph.identityGovernance.triggerAndScopeBasedConditions',
+      scope: { '@odata.type': '#microsoft.graph.identityGovernance.ruleBasedSubjectSet', rule: "department eq 'Fixture'" },
+      trigger: { '@odata.type': '#microsoft.graph.identityGovernance.timeBasedAttributeTrigger', timeBasedAttribute: 'employeeLeaveDateTime', offsetInDays: 0 },
+    },
+    tasks: [{ category: 'leaver', continueOnError: false, displayName: 'Disable account', description: 'Fixture task', executionSequence: 1, isEnabled: true, taskDefinitionId: '1dfdfcc7-52fa-4c2e-bf3a-e3919cc12950', arguments: [] }],
+  },
+  lifecycleWorkflowCustomTaskExtension: {
+    displayName: 'Fixture extension', description: 'Fixture custom task',
+    callbackConfiguration: { '@odata.type': '#microsoft.graph.identityGovernance.customTaskExtensionCallbackConfiguration', timeoutDuration: 'PT5M' },
+  },
+  lifecycleManagementSettings: { workflowScheduleIntervalInHours: 3, emailSettings: { senderDomain: 'fixture.example', useCompanyBranding: true } },
+  attributeSet: { id: 'Fixture', description: 'Fixture attribute set', maxAttributesPerSet: 25 },
+  customSecurityAttributeDefinition: {
+    attributeSet: 'Fixture', name: 'Project', description: 'Fixture attribute', isCollection: false, isSearchable: true,
+    status: 'Available', type: 'String', usePreDefinedValuesOnly: false,
+  },
+  accessPackageCatalog: { displayName: 'Fixture catalog', description: 'Fixture catalog', catalogType: 'userManaged', state: 'published', isExternallyVisible: false },
+  entitlementManagementSettings: { externalUserLifecycleAction: 'blockSignInAndDelete', durationUntilExternalUserDeletedAfterBlocked: 'P30D' },
+  appManagementPolicy: {
+    displayName: 'Fixture credential policy', description: 'Fixture', isEnabled: true,
+    restrictions: { passwordCredentials: [{ restrictionType: 'passwordLifetime', maxLifetime: 'P90D', restrictForAppsCreatedAfterDateTime: '2026-01-01T00:00:00Z' }], keyCredentials: [] },
+  },
+  multiTenantOrganization: { displayName: 'Fixture organization', description: 'Fixture multitenant organization' },
+  managedAppPolicy: {
+    '@odata.type': '#microsoft.graph.iosManagedAppProtection', displayName: 'Fixture iOS protection', description: 'Fixture',
+    pinRequired: true, minimumPinLength: 6, roleScopeTagIds: ['0'],
+    apps: [{ mobileAppIdentifier: { '@odata.type': '#microsoft.graph.iosMobileAppIdentifier', bundleId: 'com.microsoft.office.outlook' } }],
+  },
+  targetedManagedAppConfiguration: {
+    displayName: 'Fixture app configuration', description: 'Fixture', roleScopeTagIds: ['0'],
+    customSettings: [{ name: 'com.microsoft.outlook.Mail.FocusedInbox', value: 'false' }],
+    apps: [{ mobileAppIdentifier: { '@odata.type': '#microsoft.graph.iosMobileAppIdentifier', bundleId: 'com.microsoft.office.outlook' } }],
+  },
+  mobileAppConfiguration: {
+    '@odata.type': '#microsoft.graph.iosMobileAppConfiguration', displayName: 'Fixture device app configuration', description: 'Fixture',
+    targetedMobileApps: [], roleScopeTagIds: ['0'], settings: [{ appConfigKey: 'FixtureKey', appConfigKeyType: 'stringType', appConfigKeyValue: 'on' }],
+  },
+  assignmentFilter: { displayName: 'Fixture corporate devices', description: 'Fixture', platform: 'windows10AndLater', rule: '(device.deviceOwnership -eq "Corporate")', roleScopeTags: ['0'] },
+  roleScopeTag: { displayName: 'Fixture scope tag', description: 'Fixture', isBuiltIn: false },
+  windowsFeatureUpdateProfile: { displayName: 'Fixture feature update', description: 'Fixture', featureUpdateVersion: 'Windows 11, version 24H2', roleScopeTagIds: ['0'] },
+  windowsQualityUpdateProfile: { displayName: 'Fixture quality update', description: 'Fixture', expeditedUpdateSettings: { qualityUpdateRelease: '2026-09-09T00:00:00Z', daysUntilForcedReboot: 1 }, roleScopeTagIds: ['0'] },
+  windowsDriverUpdateProfile: { displayName: 'Fixture driver update', description: 'Fixture', approvalType: 'manual', roleScopeTagIds: ['0'] },
+  notificationMessageTemplate: { displayName: 'Fixture compliance email', description: 'Fixture', brandingOptions: 'includeCompanyLogo', roleScopeTagIds: ['0'] },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
@@ -225,6 +276,11 @@ const FIXTURE_DRIFT = Object.freeze({
   unifiedRoleManagementPolicy: (payload) => ({
     rules: payload.rules.map((rule) => (rule.id === 'Enablement_EndUser_Assignment' ? { ...rule, enabledRules: ['Justification'] } : rule)),
   }),
+  // Wave 2 IDO: settings and identifiers without a writable display name.
+  lifecycleManagementSettings: () => ({ workflowScheduleIntervalInHours: 12 }),
+  attributeSet: () => ({ description: 'Drifted' }),
+  customSecurityAttributeDefinition: () => ({ description: 'Drifted' }),
+  entitlementManagementSettings: () => ({ externalUserLifecycleAction: 'none' }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the
@@ -232,6 +288,8 @@ const FIXTURE_DRIFT = Object.freeze({
 const FIXTURE_LOCKOUT_GATE = Object.freeze({ evaluate: () => ({ allowed: true, reason: 'fixture harness' }) });
 
 const FIXTURE_TENANT = 'fixture-tenant';
+
+const IDO_RECORDS = Object.freeze({ ...IDENTITY_RECORDS, ...INTUNE_EXTENDED_RECORDS });
 
 /** Where the fake Graph holds a tenant policy object: the same route its update writes to. */
 function tenantPolicyFixturePath(resource) {
@@ -324,6 +382,13 @@ export function fakeGraph() {
         const value = (body.assignments ?? []).map((entry, index) => ({ ...entry, id: `${assign[1].split('/').pop()}_${index}` }));
         objects.set(`${assign[1]}/assignments`, { value });
         return { ok: true, status: 200, body: { value } };
+      }
+      // Wave 2 IDO: /targetApps replaces a managed-app policy's apps.
+      const targetApps = /^(\/deviceAppManagement\/[^/]+\/[^/]+)\/targetApps$/.exec(path);
+      if (targetApps && method === 'POST') {
+        if (!objects.has(targetApps[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
+        objects.set(targetApps[1], { ...objects.get(targetApps[1]), apps: body.apps.map((app, index) => ({ ...app, id: `app-${index}` })) });
+        return { ok: true, status: 204, body: null };
       }
       const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
       if (actions && method === 'POST') {
@@ -434,16 +499,20 @@ function fixtureFor(resourceType, operation, graph) {
     graph.objects.set(tenantPolicyFixturePath(resource), live);
     return resource;
   }
+  // Wave 2 IDO: a record writer addresses the object by its own route (a
+  // singleton, or a collection chosen by the payload's subtype).
+  const record = IDO_RECORDS[resourceType];
+  const objectPath = (record && recordObjectPath(record, payload, existingId)) ?? `${collection}/${existingId}`;
   if (operation === 'create') return { ...base, verb: 'create', payload };
   if (operation === 'update') {
     // Drift a field the type actually has; a role assignment has no mutable name.
     const drifted = FIXTURE_DRIFT[resourceType]?.(payload) ?? ('displayName' in payload ? { displayName: 'Drifted' } : {});
     const live = { ...payload, id: existingId, ...drifted };
-    graph.objects.set(`${collection}/${existingId}`, live);
+    graph.objects.set(objectPath, live);
     return { ...base, verb: 'update', payload, targetId: existingId, live: { state: 'present', targetId: existingId, payload: live } };
   }
   if (operation === 'delete') {
-    graph.objects.set(`${collection}/${existingId}`, { ...payload, id: existingId });
+    graph.objects.set(objectPath, { ...payload, id: existingId });
     return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
   }
   if (operation === 'restore-soft-deleted') {

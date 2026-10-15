@@ -102,7 +102,7 @@ const op = (action, targetNaturalKey, targetId, extra = {}) => ({
 
 // ------------------------------------------------ capability and verb table
 
-test('only group member/owner edges carry a write capability; every other family stays read-only', () => {
+test('group member/owner edges carry a write capability here; app owners and app role grants are add-only (Wave 2 IDO); every other family stays read-only', () => {
   assert.deepEqual([...RELATIONSHIP_RESTORE_FAMILIES], ['member', 'owner']);
   for (const family of ['member', 'owner']) {
     for (const operation of EDGE_OPERATIONS) {
@@ -115,8 +115,10 @@ test('only group member/owner edges carry a write capability; every other family
     for (const operation of OPERATIONS) assert.equal(capabilityFor(edgeCapabilityKey('group', family), operation).claim, 'unsupported');
   }
   assert.equal(capabilityFor('group', 'edge-add').claim, 'unsupported', 'the parent type has no edge capability');
-  for (const [parent, family] of [['group', 'transitiveMember'], ['application', 'appOwner'], ['servicePrincipal', 'appRoleGrant']]) {
-    assert.equal(capabilityFor(edgeCapabilityKey(parent, family), 'edge-add').claim, 'unsupported', `${parent} ${family}`);
+  assert.equal(capabilityFor(edgeCapabilityKey('group', 'transitiveMember'), 'edge-add').claim, 'unsupported', 'group transitiveMember');
+  for (const [parent, family] of [['application', 'appOwner'], ['servicePrincipal', 'servicePrincipalOwner'], ['servicePrincipal', 'appRoleGrant']]) {
+    assert.equal(capabilityFor(edgeCapabilityKey(parent, family), 'edge-add').claim, 'fixture-tested', `${parent} ${family}`);
+    assert.equal(capabilityFor(edgeCapabilityKey(parent, family), 'edge-remove').claim, 'unsupported', `${parent} ${family} is never removed`);
   }
   assert.throws(() => refRequestFor({ family: 'transitiveMember', action: 'add' }, 'g', 't'), /no qualified \$ref handler/);
 });

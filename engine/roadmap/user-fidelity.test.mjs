@@ -72,12 +72,15 @@ const run = (graph, wave, options = {}) => applyWave(graph, governor, wave, { ta
 
 // ------------------------------------------------------------------ registry
 
-test('user update and soft-delete restore are fixture-tested; create and delete stay unsupported', () => {
+test('user update and soft-delete restore are fixture-tested; create is the Wave 2 recreate; delete stays unsupported', () => {
   for (const operation of OPERATIONS) {
     const capability = capabilityFor('user', operation);
     if (operation === 'update' || operation === 'restore-soft-deleted') {
       assert.equal(capability.claim, 'fixture-tested', operation);
       assert.equal(capability.proofRef, PROOF);
+    } else if (operation === 'create') {
+      assert.equal(capability.claim, 'fixture-tested', operation);
+      assert.equal(capability.proofRef, 'engine/restore/identityObjectOperations.test.mjs');
     } else {
       assert.equal(capability.claim, 'unsupported', operation);
     }
@@ -242,11 +245,16 @@ test('a restore that returns a different id fails before any attribute is writte
   assert.equal(graph.bodies.length, 1);
 });
 
-test('create stays refused: a user cannot be rebuilt without its credentials', async () => {
+test('create rebuilds the user with sign-in off and a credentials checklist, never with a backed-up password', async () => {
   const graph = recordingGraph();
   const result = await run(graph, [{ naturalKey: 'user:ada', resourceType: 'user', verb: 'create', payload: snapshot, references: [] }]);
-  assert.match(result.failed[0].error, /unsupported operation: user create/);
-  assert.equal(graph.bodies.length, 0);
+  assert.deepEqual(result.failed, []);
+  const post = graph.bodies.find((write) => write.method === 'POST' && write.path === '/users');
+  assert.equal(post.body.accountEnabled, false);
+  assert.notEqual(post.body.passwordProfile.password, snapshot.passwordProfile.password);
+  assert.ok(!JSON.stringify(result).includes(post.body.passwordProfile.password), 'the generated password is never reported');
+  const steps = result.applied[0].completion.map((step) => `${step.kind}:${step.requirement}`);
+  for (const required of ['credential:password', 'credential:mfa', 'enforcement:accountEnabled']) assert.ok(steps.includes(required), required);
 });
 
 // ------------------------------------------------------------------ groups and the plan

@@ -157,7 +157,7 @@ test('an unqualified native recovery route is a manual handoff; a failed native 
   assert.match(result.skipped[0].reason, /^manual:/);
 
   // Unsupported capability: manual, and applyWave's own capability refusal still stands.
-  const unsupported = selectRecoveryMechanism({ naturalKey: 'user:a', resourceType: 'user', verb: 'create' }, { now: NOW });
+  const unsupported = selectRecoveryMechanism({ naturalKey: 'user:a', resourceType: 'user', verb: 'delete' }, { now: NOW });
   assert.equal(unsupported.mechanism, 'manual');
 });
 

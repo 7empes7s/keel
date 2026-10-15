@@ -1,0 +1,415 @@
+/**
+ * Wave 2 IDO: one record-driven writer for the identity object and Intune
+ * types that are written through the writer registry rather than a built-in
+ * applyEngine branch (engine/restore/identityObjectOperations.mjs and
+ * engine/restore/intuneOperations.mjs hold the records).
+ *
+ * A record names everything a write needs, and nothing is inferred from the
+ * snapshot payload:
+ *
+ *  - `version`, and `collection` (or `collectionFor(payload)` for a type whose
+ *    subtypes live in different collections, `singleton` for an object that is
+ *    only ever updated in place);
+ *  - `operations`: the verbs the record writes; anything else is refused;
+ *  - `excluded`: fields never sent (navigation properties, reports, values the
+ *    service computes); `createOnly`: fields sent on create and never on update;
+ *  - `odataType`: 'required' (sent and checked), 'keep' (sent when present) or
+ *    'drop' (never sent);
+ *  - `refusal(resource, verb, ctx)`: a type's own refusals before any call;
+ *  - `afterWrite(io, step)`: child writes made after the object (target apps,
+ *    localized messages), each verified by the record;
+ *  - `deleteGuard(io, step)`: a type's own reason not to delete.
+ *
+ * Every write is journalled first and read back; every field it sent must read
+ * back as sent (nulls and absent fields read the same). A reference held in a
+ * written field must resolve to the same id in the target: remapping a
+ * reference to another tenant's id is not qualified for any of these types, so
+ * it fails instead of being written.
+ */
+import { isDeepStrictEqual } from 'node:util';
+
+import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
+import { withExplicitReferences } from '../coverage/qualification.mjs';
+import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
+import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
+import { followUpSteps } from './bestEffortRecreate.mjs';
+import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
+
+export const RECORD_WRITER_CONTRACT_VERSION = 1;
+
+const VERBS = new Set(['create', 'update', 'delete']);
+const COMPLETE = new Set(['complete', 'complete-empty']);
+const isAnnotation = (key) => key.includes('@odata.') && key !== '@odata.type';
+export const stripGraph = (odata) => (typeof odata === 'string' ? odata.replace(/^#?microsoft\.graph\./, '') : null);
+
+/** A frozen record with defaults filled in. */
+export function defineRecord(spec) {
+  if (!spec?.resourceType) throw new TypeError('a record needs a resourceType');
+  for (const verb of spec.operations ?? []) {
+    if (!VERBS.has(verb)) throw new TypeError(`${spec.resourceType}: unknown operation ${verb}`);
+  }
+  if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
+    throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
+  }
+  return Object.freeze({
+    updateMethod: 'PATCH',
+    odataType: 'drop',
+    excluded: [],
+    createOnly: [],
+    readQuery: null,
+    singleton: false,
+    collection: null,
+    collectionFor: null,
+    writable: null,
+    refusal: null,
+    preflight: null,
+    afterWrite: null,
+    deleteGuard: null,
+    transform: null,
+    ...spec,
+    operations: Object.freeze([...(spec.operations ?? [])]),
+    excluded: Object.freeze([...(spec.excluded ?? [])]),
+    writable: spec.writable ? Object.freeze([...spec.writable]) : null,
+    createOnly: Object.freeze([...(spec.createOnly ?? [])]),
+  });
+}
+
+/** Every @odata annotation except @odata.type, at every depth. */
+export function withoutAnnotations(value) {
+  if (Array.isArray(value)) return value.map(withoutAnnotations);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (isAnnotation(key)) continue;
+    out[key] = withoutAnnotations(child);
+  }
+  return out;
+}
+
+/** Nulls (and fields Graph leaves out) read the same as an absent field. */
+export function normalised(value) {
+  if (Array.isArray(value)) return value.map(normalised);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const key of Object.keys(value).sort()) {
+    const child = normalised(value[key]);
+    if (child === null || child === undefined) continue;
+    out[key] = child;
+  }
+  return out;
+}
+
+export const sameValue = (left, right) => isDeepStrictEqual(normalised(left ?? null), normalised(right ?? null));
+
+/** The collection a record writes to for one payload, or null when it has none. */
+export function recordCollection(record, payload) {
+  return record.collectionFor ? record.collectionFor(payload) : record.collection;
+}
+
+/** The path of one object (or the singleton itself). */
+export function recordObjectPath(record, payload, targetId) {
+  const collection = recordCollection(record, payload);
+  if (!collection) return null;
+  return record.singleton ? collection : `${collection}/${encodeURIComponent(targetId)}`;
+}
+
+const withQuery = (record, path) => (record.readQuery ? `${path}?${record.readQuery}` : path);
+
+/**
+ * The body a write sends: the payload minus server-owned, excluded and
+ * annotation fields; minus create-only fields on update; @odata.type per the
+ * record. `transform` may adjust the result (a create's safe defaults).
+ */
+export function recordWriteBody(record, payload, verb) {
+  const body = {};
+  for (const [key, value] of Object.entries(payload ?? {})) {
+    if (SERVER_OWNED_ALWAYS.has(key)) continue;
+    if (key === '@odata.type') {
+      if (record.odataType !== 'drop') body[key] = value;
+      continue;
+    }
+    if (isAnnotation(key) || record.excluded.includes(key)) continue;
+    if (record.writable && !record.writable.includes(key) && !record.createOnly.includes(key)) continue;
+    if (verb !== 'create' && record.createOnly.includes(key)) continue;
+    body[key] = withoutAnnotations(value);
+  }
+  return record.transform ? record.transform(body, { verb, payload }) : body;
+}
+
+/** The fields of the desired body whose value live does not hold. */
+export function changedRecordFields(record, desired, live, verb = 'update') {
+  const want = recordWriteBody(record, desired, verb);
+  const have = recordWriteBody(record, live ?? {}, verb);
+  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameValue(want[key], have[key]));
+}
+
+/** null, or the post-state refusal text: every sent field reads back as sent. */
+export function recordPostStateRefusal(record, sent, live) {
+  if (!live || typeof live !== 'object') return 'post-state: the object could not be read back';
+  if (record.odataType === 'required' && typeof sent['@odata.type'] === 'string'
+    && stripGraph(live['@odata.type']) !== stripGraph(sent['@odata.type'])) {
+    return `post-state: the object reads back as ${stripGraph(live['@odata.type']) ?? 'an unnamed kind'}, not ${stripGraph(sent['@odata.type'])}`;
+  }
+  const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !sameValue(sent[key], live[key]));
+  return wrong.length > 0 ? `post-state: ${wrong.join(', ')} did not read back as written` : null;
+}
+
+/**
+ * Every reference in a field this write sends must resolve to the id it
+ * already holds. Returns null, or the failure text.
+ */
+export function referenceRefusal(resource, body, referenceContext) {
+  const sent = new Set(Object.keys(body));
+  for (const ref of withExplicitReferences(resource)) {
+    const top = String(ref.field ?? '').split(/[.[]/)[0];
+    if (!sent.has(top) || isServerOwnedReference(ref, resource.resourceType)) continue;
+    const result = resolveSymbol(ref.symbol, referenceContext ?? { targetIndex: new Map(), mappingTable: new Map(), runProvenance: new Map() });
+    if (!result.resolved) return `${resource.naturalKey}: cannot resolve reference at "${ref.field}" (symbol ${ref.symbol ?? 'null'}): ${result.reason}`;
+    if (VERBATIM_RESOLUTIONS.has(result.via)) continue;
+    const held = String(ref.field).split(/\.|\[|\]/).filter(Boolean)
+      .reduce((value, segment) => value?.[/^\d+$/.test(segment) ? Number(segment) : segment], resource.payload);
+    const id = ref.prefix && typeof held === 'string' ? held.slice(ref.prefix.length) : held;
+    if (String(id ?? '').toLowerCase() !== String(result.targetId ?? '').toLowerCase()) {
+      return `unqualified-remapping: ${resource.resourceType} ${ref.field} would be rewritten to a different id, and reference remapping is not proven for this type`;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- execution
+
+async function journal(ctx, resource, { operation, targetId = null, priorState, intendedState }) {
+  if (!ctx.rollbackClient) return { ok: true, entryId: null };
+  try {
+    const entryId = await recordPriorState(ctx.rollbackClient, ctx.restoreRef
+      ? {
+        runId: ctx.runId, naturalKey: resource.naturalKey, priorState, restoreRef: ctx.restoreRef,
+        resourceType: resource.resourceType, operation, targetId, blastRadius: resource.blastRadius ?? null, intendedState,
+      }
+      : { runId: ctx.runId, naturalKey: resource.naturalKey, priorState });
+    return { ok: true, entryId: ctx.restoreRef ? entryId : null };
+  } catch {
+    return { ok: false, entryId: null };
+  }
+}
+
+async function note(ctx, entry, outcome, extras = {}) {
+  if (!ctx.rollbackClient || !entry?.entryId) return;
+  try {
+    await recordWriteOutcome(ctx.rollbackClient, { entryId: entry.entryId, outcome, ...extras });
+  } catch {
+    // left pending: compensation reconciles it by reading
+  }
+}
+
+export function outcomeDetail(result) {
+  if (result?.status !== undefined && result?.status !== null) return `status ${result.status}`;
+  return result?.error ? String(result.error).slice(0, 200) : 'no response';
+}
+
+export function graphFailure(naturalKey, result, prefix = '') {
+  const failure = { naturalKey, error: `${prefix}${JSON.stringify(result?.body ?? result?.error ?? null)}` };
+  if (result?.attempts !== undefined) {
+    failure.status = result.status;
+    failure.attempts = result.attempts;
+  }
+  return failure;
+}
+
+export const isNotFound = (result) => result?.ok === false && result?.status === 404;
+
+/** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
+export async function readUntil(io, version, path, isStale, { attempts = 6, delayMs = 3000 } = {}) {
+  let result;
+  for (let i = 0; i < attempts; i += 1) {
+    result = await io.retryOperation(() => io.writer.read(version, path));
+    if (!isStale(result)) return result;
+    if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return result;
+}
+
+const refusalEntry = (naturalKey, refusal) => (refusal.outcome === 'skipped'
+  ? { skipped: { naturalKey, reason: refusal.reason, ...(refusal.completion ? { completion: refusal.completion } : {}) } }
+  : { failed: { naturalKey, error: refusal.reason } });
+
+/** The id a resource has in the target, when it exists there. */
+export function liveTargetId(resource, ctx) {
+  return resource.targetId ?? resource.live?.targetId ?? ctx.existingTargetIds?.get(resource.naturalKey) ?? null;
+}
+
+/**
+ * One write through a record. `ctx`: { mode, retryOperation, referenceContext,
+ * rollbackClient, runId, restoreRef, existingTargetIds, deletionGuardOptions,
+ * observedCoverage, readAfterWriteOptions }. Returns { applied } | { skipped }
+ * | { failed }.
+ */
+export async function applyRecordWrite(writer, record, resource, verb, ctx = {}) {
+  const { naturalKey } = resource;
+  const io = {
+    writer,
+    retryOperation: ctx.retryOperation ?? ((operation) => operation()),
+    readOptions: ctx.readAfterWriteOptions ?? {},
+  };
+  if (!record.operations.includes(verb)) {
+    return { failed: { naturalKey, error: `unsupported operation: ${resource.resourceType} ${verb} has no operation record` } };
+  }
+  const payload = verb === 'delete' ? (resource.live?.payload ?? resource.payload) : resource.payload;
+  if (!payload || typeof payload !== 'object') return { failed: { naturalKey, error: 'the backup holds no object to write' } };
+  if (!recordCollection(record, payload)) {
+    return { skipped: { naturalKey, reason: `manual: ${resource.resourceType} of kind ${stripGraph(payload['@odata.type']) ?? 'unknown'} has no write route` } };
+  }
+  if (record.odataType === 'required' && verb !== 'delete' && typeof payload['@odata.type'] !== 'string') {
+    return { failed: { naturalKey, error: 'the backup does not record which kind of object this is (@odata.type), and Graph needs it to write one' } };
+  }
+  const own = record.refusal ? record.refusal(resource, verb, ctx) : null;
+  if (own) return refusalEntry(naturalKey, own);
+
+  if (verb === 'delete') return applyRecordDelete(io, record, resource, payload, ctx);
+
+  const body = recordWriteBody(record, payload, verb);
+  const references = referenceRefusal(resource, body, ctx.referenceContext);
+  if (references) return { failed: { naturalKey, error: references } };
+
+  const before = resource.live?.payload ?? null;
+  let targetId = record.singleton ? null : (verb === 'update' ? liveTargetId(resource, ctx) : null);
+  if (verb === 'update' && !record.singleton && !targetId) return { failed: { naturalKey, error: 'update has no targetId' } };
+  const fields = verb === 'create' || !before
+    ? Object.keys(body).filter((field) => field !== '@odata.type' && field !== 'id')
+    : changedRecordFields(record, payload, before, verb);
+
+  // A recreate lists the parts the backup cannot give back (ENTRA's
+  // best-effort rule), worked out before anything is written.
+  const followUp = verb === 'create' ? { followUp: followUpSteps(resource.resourceType, payload, { decision: 'automated' }) } : {};
+  if (verb === 'create') {
+    const existingId = ctx.existingTargetIds?.get(naturalKey);
+    if (existingId) {
+      if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: { fields } } };
+      const found = await io.retryOperation(() => writer.read(record.version, withQuery(record, recordObjectPath(record, payload, existingId))));
+      if (found?.ok !== true) {
+        return { failed: { naturalKey, error: `conflict: an object with this key exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
+      }
+      if (changedRecordFields(record, payload, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
+      return { failed: { naturalKey, error: 'conflict: a different object with this key exists in the target — manual reconciliation required' } };
+    }
+  }
+  if (record.preflight && writer) {
+    const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
+    if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
+  }
+  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields }, ...followUp } };
+  if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };
+
+  const entry = await journal(ctx, resource, { operation: verb, targetId, priorState: before, intendedState: body });
+  if (!entry.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
+
+  let sent = {};
+  if (verb === 'create') {
+    const collection = recordCollection(record, payload);
+    const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
+    if (!result.ok) {
+      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+    targetId = result.body?.id;
+    if (typeof targetId !== 'string' || targetId.length === 0) {
+      await note(ctx, entry, 'uncertain', { postState: result.body ?? null, detail: 'create returned no id' });
+      return { failed: { naturalKey, error: 'create returned no id' } };
+    }
+    sent = body;
+  } else if (fields.length > 0) {
+    sent = record.updateMethod === 'PUT' ? body
+      : Object.fromEntries(Object.entries(body).filter(([field]) => field === '@odata.type' || fields.includes(field)));
+    const result = await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
+    if (!result.ok) {
+      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+      return { failed: graphFailure(naturalKey, result) };
+    }
+  }
+
+  const readPath = withQuery(record, recordObjectPath(record, payload, targetId));
+  const reRead = await readUntil(io, record.version, readPath,
+    (r) => isNotFound(r) || (r?.ok === true && recordPostStateRefusal(record, sent, r.body) !== null), io.readOptions);
+  if (reRead?.ok !== true) {
+    await note(ctx, entry, 'uncertain', { targetId, detail: `${verb} could not be re-read` });
+    return { failed: graphFailure(naturalKey, reRead) };
+  }
+  let live = reRead.body;
+  const postState = recordPostStateRefusal(record, sent, live);
+  if (postState) {
+    await note(ctx, entry, 'uncertain', { targetId, postState: live, detail: 'post-state did not verify' });
+    return { failed: { naturalKey, error: postState } };
+  }
+
+  let extra = null;
+  if (record.afterWrite) {
+    extra = await record.afterWrite(io, { resource, payload, verb, targetId, live, before, ctx });
+    if (extra?.error) {
+      await note(ctx, entry, 'uncertain', { targetId, postState: live, detail: extra.error.slice(0, 500) });
+      return { failed: { naturalKey, error: `${verb === 'create' ? 'the object was created, but ' : ''}${extra.error}` } };
+    }
+    if (extra?.live) live = extra.live;
+  }
+
+  await note(ctx, entry, 'succeeded', { targetId, postState: live });
+  const changes = { fields, ...(extra?.changes ?? {}) };
+  return {
+    applied: {
+      naturalKey, targetId,
+      changes,
+      ...(extra?.completion?.length ? { completion: extra.completion } : {}),
+      ...followUp,
+    },
+  };
+}
+
+/**
+ * A delete: the shared deletion guard, a complete observation of the type in
+ * the source snapshot, the record's own guard, then DELETE and a read that
+ * shows the object gone (absent or soft-deleted).
+ */
+async function applyRecordDelete(io, record, resource, payload, ctx) {
+  const { naturalKey } = resource;
+  const guard = refuseUnsafeDeletion({ ...resource, payload }, ctx.deletionGuardOptions ?? { breakGlassUserIds: [] });
+  if (guard.refused) return { skipped: { naturalKey, reason: guard.reason } };
+  const coverage = ctx.observedCoverage?.[resource.resourceType]?.outcome ?? null;
+  if (!COMPLETE.has(coverage)) {
+    return { failed: { naturalKey, error: `partial observation cannot authorise delete: the snapshot's ${resource.resourceType} collection is ${coverage ?? 'not recorded'}, so its absence there is not evidence` } };
+  }
+  const targetId = liveTargetId(resource, ctx);
+  if (!targetId) return { failed: { naturalKey, error: 'delete has no targetId' } };
+  const path = recordObjectPath(record, payload, targetId);
+  if (record.deleteGuard && io.writer) {
+    const reason = await record.deleteGuard(io, { resource, payload, targetId, path, ctx });
+    if (reason) return { skipped: { naturalKey, reason } };
+  }
+  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId } };
+
+  const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: payload, intendedState: null });
+  if (!entry.ok) return { failed: { naturalKey, error: 'refusing to delete: rollback journal write failed' } };
+  const result = await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
+  if (!result.ok) {
+    await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    return { failed: graphFailure(naturalKey, result) };
+  }
+  const reRead = await readUntil(io, record.version, path, (r) => r?.ok === true && r.body?.deletedDateTime == null, io.readOptions);
+  if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {
+    await note(ctx, entry, 'uncertain', { postState: reRead?.body ?? null, detail: 'delete did not verify' });
+    return { failed: { naturalKey, error: 'delete did not verify as absent or soft-deleted' } };
+  }
+  await note(ctx, entry, 'succeeded', { detail: isNotFound(reRead) ? 'absent' : 'soft-deleted' });
+  return { applied: { naturalKey, targetId } };
+}
+
+/** The ledger rows of a set of records: what each writes, where and with which permission. */
+export function recordLedger(records) {
+  return Object.freeze(records.flatMap((record) => record.operations.map((operation) => Object.freeze({
+    resourceType: record.resourceType,
+    operation,
+    version: record.version,
+    method: operation === 'create' ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
+    route: record.singleton ? record.collection
+      : operation === 'create' ? (record.collection ?? '{subtype collection}') : `${record.collection ?? '{subtype collection}'}/{id}`,
+    permission: record.permission ?? null,
+  }))));
+}

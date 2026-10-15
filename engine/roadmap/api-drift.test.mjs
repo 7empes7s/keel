@@ -490,8 +490,8 @@ test('a changed field becomes a review candidate and never becomes writable', as
 
   // Acceptance: a changed field does not become writable. The drift pass ran
   // against metadata showing changed and new fields; every operation claim —
-  // including the never-registered user create — is exactly what it was.
-  assert.equal(capabilityFor('user', 'create').claim, 'unsupported');
+  // including the never-registered user delete — is exactly what it was.
+  assert.equal(capabilityFor('user', 'delete').claim, 'unsupported');
   assert.equal(JSON.stringify(capabilitySummaryFor('user')), capabilitiesBefore.user);
   assert.equal(JSON.stringify(capabilitySummaryFor('group')), capabilitiesBefore.group);
 

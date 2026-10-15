@@ -384,16 +384,18 @@ test('a writer\'s follow-up steps become completion items; parts that are only a
 });
 
 test('a type with no writer gets a by-hand step with the backed-up values and its admin center path', () => {
-  const workflow = {
-    id: 'wf-1', displayName: 'KEEL-RT leaver', category: 'leaver', createdDateTime: '2026-01-01T00:00:00Z',
-    executionConditions: { scope: { rule: "department eq 'KEEL-RT'" } }, tasks: [{ taskDefinitionId: 'disable', isEnabled: true }],
+  // Wave 2 IDO gave lifecycle workflows a writer, so an access review is the example.
+  const review = {
+    id: 'ar-1', displayName: 'KEEL-RT quarterly review', createdDateTime: '2026-01-01T00:00:00Z',
+    scope: { query: '/groups/g-1/transitiveMembers', queryType: 'MicrosoftGraph' }, settings: { recurrence: { pattern: { type: 'absoluteMonthly', interval: 3 } } },
   };
-  const steps = byHandSteps('lifecycleWorkflow', workflow, TYPE_DECISIONS.lifecycleWorkflow);
+  const steps = byHandSteps('accessReviewScheduleDefinition', review, TYPE_DECISIONS.accessReviewScheduleDefinition);
   assert.equal(steps[0].requirement, 'followUp:recreate-by-hand');
-  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Workflows');
-  assert.equal(steps[0].values.displayName, 'KEEL-RT leaver');
+  assert.equal(steps[0].portalPath, 'Microsoft Entra admin center > Identity Governance > Access reviews');
+  assert.equal(steps[0].values.displayName, 'KEEL-RT quarterly review');
   assert.ok(!('id' in steps[0].values) && !('createdDateTime' in steps[0].values), 'ids and timestamps are not values to enter');
-  assert.equal(steps[1].actionable, false, 'run history is a record only');
+  assert.equal(steps[1].actionable, false, 'past reviews are a record only');
+  assert.throws(() => byHandSteps('lifecycleWorkflow', {}, TYPE_DECISIONS.lifecycleWorkflow), /has a writer/);
   assert.throws(() => byHandSteps('application', incompleteApp, TYPE_DECISIONS.application), /has a writer/);
 });
 

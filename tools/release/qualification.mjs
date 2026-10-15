@@ -760,6 +760,8 @@ export function verifyEvidence(evidence, {
   hmacKey = process.env.KEEL_QUALIFICATION_HMAC_KEY ?? null,
   evidenceDir = process.cwd(),
   trustedRunners = TRUSTED_RUNNERS,
+  // The test tenant list, for gates that allow some writes there only (tests pass their own).
+  testTenantRefs = undefined,
 } = {}) {
   const failures = [];
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
@@ -870,7 +872,7 @@ export function verifyEvidence(evidence, {
   // Gate-specific validation, additive per task.
   const validator = GATE_VALIDATORS[evidence.gate];
   if (!validator) failures.push(`no validator registered for gate '${evidence.gate}'`);
-  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, maxAgeHours, hmacKey, evidenceDir, trustedRunners }));
+  else failures.push(...validator(evidence, { tenantRef, build, artifact, now, maxAgeHours, hmacKey, evidenceDir, trustedRunners, testTenantRefs }));
 
   return { ok: failures.length === 0, failures };
 }

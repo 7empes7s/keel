@@ -60,7 +60,7 @@ import { readTeamsExtended } from '../../engine/collect/workloads/teamsExtended.
 import { readTeamsPolicies } from '../../engine/collect/workloads/teamsPolicies.mjs';
 import { CmdletError } from '../../engine/powershell/jobQueue.mjs';
 import { workloadTarget, workloadWriteCmdlet, writeFamilies } from '../../engine/restore/workloads/cmdletSettings.mjs';
-import { TENANT_WIDE_OPTION } from '../../engine/restore/workloads/fixtureGuard.mjs';
+import { TENANT_WIDE_OPTION, onTestTenant } from '../../engine/restore/workloads/fixtureGuard.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
@@ -165,7 +165,7 @@ function identityOf(write, entry) {
  */
 export async function captureWorkloadWrites({
   workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configs = {}, tenantRef, build,
-  credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, testTenantRefs, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000, suffix = () => randomBytes(4).toString('hex'),
 }) {
   knownWorkload(workload);
@@ -178,6 +178,7 @@ export async function captureWorkloadWrites({
     problems.push('a capture needs two separate credential references (collector, restorer)');
   }
   if (!grants?.restorer || !Array.isArray(grants.restorer.permissions) || !Array.isArray(grants.restorer.roles)) problems.push('--grants must name the restorer\'s permissions and roles');
+  if (allowTenantWide && tenantRef && !onTestTenant(tenantRef, testTenantRefs)) problems.push(`${TENANT_WIDE_OPTION} is allowed on the test tenant only; nothing was sent`);
   if (problems.length) throw new Error(problems.join('; '));
   const tenant = directoryTenantId.toLowerCase();
   for (const role of ['collector', 'restorer']) {

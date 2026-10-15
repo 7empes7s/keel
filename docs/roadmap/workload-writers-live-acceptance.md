@@ -33,9 +33,16 @@ the test tenant on 2026-10-15. Off by default; with `--allow-tenant-wide-test-wr
   which the restore guard (`workloadTarget`) also sees as tenant-wide;
 - changes one harmless field as above, never a switch in `TENANT_WIDE_UNSAFE_SWITCHES` (Defender
   and Safe Documents, the IP safe list, unsupported ActiveSync platforms, the shared SIP address
-  space), reads it back and puts it back;
+  space, unverified federation partners, third-party live event delivery, supervised chat and scoped
+  people search), reads it back and puts it back;
+- runs only on the test tenant (`TEST_TENANT_REFS`); elsewhere it refuses before sending anything;
 - marks the capture `scope: tenant-wide` and the record `tenantWide: true`. The gate refuses a
-  tenant-wide capture in a record without it, or on any other operation.
+  tenant-wide capture in a record without it, on any other operation, or off the test tenant.
+
+ActiveSync organization settings and Defender for Office are always skipped: ActiveSync has no
+comment or true/false field, and every Defender field turns a protection off. Federation is
+skipped too once `TreatDiscoveredPartnersAsUnverified` is excluded, unless its read shows another
+harmless switch.
 
 ## Operator steps
 

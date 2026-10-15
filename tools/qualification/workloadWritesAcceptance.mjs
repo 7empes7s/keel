@@ -17,6 +17,7 @@
  */
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { classifyWorkloadEffects, WORKLOAD_EFFECT_RULES } from '../../engine/restore/workloads/cmdletSettings.mjs';
+import { TEST_TENANT_REFS } from '../../engine/govern/approvalPolicy.mjs';
 import { exchangeSecretProblems } from './exchangeAcceptance.mjs';
 
 export const WORKLOAD_WRITES_LIVE_GATE = 'workload-writers-live-acceptance';
@@ -54,6 +55,7 @@ export const TENANT_WIDE_WRITES = Object.freeze([
  */
 export const TENANT_WIDE_UNSAFE_SWITCHES = Object.freeze([
   'EnableATPForSPOTeamsODB', 'EnableSafeDocs', 'AllowSafeDocsOpen', 'EnableSafeList', 'AllowAccessForUnSupportedPlatform', 'SharedSipAddressSpace',
+  'TreatDiscoveredPartnersAsUnverified', 'AllowSdnProviderForBroadcastMeeting', 'AllowRoleBasedChatPermissions', 'AllowScopedPeopleSearchandAccess',
 ]);
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
@@ -162,7 +164,7 @@ export function identityNamesFixture(write, capture) {
   const identity = capture.identity;
   if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
   if (kind === 'add' || write.identity === 'name') return identity === capture.fixture;
-  if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture;
+  if (capture.scope === 'tenant-wide' && write.identity === 'policy') return identity === capture.fixture && identity.toLowerCase() === 'global';
   if (write.identity === 'policy') return identity.toLowerCase() === `tag:${capture.fixture.toLowerCase()}`;
   return GUID_RE.test(identity);
 }
@@ -239,7 +241,7 @@ export function provenWrites(subject) {
 
 /** Gate validator for a WKLD writer live capture record. */
 export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
-  const { tenantRef, build, artifact, runner } = context;
+  const { tenantRef, build, artifact, runner, testTenantRefs = TEST_TENANT_REFS } = context;
   const failures = [];
   if (!runner?.ok) failures.push(`writer capture runner proof required (${runner?.reason ?? 'not checked'})`);
   if (!artifact?.ok) failures.push(`writer capture log required (${artifact?.reason ?? 'not checked'})`);
@@ -301,6 +303,12 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
     } else if (!['organization', 'config'].includes(org.tenantIdSource) || (org.tenantIdSource === 'organization' && sessions.some((item) => item.tenantId !== tenant))) {
       failures.push('the Exchange organization\'s tenant source is not recorded');
     }
+  }
+
+  // Tenant-wide writes were allowed for the test tenant only.
+  const tenantWideWrites = Array.isArray(subject.writes) && subject.writes.some((item) => item?.scope === 'tenant-wide');
+  if ((subject.tenantWide === true || tenantWideWrites) && !(testTenantRefs.includes(evidence.tenantRef) && evidence.tenantRef === tenantRef)) {
+    failures.push('tenant-wide writes are allowed on the test tenant only');
   }
 
   // Both refusal probes must have been refused here, before anything was sent.

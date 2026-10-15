@@ -397,8 +397,9 @@ test('a tenant-wide setting is written only when allowed and when it is the one 
     // With it: written, read back and put back on the one object.
     const live = fakeTenant(workload, { state: structuredClone(state) });
     const before = structuredClone(live.state);
-    const { evidence, dir, needsManualRevert } = await signedCapture(workload, live, { allowTenantWide: true });
-    assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
+    const onTest = { testTenantRefs: [tenantRef] };
+    const { evidence, dir, needsManualRevert } = await signedCapture(workload, live, { allowTenantWide: true, ...onTest });
+    assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir, onTest)).failures, []);
     assert.deepEqual(needsManualRevert, []);
     assert.equal(evidence.subject.tenantWide, true);
     const wideCaptures = evidence.subject.writes.filter((item) => item.scope === 'tenant-wide');
@@ -413,7 +414,12 @@ test('a tenant-wide setting is written only when allowed and when it is the one 
     assert.ok(wideCaptures.every((item) => !TENANT_WIDE_UNSAFE_SWITCHES.includes(item.field)), workload);
 
     // The gate refuses a tenant-wide write in a record that did not allow them, and one on another operation.
-    const failures = (change) => verifyEvidence(signEvidence(change(structuredClone(evidence)), KEY), verifyOptions(dir)).failures.join(' | ');
+    const failures = (change, options = onTest) => verifyEvidence(signEvidence(change(structuredClone(evidence)), KEY), verifyOptions(dir, options)).failures.join(' | ');
+    // Only on the test tenant: elsewhere the tool sends nothing and the gate refuses the record.
+    assert.match(failures((record) => record, { testTenantRefs: [] }), /test tenant only/);
+    const elsewhere = fakeTenant(workload, { state: structuredClone(state) });
+    await assert.rejects(capture(workload, elsewhere, { allowTenantWide: true, testTenantRefs: [] }), /test tenant only; nothing was sent/);
+    assert.deepEqual(elsewhere.writes, []);
     assert.match(failures((record) => { record.subject.tenantWide = false; return record; }), /did not allow them/);
     const fixtureCapture = evidence.subject.writes.find((item) => item.scope === 'fixture' && item.kind === 'update');
     if (fixtureCapture) {
@@ -427,7 +433,7 @@ test('a tenant-wide setting is written only when allowed and when it is the one 
     const key = getKey(families[family]);
     twice[key].push({ ...structuredClone(twice[key][0]), Guid: guid(), Identity: WORKLOADS[workload].keyed === 'guid' ? 'x' : 'Tag:Other' });
     const doubled = fakeTenant(workload, { state: twice });
-    const result = await signedCapture(workload, doubled, { allowTenantWide: true });
+    const result = await signedCapture(workload, doubled, { allowTenantWide: true, ...onTest });
     assert.match(result.evidence.subject.skipped.find((item) => item.operationId === wide[0][1].update)?.reason, /returned 2 objects/);
   }
 });

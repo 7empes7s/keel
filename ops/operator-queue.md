@@ -4131,3 +4131,29 @@ item that needs it stays untouched.
   4. The Collector's granted application roles, read from its token's `roles` claim (prints the role names only):
      `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
 - **Report:** the output of steps 1-4 in Result, and a comment on the PR from the "Discovery unreadable reason" thread if one is open.
+
+### Q86: Why New-CsTeamsMeetingPolicy is refused for the Restorer (issue #339, Teams part only; no tenant writes)
+- Drafted by the "Teams meeting policy 403" thread (2026-10-15). In the teams-org-policies writer capture (build 2235fb3),
+  `New-CsTeamsMeetingPolicy -Identity KEEL-RT-capture-223d6cda -Description ...` as the Restorer answered
+  `403 Forbidden "You are not authorized to perform this action"` (errorCode 40301, errorId
+  `Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.NewTeamsMeetingPolicyCmdlet`), while New-/Set- on messaging,
+  calling, voice routing, dial plan, emergency, call park, voicemail, broadcast and events policies all worked. This item finds
+  out whether the refusal is about meeting-policy writes in general, about New- only, or about the Restorer's role.
+- Needs: nothing. Use the same PowerShell image and run-cmdlet scripts the writer capture used (MicrosoftTeams 7.9.0).
+- Status: todo
+- Do (read-only, or calls that cannot change anything: the only New- is retried on a fresh KEEL-RT- name and is the exact call
+  that already failed; the Set- calls name a policy that does not exist, so they can only fail):
+  Each step is one run-cmdlet job as the Restorer:
+  `{"mode":"cmdlet","module":"MicrosoftTeams","cmdlet":"<cmdlet>","parameters":{...},"tenantConfigPath":"/etc/keel/restorer.json"}`.
+  Report each step's `ok`, error message and `errorId` (FullyQualifiedErrorId) verbatim.
+  1. `New-CsTeamsMeetingPolicy` with `{"Identity":"KEEL-RT-mtg-<8 hex>"}` (no Description). If it succeeds, record the name in
+     Result and leave it (it is a KEEL-RT- fixture the next capture can use for `teams.meeting-policy.update`).
+  2. `Set-CsTeamsMeetingPolicy` with `{"Identity":"KEEL-RT-missing-mtg","Description":"x"}`. A "not found" answer means the Restorer
+     may write meeting policies; a 403 means it may not.
+  3. Control: `Set-CsTeamsMessagingPolicy` with `{"Identity":"KEEL-RT-missing-msg","Description":"x"}`. Its errorId shows which
+     service the messaging cmdlets go through.
+  4. `Get-CsTeamsMeetingPolicy` (no parameters) as the Restorer: report `ok` and the number of policies only.
+  5. The Restorer's directory role assignments and their scope (read with the Collector token, GET only; print names and scopes,
+     never a token):
+     `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const r = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; const h = { authorization: 'Bearer ' + t }; const sp = await (await fetch('https://graph.microsoft.com/v1.0/servicePrincipals(appId=\'' + r.clientId + '\')?\$select=id', { headers: h })).json(); const a = await (await fetch('https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?\$filter=principalId eq \'' + sp.id + '\'&\$expand=roleDefinition(\$select=displayName)', { headers: h })).json(); for (const x of a.value ?? []) console.log(x.roleDefinition?.displayName, x.directoryScopeId); if (a.error) console.log(a.error.code, a.error.message)"`
+- **Report:** steps 1-5 in Result. Then comment the findings on issue #339 as keel-operator.

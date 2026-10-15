@@ -1,0 +1,314 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "meetingPolicy",
+        "messagingPolicy",
+        "federationConfiguration",
+        "clientConfiguration",
+        "guestMeetingConfiguration",
+        "guestMessagingConfiguration",
+        "guestCallingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:38:54.916Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "New-CsTeamsMeetingPolicy",
+      "parameters": {
+        "Identity": "KEEL-RT-capture-223d6cda",
+        "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+      },
+      "outcome": "denied",
+      "at": "2026-10-15T18:39:21.629Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.NewTeamsMeetingPolicyCmdlet"
+      }
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "New-CsTeamsMessagingPolicy",
+      "parameters": {
+        "Identity": "KEEL-RT-capture-c36cf4b1",
+        "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:26.029Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "messagingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:30.513Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "messagingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:34.207Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "messagingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:37.961Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsMessagingPolicy",
+      "parameters": {
+        "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
+        "Description": "KEEL capture 2026-10-15T18:38:54.916Z (again)"
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:41.869Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "messagingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:46.262Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsMessagingPolicy",
+      "parameters": {
+        "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
+        "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:49.957Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "messagingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:54.313Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "clientConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:39:57.908Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsClientConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowOrganizationTab": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:02.046Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "clientConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:06.457Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsClientConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowOrganizationTab": true
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:09.905Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "clientConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:13.808Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMeetingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:17.249Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestMeetingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowIPVideo": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:21.651Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMeetingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:25.836Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestMeetingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowIPVideo": true
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:29.276Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMeetingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:33.396Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMessagingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:36.811Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestMessagingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowUserEditMessage": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:40.353Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMessagingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:44.077Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestMessagingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowUserEditMessage": true
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:47.613Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestMessagingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:51.238Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestCallingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:54.627Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestCallingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowPrivateCalling": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:40:58.357Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestCallingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:41:02.446Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-CsTeamsGuestCallingConfiguration",
+      "parameters": {
+        "Identity": "Global",
+        "AllowPrivateCalling": true
+      },
+      "outcome": "ok",
+      "at": "2026-10-15T18:41:06.246Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "guestCallingConfiguration"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-15T18:41:10.281Z"
+    }
+  ],
+  "values": {
+    "refusalFamily": "meetingPolicy",
+    "teams.messaging-policy.update": {
+      "written": true
+    },
+    "teams.client-configuration.update": {
+      "written": true
+    },
+    "teams.guest-meeting-configuration.update": {
+      "written": true
+    },
+    "teams.guest-messaging-configuration.update": {
+      "written": true
+    },
+    "teams.guest-calling-configuration.update": {
+      "written": true
+    }
+  }
+}

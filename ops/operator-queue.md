@@ -3498,3 +3498,30 @@ item that needs it stays untouched.
 - **Report:** the deployed commit; the exit code; the difference count; settings and workloads totals (added, removed,
   changed, unchanged). Expect **0 changed** in both. If anything is still changed, name the type or workload and field
   path only. No ids, tokens or payload values. Comment the result on #296.
+
+### Q72: Mail restore rerun after #301 (restored mail is not a draft and keeps its dates)
+- Drafted by the "#293 restored mail drafts" thread (2026-10-15). Fix: PR #301, merged on master **847edbf**. Restored
+  messages are now created as received messages (PR_MESSAGE_FLAGS read, not unsent) with their original received and sent
+  times, instead of the MIME create that Exchange stores as a draft dated now. Closes the Q68 finding (#293).
+- Needs: /opt/keel-live at 847edbf or later. Q68 done (content-restorer.json exists).
+- Status: todo
+- **Test tenant only.** Same hard rules, Restorer identity and requester/approver split as Q68. Under the 2026-10-14
+  standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here. Write only
+  into keel-rt-20260908-alice's mailbox. Grant no permission.
+- `<A>` = alice's user id, `<R>`/`<P>` as Q68. **`<T>` = `2026-10-15T10:15:30Z`** (after the Q64 backup of the original
+  KEEL-RT-20261015-mail, before Q68's restores; not Q68's exact `<T>`, so this is a new run and not a resume of Q68's).
+- Do, as the deployed build B (`node /opt/keel-live/cli/keel-content-restore.mjs ...`, KEEL_DB_URL from /etc/keel/db.env):
+  1. Record B (the commit /opt/keel-live is deployed at).
+  2. **Plan:** `mail plan --source-mailbox <A> --at <T> --kinds mail`. Expect 1 mail item.
+  3. **Copy restore:** `mail request --source-mailbox <A> --at <T> --kinds mail --actor <R>`, approve as `<P>`, `mail run`.
+     Expect exit 0, `restored: 1`, `incomplete: []`. Then read the copy in `Restored <today>/Inbox`:
+     `GET .../messages/{id}?$select=subject,isDraft,isRead,receivedDateTime,sentDateTime,from,internetMessageId`.
+     Expect **isDraft false** and **receivedDateTime 2026-10-15T07:48:01Z** (the original's), from and subject as the original.
+  4. **Re-run** the same `mail run`: expect exit 0, `restored: 0`, `writes: 0`.
+  5. **Into the original folder:** delete the Q68 draft copy of KEEL-RT-20261015-mail from alice's Inbox (Graph DELETE as the
+     Restorer). Then request, approve and run `--into original --kinds mail` at the same `<T>`. Expect the message back in the
+     Inbox with **isDraft false** and receivedDateTime 07:48:01Z. Report the same fields as step 3 plus parentFolderId.
+  6. **Cleanup:** delete the `Restored <today>` mail folder tree from step 3. Keep the step-5 message in the Inbox (it replaces
+     the Q68 draft as the standing fixture).
+- **Report:** B; exit codes and report JSON for steps 2–5; approval ids; the step 3 and step 5 field values; anything left in
+  the tenant. No tokens or keys. Comment the result on #293.

@@ -4024,7 +4024,7 @@ item that needs it stays untouched.
   `lastModifiedDateTime`. This item checks that change against the live data before #335 merges.
 - Needs: nothing deployed. Run from your own clone (never `/opt/keel`), checked out at
   `origin/claude/project-thread-kuvgwg` (6fa3964 or later), with `npm ci` in `engine/` if needed.
-- Status: todo
+- Status: in-progress
 - Result:
 - Do (no tenant access, **never `--apply`**):
   1. `set -a; . /etc/keel/db.env; set +a; node <clone>/cli/keel-prune.mjs --report /tmp/keel-prune-report-q83.json`.

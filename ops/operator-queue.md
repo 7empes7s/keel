@@ -3124,7 +3124,7 @@ item that needs it stays untouched.
     - `mode`: live. Left: snapshot 92bcd02f… (09:00:20Z). Right: live, latestStored [workloads, content].
     - Settings totals: added 0, removed 0, **changed 44**, unchanged 1432, notCompared 65, unmatched 0.
       - **All 44 changes are false.** All are `roleAssignmentSchedule`, field `scheduleInfo.startDateTime`, which Graph returns
-        as the read time for no-expiry assignments. Filed **#287**.
+        as the read time for no-expiry assignments. Filed **#288**.
     - **Not compared, settings, 65 types** (40 Entra ID, 25 Intune):
       - Reason for all 65: left `not-requested`. The 09:00 snapshot is an hourly tier-1 collection that does not read those
         types; the right side is complete for 34, complete-empty for 27, failed for 4.

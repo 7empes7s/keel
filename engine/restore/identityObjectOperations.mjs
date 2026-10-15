@@ -16,9 +16,11 @@
  *    credential before the account is turned on. A synced or guest user is
  *    never created here.
  *  - the Entra governance types from wave 1 (CAT-ENTRA, PR #259) and the
- *    per-parent cross-tenant sync settings (PR #261) that can be written in
- *    full from the backup. A lifecycle workflow is always created switched
- *    off, and a restore never switches one on: that stays a follow-up step.
+ *    can be written in full from the backup. A lifecycle workflow is always
+ *    created switched off, and a restore never switches one on: that stays a
+ *    follow-up step. Attribute sets and custom security attributes are only
+ *    updated: one can never be deleted once created, so a create waits for a
+ *    review step (IDENTITY_NEEDS_REVIEW).
  *
  * Types the backup cannot drive in full (a terms of use file, an API
  * connector's password, a user flow's attributes, access package policies and
@@ -193,12 +195,12 @@ export const IDENTITY_RECORDS = Object.freeze({
     singleton: true, operations: ['update'], permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecyclemanagementsettings-update'),
   }),
   attributeSet: defineRecord({
-    resourceType: 'attributeSet', version: 'v1.0', collection: '/directory/attributeSets', idOnCreate: true,
-    operations: ['create', 'update'], permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-attributesets'),
+    resourceType: 'attributeSet', version: 'v1.0', collection: '/directory/attributeSets',
+    operations: ['update'], permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-attributesets'),
   }),
   customSecurityAttributeDefinition: defineRecord({
     resourceType: 'customSecurityAttributeDefinition', version: 'v1.0', collection: '/directory/customSecurityAttributeDefinitions',
-    operations: ['create', 'update'], readQuery: '$expand=allowedValues',
+    operations: ['update'], readQuery: '$expand=allowedValues',
     createOnly: ['attributeSet', 'name', 'isCollection', 'isSearchable', 'type', 'allowedValues'],
     afterWrite: allowedValuesAfterWrite, permission: 'CustomSecAttributeDefinition.ReadWrite.All', docs: v1('directory-post-customsecurityattributedefinitions'),
   }),
@@ -215,23 +217,22 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'appManagementPolicy', version: 'v1.0', collection: '/policies/appManagementPolicies',
     operations: ['create', 'update'], excluded: ['appliesTo'], permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('appmanagementpolicy-post'),
   }),
-  tenantAppManagementPolicy: defineRecord({
-    resourceType: 'tenantAppManagementPolicy', version: 'v1.0', collection: '/policies/defaultAppManagementPolicy',
-    singleton: true, operations: ['update'], permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('tenantappmanagementpolicy-update'),
-  }),
   multiTenantOrganization: defineRecord({
     resourceType: 'multiTenantOrganization', version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
   }),
-  crossTenantIdentitySyncPolicyPartner: defineRecord({
-    resourceType: 'crossTenantIdentitySyncPolicyPartner', version: 'v1.0', singleton: true, upsert: true,
-    collectionFor: (payload) => (typeof payload?.tenantId === 'string' && payload.tenantId.length > 0
-      ? `/policies/crossTenantAccessPolicy/partners/${encodeURIComponent(payload.tenantId)}/identitySynchronization` : null),
-    upsertId: (payload) => payload?.tenantId ?? null,
-    operations: ['create', 'update'], updateMethod: 'PUT', excluded: ['tenantId'],
-    permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('crosstenantaccesspolicyconfigurationpartner-put-identitysynchronization'),
-  }),
+});
+
+/**
+ * Types whose write is safe to build but was decided to need a person's review
+ * first; they stay manual until an approval step exists for them.
+ */
+export const IDENTITY_NEEDS_REVIEW = Object.freeze({
+  attributeSet: 'create only: an attribute set can never be deleted once created (update is written)',
+  customSecurityAttributeDefinition: 'create only: a definition can never be deleted once created (update is written)',
+  tenantAppManagementPolicy: 'a stricter default can stop every app from adding a secret or certificate',
+  crossTenantIdentitySyncPolicyPartner: 'it lets a partner tenant sync its users into this one',
 });
 
 /** Types read in wave 1 that no record here can write in full, and why. */
@@ -554,7 +555,7 @@ export async function applyIdentityObjectWrite(writer, resource, verb, ctx = {})
 export function identityObjectOperations() {
   return Object.freeze([
     ...Object.values(IDENTITY_RECORDS).flatMap((record) => record.operations.map((operation) => Object.freeze({
-      resourceType: record.resourceType, operation, path: record.collection ?? record.collectionFor({ tenantId: '{tenantId}' }).replace('%7BtenantId%7D', '{tenantId}'),
+      resourceType: record.resourceType, operation, path: record.collection,
     }))),
     Object.freeze({ resourceType: 'user', operation: 'create', path: '/users' }),
   ]);

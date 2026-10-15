@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  IDENTITY_BEST_EFFORT, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
+  IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
   buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, userCreateBody,
 } from './identityObjectOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
@@ -259,7 +259,6 @@ test('governance singletons are updated in place and verified', async () => {
   const cases = [
     ['lifecycleManagementSettings', '/identityGovernance/lifecycleWorkflows/settings', { workflowScheduleIntervalInHours: 3 }, { workflowScheduleIntervalInHours: 1 }],
     ['entitlementManagementSettings', '/identityGovernance/entitlementManagement/settings', { externalUserLifecycleAction: 'blockSignInAndDelete' }, { externalUserLifecycleAction: 'none' }],
-    ['tenantAppManagementPolicy', '/policies/defaultAppManagementPolicy', { isEnabled: true, applicationRestrictions: { passwordCredentials: [{ restrictionType: 'passwordLifetime', maxLifetime: 'P90D' }] } }, { isEnabled: false }],
     ['multiTenantOrganization', '/tenantRelationships/multiTenantOrganization', { displayName: 'KEEL-RT-MTO', state: 'active' }, { displayName: 'Other', state: 'active' }],
   ];
   for (const [type, path, desired, live] of cases) {
@@ -272,13 +271,8 @@ test('governance singletons are updated in place and verified', async () => {
   }
 });
 
-test('attribute sets, custom security attributes, catalogs, app policies and task extensions are created and read back', async () => {
+test('catalogs, app policies and task extensions are created and read back', async () => {
   const cases = [
-    ['attributeSet', { id: 'KEELRTSet', description: 'Fixture set', maxAttributesPerSet: 10 }],
-    ['customSecurityAttributeDefinition', {
-      id: 'KEELRTSet_Level', attributeSet: 'KEELRTSet', name: 'Level', description: 'Clearance', isCollection: false, isSearchable: true,
-      status: 'Available', type: 'String', usePreDefinedValuesOnly: true, allowedValues: [{ id: 'High', isActive: true }],
-    }],
     ['accessPackageCatalog', { id: 'src-cat', displayName: 'KEEL-RT-Catalog', description: 'Fixture', state: 'published', isExternallyVisible: false, createdDateTime: '2026-01-01T00:00:00Z' }],
     ['appManagementPolicy', { id: 'src-pol', displayName: 'KEEL-RT-AppPolicy', description: 'No secrets', isEnabled: true, restrictions: { passwordCredentials: [{ restrictionType: 'passwordAddition', maxLifetime: null }] } }],
     ['lifecycleWorkflowCustomTaskExtension', { id: 'src-ext', displayName: 'KEEL-RT-Extension', description: 'Logic app', endpointConfiguration: { '@odata.type': '#microsoft.graph.logicAppTriggerEndpointConfiguration', subscriptionId: 's', resourceGroupName: 'r', logicAppWorkflowName: 'w' }, createdBy: { id: 'x' } }],
@@ -291,7 +285,7 @@ test('attribute sets, custom security attributes, catalogs, app policies and tas
     assert.equal(post.path, IDENTITY_RECORDS[type].collection);
     assert.equal('createdDateTime' in post.body, false);
     assert.equal('createdBy' in post.body, false);
-    assert.equal(post.body.id === undefined, type !== 'attributeSet', `${type} id on create`);
+    assert.equal(post.body.id, undefined, `${type} id on create`);
   }
 });
 
@@ -309,17 +303,6 @@ test('a custom security attribute update adds and deactivates allowed values, ne
   assert.deepEqual(values.map((value) => `${value.id}:${value.isActive}`).sort(), ['Extra:true', 'High:false', 'Low:true']);
 });
 
-test('cross-tenant sync settings for a partner are put by tenant id', async () => {
-  const payload = { tenantId: 'partner-tenant', displayName: 'KEEL-RT-Partner', userSyncInbound: { isSyncAllowed: true } };
-  const graph = idoFakeGraph({ seed: { '/policies/crossTenantAccessPolicy/partners/partner-tenant': { tenantId: 'partner-tenant' } } });
-  const created = await applyIdentityObjectWrite(graph, resourceOf('crossTenantIdentitySyncPolicyPartner', payload), 'create', FAST);
-  assert.equal(created.failed, undefined, created.failed?.error);
-  const put = graph.calls.find((call) => call.method === 'PUT');
-  assert.equal(put.path, '/policies/crossTenantAccessPolicy/partners/partner-tenant/identitySynchronization');
-  assert.deepEqual(put.body, { displayName: 'KEEL-RT-Partner', userSyncInbound: { isSyncAllowed: true } });
-  assert.equal(created.applied.targetId, 'partner-tenant');
-});
-
 test('a reference that would be remapped to another id is refused', async () => {
   const payload = { id: 'src-pol', displayName: 'KEEL-RT-AppPolicy', isEnabled: true, restrictions: { ownerId: 'source-owner' } };
   const resource = resourceOf('appManagementPolicy', payload, {
@@ -331,6 +314,21 @@ test('a reference that would be remapped to another id is refused', async () => 
   });
   assert.match(result.failed.error, /unqualified-remapping/);
   assert.equal(graph.calls.length, 0);
+});
+
+test('an attribute set is only updated: a create waits for a review step', async () => {
+  const path = '/directory/attributeSets/KEELRTSet';
+  const live = { id: 'KEELRTSet', description: 'Old', maxAttributesPerSet: 5 };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const desired = { ...live, description: 'Fixture set', maxAttributesPerSet: 10 };
+  const updated = await applyIdentityObjectWrite(graph, resourceOf('attributeSet', desired, { live: { state: 'present', targetId: 'KEELRTSet', payload: live } }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture set', maxAttributesPerSet: 10 });
+  const created = await applyIdentityObjectWrite(idoFakeGraph(), resourceOf('attributeSet', desired), 'create', FAST);
+  assert.match(created.failed.error, /unsupported operation/);
+  for (const type of ['attributeSet', 'customSecurityAttributeDefinition']) assert.deepEqual(IDENTITY_RECORDS[type].operations, ['update']);
+  for (const type of ['tenantAppManagementPolicy', 'crossTenantIdentitySyncPolicyPartner']) assert.equal(IDENTITY_RECORDS[type], undefined);
+  assert.ok(Object.keys(IDENTITY_NEEDS_REVIEW).length === 4);
 });
 
 test('every record operation is in the ledger, and best-effort types have no record', () => {

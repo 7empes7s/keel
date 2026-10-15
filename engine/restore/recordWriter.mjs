@@ -47,7 +47,7 @@ export function defineRecord(spec) {
   for (const verb of spec.operations ?? []) {
     if (!VERBS.has(verb)) throw new TypeError(`${spec.resourceType}: unknown operation ${verb}`);
   }
-  if (spec.singleton && !spec.upsert && (spec.operations ?? []).some((verb) => verb !== 'update')) {
+  if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
   return Object.freeze({
@@ -59,8 +59,6 @@ export function defineRecord(spec) {
     singleton: false,
     collection: null,
     collectionFor: null,
-    idOnCreate: false,
-    upsert: false,
     writable: null,
     refusal: null,
     preflight: null,
@@ -124,10 +122,6 @@ const withQuery = (record, path) => (record.readQuery ? `${path}?${record.readQu
 export function recordWriteBody(record, payload, verb) {
   const body = {};
   for (const [key, value] of Object.entries(payload ?? {})) {
-    if (key === 'id' && record.idOnCreate && verb === 'create') {
-      body.id = value;
-      continue;
-    }
     if (SERVER_OWNED_ALWAYS.has(key)) continue;
     if (key === '@odata.type') {
       if (record.odataType !== 'drop') body[key] = value;
@@ -277,7 +271,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   if (references) return { failed: { naturalKey, error: references } };
 
   const before = resource.live?.payload ?? null;
-  let targetId = record.singleton ? (record.upsertId?.(payload) ?? null) : (verb === 'update' ? liveTargetId(resource, ctx) : null);
+  let targetId = record.singleton ? null : (verb === 'update' ? liveTargetId(resource, ctx) : null);
   if (verb === 'update' && !record.singleton && !targetId) return { failed: { naturalKey, error: 'update has no targetId' } };
   const fields = verb === 'create' || !before
     ? Object.keys(body).filter((field) => field !== '@odata.type' && field !== 'id')
@@ -308,15 +302,12 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   let sent = {};
   if (verb === 'create') {
     const collection = recordCollection(record, payload);
-    // An upsert (an object addressed by a key the caller chooses) is created by PUT.
-    const result = await io.retryOperation(() => (record.upsert
-      ? writer.write(record.version, collection, { method: 'PUT', body })
-      : writer.write(record.version, collection, { method: 'POST', body })));
+    const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
     if (!result.ok) {
       await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
       return { failed: graphFailure(naturalKey, result) };
     }
-    targetId = record.upsert ? (record.upsertId?.(payload) ?? null) : (result.body?.id ?? (record.idOnCreate ? body.id : null));
+    targetId = result.body?.id;
     if (typeof targetId !== 'string' || targetId.length === 0) {
       await note(ctx, entry, 'uncertain', { postState: result.body ?? null, detail: 'create returned no id' });
       return { failed: { naturalKey, error: 'create returned no id' } };

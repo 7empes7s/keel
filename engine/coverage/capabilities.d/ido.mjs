@@ -7,7 +7,7 @@
  *
  * Identity objects: service principal update and delete, recreate of a deleted
  * user (disabled, credentials checklist), the Entra governance types the backup
- * holds in full, and add-only owner and app role grant edges. Intune: app
+ * holds in full (attribute sets and custom security attributes: update only), and add-only owner and app role grant edges. Intune: app
  * protection, app configuration, update profiles, filters, scope tags and
  * notification templates, plus delete of an unassigned policy.
  */
@@ -25,19 +25,14 @@ export default [
   { resourceType: 'lifecycleWorkflowCustomTaskExtension', operation: 'create', path: '/identityGovernance/lifecycleWorkflows/customTaskExtensions', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleWorkflowCustomTaskExtension', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/customTaskExtensions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'lifecycleManagementSettings', operation: 'update', path: '/identityGovernance/lifecycleWorkflows/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'attributeSet', operation: 'create', path: '/directory/attributeSets', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'attributeSet', operation: 'update', path: '/directory/attributeSets', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'customSecurityAttributeDefinition', operation: 'create', path: '/directory/customSecurityAttributeDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'customSecurityAttributeDefinition', operation: 'update', path: '/directory/customSecurityAttributeDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'create', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'accessPackageCatalog', operation: 'update', path: '/identityGovernance/entitlementManagement/catalogs', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'entitlementManagementSettings', operation: 'update', path: '/identityGovernance/entitlementManagement/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'tenantAppManagementPolicy', operation: 'update', path: '/policies/defaultAppManagementPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'multiTenantOrganization', operation: 'update', path: '/tenantRelationships/multiTenantOrganization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'crossTenantIdentitySyncPolicyPartner', operation: 'create', path: '/policies/crossTenantAccessPolicy/partners/{tenantId}/identitySynchronization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
-  { resourceType: 'crossTenantIdentitySyncPolicyPartner', operation: 'update', path: '/policies/crossTenantAccessPolicy/partners/{tenantId}/identitySynchronization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'user', operation: 'create', path: '/users', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'deviceCompliancePolicy', operation: 'delete', path: '/deviceManagement/deviceCompliancePolicies', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },
   { resourceType: 'deviceConfiguration', operation: 'delete', path: '/deviceManagement/deviceConfigurations', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },

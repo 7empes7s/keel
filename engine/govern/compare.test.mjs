@@ -302,3 +302,18 @@ test('across tenants, ids inside references and keys never count as differences'
   assert.equal(sites.groups[0].unmatched, 2);
   assert.equal(sites.totals.added + sites.totals.removed, 0);
 });
+
+test('issue #296: an unscheduled automatic reply\'s moving schedule is not a change; a scheduled one is', () => {
+  const replies = (hour, status) => ({ status, externalAudience: 'none',
+    scheduledStartDateTime: { dateTime: `2026-10-15T${hour}:00:00.0000000`, timeZone: 'UTC' },
+    scheduledEndDateTime: { dateTime: `2026-10-16T${hour}:00:00.0000000`, timeZone: 'UTC' } });
+  const side = (id, hour, statuses) => new Map([['exchange-mailbox-settings', { collectionId: id, outcome: 'complete', at: T1, observations: statuses.map((status, i) => ({
+    resourceKey: `mailbox:keel-rt-${i}@contoso.example`, fields: { identity: guid(60 + i), mailboxSettings: { automaticRepliesSetting: replies(hour, status) } }, fieldCoverage: {},
+  })) }]]);
+  const statuses = ['disabled', 'alwaysEnabled', 'scheduled'];
+  const [mailbox] = compareWorkloads(side('a', '02', statuses), side('b', '10', statuses)).groups;
+  assert.equal(mailbox.unchanged, 2);
+  assert.deepEqual(mailbox.items.map((item) => [item.resourceKey, item.fields.map((field) => field.path)]), [
+    ['mailbox:keel-rt-2@contoso.example', ['mailboxSettings.automaticRepliesSetting']],
+  ]);
+});

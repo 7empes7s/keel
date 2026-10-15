@@ -39,7 +39,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
-  COMPLIANCE_HOLD_FIELDS, EXCHANGE_EXCLUDED_CONTENT, EXCHANGE_GROUPS, EXCHANGE_WORKLOAD, assertExchangeRequest, exchangeCmdlet,
+  COMPLIANCE_HOLD_FIELDS, EXCHANGE_EXCLUDED_CONTENT, EXCHANGE_GROUPS, EXCHANGE_WORKLOAD, assertExchangeRequest, comparableMailboxSetting, exchangeCmdlet,
   mailboxIdentity, mailboxKey, readMailbox, readOrganization, structuredFailure,
 } from '../../collect/workloads/exchange.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
@@ -110,7 +110,14 @@ function groupObserved(entry, group) {
 
 /** The live state of one group as KEEL compares it; null when not fully read. */
 export function groupFingerprint(entry, group) {
-  return groupObserved(entry, group) ? sha256(entry.fields[group]) : null;
+  return groupObserved(entry, group) ? sha256(comparableGroup(group, entry.fields[group])) : null;
+}
+
+/** One field as two reads are compared (issue #296: read-time noise is left out). */
+const comparable = (group, field, value) => (group === 'mailboxSettings' ? comparableMailboxSetting(field, value) : value);
+function comparableGroup(group, values) {
+  if (group !== 'mailboxSettings' || !values || typeof values !== 'object') return values;
+  return Object.fromEntries(Object.entries(values).map(([field, value]) => [field, comparable(group, field, value)]));
 }
 
 /** True when a hold Purview or an administrator owns applies to the mailbox now. */
@@ -132,7 +139,7 @@ function planGroup(group, { observation, live, resourceKey, manual, excluded }) 
     }
     const after = observation.fields?.[group]?.[field] ?? null;
     const before = live.fields?.[group]?.[field] ?? null;
-    if (same(before, after)) continue;
+    if (same(comparable(group, field, before), comparable(group, field, after))) continue;
     if (!writable.includes(field)) {
       manual.push({ resourceKey, field: `${group}.${field}`, reason: MANUAL_REASON[group] ?? 'KEEL does not write this setting' });
       continue;
@@ -440,7 +447,7 @@ async function verify(op, plan, context, { attempts, ambiguous, cause }) {
   }
   const verified = [];
   const mismatched = [];
-  for (const { field, after } of op.changes) (same(entry.fields[op.group]?.[field], after) ? verified : mismatched).push(field);
+  for (const { field, after } of op.changes) (same(comparable(op.group, field, entry.fields[op.group]?.[field]), comparable(op.group, field, after)) ? verified : mismatched).push(field);
   if (!mismatched.length) {
     await context.settle(op, {
       outcome: 'verified', writes: 1, attempts, verified,

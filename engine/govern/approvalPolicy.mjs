@@ -148,5 +148,8 @@ export function standingPolicyRefusal({ policy, tenantRef, request, artifact = n
     touched.push(tenantRefFor(artifact.targetTenantId));
   }
   if (touched.some((ref) => !testTenantRefs.includes(ref))) return `${policy} covers only the test tenant`;
+  // Issue #317: a workload restore made with the tenant-wide option writes beyond the
+  // KEEL-RT- fixtures; a person approves it, never a standing policy.
+  if (artifact?.workloadRestore?.allowTenantWide === true) return `${policy} does not cover a tenant-wide workload write; a person approves it`;
   return null;
 }

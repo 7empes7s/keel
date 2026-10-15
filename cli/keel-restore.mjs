@@ -37,6 +37,10 @@
 //   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
+//   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
+//   DLP and labels: [--target <key> ...]. On the test tenant these write only KEEL-RT-
+//   fixtures; --allow-tenant-wide-test-writes also plans tenant-wide objects (a Global
+//   policy, a tenant configuration), and such a plan needs a person's approval.
 // It is executed only by promoting that artifact with --artifact <id> --enforce after an
 // approver other than the requester approved it; the credential files are the
 // server's (engine/restore/credentialPaths.mjs), never argv.
@@ -1762,6 +1766,7 @@ export async function main({
         teamId: arg('team', undefined, argv),
         siteId: arg('site', undefined, argv),
         targets: argAll('target', argv),
+        allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
       },
       collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),
       collectorConfigPath,

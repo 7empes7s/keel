@@ -87,7 +87,7 @@ export const WORKLOAD_RESTORES = Object.freeze({
       const siteId = required(request.siteId, '--site <site id>');
       const recorded = await source(loadSharePointSource, client, { tenantRef, collectionId: request.collectionId }, 'SharePoint');
       const live = await readLiveSiteGrants({ transport: connection.transport, siteId, sleep });
-      return planSiteGrantsRestore({ source: recorded, live, tenantHost, siteId });
+      return planSiteGrantsRestore({ source: recorded, live, tenantHost, siteId, tenantRef });
     },
     create: createSiteGrantsRestoreArtifact,
     execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSiteGrantsRestore(client, {

@@ -79,7 +79,7 @@ async function principal(client, label, role) {
   return rows[0].id;
 }
 
-async function recordSource(client, tenantRef, { grants = BACKUP, status = 'observed' } = {}) {
+async function recordSource(client, tenantRef, { grants = BACKUP, status = 'observed', webUrl = null } = {}) {
   const run = await recordSharePointRun(client, {
     tenantRef,
     result: {
@@ -88,8 +88,12 @@ async function recordSource(client, tenantRef, { grants = BACKUP, status = 'obse
       tenant: { fields: {}, fieldCoverage: {} },
       sites: [{
         siteId: SITE,
-        fields: { displayName: 'KEEL-RT-site', appPermissionGrants: status === 'observed' ? grants : undefined },
-        fieldCoverage: { displayName: { status: 'observed', operation: 'sharepoint.site-properties' }, appPermissionGrants: { status, operation: 'sharepoint.site-permissions' } },
+        fields: { displayName: 'KEEL-RT-site', ...(webUrl ? { webUrl } : {}), appPermissionGrants: status === 'observed' ? grants : undefined },
+        fieldCoverage: {
+          displayName: { status: 'observed', operation: 'sharepoint.site-properties' },
+          ...(webUrl ? { webUrl: { status: 'observed', operation: 'sharepoint.site-properties' } } : {}),
+          appPermissionGrants: { status, operation: 'sharepoint.site-permissions' },
+        },
       }],
     },
   });
@@ -132,10 +136,10 @@ const qualify = (tenantRef, ids = SITE_GRANT_WRITE_OPERATIONS, capturedIn = tena
   readLedger: readLedger(tenantRef), evidence: ids.includes(id) ? [liveWrite(id, capturedIn)] : [], tenantRef, now: NOW,
 })]));
 
-async function planned(client, tenantRef, graph, { source } = {}) {
+async function planned(client, tenantRef, graph, { source, testTenantRefs } = {}) {
   const recorded = source ?? await recordSource(client, tenantRef);
   const live = await readLiveSiteGrants({ transport: graph.transport, siteId: SITE });
-  const plan = planSiteGrantsRestore({ source: recorded, live, tenantHost: HOST, siteId: SITE });
+  const plan = planSiteGrantsRestore({ source: recorded, live, tenantHost: HOST, siteId: SITE, tenantRef, ...(testTenantRefs ? { testTenantRefs } : {}) });
   const requestedBy = await principal(client, `${tenantRef}-requester`, 'restorer');
   const artifact = await createSiteGrantsRestoreArtifact(client, { tenantRef, plan, requestedBy });
   graph.requests.length = 0;
@@ -176,19 +180,19 @@ test('the plan re-creates a missing grant and raises a narrowed one, never beyon
   assert.ok(Object.isFrozen(plan) && Object.isFrozen(plan.operations[0].body.grantedToIdentities[0].application));
   // A source from another tenant, or a site from another host, is refused.
   const source = await recordSource(client, tenantRef);
-  assert.throws(() => planSiteGrantsRestore({ source, live: [], tenantHost: 'fabrikam.sharepoint.com', siteId: SITE }), /different SharePoint tenant/);
-  assert.throws(() => planSiteGrantsRestore({ source, live: [], tenantHost: HOST, siteId: SITE.replace('contoso', 'fabrikam') }), /not on this SharePoint tenant/);
+  assert.throws(() => planSiteGrantsRestore({ source, live: [], tenantHost: 'fabrikam.sharepoint.com', siteId: SITE, tenantRef }), /different SharePoint tenant/);
+  assert.throws(() => planSiteGrantsRestore({ source, live: [], tenantHost: HOST, siteId: SITE.replace('contoso', 'fabrikam'), tenantRef }), /not on this SharePoint tenant/);
 });
 
 test('an unclear backup is never guessed at: unknown roles, no application and an unread field stay manual', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
   const odd = [stored('x', ['sp.full control'], APP_A), { id: 'y', roles: ['read'], applications: [] }, stored('z', ['owner'], APP_B)];
-  const plan = planSiteGrantsRestore({ source: await recordSource(client, tenantRef, { grants: odd }), live: [], tenantHost: HOST, siteId: SITE });
+  const plan = planSiteGrantsRestore({ source: await recordSource(client, tenantRef, { grants: odd }), live: [], tenantHost: HOST, siteId: SITE, tenantRef });
   // `owner` is how Graph reads a full control grant back; it is written as fullcontrol.
   assert.deepEqual(plan.operations.map((operation) => operation.body.roles), [['fullcontrol']]);
   assert.equal(plan.manual.length, 2);
-  const unread = planSiteGrantsRestore({ source: await recordSource(client, tenantRef, { status: 'denied' }), live: [], tenantHost: HOST, siteId: SITE });
+  const unread = planSiteGrantsRestore({ source: await recordSource(client, tenantRef, { status: 'denied' }), live: [], tenantHost: HOST, siteId: SITE, tenantRef });
   assert.equal(unread.operations.length, 0);
   assert.match(unread.manual[0].reason, /denied in the source/);
 });
@@ -305,6 +309,48 @@ test('a grant changed after the dry run, a tampered plan or a refused write stop
   const refused = await executeSiteGrantsRestore(client, { tenantRef, artifactId: third.id, tenantHost: HOST, transport: locked.transport, qualifications: qualify(tenantRef) });
   assert.equal(refused.outcome, 'refused');
   assert.equal(locked.writes().length, 1);
+});
+
+// ------------------------------------------------------- test tenant fixtures (#317)
+
+test('on the test tenant only a KEEL-RT- site and KEEL-RT- applications are granted, at plan time and again before writing', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const testTenantRefs = [tenantRef];
+  const fixtureSite = 'https://contoso.sharepoint.com/sites/KEEL-RT-site';
+
+  // A fixture site and fixture apps: planned as usual.
+  const fixtures = await planned(client, tenantRef, fakeSite(LIVE), { source: await recordSource(client, tenantRef, { webUrl: fixtureSite }), testTenantRefs });
+  assert.equal(fixtures.plan.operations.length, 2);
+  assert.deepEqual(fixtures.plan.refusals, []);
+
+  // A real application on a fixture site is refused; the fixture app beside it is planned.
+  const payroll = { ...APP_A, displayName: 'Contoso payroll' };
+  const grants = [stored('grant-a', ['write'], payroll), ...BACKUP.slice(1)];
+  const mixed = await planned(client, tenantRef, fakeSite(LIVE), { source: await recordSource(client, tenantRef, { grants, webUrl: fixtureSite }), testTenantRefs });
+  assert.deepEqual(mixed.plan.operations.map((operation) => operation.application), ['KEEL-RT-app-b']);
+  assert.equal(mixed.plan.refusals.length, 1);
+  assert.match(mixed.plan.refusals[0].reason, /^not-a-fixture: .*Contoso payroll/);
+  assert.equal(mixed.artifact.status, 'refused');
+
+  // A real site is refused whatever the applications are called; so is a site with no name.
+  const finance = await recordSource(client, tenantRef, { webUrl: 'https://contoso.sharepoint.com/sites/Finance' });
+  const real = await planned(client, tenantRef, fakeSite(LIVE), { source: finance, testTenantRefs });
+  assert.deepEqual(real.plan.operations, []);
+  assert.ok(real.plan.refusals.length === 2 && real.plan.refusals.every((refusal) => /the site \(Finance\)/.test(refusal.reason)));
+  const unnamed = await planned(client, tenantRef, fakeSite(LIVE), { testTenantRefs });
+  assert.ok(unnamed.plan.refusals.every((refusal) => /no name/.test(refusal.reason)));
+
+  // A plan made where the guard did not apply is checked again before writing: nothing is sent.
+  const graph = fakeSite(LIVE);
+  const older = await planned(client, tenantRef, graph, { source: finance, testTenantRefs: [] });
+  assert.equal(older.plan.operations.length, 2);
+  await approve(client, tenantRef, older.artifact, older.plan);
+  const result = await executeSiteGrantsRestore(client, {
+    tenantRef, artifactId: older.artifact.id, tenantHost: HOST, transport: graph.transport, qualifications: qualify(tenantRef), testTenantRefs,
+  });
+  assert.equal(result.outcome, 'refused');
+  assert.equal(graph.writes().length, 0);
 });
 
 test('the restore CLI table plans one site from --site with the collector and promotes with both writes', () => {

@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
+import { OPERATOR_TEST_TENANT_POLICY, standingPolicyRefusal } from '../govern/approvalPolicy.mjs';
 import { FAMILIES as EXCHANGE_EXTENDED_FAMILIES, readExchangeExtended, recordExchangeExtendedRun } from '../collect/workloads/exchangeExtended.mjs';
 import { FAMILIES as MAIL_FLOW_FAMILIES, readMailFlow, recordMailFlowRun } from '../collect/workloads/mailFlow.mjs';
 import { FAMILIES as PURVIEW_EXTENDED_FAMILIES, readPurviewExtended, recordPurviewExtendedRun } from '../collect/workloads/purviewExtended.mjs';
@@ -35,9 +36,11 @@ import {
   loadWorkloadSource, planWorkloadSettingsRestore, unreviewedWrittenFields, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
+import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
 
@@ -182,9 +185,9 @@ async function recordSource(client, tenantRef, workload, tenant) {
   return loadWorkloadSource(client, { tenantRef, collectionId: run.id, workload });
 }
 
-async function planned(client, tenantRef, workload, { source, live, targets = [] }) {
+async function planned(client, tenantRef, workload, { source, live, targets = [], ...options }) {
   const read = await readFor(workload)({ powershell: live.powershell });
-  const plan = planWorkloadSettingsRestore({ workload, source, live: read, tenantId: TENANT, targets });
+  const plan = planWorkloadSettingsRestore({ workload, source, live: read, tenantId: TENANT, tenantRef, targets, ...options });
   const requestedBy = await principal(client, 'requester');
   const artifact = await createWorkloadSettingsArtifact(client, { tenantRef, plan, requestedBy });
   return { plan, artifact, requestedBy };
@@ -194,8 +197,8 @@ const enabled = (workload) => Object.fromEntries(Object.entries(WKLD_WRITE_OPERA
   .filter(([, write]) => write.workload === workload)
   .map(([id]) => [id, { operationId: id, state: 'live-qualified', enabled: true, reasons: [] }]));
 
-const execute = (client, tenantRef, workload, artifact, live, qualifications = enabled(workload)) => executeWorkloadSettingsRestore(client, {
-  tenantRef, artifactId: artifact.id, tenantId: TENANT, workload, read: readFor(workload), powershell: live.powershell, qualifications,
+const execute = (client, tenantRef, workload, artifact, live, qualifications = enabled(workload), options = {}) => executeWorkloadSettingsRestore(client, {
+  tenantRef, artifactId: artifact.id, tenantId: TENANT, workload, read: readFor(workload), powershell: live.powershell, qualifications, ...options,
 });
 
 async function approveEffects(client, tenantRef, artifact, plan) {
@@ -519,15 +522,15 @@ test('a rule whose policy was not read, or a read stopped at its limit, plans no
   const read = await readFor('purview-retention-dlp')({ powershell: live.powershell });
   // The policy is missing from the live read: its lock is unknown, so the rule is not changed.
   const withoutPolicy = { ...read, resources: read.resources.filter((item) => item.kind !== 'retentionPolicy') };
-  const orphan = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: withoutPolicy, tenantId: TENANT });
+  const orphan = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: withoutPolicy, tenantId: TENANT, tenantRef });
   assert.ok(orphan.operations.every((op) => op.family !== 'retentionRule'));
   assert.ok(orphan.manual.some((item) => /preservation lock is unknown/.test(item.reason)));
   // A rule the collector could not tie to any policy has an unknown lock too.
   const unnamed = { ...read, resources: read.resources.map((item) => (item.kind === 'retentionRule' ? { ...item, parentPolicy: null, parentStatus: 'none' } : item)) };
-  const noPolicy = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: unnamed, tenantId: TENANT });
+  const noPolicy = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: unnamed, tenantId: TENANT, tenantRef });
   assert.ok(noPolicy.operations.every((op) => op.family !== 'retentionRule'));
   // A capped read may have missed objects: every family is a gap.
-  const capped = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: { ...read, discovery: { ...read.discovery, capped: true } }, tenantId: TENANT });
+  const capped = planWorkloadSettingsRestore({ workload: 'purview-retention-dlp', source, live: { ...read, discovery: { ...read.discovery, capped: true } }, tenantId: TENANT, tenantRef });
   assert.deepEqual(capped.operations, []);
   assert.ok(capped.manual.every((item) => /capped at its object limit/.test(item.reason)));
 });
@@ -585,4 +588,114 @@ test('dispatch has one entry per written workload, each listing exactly its own 
   // The user and group policy assignments are read but never written.
   assert.equal(writeFamilies('teams-voice-policies').userPolicyAssignment, undefined);
   assert.equal(writeFamilies('teams-voice-policies').groupPolicyAssignment, undefined);
+});
+
+// ------------------------------------------------------------ test tenant fixtures (#317)
+
+test('the fixture guard matches the KEEL-RT- prefix only, and only on the test tenant', () => {
+  const testTenantRefs = ['sha256:test'];
+  const guard = (names, more = {}) => fixtureProblem({ tenantRef: 'sha256:test', testTenantRefs, label: 'x', names, ...more });
+  assert.equal(guard(['KEEL-RT-anything']), null);
+  assert.equal(guard(['keel-rt-lower case']), null);
+  assert.match(guard(['Contoso KEEL-RT-rule']), /not one/);
+  assert.match(guard(['KEEL-RT-a', 'Production']), /not one/);
+  assert.match(guard([null]), /no name/);
+  assert.match(guard(['KEEL-RT-a'], { tenantWide: true }), /tenant-wide/);
+  assert.equal(guard(['Global'], { tenantWide: true, allowTenantWide: true }), null);
+  // Off the test tenant a restore is not limited to fixtures.
+  assert.equal(fixtureProblem({ tenantRef: 'sha256:customer', testTenantRefs, label: 'x', names: ['Production'], tenantWide: true }), null);
+  assert.throws(() => fixtureProblem({ tenantRef: null, testTenantRefs, label: 'x', names: [] }), /needs the tenant/);
+  assert.equal(isFixtureName('KEEL-RT-'), true);
+  assert.equal(isFixtureName('KEEL-R-x'), false);
+});
+
+test('on the test tenant a non-fixture object is refused at plan time; a fixture beside it is planned', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const testTenantRefs = [tenantRef];
+  const state = tenantState('exchange-mail-flow');
+  const production = fixture('exchange-mail-flow', 'transportRule');
+  production.Name = 'Contoso outbound disclaimer';
+  state['Get-TransportRule'].push(production);
+  const live = fakeTenant('exchange-mail-flow', { state });
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  for (const rule of live.state['Get-TransportRule']) rule.Comments = 'drifted';
+
+  const { plan, artifact } = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, testTenantRefs });
+  const productionKey = plan.targets.find((key) => key.includes(production.Guid.toLowerCase()));
+  assert.ok(productionKey);
+  assert.deepEqual(plan.refusals.map((refusal) => refusal.naturalKey), [`exchange-mail-flow:${productionKey}`]);
+  assert.match(plan.refusals[0].reason, /^not-a-fixture: .*Contoso outbound disclaimer/);
+  assert.ok(plan.operations.some((op) => op.family === 'transportRule'));
+  assert.ok(plan.operations.every((op) => op.key !== productionKey));
+  // A refused plan is never promotable.
+  assert.equal(artifact.status, 'refused');
+  const result = await execute(client, tenantRef, 'exchange-mail-flow', artifact, live, enabled('exchange-mail-flow'), { testTenantRefs });
+  assert.equal(result.outcome, 'refused');
+  assert.equal(live.writes.length, 0);
+
+  // Off the test tenant the same restore plans both rules.
+  const other = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, testTenantRefs: [] });
+  assert.equal(other.plan.refusals.length, 0);
+  assert.ok(other.plan.operations.some((op) => op.key === productionKey));
+});
+
+test('on the test tenant a fixture name is checked again before writing', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const state = tenantState('exchange-mail-flow');
+  const production = fixture('exchange-mail-flow', 'transportRule');
+  production.Name = 'Contoso outbound disclaimer';
+  state['Get-TransportRule'] = [production];
+  const live = fakeTenant('exchange-mail-flow', { state });
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  production.Comments = 'drifted';
+  // A plan made where the guard did not apply (an older plan) still never writes the test tenant's real objects.
+  const { plan, artifact } = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, testTenantRefs: [] });
+  const op = plan.operations.find((item) => item.family === 'transportRule');
+  assert.ok(op);
+  if (plan.contentEffects.length) await approveEffects(client, tenantRef, artifact, plan);
+  const result = await execute(client, tenantRef, 'exchange-mail-flow', artifact, live, enabled('exchange-mail-flow'), { testTenantRefs: [tenantRef] });
+  const refused = result.operations.find((item) => item.key === op.key);
+  assert.equal(refused.outcome, 'refused');
+  assert.match(refused.reasons[0], /KEEL-RT- fixtures/);
+  assert.ok(live.writes.every((write) => write.parameters.Identity !== production.Guid));
+});
+
+test('a Global Teams policy is tenant-wide: refused on the test tenant unless the separate option is on', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const testTenantRefs = [tenantRef];
+  const live = fakeTenant('teams-org-policies');
+  const source = await recordSource(client, tenantRef, 'teams-org-policies', live);
+  const [globalPolicy, namedPolicy] = live.state['Get-CsTeamsMessagingPolicy'];
+  assert.equal(globalPolicy.Identity, 'Global');
+  assert.equal(namedPolicy.Identity, 'Tag:KEEL-RT-messagingPolicy');
+  globalPolicy.Description = 'drifted';
+  namedPolicy.Description = 'drifted';
+  const targets = ['messaging-policy:global', 'messaging-policy:tag:keel-rt-messagingpolicy'];
+
+  const off = await planned(client, tenantRef, 'teams-org-policies', { source, live, targets, testTenantRefs });
+  assert.deepEqual(off.plan.operations.map((op) => op.key), ['messaging-policy:tag:keel-rt-messagingpolicy']);
+  assert.deepEqual(off.plan.refusals.map((refusal) => refusal.naturalKey), ['teams-org-policies:messaging-policy:global']);
+  assert.match(off.plan.refusals[0].reason, /tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/);
+  assert.equal(off.plan.allowTenantWide, undefined);
+
+  const on = await planned(client, tenantRef, 'teams-org-policies', { source, live, targets, testTenantRefs, allowTenantWide: true });
+  assert.deepEqual(on.plan.refusals, []);
+  assert.deepEqual(on.plan.operations.map((op) => op.key).sort(), targets.sort());
+  assert.equal(on.plan.allowTenantWide, true);
+  assert.equal(on.artifact.status, 'completed');
+  // The operator's standing approval does not cover a tenant-wide plan; a person approves it.
+  const request = { action: 'restore' };
+  const covered = { tenantRef, targetTenantId: TENANT, workloadRestore: off.plan };
+  const refs = [tenantRef, tenantRefFor(TENANT)];
+  assert.equal(standingPolicyRefusal({ policy: OPERATOR_TEST_TENANT_POLICY, tenantRef, request, artifact: covered, testTenantRefs: refs }), null);
+  assert.match(standingPolicyRefusal({ policy: OPERATOR_TEST_TENANT_POLICY, tenantRef, request, artifact: { ...covered, workloadRestore: on.plan }, testTenantRefs: refs }), /a person approves it/);
+
+  // With the option the Global policy is written and verified.
+  if (on.plan.contentEffects.length) await approveEffects(client, tenantRef, on.artifact, on.plan);
+  const result = await execute(client, tenantRef, 'teams-org-policies', on.artifact, live, enabled('teams-org-policies'), { testTenantRefs });
+  assert.equal(result.outcome, 'verified');
+  assert.equal(globalPolicy.Description, 'KEEL-RT-Description');
 });

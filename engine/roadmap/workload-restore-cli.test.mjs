@@ -213,6 +213,21 @@ test('--workload is a dry run only, and refuses an unknown workload or a missing
   }), /only ever planned as a dry run/);
 });
 
+test('--allow-tenant-wide-test-writes reaches the workload plan, and is off unless given (#317)', async (t) => {
+  await schemaClient(t);
+  const seen = [];
+  const workloadRestores = {
+    'teams-org-policies': { label: 'Teams', operations: [], plan: async (_client, { request }) => { seen.push(request.allowTenantWide); throw new Error('planned'); } },
+  };
+  const run = (extra) => main({
+    argv: ['node', 'keel-restore.mjs', '--collector-config', '/fixtures/collector.json', '--workload', 'teams-org-policies', '--collection', '1', ...extra],
+    readFile, dbUrl: database.url, dependencies: { ...cliDependencies(fakeSharePoint(SOURCE_SETTINGS)).dependencies, workloadRestores }, logger: quiet,
+  });
+  await assert.rejects(run([]), /planned/);
+  await assert.rejects(run(['--allow-tenant-wide-test-writes']), /planned/);
+  assert.deepEqual(seen, [false, true]);
+});
+
 // ------------------------------------------------------------------- promotion
 
 test('promotion is refused without an approved request; once approved it runs the SharePoint restore', async (t) => {

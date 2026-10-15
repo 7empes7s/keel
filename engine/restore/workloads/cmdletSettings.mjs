@@ -271,7 +271,8 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
  * rule always carries an action, and not every action is a written parameter (CopyTo,
  * a manager as recipient, removing encryption), so any change to its Mode, conditions,
  * exceptions or order can reach more mail: all of them need the approval. A spam
- * rule decides which mailboxes its policy (auto-forwarding, deleting spam) covers.
+ * rule decides which mailboxes its policy (auto-forwarding, deleting spam) covers,
+ * and so do anti-phish and Safe Attachments rules (deleting or quarantining).
  */
 const TRANSPORT_LOSSES = ['RejectMessageReasonText', 'RejectMessageEnhancedStatusCode'];
 const LOSS_TEXT = /delete|quarantine|reject/i;
@@ -291,6 +292,9 @@ export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
   }),
   exchangeOutboundSpamRule: everyChange(() => SHARING),
   exchangeAntiSpamRule: everyChange(() => IRREVERSIBLE),
+  // Their policies can delete or quarantine the mail they flag.
+  exchangeAntiPhishRule: everyChange(() => IRREVERSIBLE),
+  exchangeSafeAttachmentRule: everyChange(() => IRREVERSIBLE),
 });
 
 // Written fields whose names look content-bearing but are not, and why.

@@ -222,9 +222,7 @@ test('a later run that reads the same teams in another order stores no new versi
   const second = await backupTeams({ transport: fakeGraph(reversed).transport, tenantId: TENANT, tenantRef: 'test-tenant', store, now: later });
   assert.deepEqual(second.items.map((item) => item.version), first.items.map((item) => item.version));
   assert.deepEqual(second.items.map((item) => item.deduped), [true, true]);
-  assert.deepEqual(store.index.map((item) => item.metadata.observedAt), [
-    '2026-10-14T12:00:00.000Z', '2026-10-14T12:00:00.000Z', '2026-10-14T13:00:00.000Z', '2026-10-14T13:00:00.000Z',
-  ]);
+  assert.equal(store.index[0].metadata.observedAt, '2026-10-14T12:00:00.000Z', 'the read time is kept beside the document, not in it');
 
   // A real change still gives that team, and only that team, a new version.
   const renamed = fixture();

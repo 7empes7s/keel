@@ -40,6 +40,8 @@ const PAGES = [
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
+  { name: "sites", hash: "/sites" },
+  { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
 
 async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") {
@@ -465,6 +467,23 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
 });
 
+// Site permissions audit, gap 2: the site list and a site's page fit a phone, long
+// names wrap, and a site's name opens its own page.
+test("site permissions fit a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await open(page, "/sites", "dark");
+  await expect(page.locator(".site-list .site-card")).toHaveCount(3);
+  await expect(page.locator(".site-list")).toContainText("App access unknown · groups and roles not read yet");
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await page.getByRole("link", { name: "Finance" }).click();
+  await expect(page.locator("main#main-content h1")).toHaveText("Finance");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("2 apps have access to this site; 1 has full control.");
+  await expect(page.getByText("Payroll connector")).toBeVisible();
+  await expect(page.getByText("KEEL does not read this site's SharePoint groups or the roles given to people yet.", { exact: false })).toBeVisible();
+  expect(await overflow()).toBeLessThanOrEqual(0);
+});
+
 // Portal experience contract, mechanical checks (roadmap task-129). They run on every
 // harness route. A route not yet rebuilt to the contract may fail them only through
 // this allowlist, which task-130 and task-131 empty; its size is asserted, so it can
@@ -518,6 +537,8 @@ const RECORD_IDS: Record<string, string[]> = {
   "compare-tenants": ["sha256:5a1e00000000c0b2", "conditionalAccessPolicy:Require MFA for admins"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
   "readiness-ready": ["b9000000-0000-4000-8000-000000000002", "activation-rules-not-collected"],
+  sites: ["c0110000-0000-4000-8000-0000000000c5"],
+  site: ["contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002", "a9900000-0000-4000-8000-0000000000a1", "a9900000-0000-4000-8000-0000000000a2", "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE"],
 };
 
 async function textOutside(page: Page, root: string, excluded: string): Promise<string> {

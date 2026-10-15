@@ -62,6 +62,8 @@ import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
+import { SiteDetail, SiteList } from "@/components/site-permissions";
+import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -1130,8 +1132,47 @@ function comparePage(data: CompareData) {
     <div data-layer="explanation"><CompareView data={data} /></div></>;
 }
 
+// Site permissions audit, gap 2: each SharePoint site's stored permissions.
+const SITE_HOST = "contoso.sharepoint.com";
+const SITE_FINANCE = `${SITE_HOST},5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002`;
+const SITE_ARCHIVE = `${SITE_HOST},5e170000-0000-4000-8000-000000000003,5e170000-0000-4000-8000-000000000004`;
+const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e170000-0000-4000-8000-000000000006`;
+const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
+const SITES: SitePermissionsData = {
+  generatedAt: now,
+  run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
+  latest: null,
+  sites: [
+    sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
+      { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
+    sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
+    ] }, { appPermissionGrants: SITE_READ }),
+    sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+  ],
+};
+
+function sitesPage() {
+  const verdict = sitesVerdict(SITES);
+  return <>{header("Protect", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><SiteList data={SITES} /></div></>;
+}
+
+function sitePage(path: string) {
+  const id = decodeURIComponent(path.slice("/sites/".length));
+  const site = SITES.sites.find((entry) => entry.siteId === id);
+  if (!site) return null;
+  const verdict = siteVerdict(site);
+  return <>{header("Protect", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+    <Verdict text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
+  if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
     case "/activity": return <>{header("Activity", "Activity", "What KEEL has done and who decided what, newest first.")}
@@ -1171,6 +1212,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return reportsPage(VALUE_REPORT);
     case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
+    case "/sites": return sitesPage();
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);

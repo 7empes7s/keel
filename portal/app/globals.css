@@ -6135,3 +6135,15 @@ section.wizard-panel {
   --tone: var(--accent);
   animation: rise-in var(--duration-slow) var(--ease-out), tone-ring 1.6s ease-out 2;
 }
+
+/* Site permissions: long site names and web addresses wrap instead of widening a phone. */
+.site-card .item-card-head,
+.site-address {
+  overflow-wrap: anywhere;
+}
+
+.site-line {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-soft);
+}
+

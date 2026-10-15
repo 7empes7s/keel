@@ -157,6 +157,9 @@ export const DATA_SURFACES = {
   // Wave 2 CMP: compare two snapshots or two tenants. Tenant-wide readers only.
   compareApi: { capability: "read", source: "api/compare/route.ts" },
   comparePage: { capability: "read", source: "compare/page.tsx" },
+  // Site permissions audit, gap 2: each SharePoint site's stored permissions. Tenant-wide readers only.
+  sitesPage: { capability: "read", source: "sites/page.tsx" },
+  sitePage: { capability: "read", source: "sites/[id]/page.tsx" },
 } as const;
 
 export interface DataSurface {

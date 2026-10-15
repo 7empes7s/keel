@@ -3173,7 +3173,9 @@ item that needs it stays untouched.
     extra include (see below). isOrganizationDefault stayed false throughout.
     - The create path writes isOrganizationDefault false; no follow-up appears for it because the backups were not defaults.
       The follow-up listed for the four policies is "Which apps the policy is assigned to".
-  - **Evidence promoted: only permissionGrantPolicy update.** The capture tool refuses the other types (**#295**).
+  - **Evidence promoted: none in the end.** The capture tool refuses five of the types (**#295**). permissionGrantPolicy update captured
+    and passed `promote`, but I then **demoted** it (10:47): its readBackVerified covers only the written fields, while the live
+    policy kept a drifted extra include and is wider than the backup (#294; a background security review flagged it as fail-open).
   - **Per type and operation:**
 
     | type | create | update |
@@ -3181,7 +3183,7 @@ item that needs it stays untouched.
     | tokenLifetimePolicy | restored, equal; **blocked** (capture #295) | restored, equal; **blocked** (#295) |
     | tokenIssuancePolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
     | claimsMappingPolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
-    | permissionGrantPolicy | **demoted** (#294) | **promoted** → live-qualified |
+    | permissionGrantPolicy | **demoted** (#294) | captured; **demoted** (the restored policy is wider than the backup, #294) |
     | oauth2PermissionGrant | restored, equal; **blocked** (#295: "no role reference") | restored (scope `openid profile` → `openid`); **blocked** (#295) |
     | homeRealmDiscoveryPolicy | restored, equal; **blocked** (#295) | restored, equal; **blocked** (#295) |
 
@@ -3202,10 +3204,11 @@ item that needs it stays untouched.
   - **Cleanup:** deleted every KEEL-RT-W2 policy, `keel-rt-w2-consent`, the fixture grant, and app KEEL-RT-W2-app with its SP
     (purged from deleted items). **Nothing left** (re-read: 0).
   - **Evidence:** `claude/live-evidence-w2-entra` @ **e21bbc8**. Files: permissionGrantPolicy.create.json, .capture.json and .demotion.json;
-    permissionGrantPolicy.update.json and .capture.json. pseudonymize check exit 0; the secret and known-id scans are clean.
+    permissionGrantPolicy.update.json, .capture.json and .demotion.json (the demotion is commit 1a8b2b0). pseudonymize check exit 0; the secret and known-id scans are clean.
   - **operations.mjs --live-evidence:**
     `live evidence permissionGrantPolicy.create.json: not applied (the write was not verified by its read-back, so it cannot be promoted)`;
-    `live evidence permissionGrantPolicy.update.json: fixture-tested -> live-qualified`.
+    `live evidence permissionGrantPolicy.update.json: fixture-tested -> live-qualified`. This line ignores the sibling
+    .demotion.json; the builder should take the demotion (comment on #294).
   - GitHub: #294 (replication 404, plus widening and re-run), #295 (capture tool), comment on #286.
 - Coordinator note (2026-10-15): resume from the S1 dry run, no new setup. Needs /opt/keel-live at c3b5f6c or later
   (`grep -q unavailableOnTenant /opt/keel-live/engine/collect/entraAdapter.mjs`). The restore's current-state read now

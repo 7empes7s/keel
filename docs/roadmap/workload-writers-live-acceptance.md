@@ -54,7 +54,7 @@ node tools/qualification/workloadWritesLive.mjs capture --confirm-live-tenant-wr
   --workload exchange-mail-flow --tenant-ref <ref> --directory-tenant-id <tenant guid> \
   --collector-ref app:<collector id> --restorer-ref app:<restorer id> \
   --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
-  --module-version <ExchangeOnlineManagement version> --grants grants.json --build B \
+  --grants grants.json --build B \
   --out docs/release/qualifications/workload-writers-exchange-mail-flow-live-acceptance.json
 node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance \
   --evidence docs/release/qualifications/workload-writers-exchange-mail-flow-live-acceptance.json
@@ -62,6 +62,9 @@ node tools/release/qualification.mjs verify --require-live --gate workload-write
 
 - Workloads: `exchange-mail-flow`, `exchange-extended`, `purview-retention-dlp`, `purview-governance`
   (ExchangeOnlineManagement), `teams-org-policies`, `teams-voice-policies` (MicrosoftTeams, Teams configs).
+- The record is bound to the workload's own module at the version `ops/powershell/Dockerfile` pins
+  (MicrosoftTeams for the Teams workloads, ExchangeOnlineManagement for the rest). `--module-version`
+  is optional; a value that is not that pin is refused before anything is sent.
 - `grants.json` is `{ "collector": { permissions, roles }, "restorer": { permissions, roles } }`.
 - Use the same container image as the Exchange record (gate 122): the import binds every
   ExchangeOnlineManagement write to one module version, and refuses a writer record captured at

@@ -251,6 +251,7 @@ const OUTCOME_WORDS: Record<string, string> = {
   failed: "failed to read",
   disabled: "not switched on",
   "not-requested": "not read",
+  unavailable: "not available on this tenant",
   unknown: "read",
 };
 

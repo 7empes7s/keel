@@ -114,7 +114,8 @@ function coverageOutcome(value: unknown): CoverageType["outcome"] {
     value === "complete-empty" ||
     value === "partial" ||
     value === "failed" ||
-    value === "not-requested"
+    value === "not-requested" ||
+    value === "unavailable"
     ? value
     : null;
 }

@@ -154,6 +154,9 @@ export const DATA_SURFACES = {
   askPage: { capability: "read", source: "ask/page.tsx", entityScoped: true },
   // Task-94: emergency account readiness and the usage canary. Tenant-wide readers only.
   readinessPage: { capability: "read", source: "readiness/page.tsx" },
+  // Wave 2 CMP: compare two snapshots or two tenants. Tenant-wide readers only.
+  compareApi: { capability: "read", source: "api/compare/route.ts" },
+  comparePage: { capability: "read", source: "compare/page.tsx" },
 } as const;
 
 export interface DataSurface {

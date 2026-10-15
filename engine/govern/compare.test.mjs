@@ -1,0 +1,234 @@
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+import { canonicalizeAll } from '../cir/canonicalize.mjs';
+import { completeSnapshot, connect, createSnapshot, insertReferences, insertResourceVersion } from '../store/db.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
+import {
+  CompareError, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
+  differenceCount, listCompareSources, portablePayload,
+} from './compare.mjs';
+
+const database = await createIsolatedTestDatabase(import.meta.url);
+const admin = await database.connect();
+await admin.query(schemaSql());
+await admin.end();
+const client = await connect(database.url);
+test.after(async () => { await client.end(); await database.cleanup(); });
+
+const TENANT_A = 'sha256:00000000000000a1';
+const TENANT_B = 'sha256:00000000000000b2';
+const guid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+/** Stores a completed snapshot from raw Graph objects, the way collectSnapshot does. */
+async function storeSnapshot(tenantRef, collected, { at, coverage = fullSuccessfulCoverageDigest() }) {
+  const snapshotId = await createSnapshot(client, { tenantRef });
+  for (const resource of canonicalizeAll(collected)) {
+    const versionId = await insertResourceVersion(client, { snapshotId, resource: { ...resource, fidelity: resource.provenance.fidelity } });
+    await insertReferences(client, { fromVersion: versionId, references: resource.references });
+  }
+  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: coverage });
+  await client.query('UPDATE snapshot SET started_at = $2, completed_at = $2 WHERE id = $1', [snapshotId, at]);
+  return snapshotId;
+}
+
+const group = (n, nickname, extra = {}) => ({ id: guid(n), displayName: nickname, mailNickname: nickname, securityEnabled: true, ...extra });
+const policy = (n, name, groupIds, state = 'enabled') => ({
+  id: guid(n), displayName: name, state,
+  conditions: { users: { includeGroups: groupIds, excludeGroups: [] }, applications: { includeApplications: ['All'] } },
+  grantControls: { operator: 'OR', builtInControls: ['mfa'] },
+});
+
+async function putContent(tenantRef, { workload, container, itemKey, version, sha, bytes = 10, metadata = {}, at }) {
+  await client.query(
+    `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, metadata, sha256, bytes, chunks, key_id, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'[]','k1',$9)`,
+    [tenantRef, workload, container, itemKey, version, metadata, sha.repeat(64).slice(0, 64), bytes, at],
+  );
+}
+
+async function putWorkload(tenantRef, { workload, outcome, at, resources }) {
+  const { rows: [run] } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+     VALUES ($1,$2,$3,$4,$4,$4) RETURNING id`,
+    [tenantRef, workload, outcome, at],
+  );
+  for (const [resourceKey, fields, fieldCoverage = {}] of resources) {
+    await client.query('INSERT INTO workload_observation (collection_id, resource_key, fields, field_coverage) VALUES ($1,$2,$3,$4)', [run.id, resourceKey, fields, fieldCoverage]);
+  }
+}
+
+const T1 = new Date('2026-10-01T06:00:00Z');
+const T2 = new Date('2026-10-02T06:00:00Z');
+const T3 = new Date('2026-10-03T06:00:00Z');
+
+// Tenant A at T1 and T2.
+const a1 = await storeSnapshot(TENANT_A, [
+  ['group', [group(1, 'KEEL-RT-Finance'), group(2, 'KEEL-RT-Old'), group(3, 'KEEL-RT-Same')]],
+  ['conditionalAccessPolicy', [policy(10, 'KEEL-RT-Require MFA', [guid(1)])]],
+], { at: T1 });
+const coverageWithoutCa = { ...fullSuccessfulCoverageDigest(), conditionalAccessPolicy: { outcome: 'failed', itemCount: null } };
+const a2 = await storeSnapshot(TENANT_A, [
+  ['group', [group(1, 'KEEL-RT-Finance', { securityEnabled: false }), group(3, 'KEEL-RT-Same'), group(4, 'KEEL-RT-New')]],
+], { at: T2, coverage: coverageWithoutCa });
+// Tenant B: the same objects with other ids; one real setting differs.
+const b1 = await storeSnapshot(TENANT_B, [
+  ['group', [group(101, 'KEEL-RT-Finance'), group(102, 'KEEL-RT-Old'), group(103, 'KEEL-RT-Same')]],
+  ['conditionalAccessPolicy', [policy(110, 'KEEL-RT-Require MFA', [guid(101)], 'disabled')]],
+  ['deviceCategory', [{ id: guid(120), displayName: 'KEEL-RT-Kiosk' }]],
+], { at: T2 });
+
+// Content in tenant A: one item kept, one changed, one deleted, one new; one in B.
+await putContent(TENANT_A, { workload: 'exchange-mail', container: 'mailbox/u1/items/inbox', itemKey: 'm1', version: 'v1', sha: 'a', at: T1 });
+await putContent(TENANT_A, { workload: 'exchange-mail', container: 'mailbox/u1/items/inbox', itemKey: 'm2', version: 'v1', sha: 'b', at: T1 });
+await putContent(TENANT_A, { workload: 'exchange-mail', container: 'mailbox/u1/items/inbox', itemKey: 'm2', version: 'v2', sha: 'c', at: new Date('2026-10-01T12:00:00Z') });
+await putContent(TENANT_A, { workload: 'onedrive', container: 'drive:d1', itemKey: 'f1', version: 'v1', sha: 'd', metadata: { name: 'KEEL-RT-plan.docx' }, at: T1 });
+await putContent(TENANT_A, { workload: 'onedrive', container: 'drive:d1', itemKey: 'f1', version: 'record:x', sha: 'e', metadata: { deleted: true }, at: new Date('2026-10-01T13:00:00Z') });
+await putContent(TENANT_A, { workload: 'onedrive', container: 'drive:d1', itemKey: 'f2', version: 'v1', sha: 'f', metadata: { name: 'KEEL-RT-new.docx' }, at: new Date('2026-10-01T14:00:00Z') });
+await putContent(TENANT_B, { workload: 'exchange-mail', container: 'mailbox/u9/items/inbox', itemKey: 'm9', version: 'v1', sha: 'a', at: T1 });
+
+// Workloads in tenant A: a mailbox setting changes; the second run is partial.
+await putWorkload(TENANT_A, { workload: 'exchange-mailbox-settings', outcome: 'complete', at: T1, resources: [
+  ['mailbox:keel-rt-a@contoso.example', { identity: guid(50), mailboxSettings: { ForwardingSmtpAddress: null, HiddenFromAddressListsEnabled: false } }],
+  ['mailbox:keel-rt-b@contoso.example', { identity: guid(51), mailboxSettings: { ForwardingSmtpAddress: null } }],
+] });
+await putWorkload(TENANT_A, { workload: 'exchange-mailbox-settings', outcome: 'partial', at: new Date('2026-10-01T18:00:00Z'), resources: [
+  ['mailbox:keel-rt-a@contoso.example', { identity: guid(50), mailboxSettings: { ForwardingSmtpAddress: 'smtp:x@example.com', HiddenFromAddressListsEnabled: true } },
+    { 'mailboxSettings.ForwardingSmtpAddress': { status: 'observed' }, 'mailboxSettings.HiddenFromAddressListsEnabled': { status: 'failed' } }],
+] });
+await putWorkload(TENANT_A, { workload: 'teams-org-policies', outcome: 'failed', at: new Date('2026-10-01T18:00:00Z'), resources: [] });
+
+const settingsItems = (result) => Object.fromEntries(result.settings.groups.flatMap((g) => g.items.map((item) => [item.naturalKey, item])));
+
+test('two snapshots of one tenant: added, removed and changed, never a removal from a failed read', async () => {
+  const result = await compareSnapshots(client, { leftSnapshotId: a1, rightSnapshotId: a2, now: T3 });
+  assert.equal(result.mode, 'snapshots');
+  assert.equal(result.portable, false);
+  const items = settingsItems(result);
+  assert.equal(items['group:KEEL-RT-Old'].changeType, 'removed');
+  assert.equal(items['group:KEEL-RT-New'].changeType, 'added');
+  assert.equal(items['group:KEEL-RT-Finance'].changeType, 'changed');
+  assert.deepEqual(items['group:KEEL-RT-Finance'].fields.map((field) => [field.path, field.before, field.after]), [['securityEnabled', true, false]]);
+  assert.equal(items['group:KEEL-RT-Same'], undefined);
+  assert.equal(result.settings.totals.unchanged, 1);
+  // The CA policy read failed on the right: not compared, and never reported as removed.
+  assert.equal(items['conditionalAccessPolicy:KEEL-RT-Require MFA'], undefined);
+  assert.deepEqual(result.settings.notCompared.map((entry) => [entry.resourceType, entry.left, entry.right]), [['conditionalAccessPolicy', 'complete', 'failed']]);
+  const groups = result.settings.groups.find((g) => g.resourceType === 'group');
+  assert.equal(groups.service, 'Entra ID');
+});
+
+test('content in one tenant is compared item by item, by container', async () => {
+  const result = await compareSnapshots(client, { leftSnapshotId: a1, rightSnapshotId: a2, sections: ['content'], now: T3 });
+  assert.equal(result.settings, null);
+  assert.equal(result.content.by, 'item');
+  assert.deepEqual(result.content.totals, { added: 1, removed: 1, changed: 1 });
+  const mail = result.content.groups.find((g) => g.workload === 'exchange-mail');
+  assert.equal(mail.service, 'Exchange Online');
+  assert.deepEqual(mail.containers.map((c) => [c.container, c.changed, c.items.map((i) => i.itemKey)]), [['mailbox/u1/items/inbox', 1, ['m2']]]);
+  const drive = result.content.groups.find((g) => g.workload === 'onedrive');
+  const byKey = Object.fromEntries(drive.containers[0].items.map((item) => [item.itemKey, item]));
+  assert.equal(byKey.f1.changeType, 'removed', 'a deleted marker removes the item');
+  assert.equal(byKey.f2.changeType, 'added');
+  assert.equal(byKey.f2.name, 'KEEL-RT-new.docx');
+  assert.equal(drive.leftItems, 1);
+  assert.equal(drive.rightItems, 1);
+});
+
+test('workloads compare only what both sides observed, and a partial run proves no removal', async () => {
+  const result = await compareSnapshots(client, { leftSnapshotId: a1, rightSnapshotId: a2, sections: ['workloads'], now: T3 });
+  const mailbox = result.workloads.groups.find((g) => g.workload === 'exchange-mailbox-settings');
+  assert.equal(mailbox.state, 'compared');
+  assert.equal(mailbox.removed, 0, 'keel-rt-b is missing from a partial run, which is not a removal');
+  assert.equal(mailbox.unverified, 1);
+  assert.deepEqual(mailbox.items, [{
+    resourceKey: 'mailbox:keel-rt-a@contoso.example', changeType: 'changed', fieldsTotal: 1,
+    fields: [{ path: 'mailboxSettings.ForwardingSmtpAddress', kind: 'changed', before: null, after: 'smtp:x@example.com' }],
+  }]);
+  assert.equal(mailbox.unverifiedFields, 1, 'a field the right side failed to read is not compared');
+  const teams = result.workloads.groups.find((g) => g.workload === 'teams-org-policies');
+  assert.equal(teams.state, 'not-compared');
+});
+
+test('tenant against tenant matches by name and ignores id-only differences', async () => {
+  const result = await compareTenants(client, { leftTenantRef: TENANT_A, rightTenantRef: TENANT_B, now: T3 });
+  assert.equal(result.mode, 'tenants');
+  assert.equal(result.portable, true);
+  assert.equal(result.left.snapshotId, a2, 'the newest completed snapshot of each tenant');
+  // Snapshots a1 and b1 hold the same groups and policy with other ids.
+  const exact = await compareSnapshots(client, { leftSnapshotId: a1, rightSnapshotId: b1, sections: ['settings', 'content'], now: T3 });
+  assert.equal(exact.mode, 'tenants');
+  const items = settingsItems(exact);
+  assert.equal(items['group:KEEL-RT-Finance'], undefined, 'groups that differ only in their ids are the same');
+  assert.equal(items['group:KEEL-RT-Old'], undefined);
+  const ca = items['conditionalAccessPolicy:KEEL-RT-Require MFA'];
+  assert.equal(ca.changeType, 'changed', 'the policy points at the same group by name; only its state differs');
+  assert.deepEqual(ca.fields.map((field) => [field.path, field.before, field.after]), [['state', 'enabled', 'disabled']]);
+  // A type keyed by a tenant id cannot be matched across tenants and says so.
+  assert.deepEqual(exact.settings.unmatched.map((entry) => [entry.resourceType, entry.left, entry.right]), [['deviceCategory', 0, 1]]);
+  assert.equal(exact.settings.unmatched[0].service, 'Intune');
+  // Content ids are tenant-bound: two tenants are compared by what they hold.
+  assert.equal(exact.content.by, 'holdings');
+  const mail = exact.content.groups.find((g) => g.workload === 'exchange-mail');
+  assert.equal(mail.inBoth, 1);
+  assert.equal(mail.onlyLeft, 1);
+  assert.equal(mail.onlyRight, 0);
+  await assert.rejects(() => compareTenants(client, { leftTenantRef: TENANT_A, rightTenantRef: TENANT_A }), (error) => error instanceof CompareError && error.code === 'same-tenant');
+});
+
+test('the portable form replaces references by name and masks every other id', () => {
+  const payload = { id: guid(9), conditions: { users: { includeGroups: [guid(1)] } }, note: 'x' };
+  assert.deepEqual(portablePayload(payload, [{ field_path: 'conditions.users.includeGroups[0]', to_symbol: 'group:KEEL-RT-Finance' }]),
+    { id: '<id>', conditions: { users: { includeGroups: ['ref:group:KEEL-RT-Finance'] } }, note: 'x' });
+  assert.deepEqual(portablePayload({ owner: guid(2) }, [{ field_path: 'owner', to_symbol: null }]), { owner: 'ref:unresolved' });
+});
+
+test('a snapshot against live reads with GETs only, stores nothing, and refuses another tenant', async () => {
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push(path);
+      if (path.startsWith('/groups')) return { items: [group(1, 'KEEL-RT-Finance'), group(3, 'KEEL-RT-Same', { description: 'edited' })], pages: 1, status: 200, error: null };
+      return { items: [], pages: 1, status: 200, error: null };
+    },
+  };
+  const before = (await client.query('SELECT count(*)::int AS n FROM snapshot')).rows[0].n;
+  const result = await compareWithLive(client, { snapshotId: a1, tenantRef: TENANT_A, reader, tenantId: 'fixture', sections: ['settings'], now: T3 });
+  const after = (await client.query('SELECT count(*)::int AS n FROM snapshot')).rows[0].n;
+  assert.equal(after, before, 'a live compare writes no snapshot');
+  assert.ok(calls.length > 0);
+  assert.deepEqual(Object.keys(reader), ['collect'], 'the reader offers reads only');
+  assert.equal(result.mode, 'live');
+  assert.equal(result.right.kind, 'live');
+  const items = settingsItems(result);
+  assert.equal(items['group:KEEL-RT-Old'].changeType, 'removed');
+  assert.equal(items['group:KEEL-RT-Same'].changeType, 'changed');
+  assert.equal(items['group:KEEL-RT-Same'].fields[0].path, 'description');
+  assert.equal(items['conditionalAccessPolicy:KEEL-RT-Require MFA'].changeType, 'removed', 'a complete empty live read is authority');
+  assert.equal(items['group:KEEL-RT-Finance'], undefined);
+  await assert.rejects(
+    () => compareWithLive(client, { snapshotId: b1, tenantRef: TENANT_A, reader, tenantId: 'fixture' }),
+    (error) => error.code === 'tenant-mismatch',
+  );
+});
+
+test('the pickers list each tenant with its completed snapshots, newest first', async () => {
+  const sources = await listCompareSources(client);
+  const a = sources.find((tenant) => tenant.tenantRef === TENANT_A);
+  assert.deepEqual(a.snapshots.map((snapshot) => snapshot.id), [a2, a1]);
+  assert.equal(a.snapshots[1].resourceCount, 4);
+});
+
+test('pure rules: unknown coverage is compared, differing hash versions are reprojected', () => {
+  const row = (key, payload, hash, version = 2) => ({ natural_key: key, resource_type: 'group', payload, payload_hash: hash, hash_version: version, blast_radius: 'access-affecting' });
+  const same = compareSettings(
+    { rows: [row('group:x', { displayName: 'x', mailNickname: 'x' }, 'old-hash', 1)], coverage: null },
+    { rows: [row('group:x', { displayName: 'x', mailNickname: 'x' }, 'new-hash', 2)], coverage: null },
+  );
+  assert.equal(same.totals.changed, 0, 'two hash versions are compared on their payloads, not their hash strings');
+  assert.equal(same.totals.unchanged, 1);
+  const workloads = compareWorkloads(new Map(), new Map([['purview-labels', { collectionId: 'c', outcome: 'complete', at: T1, observations: [] }]]));
+  assert.equal(workloads.groups[0].reason, 'not-collected');
+  assert.equal(differenceCount({ settings: same, workloads, content: null }).total, 0);
+});

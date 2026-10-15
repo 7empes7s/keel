@@ -632,7 +632,8 @@ export function planWorkloadSettingsRestore({
     if (!current) {
       const policyName = ops.add && /^tag:/i.test(String(observation.fields.Identity ?? ''));
       if (!policyName) {
-        manual.push({ resourceKey: key, field: null, reason: 'it no longer exists; KEEL does not re-create it (it would get a new identity, and not every condition is held); an administrator re-creates it' });
+        const refused = write.addRefused && /^tag:/i.test(String(observation.fields.Identity ?? ''));
+        manual.push({ resourceKey: key, field: null, reason: refused ? write.addRefused : 'it no longer exists; KEEL does not re-create it (it would get a new identity, and not every condition is held); an administrator re-creates it' });
         continue;
       }
       const add = declarations[ops.add];

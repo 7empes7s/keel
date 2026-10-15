@@ -41,6 +41,9 @@
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { FIELD_PROJECTION_CONTRACT_VERSION, reviewStateFor } from '../contracts/fieldProjection.mjs';
+import entraCapabilities from './capabilities.d/entra.mjs';
+import idoCapabilities from './capabilities.d/ido.mjs';
+import wkldCapabilities from './capabilities.d/wkld.mjs';
 
 export const CAPABILITY_CONTRACT_VERSION = 1;
 
@@ -482,3 +485,21 @@ for (const family of ['member', 'owner']) {
     recordFixtureProof(resourceType, operation, 'engine/roadmap/relationship-restore.test.mjs');
   }
 }
+
+// Wave 2: further registrations live in capabilities.d/, one file per package,
+// so packages add capabilities without editing this file. Each entry is
+// { resourceType, operation, path, handler, idOutcome, subtype?, credentialMode?, proofRef? };
+// a proofRef records the fixture proof in the same step.
+export const CAPABILITY_FRAGMENTS = Object.freeze({ entra: entraCapabilities, ido: idoCapabilities, wkld: wkldCapabilities });
+
+export function registerCapabilityFragment(entries) {
+  for (const { proofRef, ...registration } of entries) {
+    if (REGISTRY.get(registration.resourceType)?.operations.has(registration.operation)) {
+      throw new Error(`${registration.resourceType} ${registration.operation}: already registered; a fragment never replaces a registration`);
+    }
+    registerOperationCapability(registration);
+    if (proofRef !== undefined) recordFixtureProof(registration.resourceType, registration.operation, proofRef);
+  }
+}
+
+for (const entries of Object.values(CAPABILITY_FRAGMENTS)) registerCapabilityFragment(entries);

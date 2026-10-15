@@ -2646,7 +2646,7 @@ item that needs it stays untouched.
 
 ### Q57: Confirm Marouane's admin consent for Q55/Q56 (read-only)
 - Drafted by the "Add API permissions" thread (2026-10-15). Marouane reported consent done at 00:09 UTC.
-- Status: todo
+- Status: in-progress
 - Needs: Q56 done.
 - **Read-only.** Nothing created, granted or removed.
 - **Do:** for the KEEL Collector and the KEEL Content Reader, list the Graph app roles in `requiredResourceAccess` that the

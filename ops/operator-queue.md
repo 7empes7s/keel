@@ -3573,10 +3573,21 @@ item that needs it stays untouched.
   tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy and homeRealmDiscoveryPolicy as named objects: it checks the
   policy's own display name (KEEL-RT- prefix) and no longer needs `--allow-by-reference`.
 - Needs: /opt/keel-live at afd3641 or later (`grep -q NAMED_ID_KEY_TYPES /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
-- Status: in-progress
-- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
-  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
-  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
+- Status: done
+- Result: Done 2026-10-15 13:37–13:41 UTC on **B = 321435f6** (includes afd3641, #303). No tenant writes: the records were recaptured from Q67's
+  restores A1 to A4. Global admin not used.
+  - **1. Plan at B:** the capture commands for tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy and
+    homeRealmDiscoveryPolicy no longer carry `--allow-by-reference`. oauth2PermissionGrant still does.
+  - **2–3. Captures and promotion** (no `--allow-by-reference`): **all 8 captured (exit 0) and promoted → live-qualified.**
+    - tokenLifetimePolicy create (A1), update (A2).
+    - tokenIssuancePolicy create (A1), update (A2).
+    - claimsMappingPolicy create (A1), update (A2).
+    - homeRealmDiscoveryPolicy create (A3), update (A4).
+  - **Evidence:** `claude/live-evidence-w2-entra` @ **7513331**, with the 8 records, their .capture.json files and the capture logs.
+    pseudonymize check passes; the secret and known-id scans are clean.
+  - **operations.mjs --live-evidence:** each of the 8 is `fixture-tested -> live-qualified`.
+    permissionGrantPolicy create and update show `not applied (… .demotion.json demotes this write …)`.
+  - **4. oauth2PermissionGrant: still blocked** (plan still prints `--allow-by-reference`; Q67's refusal was "no role reference").
 - **Test tenant only. No tenant writes:** this reuses Q67's restores (A1, A2, A3, A4); their journals and snapshots are in the
   KEEL database. Same capture tooling as Q67.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:

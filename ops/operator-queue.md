@@ -3504,10 +3504,25 @@ item that needs it stays untouched.
   messages are now created as received messages (PR_MESSAGE_FLAGS read, not unsent) with their original received and sent
   times, instead of the MIME create that Exchange stores as a draft dated now. Closes the Q68 finding (#293).
 - Needs: /opt/keel-live at 847edbf or later. Q68 done (content-restorer.json exists).
-- Status: in-progress
-- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
-  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
-  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
+- Status: done
+- Result: Done 2026-10-15 13:31–13:36 UTC on **B = 321435f6** (includes 847edbf, #301). Writes only in keel-rt-20260908-alice's mailbox, as the
+  Restorer through content-restorer.json. Global admin not used. Approvals filed by the Entra principal and self-approved as the
+  Gmail approver under the standing authorization. **#293 is fixed live.**
+  - **2. Plan** (`--kinds mail`, T = 2026-10-15T10:15:30Z): exit 0. Containers 8; items mail **1**; notRestorable [].
+  - **3. Copy restore** (approval **ef80b7ab**): exit 0.
+    `{"label":"Restored 2026-10-15","restored":1,"kept":{"unchanged":0,"newer":0},"alreadyDone":0,"notRestorable":0,"failed":0,"writes":10,"incomplete":[],"status":"completed"}`
+    - The copy in `Restored 2026-10-15/Inbox`: subject KEEL-RT-20261015-mail, **isDraft false**, isRead true,
+      **receivedDateTime 2026-10-15T07:48:01Z**, sentDateTime 07:48:01Z, internetMessageId present.
+    - `from` is empty, as on the original: the Q63 fixture was created through Graph with no sender.
+  - **4. Re-run:** exit 0, `restored 0, alreadyDone 1, writes 0`.
+  - **5. Into the original:** deleted the Q68 draft copy from the Inbox (204). Then `--into original --kinds mail` (approval **54b6f7ad**): exit 0,
+    `{"restored":1,"kept":{"unchanged":0,"newer":0},"alreadyDone":0,"failed":0,"writes":1,"incomplete":[],"status":"completed"}`.
+    - The message is back in the Inbox: **parentFolderId = Inbox**, **isDraft false**, isRead true, **received 2026-10-15T07:48:01Z**,
+      sent 07:48:01Z.
+  - **6. Cleanup:** deleted the `Restored 2026-10-15` folder tree (204; also gone from Deleted Items).
+    - **Left:** the step-5 message in the Inbox, the standing fixture (isDraft false).
+    - Earlier deleted copies are in Recoverable Items only.
+  - Commented on #293.
 - **Test tenant only.** Same hard rules, Restorer identity and requester/approver split as Q68. Under the 2026-10-14
   standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here. Write only
   into keel-rt-20260908-alice's mailbox. Grant no permission.

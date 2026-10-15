@@ -258,7 +258,7 @@ test('the reader keeps settings, Teams membership and group membership as separa
   }
   const counted = Object.values(result.fieldCounts).reduce((sum, count) => sum + count, 0);
   assert.equal(counted, Object.keys(team.fieldCoverage).length);
-  assert.equal(counted, 5 + 9 + 2, 'five settings groups, nine properties, two memberships');
+  assert.equal(counted, 5 + 8 + 2, 'five settings groups, eight properties, two memberships');
 
   // A team of another tenant is recorded out of scope; its members are never read.
   assert.deepEqual(result.outOfScope, [{ teamId: FOREIGN_TEAM, reason: 'the team belongs to another tenant' }]);
@@ -271,6 +271,18 @@ test('the reader keeps settings, Teams membership and group membership as separa
     `${GRAPH}/teams/${TEAM}/channels/19:general/filesFolder`, `https://evil.example/v1.0/teams/${TEAM}`,
   ]) assert.throws(() => assertTeamsRequest(url, 'GET'), TeamsScopeError, url);
   assert.notEqual(scopeProblems({ kind: 'graph', method: 'GET', endpoint: '/teams/{team-id}/channels/{channel-id}/messages' }).length, 0);
+});
+
+test('a live team body without tenantId reads complete, not partial (#292)', async () => {
+  const { tenantId: _omitted, ...liveBody } = teamBody(TEAM);
+  const graph = fakeTeams({
+    teams: { [TEAM]: { body: liveBody, members: [rawMember(OWNER, ['owner'])], groupMembers: [OWNER] } },
+  });
+  const result = await readTeams({ transport: graph.transport, tenantId: TENANT, now: () => NOW });
+  assert.equal(result.outcome, 'complete');
+  assert.deepEqual(result.fieldCounts, { observed: 5 + 8 + 2 });
+  assert.deepEqual(result.outOfScope, []);
+  assert.equal('tenantId' in result.teams[0].fieldCoverage, false, 'the tenant comes from configuration, not the team body');
 });
 
 test('group and Teams membership completeness are independent', async (t) => {

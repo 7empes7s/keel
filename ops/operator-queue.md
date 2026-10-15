@@ -3504,7 +3504,10 @@ item that needs it stays untouched.
   messages are now created as received messages (PR_MESSAGE_FLAGS read, not unsent) with their original received and sent
   times, instead of the MIME create that Exchange stores as a draft dated now. Closes the Q68 finding (#293).
 - Needs: /opt/keel-live at 847edbf or later. Q68 done (content-restorer.json exists).
-- Status: todo
+- Status: todo (waiting on deploy)
+- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
+  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
+  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
 - **Test tenant only.** Same hard rules, Restorer identity and requester/approver split as Q68. Under the 2026-10-14
   standing authorization, keel-operator approves these test-tenant restores itself; log every approval id here. Write only
   into keel-rt-20260908-alice's mailbox. Grant no permission.
@@ -3530,7 +3533,10 @@ item that needs it stays untouched.
 - Drafted by the "#294 consent policy" thread (2026-10-15). Fix: PR #302, master 1a33ff5. A create now waits (up to about
   60 s, on 404 only) for the new policy to replicate before posting its include and exclude rules.
 - Needs: /opt/keel-live at 1a33ff5 or later (`grep -q untilReplicated /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: todo
+- Status: todo (waiting on deploy)
+- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
+  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
+  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
 - **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
   standing authorization; log every approval id here. No permission to add (Q26).
 - Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not
@@ -3552,7 +3558,10 @@ item that needs it stays untouched.
   tokenLifetimePolicy, tokenIssuancePolicy, claimsMappingPolicy and homeRealmDiscoveryPolicy as named objects: it checks the
   policy's own display name (KEEL-RT- prefix) and no longer needs `--allow-by-reference`.
 - Needs: /opt/keel-live at afd3641 or later (`grep -q NAMED_ID_KEY_TYPES /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
-- Status: todo
+- Status: todo (waiting on deploy)
+- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
+  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
+  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
 - **Test tenant only. No tenant writes:** this reuses Q67's restores (A1, A2, A3, A4); their journals and snapshots are in the
   KEEL database. Same capture tooling as Q67.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
@@ -3573,7 +3582,10 @@ item that needs it stays untouched.
   ("adopts live <id>"), not `create recreate`.
 - Needs: /opt/keel-live at 321435f or later (`grep -q conditionSetsPostStateRefusal /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
   Can run in the same sitting as Q73 (same fixture).
-- Status: todo
+- Status: todo (waiting on deploy)
+- Result: Waiting on deploy (checked 13:25 UTC): /opt/keel-live is still at 14dc79a1, which does not include 847edbf.
+  Master Portal CI was red on afd3641 and 355c5d5 (#307); d1328cd is now green and should deploy on the next tick. keel-operator
+  runs this as soon as a build with 847edbf is live (a watcher is running). Nothing done yet; no tenant writes.
 - **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
   standing authorization; log every approval id here. No permission to add (Q26).
 - Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not

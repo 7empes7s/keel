@@ -121,7 +121,9 @@ test('plan, gate, test-tenant guard, run and resume through the command line', a
   assert.deepEqual(graph.writes().map((write) => new URL(write.url).pathname), [
     `/v1.0/users/${USER}/mailFolders`, `/v1.0/users/${USER}/mailFolders/new-1/childFolders`, `/v1.0/users/${USER}/mailFolders/new-2/messages`,
   ]);
-  assert.equal(Buffer.from(graph.writes()[2].body, 'base64').toString(), MIME.toString());
+  const created = graph.writes()[2].body;
+  assert.equal(created.subject, 'KEEL-RT-1');
+  assert.deepEqual(created.singleValueExtendedProperties.slice(0, 1), [{ id: 'Integer 0x0E07', value: '1' }], 'created as a received message, not a draft (#293)');
 
   const writes = graph.writes().length;
   assert.equal(await run(approvalId), 0);
@@ -172,8 +174,11 @@ test('request, approval and run end to end, through the real write transport', a
   assert.equal(await main(['mail', 'run', '--approval-id', approvalId, '--actor', actor.id], deps), 0);
   assert.equal(JSON.parse(lines.pop()).restored, 1);
   const message = sent.find((request) => request.method === 'POST' && request.url.endsWith('/messages'));
-  assert.equal(message.headers['content-type'], 'text/plain');
+  assert.equal(message.headers['content-type'], 'application/json');
   assert.equal(message.headers.authorization, 'Bearer token');
-  assert.equal(Buffer.from(message.body, 'base64').toString(), MIME.toString());
+  const created = JSON.parse(message.body);
+  assert.equal(created.subject, 'KEEL-RT-1');
+  assert.equal(created.body.content, 'Hello\r\n');
+  assert.ok(created.singleValueExtendedProperties.some((property) => property.id === 'Integer 0x0E07' && property.value === '1'));
   assert.ok(sent.every((request) => new URL(request.url).pathname.startsWith(`/v1.0/users/${USER}`)));
 });

@@ -508,7 +508,6 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:**
 
 - Put back: Teams meeting policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
-- Add back: Teams meeting policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Add back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams external access (federation) configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)

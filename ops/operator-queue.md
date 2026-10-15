@@ -3159,7 +3159,11 @@ item that needs it stays untouched.
   (no delete) for oauth2PermissionGrant, permissionGrantPolicy, tokenLifetimePolicy, tokenIssuancePolicy,
   claimsMappingPolicy and homeRealmDiscoveryPolicy. Fixture-tested only so far.
 - Needs: /opt/keel-live at f54fa00 or later (`test -f /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
-- Status: blocked: #289 (restore current-state read fails on unlicensed types)
+- Status: todo (resumed 2026-10-15: #289 fixed by PR #290, merge c3b5f6c)
+- Coordinator note (2026-10-15): resume from the S1 dry run, no new setup. Needs /opt/keel-live at c3b5f6c or later
+  (`grep -q unavailableOnTenant /opt/keel-live/engine/collect/entraAdapter.mjs`). The restore's current-state read now
+  skips a type the tenant has no licence or feature for (403 "Insufficient license", 400 AADB2C99039) unless the
+  restore touches it, so lifecycle workflows and API connectors no longer block. Re-take plan-B at the new build.
 - Result: Blocked 2026-10-15 09:50 UTC at the first dry run, by **#289**: every keel-restore aborts in its current-state read.
   - Detail: `collectM1` throws on `lifecycleWorkflow` (403, no Entra ID Governance license). `identityApiConnector`, which
     fails with 400 because self-service sign-up is off, would do the same. No approval was filed; no restore ran.

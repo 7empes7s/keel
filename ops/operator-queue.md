@@ -3002,7 +3002,45 @@ item that needs it stays untouched.
 - Drafted by the "Forced backup with all fixes" thread (2026-10-15). Marouane asked to force a backup now.
   Fixes to prove live: #270 (mail cursor, 7b2f2d2), #271 (Teams snapshot deterministic, 811d7e6),
   #273 (SharePoint list items via delta, 55d8b63).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 08:30–08:33 UTC, read-only (Content Reader, GET-only contentReadTransport). **Run A exit 0, run B exit 0.**
+  No tenant, permission or fixture changes. Global admin not used.
+  - **Deployed:** /opt/keel-live at **55d8b631** (the merge of #273; it includes 7b2f2d2 #270 and 811d7e6 #271).
+    It arrived at 08:29, about 7 minutes after its Portal CI passed (08:21).
+  - **Baseline:** exchange-mail 11 / 4219, group-conversations 3 / 9496, onedrive 2 / 1771, planner 5 / 2479,
+    sharepoint-sites 889 / 2735364, teams 44 / 1073802. Sync keys: exchange-mail 2, onedrive 1, sharepoint-sites 28.
+  - **Run A** (08:30:26), exit 0:
+      exchange-mail: succeeded (0 items, 0 bytes)
+      onedrive: succeeded (0 items, 0 bytes)
+      sharepoint-sites: succeeded (853 items, 2407687 bytes)
+      teams: succeeded (11 items, 271885 bytes)
+      planner: succeeded (8 items, 11975 bytes)
+    - Read-back: sharepoint-sites **1561 / 3726144**; every other workload unchanged from baseline.
+      Sync keys: sharepoint-sites **87** (items: 55, library: 14, covered: 14, site: 4); exchange-mail 2, onedrive 1.
+  - **Run B** (08:31:52), exit 0:
+      exchange-mail: succeeded (0 items, 0 bytes)
+      onedrive: succeeded (0 items, 0 bytes)
+      sharepoint-sites: succeeded (0 items, 0 bytes)
+      teams: succeeded (11 items, 271885 bytes)
+      planner: succeeded (8 items, 11975 bytes)
+    - Read-back: identical to after A (sharepoint-sites 1561 / 3726144, teams 44 / 1073802). Sync keys unchanged (87 / 2 / 1).
+  - **New content_item rows and bytes:**
+
+    | workload | A vs baseline | B vs A |
+    |---|---|---|
+    | exchange-mail | 0 / 0 | 0 / 0 |
+    | onedrive | 0 / 0 | 0 / 0 |
+    | sharepoint-sites | **+672 / +990,780** (the first #273 full pass: list items stored per list, with 55 items: and 4 site: state keys created) | **0 / 0** |
+    | teams | 0 / 0 (44, flat) | 0 / 0 (44, flat) |
+    | planner | 0 / 0 | 0 / 0 |
+    | group-conversations | 0 / 0 | 0 / 0 |
+
+  - **Expected on B, both met:**
+    - sharepoint-sites read **0 items** (was 853 on every run before #273). It is now delta-only.
+    - teams count is flat at 44, with no new versions on A or B, so the #271 snapshot is deterministic. #269 can close.
+    - teams and planner still report 11 and 8 items *read* per run (no delta API), but every read dedups to 0 new rows.
+  - **Mail fixture:** the KEEL-RT-20261015-mail message row for alice is still present (1 row, same item_key as its Graph id).
+  - **Errors:** none.
 - Needs: none.
 - **Read-only against the tenant.** Content reads go through the GET-only `contentReadTransport` as the KEEL Content Reader,
   with Q58's reader and scope files. No permission, consent or fixture changes. Global admin not used.

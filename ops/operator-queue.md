@@ -3858,7 +3858,13 @@ item that needs it stays untouched.
   transport that allows only those POSTs on the one site.
 - Needs: A has no deploy dependency. B needs /opt/keel-live at the merge of PR #332 or later
   (`test -f /opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs`).
-- Status: in-progress
+- Status: in-progress (B waiting on #332)
+- Result: **A done; B waiting on PR #332** (open, not merged; checked 15:16 UTC on ea681454).
+  - **A. Collector manifest:** SharePoint Online `Sites.FullControl.All` (678536fe…) was **already in the manifest**, so no PATCH was needed.
+    - Before: 3 resources, 50 entries (SharePoint 3). After: the same; 0 removed, 0 added.
+    - At Q56 the manifest had 49 entries, so someone added it since. The SP still holds it.
+    - appRoleAssignments unchanged (49). No consent call.
+  - **B:** not started. It runs when `/opt/keel-live/engine/restore/workloads/sharepointSitePermissions.mjs` exists (a watcher is running).
 - **Test tenant only.** Same hard rules, requester/approver split and standing authorization as Q67; log every approval id.
   Global admin not used. Never touch CA policies, break-glass accounts or Marouane's account. No consent is granted.
 - **A. Collector manifest (Entra, one PATCH as the Restorer):** the Collector already holds Office 365 SharePoint Online

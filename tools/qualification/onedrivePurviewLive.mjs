@@ -275,6 +275,7 @@ export async function captureOneDrivePurviewAcceptance({
         source: { collectionId: 'qualification-lock-probe', outcome: 'complete', observations: [{ ...label, fields: { ...label.fields, [ONEDRIVE_PURVIEW_LABEL_TOGGLE]: `${label.fields[ONEDRIVE_PURVIEW_LABEL_TOGGLE] ?? ''} (lock probe)` } }] },
         live: { resources: [{ ...label, lock: 'locked' }], failures: [] },
         tenantId: tenant,
+        tenantRef,
         targets: [labelKey(label.id)],
       });
       const refusal = plan.refusals.find((item) => /preservation-locked/.test(item.reason));

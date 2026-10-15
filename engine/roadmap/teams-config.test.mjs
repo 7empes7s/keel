@@ -199,11 +199,11 @@ async function recordSource(client, tenantRef, { members, groupMembers = [OWNER,
   return loadTeamsSource(client, { tenantRef, collectionId: run.id });
 }
 
-async function planned(client, tenantRef, { source, graph, requester } = {}) {
+async function planned(client, tenantRef, { source, graph, requester, guard = {} } = {}) {
   const recorded = source ?? await recordSource(client, tenantRef);
   const live = await readLiveTeam({ transport: graph.transport, teamId: TEAM });
   graph.requests.length = 0;
-  const plan = planTeamsRestore({ source: recorded, live, tenantId: TENANT, teamId: TEAM });
+  const plan = planTeamsRestore({ source: recorded, live, tenantId: TENANT, teamId: TEAM, tenantRef, ...guard });
   const requestedBy = requester ?? await principal(client, `${tenantRef}-requester`, 'restorer');
   const artifact = await createTeamsRestoreArtifact(client, { tenantRef, plan, requestedBy });
   return { plan, artifact, requestedBy };
@@ -299,7 +299,7 @@ test('a live team body without tenantId plans and restores; tenancy then rests o
   // No tenantId and no observation of the team in the managed tenant's source: refused.
   const source = await recordSource(client, tenantRef);
   const live = await readLiveTeam({ transport: withoutTenant(driftedGraph()).transport, teamId: TEAM });
-  assert.throws(() => planTeamsRestore({ source: { ...source, observations: [] }, live, tenantId: TENANT, teamId: TEAM }), /cannot be confirmed/);
+  assert.throws(() => planTeamsRestore({ source: { ...source, observations: [] }, live, tenantId: TENANT, teamId: TEAM, tenantRef }), /cannot be confirmed/);
   // A body that names another tenant is still refused when executing.
   const { artifact: again } = await planned(client, tenantRef, { graph: withoutTenant(driftedGraph()) });
   const moved = driftedGraph({}, { tenantId: OTHER_TENANT });
@@ -320,7 +320,7 @@ test('group and Teams membership completeness are independent', async (t) => {
   assert.equal(groupDeniedTeam.fieldCoverage.members.status, 'observed');
   assert.equal(groupDeniedTeam.fieldCoverage.groupMembers.status, 'denied');
   const live = await readLiveTeam({ transport: driftedGraph().transport, teamId: TEAM });
-  const fromGroupDenied = planTeamsRestore({ source: groupDenied, live, tenantId: TENANT, teamId: TEAM });
+  const fromGroupDenied = planTeamsRestore({ source: groupDenied, live, tenantId: TENANT, teamId: TEAM, tenantRef });
   assert.deepEqual(fromGroupDenied.operations.filter((op) => op.kind !== 'settings').map((op) => op.kind), ['member-add']);
   assert.equal(fromGroupDenied.groupMembership.status, 'denied');
 
@@ -330,7 +330,7 @@ test('group and Teams membership completeness are independent', async (t) => {
   assert.equal(teamsFailedTeam.fieldCoverage.members.status, 'failed');
   assert.equal(teamsFailedTeam.fieldCoverage.groupMembers.status, 'observed');
   assert.equal('members' in teamsFailedTeam.fields, false, 'no member list is invented from the group');
-  const fromTeamsFailed = planTeamsRestore({ source: teamsFailed, live, tenantId: TENANT, teamId: TEAM });
+  const fromTeamsFailed = planTeamsRestore({ source: teamsFailed, live, tenantId: TENANT, teamId: TEAM, tenantRef });
   assert.deepEqual(fromTeamsFailed.operations.map((op) => op.kind), ['settings']);
   assert.ok(fromTeamsFailed.manual.some((item) => item.field === 'members' && /Teams membership was failed/.test(item.reason)));
   assert.equal(fromTeamsFailed.groupMembership.status, 'observed');
@@ -338,8 +338,8 @@ test('group and Teams membership completeness are independent', async (t) => {
   // A live Teams membership read that is incomplete authorizes no removal.
   const extraLive = await readLiveTeam({ transport: fakeTeams({ teams: { [TEAM]: { body: teamBody(TEAM), members: [rawMember(OWNER, ['owner']), rawMember(MEMBER), rawMember(LEAVER), rawMember(GUEST)], groupMembers: [] } } }).transport, teamId: TEAM });
   const source = await recordSource(client, tenantRef);
-  assert.deepEqual(planTeamsRestore({ source, live: extraLive, tenantId: TENANT, teamId: TEAM }).operations.map((op) => op.kind), ['member-remove']);
-  const incomplete = planTeamsRestore({ source, live: { ...extraLive, membersComplete: false }, tenantId: TENANT, teamId: TEAM });
+  assert.deepEqual(planTeamsRestore({ source, live: extraLive, tenantId: TENANT, teamId: TEAM, tenantRef }).operations.map((op) => op.kind), ['member-remove']);
+  const incomplete = planTeamsRestore({ source, live: { ...extraLive, membersComplete: false }, tenantId: TENANT, teamId: TEAM, tenantRef });
   assert.deepEqual(incomplete.operations, []);
   assert.ok(incomplete.manual.some((item) => /not complete, so no removal/.test(item.reason)));
 });
@@ -531,11 +531,11 @@ test('an ambiguous member write is reconciled by re-reading, never resent, and v
 
   // A source member from another tenant is never added automatically.
   const source = await recordSource(client, tenantRef, { members: [rawMember(OWNER, ['owner']), rawMember(PARTNER, [], OTHER_TENANT)] });
-  const crossTenant = planTeamsRestore({ source, live: await readLiveTeam({ transport: driftedGraph().transport, teamId: TEAM }), tenantId: TENANT, teamId: TEAM });
+  const crossTenant = planTeamsRestore({ source, live: await readLiveTeam({ transport: driftedGraph().transport, teamId: TEAM }), tenantId: TENANT, teamId: TEAM, tenantRef });
   assert.equal(crossTenant.operations.some((op) => op.member?.userId === PARTNER), false);
   assert.ok(crossTenant.manual.some((item) => item.member === `${OTHER_TENANT}|${PARTNER}` && /another tenant/.test(item.reason)));
-  assert.throws(() => planTeamsRestore({ source, live: { team: teamBody(TEAM, { tenantId: OTHER_TENANT }), members: [], membersComplete: true }, tenantId: TENANT, teamId: TEAM }), /does not belong to the managed tenant/);
-  assert.throws(() => planTeamsRestore({ source, live: { team: teamBody(TEAM), members: [], membersComplete: true }, tenantId: OTHER_TENANT, teamId: TEAM }), /different tenant/);
+  assert.throws(() => planTeamsRestore({ source, live: { team: teamBody(TEAM, { tenantId: OTHER_TENANT }), members: [], membersComplete: true }, tenantId: TENANT, teamId: TEAM, tenantRef }), /does not belong to the managed tenant/);
+  assert.throws(() => planTeamsRestore({ source, live: { team: teamBody(TEAM), members: [], membersComplete: true }, tenantId: OTHER_TENANT, teamId: TEAM, tenantRef }), /different tenant/);
 });
 
 test('a concurrent change invalidates only the operations it touches; a guest addition needs exact approval', async (t) => {
@@ -569,7 +569,7 @@ test('a concurrent change invalidates only the operations it touches; a guest ad
 
   // A plan that would leave the team without an owner is refused outright.
   const ownerless = await recordSource(client, tenantRef, { members: [rawMember(MEMBER)] });
-  const refusedPlan = planTeamsRestore({ source: ownerless, live: await readLiveTeam({ transport: driftedGraph().transport, teamId: TEAM }), tenantId: TENANT, teamId: TEAM });
+  const refusedPlan = planTeamsRestore({ source: ownerless, live: await readLiveTeam({ transport: driftedGraph().transport, teamId: TEAM }), tenantId: TENANT, teamId: TEAM, tenantRef });
   assert.match(refusedPlan.refusals[0].reason, /no owner/);
 });
 
@@ -585,4 +585,58 @@ test('Teams workload types never enter Entra waves, and coverage reports the dis
   assert.equal(entry.status, 'disabled');
   assert.equal(entry.covered, false);
   assert.ok(entry.reasons.some((reason) => /teams\.settings is fixture-tested/.test(reason)));
+});
+
+// ------------------------------------------------------- test tenant fixtures
+
+test('on the test tenant only a KEEL-RT- team, and KEEL-RT- members, are written', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const guard = { testTenantRefs: [tenantRef] };
+  const fixtureLeaver = { ...rawMember(LEAVER), displayName: 'KEEL-RT-Leaver' };
+
+  // Finance is a real team: nothing on it is planned.
+  const real = await planned(client, tenantRef, { graph: driftedGraph(), guard });
+  assert.deepEqual(real.plan.operations, []);
+  assert.deepEqual(real.plan.refusals.map((refusal) => refusal.naturalKey).sort(), [`teams:${TEAM}:member:${TENANT}|${LEAVER}`, `teams:${TEAM}:settings`].sort());
+  assert.ok(real.plan.refusals.every((refusal) => /^not-a-fixture: .*the team \(Finance\) is not one/.test(refusal.reason)));
+  assert.equal(real.artifact.status, 'refused');
+
+  // A fixture team: its settings are planned, a member that is not a fixture is not.
+  const fixtureTeam = () => driftedGraph({}, { displayName: 'KEEL-RT-Finance' });
+  const mixed = await planned(client, tenantRef, { graph: fixtureTeam(), guard });
+  assert.deepEqual(mixed.plan.operations.map((op) => op.kind), ['settings']);
+  assert.deepEqual(mixed.plan.refusals.map((refusal) => refusal.naturalKey), [`teams:${TEAM}:member:${TENANT}|${LEAVER}`]);
+  assert.match(mixed.plan.refusals[0].reason, /the member \(User 3\) is not one/);
+
+  // A fixture team and a fixture member: both are planned and written.
+  const source = await recordSource(client, tenantRef, { members: [rawMember(OWNER, ['owner']), rawMember(MEMBER), fixtureLeaver] });
+  const graph = fixtureTeam();
+  const { plan, artifact } = await planned(client, tenantRef, { source, graph, guard });
+  assert.deepEqual(plan.operations.map((op) => op.kind), ['settings', 'member-add']);
+  assert.deepEqual(plan.refusals, []);
+  const result = await executeTeamsRestore(client, {
+    tenantRef, artifactId: artifact.id, tenantId: TENANT, transport: graph.transport, qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef],
+  });
+  assert.equal(result.outcome, 'verified');
+
+  // Off the test tenant nothing changes.
+  const customer = await planned(client, tenantRef, { graph: driftedGraph(), guard: { testTenantRefs: [] } });
+  assert.deepEqual(customer.plan.operations.map((op) => op.kind), ['settings', 'member-add']);
+  assert.throws(() => planTeamsRestore({ source, live: { team: teamBody(TEAM), members: [], membersComplete: true }, tenantId: TENANT, teamId: TEAM }), /needs the tenant/);
+});
+
+test('on the test tenant the guard runs again before each Teams write', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  // A plan made where the guard did not apply (an older plan) still never writes a real team.
+  const { plan, artifact } = await planned(client, tenantRef, { graph: driftedGraph(), guard: { testTenantRefs: [] } });
+  assert.equal(plan.operations.length, 2);
+  const graph = driftedGraph();
+  const result = await executeTeamsRestore(client, {
+    tenantRef, artifactId: artifact.id, tenantId: TENANT, transport: graph.transport, qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef],
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.ok(result.operations.every((op) => op.outcome === 'refused' && /KEEL-RT- fixtures/.test(op.reasons[0])));
+  assert.deepEqual(graph.writes(), []);
 });

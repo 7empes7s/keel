@@ -13,7 +13,13 @@ const USER = 'u-keel-rt';
 const MAILBOX = { key: `mailbox/${USER}`, kind: 'user', id: USER, name: 'KEEL-RT-mailbox@contoso.test', address: 'KEEL-RT-mailbox@contoso.test' };
 const ROOT_FOLDER = 'msgfolderroot';
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
-const mime = (n, body = `Body ${n}`) => Buffer.from(`Message-ID: <KEEL-RT-${n}@contoso.test>\r\nSubject: KEEL-RT-${n}\r\n\r\n${body}\r\n`);
+const RECEIVED = '2026-10-15T07:48:01.000Z';
+const mime = (n, body = `Body ${n}`) => Buffer.from([
+  `Message-ID: <KEEL-RT-${n}@contoso.test>`, 'From: KEEL-RT sender <sender@contoso.test>', 'To: KEEL-RT-mailbox@contoso.test',
+  'Date: Wed, 15 Oct 2026 07:47:59 +0000', `Subject: KEEL-RT-${n}`, '', body, '',
+].join('\r\n'));
+/** The flags, received time and message id Exchange would show for a created message. */
+const extended = (body, id) => body.singleValueExtendedProperties?.find((property) => property.id === id)?.value;
 
 /**
  * One fixture mailbox behind both a Graph-reader-shaped fake (what the backup reads) and
@@ -43,9 +49,9 @@ class FixtureMailbox {
     return held;
   }
 
-  addMessage(id, folderId, bytes) {
+  addMessage(id, folderId, bytes, { isDraft = false } = {}) {
     const internetMessageId = /Message-ID: (\S+)/.exec(bytes.toString())?.[1] ?? null;
-    return this.put(this.messages, { id, parentFolderId: folderId, internetMessageId, mime: bytes });
+    return this.put(this.messages, { id, parentFolderId: folderId, internetMessageId, receivedDateTime: RECEIVED, isDraft, mime: bytes });
   }
 
   get writes() { return this.requests.filter((request) => request.method !== 'GET'); }
@@ -115,10 +121,20 @@ class FixtureMailbox {
       if (path === '/mailFolders') return created(box.folders, { displayName: body.displayName, parentFolderId: ROOT_FOLDER });
       if ((m = /^\/mailFolders\/([^/]+)\/childFolders$/.exec(path))) return created(box.folders, { displayName: body.displayName, parentFolderId: m[1] });
       if ((m = /^\/mailFolders\/([^/]+)\/messages$/.exec(path))) {
-        assert.equal(headers?.['content-type'], 'text/plain');
-        const bytes = Buffer.from(body, 'base64');
-        const internetMessageId = /Message-ID: (\S+)/.exec(bytes.toString())?.[1] ?? null;
-        return created(box.messages, { parentFolderId: m[1], internetMessageId, mime: bytes });
+        if (typeof body === 'string') {
+          // Graph stores a message created from MIME as a draft, dated now.
+          assert.equal(headers?.['content-type'], 'text/plain');
+          const bytes = Buffer.from(body, 'base64');
+          const internetMessageId = /Message-ID: (\S+)/.exec(bytes.toString())?.[1] ?? null;
+          return created(box.messages, { parentFolderId: m[1], internetMessageId, isDraft: true, receivedDateTime: 'now', mime: bytes });
+        }
+        const flags = extended(body, 'Integer 0x0E07');
+        return created(box.messages, {
+          parentFolderId: m[1], payload: body, subject: body.subject,
+          isDraft: flags === undefined || (Number(flags) & 8) !== 0,
+          receivedDateTime: extended(body, 'SystemTime 0x0E06') ?? 'now',
+          internetMessageId: extended(body, 'String 0x1035') ?? null,
+        });
       }
       if (path === '/calendars') return created(box.calendars, { name: body.name });
       if ((m = /^\/calendars\/([^/]+)\/events$/.exec(path))) return created(box.events, { ...body, calendarId: m[1] });
@@ -176,11 +192,10 @@ async function runRestore(box, store, journal, request, time) {
 
 const childNamed = (box, map, name, parent) => [...map.values()].find((entry) => entry.displayName === name && (parent === undefined || entry.parentFolderId === parent));
 
-test('round trip: back up, delete, restore into "Restored <date>"; the MIME is byte-identical', async () => {
+test('round trip: back up, delete, restore into "Restored <date>"; messages come back received, not drafts', async () => {
   const box = seeded();
   const time = clock();
   const store = createMemoryContentStore({ now: time.now });
-  const originals = new Map([...box.messages].map(([id, message]) => [id, sha(message.mime)]));
   await backup(box, store, time);
   time.advance(60_000);
   const at = time.iso();
@@ -197,8 +212,14 @@ test('round trip: back up, delete, restore into "Restored <date>"; the MIME is b
   const projects = childNamed(box, box.folders, 'Projects', inbox.id);
   assert.ok(inbox && projects, 'the folder tree is recreated under it');
   const inFolder = (folderId) => [...box.messages.values()].filter((message) => message.parentFolderId === folderId);
-  assert.deepEqual(inFolder(inbox.id).map((message) => sha(message.mime)), [originals.get('m-1')]);
-  assert.deepEqual(inFolder(projects.id).map((message) => sha(message.mime)), [originals.get('m-2')]);
+  const shape = (message) => ({
+    subject: message.subject, isDraft: message.isDraft, receivedDateTime: message.receivedDateTime, internetMessageId: message.internetMessageId,
+    from: message.payload.from, body: message.payload.body.content.trim(),
+  });
+  const from = { emailAddress: { name: 'KEEL-RT sender', address: 'sender@contoso.test' } };
+  assert.deepEqual(inFolder(inbox.id).map(shape), [{ subject: 'KEEL-RT-1', isDraft: false, receivedDateTime: RECEIVED, internetMessageId: '<KEEL-RT-1@contoso.test>', from, body: 'Body 1' }]);
+  assert.deepEqual(inFolder(projects.id).map(shape), [{ subject: 'KEEL-RT-2', isDraft: false, receivedDateTime: RECEIVED, internetMessageId: '<KEEL-RT-2@contoso.test>', from, body: 'Body 2' }]);
+  assert.equal(extended(inFolder(inbox.id)[0].payload, 'SystemTime 0x0039'), '2026-10-15T07:47:59.000Z', 'the sent time is kept');
 
   const [event] = box.events.values();
   assert.equal(event.subject, 'KEEL-RT-meeting');
@@ -257,7 +278,9 @@ test('into the original folders, a newer live item is left untouched and a delet
   assert.deepEqual(box.messages.get('m-1'), newer, 'the newer live message is unchanged');
   const back = [...box.messages.values()].filter((message) => message.parentFolderId === 'f-projects');
   assert.equal(back.length, 1, 'the deleted message is back in its original folder');
-  assert.equal(back[0].mime.toString(), mime(2).toString());
+  assert.equal(back[0].subject, 'KEEL-RT-2');
+  assert.equal(back[0].isDraft, false);
+  assert.equal(back[0].receivedDateTime, RECEIVED);
   assert.equal(box.writes.length, 1, 'only the missing message is written; no folder is created');
   assert.equal(childNamed(box, box.folders, 'Restored 2026-10-15'), undefined);
 });
@@ -334,6 +357,39 @@ test('one item restores alone', async () => {
   const projects = childNamed(box, box.folders, 'Projects', restored.id);
   assert.ok(projects, 'the item goes under "Restored <date>/<its folder>"');
   assert.deepEqual([...box.messages.values()].map((message) => message.parentFolderId), [projects.id]);
+});
+
+test('a backed-up draft is restored from its MIME as is, and stays a draft', async () => {
+  const box = seeded();
+  box.addMessage('m-3', 'f-inbox', mime(3), { isDraft: true });
+  const time = clock();
+  const store = createMemoryContentStore({ now: time.now });
+  await backup(box, store, time);
+  time.advance(60_000);
+  box.messages.clear();
+  const { report } = await runRestore(box, store, createMemoryRestoreJournal(), { at: time.iso(), kinds: ['mail'] }, time);
+  assert.equal(report.status, 'completed', JSON.stringify(report.errors));
+  const restored = [...box.messages.values()];
+  assert.deepEqual(restored.map((message) => [message.internetMessageId, message.isDraft]).sort(), [
+    ['<KEEL-RT-1@contoso.test>', false], ['<KEEL-RT-2@contoso.test>', false], ['<KEEL-RT-3@contoso.test>', true],
+  ]);
+  assert.equal(sha(restored.find((message) => message.isDraft).mime), sha(mime(3)), 'the draft keeps its MIME byte for byte');
+  assert.deepEqual(report.incomplete, [], 'a draft restored as a draft is not a gap');
+});
+
+test('a signed message keeps its MIME and is reported as restored as a draft', async () => {
+  const box = new FixtureMailbox();
+  box.put(box.folders, { id: 'f-inbox', displayName: 'Inbox', parentFolderId: ROOT_FOLDER });
+  box.addMessage('m-s', 'f-inbox', Buffer.from('Message-ID: <KEEL-RT-s@contoso.test>\r\nContent-Type: multipart/signed; boundary="b"; protocol="application/pkcs7-signature"\r\n\r\n--b\r\n\r\nhi\r\n--b--\r\n'));
+  const time = clock();
+  const store = createMemoryContentStore({ now: time.now });
+  await backup(box, store, time);
+  time.advance(60_000);
+  box.messages.clear();
+  const { report } = await runRestore(box, store, createMemoryRestoreJournal(), { at: time.iso(), kinds: ['mail'] }, time);
+  assert.equal(report.restored, 1);
+  assert.deepEqual(report.incomplete, [{ kind: 'mail', itemKey: 'm-s', missing: ['received-state'], reason: 'restored as a draft: signed or encrypted' }]);
+  assert.equal([...box.messages.values()][0].isDraft, true);
 });
 
 test('a message held without MIME is reported, not restored', async () => {

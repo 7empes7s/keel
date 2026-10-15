@@ -25,14 +25,19 @@
  * whose write was sent but not journaled is looked up by its internetMessageId first.
  *
  * Fidelity notes:
- *  - Messages are restored from their stored MIME. A message stored without MIME (bigger
- *    than the backup limit) is reported as not restorable.
+ *  - Messages are rebuilt from their stored MIME as received messages, not drafts, with
+ *    their original received and sent times (./mime.mjs, #293). A backed-up draft, a
+ *    signed or encrypted message, and one too large for a Graph create payload are
+ *    created from the MIME as is, which Exchange stores as a draft; the report lists them.
+ *    A message stored without MIME (bigger than the backup limit) is reported as not
+ *    restorable.
  *  - Events are recreated without attendees, so no meeting invitation is sent; the
  *    original attendees are listed in the event body.
  *  - Group and archive mailboxes are not restored here.
  */
 import { MAIL_WORKLOAD, seg } from '../exchangeMail.mjs';
 import { canonicalDigest } from '../../restore/dryRunArtifact.mjs';
+import { receivedMessageFromMime } from './mime.mjs';
 
 export const MAIL_RESTORE_KINDS = Object.freeze(['mail', 'calendar', 'contacts', 'todo']);
 export const RESTORE_INTO = Object.freeze(['restored-folder', 'original']);
@@ -219,6 +224,7 @@ export async function planMailRestore(store, rawRequest) {
         items.push({
           kind, containerKey: entry.key, itemKey: row.itemKey, ref: row.ref, version: row.version, sha256: row.sha256,
           internetMessageId: row.metadata?.internetMessageId ?? null, incomplete: row.metadata?.incomplete ?? null,
+          ...(kind === 'mail' ? { receivedDateTime: row.metadata?.receivedDateTime ?? null, isDraft: row.metadata?.isDraft === true } : {}),
         });
       }
     }
@@ -333,9 +339,11 @@ export async function restoreMail({ store, transport, journal, plan, target, act
   const write = async (item, containerTarget) => {
     if (item.kind === 'mail') {
       const mime = await readBytes(store, item.ref);
-      return created(await send('POST', `${owner}/mailFolders/${seg(containerTarget)}/messages`, {
-        body: mime.toString('base64'), headers: { 'content-type': 'text/plain' },
-      }), 'creating the message');
+      const path = `${owner}/mailFolders/${seg(containerTarget)}/messages`;
+      const rebuilt = item.isDraft ? null : receivedMessageFromMime(mime, { receivedDateTime: item.receivedDateTime });
+      if (rebuilt?.payload) return created(await send('POST', path, { body: rebuilt.payload }), 'creating the message');
+      if (rebuilt?.keepMime) report.incomplete.push({ kind: item.kind, itemKey: item.itemKey, missing: ['received-state'], reason: `restored as a draft: ${rebuilt.keepMime}` });
+      return created(await send('POST', path, { body: mime.toString('base64'), headers: { 'content-type': 'text/plain' } }), 'creating the message');
     }
     const json = await readJson(store, item.ref);
     if (item.kind === 'calendar') return created(await send('POST', `${owner}/calendars/${seg(containerTarget)}/events`, { body: eventPayload(json) }), 'creating the event');

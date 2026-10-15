@@ -2,7 +2,7 @@
 // no Graph, no database: the restore artifact and its rollback journal are
 // in-memory fixtures shaped like the rows keel-restore writes.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -694,4 +694,31 @@ test('a branding file upload is captured and promoted as its own tenant-setting 
   assert.deepEqual(promoted.failures, []);
   assert.equal(promoted.promoted, true);
   assert.equal(capabilityFor('organizationalBranding#file', 'update').claim, 'live-qualified');
+});
+
+test('issue #294: --live-evidence never promotes a record that has a sibling demotion', async () => {
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'roleDefinition:update');
+  const passed = await capture(step);
+  assert.equal(passed.status, 'captured');
+  const dir = mkdtempSync(join(tmpdir(), 'entra-live-'));
+  writeFileSync(join(dir, 'roleDefinition.update.json'), JSON.stringify(passed.record));
+  writeFileSync(join(dir, 'roleDefinition.update.capture.json'), passed.captureLog);
+  writeFileSync(join(dir, 'roleDefinition.update.demotion.json'), JSON.stringify(
+    demotionRecord({ resourceType: 'roleDefinition', operation: 'update', reason: 'the read-back passed but the live state is wider than the backup', now: NOW }),
+  ));
+  const apply = () => applyCommittedEvidence({ dir, hmacKey: HMAC_KEY, now: NOW, tenantRef: FIXTURE_TENANT_REF, testTenantRefs: TEST_REFS });
+
+  const before = capabilityFor('roleDefinition', 'update').claim;
+  const [demoted] = apply();
+  assert.equal(demoted.promoted, false);
+  assert.match(demoted.failures.join(' '), /roleDefinition\.update\.demotion\.json demotes this write/);
+  assert.equal(demoted.after, before);
+  assert.equal(capabilityFor('roleDefinition', 'update').claim, before, 'the claim is untouched');
+
+  // The same record, without the demotion, does promote: the demotion alone blocked it.
+  rmSync(join(dir, 'roleDefinition.update.demotion.json'));
+  const [promoted] = apply();
+  assert.deepEqual(promoted.failures, []);
+  assert.equal(promoted.promoted, true);
+  assert.equal(promoted.after, 'live-qualified');
 });

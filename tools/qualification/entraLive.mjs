@@ -578,17 +578,29 @@ export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = 
   return problems;
 }
 
-/** Applies every committed record in `dir` (verifying each capture digest). */
-export function applyCommittedEvidence({ dir = ENTRA_LIVE_EVIDENCE_DIR, hmacKey, now = new Date(), tenantRef = TEST_TENANT_REFS[0] } = {}) {
+/**
+ * Applies every committed record in `dir` (verifying each capture digest).
+ * Issue #294: a record with a sibling `.demotion.json` is never promoted,
+ * however well it verifies; the demotion is the later, overriding decision.
+ */
+export function applyCommittedEvidence({
+  dir = ENTRA_LIVE_EVIDENCE_DIR, hmacKey, now = new Date(), tenantRef = TEST_TENANT_REFS[0], testTenantRefs = TEST_TENANT_REFS,
+} = {}) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => name.endsWith('.json') && !name.endsWith('.capture.json') && !name.endsWith('.demotion.json'))
     .sort()
     .map((name) => {
       const record = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      const demotion = name.replace(/\.json$/, '.demotion.json');
+      if (existsSync(join(dir, demotion))) {
+        const { resourceType, operation } = record ?? {};
+        const claim = resourceType && operation && operation !== ENFORCEMENT_STEP ? capabilityFor(resourceType, operation).claim : null;
+        return { file: name, promoted: false, before: claim, after: claim, failures: [`${demotion} demotes this write, so it is not promoted`] };
+      }
       const capturePath = join(dir, name.replace(/\.json$/, '.capture.json'));
       const captureLog = existsSync(capturePath) ? readFileSync(capturePath, 'utf8') : '';
-      return { file: name, ...promoteRecord(record, { hmacKey, captureLog, now, tenantRef }) };
+      return { file: name, ...promoteRecord(record, { hmacKey, captureLog, now, tenantRef, testTenantRefs }) };
     });
 }
 

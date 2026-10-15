@@ -2770,7 +2770,7 @@ item that needs it stays untouched.
 ### Q60: Create the KEEL-RT- Planner plan fixture and check the Content Reader can read it
 - Drafted by the "Planner test plan" thread (2026-10-15).
 - Status: blocked: waiting on consent
-- Result: Checked 2026-10-15 00:34 UTC. The Restorer's SP does not hold Tasks.ReadWrite.All yet (Q59 put it in the manifest; consent not granted),
+- Result: Checked 2026-10-15 00:34 and re-checked 01:42 UTC. The Restorer's SP does not hold Tasks.ReadWrite.All yet (Q59 put it in the manifest; consent not granted),
   and its token has no Tasks.* role. Nothing written. Waiting on Marouane: Entra > App registrations > **Keel Restorer** >
   API permissions > Grant admin consent. The click adds only Tasks.ReadWrite.All.
 - Needs: Q59 done, and Marouane's admin consent for the Restorer. First check that the Restorer's SP holds

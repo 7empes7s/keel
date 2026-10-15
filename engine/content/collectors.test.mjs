@@ -18,6 +18,8 @@ const TEAM_OTHER = '77777777-7777-7777-7777-777777777777';
 const CHANNEL = '19:KEEL-RT-general@thread.tacv2';
 const OTHER = `${HOST},33333333-3333-3333-3333-333333333333,44444444-4444-4444-4444-444444444444`;
 const quiet = { log: () => {} };
+// The mailFolder properties Graph v1.0 knows (wellKnownName is beta-only).
+const MAIL_FOLDER_V1 = new Set(['id', 'displayName', 'parentFolderId', 'childFolderCount', 'unreadItemCount', 'totalItemCount', 'isHidden']);
 
 const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 const deltaDone = (url) => json({ value: [], '@odata.deltaLink': `${url.split('?')[0]}?$deltatoken=KEEL-RT-done` });
@@ -61,6 +63,9 @@ function fixtureTenant({ librarySize = 14 } = {}) {
     if (path === '/beta/users/u-alice/settings/exchange') return json({ error: { code: 'NotFound' } }, 404);
     if (path === '/v1.0/users/u-alice/mailFolders/delta') {
       if (token) return deltaDone(href);
+      // Like Graph v1.0: a $select naming a property mailFolder does not have fails the whole read (#263).
+      const unknown = (url.searchParams.get('$select') ?? '').split(',').filter((key) => key && !MAIL_FOLDER_V1.has(key));
+      if (unknown.length) return json({ error: { code: 'BadRequest', message: `Could not find a property named '${unknown[0]}' on type 'microsoft.graph.mailFolder'.` } }, 400);
       return json({ value: [{ id: 'inbox', displayName: 'Inbox', changeKey: 'k1' }], '@odata.deltaLink': `${GRAPH}/v1.0/users/u-alice/mailFolders/delta?$deltatoken=KEEL-RT-1` });
     }
     if (path === '/v1.0/users/u-alice/mailFolders/inbox/messages/delta') {

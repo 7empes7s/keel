@@ -4000,3 +4000,23 @@ item that needs it stays untouched.
   3. Open https://keel.techinsiderbytes.com Protect page (or `curl` the same data the page reads) and say whether the
      Discovery section now shows this run.
 - **Report:** steps 1-3. Nothing in the tenant or on the host changes besides the stored run.
+
+### Q83: Retention prune dry run again, at PR #335's head, with the content breakdown (read-only)
+- Drafted by the "Backup retention rules" thread (2026-10-15). Q81 showed 745 content versions to go and only
+  "latest version" kept. Likely cause: one backup reads a drive file's whole version history at once, so every version
+  had the same stored day. PR #335 (not merged; merging it turns on real deletes) now rotates a version by its own
+  `lastModifiedDateTime`. This item checks that change against the live data before #335 merges.
+- Needs: nothing deployed. Run from your own clone (never `/opt/keel`), checked out at
+  `origin/claude/project-thread-kuvgwg` (6fa3964 or later), with `npm ci` in `engine/` if needed.
+- Status: todo
+- Result:
+- Do (no tenant access, **never `--apply`**):
+  1. `set -a; . /etc/keel/db.env; set +a; node <clone>/cli/keel-prune.mjs --report /tmp/keel-prune-report-q83.json`.
+     Report the exit code and every stdout line.
+  2. From the report: `content.delete` length; that list grouped by `workload` and `kind` (counts); `content.kept`;
+     `content.chunks` length and `freedBytes`. For the largest workload/kind group: how many distinct items, the
+     oldest and newest `versionAt`, and 3 sample entries (item key masked, version, versionAt, createdAt).
+  3. The same for Q81's report file if it is still at `/tmp/keel-prune-report.json`: `content.delete` grouped by
+     `workload` (Q81 entries have no `kind`; group by `workload` and `version` prefix instead).
+  4. Snapshot lines unchanged from Q81? (`would prune N snapshot(s)`.)
+- **Report:** steps 1–4. Nothing is deleted by this item.

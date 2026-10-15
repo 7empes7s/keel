@@ -24,6 +24,7 @@ import {
 } from '../restore/bestEffortRecreate.mjs';
 import { completionItemsFor } from '../restore/completion.mjs';
 import { DIRECTORY_POLICY_RECORDS, definitionProblem } from '../restore/directoryPolicyOperations.mjs';
+import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const STS_TYPES = ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy'];
@@ -56,6 +57,15 @@ function directoryGraph({ readOverride = null } = {}) {
       const created = { ...request.body, id: `condition-${list.length + 1}` };
       graph.objects.set(listPath, { value: [...list, created] });
       return { ok: true, status: 201, body: created };
+    }
+    // A condition set is removed from its policy's list by its id.
+    const member = /^(\/policies\/permissionGrantPolicies\/[^/]+\/(?:includes|excludes))\/([^/]+)$/.exec(path);
+    if (member && request.method === 'DELETE') {
+      const list = graph.objects.get(member[1])?.value ?? [];
+      const id = decodeURIComponent(member[2]);
+      if (!list.some((condition) => condition.id === id)) return { ok: false, status: 404, body: null };
+      graph.objects.set(member[1], { value: list.filter((condition) => condition.id !== id) });
+      return { ok: true, status: 204, body: null };
     }
     return write(version, path, request);
   };
@@ -172,6 +182,29 @@ test('a re-run finds the policy it created and writes nothing', async () => {
   assert.equal(graph.bodies.length, writes, 'no second POST');
 });
 
+test('issue #294: a dry run plans no recreate for a policy a re-run would adopt', async () => {
+  const twin = { id: 'live-1', displayName: 'KEEL-RT-tokenLifetimePolicy', definition: definitionFor('tokenLifetimePolicy'), isOrganizationDefault: false };
+  const other = { id: 'live-2', displayName: 'Someone else\'s policy', definition: definitionFor('tokenLifetimePolicy'), isOrganizationDefault: false };
+  const plan = async (live, extraResources = []) => buildReconciliationPlan({
+    async collect(version, path) {
+      assert.ok(path.startsWith('/policies/tokenLifetimePolicies'), path);
+      return { items: live, error: null };
+    },
+  }, [stsResource('tokenLifetimePolicy', undefined), ...extraResources]);
+
+  const adopted = (await plan([twin, other])).resources[0];
+  assert.equal(adopted.verb, 'noop', adopted.verbReason);
+  assert.match(adopted.verbReason, /adopts live live-1/);
+  assert.equal(adopted.recovery.mechanism, 'none');
+
+  assert.equal((await plan([other])).resources[0].verb, 'create', 'no twin: recreated');
+  assert.equal((await plan([twin, { ...twin, id: 'live-3' }])).resources[0].verb, 'create', 'two twins: left to the writer, which refuses');
+  assert.equal((await plan([{ ...twin, isOrganizationDefault: true }])).resources[0].verb, 'create', 'a different default flag still goes through the writer');
+  const held = stsResource('tokenLifetimePolicy', undefined, { payload: { id: 'live-1' } });
+  const withHeld = await plan([twin], [{ ...held, naturalKey: 'tokenLifetimePolicy:live-1' }]);
+  assert.equal(withHeld.resources[0].verb, 'create', 'a live object the backup holds under its own key is not adopted by another');
+});
+
 test('a definition with other spacing is the same definition', async () => {
   const graph = directoryGraph();
   graph.objects.set('/policies/tokenLifetimePolicies/live-1', {
@@ -263,21 +296,81 @@ test('an app consent policy without its rules in the backup leaves a step to set
   assert.deepEqual(result.applied[0].followUp.map((step) => step.part), ['The include and exclude rules of a custom policy']);
 });
 
-test('an existing app consent policy gets only its missing rules and changed fields; extra rules stay', async () => {
+const POLICY = '/policies/permissionGrantPolicies/keel-rt-low-risk';
+const lowInclude = grantPolicy().includes[0];
+const mediumInclude = { ...lowInclude, permissionClassification: 'medium' };
+
+test('an existing app consent policy is brought back to exactly the backup\'s rules, removing extras first', async () => {
   const graph = directoryGraph();
-  graph.objects.set('/policies/permissionGrantPolicies/keel-rt-low-risk', { id: 'keel-rt-low-risk', displayName: 'Renamed', description: 'Low-risk delegated permissions' });
-  graph.objects.set('/policies/permissionGrantPolicies/keel-rt-low-risk/includes', { value: [{ id: 'extra', permissionType: 'application', resourceApplication: 'any', permissions: ['all'] }] });
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'Renamed', description: 'Low-risk delegated permissions' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ id: 'extra', permissionType: 'application', resourceApplication: 'any', permissions: ['all'] }] });
   const result = await run(graph, [grantResource('create')]);
   assert.deepEqual(result.failed, []);
   assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
-    'PATCH /policies/permissionGrantPolicies/keel-rt-low-risk',
-    'POST /policies/permissionGrantPolicies/keel-rt-low-risk/includes',
+    `PATCH ${POLICY}`,
+    `DELETE ${POLICY}/includes/extra`,
+    `POST ${POLICY}/includes`,
   ]);
   assert.deepEqual(graph.bodies[0].body, { displayName: 'KEEL-RT low risk' });
-  assert.equal(graph.objects.get('/policies/permissionGrantPolicies/keel-rt-low-risk/includes').value.length, 2, 'the extra rule is kept');
+  const includes = graph.objects.get(`${POLICY}/includes`).value;
+  assert.equal(includes.length, 1, 'the extra rule is removed');
+  assert.equal(includes[0].permissionType, 'delegated');
   const again = await run(graph, [grantResource('create')]);
   assert.deepEqual(again.failed, []);
-  assert.equal(graph.bodies.length, 2, 'a second run writes nothing');
+  assert.equal(graph.bodies.length, 3, 'a second run writes nothing');
+});
+
+test('issue #294: a drifted, wider include is replaced by the backup\'s, and a re-run converges to no writes', async () => {
+  const graph = directoryGraph();
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'Low-risk delegated permissions' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted' }] });
+  graph.objects.set(`${POLICY}/excludes`, { value: [] });
+  const resource = grantResource('update', grantPolicy(), { targetId: 'keel-rt-low-risk', live: { state: 'present', targetId: 'keel-rt-low-risk', payload: graph.objects.get(POLICY) } });
+  const result = await run(graph, [resource]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
+    `DELETE ${POLICY}/includes/drifted`,
+    `POST ${POLICY}/includes`,
+  ], 'the wider rule goes before the backup\'s rule is added, so the policy never allows more than either');
+  assert.deepEqual(graph.objects.get(`${POLICY}/includes`).value.map((condition) => condition.permissionClassification), ['low']);
+
+  const dryRun = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(dryRun.failed, []);
+  const again = await run(graph, [resource]);
+  assert.deepEqual(again.failed, []);
+  assert.equal(graph.bodies.length, 2, 'a re-run from the same backup writes nothing');
+});
+
+test('excludes converge too: a missing exclude is added before includes, an extra one removed last', async () => {
+  const graph = directoryGraph();
+  const backupExclude = { permissionType: 'delegated', resourceApplication: 'any', permissions: ['all'], clientApplicationIds: ['app-blocked'] };
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'Low-risk delegated permissions' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted' }] });
+  graph.objects.set(`${POLICY}/excludes`, { value: [{ ...backupExclude, clientApplicationIds: ['app-other'], id: 'extra-exclude' }] });
+  const result = await run(graph, [grantResource('create', grantPolicy({ excludes: [backupExclude] }))]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [
+    `DELETE ${POLICY}/includes/drifted`,
+    `POST ${POLICY}/excludes`,
+    `POST ${POLICY}/includes`,
+    `DELETE ${POLICY}/excludes/extra-exclude`,
+  ]);
+  assert.deepEqual(graph.objects.get(`${POLICY}/excludes`).value.map((condition) => condition.clientApplicationIds), [['app-blocked']]);
+});
+
+test('the read-back checks the whole rule sets: a rule left in place fails the write, never applies it', async () => {
+  // Graph accepts the DELETE, but the drifted rule still reads back.
+  const drifted = { ...mediumInclude, id: 'drifted' };
+  const graph = directoryGraph({
+    readOverride: (body, path) => (path === `${POLICY}/includes` && !body.value.some((rule) => rule.id === 'drifted')
+      ? { value: [...body.value, drifted] } : body),
+  });
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'Low-risk delegated permissions' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...lowInclude, id: 'kept' }, drifted] });
+  const result = await run(graph, [grantResource('create')]);
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [`DELETE ${POLICY}/includes/drifted`]);
+  assert.equal(result.applied.length, 0);
+  assert.match(result.failed[0].error, /includes read back with 0 rule\(s\) missing and 1 extra against the backup/);
 });
 
 test('a built-in app consent policy is skipped before any write', async () => {

@@ -238,8 +238,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'The sign-up user flows themselves are restored by hand (see guest sign-up user flows).',
   }),
   permissionGrantPolicy: auto('App consent policies', {
-    keeps: 'Recreates custom app consent policies and puts their name and description back, with their include and exclude rules when the backup holds them (tested against a simulated tenant only).',
-    todo: 'Microsoft\'s built-in policies cannot be changed by anyone. Rules the backup does not hold yet, and extra rules added since the backup, are set by hand.',
+    keeps: 'Recreates custom app consent policies and puts their name and description back. When the backup holds their include and exclude rules, it puts those back and removes rules added since the backup (tested against a simulated tenant only).',
+    todo: 'Microsoft\'s built-in policies cannot be changed by anyone. Rules the backup does not hold yet are set by hand.',
   }),
   adminConsentRequestPolicy: auto('Admin consent requests', {
     keeps: 'Puts the admin consent request workflow back, including who reviews requests.',

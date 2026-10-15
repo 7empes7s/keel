@@ -193,9 +193,9 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
   - *You do:* The sign-up user flows themselves are restored by hand (see guest sign-up user flows).
-- **App consent policies.** Recreates custom app consent policies and puts their name and description back, with their include and exclude rules when the backup holds them (tested against a simulated tenant only).
+- **App consent policies.** Recreates custom app consent policies and puts their name and description back. When the backup holds their include and exclude rules, it puts those back and removes rules added since the backup (tested against a simulated tenant only).
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app consent policy (set by Microsoft).
-  - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet, and extra rules added since the backup, are set by hand.
+  - *You do:* Microsoft's built-in policies cannot be changed by anyone. Rules the backup does not hold yet are set by hand.
 - **Admin consent requests.** Puts the admin consent request workflow back, including who reviews requests.
 - **Idle sign-out policy** (not built yet). The whole policy is backed up, but KEEL does not yet tell a tenant-wide policy from one set on a single app, so it has no safe restore yet.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).

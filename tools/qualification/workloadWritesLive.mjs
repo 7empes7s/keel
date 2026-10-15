@@ -66,7 +66,7 @@ import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '..
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   CAPTURE_CREATE_PREFIX, WORKLOAD_WRITES_CREDENTIAL_MODE, WORKLOAD_WRITES_LIVE_GATE, WORKLOAD_WRITES_LIVE_OPERATION,
-  WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, chooseCaptureChange, fixtureNameOf, isFixtureName, provenWrites, sameValue,
+  WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, chooseCaptureChange, fixtureNameOf, identityNamesFixture, isFixtureName, provenWrites, sameValue,
   workloadWritesRecordFile,
 } from './workloadWritesAcceptance.mjs';
 
@@ -251,11 +251,16 @@ export async function captureWorkloadWrites({
       }
     }
   }
+  // Some tenants (the test tenant among them) report no ExternalDirectoryOrganizationId. A
+  // reported id must be the managed tenant's; with none, the binding is the tenant config's
+  // organization, which both sessions must then answer as (tenantIdSource 'config').
+  const configOrganization = exchangeSession ? configs.collector.organization.toLowerCase() : null;
   const organizationProblem = !exchangeSession ? null
     : Object.values(organization).some((item) => !item.name) ? 'an Exchange session did not answer Get-OrganizationConfig'
-      : organization.collector.name.toLowerCase() !== organization.restorer.name.toLowerCase() ? 'the collector and restorer sessions belong to different Exchange organizations'
+      : Object.values(organization).some((item) => item.name.toLowerCase() !== configOrganization) ? `an Exchange session is not the organization the tenant configs name (${configs.collector.organization})`
         : Object.values(organization).some((item) => item.tenantId && item.tenantId !== tenant) ? 'an Exchange session belongs to another tenant'
           : null;
+  if (exchangeSession) organization.tenantIdSource = Object.values(organization).every((item) => item.tenantId === tenant) ? 'organization' : 'config';
 
   // 1. Every written family, once.
   const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs };
@@ -400,7 +405,7 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     capture.before = original;
     capture.target = change.after;
     identity = identityOf(write, now);
-    if (identity.Identity !== capture.identity) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
+    if (identity.Identity !== capture.identity || !identityNamesFixture(write, capture)) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
     putBack = original ?? (change.type === 'text' ? '' : original);
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });

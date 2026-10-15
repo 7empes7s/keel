@@ -124,9 +124,9 @@ function writeTargets(workload) {
 }
 
 /** A fake tenant behind the real job transport. `hooks.cmdlet` may return { error } or 'crash'. */
-function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organization = ORG } = {}) {
+function fakeTenant(workload, { state = tenantState(workload), hooks = {}, organization = ORG, organizationTenant = TENANT } = {}) {
   const { module } = WRITTEN_WORKLOADS[workload];
-  if (module === 'ExchangeOnlineManagement') state['Get-OrganizationConfig'] ??= [{ Name: organization, ExternalDirectoryOrganizationId: TENANT }];
+  if (module === 'ExchangeOnlineManagement') state['Get-OrganizationConfig'] ??= [{ Name: organization, ExternalDirectoryOrganizationId: organizationTenant }];
   const targets = writeTargets(workload);
   const writes = [];
   const container = fakeCmdletContainer({
@@ -274,6 +274,11 @@ test('a record that names a non-fixture object, a content-bearing field or an un
   // A field whose effect depends on the rest of the object (Enabled while ScanAndDropRecipients is set) is never a capture's.
   assert.match(failures(resign((record) => { Object.assign(inbound(record), { field: 'Enabled', type: 'switch', before: false, target: true }); return record; })), /Enabled is not a field a capture may write/);
   assert.match(failures(resign((record) => { record.subject.refusals.remove.sent = true; return record; })), /remove probe was not refused/);
+  assert.match(failures(resign((record) => { delete record.subject.organization; return record; })), /not shown to be one Exchange organization/);
+  assert.match(failures(resign((record) => { record.subject.organization.restorer.name = 'other.onmicrosoft.com'; return record; })), /not shown to be one Exchange organization/);
+  assert.match(failures(resign((record) => { record.subject.organization.restorer.tenantId = 'ffffffff-0000-4000-8000-000000000000'; return record; })), /reported another tenant/);
+  // A request carrying both a read and a cmdlet is a write.
+  assert.match(failures(resign((record) => send(record, { Identity: 'Global', Comment: 'x' }) && Object.assign(record.subject.requests.at(-1), { read: 'exchange-mail-flow', credential: 'collector' }) && record)), /no capture accounts for this write/);
   // Unsigned: never live.
   const { proof: { runner, ...proof }, ...unsigned } = evidence;
   assert.equal(ledgerEvidenceFromWorkloadWritesAcceptance({ ...unsigned, proof }, { tenantRef, build, hmacKey: KEY, evidenceDir: dir }).ok, false);
@@ -331,12 +336,28 @@ test('nothing is written when the two Exchange sessions are not one organization
   const result = await capture('exchange-extended', collector, { restorer: restorer.powershell });
   assert.deepEqual([collector.writes, restorer.writes], [[], []]);
   assert.equal(result.record.subject.writes.length, 0);
-  assert.match(result.record.subject.skipped[0].reason, /different Exchange organizations; nothing was written/);
+  assert.match(result.record.subject.skipped[0].reason, /not the organization the tenant configs name.*nothing was written/);
+
+  // Both sessions agree, but on another organization than the configs name.
+  const elsewhere = fakeTenant('exchange-extended', { organization: 'other.onmicrosoft.com' });
+  const moved = await capture('exchange-extended', elsewhere);
+  assert.deepEqual(elsewhere.writes, []);
+  assert.match(moved.record.subject.skipped[0].reason, /not the organization the tenant configs name/);
+
+  // A session that reports another tenant id is refused; one that reports none is bound by the config.
+  const foreign = fakeTenant('exchange-extended', { organizationTenant: '00000000-0000-4000-8000-0000000000ff' });
+  assert.match((await capture('exchange-extended', foreign)).record.subject.skipped[0].reason, /belongs to another tenant/);
+  assert.deepEqual(foreign.writes, []);
+  const silent = fakeTenant('exchange-extended', { organizationTenant: '' });
+  const { evidence, dir } = await signedCapture('exchange-extended', silent);
+  assert.equal(evidence.subject.organization.tenantIdSource, 'config');
+  assert.ok(silent.writes.length > 0);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
   const configs = { collector: { tenantId: TENANT, organization: ORG }, restorer: { tenantId: TENANT, organization: 'other.onmicrosoft.com' } };
   await assert.rejects(capture('exchange-extended', collector, { configs }), /same Exchange organization; nothing was sent/);
 });
 
-test('a writer record captured at another module version than the stored read proof is refused on import', async () => {
+test('a writer record captured at another module version than the read proof it is imported with is refused', async () => {
   const { dir } = await signedCapture('exchange-mail-flow');
   const client = { query: async () => ({ rows: [] }) };
   const read = { file: 'exchange-read.json', seam: () => ({ ok: true, reads: [], writes: [], grants: null, restorerGrants: null, runtime: { modules: { ExchangeOnlineManagement: '3.10.1' } } }) };
@@ -344,7 +365,7 @@ test('a writer record captured at another module version than the stored read pr
   const readFile = (path) => (path.endsWith('exchange-read.json') ? '{}' : readFileSync(path, 'utf8'));
   const result = await importLedgerInputs(client, { tenantRef, dir, seams: [read, writer], verify: { hmacKey: KEY }, readFile });
   assert.deepEqual(result.imported.map((item) => item.file), ['exchange-read.json']);
-  assert.match(result.refused[0].failures[0], /ExchangeOnlineManagement 3\.5\.0, but the stored proof is at 3\.10\.1/);
+  assert.match(result.refused[0].failures[0], /ExchangeOnlineManagement 3\.5\.0, but the read proof in this import is at 3\.10\.1/);
   assert.equal(result.exitCode, 1);
 });
 

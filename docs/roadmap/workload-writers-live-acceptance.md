@@ -45,8 +45,10 @@ node tools/release/qualification.mjs verify --require-live --gate workload-write
   ExchangeOnlineManagement write to one module version, and refuses a writer record captured at
   another version than the stored read proof.
 - Exchange and Purview sessions connect by `organization`. Both configs must name the same one, and
-  before anything is written both sessions must answer `Get-OrganizationConfig` as that one
-  organization (and, where it reports a tenant id, as the managed tenant), or nothing is written.
+  before anything is written both sessions must answer `Get-OrganizationConfig` with that name, or
+  nothing is written. A session that reports a tenant id must report the managed tenant. The test
+  tenant reports none; the record then says `tenantIdSource: config`, meaning the binding rests on
+  the tenant config's organization, as it does for the Exchange collector itself.
 - Exit 0: verified. 1: the record does not verify. 3: a setting may not be back; the output names
   the object, field and original value to set by hand.
 - Then commit the record and its `.capture.json`, and run `node cli/keel-workload-collect.mjs import`.

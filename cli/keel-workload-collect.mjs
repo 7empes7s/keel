@@ -233,13 +233,13 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
     imported.push({ file, evidenceBuild, optional, ...result });
   }
   // One version is stored per module. A writer capture taken at another version than the
-  // read proof would replace it and void that proof, so it is refused instead.
+  // read proof imported with it would replace it and void that proof, so it is refused instead.
   const versions = Object.assign({}, ...imported.filter((item) => !item.optional).map((item) => item.runtime?.modules ?? {}));
   for (const item of imported.filter((entry) => entry.optional)) {
     const clash = Object.entries(item.runtime?.modules ?? {}).find(([module, version]) => versions[module] !== undefined && versions[module] !== version);
     if (clash) {
       imported.splice(imported.indexOf(item), 1);
-      refused.push({ file: item.file, evidenceBuild: item.evidenceBuild, failures: [`captured at ${clash[0]} ${clash[1]}, but the stored proof is at ${versions[clash[0]]}: capture again at that version`] });
+      refused.push({ file: item.file, evidenceBuild: item.evidenceBuild, failures: [`captured at ${clash[0]} ${clash[1]}, but the read proof in this import is at ${versions[clash[0]]}: capture again at that version`] });
       continue;
     }
     Object.assign(versions, item.runtime?.modules ?? {});

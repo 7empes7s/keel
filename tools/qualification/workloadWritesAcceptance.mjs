@@ -129,7 +129,8 @@ function timeProblems(label, capturedAt, observedAt) {
 }
 
 /** Whether `capture.identity` (what was sent as -Identity) can only be the recorded fixture. */
-function identityNamesFixture(write, kind, capture) {
+export function identityNamesFixture(write, capture) {
+  const kind = String(capture?.operationId ?? '').endsWith('.add') ? 'add' : 'update';
   const identity = capture.identity;
   if (typeof identity !== 'string' || !identity || typeof capture.fixture !== 'string') return false;
   if (kind === 'add' || write.identity === 'name') return identity === capture.fixture;
@@ -168,7 +169,7 @@ function structuralProblems(capture, { workload, moduleVersion, observedAt }) {
   if (kind === 'add' && !String(capture.fixture ?? '').toUpperCase().startsWith(CAPTURE_CREATE_PREFIX.toUpperCase())) {
     problems.push(`${id}: a created policy must be named ${CAPTURE_CREATE_PREFIX}*`);
   }
-  if (!identityNamesFixture(write, kind, capture)) problems.push(`${id}: the object named to ${write.method} is not the ${WORKLOAD_FIXTURE_PREFIX} fixture recorded`);
+  if (!identityNamesFixture(write, capture)) problems.push(`${id}: the object named to ${write.method} is not the ${WORKLOAD_FIXTURE_PREFIX} fixture recorded`);
   if (!write.fields.includes(capture.field) || !captureFieldAllowed(write, capture.field, capture.type)) {
     problems.push(`${id}: ${capture.field ?? 'no field'} is not a field a capture may write`);
   } else if (capture.type === 'switch' && (typeof capture.before !== 'boolean' || capture.target !== !capture.before)) {
@@ -246,13 +247,28 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
   // Every write sent: a declared Set-/New- of this workload, by the restorer. Reads: the workload's collector.
   const methods = new Set(declared.operations.map((id) => WKLD_WRITE_OPERATIONS[id].method));
   for (const request of Array.isArray(subject.requests) ? subject.requests : []) {
-    if (request?.read !== undefined) {
+    if (request?.read !== undefined && request?.cmdlet === undefined) {
       if (request.read !== workload) failures.push(`a read of ${request.read} is not this workload's collector`);
       if (request.credential !== 'collector') failures.push(`a read was sent with the ${request.credential} credential, not the collector`);
     } else if (!methods.has(request?.cmdlet)) failures.push(`${request?.cmdlet ?? 'an unnamed cmdlet'} is not a declared ${workload} write`);
     else if (request.credential !== 'restorer') failures.push(`${request.cmdlet} was sent with the ${request.credential} credential, not the restorer`);
   }
   if (!Array.isArray(subject.requests)) failures.push('the record lists no requests');
+
+  // Exchange and Purview sessions connect by organization: both must have answered as one,
+  // of this tenant where they reported a tenant id (workloadWritesLive.mjs).
+  if (declared.module === 'ExchangeOnlineManagement') {
+    const org = subject.organization ?? {};
+    const sessions = [org.collector, org.restorer];
+    const tenant = typeof subject.directoryTenantId === 'string' ? subject.directoryTenantId.toLowerCase() : null;
+    if (sessions.some((item) => typeof item?.name !== 'string' || !item.name) || org.collector.name.toLowerCase() !== org.restorer.name.toLowerCase()) {
+      failures.push('the collector and restorer sessions were not shown to be one Exchange organization');
+    } else if (!tenant || sessions.some((item) => item.tenantId != null && item.tenantId !== tenant)) {
+      failures.push('an Exchange session reported another tenant');
+    } else if (!['organization', 'config'].includes(org.tenantIdSource) || (org.tenantIdSource === 'organization' && sessions.some((item) => item.tenantId !== tenant))) {
+      failures.push('the Exchange organization\'s tenant source is not recorded');
+    }
+  }
 
   // Both refusal probes must have been refused here, before anything was sent.
   const refusals = subject.refusals ?? {};
@@ -271,7 +287,7 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
   // Every write sent belongs to a capture: one request per add, a write and its put-back per update.
   const used = new Map();
   for (const request of Array.isArray(subject.requests) ? subject.requests : []) {
-    if (request?.read !== undefined) continue;
+    if (request?.read !== undefined && request?.cmdlet === undefined) continue;
     const capture = writes.find((item) => requestFits(item, request) && (used.get(item) ?? 0) < (item.kind === 'add' ? 1 : 2));
     if (!capture) failures.push(`${request?.cmdlet ?? 'a cmdlet'} on ${request?.parameters?.Identity ?? 'an unnamed object'}: no capture accounts for this write`);
     else used.set(capture, (used.get(capture) ?? 0) + 1);

@@ -4210,3 +4210,22 @@ item that needs it stays untouched.
      never a token):
      `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const r = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; const h = { authorization: 'Bearer ' + t }; const sp = await (await fetch('https://graph.microsoft.com/v1.0/servicePrincipals(appId=\'' + r.clientId + '\')?\$select=id', { headers: h })).json(); const a = await (await fetch('https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?\$filter=principalId eq \'' + sp.id + '\'&\$expand=roleDefinition(\$select=displayName)', { headers: h })).json(); for (const x of a.value ?? []) console.log(x.roleDefinition?.displayName, x.directoryScopeId); if (a.error) console.log(a.error.code, a.error.message)"`
 - **Report:** steps 1-5 in Result. Then comment the findings on issue #339 as keel-operator.
+
+### Q87: Rerun the exchange-extended writer capture after #342 (quarantine by Name, deployed scripts mounted)
+- Drafted by the "Quarantine capture fix" thread (2026-10-15), for issue #339. PR #342 (merged as 82f852a):
+  - Set-QuarantinePolicy is now sent `-Identity <Name>`, for both quarantine families (for the global settings: `DefaultGlobalTag`).
+    The id in your report was the pseudonym of the raw Guid in the recorded copy. The capture had sent the raw Guid, and the cmdlet
+    refuses a Guid.
+  - Every job now mounts `/opt/keel-live/ops/powershell` read-only over `/app`, so `keel-powershell:latest` runs the deployed
+    run-cmdlet allowlist. No thin image is needed. The Dockerfile pins ExchangeOnlineManagement 3.10.1; no rebuild is needed.
+- Needs: `/opt/keel-live` at 82f852a or later (`git -C /opt/keel-live log -1 --format=%h` or the deployed build stamp).
+- Status: queued
+- Do (test tenant only; the same put-back writes as your last exchange-extended run):
+  1. The exchange-extended capture, exactly as your last run, with `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`, and the
+     default image `keel-powershell:latest` (not the wkld thin image), at the deployed build.
+  2. `node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence <the record>`.
+  3. Commit the record and its `.capture.json` to a `claude/live-evidence-workload-writers-2` PR, then run
+     `node cli/keel-workload-collect.mjs import`.
+- **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` and `exchange-extended.quarantine-policy.update`
+  the `ok`, `readBackVerified`, `restoredToOriginal` and `error` (or its skip reason); the verify exit code; the import line for
+  exchange-extended; and the PR link. Exit 3 means a setting may not be back: report the object, field and original value it names.

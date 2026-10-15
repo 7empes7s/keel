@@ -2997,3 +2997,29 @@ item that needs it stays untouched.
   Test-ServicePrincipalAuthorization results; the write's status, when it first succeeded and the message id (first 8
   chars); the blocked check's status and error code; the deployed commit, exit code, workload lines and fixture row check.
   No tokens or keys.
+
+### Q64: Forced content backup, twice back to back, on a build with #270, #271 and #273
+- Drafted by the "Forced backup with all fixes" thread (2026-10-15). Marouane asked to force a backup now.
+  Fixes to prove live: #270 (mail cursor, 7b2f2d2), #271 (Teams snapshot deterministic, 811d7e6),
+  #273 (SharePoint list items via delta, 55d8b63).
+- Status: queued
+- Needs: none.
+- **Read-only against the tenant.** Content reads go through the GET-only `contentReadTransport` as the KEEL Content Reader,
+  with Q58's reader and scope files. No permission, consent or fixture changes. Global admin not used.
+- **Do:**
+  1. Record the commit `/opt/keel-live` is deployed at and confirm it includes 55d8b63 (merge of #273), which also carries
+     #270 and #271. If not, wait for the deploy (it is CI-gated); if it has not arrived within 30 minutes, report `blocked`
+     with the master CI state for 55d8b63.
+  2. Baseline: `SELECT workload, count(*), sum(bytes) FROM content_item GROUP BY workload` and the `content_sync_state`
+     key count per workload.
+  3. **Run A:** `node /opt/keel-live/cli/keel-content-collect.mjs run` once, as Q62 step 4 (worker's user, DB env loaded;
+     not while a scheduled job runs). Report the exit code and every workload line verbatim. Read back the step 2 queries.
+     Run A is the first run with #273, so SharePoint does one full pass per list and creates `items:` and `site:` state keys.
+  4. **Run B:** the same command again right after run A, with no tenant change. Exit code, every workload line verbatim,
+     the step 2 queries.
+  5. Per workload (exchange-mail, onedrive, sharepoint-sites, teams, planner, plus group-conversations), report the new
+     content_item rows and bytes for A (vs baseline) and B (vs A). Expected on B: about 0 new rows everywhere; teams row
+     count unchanged from after A (it was 44 after Q63, so no growth); sharepoint-sites items read near 0 (not ~853).
+     Also check the KEEL-RT-20261015-mail message row is still present for alice.
+- **Report:** the deployed commit; for A and B the exit code, each workload line verbatim and the read-back; the per-workload
+  A and B differences; any error text (no tokens or keys).

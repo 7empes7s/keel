@@ -865,26 +865,6 @@ being triggered by queue updates.
   - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
   Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
 
-### Q82: First tenant discovery run on the box (read-only, GET only)
-- Drafted by the "Discovery schedule" thread (2026-10-15). `cli/keel-discover.mjs run` has never run on the live tenant, so
-  the portal's Protect page cannot say what the tenant holds that KEEL is not backing up. It reads Graph `$metadata`, walks
-  every entity set, singleton and containment path and counts objects. Every request goes through
-  `engine/discovery/transport.mjs`, which refuses anything but a body-less GET to graph.microsoft.com before it is sent.
-  Bodies are counted and dropped. It writes one `discovery_run` (and its items) to the KEEL database, nothing else.
-- Needs: `test -f /opt/keel-live/cli/keel-discover.mjs` and the schema applied (`discovery_run` table exists).
-- Status: todo
-- Result:
-- Do (no tenant writes, no approvals, no consent, no new grants):
-  1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
-     (no `--powershell-commands`; PowerShell modules then show as "not listed", which is expected). Report the exit code,
-     the wall time, the first summary line, any source lines that are not `complete`, the `Graph GET requests, throttled`
-     line and the `Stored discovery run <id>` line. Exit 1 means a Graph source could not be read in full: still a result.
-  2. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json`: report the count of uncatalogued and unreadable
-     lines and the 10 most common `needs <grant>` values among the unreadable ones. Do not grant any of them.
-  3. Open https://keel.techinsiderbytes.com Protect page (or `curl` the same data the page reads) and say whether the
-     Discovery section now shows this run.
-- **Report:** steps 1-3. Nothing in the tenant or on the host changes besides the stored run.
-
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every
@@ -3977,3 +3957,23 @@ item that needs it stays untouched.
      not the newest of their day, week, month or year), and whether the newest complete snapshot is kept.
   4. `SELECT job_kind, enabled, next_due_at FROM schedule WHERE job_kind = 'prune'` (column names as in the schema).
 - **Report:** steps 1–4. Nothing is deleted by this item.
+
+### Q82: First tenant discovery run on the box (read-only, GET only)
+- Drafted by the "Discovery schedule" thread (2026-10-15). `cli/keel-discover.mjs run` has never run on the live tenant, so
+  the portal's Protect page cannot say what the tenant holds that KEEL is not backing up. It reads Graph `$metadata`, walks
+  every entity set, singleton and containment path and counts objects. Every request goes through
+  `engine/discovery/transport.mjs`, which refuses anything but a body-less GET to graph.microsoft.com before it is sent.
+  Bodies are counted and dropped. It writes one `discovery_run` (and its items) to the KEEL database, nothing else.
+- Needs: `test -f /opt/keel-live/cli/keel-discover.mjs` and the schema applied (`discovery_run` table exists).
+- Status: todo
+- Result:
+- Do (no tenant writes, no approvals, no consent, no new grants):
+  1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
+     (no `--powershell-commands`; PowerShell modules then show as "not listed", which is expected). Report the exit code,
+     the wall time, the first summary line, any source lines that are not `complete`, the `Graph GET requests, throttled`
+     line and the `Stored discovery run <id>` line. Exit 1 means a Graph source could not be read in full: still a result.
+  2. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json`: report the count of uncatalogued and unreadable
+     lines and the 10 most common `needs <grant>` values among the unreadable ones. Do not grant any of them.
+  3. Open https://keel.techinsiderbytes.com Protect page (or `curl` the same data the page reads) and say whether the
+     Discovery section now shows this run.
+- **Report:** steps 1-3. Nothing in the tenant or on the host changes besides the stored run.

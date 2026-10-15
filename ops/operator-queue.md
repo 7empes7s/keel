@@ -4045,7 +4045,7 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at 40d2af0 or later (`grep -q "'discover'" /opt/keel-live/engine/store/scheduleSeed.mjs`), the
   schema applied (`job_kind_check` accepts `discover`: `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'job_kind_check'`),
   and keel-worker restarted on that build.
-- Status: todo
+- Status: in-progress
 - Result:
 - Do (no tenant access, no writes besides the one schedule row):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && node cli/keel-schedules-migrate.mjs --tenant-ref <live tenantRef> --kinds discover`.

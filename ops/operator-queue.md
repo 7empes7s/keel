@@ -3385,7 +3385,43 @@ item that needs it stays untouched.
   the Q63 RBAC assignment KEEL-RT-restorer-mail-rw covers Application Mail.ReadWrite only.
 - Needs: Q63 done (scope KEEL-RT-test-mailboxes and the Exchange SP "Keel Restorer" exist). Q68 done
   (`/etc/keel/content-restorer.json` exists). Can run alongside Q69 (different workload, different site).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-15 10:44–12:52 UTC on B = 14dc79a1. Restorer only (EXO PowerShell app-only, plus Graph); global admin not used.
+  No Entra Calendars/Contacts grant and no manifest change. Approvals: filed by the Entra principal and self-approved as the
+  Gmail approver under the standing authorization.
+  - **1. Entra check:** the Restorer SP holds no Calendars.* or Contacts.* Graph role (none, read or write).
+  - **2. Exchange:**
+    - Scope KEEL-RT-test-mailboxes, filter `PrimarySmtpAddress -like 'keel-rt-*'`.
+    - Preview, 2 recipients, both keel-rt-: keel-rt-20260908-alice and keel-rt-20260908-collaboration.
+    - Created (none existed): **KEEL-RT-restorer-calendars-rw** (Application Calendars.ReadWrite) and
+      **KEEL-RT-restorer-contacts-rw** (Application Contacts.ReadWrite), both on CustomResourceScope KEEL-RT-test-mailboxes.
+  - **3. Test-ServicePrincipalAuthorization:**
+    - alice: Calendars.ReadWrite **InScope=True**, Contacts.ReadWrite **InScope=True**.
+    - AdeleV: Calendars.ReadWrite **InScope=False**, Contacts.ReadWrite **InScope=False**.
+  - **4. Fixtures:** 403 ErrorAccessDenied from 10:45:18 on (retried every 10 min) while RBAC propagated. **First 201 at 12:15:49**
+    (event AAMkAGEw…) and **12:15:50** (contact AAMkAGEw…), about 90 min after the assignments.
+    - KEEL-RT-20261015-event is in the default calendar, 2026-10-20 09:00–09:30 UTC, 0 attendees.
+    - KEEL-RT-20261015-contact is in the default contacts, with keel-rt-contact@example.invalid.
+  - **5. Blocked check:** AdeleV `events` **403 ErrorAccessDenied**, `contacts` **403 ErrorAccessDenied**, both at 10:45 and again
+    after propagation at 12:47.
+  - **6. Backup** (exit 0):
+    `exchange-mail: succeeded (2 items, 4355 bytes)`, `onedrive: succeeded (0 items, 0 bytes)`,
+    `sharepoint-sites: succeeded (4 items, 4542 bytes)`, `teams: succeeded (11 items, 271885 bytes)`,
+    `planner: succeeded (8 items, 11975 bytes)`.
+    content_item has the event (container mailbox/<alice>/calendar/…) and the contact (mailbox/<alice>/contacts/default).
+  - **7. Restore check** (T = 2026-10-15T12:45:43Z):
+    - a. Plan (exit 0): containers 11; items mail 1, **calendar 1, contacts 1**, todo 0; notRestorable [].
+    - b. Copy, `--kinds calendar,contacts` (approval **e37feac8**): exit 0, `restored 2, writes 4, failed 0, status completed`.
+      Calendar "Restored 2026-10-15 - Calendar" holds KEEL-RT-20261015-event (0 attendees). Contact folder "Restored 2026-10-15" holds
+      KEEL-RT-20261015-contact.
+    - c. Re-run: exit 0, `restored 0, alreadyDone 2, writes 0`.
+    - d. Deleted both fixtures (204 each), then `--into original` (approval **b8dc5a70**): exit 0, `restored 2, writes 2, failed 0,
+      status completed`. The event is back in the default calendar (0 attendees, the original start). The contact is back in the
+      default contacts, with its email address.
+  - **8. Cleanup:** deleted the "Restored 2026-10-15 - Calendar" calendar and the "Restored 2026-10-15" contact folder (204 each).
+    - **Left:** the step-7d event and contact as the standing fixtures.
+    - The Exchange assignments KEEL-RT-restorer-calendars-rw and KEEL-RT-restorer-contacts-rw stay.
+    - Nothing else; alice now has only "Calendar" and no extra folders.
 - Decision: D-93a ("add any the tool needs to move along"), as for D-Q55. Same shape as D-Q63: Exchange RBAC for
   Applications on the existing KEEL-RT-test-mailboxes scope only. No consent click is needed.
 - **Rules:** test tenant. The only permission changes are the two role assignments below. **Do not** add Graph

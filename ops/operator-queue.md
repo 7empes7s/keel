@@ -4324,3 +4324,23 @@ item that needs it stays untouched.
 - **Report:** for steps 2-5, `ok` and, on failure, the error message and `errorId` (FullyQualifiedErrorId) verbatim, with the tenant name
   masked as `<org>`. For steps 1 and 6, `ok` and the `OrganizationBrandingEnabled` value. Then comment the findings on issue #339 as
   keel-operator.
+
+### Q90: Set the global quarantine settings by piping the Get- into Set-QuarantinePolicy (issue #339; no-change probe)
+- Drafted by the "Quarantine global pipe" thread (2026-10-15). Q89 showed Set-QuarantinePolicy finds the global settings by no
+  `-Identity` form. This tries Microsoft's documented form, `Get-QuarantinePolicy -QuarantinePolicyType GlobalQuarantinePolicy | Set-QuarantinePolicy ...`,
+  through run-cmdlet. Branch `claude/project-thread-yw9qlk` at **247842d** adds one thing to run-cmdlet.ps1: a job field `pipeFrom`.
+  Its only allowed value, `global-quarantine-settings`, makes run-cmdlet run that fixed Get- itself (exactly 1 object required) and pipe it
+  into Set-QuarantinePolicy. A piped job must not send `Identity`. Nothing else in the job changes.
+- Needs: nothing. Use the default image `keel-powershell:latest`, but mount **the branch's** scripts, not /opt/keel-live's:
+  `git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q90 && git archive 247842d ops/powershell | tar -x -C /tmp/keel-q90`, then
+  `docker run --rm -i --network host -v /etc/keel:/etc/keel:ro -v /tmp/keel-q90/ops/powershell:/app:ro keel-powershell:latest` with the job JSON
+  on stdin. Every step is one run-cmdlet job as the Restorer, with `"tenantConfigPath":"/etc/keel/exchange-restorer.json"` (as in Q89).
+- Status: todo
+- Do (test tenant only; one tenant-wide object, written back to its own current value):
+  1. `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"Get-QuarantinePolicy","parameters":{"QuarantinePolicyType":"GlobalQuarantinePolicy"},"tenantConfigPath":"/etc/keel/exchange-restorer.json"}`.
+     Report `ok`, the number of objects and the current `OrganizationBrandingEnabled` (true or false).
+  2. `{"mode":"cmdlet","module":"ExchangeOnlineManagement","cmdlet":"Set-QuarantinePolicy","parameters":{"OrganizationBrandingEnabled":<value from step 1>},"pipeFrom":"global-quarantine-settings","tenantConfigPath":"/etc/keel/exchange-restorer.json"}`.
+  3. Repeat step 1 and confirm `OrganizationBrandingEnabled` still has its original value.
+  If step 2 ever writes a value other than the one step 1 read, put it back. Remove /tmp/keel-q90 afterwards.
+- **Report:** for step 2, `ok` and, on failure, the error message and `errorId` verbatim (tenant name masked as `<org>`). For steps 1 and 3,
+  `ok` and the `OrganizationBrandingEnabled` value. Then comment the findings on issue #339 as keel-operator.

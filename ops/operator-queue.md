@@ -4059,7 +4059,7 @@ item that needs it stays untouched.
   grants the Collector already holds. The hint is only set on 401/403 answers, from Graph's own message or else from a
   documented path-prefix table, so the 400/404 lines are not where it comes from. This item shows the real reasons.
 - Needs: Q82 done (discovery run 1 stored).
-- Status: todo
+- Status: in-progress
 - Result:
 - Do (read only: no tenant writes, no grants, no approvals; never print the token itself):
   1. `set -a; . /etc/keel/db.env; set +a; psql "$KEEL_DB_URL" -c "SELECT reason, http_status, grant_source, count(*) FROM discovery_item WHERE run_id = 1 AND status = 'unreadable' GROUP BY 1,2,3 ORDER BY 4 DESC"`

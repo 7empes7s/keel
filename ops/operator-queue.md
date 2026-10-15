@@ -2769,10 +2769,18 @@ item that needs it stays untouched.
 
 ### Q60: Create the KEEL-RT- Planner plan fixture and check the Content Reader can read it
 - Drafted by the "Planner test plan" thread (2026-10-15).
-- Status: in-progress
-- Result: Checked 2026-10-15 00:34 and re-checked 01:42 UTC. The Restorer's SP does not hold Tasks.ReadWrite.All yet (Q59 put it in the manifest; consent not granted),
-  and its token has no Tasks.* role. Nothing written. Waiting on Marouane: Entra > App registrations > **Keel Restorer** >
-  API permissions > Grant admin consent. The click adds only Tasks.ReadWrite.All.
+- Status: done
+- Result: Done 2026-10-15 06:34 UTC. Marouane consented for the Keel Restorer (reported 06:33). Its token now carries Tasks.ReadWrite.All.
+  Writes as the Restorer, Planner in the KEEL-RT-20260908 Collaboration Hub group only. No permission or consent changes;
+  content-collect not run. Global admin not used.
+  - Group 9263e1d4… (display name re-read before writing). It had 0 plans, so a new one was created.
+  - **Plan** KEEL-RT-20261015-plan: DnEZlIcI…. **Bucket** KEEL-RT-20261015-bucket: S6g-ggqq….
+    **Task** KEEL-RT-20261015-task: rcON870J…, in that bucket. Task details PATCH (If-Match etag): 204, description "KEEL-RT planner fixture".
+  - **Content Reader check** (GET only, first try):
+    - `GET /groups/<group>/planner/plans`: 200, 1 plan (KEEL-RT-20261015-plan).
+    - `GET /planner/plans/<plan>/tasks`: 200, 1 task (KEEL-RT-20261015-task).
+    - `GET /planner/tasks/<task>/details`: 200, description matches.
+  - The next scheduled content-collect run picks it up. The 01:00 UTC run was before this.
 - Needs: Q59 done, and Marouane's admin consent for the Restorer. First check that the Restorer's SP holds
   `Tasks.ReadWrite.All` as an appRoleAssignment. If not, set `blocked: waiting on consent` and stop (the thread re-sends).
 - **One tenant write area: Planner in the `KEEL-RT-20260908 Collaboration Hub` group.** No permission or consent changes.

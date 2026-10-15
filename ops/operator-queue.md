@@ -3139,6 +3139,11 @@ item that needs it stays untouched.
     - No type is shown as removed (0 removed).
   - **6. Refusal** (random uuid principal): **exit 2**, `refused: this principal does not hold the read capability`.
   - **7. Portal gate:** keel-portal on 127.0.0.1:3600. `GET /api/compare` with no session returns **401**; POST also returns 401.
+  - **Rerun after #291 (0ba6cee), 10:18 UTC on c3b5f6c8:** `live` exit 0. `compare live: 1 differences`, from snapshot 728f7a91… (10:00:47Z).
+    - Settings: 0 added, 0 removed, **0 changed**, 1463 unchanged, notCompared 66. **0 roleAssignmentSchedule differences.**
+    - The 1 remaining difference is in workloads, also read-time noise: exchange-mailbox-settings
+      `mailboxSettings.automaticRepliesSetting` on 1 mailbox. The status is disabled before and after; only the scheduled
+      start and end moved to the current hour. Reported on #288.
 - **Read-only.** The live side runs the Collector's GETs and stores nothing. No tenant, host or DB writes.
 - Do, as the worker's user with the DB env loaded (`set -a; . /etc/keel/db.env; set +a`):
   1. Record the commit `/opt/keel-live` is deployed at.

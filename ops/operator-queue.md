@@ -2671,7 +2671,52 @@ item that needs it stays untouched.
 
 ### Q58: First content backup run on the test tenant (one KEEL-RT- mailbox, OneDrive, site, team and plan)
 - Drafted by the "First test content backup" thread (2026-10-15). Follows Q57 (Content Reader holds 17 of 17).
-- Status: in-progress
+- Status: done
+- Result: Run 2026-10-15 00:20–00:22 UTC, before the 01:00 nightly job. **Exit 1** (3 workloads partial). Content reads used the KEEL Content Reader
+  through contentReadTransport (GET only). The fixture checks and the one fixture write used the Restorer. Global admin not used.
+  - **Deployed:** /opt/keel-live at 1147ac47. It includes #257 (0a219ca0), #258 (de047131) and #262 (= 1147ac47).
+  - **Files** (worker runs as **root**, so the owner is root):
+    - /etc/keel/content.key: 64 hex characters, 600; not printed. Keep it in place.
+    - /etc/keel/content-reader.json: 600, as documented.
+    - /etc/keel/content-scope.json: 600, namePrefix KEEL-RT-, tenantHost lxtj.sharepoint.com; left in place for the nightly job.
+    - /var/lib/keel/content: 700.
+    - content-reader.key was already 600 and the crt is 644; nothing widened.
+  - **Fixtures (step 4):**
+    - alice's mailbox: present. The inbox is empty (0), and no mail was read anyway; see #263.
+    - alice's OneDrive: present and empty, so I **created KEEL-RT-20261015-onedrive.txt** (Restorer; the only tenant write).
+    - Sites: /sites/keel-rt-20260908-collaboration and /sites/KEEL-RT-20261004 found. The team-site library was not empty
+      (General/KEEL-RT-20260908 Teams SharePoint), so no file was added.
+    - Team KEEL-RT-20260908 Collaboration Hub: found.
+    - **Planner: no plan to read.** The hub group has 0 plans, and the Restorer has no Tasks.* permission, so I could not create
+      KEEL-RT-20261015-plan.
+  - **Run output, verbatim** (site GUIDs masked):
+    exchange-mail: partial (2 items, 892 bytes): keel-rt-20260908-alice@techinsiderbytes.com (user): 1 read(s) failed (400 BadRequest Parsing OData Select and Expand failed: Could not find a property named 'wellKnownName' on type 'microsoft.graph.mailFolder'.)
+    onedrive: succeeded (2 items, 1771 bytes)
+    sharepoint-sites: partial (865 items, 2710798 bytes): KEEL-RT-20261004: 1 part(s) not fully read, first permissions: denied (HTTP 403: /v1.0/sites/lxtj.sharepoint.com%2C<guid>%2C<guid>/permissions); KEEL-RT-20260908 Collaboration Hub-KEEL-RT-20260908 Partner Shared: 1 part(s) not fully read, first permissions: denied (HTTP 403: /v1.0/sites/lxtj.sharepoint.com%2C<guid>%2C<guid>/permissions); KEEL-RT-20260908 Collaboration Hub-KEEL-RT-20260908 Finance Private: 1 part(s) not fully read, first permissions: denied (HTTP 403: /v1.0/sites/lxtj.sharepoint.com%2C<guid>%2C<guid>/permissions); KEEL-RT-20260908 Collaboration Hub: 1 part(s) not fully read, first permissions: denied (HTTP 403: /v1.0/sites/lxtj.sharepoint.com%2C<guid>%2C<guid>/permissions)
+    teams: partial (11 items, 257267 bytes): Mark 8 Project Team: 1 part(s) not read
+    planner: succeeded (3 items, 9496 bytes)
+  - **DB read-back** (`SELECT workload, count(*), sum(bytes) FROM content_item GROUP BY workload`):
+    exchange-mail 2 / 892; onedrive 2 / 1771; sharepoint-sites 865 / 2710798; teams 11 / 257267; group-conversations 3 / 9496.
+    - The planner line's 3 items are stored as `group-conversations`. That is by design (planner.mjs also backs up group
+      conversations). Here they are the hub group's welcome conversation (conversation, thread, post).
+  - **Containers found per workload:**
+    - exchange-mail: alice's calendars and todo-lists, 1 each. **No mail folders.**
+    - onedrive: alice's drive. KEEL-RT-20261015-onedrive.txt is there (drive-content and drive-record).
+    - sharepoint-sites: 4 sites: KEEL-RT-20261004, the Collaboration Hub, and its Finance Private and Partner Shared channel sites.
+    - teams: 11 teams, metadata only (messages "waiting-on-microsoft"). Two are KEEL-RT: the Collaboration Hub and
+      KEEL Qualification Test (keelqual0924). The other 9 are non-fixture teams (no name filter, as expected).
+    - group-conversations: the hub group.
+  - **content_sync_state keys:**
+    - exchange-mail: 2 (group/…, mailbox/…).
+    - onedrive: 1 (the drive).
+    - sharepoint-sites: 28 (14 covered:…, 14 library:…).
+    - teams and planner: none.
+  - **Failures:**
+    - **#263**: exchange-mail reads mailFolders/delta with `$select=...wellKnownName`, which is beta only, so v1.0 returns 400.
+      No mail is backed up (engine/content/exchangeMail.mjs:191).
+    - **#264**: sharepoint-sites reads `GET /sites/{id}/permissions`, which needs Sites.FullControl.All for app-only. It is 403 for
+      the read-only Content Reader on all 4 sites. Decision needed; options are in the issue.
+    - teams: "Mark 8 Project Team: 1 part(s) not read". That is a non-fixture team with 0 channels; no further detail in the run.
 - Needs: Q57 done.
 - **Read-only against the tenant**, except an optional fixture plan in step 4. Every content request goes through the
   GET-only `contentReadTransport` as the KEEL Content Reader. No permission or consent changes.

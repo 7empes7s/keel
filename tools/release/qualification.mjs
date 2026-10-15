@@ -20,6 +20,7 @@
 import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicense.mjs';
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualification/sharepointSiteGrantsAcceptance.mjs';
+import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -720,6 +721,13 @@ const GATE_VALIDATORS = {
     const failures = validateSiteGrantsLiveSubject(evidence, context);
     if (!context.artifact.ok) failures.push(`site grant capture log required (${context.artifact.reason})`);
     if (!verifyRunnerProof(evidence, evidence.proof?.runner, context).ok) failures.push('site grant runner proof required');
+    return failures;
+  },
+  // Gap 4: SharePoint site permission writes; needs both proofs (runner signature and capture log).
+  [SITE_PERMISSIONS_LIVE_GATE]: (evidence, context) => {
+    const failures = validateSitePermissionsLiveSubject(evidence, context);
+    if (!context.artifact.ok) failures.push(`site permissions capture log required (${context.artifact.reason})`);
+    if (!verifyRunnerProof(evidence, evidence.proof?.runner, context).ok) failures.push('site permissions runner proof required');
     return failures;
   },
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.

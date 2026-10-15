@@ -537,7 +537,7 @@ function workloadSection(guide) {
         const verb = WRITE_VERBS[write.id.split('.').at(-1)];
         if (!verb) throw new Error(`docs/coverage.md: no plain verb for workload write ${write.id}`);
         const after = (write.requires ?? []).map(writeName);
-        const name = WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === write.readBack).resource;
+        const name = write.name ?? WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === write.readBack).resource;
         lines.push(`- ${verb}: ${name}${after.length ? ` (switched on only after the restore of ${list(after)} is proven)` : ''}`);
       }
       lines.push('');

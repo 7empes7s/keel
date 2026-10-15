@@ -177,6 +177,12 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   sharepointSiteAppGrant: { reviewed: true, judgesCreates: true, rules: [
     rule('roles', 'externally-sharing', raisesSiteRole),
   ] },
+  // Gap 4: a SharePoint group member, site collection admin or role assignment put
+  // back on a site. Each gives a person or group access to the site's content; a new
+  // empty group or permission level gives no one anything (grantsAccess false).
+  sharepointSitePermission: { reviewed: true, judgesCreates: true, rules: [
+    rule('grantsAccess', 'externally-sharing', becomes(true)),
+  ] },
   // Task-104: Teams team settings. Giving guests channel rights, or making a team
   // discoverable to everyone, widens who reaches the team's content.
   teamsTeamSettings: { reviewed: true, rules: [

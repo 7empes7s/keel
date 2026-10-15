@@ -1,6 +1,6 @@
 /**
  * Gap register W2: the one table cli/keel-restore.mjs uses to plan and promote a
- * workload restore (SharePoint settings and site app grants, Exchange, Teams, Purview, and from Wave 2 WKLD mail
+ * workload restore (SharePoint settings, site app grants and site permissions, Exchange, Teams, Purview, and from Wave 2 WKLD mail
  * flow, the Exchange settings READ-EXO added, Teams org-wide and voice policies,
  * Purview retention and DLP, and retention labels: cmdletSettings.mjs).
  *
@@ -29,6 +29,11 @@ import {
   SITE_GRANTS_RESTORE, SITE_GRANT_WRITE_OPERATIONS, createSiteGrantsRestoreArtifact, executeSiteGrantsRestore,
   planSiteGrantsRestore, readLiveSiteGrants,
 } from './sharepointSiteGrants.mjs';
+import { TEST_TENANT_REFS } from '../../../tools/qualification/entraLive.mjs';
+import {
+  SITE_PERMISSIONS_RESTORE, SITE_PERMISSION_WRITE_OPERATIONS, createSitePermissionsRestoreArtifact, executeSitePermissionsRestore,
+  loadSitePermissionsSource, planSitePermissionsRestore, readLiveSitePermissions,
+} from './sharepointSitePermissions.mjs';
 import {
   EXCHANGE_WRITE_OPERATIONS, createExchangeRestoreArtifact, executeExchangeRestore, loadExchangeSource,
   planExchangeRestore, readLiveExchange,
@@ -92,6 +97,28 @@ export const WORKLOAD_RESTORES = Object.freeze({
     create: createSiteGrantsRestoreArtifact,
     execute: (client, { tenantRef, artifactId, plan, connection, qualifications, sleep }) => executeSiteGrantsRestore(client, {
       tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.transport, qualifications, sleep,
+    }),
+  }),
+  // Gap 4: one site's groups, members, admins, permission levels and role assignments,
+  // from the content backup's site/permissions item (the latest, or the last at --at),
+  // through SharePoint REST.
+  [SITE_PERMISSIONS_RESTORE]: Object.freeze({
+    label: 'SharePoint site groups and permissions',
+    operations: SITE_PERMISSION_WRITE_OPERATIONS,
+    usage: '--tenant-host <host>.sharepoint.com --site <site id> [--at <ISO time>]',
+    async plan(client, { tenantRef, request, connection, contentStore, sleep }) {
+      const tenantHost = required(request.tenantHost, '--tenant-host <host>');
+      const siteId = required(request.siteId, '--site <site id>');
+      const store = await contentStore();
+      const recorded = await loadSitePermissionsSource({ store, tenantRef, siteId, at: request.at ?? null });
+      if (!recorded) throw new Error(`the content backup holds no site permissions for ${siteId}${request.at ? ` at or before ${request.at}` : ''}`);
+      if (typeof recorded.value?.web?.url !== 'string') throw new Error('the backup holds no site URL');
+      const live = await readLiveSitePermissions({ transport: connection.sharePoint(tenantHost), tenantHost, webUrl: recorded.value.web.url, sleep });
+      return planSitePermissionsRestore({ source: recorded, live, tenantHost, siteId, tenantRef, testTenantRefs: TEST_TENANT_REFS });
+    },
+    create: createSitePermissionsRestoreArtifact,
+    execute: async (client, { tenantRef, artifactId, plan, connection, qualifications, contentStore, sleep }) => executeSitePermissionsRestore(client, {
+      tenantRef, artifactId, tenantHost: plan.tenantHost, transport: connection.sharePoint(plan.tenantHost), store: await contentStore(), testTenantRefs: TEST_TENANT_REFS, qualifications, sleep,
     }),
   }),
   [EXCHANGE_WORKLOAD]: Object.freeze({

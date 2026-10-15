@@ -386,6 +386,25 @@ test('issue #294: a drifted, wider include is replaced by the backup\'s, and a r
   assert.equal(graph.bodies.length, 2, 'a re-run from the same backup writes nothing');
 });
 
+test('issue #294 (Q79): a dry run plans no write for a consent policy whose rules match the backup under new ids', async () => {
+  const backedUp = grantPolicy({ includes: [{ ...lowInclude, id: 'backup-include' }], excludes: [{ ...mediumInclude, id: 'backup-exclude' }] });
+  const plan = async (live) => (await buildReconciliationPlan({
+    async collect(version, path) {
+      assert.equal(path, '/policies/permissionGrantPolicies');
+      return { items: [live], error: null };
+    },
+  }, [{ ...grantResource(undefined, backedUp), naturalKey: `permissionGrantPolicy:${backedUp.id}`, sourceId: backedUp.id }], { sameTenant: true })).resources[0];
+
+  const same = await plan(grantPolicy({ includes: [{ ...lowInclude, id: 'new-include' }], excludes: [{ ...mediumInclude, id: 'new-exclude' }] }));
+  assert.equal(same.verb, 'noop', same.verbReason);
+  assert.equal(same.recovery.mechanism, 'none');
+
+  const wider = await plan(grantPolicy({ includes: [{ ...mediumInclude, id: 'backup-include' }], excludes: [{ ...mediumInclude, id: 'backup-exclude' }] }));
+  assert.equal(wider.verb, 'update', 'a rule that differs in its fields is still a write');
+  const noExclude = await plan(grantPolicy({ includes: [{ ...lowInclude, id: 'backup-include' }], excludes: [] }));
+  assert.equal(noExclude.verb, 'update', 'a missing rule is still a write');
+});
+
 test('excludes converge too: a missing exclude is added before includes, an extra one removed last', async () => {
   const graph = directoryGraph();
   const backupExclude = { permissionType: 'delegated', resourceApplication: 'any', permissions: ['all'], clientApplicationIds: ['app-blocked'] };

@@ -52,7 +52,6 @@ function fixtureRoutes() {
   return {
     '/sites/getAllSites': [{ value: [root, site(OTHER, 'KEEL-RT-Elsewhere')], '@odata.nextLink': `${G}/sites/getAllSites?$skiptoken=2` }, { value: [root, site(`${HOST},66666666-6666-6666-6666-666666666666,77777777-7777-7777-7777-777777777777`, 'Finance')] }],
     [`/sites/${ROOT}`]: { ...root, lastModifiedDateTime: '2026-10-01T00:00:00Z' },
-    [`/sites/${ROOT}/permissions`]: { value: [{ id: 'grant-1', roles: ['read'] }] },
     [`/sites/${ROOT}/columns`]: { value: [{ id: 'col-1', name: 'Region' }] },
     [`/sites/${ROOT}/contentTypes`]: { value: [{ id: '0x01', name: 'Item' }] },
     [`/sites/${ROOT}/sites`]: { value: [sub] },
@@ -73,7 +72,6 @@ function fixtureRoutes() {
     [`/sites/${ROOT}/pages/microsoft.graph.sitePage`]: { value: [{ id: PAGE, name: 'Home.aspx' }] },
     [`/sites/${ROOT}/pages/${PAGE}/microsoft.graph.sitePage`]: { id: PAGE, title: 'Home', eTag: 'p1', canvasLayout: { horizontalSections: [{ id: '1', columns: [{ webparts: [{ id: 'wp', innerHtml: '<p>Hi</p>' }] }] }] } },
     [`/sites/${SUB}`]: sub,
-    [`/sites/${SUB}/permissions`]: { value: [] },
     [`/sites/${SUB}/columns`]: { value: [] },
     [`/sites/${SUB}/contentTypes`]: { value: [] },
     [`/sites/${SUB}/sites`]: { value: [] },
@@ -120,7 +118,7 @@ test('a fixture site with a list, a page, a library and a subsite is fully captu
     `list/${LIB}`, `list/${LIB}/columns`, `list/${LIB}/contentTypes`, `list/${LIB}/item/1`,
     `list/${LIST}`, `list/${LIST}/columns`, `list/${LIST}/contentTypes`,
     `list/${LIST}/item/1`, `list/${LIST}/item/2`, `list/${LIST}/item/3`,
-    `page/${PAGE}`, 'site', 'site/columns', 'site/contentTypes', 'site/permissions',
+    `page/${PAGE}`, 'site', 'site/columns', 'site/contentTypes',
   ].sort());
   assert.ok(store.items.every((item) => item.workload === 'sharepoint-sites' && item.tenantRef === 'tenant-a'));
   assert.ok(store.items.some((item) => item.container === `site:${SUB}` && item.itemKey === `list/${SUBLIST}/item/1`));
@@ -141,6 +139,8 @@ test('a fixture site with a list, a page, a library and a subsite is fully captu
 
   // What Graph can't return is listed, never silently missing.
   assert.deepEqual(result.sites[0].missing.map((part) => part.part), MISSING_PARTS.map((part) => part.part));
+  assert.ok(MISSING_PARTS.some((part) => part.part === 'site-app-permissions'));
+  assert.equal(result.sites[0].reads.permissions, undefined);
 });
 
 test('every request is a GET on an allow-listed path, and other hosts are never read', async () => {
@@ -164,6 +164,8 @@ test('assertSitesRequest refuses writes, content paths outside the list, other h
   assert.throws(() => assertSitesRequest(ok, 'PATCH'), /read-only/);
   assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists/${LIST}/items/1`), /not an allow-listed read/);
   assert.throws(() => assertSitesRequest(`${G}/drives/b!x/items/root/children`), /not an allow-listed read/);
+  // Site app grants need Sites.FullControl.All; the read-only reader declares them missing instead (#264).
+  assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/permissions`), /not an allow-listed read/);
   assert.throws(() => assertSitesRequest(`${G}/sites/${encodeURIComponent(ROOT)}/lists?$filter=x`), /refused query/);
   assert.throws(() => assertSitesRequest(`https://evil.example/v1.0/sites/getAllSites`), /not Graph v1.0/);
   assert.throws(() => assertSitesRequest(`https://graph.microsoft.com/beta/sites/getAllSites`), /not Graph v1.0/);

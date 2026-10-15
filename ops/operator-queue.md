@@ -3525,3 +3525,24 @@ item that needs it stays untouched.
      the Q68 draft as the standing fixture).
 - **Report:** B; exit codes and report JSON for steps 2–5; approval ids; the step 3 and step 5 field values; anything left in
   the tenant. No tokens or keys. Comment the result on #293.
+
+### Q73: App consent policy create, live rerun after #302 (permissionGrantPolicy only)
+- Drafted by the "#294 consent policy" thread (2026-10-15). Fix: PR #302, master 1a33ff5. A create now waits (up to about
+  60 s, on 404 only) for the new policy to replicate before posting its include and exclude rules.
+- Needs: /opt/keel-live at 1a33ff5 or later (`grep -q untilReplicated /opt/keel-live/engine/restore/directoryPolicyOperations.mjs`).
+- Status: todo
+- **Test tenant only.** Same rules, capture tooling and requester/approver split as Q67. Self-approve under the 2026-10-14
+  standing authorization; log every approval id here. No permission to add (Q26).
+- Fixture: custom policy id `keel-rt-w2-consent`, display name `KEEL-RT-W2-consent`, one include (delegated, low), not
+  referenced by any authorization policy setting. Create it fresh (Q67 cleaned it up).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Re-take plan-B (`live-gate-plan.mjs`) and use only its permissionGrantPolicy create step.
+  2. Create the fixture, take snapshot S, then delete the policy.
+  3. Restore from S selecting only that policy, dry run, approve, `--enforce`. Expect **applied 1, failed 0** with no 404, and
+     the policy reading back with exactly the backup's 1 include. `entraLive.mjs capture` the `create`.
+  4. Commit the create evidence (`permissionGrantPolicy.create.json` and `.capture.json`) on `claude/live-evidence-w2-entra`
+     (secret scan first), and run `operations.mjs --live-evidence` on that directory. Do not promote the update record
+     (its demotion stands, #294 comments).
+  5. Cleanup: delete `keel-rt-w2-consent`. Report anything left.
+- **Report:** B; the enforce summary line and any include-write retries in the log; read-back include count; approval ids;
+  the evidence commit and the `live evidence` line for the create. Comment the result on #294.

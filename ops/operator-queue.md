@@ -4608,3 +4608,22 @@ item that needs it stays untouched.
 - **If the dry run refuses because marouane.defili itself is a registered break-glass account,** report that (no id) and
   stop. Delete the policy yourself.
 - **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.
+
+### Q98: CA policy delete live proof with a fixture that excludes nobody (Marouane chose this, 2026-10-16 20:27 UTC) — issue #148
+- Drafted by the #148 thread (2026-10-16).
+- Status: queued
+- Result:
+- Needs: break-glass readiness **ready**, as in Q96.
+- **Marouane's decision.** Q97 was blocked because marouane.defili is a registered break-glass account, so any policy that
+  excludes him is refused by the deletion guard. On the #148 decision card he chose "No exclusion" for this one fixture.
+  This exception covers only `KEEL-RT-148-ca-delete` in this item. Every other new CA policy still excludes him.
+- **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is **never turned on**.
+- **A. Fixture.** Report-only `KEEL-RT-148-ca-delete`: includes carla only, **no exclusions**, no target apps (`None`).
+  Read it back (state `enabledForReportingButNotEnforced`, include list carla only) before the backup.
+- **B-E.** Exactly Q96 B to E: back up, delete from a snapshot taken before the policy existed (dry run, approval with the
+  usual requester/approver split, `--artifact <id> --enforce`), then capture, `pseudonymize.mjs check` (exit 0), promote,
+  scans, and `conditionalAccessPolicy.delete{,.capture}.json` only on a new branch `claude/live-evidence-q98` from
+  `origin/master`, PR with the `automerge` label.
+- **Keep the fixture short-lived.** Run A to C back to back. If anything stops the delete, delete the policy yourself at
+  once with the Restorer and say so.
+- **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.

@@ -4482,7 +4482,7 @@ item that needs it stays untouched.
   and Set-QuarantinePolicy `-Identity DefaultGlobalTag` (#346, already on master) now works. No code change is needed; the pipe branch is not merged.
 - Needs: `/opt/keel-live` at 244756b or later. If the exchange-extended recapture you started after Q92 (teams) already ran at such a
   commit, record its result here instead of running again.
-- Status: todo
+- Status: in-progress
 - Do: exactly Q88's steps (default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`), with
   the record in a new evidence PR (automerge) that replaces #344's exchange-extended record.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,

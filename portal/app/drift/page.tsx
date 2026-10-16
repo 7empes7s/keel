@@ -2,11 +2,11 @@ import { connection } from "next/server";
 import { headers } from "next/headers";
 
 import { DataUnavailable } from "@/components/data-unavailable";
-import { DriftTable } from "@/components/drift-table";
+import { ChangeList } from "@/components/baselines/change-list";
 import { PageHeader } from "@/components/page-header";
 import { SiteChanges } from "@/components/site-changes";
-import { BaselineContext } from "@/components/baseline-context";
 import { Verdict } from "@/components/verdict";
+import { setupStatus } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { displayItems, getDriftData } from "@/lib/portal-data";
@@ -15,7 +15,7 @@ import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view"
 import { getSiteChanges } from "@/lib/site-permissions";
 import type { DriftData } from "@/lib/types";
 
-const DESCRIPTION = "What changed in the tenant since the active baseline, and what to do about each change.";
+const DESCRIPTION = "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.";
 
 export default async function DriftPage() {
   await connection();
@@ -46,9 +46,9 @@ export default async function DriftPage() {
   );
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" title="Changes" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, data.items) : undefined} title="Changes" />
       <Verdict
-        action={data.baseline ? null : { label: "Set a baseline", href: "/baselines" }}
+        action={data.baseline ? null : { label: "Create an approved setup", href: "/baselines/new" }}
         text={verdict.text}
         tone={verdict.tone}
       />
@@ -60,8 +60,7 @@ export default async function DriftPage() {
               other resources in this tenant are reviewed by a central administrator.
             </p>
           ) : null}
-          <BaselineContext baseline={data.baseline} now={data.generatedAt} />
-          <DriftTable capabilities={capabilities} items={displayItems(data.items)} now={data.generatedAt} summary={data.summary} />
+          <ChangeList baseline={data.baseline} capabilities={capabilities} items={displayItems(data.items)} now={data.generatedAt} summary={data.summary} />
         </div>
       ) : null}
       {siteChanges ? (

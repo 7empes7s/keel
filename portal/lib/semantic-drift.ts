@@ -14,9 +14,9 @@ export function semanticSummarySentence(change: SemanticChange, changeType: Drif
   if (change.total === 0) {
     return change.cosmetic > 0
       ? "Only settings Microsoft manages itself differ. Nothing that changes behaviour was changed."
-      : changeType === "modified" ? "No setting KEEL compares differs from the baseline." : "Nothing to compare.";
+      : changeType === "modified" ? "No setting KEEL compares differs from the approved setup." : "Nothing to compare.";
   }
-  return `${plural(change.total, "setting differs", "settings differ")} from the baseline in a way that changes behaviour.`;
+  return `${plural(change.total, "setting differs", "settings differ")} from the approved setup in a way that changes behaviour.`;
 }
 
 export function cosmeticSentence(change: SemanticChange): string | null {
@@ -41,7 +41,7 @@ const SEEN_WORDS: Record<EvidenceLinkState, string> = {
 
 const BASELINE_WORDS: Record<EvidenceLinkState, string> = {
   matches: "The baseline's copy matches what this change compares against.",
-  mismatch: "The baseline's copy differs from what this change compares against.",
+  mismatch: "The approved setup's copy differs from what this change compares against.",
   missing: "The baseline holds no copy of this, so KEEL cannot check what it compared against.",
   unchecked: "The baseline holds a copy, but the change did not record what it compared against, so KEEL cannot check it.",
   "not-in-baseline": "This is not in the baseline, so there is no earlier copy.",

@@ -17,13 +17,13 @@ export function changeSentence(item: Pick<DriftRecord, "naturalKey" | "changeTyp
   return `${resourceLabel(item.naturalKey)} ${verb}`;
 }
 
-/** "37 changes since the baseline set 2 days ago; 2 could lock out administrators." */
+/** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators." */
 export function changesVerdict(items: DriftRecord[], baselineSetAt: string | null, now: string, siteChangesWaiting = 0): { text: string; tone: "good" | "attention" | "critical" } {
   const sites = `${siteChangesWaiting} site permission ${siteChangesWaiting === 1 ? "change waits" : "changes wait"} for review`;
   if (baselineSetAt === null) {
-    return { text: `No baseline is active, so KEEL cannot tell what changed${siteChangesWaiting ? `; ${sites}` : ""}.`, tone: "critical" };
+    return { text: `No setup is approved yet, so Keel cannot tell what changed${siteChangesWaiting ? `; ${sites}` : ""}.`, tone: "critical" };
   }
-  const since = `since the baseline set ${ago(baselineSetAt, now)}`;
+  const since = `since the approved setup of ${ago(baselineSetAt, now)}`;
   if (items.length === 0) {
     return siteChangesWaiting
       ? { text: `Nothing has changed ${since}, but ${sites}.`, tone: "attention" }
@@ -68,14 +68,14 @@ export function valueWords(value: unknown): string {
 }
 
 const VERB_WORDS: Record<string, string> = {
-  update: "Put the baseline settings back",
-  create: "Recreate it as the baseline has it",
-  delete: "Remove it; the baseline does not have it",
+  update: "Put the approved settings back",
+  create: "Recreate it as the approved setup has it",
+  delete: "Remove it; the approved setup does not have it",
 };
 
 /** What a roll-back would do to one resource, without the planned-verb code. */
 export function plannedActionWords(verb: string): string {
-  return VERB_WORDS[verb] ?? "Bring it back in line with the baseline";
+  return VERB_WORDS[verb] ?? "Bring it back in line with the approved setup";
 }
 
 // Reasons KEEL's safety checks give, keyed by the start of the stored reason.

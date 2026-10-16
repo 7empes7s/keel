@@ -222,7 +222,9 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           const check = groupCheck(selection, ids);
           const isClosed = closed.includes(group.key);
           const tone = toneOf ? worstTone(group.items.map((item) => toneOf(item) ?? undefined)) : null;
-          const attention = toneOf ? group.items.filter((item) => { const t = toneOf(item); return t === "urgent" || t === "soon"; }).length : 0;
+          // The number counts only the rows at the badge's colour; the rest go in its note.
+          const attention = toneOf && (tone === "urgent" || tone === "soon") ? group.items.filter((item) => toneOf(item) === tone).length : 0;
+          const soonToo = tone === "urgent" && toneOf ? group.items.filter((item) => toneOf(item) === "soon").length : 0;
           return (
             <section className="sel-group" data-closed={isClosed || undefined} key={group.key}>
               <header className="sel-group-head">
@@ -243,7 +245,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                   {group.icon ? <Icon name={group.icon} /> : null}
                   <span className="sel-group-name"><b>{group.label}</b>{group.about ? <small>{group.about}</small> : null}</span>
                   <span className="sel-group-count">{plural(ids.length, noun)}</span>
-                  {tone && attention ? <StatusBadge status={{ tone, count: attention, note: `${attention} need${attention === 1 ? "s" : ""} attention` }} /> : null}
+                  {tone && attention ? <StatusBadge status={{ tone, count: attention, note: `${attention} ${tone === "urgent" ? "urgent" : "to check soon"}${soonToo ? `, and ${soonToo} to check soon` : ""}` }} /> : null}
                   <Icon className="sel-group-chevron" name="chevron-down" />
                 </button>
                 {groupAction ? groupAction(group) : null}

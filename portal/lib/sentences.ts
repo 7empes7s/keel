@@ -112,10 +112,10 @@ export function jobName(job: JobLike): string {
       return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
     case "remediate": return `Roll back of ${changesPhrase(refs.changes)}`;
-    case "baseline-create": return typeof params.label === "string" && params.label ? `Creation of baseline “${params.label}”` : "Creation of a baseline";
+    case "baseline-create": return typeof params.label === "string" && params.label ? `New approved setup “${params.label}”` : "New approved setup";
     case "baseline-activate": return refs.baseline?.readable && refs.baseline.name
-      ? `Activation of baseline “${refs.baseline.name}”`
-      : `Activation of ${refs.baseline ? "a baseline that is no longer readable" : "a baseline"}`;
+      ? `Switch to approved setup “${refs.baseline.name}”`
+      : `Switch to ${refs.baseline ? "an approved setup that is no longer readable" : "another approved setup"}`;
     default: return displayEnum("jobKind", job.kind);
   }
 }

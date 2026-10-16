@@ -1,7 +1,7 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { changeKindWords, fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads, formatValue } from "@/lib/drift-diff";
-import { resourceLabel } from "@/lib/presentation";
+import { plainLabel } from "@/lib/baselines-view";
 import type { DriftRecord } from "@/lib/types";
 
 function displayPayload(payload: unknown): string {
@@ -14,18 +14,18 @@ function displayPayload(payload: unknown): string {
 export function DriftDiff({ item }: { item: DriftRecord }) {
   const changes = diffPayloads(item.before, item.after);
   const summary = item.changeType === "added"
-    ? "This exists in the tenant but not in the baseline."
+    ? "This exists in the tenant but not in the approved setup."
     : item.changeType === "removed"
-      ? "This is in the baseline but no longer exists in the tenant."
+      ? "This is in the approved setup but no longer exists in the tenant."
       : changes.length
-        ? `${changes.length} ${changes.length === 1 ? "setting differs" : "settings differ"} from the baseline.`
+        ? `${changes.length} ${changes.length === 1 ? "setting differs" : "settings differ"} from the approved setup.`
         : "The settings compare equal one by one; the full copies are in Technical details.";
 
   return (
     <section aria-labelledby={`drift-diff-heading-${item.id}`} className="drift-diff" id={`drift-diff-${item.id}`}>
       <div className="drift-diff-head">
-        <p className="section-kicker">Baseline → now</p>
-        <h3 id={`drift-diff-heading-${item.id}`}>{resourceLabel(item.naturalKey)}</h3>
+        <p className="section-kicker">Approved setup → now</p>
+        <h3 id={`drift-diff-heading-${item.id}`}>{plainLabel(item.naturalKey)}</h3>
         <p className="field-help">{summary}</p>
       </div>
       {changes.length ? (
@@ -34,7 +34,7 @@ export function DriftDiff({ item }: { item: DriftRecord }) {
             <thead>
               <tr>
                 <th scope="col">Setting</th>
-                <th scope="col">In the baseline</th>
+                <th scope="col">Approved</th>
                 <th scope="col">Now</th>
               </tr>
             </thead>
@@ -47,7 +47,7 @@ export function DriftDiff({ item }: { item: DriftRecord }) {
                       <span>{fieldWords(change.path)}</span>
                     </span>
                   </th>
-                  <td data-label="In the baseline"><span className="diff-before">{change.kind === "added" ? "—" : valueWords(change.before)}</span></td>
+                  <td data-label="Approved"><span className="diff-before">{change.kind === "added" ? "—" : valueWords(change.before)}</span></td>
                   <td data-label="Now"><span className="diff-after">{change.kind === "removed" ? "—" : valueWords(change.after)}</span></td>
                 </tr>
               ))}

@@ -1,98 +1,83 @@
 import { connection } from "next/server";
 import { headers } from "next/headers";
 
-import { BaselineRegister } from "@/components/baseline-register";
-import { BaselineCreateForm } from "@/components/baseline-create-form";
+import { ApprovedSetup } from "@/components/baselines/approved-setup";
+import { RecentWork } from "@/components/baselines/recent-work";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
-import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
-import { baselinesVerdict } from "@/lib/compliance-view";
+import { setupStatus, setupVerdict } from "@/lib/baselines-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
-import { getBaselinesData } from "@/lib/portal-data";
+import { getBaselinesData, getCoverageData, getDriftData } from "@/lib/portal-data";
 import {
   getRecentJobs,
   getSnapshotOptions,
-  hasCompletedSnapshots,
   type JobRecord,
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import type { BaselinesData } from "@/lib/types";
+import type { BaselinesData, DriftRecord } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
+const DESCRIPTION = "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.";
 
 export default async function BaselinesPage() {
   await connection();
-  await requireReadAccess(DATA_SURFACES.baselinesPage);
+  const access = await requireReadAccess(DATA_SURFACES.baselinesPage);
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "")
     .split(" ")
     .filter((capability) => capability.length > 0);
-  // UI gating is a convenience only — the action API re-checks this capability on
-  // every request. Both create and activate sit behind baseline-create (see
-  // engine/authz/jobCapabilities.mjs).
+  // UI gating is a convenience only: the action API re-checks this capability on every
+  // request. Create and activate both sit behind baseline-create (engine/authz/jobCapabilities.mjs).
   const canBaseline = capabilities.includes("baseline-create");
 
   let data: BaselinesData;
   let snapshots: SnapshotOption[];
-  let completedSnapshotsExist: boolean;
   let jobs: JobRecord[];
   try {
-    [data, snapshots, completedSnapshotsExist, jobs] = await Promise.all([
+    [data, snapshots, jobs] = await Promise.all([
       getBaselinesData(),
       getSnapshotOptions(),
-      hasCompletedSnapshots(),
       getRecentJobs(BASELINE_JOB_KINDS),
     ]);
   } catch {
     return (
       <>
-        <PageHeader
-          description="How the tenant should look: the reference every change is measured against."
-          section="Baselines"
-          title="Baselines"
-        />
+        <PageHeader description={DESCRIPTION} section="Baselines" title="Approved setup" />
         <DataUnavailable surface="Baselines" />
       </>
     );
   }
+  // The per-service summary is a convenience on top of the page: if the changes or the
+  // backup inventory cannot be read, the page still shows the approved setup.
+  const [items, backedUp] = await Promise.all([
+    getDriftData(access.scope).then((drift) => drift.items as DriftRecord[], () => null),
+    getCoverageData().then((coverage) => coverage.types.filter((type) => type.reportStatus === "covered").map((type) => type.type), () => [] as string[]),
+  ]);
 
   const active = data.baselines.find((baseline) => baseline.active) ?? null;
-  const jobsActive = jobs.some(
-    (job) => job.status === "queued" || job.status === "running",
-  );
+  const verdict = setupVerdict(active, items, data.generatedAt);
+  const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
 
   return (
     <>
       <PageHeader
-        description="How the tenant should look: the reference every change is measured against."
-        section="Baselines"
+        description={DESCRIPTION}
         generatedAt={data.generatedAt}
-        title="Baselines"
+        section="Baselines"
+        status={setupStatus(active, items ?? [])}
+        title="Approved setup"
       />
       <Verdict
-        text={baselinesVerdict(active, data.generatedAt)}
-        tone={active ? "good" : "critical"}
+        action={active ? (items?.length ? { label: "Review changes", href: "/drift" } : null) : { label: "Create an approved setup", href: "/baselines/new" }}
+        text={verdict.text}
+        tone={verdict.tone}
       />
-
       <div data-layer="explanation">
-      <BaselineRegister baselines={data.baselines} canBaseline={canBaseline} now={data.generatedAt} snapshots={snapshots} />
-
-      <BaselineCreateForm
-        completedSnapshotsExist={completedSnapshotsExist}
-        disabled={!canBaseline}
-        snapshots={snapshots}
-      />
-
-      <JobTable
-        headingId="baseline-jobs-heading"
-        jobs={jobs}
-        kicker="Recent"
-        now={data.generatedAt}
-        title="Baseline jobs"
-      />
-      <JobRefresher active={jobsActive} />
+        <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} items={items} now={data.generatedAt} sources={snapshots} />
+        <RecentWork jobs={jobs} now={data.generatedAt} />
+        <JobRefresher active={jobsActive} />
       </div>
     </>
   );

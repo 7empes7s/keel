@@ -2,7 +2,7 @@
 import { chromium } from "@playwright/test";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ["--font-render-hinting=none"] });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
 await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
 await page.goto(pathToFileURL(resolve("ui-harness/dist/index.html")).href + "#/restore");

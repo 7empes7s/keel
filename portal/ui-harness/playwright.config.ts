@@ -19,5 +19,8 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     deviceScaleFactor: 1,
     contextOptions: { reducedMotion: "reduce" },
+    // Text layout must not depend on the machine's font settings: CI hinted IBM Plex
+    // to whole-pixel advances while cloud sessions did not, moving lines by a pixel.
+    launchOptions: { args: ["--font-render-hinting=none"] },
   },
 });

@@ -4476,3 +4476,15 @@ item that needs it stays untouched.
   and `error` (or its skip reason); confirm no `teams.meeting-policy.add` was attempted and `subject.execution.moduleVersion` is 7.9.0;
   the verify exit code; the import line for teams-org-policies; and the PR link. Exit 3 means a setting may not be back: report the
   object, field and original value it names.
+
+### Q93: Rerun the exchange-extended writer capture now that DefaultGlobalTag exists (issue #339)
+- Drafted by the "Quarantine global pipe" thread (2026-10-16). Q92 (quarantine) showed that the Defender save created `DefaultGlobalTag`,
+  and Set-QuarantinePolicy `-Identity DefaultGlobalTag` (#346, already on master) now works. No code change is needed; the pipe branch is not merged.
+- Needs: `/opt/keel-live` at 244756b or later. If the exchange-extended recapture you started after Q92 (teams) already ran at such a
+  commit, record its result here instead of running again.
+- Status: todo
+- Do: exactly Q88's steps (default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`), with
+  the record in a new evidence PR (automerge) that replaces #344's exchange-extended record.
+- **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,
+  `restoredToOriginal`, `field` and `error`; the verify exit code; the import line; and the PR link. Exit 3: report the object, field and
+  original value it names.

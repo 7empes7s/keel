@@ -4447,7 +4447,7 @@ item that needs it stays untouched.
   `teams.meeting-policy.update` now has a fixture (the capture matches the KEEL-RT- prefix).
 - Needs: `/opt/keel-live` at 4a4846d or later (it also has 964994f, which records the MicrosoftTeams pin 7.9.0 instead of the
   ExchangeOnlineManagement version).
-- Status: todo
+- Status: in-progress
 - Do (test tenant only; the same put-back writes as your last teams-org-policies run):
   1. The teams-org-policies capture, as your last run, with `--allow-tenant-wide-test-writes` and the default image
      `keel-powershell:latest`, at the deployed build. Leave `--module-version` out (the capture reads the pin), or pass 7.9.0.

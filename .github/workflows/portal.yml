@@ -59,6 +59,13 @@ jobs:
         working-directory: portal
         env:
           CI: "true"
+      - name: TEMP layout probe
+        if: failure()
+        working-directory: portal
+        run: |
+          fc-match -v sans-serif | grep -E "family:|hint|antialias|rgba|lcd" || true
+          grep -o -m1 -E "avx512[a-z]*|avx2" /proc/cpuinfo | head -2 || true
+          echo "==PROBE"; node ui-harness/tmp/layout-probe.mjs; echo "==END"
       - name: Upload UI report
         if: failure()
         uses: actions/upload-artifact@v7

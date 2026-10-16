@@ -1,38 +1,80 @@
+/* Design tokens: direction A, "Chart room" (handoff/redesign/CHOICE.md).
+   These blocks are the only place a colour literal may appear in the portal's CSS;
+   test/design-tokens.test.ts enforces that and checks contrast in both themes.
+   Dark is the bare :root default. The light palette is written twice (the OS
+   preference and the pinned choice) and the test keeps the two copies identical. */
 :root {
   color-scheme: dark light;
   font-synthesis: none;
   -webkit-text-size-adjust: 100%;
-  --font-sans: "Public Sans Variable", "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  /* Plex Sans for all UI; Plex Mono only for values, diffs and logs. */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
 
-  --canvas: oklch(0.16 0.014 255);
-  --sidebar: oklch(0.135 0.016 255);
-  --surface: oklch(0.195 0.016 255);
-  --surface-raised: oklch(0.225 0.019 255);
-  --surface-muted: oklch(0.18 0.011 255);
-  --text: oklch(0.93 0.012 255);
-  --text-soft: oklch(0.75 0.022 255);
-  --text-muted: oklch(0.62 0.02 255);
-  --line: oklch(0.31 0.022 255);
-  --line-strong: oklch(0.42 0.03 255);
+  /* Navy brand rail for the new menu (the shell step moves the menu onto it;
+     until then the menu uses --sidebar). Navy in both themes. */
+  --navy: #1b2a4a;
+  --rail: #1b2a4a;
+  --rail-text: #e4eaf3;
+  --rail-soft: #a3b0c6;
+  --rail-line: #2e4166;
+
+  /* Surfaces, darkest to lightest. */
+  --canvas: #0b1322;
+  --surface-muted: #101a2d;
+  --surface: #14213a;
+  --surface-raised: #1b2a4a;
+  --sidebar: #1b2a4a;
+  --text: #e4eaf3;
+  --text-soft: #a3b0c6;
+  --text-muted: #8a97ae;
+  --line: #263757;
+  --line-strong: #34466a;
   /* Field outlines: at least 3:1 against every surface (WCAG 1.4.11). */
-  --control-border: oklch(0.54 0.03 255);
-  --accent: oklch(0.81 0.13 78);
-  --accent-soft: oklch(0.25 0.055 78);
+  --control-border: #6a7da0;
 
-  --protected: oklch(0.79 0.13 151);
-  --protected-bg: oklch(0.235 0.04 151);
-  --partial: oklch(0.83 0.14 82);
-  --partial-bg: oklch(0.25 0.045 82);
-  --readonly: oklch(0.77 0.105 235);
-  --readonly-bg: oklch(0.235 0.035 235);
-  --unprotectable: oklch(0.75 0.105 325);
-  --unprotectable-bg: oklch(0.235 0.035 325);
-  --failed: oklch(0.73 0.18 25);
-  --failed-bg: oklch(0.235 0.055 25);
-  --uncovered: oklch(0.72 0.018 255);
-  --uncovered-bg: oklch(0.225 0.012 255);
+  /* Amber: one primary action per screen. --accent is amber as text and outline,
+     --accent-fill is amber as a background, with --on-accent on top of it. */
+  --amber: #f5a623;
+  --accent: #f5a623;
+  --accent-fill: #f5a623;
+  --accent-fill-hover: #f7b850;
+  --on-accent: #1b2a4a;
+  --accent-soft: #352a14;
 
+  /* Risk: the only other colours. Each has a text/icon tone and a tinted background. */
+  --urgent: #f2675f;
+  --urgent-bg: #3a1a22;
+  --check-soon: #f0b85a;
+  --check-soon-bg: #352a14;
+  --low-risk: #7db0f5;
+  --low-risk-bg: #16294a;
+  --fine: #46c28e;
+  --fine-bg: #16352b;
+  --neutral: #a3b0c6;
+  --neutral-bg: #26344f;
+
+  /* Overlays. */
+  --scrim: rgb(5 10 20 / 0.6);
+  --shadow-color: rgb(0 0 0 / 0.6);
+  --shadow-raised: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 12px 32px -16px var(--shadow-color);
+  --shadow-overlay: 0 30px 80px -20px var(--shadow-color);
+
+  /* Coverage states, kept as aliases of the risk set so existing pages follow it. */
+  --protected: var(--fine);
+  --protected-bg: var(--fine-bg);
+  --partial: var(--check-soon);
+  --partial-bg: var(--check-soon-bg);
+  --readonly: var(--low-risk);
+  --readonly-bg: var(--low-risk-bg);
+  --failed: var(--urgent);
+  --failed-bg: var(--urgent-bg);
+  --unprotectable: var(--neutral);
+  --unprotectable-bg: var(--neutral-bg);
+  --uncovered: var(--text-muted);
+  --uncovered-bg: var(--surface-muted);
+
+  /* One 4 px spacing scale. */
   --space-2xs: 0.25rem;
   --space-xs: 0.5rem;
   --space-sm: 0.75rem;
@@ -42,6 +84,11 @@
   --space-2xl: 3rem;
   --space-3xl: 4rem;
 
+  /* One radius scale: 8 for controls and chips, 12 for cards and panels. */
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
   /* Motion: three durations and two curves. Everything animated uses these, and
      prefers-reduced-motion collapses all of them at the end of this file. */
   --duration-fast: 120ms;
@@ -50,77 +97,78 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
-  --shadow-raised: 0 1px 0 oklch(1 0 0 / 0.04) inset, 0 12px 32px -16px oklch(0 0 0 / 0.6);
   /* Solid, so a focused field is as obvious as a focused button (WCAG 2.4.7). */
   --focus-ring: 0 0 0 2px var(--accent);
 }
 
 /* Light palette. Applies when the OS prefers light and the operator has not pinned
-   dark, or when they pinned light. Dark is the bare :root default above. */
+   dark, or when they pinned light. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --canvas: oklch(0.965 0.007 255);
-    --sidebar: oklch(0.925 0.012 255);
-    --surface: oklch(0.99 0.004 255);
-    --surface-raised: oklch(1 0.003 255);
-    --surface-muted: oklch(0.945 0.008 255);
-    --text: oklch(0.225 0.025 255);
-    --text-soft: oklch(0.41 0.027 255);
-    --text-muted: oklch(0.51 0.025 255);
-    --line: oklch(0.84 0.018 255);
-    --line-strong: oklch(0.69 0.025 255);
-    --control-border: oklch(0.58 0.025 255);
-    --accent: oklch(0.51 0.12 64);
-    --accent-soft: oklch(0.91 0.055 78);
-
-    --protected: oklch(0.41 0.12 151);
-    --protected-bg: oklch(0.92 0.045 151);
-    --partial: oklch(0.47 0.13 70);
-    --partial-bg: oklch(0.93 0.055 82);
-    --readonly: oklch(0.43 0.11 243);
-    --readonly-bg: oklch(0.92 0.04 235);
-    --unprotectable: oklch(0.47 0.11 325);
-    --unprotectable-bg: oklch(0.925 0.04 325);
-    --failed: oklch(0.47 0.17 25);
-    --failed-bg: oklch(0.93 0.055 25);
-    --uncovered: oklch(0.43 0.02 255);
-    --uncovered-bg: oklch(0.91 0.012 255);
-
-    --shadow-raised: 0 1px 2px oklch(0.2 0.02 255 / 0.06), 0 12px 32px -18px oklch(0.2 0.02 255 / 0.28);
+    --canvas: #f3f5f9;
+    --surface-muted: #edf1f7;
+    --surface: #ffffff;
+    --surface-raised: #e8eef7;
+    --sidebar: #e8eef7;
+    --text: #15213a;
+    --text-soft: #56637b;
+    --text-muted: #5f6b82;
+    --line: #d5dce8;
+    --line-strong: #b4c0d3;
+    --control-border: #7c889e;
+    --accent: #9a5b00;
+    --accent-fill: #f5a623;
+    --accent-fill-hover: #f7b850;
+    --on-accent: #1b2a4a;
+    --accent-soft: #fdf0d8;
+    --urgent: #c2352d;
+    --urgent-bg: #fce8e6;
+    --check-soon: #8f5600;
+    --check-soon-bg: #fdf0d8;
+    --low-risk: #2462b8;
+    --low-risk-bg: #e4edfb;
+    --fine: #177a4f;
+    --fine-bg: #dff3e9;
+    --neutral: #56637b;
+    --neutral-bg: #e4e9f1;
+    --scrim: rgb(21 33 58 / 0.45);
+    --shadow-color: rgb(21 33 58 / 0.28);
+    --shadow-raised: 0 1px 2px rgb(21 33 58 / 0.06), 0 12px 32px -18px var(--shadow-color);
   }
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --canvas: oklch(0.965 0.007 255);
-  --sidebar: oklch(0.925 0.012 255);
-  --surface: oklch(0.99 0.004 255);
-  --surface-raised: oklch(1 0.003 255);
-  --surface-muted: oklch(0.945 0.008 255);
-  --text: oklch(0.225 0.025 255);
-  --text-soft: oklch(0.41 0.027 255);
-  --text-muted: oklch(0.51 0.025 255);
-  --line: oklch(0.84 0.018 255);
-  --line-strong: oklch(0.69 0.025 255);
-  --control-border: oklch(0.58 0.025 255);
-  --accent: oklch(0.51 0.12 64);
-  --accent-soft: oklch(0.91 0.055 78);
-
-  --protected: oklch(0.41 0.12 151);
-  --protected-bg: oklch(0.92 0.045 151);
-  --partial: oklch(0.47 0.13 70);
-  --partial-bg: oklch(0.93 0.055 82);
-  --readonly: oklch(0.43 0.11 243);
-  --readonly-bg: oklch(0.92 0.04 235);
-  --unprotectable: oklch(0.47 0.11 325);
-  --unprotectable-bg: oklch(0.925 0.04 325);
-  --failed: oklch(0.47 0.17 25);
-  --failed-bg: oklch(0.93 0.055 25);
-  --uncovered: oklch(0.43 0.02 255);
-  --uncovered-bg: oklch(0.91 0.012 255);
-
-  --shadow-raised: 0 1px 2px oklch(0.2 0.02 255 / 0.06), 0 12px 32px -18px oklch(0.2 0.02 255 / 0.28);
+  --canvas: #f3f5f9;
+  --surface-muted: #edf1f7;
+  --surface: #ffffff;
+  --surface-raised: #e8eef7;
+  --sidebar: #e8eef7;
+  --text: #15213a;
+  --text-soft: #56637b;
+  --text-muted: #5f6b82;
+  --line: #d5dce8;
+  --line-strong: #b4c0d3;
+  --control-border: #7c889e;
+  --accent: #9a5b00;
+  --accent-fill: #f5a623;
+  --accent-fill-hover: #f7b850;
+  --on-accent: #1b2a4a;
+  --accent-soft: #fdf0d8;
+  --urgent: #c2352d;
+  --urgent-bg: #fce8e6;
+  --check-soon: #8f5600;
+  --check-soon-bg: #fdf0d8;
+  --low-risk: #2462b8;
+  --low-risk-bg: #e4edfb;
+  --fine: #177a4f;
+  --fine-bg: #dff3e9;
+  --neutral: #56637b;
+  --neutral-bg: #e4e9f1;
+  --scrim: rgb(21 33 58 / 0.45);
+  --shadow-color: rgb(21 33 58 / 0.28);
+  --shadow-raised: 0 1px 2px rgb(21 33 58 / 0.06), 0 12px 32px -18px var(--shadow-color);
 }
 
 :root[data-theme="dark"] {
@@ -171,8 +219,8 @@ select {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--sidebar);
+  background: var(--accent-fill);
+  color: var(--on-accent);
 }
 
 .skip-link {
@@ -181,8 +229,8 @@ select {
   top: var(--space-md);
   left: var(--space-md);
   padding: var(--space-sm) var(--space-md);
-  background: var(--accent);
-  color: var(--sidebar);
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-weight: 800;
   transform: translateY(-200%);
   transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2148,18 +2196,18 @@ dd {
 .btn-primary,
 .primary-action,
 .drift-action-buttons .primary-action {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--sidebar);
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
 }
 
 .btn-primary:hover:not(:disabled),
 .primary-action:hover:not(:disabled),
 .drift-action-buttons .primary-action:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: color-mix(in oklab, var(--accent) 86%, white);
-  box-shadow: 0 6px 20px -10px var(--accent);
-  color: var(--sidebar);
+  border-color: var(--accent-fill-hover);
+  background: var(--accent-fill-hover);
+  box-shadow: 0 6px 20px -10px var(--accent-fill);
+  color: var(--on-accent);
 }
 
 .btn-danger,
@@ -2866,8 +2914,8 @@ section.item-card + section.item-card {
   left: 0;
   width: 2px;
   height: var(--indicator-h, 0);
-  background: var(--accent);
-  box-shadow: 0 0 12px var(--accent);
+  background: var(--accent-fill);
+  box-shadow: 0 0 12px var(--accent-fill);
   pointer-events: none;
   transform: translateY(var(--indicator-y, 0));
   transition:
@@ -3133,8 +3181,8 @@ section.item-card + section.item-card {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--sidebar);
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 800;
@@ -3270,7 +3318,7 @@ kbd {
   padding: 0;
   border: 1px solid var(--line-strong);
   background: var(--surface);
-  box-shadow: 0 30px 80px -20px oklch(0 0 0 / 0.55);
+  box-shadow: var(--shadow-overlay);
   color: var(--text);
 }
 
@@ -3281,7 +3329,7 @@ kbd {
 
 .command-palette::backdrop,
 .confirm-dialog::backdrop {
-  background: oklch(0.12 0.02 255 / 0.55);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   animation: fade-in var(--duration-base) var(--ease-out) both;
 }
@@ -3835,7 +3883,7 @@ kbd {
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--accent-fill);
   box-shadow: 0 0 0 2px var(--surface);
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -4140,9 +4188,9 @@ kbd {
 }
 
 .step-current .wizard-step-marker {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--sidebar);
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
   animation: badge-in var(--duration-slow) var(--ease-out) both;
 }
@@ -4275,7 +4323,7 @@ section.wizard-panel {
   position: absolute;
   inset: 0 auto 0 0;
   width: 35%;
-  background: var(--accent);
+  background: var(--accent-fill);
   animation: indeterminate 1.4s var(--ease-in-out) infinite;
 }
 
@@ -4340,8 +4388,8 @@ section.wizard-panel {
 .track-timeline .track-done::before { border-color: var(--protected); background: var(--protected); }
 .track-timeline .track-current { color: var(--text); font-weight: 650; }
 .track-timeline .track-current::before {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
   animation: pulse 1.4s var(--ease-in-out) infinite;
 }
 
@@ -4886,7 +4934,7 @@ section.wizard-panel {
   display: block;
   height: 100%;
   margin-left: auto;
-  background: var(--accent);
+  background: var(--accent-fill);
   transform-origin: right center;
   animation: grow-x 700ms var(--ease-out) 150ms both;
 }
@@ -4958,8 +5006,8 @@ section.wizard-panel {
 }
 
 .job-timeline .timeline-done::before {
-  border-color: var(--accent);
-  background: var(--accent);
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
 }
 
 .timeline-label {
@@ -5283,7 +5331,7 @@ section.wizard-panel {
   padding: var(--space-sm);
   border: 1px solid var(--line);
   border-left: 3px solid var(--line-strong);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
@@ -5323,7 +5371,7 @@ section.wizard-panel {
   gap: var(--space-xs);
   padding: var(--space-sm);
   border: 1px solid color-mix(in oklab, var(--failed) 45%, var(--line));
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: color-mix(in oklab, var(--failed) 6%, var(--surface));
 }
 
@@ -5627,7 +5675,7 @@ section.wizard-panel {
   justify-items: start;
   padding: var(--space-sm);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   color: inherit;
   text-decoration: none;
 }
@@ -5707,7 +5755,7 @@ section.wizard-panel {
   padding: var(--space-md);
   border: 1px solid var(--line);
   border-left-width: 4px;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
 }
 .verdict-good { border-left-color: var(--protected); }
 .verdict-attention { border-left-color: var(--partial); }

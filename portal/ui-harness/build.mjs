@@ -36,8 +36,9 @@ function fontFace(family, file, weight) {
   return `@font-face{font-family:"${family}";font-style:normal;font-display:block;font-weight:${weight};src:url(data:font/woff2;base64,${data}) format("woff2")}`;
 }
 const fonts = [
-  fontFace("Public Sans Variable", "@fontsource-variable/public-sans/files/public-sans-latin-wght-normal.woff2", "100 900"),
-  fontFace("JetBrains Mono", "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2", "400"),
+  fontFace("IBM Plex Sans Variable", "@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2", "100 700"),
+  fontFace("IBM Plex Mono", "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2", "400"),
+  fontFace("IBM Plex Mono", "@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2", "600"),
 ].join("\n");
 
 const css = readFileSync(join(root, "app/globals.css"), "utf8");

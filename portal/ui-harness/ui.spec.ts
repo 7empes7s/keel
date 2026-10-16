@@ -157,18 +157,21 @@ test("a queued backup confirms with a toast linking to the job", async ({ page }
 
 test("the restore wizard walks select → dry run → review → confirm → track", async ({ page }) => {
   await open(page, "/restore");
-  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").click();
-  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 1 of 5: choose what to put back.");
-  await page.getByRole("button", { name: "Next: start dry run" }).click();
-  await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("5 settings changed since the backup of Wed, 30 Sept 2026. Undo the ones nobody expected.");
+  await page.getByRole("button", { name: "Show all 11 settings" }).click();
+  await page.getByLabel("Select Require MFA for admins (sign-in rule)").click();
+  await page.getByRole("button", { name: "Put back 1 setting" }).click();
+  await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
   // Task-131: the step title is the verdict, and the review speaks in words: no natural
   // key, verb, closure or artifact id outside the record, and no credential path input.
-  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 4 of 5: review what will change, then confirm.");
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 3 of 4: review what will change, then send it for approval.");
+  // What it depends on is added, with the reason.
+  await expect(page.locator(".wizard-closure")).toContainText("Break-glass admins (group), because Require MFA for admins (sign-in rule) depends on it");
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
   await expect(page.locator("input[value*='/etc/keel']")).toHaveCount(0);
   // Task-61: a restored group's membership changes are listed apart from object changes.
   // Task-64: each resource names its recovery mechanism and what happens to its id.
-  await expect(page.getByText("RECOVERY MECHANISM")).toBeVisible();
+  await expect(page.getByText("How each setting is put back")).toBeVisible();
   await expect(page.locator(".mechanism-row.mechanism-update-existing").first()).toContainText("Same ID kept");
   // Task-66: a content effect states that content is not backed up and needs its own approval.
   const effects = page.locator(".content-effects");
@@ -182,9 +185,69 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await expect(page.locator(".edge-op.edge-add").first()).toContainText("amara.okafor@contoso.example (user)");
   await expect(page.locator(".edge-op.edge-remove").first()).toContainText("as member of");
   await page.getByPlaceholder("Why is this restore appropriate?").fill("Roll back INC-2291");
-  await page.getByRole("button", { name: "Confirm restore" }).click();
+  await page.getByRole("button", { name: "Send for approval" }).click();
   await expect(page.getByRole("heading", { name: "Sent to approvers" })).toBeVisible();
-  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 5 of 5: sent to approvers. Nothing changes until one of them approves.");
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 4 of 4: sent to approvers. Nothing changes until one of them approves.");
+});
+
+// Restore redesign: grouped by service with "Changed recently" on top, an undo per
+// change and per group, a calendar that marks backup days, and the chosen point always
+// visible with its age.
+test("restore leads with what changed, by service, and undoes a change or a group", async ({ page }) => {
+  await open(page, "/restore");
+  const groups = page.locator(".sel-group");
+  await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
+  await expect(groups.nth(1).locator(".sel-group-name b")).toHaveText("Entra ID");
+  // Deleted first, then changes newest first, each with who and when.
+  const changed = groups.nth(0).locator(".sel-row");
+  await expect(changed).toHaveCount(5);
+  await expect(changed.nth(0)).toContainText("Branch offices");
+  await expect(changed.nth(0)).toContainText("Deleted after this backup");
+  await expect(changed.nth(1)).toContainText("State: on → report only, and 1 more");
+  await expect(changed.nth(1)).toContainText("By Amara Okafor · between 1 Oct, 06:09 and 2 Oct, 09:12");
+  await expect(changed.nth(2)).toContainText("Probably Lee Chen");
+  // The point in time and its age, and the four tiles explain their numbers.
+  await expect(page.locator(".restore-point-when")).toHaveText("Wed, 30 Sept 2026, 06:08 UTC");
+  await expect(page.locator(".restore-point-age")).toHaveText("2 days old · 19 settings saved · 3 backups taken after it");
+  await expect(page.locator(".restore-tile").nth(0)).toContainText("Changed since4");
+  await expect(page.locator(".restore-tile").nth(3).getByRole("link")).toHaveAttribute("href", "#/jobs/a3");
+  // Long groups show their first rows and say how many more.
+  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(8);
+  await groups.nth(1).getByRole("button", { name: "Show all 11 settings" }).click();
+  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  // Undo the whole group: every change goes to the check at once, with before and after.
+  await groups.nth(0).getByRole("button", { name: "Undo all 5: Changed recently" }).click();
+  await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
+  const beforeAfter = page.locator(".restore-before-after");
+  await expect(beforeAfter).toContainText("Branch offices (trusted location)Now: gone");
+  await expect(beforeAfter.locator("tr", { hasText: "Visibility" })).toContainText("PublicPrivate");
+  await expect(page.locator(".restore-point-hint")).toHaveText("To pick another backup, change your selection first.");
+  await page.getByRole("button", { name: "Change selection" }).click();
+  await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
+});
+
+test("restore picks its backup on a calendar that marks backup days", async ({ page }) => {
+  await open(page, "/restore");
+  await page.getByRole("button", { name: /^Backup day:/ }).click();
+  await expect(page.locator(".date-day[data-marked]")).toHaveCount(4);
+  // A day without a backup takes the one before it, and says so.
+  await page.getByRole("button", { name: /^Tuesday 29 September 2026/ }).click();
+  await expect(page.locator(".restore-point-when")).toHaveText("Sat, 26 Sept 2026, 06:08 UTC");
+  await expect(page.locator(".restore-point-notice")).toHaveText("No backup on Tue, 29 Sept 2026, so this is the one before it.");
+  // The newest backup already has the latest changes: the page offers the one before.
+  await page.getByRole("button", { name: "Use the newest backup" }).click();
+  await expect(page.locator('[data-layer="verdict"]')).toHaveText("2 settings changed just before your newest backup. Pick an earlier day to undo them.");
+  await expect(page.locator(".restore-earlier").getByRole("link")).toHaveAttribute("href", "#/restore?snapshot=snap-3");
+  await expect(page.locator(".sel-group-name b").first()).toHaveText("Entra ID");
+});
+
+test("restore refuses a synced group with the reason, before any check runs", async ({ page }) => {
+  await open(page, "/restore");
+  await page.getByLabel("Select Finance (group)").click();
+  await page.getByRole("button", { name: "Put back 1 setting" }).click();
+  await expect(page.getByRole("heading", { name: "KEEL cannot put this back" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("KEEL refused to change Finance (group) because it is synced from on-premises Active Directory, which owns it.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });
 
 // The Changes page: a change opens in a details panel from its name; accept, ignore and
@@ -552,12 +615,12 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(await overflow()).toBeLessThanOrEqual(0);
 
   await open(page, "/restore", "dark");
-  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").click();
-  await page.getByRole("button", { name: "Next: start dry run" }).click();
-  await expect(page.getByText("Ready to confirm")).toBeVisible({ timeout: 15_000 });
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  await page.getByRole("button", { name: "Undo change: Block legacy auth" }).click();
+  await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
   expect(await overflow()).toBeLessThanOrEqual(0);
   // Stacked mechanism rows keep their column labels, and pills keep their own width.
-  const cell = page.locator(".recovery-table td[data-label='Mechanism']").first();
+  const cell = page.locator(".recovery-table td[data-label='How']").first();
   await expect(cell).toBeVisible();
   const pill = cell.locator(".pill");
   const [pillWidth, cellWidth] = await Promise.all([
@@ -1050,3 +1113,21 @@ test("emergency changes say what is held back, how each ended, and refuse self-a
   await expect(page.locator("dialog[open]").getByRole("button", { name: "Cancel" })).toBeFocused();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });
+
+// Restore, rule 12: no sideways scroll, sibling tiles share a height, and everything
+// styled as clickable is a link or a button, at phone and desktop width in both themes.
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    test(`restore clicks · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/restore", theme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const heights = await page.locator(".restore-tile").evaluateAll((tiles) => tiles.map((tile) => Math.round(tile.getBoundingClientRect().height)));
+      const rows = width < 1200 ? [heights.slice(0, 2), heights.slice(2)] : [heights];
+      for (const row of rows) expect(new Set(row).size, JSON.stringify(heights)).toBe(1);
+      for (const element of await page.locator(".restore-page .btn, .restore-page .restore-tile-link, .restore-page .sel-group-toggle").all()) {
+        expect(await element.evaluate((node) => node.tagName)).toMatch(/^(A|BUTTON)$/);
+      }
+    });
+  }
+}

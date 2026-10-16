@@ -29,6 +29,7 @@ import {
   getLastCollection,
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
+import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
@@ -729,6 +730,9 @@ export interface RestoreResource {
   naturalKey: string;
   resourceType: string;
   blastRadius: string;
+  // The Microsoft service the type belongs to (engine/insights/taxonomy.mjs), or null
+  // when the type is not classified yet; the Restore page groups by it.
+  service: string | null;
 }
 
 export interface RestoreResourcesData {
@@ -763,6 +767,7 @@ export async function getRestoreResources(
         naturalKey: String(row.natural_key),
         resourceType: String(row.resource_type),
         blastRadius: String(row.blast_radius),
+        service: typeInfo(String(row.resource_type)).service,
       })),
     };
   });

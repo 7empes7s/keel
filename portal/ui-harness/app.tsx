@@ -28,8 +28,10 @@ import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
 import { PrincipalDetails } from "@/components/principal-details";
 import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@/components/policy-state";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
+import type { RestoreChange } from "@/lib/restore-changes";
+import { lastRestoreTile } from "@/lib/restore-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail, jobVerdict } from "@/components/job-detail";
@@ -137,7 +139,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     const missing = [...new Set(Object.entries(DEPENDS).filter(([key]) => !selected.includes(key)).flatMap(() => []))];
     lastClosure = [...selected, ...added.keys()];
-    return json({ selected, closureKeys: lastClosure, added: [...added].map(([naturalKey, reasons]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], reasons })), unresolvedReferences: [], guardRefusals: [], missingRequirements: missing });
+    // A group synced from on-premises is refused, with the guard's own coded reason.
+    const guardRefusals = selected.filter((key) => key === "group:Finance").map((naturalKey) => ({ naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" }));
+    return json({ selected, closureKeys: lastClosure, added: [...added].map(([naturalKey, reasons]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], reasons })), unresolvedReferences: [], guardRefusals, missingRequirements: missing });
   }
   // Task-70: the undo plan of failed restore r10.
   if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
@@ -1197,6 +1201,69 @@ function sitePage(path: string) {
     <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
 }
 
+// Restore: four backups (two on 30 Sept, so the time picker shows), settings across
+// three services, and what changed after each backup. The harness opens on the backup
+// of 30 Sept 06:00 so "Changed recently" is full; ?snapshot= picks another.
+const RESTORE_SNAPSHOTS = [
+  { id: "snap-4", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 19 },
+  { id: "snap-3", startedAt: "2026-10-01T06:00:00Z", completedAt: "2026-10-01T06:09:00Z", resourceCount: 19 },
+  { id: "snap-2b", startedAt: "2026-09-30T18:00:00Z", completedAt: "2026-09-30T18:07:00Z", resourceCount: 19 },
+  { id: "snap-2", startedAt: "2026-09-30T06:00:00Z", completedAt: "2026-09-30T06:08:00Z", resourceCount: 19 },
+  { id: "snap-1", startedAt: "2026-09-26T06:00:00Z", completedAt: "2026-09-26T06:08:00Z", resourceCount: 19 },
+];
+const RESTORE_RESOURCES: [string, string, string][] = [
+  ["conditionalAccessPolicy:Block legacy auth", "tenant-lockout", "Entra"],
+  ["conditionalAccessPolicy:Require MFA for admins", "tenant-lockout", "Entra"],
+  ["group:Break-glass admins", "access-affecting", "Entra"],
+  ["group:All managed devices", "access-affecting", "Entra"],
+  ["group:Finance", "access-affecting", "Entra"],
+  ["group:Project Falcon", "access-affecting", "Entra"],
+  ["group:Helpdesk Tier 1", "access-affecting", "Entra"],
+  ["group:Contractors", "access-affecting", "Entra"],
+  ["namedLocation:HQ egress", "access-affecting", "Entra"],
+  ["namedLocation:Branch offices", "access-affecting", "Entra"],
+  ["authenticationStrength:Phishing-resistant", "access-affecting", "Entra"],
+  ["organizationalBranding:Contoso sign-in page", "cosmetic", "Entra"],
+  ["groupLifecyclePolicy:Group expiry", "cosmetic", "Entra"],
+  ["deviceConfiguration:Windows baseline", "access-affecting", "Intune"],
+  ["deviceCompliancePolicy:iOS compliance", "access-affecting", "Intune"],
+  ["deviceCategory:Kiosks", "cosmetic", "Intune"],
+  ["transportRule:External forwarding", "access-affecting", "Exchange"],
+  ["transportRule:Disclaimer footer", "cosmetic", "Exchange"],
+  ["groupLifecyclePolicy:Guest expiry", "cosmetic", "Entra"],
+];
+const restoreChange = (naturalKey: string, kind: RestoreChange["kind"], sameUntil: string, seenAt: string, fields: RestoreChange["fields"], who: RestoreChange["who"], fieldCount = fields.length): RestoreChange =>
+  ({ naturalKey, resourceType: naturalKey.split(":")[0], service: RESTORE_RESOURCES.find(([key]) => key === naturalKey)![2], kind, sameUntil, seenAt, fields, fieldCount, who });
+const RESTORE_CHANGES: RestoreChange[] = [
+  restoreChange("conditionalAccessPolicy:Block legacy auth", "changed", "2026-10-01T06:09:00Z", "2026-10-02T09:12:00Z",
+    [{ path: "state", before: "on", after: "report only" }, { path: "conditions.users.excludeGroups", before: "none", after: "1 item" }], { names: ["Amara Okafor"], certain: true }),
+  restoreChange("group:Break-glass admins", "changed", "2026-10-01T06:09:00Z", "2026-10-02T09:12:00Z",
+    [{ path: "visibility", before: "Private", after: "Public" }, { path: "description", before: "Emergency access only", after: "Temporary access" }], { names: ["Lee Chen"], certain: false }),
+  restoreChange("namedLocation:Branch offices", "deleted", "2026-09-30T18:07:00Z", "2026-10-01T06:09:00Z", [], null),
+  restoreChange("deviceConfiguration:Windows baseline", "changed", "2026-09-30T18:07:00Z", "2026-10-01T06:09:00Z",
+    [{ path: "passwordMinimumLength", before: "14", after: "8" }], { names: ["Sam Ortiz"], certain: true }, 3),
+  restoreChange("transportRule:External forwarding", "changed", "2026-09-30T06:08:00Z", "2026-09-30T18:07:00Z",
+    [{ path: "state", before: "enabled", after: "disabled" }], { names: ["Sam Ortiz"], certain: true }),
+];
+
+function HarnessRestore({ jobs }: { jobs: Job[] }) {
+  const params = useSearchParams();
+  const chosen = RESTORE_SNAPSHOTS.find((snapshot) => snapshot.id === params.get("snapshot")) ?? RESTORE_SNAPSHOTS[3];
+  const isNewest = chosen.id === RESTORE_SNAPSHOTS[0].id;
+  const changes = RESTORE_CHANGES.filter((change) => change.seenAt! > chosen.completedAt);
+  const earlierCount = RESTORE_CHANGES.filter((change) => change.seenAt === RESTORE_SNAPSHOTS[0].completedAt).length;
+  const data = { newest: { id: "snap-4", takenAt: RESTORE_SNAPSHOTS[0].completedAt }, changes, more: 0, earlier: isNewest ? { id: "snap-3", takenAt: RESTORE_SNAPSHOTS[1].completedAt, count: earlierCount } : null };
+  const count = changes.length;
+  return <>
+    <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes." generatedAt={now} section="Restore"
+      status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
+    <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
+      resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
+      snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
+    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restores and checks" /></div>
+  </>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
@@ -1227,13 +1294,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} /></div></>;
     }
-    case "/restore": return <>{header("Restore", "Restore", "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.")}
-      <RestoreSelection canApprove canRestore resources={[
-        ...Object.keys(DEPENDS),
-        "group:Break-glass admins", "group:All managed devices", "namedLocation:HQ egress", "authenticationStrength:Phishing-resistant", "group:Finance", "namedLocation:Branch offices",
-      ].map((naturalKey) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius: naturalKey.startsWith("conditional") ? "tenant-lockout" : naturalKey.startsWith("group") ? "access-affecting" : "cosmetic" })) as never}
-        snapshotId="snap-1" snapshots={[{ id: "snap-1", startedAt: "2026-10-02T09:01:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 } as never]} />
-      <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restore jobs" /></div></>;
+    case "/restore": return <HarnessRestore jobs={jobs} />;
     case "/incidents": return <>{header("Restore", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
     case "/resilience": return resiliencePage(RESILIENCE);

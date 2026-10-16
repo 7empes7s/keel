@@ -22,10 +22,12 @@ import {
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { getRestoreChanges, type RestoreChangesData } from "@/lib/restore-changes";
+import { lastRestoreTile } from "@/lib/restore-view";
 import type { RestoreFollowUp } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
-const DESCRIPTION = "Put configuration back from a snapshot. Anything it depends on comes with it, and nothing changes until someone else approves.";
+const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes.";
 
 // Plan task 17 (portal-design §4.1): the restore surface. Selection here is
 // dependency-closed — the page lists a snapshot's resources, the client component
@@ -78,6 +80,17 @@ export default async function RestorePage({
     );
   }
 
+  // Secondary: what changed since the chosen backup. Without it the page still lists
+  // the backup's settings and says it could not compare.
+  let changes: RestoreChangesData | null = null;
+  if (snapshotId) {
+    try {
+      changes = await getRestoreChanges(snapshotId);
+    } catch {
+      changes = null;
+    }
+  }
+
   // Secondary: if it cannot be read, the page still works and says so.
   let followUps: RestoreFollowUp[] | null;
   try {
@@ -90,20 +103,29 @@ export default async function RestorePage({
     (job) => job.status === "queued" || job.status === "running",
   );
 
+  const now = resourceData?.generatedAt ?? new Date().toISOString();
+  const changeCount = changes ? changes.changes.length + changes.more : 0;
+  const status = !snapshotId
+    ? { tone: "urgent" as const, label: "No backup yet" }
+    : changeCount
+      ? { tone: "soon" as const, label: "Changes to review" }
+      : { tone: "fine" as const, label: "Backups ready" };
+
   return (
     <>
       <PageHeader
         description={DESCRIPTION}
         section="Restore"
-        generatedAt={resourceData?.generatedAt ?? new Date().toISOString()}
-        marker={canRestore ? "Actionable" : "Read-only"}
+        generatedAt={now}
+        marker={canRestore ? undefined : "Read-only"}
+        status={status}
         title="Restore"
       />
 
       {/* Roadmap task-71: incident recovery belongs to Restore in the portal map. */}
       {incident ? null : (
         <p className="restore-incident-link" data-layer="explanation">
-          Recovering from a security incident? <a href="/incidents">Choose a snapshot an investigator has checked</a>.
+          Recovering from a security incident? <a href="/incidents">Choose a backup an investigator has checked</a>.
         </p>
       )}
 
@@ -111,8 +133,11 @@ export default async function RestorePage({
         <RestoreSelection
           canApprove={capabilities.includes("approve")}
           canRestore={canRestore}
+          changes={changes}
           incident={incident}
           key={`${snapshotId}:${incident?.id ?? ""}`}
+          lastRestore={lastRestoreTile(jobs, now)}
+          now={now}
           resources={resourceData.resources}
           snapshotId={snapshotId}
           snapshots={snapshots}
@@ -121,12 +146,12 @@ export default async function RestorePage({
         <>
           <Verdict
             action={{ label: "Back up now", href: "/protect" }}
-            text="Nothing to restore from yet: KEEL holds no snapshot of this tenant."
+            text="Nothing to restore from yet: KEEL holds no backup of this tenant."
             tone="attention"
           />
           <section className="report-section" data-layer="explanation">
             <p className="empty-state">
-              No completed snapshots are available. Run a backup before planning a restore.
+              No finished backups yet. Run a backup before planning a restore.
             </p>
           </section>
         </>
@@ -140,8 +165,8 @@ export default async function RestorePage({
           headingId="restore-jobs-heading"
           jobs={jobs}
           kicker="Recent"
-          now={resourceData?.generatedAt}
-          title="Restore jobs"
+          now={now}
+          title="Restores and checks"
         />
       </div>
       <JobRefresher active={jobsActive} />

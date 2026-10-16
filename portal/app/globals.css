@@ -7693,3 +7693,539 @@ section.wizard-panel {
   font-size: 0.875rem;
   outline: none;
 }
+
+/* ==========================================================================
+   Restore page (redesign, direction A): the point in time, four count tiles,
+   and the shared list grouped by service with "Changed recently" on top.
+   ========================================================================== */
+
+.restore-page {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.restore-page > .verdict {
+  margin: 0;
+}
+
+.restore-point {
+  display: flex;
+  padding: var(--space-md) var(--space-lg);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  gap: var(--space-md) var(--space-xl);
+}
+
+.restore-point-now {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-md);
+}
+
+.restore-point-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.restore-point-label {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.restore-point-when {
+  margin: 0.125rem 0 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.restore-point-age {
+  display: block;
+  margin: var(--space-2xs) 0 0;
+  flex-wrap: wrap;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+  gap: 0 var(--space-xs);
+}
+
+
+.restore-point-notice {
+  margin: var(--space-xs) 0 0;
+  color: var(--check-soon);
+  font-size: 0.875rem;
+}
+
+.restore-point-pick {
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.restore-point-pick > .picker-field {
+  flex: 0 1 16rem;
+}
+
+.restore-point-newest {
+  height: 2.5rem;
+}
+
+.restore-point-hint {
+  width: 100%;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.restore-tiles {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.restore-tile {
+  display: grid;
+  min-width: 0;
+  padding: var(--space-md);
+  grid-template-rows: auto auto 1fr;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  gap: var(--space-2xs);
+}
+
+.restore-tile dt {
+  display: flex;
+  letter-spacing: 0;
+  text-transform: none;
+  align-items: center;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  gap: var(--space-xs);
+}
+
+.restore-tile dt .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.restore-tile[data-tone="urgent"] dt .icon { color: var(--urgent); }
+.restore-tile[data-tone="soon"] dt .icon { color: var(--check-soon); }
+.restore-tile[data-tone="low"] dt .icon { color: var(--low-risk); }
+.restore-tile[data-tone="fine"] dt .icon { color: var(--fine); }
+
+.restore-tile dd {
+  margin: 0;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.restore-tile dd.restore-tile-about {
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.restore-tile-link {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: 1.125rem;
+  gap: var(--space-2xs);
+  text-decoration: none;
+}
+
+.restore-tile-link .icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-soft);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.restore-tile-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.restore-tile-link:hover .icon {
+  transform: translateX(2px);
+}
+
+.restore-tile-link:active {
+  transform: translateY(1px);
+}
+
+.restore-tile-link:focus-visible,
+.restore-undo:focus-visible {
+  outline: 2px solid transparent;
+  box-shadow: var(--focus-ring);
+}
+
+.restore-earlier {
+  display: flex;
+  padding: var(--space-sm) var(--space-md);
+  align-items: center;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--low-risk);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  gap: var(--space-xs) var(--space-md);
+}
+
+.restore-earlier > .icon {
+  color: var(--low-risk);
+}
+
+.restore-earlier p {
+  min-width: 0;
+  flex: 1 1 24rem;
+  margin: 0;
+}
+
+.restore-list .sel-group-head {
+  padding-right: var(--space-md);
+}
+
+.restore-list .sel-group-toggle {
+  padding-right: 0;
+}
+
+/* One column grid for every group, so names, changes and actions line up down the list. */
+.restore-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 8.5rem;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.restore-row-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.restore-row-same {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  gap: var(--space-2xs);
+}
+
+.restore-row-same .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--fine);
+}
+
+.restore-row-name,
+.restore-row-change {
+  display: grid;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.restore-row-name b {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.restore-row-name small,
+.restore-row-change small {
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+}
+
+.restore-row-change > span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  font-size: 0.875rem;
+  gap: var(--space-xs);
+  overflow-wrap: anywhere;
+}
+
+.restore-chip {
+  flex: none;
+  padding: 0.0625rem var(--space-xs);
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.restore-chip[data-tone="urgent"] { background: var(--urgent-bg); color: var(--urgent); }
+.restore-chip[data-tone="soon"] { background: var(--check-soon-bg); color: var(--check-soon); }
+
+.restore-row-impact {
+  display: inline-flex;
+  justify-self: start;
+  padding: 0.0625rem var(--space-xs);
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: var(--space-2xs);
+}
+
+.restore-row-impact[data-impact="access-affecting"] {
+  background: var(--low-risk-bg);
+  color: var(--low-risk);
+}
+
+.restore-row-impact .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.restore-row-impact[data-impact="tenant-lockout"] {
+  background: var(--urgent-bg);
+  color: var(--urgent);
+}
+
+.restore-undo {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  gap: var(--space-2xs);
+}
+
+.restore-undo .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.sel-more {
+  display: flex;
+  min-height: 3rem;
+  padding: var(--space-xs) var(--space-md);
+  align-items: center;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  gap: var(--space-xs) var(--space-md);
+}
+
+.restore-readonly {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.restore-flow {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.restore-flow > .wizard-steps {
+  margin: 0;
+}
+
+.restore-flow:focus {
+  outline: none;
+}
+
+.restore-flow .stat-strip dt {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.restore-flow .selection-scope {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+}
+
+/* Section names in sentence case, quiet; amber stays for the one action. */
+.restore-flow .severity-label,
+.restore-flow .section-kicker {
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.restore-point-pick > .picker-field:has(.segmented) {
+  flex: 0 0 auto;
+}
+
+.restore-before-after ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: var(--space-md);
+}
+
+.restore-ba-table {
+  width: 100%;
+  margin-top: var(--space-xs);
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.restore-ba-table th,
+.restore-ba-table td {
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.restore-ba-table thead th {
+  border-top: 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.restore-ba-table tbody th {
+  font-weight: 500;
+}
+
+
+.restore-ba-table td:last-child {
+  color: var(--fine);
+}
+
+.restore-ba-line {
+  display: flex;
+  margin: var(--space-2xs) 0 0;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+  gap: var(--space-xs);
+}
+
+.restore-ba-line .icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--text-soft);
+}
+
+.restore-ba-more {
+  margin: var(--space-2xs) 0 0;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 75rem) {
+  .restore-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .restore-point {
+    padding: var(--space-md);
+  }
+
+  .restore-point-icon {
+    display: none;
+  }
+
+  .restore-point-when {
+    font-size: 1.125rem;
+  }
+
+  .restore-point-pick > .picker-field:has(.segmented) {
+    width: auto;
+    flex: 0 1 auto;
+  }
+
+  .restore-point-pick,
+  .restore-point-pick > .picker-field {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .restore-tile {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .restore-tile dd {
+    font-size: 1.375rem;
+  }
+
+  .restore-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .restore-row-action {
+    justify-content: flex-start;
+  }
+
+  .restore-row-action:empty,
+  .restore-row-same {
+    display: none;
+  }
+
+  .restore-ba-table thead {
+    display: none;
+  }
+
+  .restore-ba-table tr {
+    display: grid;
+    padding: var(--space-xs) 0;
+    border-top: 1px solid var(--line);
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 var(--space-sm);
+  }
+
+  .restore-ba-table th,
+  .restore-ba-table td {
+    padding: 0;
+    border: 0;
+  }
+
+  .restore-ba-table tbody th {
+    grid-column: 1 / -1;
+  }
+
+  .restore-ba-table td::before {
+    color: var(--text-soft);
+    content: attr(data-label) ": ";
+  }
+}
+
+@media (max-width: 47.99rem) {
+  .restore-list .sel-group-head {
+    flex-wrap: wrap;
+    padding-bottom: 0;
+  }
+
+  .restore-list .sel-group-toggle {
+    flex: 1 1 calc(100% - 2.5rem);
+  }
+
+  .restore-list .sel-group-head > .restore-undo {
+    margin: 0 0 var(--space-sm) calc(1.125rem + var(--space-sm));
+  }
+}

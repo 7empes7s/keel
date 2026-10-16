@@ -33,7 +33,7 @@ import { FAMILIES as TEAMS_EXTENDED_FAMILIES, readTeamsExtended, recordTeamsExte
 import { FAMILIES as TEAMS_POLICY_FAMILIES, readTeamsPolicies, recordTeamsPolicyRun } from '../collect/workloads/teamsPolicies.mjs';
 import {
   BENIGN_FIELDS, WORKLOAD_EFFECT_RULES, WorkloadWriteScopeError, createWorkloadSettingsArtifact, executeWorkloadSettingsRestore,
-  loadWorkloadSource, planWorkloadSettingsRestore, unreviewedWrittenFields, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
+  loadWorkloadSource, planWorkloadSettingsRestore, restoreReadFamilies, unreviewedWrittenFields, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
@@ -190,7 +190,7 @@ function fakeTenant(workload, { state = tenantState(workload), hooks = {} } = {}
   return { state, writes, calls: container.calls, powershell: container.powershell };
 }
 
-const readFor = (workload) => ({ powershell }) => WORKLOADS[workload].read({ powershell, families: Object.keys(writeFamilies(workload)) });
+const readFor = (workload) => ({ powershell }) => WORKLOADS[workload].read({ powershell, families: restoreReadFamilies(workload) });
 
 async function recordSource(client, tenantRef, workload, tenant) {
   const result = await readFor(workload)({ powershell: tenant.powershell });
@@ -367,37 +367,39 @@ test('Teams: a deleted named policy is re-created as itself and listed for assig
   assert.deepEqual(again.plan.operations, []);
   assert.equal((await execute(client, tenantRef, 'teams-voice-policies', again.artifact, live)).outcome, 'no-change');
   assert.deepEqual(live.writes, []);
-
-  // Turning anonymous join back on is externally-sharing; a shorter recording expiry is retention-reducing.
-  const tenant2 = nextTenant();
-  const org = fakeTenant('teams-org-policies');
-  const meeting = org.state['Get-CsTeamsMeetingPolicy'][0];
-  meeting.AllowAnonymousUsersToJoinMeeting = true;
-  meeting.NewMeetingRecordingExpirationDays = 30;
-  const orgSource = await recordSource(client, tenant2, 'teams-org-policies', org);
-  meeting.AllowAnonymousUsersToJoinMeeting = false;
-  meeting.NewMeetingRecordingExpirationDays = 120;
-  const second = await planned(client, tenant2, 'teams-org-policies', { source: orgSource, live: org });
-  assert.deepEqual(second.plan.contentEffects.map((effect) => `${effect.field}:${effect.effect}`), [
-    'AllowAnonymousUsersToJoinMeeting:externally-sharing', 'NewMeetingRecordingExpirationDays:retention-reducing',
-  ]);
 });
 
-test('Teams: a deleted named meeting policy is listed for an administrator, since Teams refuses its New- to the app-only Restorer', async (t) => {
+test('Teams: meeting policies are backed up and compared, and every difference is listed for an administrator', async (t) => {
+  // Teams refuses New- and Set-CsTeamsMeetingPolicy to the app-only Restorer (403, errorCode 40301).
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
   const live = fakeTenant('teams-org-policies');
+  // Not a written family, so the fake tenant does not seed it.
   const named = fixture('teams-org-policies', 'meetingPolicy', { identity: 'Tag:KEEL-RT-meetingPolicy' });
-  live.state['Get-CsTeamsMeetingPolicy'].push(named);
+  const meetings = [fixture('teams-org-policies', 'meetingPolicy'), named];
+  live.state['Get-CsTeamsMeetingPolicy'] = meetings;
+  Object.assign(meetings[0], { AllowAnonymousUsersToJoinMeeting: true, NewMeetingRecordingExpirationDays: 30 });
   const source = await recordSource(client, tenantRef, 'teams-org-policies', live);
-  live.state['Get-CsTeamsMeetingPolicy'] = live.state['Get-CsTeamsMeetingPolicy'].filter((body) => body !== named);
-  assert.equal(writeFamilies('teams-org-policies').meetingPolicy.add, null);
+  live.state['Get-CsTeamsMeetingPolicy'] = meetings.filter((body) => body !== named);
+  Object.assign(meetings[0], { AllowAnonymousUsersToJoinMeeting: false, NewMeetingRecordingExpirationDays: 120 });
+  assert.equal(writeFamilies('teams-org-policies').meetingPolicy, undefined);
+
   const { plan } = await planned(client, tenantRef, 'teams-org-policies', { source, live });
   assert.deepEqual(plan.operations, []);
-  const item = plan.manual.find((entry) => entry.resourceKey === 'meeting-policy:tag:keel-rt-meetingpolicy');
-  assert.match(item.reason, /Teams refuses to create meeting policies for an app-only caller/);
+  assert.deepEqual(plan.contentEffects, []);
+  const listed = plan.manual.filter((item) => item.resourceKey.startsWith('meeting-policy:'));
+  assert.deepEqual(listed.map((item) => [item.resourceKey, item.field]), [
+    ['meeting-policy:global', 'AllowAnonymousUsersToJoinMeeting'],
+    ['meeting-policy:global', 'NewMeetingRecordingExpirationDays'],
+    ['meeting-policy:tag:keel-rt-meetingpolicy', null],
+  ]);
+  assert.deepEqual([listed[0].before, listed[0].after], [false, true]);
+  for (const item of listed) assert.match(item.reason, /Teams refuses changes to meeting policies/);
+  assert.match(listed[2].reason, /no longer exists.*re-creates it/);
   assert.deepEqual(live.writes, []);
-  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'New-CsTeamsMeetingPolicy', parameters: { Identity: 'KEEL-RT-x' } }), WorkloadWriteScopeError);
+  for (const cmdlet of ['New-CsTeamsMeetingPolicy', 'Set-CsTeamsMeetingPolicy']) {
+    await assert.rejects(workloadWriteCmdlet({ cmdlet, parameters: { Identity: 'KEEL-RT-x' } }), WorkloadWriteScopeError);
+  }
 });
 
 test('Purview: shortening retention is held for approval, and a preservation lock refuses the policy and its rules', async (t) => {
@@ -464,26 +466,8 @@ test('a change after the plan makes only that object stale', async (t) => {
   assert.deepEqual(live.writes.map((write) => write.cmdlet), ['Set-JournalRule']);
 });
 
-test('effects: a never-expiring recording, recording turned on, and a deleting rule moved to Enforce', async (t) => {
+test('effects: a deleting rule moved to Enforce', async (t) => {
   const client = await schemaClient(t);
-  // -1 means a recording never expires: restoring it is not a shortening, losing it is.
-  const tenantRef = nextTenant();
-  const org = fakeTenant('teams-org-policies');
-  const meeting = org.state['Get-CsTeamsMeetingPolicy'][0];
-  Object.assign(meeting, { NewMeetingRecordingExpirationDays: -1, AllowCloudRecording: true, ExplicitRecordingConsent: false });
-  const source = await recordSource(client, tenantRef, 'teams-org-policies', org);
-  Object.assign(meeting, { NewMeetingRecordingExpirationDays: 60, AllowCloudRecording: false, ExplicitRecordingConsent: true });
-  const restore = await planned(client, tenantRef, 'teams-org-policies', { source, live: org });
-  assert.deepEqual(effectsOf(restore.plan), ['AllowCloudRecording:externally-sharing', 'ExplicitRecordingConsent:externally-sharing']);
-
-  const tenant2 = nextTenant();
-  const other = fakeTenant('teams-org-policies');
-  other.state['Get-CsTeamsMeetingPolicy'][0].NewMeetingRecordingExpirationDays = 60;
-  const otherSource = await recordSource(client, tenant2, 'teams-org-policies', other);
-  other.state['Get-CsTeamsMeetingPolicy'][0].NewMeetingRecordingExpirationDays = -1;
-  const shorter = await planned(client, tenant2, 'teams-org-policies', { source: otherSource, live: other });
-  assert.deepEqual(effectsOf(shorter.plan), ['NewMeetingRecordingExpirationDays:retention-reducing']);
-
   // A rule that deletes mail reaches more mail when it moves from Audit to Enforce.
   const tenant3 = nextTenant();
   const mail = fakeTenant('exchange-mail-flow');

@@ -4425,3 +4425,22 @@ item that needs it stays untouched.
   Run every step even if an earlier one succeeds. If any Set- writes a value other than the one step 1 read, put it back. Remove /tmp/keel-q92 afterwards.
 - **Report:** for steps 2-5, `ok` and, on failure, the message and `errorId` verbatim (org masked as `<org>`). For steps 1 and 6, the values above.
   Then comment the findings on issue #339 as keel-operator.
+
+### Q92: Rerun the teams-org-policies writer capture after #343, on the KEEL-RT- meeting policy Marouane created
+- Drafted by the "Teams meeting policy 403" thread (2026-10-16), for issue #339 (Teams part). Q86 showed Teams refuses
+  New-CsTeamsMeetingPolicy for the app-only Restorer. PR #343 (merged as 4a4846d) drops `teams.meeting-policy.add`, so the capture no
+  longer tries it. Marouane created a KEEL-RT- meeting policy by hand in the Teams admin center (2026-10-16), so
+  `teams.meeting-policy.update` now has a fixture (the capture matches the KEEL-RT- prefix).
+- Needs: `/opt/keel-live` at 4a4846d or later (it also has 964994f, which records the MicrosoftTeams pin 7.9.0 instead of the
+  ExchangeOnlineManagement version).
+- Status: todo
+- Do (test tenant only; the same put-back writes as your last teams-org-policies run):
+  1. The teams-org-policies capture, as your last run, with `--allow-tenant-wide-test-writes` and the default image
+     `keel-powershell:latest`, at the deployed build. Leave `--module-version` out (the capture reads the pin), or pass 7.9.0.
+  2. `node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence <the record>`.
+  3. Commit the record and its `.capture.json` to a `claude/live-evidence-teams-org-policies` PR (automerge), replacing the 2026-10-15
+     teams-org-policies record, then run `node cli/keel-workload-collect.mjs import`.
+- **Report:** the capture exit code; for `teams.meeting-policy.update` the fixture name, `ok`, `readBackVerified`, `restoredToOriginal`
+  and `error` (or its skip reason); confirm no `teams.meeting-policy.add` was attempted and `subject.execution.moduleVersion` is 7.9.0;
+  the verify exit code; the import line for teams-org-policies; and the PR link. Exit 3 means a setting may not be back: report the
+  object, field and original value it names.

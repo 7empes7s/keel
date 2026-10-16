@@ -4482,7 +4482,19 @@ item that needs it stays untouched.
   and Set-QuarantinePolicy `-Identity DefaultGlobalTag` (#346, already on master) now works. No code change is needed; the pipe branch is not merged.
 - Needs: `/opt/keel-live` at 244756b or later. If the exchange-extended recapture you started after Q92 (teams) already ran at such a
   commit, record its result here instead of running again.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-16 09:20–09:40 UTC on B = 95ba5a04, as Q88: default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`,
+  `--module-version 3.10.1`. Test tenant only; Restorer EXO app-only. Global admin not used.
+  - A first rerun at 244756bd also proved it, but its verify failed only on "build mismatch" (the auto-deploy moved to 95ba5a04 mid-run).
+    So it was captured again at 95ba5a04, and this record is that one.
+  - **Capture: exit 0.** `exchange-extended.quarantine-global-settings.update`: **ok true, readBackVerified true, restoredToOriginal true**,
+    field **OrganizationBrandingEnabled**, fixture `DefaultGlobalTag`, error none.
+    - Also proven: `connection-filter-policy.update`. No exit 3; needsManualRevert [].
+  - **verify --require-live: exit 0.**
+  - **Import** (from the PR checkout): `workload-writers-exchange-extended-live-acceptance.json` **imported, writes 2**; refused [].
+  - **PR #348** (`claude/live-evidence-workload-writers-3`, automerge), replacing #344's exchange-extended record. It also carries the teams-voice-policies
+    recapture at MicrosoftTeams 7.9.0 (20 writes). That replaces the 2026-10-15 record the import refused for its 3.10.1 module pin.
+  - Commented on #339.
 - Do: exactly Q88's steps (default image `keel-powershell:latest`, `--allow-tenant-wide-test-writes`, `--module-version 3.10.1`), with
   the record in a new evidence PR (automerge) that replaces #344's exchange-extended record.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,

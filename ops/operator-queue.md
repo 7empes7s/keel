@@ -4447,7 +4447,25 @@ item that needs it stays untouched.
   `teams.meeting-policy.update` now has a fixture (the capture matches the KEEL-RT- prefix).
 - Needs: `/opt/keel-live` at 4a4846d or later (it also has 964994f, which records the MicrosoftTeams pin 7.9.0 instead of the
   ExchangeOnlineManagement version).
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-16 09:10–09:20 UTC on B = 244756bd (includes 4a4846d, #343, and 964994f), default image `keel-powershell:latest`,
+  `--allow-tenant-wide-test-writes`, no `--module-version`. Test tenant only; Restorer Teams app-only. Global admin not used.
+  - **Capture: exit 0. verify --require-live: exit 0.** No exit 3; needsManualRevert [].
+  - `teams.meeting-policy.update` on fixture **KEEL-RT-meeting** (Marouane's): **not proven**. ok false, readBackVerified false,
+    restoredToOriginal false (nothing written).
+    - error: `Set-CsTeamsMeetingPolicy failed: … {"code":"Forbidden","message":"You are not authorized to perform this action",…,"errorCode":40301}`
+    - Q86's Set on a missing name answered 40407 "not found", so that lookup happens before authorization. App-only **writes** to meeting
+      policies are refused altogether, not only New-.
+  - `teams.meeting-policy.add` **not attempted** (confirmed absent from the record). `subject.execution.moduleVersion` = **7.9.0**.
+  - Proven again (6): messaging-policy add and update; client, guest meeting, guest messaging and guest calling configuration update
+    (tenant-wide). Federation skipped (no harmless field). Created `KEEL-RT-capture-368138eb` (messaging), assigned to nobody.
+  - **PR #347** (`claude/live-evidence-teams-org-policies`, automerge), replacing the 2026-10-15 record.
+    Import from that checkout: `workload-writers-teams-org-policies-live-acceptance.json` **imported, writes 6**.
+    - The same import **refused** two older master records:
+      - exchange-extended (from #344): "the object named to Set-QuarantinePolicy is not the KEEL-RT- fixture recorded".
+      - teams-voice-policies (2026-10-15): "captured at MicrosoftTeams 3.10.1, but the read proof in this import is at 7.9.0". I passed the EXO
+        pin to that Teams run.
+    - keel-operator is recapturing both now.
 - Do (test tenant only; the same put-back writes as your last teams-org-policies run):
   1. The teams-org-policies capture, as your last run, with `--allow-tenant-wide-test-writes` and the default image
      `keel-powershell:latest`, at the deployed build. Leave `--module-version` out (the capture reads the pin), or pass 7.9.0.

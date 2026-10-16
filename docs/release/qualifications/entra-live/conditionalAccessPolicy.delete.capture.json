@@ -1,0 +1,69 @@
+{
+  "restoreRef": "658da439-359f-83f7-9969-87c0d646a253",
+  "entry": {
+    "naturalKey": "conditionalAccessPolicy:KEEL-RT-148-ca-delete",
+    "resourceType": "conditionalAccessPolicy",
+    "operation": "delete",
+    "targetId": "4b2af6f4-da66-8c92-b650-a2168009fcca",
+    "outcome": "succeeded",
+    "outcomeDetail": "absent",
+    "recordedAt": "2026-10-16T20:32:18.285Z",
+    "priorState": {
+      "id": "4b2af6f4-da66-8c92-b650-a2168009fcca",
+      "state": "enabledForReportingButNotEnforced",
+      "conditions": {
+        "users": {
+          "excludeRoles": [],
+          "excludeUsers": [],
+          "includeRoles": [],
+          "includeUsers": [
+            "a0fcb2f8-b0c3-8a88-9b94-319165913d40"
+          ],
+          "excludeGroups": [],
+          "includeGroups": [],
+          "excludeGuestsOrExternalUsers": null,
+          "includeGuestsOrExternalUsers": null
+        },
+        "devices": null,
+        "locations": null,
+        "platforms": null,
+        "applications": {
+          "applicationFilter": null,
+          "includeUserActions": [],
+          "excludeApplications": [],
+          "includeApplications": [
+            "None"
+          ],
+          "includeAuthenticationContextClassReferences": []
+        },
+        "clientAppTypes": [
+          "all"
+        ],
+        "userRiskLevels": [],
+        "signInRiskLevels": [],
+        "insiderRiskLevels": null,
+        "clientApplications": null,
+        "authenticationFlows": null,
+        "servicePrincipalRiskLevels": []
+      },
+      "templateId": null,
+      "displayName": "KEEL-RT-148-ca-delete",
+      "grantControls": {
+        "operator": "OR",
+        "termsOfUse": [],
+        "builtInControls": [
+          "mfa"
+        ],
+        "authenticationStrength": null,
+        "customAuthenticationFactors": [],
+        "authenticationStrength@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/policies('4b2af6f4-da66-8c92-b650-a2168009fcca')/grantControls/authenticationStrength/$entity"
+      },
+      "createdDateTime": "2026-10-16T20:29:00.4194228Z",
+      "deletedDateTime": null,
+      "sessionControls": null,
+      "modifiedDateTime": null
+    },
+    "intendedState": null,
+    "postState": null
+  }
+}

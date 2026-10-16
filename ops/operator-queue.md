@@ -4611,8 +4611,18 @@ item that needs it stays untouched.
 
 ### Q98: CA policy delete live proof with a fixture that excludes nobody (Marouane chose this, 2026-10-16 20:27 UTC) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-16). Build 46a5e5e. Break-glass readiness **ready**. Marouane also confirmed the exception in the
+  operator's own session.
+  - **A.** Report-only `KEEL-RT-148-ca-delete`, created with the Restorer. Read back: `enabledForReportingButNotEnforced`,
+    includes carla only, 0 exclusions, apps `None`. It was never turned on.
+  - **B.** The backup put the policy in the newest collection. The delete ran from the last snapshot taken before the policy
+    existed, which does not hold it.
+  - **C.** Dry run **allowed**: delete wave 1/1, applied 1, skipped 0, artifact `completed`. Self-approved
+    (Entra requester, Gmail approver). Worker job `succeeded`, journal `delete | succeeded`, Graph **404**.
+  - **D.** Capture exit 0. `pseudonymize.mjs check`: **exit 0**. **Promoted**: fixture-tested -> live-qualified. Scans clean.
+    PR #358 (`claude/live-evidence-q98`, automerge): conditionalAccessPolicy.delete{,.capture}.json only.
+  - **E.** Nothing left in the tenant. Fixture lifetime: about 6 minutes.
 - Needs: break-glass readiness **ready**, as in Q96.
 - **Marouane's decision.** Q97 was blocked because marouane.defili is a registered break-glass account, so any policy that
   excludes him is refused by the deletion guard. On the #148 decision card he chose "No exclusion" for this one fixture.

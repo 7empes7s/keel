@@ -7547,8 +7547,13 @@ section.wizard-panel {
 /* Selected: a quiet raised tint and an amber edge; amber fill stays for the one
    primary action, and the risk stripe stays readable. */
 .sel-row[data-selected] {
-  background: var(--surface-muted);
+  background: var(--surface-raised);
   box-shadow: inset 0 0 0 1px var(--accent-fill);
+}
+
+/* Neighbouring selected rows share one edge, not a double line. */
+.sel-row[data-selected] + .sel-row[data-selected] {
+  box-shadow: inset 1px 0 0 var(--accent-fill), inset -1px 0 0 var(--accent-fill), inset 0 -1px 0 var(--accent-fill);
 }
 
 .sel-list[data-touch-mode] .sel-row {

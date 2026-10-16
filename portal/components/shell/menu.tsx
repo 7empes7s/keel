@@ -252,7 +252,9 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
   const attention = entries.filter((entry) => statuses[entry.group] && statuses[entry.group]!.tone !== "fine");
   const tone = worstTone(attention.map((entry) => statuses[entry.group]?.tone));
   // Closed, the group still says how many sections need someone, in the worst colour.
-  const summary = tone ? { tone, count: attention.length, note: `${attention.length} ${attention.length === 1 ? "section needs" : "sections need"} attention` } : undefined;
+  const atTone = attention.filter((entry) => statuses[entry.group]?.tone === tone).length;
+  const others = attention.length - atTone;
+  const summary = tone ? { tone, count: atTone, note: `${atTone} ${atTone === 1 ? "section needs" : "sections need"} ${tone === "urgent" ? "urgent attention" : "attention"}${others ? `, and ${others} more ${others === 1 ? "needs" : "need"} a look` : ""}` } : undefined;
   return (
     <section aria-label="Everything" className="menu-group" data-group="everything">
       <GroupHeader extra={<StatusBadge status={summary} />} group="everything" title="Everything" />

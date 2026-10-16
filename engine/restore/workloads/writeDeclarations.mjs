@@ -42,23 +42,18 @@ const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
 const entries = {};
-function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields, addRefused = null }) {
+function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields }) {
   entries[id] = Object.freeze({
     workload, family, resourceType, kind: 'cmdlet', method, module: plane.module, session: plane.session, identity,
     ...(identity === 'fixed' ? { fixedIdentity } : {}), readBack,
     fields: Object.freeze([...fields]), rbac: plane.rbac, grantsRequired: true, requires: plane.requires,
     source: `${docs}/${method.toLowerCase()}`,
-    ...(addRefused ? { addRefused } : {}),
   });
 }
 
-/**
- * One update (Set-) per family, and for a named Teams policy an add (New-) too. `addRefused`
- * replaces `create` where the service refuses the New- for KEEL's app-only Restorer: a deleted
- * named policy is then listed for an administrator with that reason.
- */
-function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, addRefused = null, identity = 'guid', fixedIdentity, fields }) {
-  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fixedIdentity, fields, addRefused });
+/** One update (Set-) per family, and for a named Teams policy an add (New-) too. */
+function family(plane, docs, { workload, prefix, family: name, resourceType, readBack, set, create = null, identity = 'guid', fixedIdentity, fields }) {
+  declare(plane, docs, { id: `${prefix}.update`, workload, family: name, resourceType, readBack, method: set, identity, fixedIdentity, fields });
   if (create) declare(plane, docs, { id: `${prefix}.add`, workload, family: name, resourceType, readBack, method: create, identity: 'name', fields });
 }
 
@@ -152,24 +147,6 @@ extended('defenderForOffice', 'defender-office-apps', 'defender-office-apps', 'S
 
 // -------------------------------------------------- Teams org-wide policies
 const TEAMS_POLICIES = 'teams-org-policies';
-family(TEAMS, TEAMS_DOCS, {
-  workload: TEAMS_POLICIES, prefix: 'teams.meeting-policy', family: 'meetingPolicy', resourceType: 'teamsMeetingPolicy',
-  readBack: 'teams.meeting-policies', set: 'Set-CsTeamsMeetingPolicy', identity: 'policy',
-  // No add: Teams answers New-CsTeamsMeetingPolicy with 403 (errorCode 40301) for the app-only
-  // Restorer, though it holds Teams Administrator tenant-wide and Get-/Set-CsTeamsMeetingPolicy
-  // and every other Teams New- go through (issue #339; operator queue Q86, 2026-10-15).
-  addRefused: 'it no longer exists, and Teams refuses to create meeting policies for an app-only caller such as KEEL; an administrator re-creates it in the Teams admin center, then KEEL can restore its settings',
-  fields: [
-    'Description', 'AllowChannelMeetingScheduling', 'AllowMeetNow', 'AllowPrivateMeetNow', 'AllowPrivateMeetingScheduling',
-    'MeetingChatEnabledType', 'LiveCaptionsEnabledType', 'AllowIPAudio', 'AllowIPVideo', 'IPAudioMode', 'IPVideoMode',
-    'AllowPowerPointSharing', 'AllowWhiteboard', 'AllowParticipantGiveRequestControl', 'AllowExternalParticipantGiveRequestControl',
-    'AllowTranscription', 'AllowCloudRecording', 'NewMeetingRecordingExpirationDays', 'AllowAnonymousUsersToJoinMeeting',
-    'AllowAnonymousUsersToStartMeeting', 'AllowPSTNUsersToBypassLobby', 'AllowExternalNonTrustedMeetingChat',
-    'DesignatedPresenterRoleMode', 'AllowBreakoutRooms', 'AllowMeetingReactions', 'AllowMeetingRegistration', 'WhoCanRegister',
-    'AllowEngagementReport', 'AllowOutlookAddIn', 'StreamingAttendeeMode', 'MediaBitRateKb', 'VideoFiltersMode',
-    'AllowWatermarkForScreenSharing', 'AllowWatermarkForCameraVideo', 'ExplicitRecordingConsent',
-  ],
-});
 family(TEAMS, TEAMS_DOCS, {
   workload: TEAMS_POLICIES, prefix: 'teams.messaging-policy', family: 'messagingPolicy', resourceType: 'teamsMessagingPolicy',
   readBack: 'teams.messaging-policies', set: 'Set-CsTeamsMessagingPolicy', create: 'New-CsTeamsMessagingPolicy', identity: 'policy',
@@ -291,3 +268,16 @@ family(IPPS, EXO_DOCS, {
 });
 
 export const WKLD_WRITE_OPERATIONS = Object.freeze(entries);
+
+/**
+ * Families KEEL backs up and compares but never writes, because the service refuses KEEL's
+ * app-only Restorer. A restore lists each difference for an administrator with this reason.
+ * Teams meeting policies: New- and Set-CsTeamsMeetingPolicy both answer 403 (errorCode 40301),
+ * though the Restorer holds Teams Administrator tenant-wide and every other Teams policy write
+ * goes through (issue #339; operator queue Q86 and Q92, 2026-10-15 and 2026-10-16).
+ */
+export const MANUAL_FAMILIES = Object.freeze({
+  [TEAMS_POLICIES]: Object.freeze({
+    meetingPolicy: 'Teams refuses changes to meeting policies from an app-only account such as KEEL\'s, so this is done in the Teams admin center',
+  }),
+});

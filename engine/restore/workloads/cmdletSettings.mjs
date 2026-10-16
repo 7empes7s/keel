@@ -46,7 +46,7 @@ import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
-import { WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
+import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
 
 export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -175,21 +175,6 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   ],
   // Which tags apply decides what is deleted when; KEEL does not judge a new set.
   exchangeRetentionPolicy: [rule('RetentionPolicyTagLinks', RETENTION, changes)],
-  teamsMeetingPolicy: [
-    rule('NewMeetingRecordingExpirationDays', RETENTION, expiresSooner),
-    rule('AllowAnonymousUsersToJoinMeeting', SHARING, disabledToEnabled),
-    rule('AllowAnonymousUsersToStartMeeting', SHARING, disabledToEnabled),
-    rule('AllowPSTNUsersToBypassLobby', SHARING, disabledToEnabled),
-    rule('AllowExternalNonTrustedMeetingChat', SHARING, disabledToEnabled),
-    rule('AllowExternalParticipantGiveRequestControl', SHARING, disabledToEnabled),
-    rule('AllowMeetingRegistration', SHARING, disabledToEnabled),
-    rule('WhoCanRegister', SHARING, widensAudience),
-    rule('StreamingAttendeeMode', SHARING, changes),
-    // Recordings and transcripts are new copies of what was said, shared with the meeting.
-    rule('AllowCloudRecording', SHARING, disabledToEnabled),
-    rule('AllowTranscription', SHARING, disabledToEnabled),
-    rule('ExplicitRecordingConsent', SHARING, enabledToDisabled),
-  ],
   teamsGuestMeetingConfiguration: [rule('AllowTranscription', SHARING, disabledToEnabled)],
   // Letting people delete messages and chats lets content go before retention sees it.
   teamsMessagingPolicy: [
@@ -393,6 +378,11 @@ export function writeFamilies(workload, declarations = WKLD_WRITE_OPERATIONS) {
   return families;
 }
 
+/** The families a restore re-reads live: the written ones, and the ones it only lists for an administrator. */
+export function restoreReadFamilies(workload) {
+  return [...Object.keys(writeFamilies(workload)), ...Object.keys(MANUAL_FAMILIES[workload] ?? {})];
+}
+
 /** The write cmdlets, the parameters each may take, and their module: what run-cmdlet.ps1 allows. */
 export function writeCmdletParameters(declarations = WKLD_WRITE_OPERATIONS) {
   const cmdlets = {};
@@ -588,14 +578,15 @@ export function planWorkloadSettingsRestore({
   if (typeof tenantId !== 'string' || !GUID_RE.test(tenantId)) throw new TypeError('tenantId must be the managed tenant\'s directory id');
   if (!['complete', 'complete-empty', 'partial'].includes(source.outcome)) throw new Error(`a ${source.outcome} collection is not a restore source`);
   const families = writeFamilies(workload, declarations);
+  const manualOnly = MANUAL_FAMILIES[workload] ?? {};
   if (Object.keys(families).length === 0) throw new Error(`KEEL declares no write for ${workload}`);
   const observations = source.observations ?? [];
   const named = [...new Set((targets ?? []).map((key) => String(key).toLowerCase()))];
   const keys = named.length
     ? named
     : [...new Set([
-      ...observations.filter((item) => families[item.kind]).map((item) => item.resourceKey),
-      ...(live?.resources ?? []).filter((item) => families[item.kind]).map((item) => item.resourceKey),
+      ...observations.filter((item) => families[item.kind] || manualOnly[item.kind]).map((item) => item.resourceKey),
+      ...(live?.resources ?? []).filter((item) => families[item.kind] || manualOnly[item.kind]).map((item) => item.resourceKey),
     ])].sort();
 
   const manual = [];
@@ -608,6 +599,19 @@ export function planWorkloadSettingsRestore({
     const current = liveEntry(live, key);
     const family = observation?.kind ?? current?.kind ?? null;
     const ops = family ? families[family] : null;
+    if (!ops?.update && manualOnly[family]) {
+      // Backed up and compared, but the service refuses KEEL's writes: every difference is listed.
+      const gap = familyGap(live, family);
+      if (gap) manual.push({ resourceKey: key, field: null, reason: `the live ${family} read was ${gap.status}, so nothing is compared`, error: gap.error ?? null });
+      else if (!observation) manual.push({ resourceKey: key, field: null, reason: 'the source has no observation of this object (it is newer); KEEL never deletes it' });
+      else if (!current) manual.push({ resourceKey: key, field: null, reason: `it no longer exists. ${manualOnly[family]}; an administrator re-creates it` });
+      else {
+        const listed = [];
+        planFields({ fields: [] }, { observation, current, manual: listed });
+        for (const item of listed) manual.push('before' in item ? { ...item, reason: `${manualOnly[family]}; an administrator applies it` } : item);
+      }
+      continue;
+    }
     if (!ops?.update) {
       manual.push({ resourceKey: key, field: null, reason: observation || current ? 'KEEL has no writer for this kind of object; an administrator restores it' : 'neither the source nor the live read has this object' });
       continue;
@@ -636,8 +640,7 @@ export function planWorkloadSettingsRestore({
     if (!current) {
       const policyName = ops.add && /^tag:/i.test(String(observation.fields.Identity ?? ''));
       if (!policyName) {
-        const refused = write.addRefused && /^tag:/i.test(String(observation.fields.Identity ?? ''));
-        manual.push({ resourceKey: key, field: null, reason: refused ? write.addRefused : 'it no longer exists; KEEL does not re-create it (it would get a new identity, and not every condition is held); an administrator re-creates it' });
+        manual.push({ resourceKey: key, field: null, reason: 'it no longer exists; KEEL does not re-create it (it would get a new identity, and not every condition is held); an administrator re-creates it' });
         continue;
       }
       const add = declarations[ops.add];
@@ -873,10 +876,10 @@ async function runOperation(op, context) {
 
 /**
  * The dispatch.mjs entry for one workload. `read({ powershell, families })` is the
- * workload's own read-only collector; only the families KEEL writes are re-read.
+ * workload's own read-only collector; only the families KEEL writes or lists are re-read.
  */
 export function workloadSettingsRestore({ workload, label, read }) {
-  const families = Object.keys(writeFamilies(workload));
+  const families = restoreReadFamilies(workload);
   const readWritten = ({ powershell }) => read({ powershell, families });
   return Object.freeze({
     label,

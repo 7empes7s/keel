@@ -4584,7 +4584,7 @@ item that needs it stays untouched.
 
 ### Q97: Rerun Q96 (CA policy delete) with a fixture that excludes only marouane.defili — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: break-glass readiness **ready**, as in Q96.
 - **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is never turned on.

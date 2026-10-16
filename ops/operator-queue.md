@@ -4611,7 +4611,7 @@ item that needs it stays untouched.
 
 ### Q98: CA policy delete live proof with a fixture that excludes nobody (Marouane chose this, 2026-10-16 20:27 UTC) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: break-glass readiness **ready**, as in Q96.
 - **Marouane's decision.** Q97 was blocked because marouane.defili is a registered break-glass account, so any policy that

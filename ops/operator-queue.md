@@ -4500,3 +4500,22 @@ item that needs it stays untouched.
 - **Report:** the capture exit code; for `exchange-extended.quarantine-global-settings.update` the `ok`, `readBackVerified`,
   `restoredToOriginal`, `field` and `error`; the verify exit code; the import line; and the PR link. Exit 3: report the object, field and
   original value it names.
+
+### Q94: Recapture and publish step 35 (roleAssignment create) from its Q51 restore — issue #148
+- Drafted by the #148 thread (2026-10-16).
+- Status: todo
+- Result:
+- Needs: nothing. #237 is live.
+- **Test tenant only.** No new restore and no tenant writes. This only reads the journal and snapshot of Q51 C's restore (the job
+  run under approval d32e6111, snapshot ced73acb), as Q53 did for step 37.
+- **Why.** The step 35 record on `claude/live-evidence-q51` was not published by #350: `pseudonymize.mjs check` flags one raw role
+  assignment id in its capture log (`targetId` and both `id` fields). It is the only #148 write that passed live without
+  a published record.
+- **A. Capture.** `entraLive capture` for step 35 (roleAssignment create, `--allow-by-reference`) from that restore ref, with the
+  same fixture key as Q51 C. Expected: captured. A refusal is a result: report it verbatim and stop.
+- **B. Check.** `node tools/qualification/pseudonymize.mjs check` on the new record and capture log must exit 0. If it still
+  lists a raw id, report the field names (never the id) and stop.
+- **C. Promote and publish.** `promote` it, run the usual public-repo scans, then commit
+  `roleAssignment.create{,.capture}.json` to a new branch `claude/live-evidence-q94` from `origin/master` and open a PR with
+  the `automerge` label. No other files.
+- **Report:** captured / promoted / refused, the check exit code, and the PR link.

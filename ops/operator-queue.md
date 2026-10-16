@@ -4413,7 +4413,21 @@ item that needs it stays untouched.
 - Needs: nothing. Restorer via `/etc/keel/exchange-restorer.json`, image `keel-powershell:latest`. Steps 2-4 mount `/opt/keel-live/ops/powershell`
   over /app as in Q89. Step 5 mounts the branch scripts as in Q90 (`git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q92 &&
   git archive 247842d ops/powershell | tar -x -C /tmp/keel-q92`, mounted at /app), because only that branch can pipe.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-16 09:04–09:08 UTC. Restorer (exchange-restorer.json) through run-cmdlet, `keel-powershell:latest`. Steps 2–4 mounted
+  /opt/keel-live/ops/powershell; step 5 mounted branch 247842d's scripts (/tmp/keel-q92, removed afterwards). **No change**: each Set- wrote
+  back the value step 1 read. Global admin not used.
+  - **1.** Get-QuarantinePolicy (GlobalQuarantinePolicy): ok true, 1 object.
+    - **Name `DefaultGlobalTag`, Identity `DefaultGlobalTag`**: the save in Defender changed it from Q89's `<org>.onmicrosoft.com\DefaultGlobalPolicy`.
+    - WhenChangedUTC 2026-10-16T09:02:40Z (the Defender save). OrganizationBrandingEnabled False.
+  - **2.** Identity `DefaultGlobalTag`: **ok true.**
+  - **3.** Identity = the Name (`DefaultGlobalTag`): **ok true.**
+  - **4.** Identity = the full Identity (`DefaultGlobalTag`): **ok true.**
+  - **5.** Piped (`pipeFrom: global-quarantine-settings`, branch 247842d): **ok true.**
+  - **6.** Get again: OrganizationBrandingEnabled **False**, unchanged; WhenChangedUTC still 09:02:40Z.
+  - **Reading:** the global quarantine settings had never been initialized as a settable tag. Saving them once in Defender created
+    `DefaultGlobalTag`, and now every form works, including #346's `-Identity DefaultGlobalTag`. The exchange-extended capture can be rerun
+    to prove `quarantine-global-settings.update`. Commented on #339.
 - Do (test tenant only; one tenant-wide object, every Set- writes back the value step 1 read):
   1. Get-QuarantinePolicy `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`: report `ok`, the object count, and `Name`, `Identity` (org masked),
      `WhenChangedUTC` and `OrganizationBrandingEnabled`.

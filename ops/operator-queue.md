@@ -4366,7 +4366,38 @@ item that needs it stays untouched.
 ### Q91: Check the first scheduled nightly content backup (01:00 UTC, 2026-10-16), per workload (read-only)
 - Drafted by the "First nightly content backup" thread (2026-10-16). The content-collect schedule row was added on live 2026-10-15
   07:35 UTC (daily 01:00 UTC, issue #272). #270 (stale mail cursor fix for #268) was deployed before it.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-16 01:48 UTC, read-only (DB and worker log). No tenant writes, no reruns.
+  - **1.** /opt/keel-live at **244756bd**. Schedule row: `content-collect | enabled | last_job_id c425cacc | next_due_at 2026-10-17 01:00:00+00`.
+  - **2.** Job **c425cacc**: created 01:00:00, started 01:01:49, finished 01:03:28 UTC. Status **succeeded**, so exit 0 (empty error, empty
+    stderr). It is the only content-collect job since 00:55.
+  - **3.** Per workload, verbatim, all succeeded:
+    - `exchange-mail: succeeded (0 items, 0 bytes)`
+    - `onedrive: succeeded (0 items, 0 bytes)`
+    - `sharepoint-sites: succeeded (7 items, 12049 bytes)`
+    - `teams: succeeded (11 items, 271885 bytes)`
+    - `planner: succeeded (8 items, 11975 bytes)`
+  - **4. Store read-back now vs Q62 Run A:**
+
+    | workload | rows / bytes now | Q62 A | sync keys now (Q62 A) |
+    |---|---|---|---|
+    | exchange-mail | 23 / 15,468 | 2 / 892 | 2 (2) |
+    | group-conversations | 3 / 9,496 | 3 / 9,496 | – |
+    | onedrive | 2 / 1,771 | 2 / 1,771 | 1 (1) |
+    | planner | 5 / 2,479 | 5 / 2,479 | – |
+    | sharepoint-sites | 888 / 7,733,964 | 889 / 2,735,364 | 88 (28) |
+    | teams | 11 / 271,885 | 22 / 529,592 | – |
+
+    - Rows added by this run: sharepoint-sites 7 (12,049 bytes). The other workloads added 0: delta, or deduped against the stored version.
+    - Differences since Q62 come from later items, not this run:
+      - exchange-mail +21: the Q63/Q68/Q70/Q72 messages, folders, events and contacts (5 messages stored).
+      - sharepoint-sites sync keys 28 → 88, from #273's items:/site: keys (Q64).
+      - sharepoint bytes up, from the Q69 file fixtures.
+    - Teams and sharepoint row counts fell because the **00:00 UTC prune ran in apply mode** (PR #335 merged 19:40 UTC). Job d66ec3a8
+      succeeded; its retention_prune_report row is `apply`, with snapshots_deleted 25, versions_deleted 745 and chunks_deleted 744. That
+      is exactly what Q83's dry run predicted. Snapshot count is now 308.
+  - **5. Worker log 01:00–01:04:** no error, retry, throttle or timeout lines.
+  - No workload failed, so no issue opened.
 - Do (read-only: no tenant writes, no schedule or job changes, no reruns):
   1. Report the deployed build of /opt/keel-live and the content-collect schedule row (enabled, last run, next_due_at).
   2. Find the content-collect job(s) started from 2026-10-16 00:55 UTC: id, start/end time, final status, exit code.

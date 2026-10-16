@@ -37,6 +37,13 @@ test("menu preferences round-trip through the cookie and drop anything unsafe", 
   assert.deepEqual(parsed.closed, ["pinned"]);
   assert.equal(parsed.hidden, false);
   assert.deepEqual(parseMenuPrefs("%7Bnot json"), EMPTY_PREFS);
+  // The server hands over the cookie already decoded; a % in a saved link must survive.
+  const percent = addItem(EMPTY_PREFS, "custom", { href: "/drift?q=50%25", label: "Half", icon: "page" });
+  assert.ok(percent.ok);
+  if (percent.ok) {
+    assert.deepEqual(parseMenuPrefs(serializeMenuPrefs(percent.prefs)), percent.prefs);
+    assert.deepEqual(parseMenuPrefs(decodeURIComponent(serializeMenuPrefs(percent.prefs))), percent.prefs);
+  }
   assert.equal(isPortalHref("javascript:alert(1)"), false);
   assert.equal(isPortalHref("/jobs/a4"), true);
 });
@@ -71,20 +78,24 @@ test("pinned items move and come out in place", () => {
 });
 
 test("section statuses come from the Overview's data, in plain words", () => {
-  const statuses = menuStatuses({
+  const base: Parameters<typeof menuStatuses>[0] = {
     headline: { state: "unproven", tone: "attention", headline: "Backups need attention", sentence: "", action: null, counts: { backedUp: 0, restorable: 0, failing: 0, failed: 0, stale: 0, neverCollected: 0 }, lastProvenRestoreAt: null, failingSince: null },
     coverage: { covered: 142, failed: 4, notCovered: 21, neverCollected: 2, stale: 3, total: 167 },
     openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: 2 }, { blastRadius: "cosmetic", count: 5 }],
     openDriftTotal: 7,
     evidence: { ok: false, chainLength: 10 },
     waiting: { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 },
-  }, 2);
-  assert.deepEqual(statuses.Backup, { tone: "urgent", count: 9, note: "4 kinds of settings failed to back up" });
-  assert.deepEqual(statuses.Baselines, { tone: "urgent", count: 7, note: "7 changes since your approved setup" });
+  };
+  const statuses = menuStatuses(base, 2);
+  assert.deepEqual(statuses.Backup, { tone: "urgent", count: 4, note: "4 kinds of settings failed to back up, and 5 more are out of date" });
+  assert.deepEqual(statuses.Baselines, { tone: "urgent", count: 2, note: "2 changes could lock out admins, of 7 changes since your approved setup" });
   assert.equal(statuses.Restore?.count, 1);
   assert.equal(statuses["Audit log"]?.tone, "urgent");
   assert.deepEqual(statuses.Inbox, { tone: "soon", count: 5, note: "2 approvals and 3 alerts waiting" });
   assert.equal(statuses.Dashboards?.tone, "soon");
+  // A critical alert turns the Overview's banner red, and the menu's dot with it.
+  const withAlert = menuStatuses({ ...base, alerts: [{ severity: "critical" } as never] }, 2);
+  assert.equal(withAlert.Dashboards?.tone, "urgent");
   assert.equal(statuses.Reports, undefined, "a section with nothing to say shows nothing");
   assert.equal(worstTone(["low", "soon", undefined]), "soon");
   assert.equal(worstTone([]), null);

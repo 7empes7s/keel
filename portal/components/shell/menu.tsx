@@ -138,7 +138,7 @@ const GROUP_EMPTY: Record<PersonalGroup, string> = {
   custom: "Save a filtered view of a list under your own name with + New.",
 };
 
-function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup; title: string; count: number; extra?: ReactNode; actions?: ReactNode }) {
+function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup; title: string; count?: number; extra?: ReactNode; actions?: ReactNode }) {
   const { prefs, update } = useShellState();
   const closed = prefs.closed.includes(group);
   return (
@@ -146,7 +146,7 @@ function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup
       <button aria-expanded={!closed} className="menu-group-toggle" onClick={() => update(toggleClosed(prefs, group))} type="button">
         <Icon className="menu-group-chevron" name="chevron-down" />
         <span className="menu-group-title">{title}</span>
-        <span className="menu-group-count">{count}</span>
+        {count === undefined ? null : <span className="menu-group-count">{count}</span>}
         {extra}
       </button>
       {actions ? <span className="menu-group-actions">{actions}</span> : null}
@@ -251,10 +251,11 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
   const closed = prefs.closed.includes("everything");
   const attention = entries.filter((entry) => statuses[entry.group] && statuses[entry.group]!.tone !== "fine");
   const tone = worstTone(attention.map((entry) => statuses[entry.group]?.tone));
-  const summary = tone ? { tone, note: `${attention.length} ${attention.length === 1 ? "section needs" : "sections need"} attention` } : undefined;
+  // Closed, the group still says how many sections need someone, in the worst colour.
+  const summary = tone ? { tone, count: attention.length, note: `${attention.length} ${attention.length === 1 ? "section needs" : "sections need"} attention` } : undefined;
   return (
     <section aria-label="Everything" className="menu-group" data-group="everything">
-      <GroupHeader count={entries.length} extra={<StatusBadge status={summary} />} group="everything" title="Everything" />
+      <GroupHeader extra={<StatusBadge status={summary} />} group="everything" title="Everything" />
       {closed ? null : (
         <ul className="menu-list">
           {entries.map((entry) => {

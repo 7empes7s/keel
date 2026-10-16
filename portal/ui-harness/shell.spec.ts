@@ -55,13 +55,14 @@ test("each section shows its status, and a closed group keeps its count and stat
   await open(page, "/");
   const baselines = page.locator('section[data-group="everything"] a.menu-link', { hasText: "Baselines" });
   await expect(baselines.locator(".menu-badge")).toHaveAttribute("data-tone", "urgent");
-  await expect(baselines.locator(".menu-badge")).toContainText("37");
+  // The number is the changes at the badge's own risk: the 2 that could lock out admins.
+  await expect(baselines.locator(".menu-badge")).toContainText("2");
   const toggle = page.locator('section[data-group="everything"] .menu-group-toggle');
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator('section[data-group="everything"] a.menu-link')).toHaveCount(0);
-  await expect(toggle.locator(".menu-group-count")).toHaveText("8");
   await expect(toggle.locator(".menu-badge")).toHaveAttribute("data-tone", "urgent");
+  await expect(toggle).toHaveAccessibleName(/Everything \d+ Urgent: \d+ sections need attention/);
   await toggle.click();
   await expect(page.locator('section[data-group="everything"] a.menu-link')).toHaveCount(8);
 });
@@ -129,7 +130,7 @@ test("phone: top bar, five tabs, and All opens the whole menu as a sheet", async
   await expect(page.locator("aside.rail")).toBeHidden();
   const tabs = page.locator(".tabbar .tab");
   // Each badge also says, for a screen reader, what it means.
-  await expect(tabs).toHaveText([/^Dashboards/, /^Backup11Urgent: 4 kinds/, /^Restore$/, /^Baselines37Urgent/, /^All/]);
+  await expect(tabs).toHaveText([/^Dashboards/, /^Backup4Urgent: 4 kinds/, /^Restore$/, /^Baselines2Urgent: 2 changes could lock out admins/, /^All/]);
   await expect(page.locator(".tabbar a[aria-current]")).toContainText("Backup");
   // A section's pages are one scrolling row.
   const row = page.locator(".section-tabs");
@@ -142,6 +143,8 @@ test("phone: top bar, five tabs, and All opens the whole menu as a sheet", async
   await expect(sheet.locator('section[data-group="everything"] a.menu-link')).toHaveCount(8);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
+  // Focus goes back to the tab that opened the sheet.
+  await expect(page.locator(".tabbar button.tab")).toBeFocused();
   await page.locator(".tabbar button.tab").click();
   await sheet.getByRole("link", { name: "Audit log" }).click();
   await expect(page.locator("main h1")).toHaveText("Activity");

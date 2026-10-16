@@ -70,7 +70,8 @@ export function parseMenuPrefs(raw: string | null | undefined): MenuPrefs {
   if (!raw) return EMPTY_PREFS;
   let data: unknown;
   try {
-    data = JSON.parse(decodeURIComponent(raw));
+    // The browser's copy is URL-encoded; the server's copy arrives already decoded.
+    data = JSON.parse(raw.startsWith("{") ? raw : decodeURIComponent(raw));
   } catch {
     return EMPTY_PREFS;
   }
@@ -147,7 +148,7 @@ export function loadMenuPrefs(initial: MenuPrefs): MenuPrefs {
 export function saveMenuPrefs(prefs: MenuPrefs): void {
   current = prefs;
   try {
-    document.cookie = `${MENU_COOKIE}=${serializeMenuPrefs(prefs)}; path=/; max-age=31536000; samesite=lax`;
+    document.cookie = `${MENU_COOKIE}=${serializeMenuPrefs(prefs)}; path=/; max-age=31536000; samesite=lax${location.protocol === "https:" ? "; secure" : ""}`;
   } catch {
     // Cookies blocked: the change holds for this page view only.
   }

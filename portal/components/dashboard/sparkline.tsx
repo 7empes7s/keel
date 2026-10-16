@@ -70,11 +70,15 @@ export function Sparkline({ points, label }: { points: Array<{ day: string; coun
         <span>Detected per day · last {points.length} days</span>
         <span>Peak {peak.count}</span>
       </figcaption>
-      <table className="visually-hidden">
-        <caption>{label}</caption>
-        <thead><tr><th scope="col">Day (UTC)</th><th scope="col">Detected</th></tr></thead>
-        <tbody>{points.map((point) => <tr key={point.day}><td>{point.day}</td><td>{point.count}</td></tr>)}</tbody>
-      </table>
+      {/* A table ignores the 1px height, so the hidden box wraps it; otherwise its
+          rows stretch the page with empty space. */}
+      <div className="visually-hidden">
+        <table>
+          <caption>{label}</caption>
+          <thead><tr><th scope="col">Day (UTC)</th><th scope="col">Detected</th></tr></thead>
+          <tbody>{points.map((point) => <tr key={point.day}><td>{point.day}</td><td>{point.count}</td></tr>)}</tbody>
+        </table>
+      </div>
     </figure>
   );
 }

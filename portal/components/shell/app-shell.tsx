@@ -96,10 +96,16 @@ function Frame({ capabilities, pendingApprovals, person, theme, children }: Shel
 
   useEffect(() => {
     if (!sheet) return;
+    const opener = document.activeElement as HTMLElement | null;
     railRef.current?.querySelector<HTMLElement>("a[href], button")?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setSheet(false); };
+    // A popover inside the sheet takes Esc first; the next Esc closes the sheet.
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector(".popover-panel")) setSheet(false); };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Back to the tab that opened it, unless a link has moved focus elsewhere.
+      if (opener?.isConnected && (!document.activeElement || document.activeElement === document.body || railRef.current?.contains(document.activeElement))) opener.focus();
+    };
   }, [sheet]);
 
   function setHidden(value: boolean) {

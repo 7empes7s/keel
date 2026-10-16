@@ -44,11 +44,18 @@ export function Popover({
       const panel = panelRef.current?.getBoundingClientRect();
       if (!button || !panel) return;
       const left = Math.max(8, Math.min(button.left, window.innerWidth - panel.width - 8));
-      setPlace({ "--pop-top": `${Math.round(button.bottom + 6)}px`, "--pop-left": `${Math.round(left)}px` } as CSSProperties);
+      // Opens upwards when there is no room below, and never above the window's top.
+      const below = button.bottom + 6;
+      const top = below + panel.height > window.innerHeight - 8 && button.top - 6 - panel.height >= 8 ? button.top - 6 - panel.height : below;
+      setPlace({ "--pop-top": `${Math.round(top)}px`, "--pop-left": `${Math.round(left)}px` } as CSSProperties);
     }
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
   }, [open]);
 
   useEffect(() => {

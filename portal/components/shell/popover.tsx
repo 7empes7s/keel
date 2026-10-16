@@ -39,9 +39,12 @@ export function Popover({
   // under its button and stays inside the window.
   useLayoutEffect(() => {
     if (!open) return;
-    function measure() {
+    let frame = 0;
+    function place() {
       const button = buttonRef.current?.getBoundingClientRect();
-      const panel = panelRef.current?.getBoundingClientRect();
+      const box = panelRef.current?.getBoundingClientRect();
+      // The natural height, not the one a max-height has already cut short.
+      const panel = box && panelRef.current ? { width: box.width, height: Math.max(box.height, panelRef.current.scrollHeight) } : null;
       if (!button || !panel) return;
       const left = Math.max(8, Math.min(button.left, window.innerWidth - panel.width - 8));
       // Opens upwards when there is no room below, and never above the window's top.
@@ -49,12 +52,17 @@ export function Popover({
       const top = below + panel.height > window.innerHeight - 8 && button.top - 6 - panel.height >= 8 ? button.top - 6 - panel.height : below;
       setPlace({ "--pop-top": `${Math.round(top)}px`, "--pop-left": `${Math.round(left)}px` } as CSSProperties);
     }
-    measure();
+    function measure() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(place);
+    }
+    place();
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", measure, true);
+      cancelAnimationFrame(frame);
     };
   }, [open]);
 

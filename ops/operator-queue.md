@@ -4413,7 +4413,7 @@ item that needs it stays untouched.
 - Needs: nothing. Restorer via `/etc/keel/exchange-restorer.json`, image `keel-powershell:latest`. Steps 2-4 mount `/opt/keel-live/ops/powershell`
   over /app as in Q89. Step 5 mounts the branch scripts as in Q90 (`git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q92 &&
   git archive 247842d ops/powershell | tar -x -C /tmp/keel-q92`, mounted at /app), because only that branch can pipe.
-- Status: todo
+- Status: in-progress
 - Do (test tenant only; one tenant-wide object, every Set- writes back the value step 1 read):
   1. Get-QuarantinePolicy `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`: report `ok`, the object count, and `Name`, `Identity` (org masked),
      `WhenChangedUTC` and `OrganizationBrandingEnabled`.

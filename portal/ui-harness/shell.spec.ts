@@ -62,7 +62,7 @@ test("each section shows its status, and a closed group keeps its count and stat
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator('section[data-group="everything"] a.menu-link')).toHaveCount(0);
   await expect(toggle.locator(".menu-badge")).toHaveAttribute("data-tone", "urgent");
-  await expect(toggle).toHaveAccessibleName(/Everything \d+ Urgent: \d+ sections need attention/);
+  await expect(toggle).toHaveAccessibleName(/Everything \d+ Urgent: \d+ sections? needs? urgent attention/);
   await toggle.click();
   await expect(page.locator('section[data-group="everything"] a.menu-link')).toHaveCount(8);
 });

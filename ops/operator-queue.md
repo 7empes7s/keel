@@ -4366,7 +4366,7 @@ item that needs it stays untouched.
 ### Q91: Check the first scheduled nightly content backup (01:00 UTC, 2026-10-16), per workload (read-only)
 - Drafted by the "First nightly content backup" thread (2026-10-16). The content-collect schedule row was added on live 2026-10-15
   07:35 UTC (daily 01:00 UTC, issue #272). #270 (stale mail cursor fix for #268) was deployed before it.
-- Status: todo
+- Status: in-progress
 - Do (read-only: no tenant writes, no schedule or job changes, no reruns):
   1. Report the deployed build of /opt/keel-live and the content-collect schedule row (enabled, last run, next_due_at).
   2. Find the content-collect job(s) started from 2026-10-16 00:55 UTC: id, start/end time, final status, exit code.

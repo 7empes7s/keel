@@ -4503,7 +4503,7 @@ item that needs it stays untouched.
 
 ### Q94: Recapture and publish step 35 (roleAssignment create) from its Q51 restore — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: todo
+- Status: in-progress
 - Result:
 - Needs: nothing. #237 is live.
 - **Test tenant only.** No new restore and no tenant writes. This only reads the journal and snapshot of Q51 C's restore (the job

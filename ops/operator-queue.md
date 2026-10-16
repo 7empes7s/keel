@@ -4581,3 +4581,23 @@ item that needs it stays untouched.
   and open a PR with the `automerge` label.
 - **E. Cleanup.** Nothing else to delete if C worked. If C was refused, delete the policy yourself and say so.
 - **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.
+
+### Q97: Rerun Q96 (CA policy delete) with a fixture that excludes only marouane.defili — issue #148
+- Drafted by the #148 thread (2026-10-16).
+- Status: queued
+- Result:
+- Needs: break-glass readiness **ready**, as in Q96.
+- **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is never turned on.
+- **Why.** Q96 was refused by the deletion guard (`engine/safety/deletionGuard.mjs`, spec M2.5): KEEL never deletes a CA
+  policy that excludes a break-glass account. That is by design, so the fixture changes, not the guard. The policy targets
+  only carla, so the break-glass accounts are outside it anyway; excluding them was the thread's own extra. Marouane's rule
+  (he is excluded from every new CA policy) still holds.
+- **A. Fixture.** Report-only `KEEL-RT-148-ca-delete`, includes carla only, excludes **marouane.defili only**, no other
+  exclusions (no break-glass accounts, groups or roles). Read it back before the backup.
+- **B-E.** Exactly Q96 B to E: back up, delete from a snapshot taken before the policy existed (dry run, approval with the
+  usual requester/approver split, `--artifact <id> --enforce`), then capture, `pseudonymize.mjs check` (exit 0), promote,
+  scans, and `conditionalAccessPolicy.delete{,.capture}.json` only on a new branch `claude/live-evidence-q97` from
+  `origin/master`, PR with the `automerge` label.
+- **If the dry run refuses because marouane.defili itself is a registered break-glass account,** report that (no id) and
+  stop. Delete the policy yourself.
+- **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.

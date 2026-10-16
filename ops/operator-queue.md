@@ -4522,3 +4522,48 @@ item that needs it stays untouched.
   `roleAssignment.create{,.capture}.json` to a new branch `claude/live-evidence-q94` from `origin/master` and open a PR with
   the `automerge` label. No other files.
 - **Report:** captured / promoted / refused, the check exit code, and the PR link.
+
+### Q95: Recapture and publish group update (Q45 step 2) — issue #148
+- Drafted by the #148 thread (2026-10-16).
+- Status: queued
+- Result:
+- Needs: nothing. `pseudonymize.mjs` now covers `securityIdentifier` (the reason Q45 held this record back).
+- **Test tenant only.** Never target, assign or drift marouane.defili.
+- **Why.** Q45 promoted group update on the host but held back its record and capture because they carried
+  `securityIdentifier`. No later run published it, so it is one of the last #148 writes without a published record.
+- **A. Capture from Q45 if possible.** If Q45's group update restore (step 2) still has its journal and snapshot in KEEL's
+  database, run `entraLive capture --resource-type group --operation update` from that restore ref, as Q94 did for step 35.
+  No new restore and no tenant write.
+- **A'. Otherwise, a fresh run.** Create a disposable group `KEEL-RT-148-group-upd` (security, no members), back it up, change
+  its `description` by hand, then restore it with a selection of that group (dry run, approval with the usual
+  requester/approver split, `--enforce`). Then capture as above. A refusal is a result: report it verbatim and stop.
+- **B. Check.** `node tools/qualification/pseudonymize.mjs check` on the record and capture log must exit 0. If it lists a raw
+  value, report the field names (never the value) and stop.
+- **C. Promote and publish.** `promote`, run the usual public-repo scans, commit `group.update{,.capture}.json` only to a new
+  branch `claude/live-evidence-q95` from `origin/master`, and open a PR with the `automerge` label.
+- **D. Cleanup** (A' only): delete and purge `KEEL-RT-148-group-upd`.
+- **Report:** captured from Q45 or fresh, promoted or refused, the check exit code, and the PR link.
+
+### Q96: Live proof of Conditional Access policy delete (runbook step 52) — issue #148
+- Drafted by the #148 thread (2026-10-16).
+- Status: queued
+- Result:
+- Needs: break-glass readiness **ready** (as in Q46 B). If it is not ready, report the readiness line verbatim and stop.
+- **Test tenant only.** Never target, assign or sign in as marouane.defili.
+- **The policy is never turned on.** It stays report-only for its whole life, and it excludes marouane.defili and both
+  break-glass accounts (Emergency access and the operator's own break-glass account). Check the exclusions before the backup.
+- **Why.** CA policy delete is the only registered delete never run live. It goes through the same lockout delete guard that
+  passed for named location delete in Q46 B.
+- **A. Fixture.** Create a report-only CA policy `KEEL-RT-148-ca-delete` that targets only carla (or another KEEL-RT test user,
+  never marouane.defili), with the exclusions above.
+- **B. Back up** so the snapshot contains it.
+- **C. Delete through KEEL**, exactly as Q46 B: `node cli/keel-restore.mjs --snapshot-id <S> --delete
+  conditionalAccessPolicy:KEEL-RT-148-ca-delete` dry run, approval with the usual requester/approver split, then
+  `--artifact <id> --enforce`. Expected: allowed, applied 1, and Graph returns 404 for the policy (it may sit in CA deleted
+  items; that is fine). A refusal is a result: report it verbatim and stop.
+- **D. Capture, check, promote, publish.** `entraLive capture --resource-type conditionalAccessPolicy --operation delete`
+  from that restore, `pseudonymize.mjs check` (must exit 0), `promote`, the usual scans, then commit
+  `conditionalAccessPolicy.delete{,.capture}.json` only to a new branch `claude/live-evidence-q96` from `origin/master`
+  and open a PR with the `automerge` label.
+- **E. Cleanup.** Nothing else to delete if C worked. If C was refused, delete the policy yourself and say so.
+- **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.

@@ -4584,8 +4584,15 @@ item that needs it stays untouched.
 
 ### Q97: Rerun Q96 (CA policy delete) with a fixture that excludes only marouane.defili — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-16). marouane.defili **is one of the two registered break-glass accounts** (checked against
+  `keel-breakglass.mjs report`; readiness `ready`). The account the Q96 refusal names (`... is excluded by
+  conditions.users.excludeUsers`) is that same account; Q96 labelled it "the operator's break-glass account". So a fixture
+  that excludes marouane.defili is refused by the same guard. I created no fixture and ran no dry run, so nothing was
+  written. A live CA delete proof needs one of these, which is the #148 thread's or Marouane's decision:
+  (a) a fixture that excludes nobody (it targets only carla, is report-only and has no target apps), which breaks the rule
+  that Marouane is excluded from every new CA policy; or
+  (b) deregistering marouane.defili as a break-glass account.
 - Needs: break-glass readiness **ready**, as in Q96.
 - **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is never turned on.
 - **Why.** Q96 was refused by the deletion guard (`engine/safety/deletionGuard.mjs`, spec M2.5): KEEL never deletes a CA

@@ -4525,8 +4525,11 @@ item that needs it stays untouched.
 
 ### Q95: Recapture and publish group update (Q45 step 2) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-16). Build 0683b63. **Captured from Q45**, from restore c8401172 (journal `group:KEEL-RT-148-group | update |
+  succeeded`). No new restore and no tenant write. `pseudonymize.mjs check`: **exit 0**, every id is a pseudonym.
+  **Promoted**: fixture-tested -> live-qualified. Scans clean. PR #355 (`claude/live-evidence-q95`, automerge):
+  group.update{,.capture}.json only. No cleanup needed (path A).
 - Needs: nothing. `pseudonymize.mjs` now covers `securityIdentifier` (the reason Q45 held this record back).
 - **Test tenant only.** Never target, assign or drift marouane.defili.
 - **Why.** Q45 promoted group update on the host but held back its record and capture because they carried
@@ -4546,7 +4549,7 @@ item that needs it stays untouched.
 
 ### Q96: Live proof of Conditional Access policy delete (runbook step 52) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: break-glass readiness **ready** (as in Q46 B). If it is not ready, report the readiness line verbatim and stop.
 - **Test tenant only.** Never target, assign or sign in as marouane.defili.

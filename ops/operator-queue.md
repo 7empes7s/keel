@@ -4525,7 +4525,7 @@ item that needs it stays untouched.
 
 ### Q95: Recapture and publish group update (Q45 step 2) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: queued
+- Status: in-progress
 - Result:
 - Needs: nothing. `pseudonymize.mjs` now covers `securityIdentifier` (the reason Q45 held this record back).
 - **Test tenant only.** Never target, assign or drift marouane.defili.

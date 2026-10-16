@@ -100,6 +100,11 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "baselines/page.tsx",
   },
+  // Baselines redesign: the guided flow that creates an approved setup.
+  baselinesNewPage: {
+    capability: "read",
+    source: "baselines/new/page.tsx",
+  },
   benchmarksPage: {
     capability: "read",
     source: "benchmarks/page.tsx",

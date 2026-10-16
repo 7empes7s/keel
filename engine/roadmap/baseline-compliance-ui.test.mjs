@@ -425,7 +425,9 @@ function inPortal(script, env) {
         implicitTags: [], url: { pathname: route, search: '' }, rootParams: {},
         resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
       }, () => page()));
+    // A <style> body is never on screen (the Baselines pages carry their own styles).
     const visibleText = (html) => html
+      .replace(/<style[\s\S]*?<\/style>/g, '\n')
       .replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, '\n')
       .replace(/<[^>]+>/g, '\n');
     const records = (html) => (html.match(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g) || []).join('\n');
@@ -497,7 +499,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
 
       // Baselines: the age is the capture's; a viewer sees the re-capture disabled.
       const baselineHtml = withRouter(await render('/baselines', baselines, viewerHeaders));
-      assert.match(baselineHtml, /The active baseline is “Golden state”, captured 10 days ago\./);
+      assert.match(baselineHtml, /\d+ changes? since “Golden state”, captured 10 days ago;/);
       assert.match(baselineHtml, /<button[^>]*disabled=""[^>]*>Capture new version<\/button>/);
       assert.ok(records(baselineHtml).includes(${JSON.stringify(evidenceSnapshot)}));
       assertPlain(visibleText(baselineHtml), 'Baselines');

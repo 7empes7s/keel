@@ -444,7 +444,7 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       const [creosShown, sharedShown] = [creos, shared].map((item) => displayItems([item])[0]);
       assert.deepEqual(Object.keys(creosShown.after).sort(), ['description', 'displayName'], 'ids and Microsoft-set fields are not handed to the client');
       const diffHtml = withRouter(createElement(SemanticDiff, { item: creosShown, change: creos.semantic }));
-      assert.match(diffHtml, /1 setting differs from the baseline in a way that changes behaviour\./);
+      assert.match(diffHtml, /1 setting differs from the approved setup in a way that changes behaviour\./);
       assert.match(diffHtml, /2 settings Microsoft manages itself also differ\. They do not change behaviour and are not shown\./);
       assert.ok(diffHtml.includes('changed creos'));
       for (const cosmetic of ['rotated@contoso', 'modifiedDateTime', '2026-10-01']) assert.ok(!diffHtml.includes(cosmetic), 'rendered ' + cosmetic);
@@ -455,7 +455,7 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       assert.match(unknownHtml, /Earlier value not known/);
       assert.ok(unknownHtml.includes('>Not known<'));
       const unknownText = visibleText(unknownHtml);
-      for (const wrong of ['Removed', 'No longer set', 'Not set in the baseline', 'Added']) assert.ok(!unknownText.includes(wrong), 'unknown before rendered as ' + wrong);
+      for (const wrong of ['Removed', 'No longer set', 'Not set in the approved setup', 'Added']) assert.ok(!unknownText.includes(wrong), 'unknown before rendered as ' + wrong);
 
       const evidenceHtml = withRouter(createElement(ChangeEvidencePanel, { evidence: creos.evidence, attribution: creos.attribution, now: at }));
       assert.match(evidenceHtml, /Owned by CREOS\./);
@@ -472,14 +472,14 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       const { ENTITY_CAPABILITIES_HEADER } = require('./lib/principal.ts');
       const viewerHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(creosViewer)}], [ENTITY_CAPABILITIES_HEADER, 'read:CREOS']]);
       const html = withRouter(await render('/drift', page, viewerHeaders));
-      assert.match(html, /What the open changes affect/);
-      assert.match(html, /All open changes<\/th><td data-label="Changes">2<\/td>/);
-      assert.match(html, /1 change has no baseline copy, so earlier values are not known\./);
+      assert.match(html, /aria-label="Open changes by risk"/);
+      assert.match(html, /All open changes<\/span><b class="bl-tile-count">2<\/b>/);
+      assert.match(html, /1 change has no copy in the approved setup, so the earlier values are not known\./);
       for (const hidden of HIDDEN) assert.ok(!html.includes(hidden), 'page carries ' + hidden);
       assertPlain(visibleText(html), 'Changes page');
 
       const centralHtml = withRouter(await render('/drift', page, new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(central)}], [CAPABILITIES_HEADER, 'read']])));
-      assert.match(centralHtml, /All open changes<\/th><td data-label="Changes">3<\/td>/);
+      assert.match(centralHtml, /All open changes<\/span><b class="bl-tile-count">3<\/b>/);
     })().catch((error) => { console.error(error); process.exitCode = 1; });
   `, { KEEL_TENANT_CONFIG_PATH: tenantConfig });
 });

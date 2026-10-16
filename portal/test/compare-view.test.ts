@@ -49,9 +49,9 @@ test("the verdict counts differences, and says when nothing differs", () => {
     { rows: [row("group:Finance", { displayName: "Finance", securityEnabled: false }, "b")], coverage: null },
   ) as SettingsSection;
   const data: CompareData = { generatedAt: "2026-10-03T00:00:00.000Z", tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: result(changed), problem: null };
-  assert.equal(compareVerdict(data).text, "1 difference between the two snapshots.");
+  assert.equal(compareVerdict(data).text, "1 difference between the two backups.");
   const same = compareSettings({ rows: [], coverage: null }, { rows: [], coverage: null }) as SettingsSection;
-  assert.deepEqual(compareVerdict({ ...data, result: result(same) }), { text: "Nothing differs between the two snapshots.", tone: "good" });
+  assert.deepEqual(compareVerdict({ ...data, result: result(same) }), { text: "Nothing differs between the two backups.", tone: "good" });
   assert.equal(compareVerdict({ ...data, result: null, problem: "too-few-snapshots" }).tone, "attention");
   // Objects that cannot be matched across tenants are never "nothing differs".
   const unmatched = { ...same, totals: { ...same.totals, unmatched: 1 }, unmatched: [{ resourceType: "user", service: "Entra ID", left: 3, right: 2 }] };
@@ -68,7 +68,7 @@ test("values read as names, never as ids or address codes", () => {
   assert.equal(compareValueWords(["ref:group:Break-glass admins", "<id>"]), "Break-glass admins (group), an id");
   assert.equal(compareValueWords(ID(9)), "an id");
   assert.equal(compareValueWords("smtp:a@b.example"), "a@b.example (SMTP address)");
-  assert.equal(containerWords(`mailbox/${ID(4)}/items/inbox`), "Mailbox · items › inbox");
+  assert.equal(containerWords(`mailbox/${ID(4)}/items/inbox`), "Inbox (mailbox)");
   assert.equal(containerWords(`drive:${ID(4)}`), "Drive");
 });
 

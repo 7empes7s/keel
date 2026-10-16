@@ -185,9 +185,9 @@ function tenantLabel(tenants: CompareTenant[], tenantRef: string): string {
   return tenants.find((tenant) => tenant.tenantRef === tenantRef)?.label ?? "another tenant";
 }
 
-/** A side as a person reads it: "the snapshot of 2 Oct 2026, 09:12 UTC" (with its tenant when two are compared). */
+/** A side as a person reads it: "the backup of 2 Oct 2026, 09:12 UTC" (with its tenant when two are compared). */
 export function sideWords(side: CompareSide, tenants: CompareTenant[], portable: boolean): string {
-  const when = side.kind === "live" ? "the tenant as it is now" : `the snapshot of ${formatTimestamp(side.at)}`;
+  const when = side.kind === "live" ? "the tenant as it is now" : `the backup of ${formatTimestamp(side.at)}`;
   return portable ? `${when} (${tenantLabel(tenants, side.tenantRef)})` : when;
 }
 
@@ -201,17 +201,17 @@ export function differenceTotals(result: CompareResult) {
 const plural = (count: number, one: string, many = `${one}s`) => `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
 
 export function compareVerdict(data: CompareData): { text: string; tone: "good" | "attention" | "critical" } {
-  if (data.problem === "too-few-snapshots") return { text: "Compare needs two completed snapshots, and this tenant does not have two yet.", tone: "attention" };
-  if (data.problem === "same-snapshot") return { text: "Choose two different snapshots to compare.", tone: "attention" };
-  if (data.problem) return { text: "One of the chosen snapshots is not available. Choose another pair.", tone: "attention" };
-  if (!data.result) return { text: "Choose two snapshots to compare.", tone: "attention" };
+  if (data.problem === "too-few-snapshots") return { text: "Compare needs two complete backups, and this tenant does not have two yet.", tone: "attention" };
+  if (data.problem === "same-snapshot") return { text: "Choose two different backups to compare.", tone: "attention" };
+  if (data.problem) return { text: "One of the chosen backups is not available. Choose another pair.", tone: "attention" };
+  if (!data.result) return { text: "Choose two backups to compare.", tone: "attention" };
   const { total } = differenceTotals(data.result);
   // Kinds or workloads not compared, objects that cannot be matched across tenants, and
   // workload resources one side read only in part all leave something unchecked.
   const workloadGaps = (data.result.workloads?.groups ?? []).reduce((sum, group) => sum + (group.unverified ?? 0) + (group.unmatched ?? 0), 0);
   const notCompared = (data.result.settings?.totals.notCompared ?? 0) + (data.result.settings?.totals.unmatched ?? 0)
     + (data.result.workloads?.totals.notCompared ?? 0) + workloadGaps;
-  const two = data.result.portable ? "the two tenants" : "the two snapshots";
+  const two = data.result.portable ? "the two tenants" : "the two backups";
   if (total === 0 && notCompared === 0) return { text: `Nothing differs between ${two}.`, tone: "good" };
   if (total === 0) return { text: `Nothing differs in what both sides read; ${plural(notCompared, "part")} could not be compared.`, tone: "attention" };
   return { text: `${plural(total, "difference")} between ${two}.`, tone: "attention" };
@@ -278,11 +278,13 @@ const CONTAINER_KINDS: [RegExp, string][] = [
   [/^plan:/, "Plan"],
 ];
 
-/** A container's kind and which part of it ("Mailbox · inbox"); the raw name stays in the record. */
+/** Which part of a container, then its kind ("Inbox (mailbox)"); the raw name stays in the record. */
 export function containerWords(container: string): string {
   const kind = CONTAINER_KINDS.find(([pattern]) => pattern.test(container))?.[1] ?? "Container";
-  const parts = container.split("/").slice(2).filter((part) => part && !/^[0-9a-f-]{16,}$/i.test(part) && !part.includes(":"));
-  return parts.length ? `${kind} · ${parts.join(" › ")}` : kind;
+  const parts = container.split("/").slice(2).filter((part) => part && part !== "items" && !/^[0-9a-f-]{16,}$/i.test(part) && !part.includes(":"));
+  if (!parts.length) return kind;
+  const name = parts.join(" › ");
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} (${kind.toLowerCase()})`;
 }
 
 export function contentItemWords(item: ContentItem): string {

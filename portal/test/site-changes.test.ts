@@ -106,7 +106,7 @@ test("each change reads in words", () => {
 
 test("the Changes verdict counts site permission changes still waiting for review", () => {
   assert.deepEqual(changesVerdict([], "2026-10-01T00:00:00.000Z", NOW, 2), {
-    text: "Nothing has changed since the baseline set 14 days ago, but 2 site permission changes wait for review.", tone: "attention",
+    text: "Nothing has changed since the approved setup of 14 days ago, but 2 site permission changes wait for review.", tone: "attention",
   });
   assert.equal(changesVerdict([], "2026-10-01T00:00:00.000Z", NOW).tone, "good");
   assert.match(changesVerdict([], null, NOW, 1).text, /; 1 site permission change waits for review\.$/);

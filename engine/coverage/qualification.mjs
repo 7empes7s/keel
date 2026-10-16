@@ -95,7 +95,12 @@ export const TYPE_DECISIONS = Object.freeze({
   }),
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
-  application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
+  application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written', {
+    liveFailures: {
+      create: failedLive('2026-10-14', 'application create sends the read-only property createdByAppId; Graph answers 400 \'Property createdByAppId is read-only and cannot be set\' and nothing is created',
+        'drop createdByAppId from the create body (#230, commit 7f4fa299); live gate #148 Q48, re-run in Q51'),
+    },
+  }),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create bound to its application by appId; Wave 2: update of reviewed attributes and delete of an application\'s own service principal'),
   // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
   oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),

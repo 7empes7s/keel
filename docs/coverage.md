@@ -26,7 +26,7 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Users | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Groups | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress; live test of bringing back from deleted items failed on 2026-10-13, fix in progress |
 | Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
-| App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
+| App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-14, fix in progress |
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Delegated app consents | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External identity providers | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |

@@ -7,23 +7,23 @@
   "resourceType": "group",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "build": "95c3a33522c0acfd36e269b699c39e9238f24b38",
   "synthetic": false,
-  "evidenceLevel": "failed",
-  "ok": false,
-  "outcome": "failed",
-  "outcomeDetail": "status 400",
-  "readBackVerified": false,
-  "observedAt": "2026-10-11T11:34:16.841Z",
-  "restoreRef": "b956de04-bd7c-83e8-a447-1bc29f0ed73c",
-  "naturalKey": "group:KEEL-RT-148-group",
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T14:18:42.860Z",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "naturalKey": "group:KEEL-RT-148-g1",
   "fixtureKind": "named-object",
-  "captureSha256": "51c157490a599ddd4ce0756650061eed747579d218b45c70103347b3359e35bd",
+  "captureSha256": "88d18d0e619beef3d476e3b22659e56b61622b564c103d742d5867daec0e6313",
   "proofRef": "docs/release/qualifications/entra-live/group.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "edeff7fbeff8cfaaaf90551352b341d53443642b6f4da8046e79aa1fecd737d7"
+      "signature": "2de74a9f03d712ee6460fc7db485eb2ef6975e6f41963c054c0efc4f6617d46b"
     }
   }
 }

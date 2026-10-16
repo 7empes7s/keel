@@ -7,23 +7,23 @@
   "resourceType": "unifiedRoleManagementPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "09e1f00c3f2bda0ec6e6562015613907c810e7aa",
+  "build": "95c3a33522c0acfd36e269b699c39e9238f24b38",
   "synthetic": false,
-  "evidenceLevel": "failed",
-  "ok": false,
-  "outcome": "uncertain",
-  "outcomeDetail": "policy could not be re-read",
-  "readBackVerified": false,
-  "observedAt": "2026-10-11T20:27:36.759Z",
-  "restoreRef": "ef3354d5-156a-8ddd-bfd8-50135a1571fc",
-  "naturalKey": "unifiedRoleManagementPolicy:DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T14:19:31.699Z",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "naturalKey": "unifiedRoleManagementPolicy:DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "32f5a9200f1443aa3ffb65677a86651f51f357ec739c15befc416bbd41272e03",
+  "captureSha256": "52e956b5fe81247c702b953ef6d090abcf0c889bab47c60bda886fd81160cf5a",
   "proofRef": "docs/release/qualifications/entra-live/unifiedRoleManagementPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "153929fa372d76d8d2a7457fbf0313ed23c201cc2caadf5196dbdcc2417602e5"
+      "signature": "32622e88089a482b94db0980f108786faf8cc151fc233ee0f4d8ca2646a751dc"
     }
   }
 }

@@ -38,8 +38,9 @@ function resignedCopy(name, { key = KEY, edit = (record) => record } = {}) {
 }
 
 const userUpdate = readJson(join(COMMITTED, 'entra-live', 'user.update.json'));
+const groupCreate = readJson(join(COMMITTED, 'entra-live', 'group.create.json'));
 const workloadObservedAt = Date.parse(readJson(join(COMMITTED, 'sharepoint-live-acceptance.json')).observedAt);
-const fresh = new Date(Math.max(Date.parse(userUpdate.observedAt), workloadObservedAt) + 24 * 60 * 60 * 1000);
+const fresh = new Date(Math.max(Date.parse(userUpdate.observedAt), Date.parse(groupCreate.observedAt), workloadObservedAt) + 24 * 60 * 60 * 1000);
 const op = (records, resourceType, operation) => records.operations.find((r) => r.resourceType === resourceType && r.operation === operation);
 
 test('a record signed with the configured key, on the test tenant and fresh, is live', () => {
@@ -63,7 +64,8 @@ test('a record signed with the configured key, on the test tenant and fresh, is 
 });
 
 test('a signed record of a write that failed its live run is not live', () => {
-  const dir = resignedCopy('failed-write');
+  // The committed group create is a verified rerun (Q51); this copy keeps the run-2 outcome.
+  const dir = resignedCopy('failed-write', { edit: (record) => (record.resourceType === 'group' ? { ...record, outcome: 'failed' } : record) });
   const records = loadLiveRecords({ dir, hmacKey: KEY, tenantRef: TEST_TENANT, now: fresh });
   const group = op(records, 'group', 'create');
   assert.equal(group.live, false);
@@ -82,6 +84,23 @@ test('a record with a sibling demotion is never live, however well it verifies (
   assert.match(user.failures.join(';'), /user\.update\.demotion\.json demotes this write/);
   assert.equal(user.reason, 'a later review withdrew this write from live');
   assert.equal(withLiveRecords(capabilitySummaryFor('user'), records).operations.update.claim, 'fixture-tested');
+});
+
+test('a record observed after its demotion is the verified rerun, and is checked as usual (#148)', () => {
+  const dir = resignedCopy('rerun');
+  const demotion = readJson(join(COMMITTED, 'entra-live', 'group.create.demotion.json'));
+  const at = (offsetMs) => new Date(Date.parse(userUpdate.observedAt) + offsetMs).toISOString();
+  writeJson(join(dir, 'entra-live', 'user.update.demotion.json'), { ...demotion, resourceType: 'user', operation: 'update', decidedAt: at(-60 * 1000) });
+  const rerun = op(loadLiveRecords({ dir, hmacKey: KEY, tenantRef: TEST_TENANT, now: fresh }), 'user', 'update');
+  assert.equal(rerun.live, true, rerun.failures.join('; '));
+
+  // At the same instant, or with no readable date, the demotion still decides.
+  for (const decidedAt of [at(0), 'not a date']) {
+    writeJson(join(dir, 'entra-live', 'user.update.demotion.json'), { ...demotion, resourceType: 'user', operation: 'update', decidedAt });
+    const user = op(loadLiveRecords({ dir, hmacKey: KEY, tenantRef: TEST_TENANT, now: fresh }), 'user', 'update');
+    assert.equal(user.live, false, decidedAt);
+    assert.match(user.failures.join(';'), /user\.update\.demotion\.json demotes this write/);
+  }
 });
 
 test('without a key nothing is live and the reason says so', () => {

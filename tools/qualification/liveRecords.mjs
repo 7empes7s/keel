@@ -13,9 +13,11 @@
  * Nothing here promotes a claim or writes a file. A record that does not verify
  * (no key, bad signature, another tenant, older than 30 days) is reported as not
  * live, with the checker's own failures and one plain-English reason. An Entra
- * record with a sibling `<stem>.demotion.json` is never live, however well it
- * verifies: the demotion is the later, overriding decision (issue #294, the same
- * rule as entraLive.mjs applyCommittedEvidence).
+ * record with a sibling `<stem>.demotion.json` dated at or after it is never
+ * live, however well it verifies: the demotion is the later, overriding decision
+ * (issue #294). A record observed after its demotion is the verified rerun and
+ * is checked as usual (entraLive.mjs decidingDemotion, shared with
+ * applyCommittedEvidence).
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,7 +25,7 @@ import { join } from 'node:path';
 import { LIVE_EVIDENCE_MAX_AGE_MS } from '../../engine/coverage/capabilities.mjs';
 import { classifyLiveRecord } from '../release/acceptanceLedger.mjs';
 import { DEFAULT_MAX_AGE_HOURS } from '../release/qualification.mjs';
-import { verifyRecord } from './entraLive.mjs';
+import { decidingDemotion, verifyRecord } from './entraLive.mjs';
 import { EXCHANGE_LIVE_GATE } from './exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE } from './onedrivePurviewAcceptance.mjs';
 import { SHAREPOINT_LIVE_GATE } from './sharepointAcceptance.mjs';
@@ -78,10 +80,10 @@ function entraRecords(dir, { hmacKey, tenantRef, now, missingKeyReason }) {
     .sort()
     .map((file) => {
       const record = readJson(join(dir, file));
-      const demotion = file.replace(/\.json$/, '.demotion.json');
+      const demotion = decidingDemotion(dir, file, record);
       const capturePath = join(dir, file.replace(/\.json$/, '.capture.json'));
       const captureLog = existsSync(capturePath) ? readFileSync(capturePath, 'utf8') : '';
-      const result = existsSync(join(dir, demotion))
+      const result = demotion
         ? { ok: false, failures: [`${demotion} demotes this write, so it is not promoted`] }
         : record
         ? verifyRecord(record, { hmacKey, captureLog, now, tenantRef })

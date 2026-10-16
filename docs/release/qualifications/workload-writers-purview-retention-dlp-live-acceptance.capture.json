@@ -1,0 +1,171 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "retentionPolicy",
+        "retentionRule",
+        "dlpPolicy",
+        "dlpRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:23.566Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "retentionPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:55.617Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-RetentionCompliancePolicy",
+      "parameters": {
+        "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+        "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+      },
+      "outcome": "failed",
+      "at": "2026-10-16T19:36:03.260Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "[],Write-ErrorMessage"
+      }
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "retentionRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:36:16.986Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-RetentionComplianceRule",
+      "parameters": {
+        "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
+        "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:36:23.410Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "retentionRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:36:33.230Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-RetentionComplianceRule",
+      "parameters": {
+        "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
+        "Comment": "KEEL test fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:36:41.468Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "retentionRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:04.418Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "dlpPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:12.356Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-DlpCompliancePolicy",
+      "parameters": {
+        "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
+        "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:18.658Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "dlpPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:29.660Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-DlpCompliancePolicy",
+      "parameters": {
+        "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
+        "Comment": "KEEL test fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:36.328Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "dlpPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:45.830Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-retention-dlp",
+      "families": [
+        "dlpRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:37:52.854Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-DlpComplianceRule",
+      "parameters": {
+        "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
+        "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+      },
+      "outcome": "failed",
+      "at": "2026-10-16T19:38:04.605Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "Microsoft.PowerShell.Commands.WriteErrorException,Write-ErrorMessage"
+      }
+    }
+  ],
+  "values": {
+    "refusalFamily": "retentionPolicy",
+    "purview.retention-policy.update": {
+      "written": false
+    },
+    "purview.retention-rule.update": {
+      "written": true
+    },
+    "purview.dlp-policy.update": {
+      "written": true
+    },
+    "purview.dlp-rule.update": {
+      "written": false
+    }
+  }
+}

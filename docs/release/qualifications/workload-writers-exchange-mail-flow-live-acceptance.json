@@ -1,0 +1,342 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "0683b638291c74ff768e51c5a53b8354c184faca",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-16T19:35:16.342Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-mail-flow",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": {
+      "collector": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "restorer": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "tenantIdSource": "config"
+    },
+    "tenantWide": false,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-TransportRule",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-TransportRule is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-TransportRule",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-TransportRule does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "mailflow.transport-rule.update",
+        "kind": "update",
+        "method": "Set-TransportRule",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-mailflow-rule",
+        "identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
+        "field": "Comments",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:33:41.669Z",
+        "final": "KEEL test fixture",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-16T19:34:59.442Z",
+        "error": null
+      },
+      {
+        "operationId": "mailflow.inbound-connector.update",
+        "kind": "update",
+        "method": "Set-InboundConnector",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-inbound",
+        "identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
+        "field": "Comment",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:33:41.669Z",
+        "final": "KEEL test fixture",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-16T19:35:16.342Z",
+        "error": null
+      }
+    ],
+    "skipped": [
+      {
+        "family": "outboundConnector",
+        "operationId": "mailflow.outbound-connector.update",
+        "reason": "no KEEL-RT- object of this kind in the tenant"
+      }
+    ],
+    "created": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "transportRule",
+          "inboundConnector",
+          "outboundConnector"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "transportRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-TransportRule",
+        "parameters": {
+          "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
+          "Comments": "KEEL capture 2026-10-16T19:33:41.669Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "transportRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-TransportRule",
+        "parameters": {
+          "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
+          "Comments": "KEEL test fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "transportRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "inboundConnector"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-InboundConnector",
+        "parameters": {
+          "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
+          "Comment": "KEEL capture 2026-10-16T19:33:41.669Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "inboundConnector"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-InboundConnector",
+        "parameters": {
+          "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "inboundConnector"
+        ],
+        "outcome": "ok"
+      }
+    ],
+    "captureLogSha256": "c5bc8087afd12e57d4aa980b5e0c827a30b080724544f2b0bd88832978bbbc9e"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-exchange-mail-flow-live-acceptance.capture.json",
+      "sha256": "c5bc8087afd12e57d4aa980b5e0c827a30b080724544f2b0bd88832978bbbc9e"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "1347c84fe07f750ad2c307c9f687e9c89e74e454459e8d1e33b06224afc755c6"
+    }
+  }
+}

@@ -1,0 +1,421 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-writers-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "0683b638291c74ff768e51c5a53b8354c184faca",
+  "operation": "workload.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-16T19:38:23.004Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "purview-retention-dlp",
+    "directoryTenantId": "dc25faa0-fbfe-8104-958d-41b90a49f5d8",
+    "organization": {
+      "collector": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "restorer": {
+        "tenantId": null,
+        "name": "ta036f59837f.onmicrosoft.com"
+      },
+      "tenantIdSource": "config"
+    },
+    "tenantWide": false,
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "APIConnectors.Read.All",
+          "AccessReview.Read.All",
+          "AdministrativeUnit.Read.All",
+          "Agreement.Read.All",
+          "Application.Read.All",
+          "AuditLog.Read.All",
+          "CustomAuthenticationExtension.Read.All",
+          "CustomSecAttributeDefinition.Read.All",
+          "DeviceManagementApps.Read.All",
+          "DeviceManagementConfiguration.Read.All",
+          "DeviceManagementManagedDevices.Read.All",
+          "DeviceManagementRBAC.Read.All",
+          "DeviceManagementScripts.Read.All",
+          "DeviceManagementServiceConfig.Read.All",
+          "Directory.Read.All",
+          "Domain.Read.All",
+          "EntitlementManagement.Read.All",
+          "Exchange.ManageAsApp",
+          "ExternalConnection.Read.All",
+          "Group.Read.All",
+          "GroupMember.Read.All",
+          "IdentityProvider.Read.All",
+          "IdentityRiskEvent.Read.All",
+          "IdentityUserFlow.Read.All",
+          "InformationProtectionPolicy.Read.All",
+          "LifecycleWorkflows.Read.All",
+          "MailboxSettings.Read",
+          "MultiTenantOrganization.Read.All",
+          "Organization.Read.All",
+          "Place.Read.All",
+          "Policy.Read.All",
+          "Policy.Read.PermissionGrant",
+          "Printer.Read.All",
+          "Reports.Read.All",
+          "RoleManagement.Read.All",
+          "RoleManagement.Read.Directory",
+          "SecurityEvents.Read.All",
+          "ServiceHealth.Read.All",
+          "SharePointTenantSettings.Read.All",
+          "Sites.FullControl.All",
+          "Sites.Read.All",
+          "Team.ReadBasic.All",
+          "TeamMember.Read.All",
+          "TeamSettings.Read.All",
+          "TeamworkTag.Read.All",
+          "TermStore.Read.All",
+          "User.Read.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Exchange Administrator",
+          "Global Reader",
+          "Read-Only Intune Operator",
+          "Security Reader",
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "AccessReview.ReadWrite.All",
+          "AdministrativeUnit.ReadWrite.All",
+          "Application.ReadWrite.All",
+          "Channel.Create",
+          "Channel.ReadBasic.All",
+          "ChannelMember.ReadWrite.All",
+          "ChannelSettings.ReadWrite.All",
+          "DeviceManagementApps.ReadWrite.All",
+          "DeviceManagementConfiguration.ReadWrite.All",
+          "DeviceManagementManagedDevices.ReadWrite.All",
+          "DeviceManagementRBAC.ReadWrite.All",
+          "DeviceManagementServiceConfig.ReadWrite.All",
+          "Directory.ReadWrite.All",
+          "Domain.ReadWrite.All",
+          "EntitlementManagement.ReadWrite.All",
+          "Exchange.ManageAsApp",
+          "Files.ReadWrite.All",
+          "Group.ReadWrite.All",
+          "IdentityProvider.ReadWrite.All",
+          "MailboxSettings.ReadWrite",
+          "Organization.ReadWrite.All",
+          "Policy.Read.All",
+          "Policy.ReadWrite.AccessReview",
+          "Policy.ReadWrite.ApplicationConfiguration",
+          "Policy.ReadWrite.AuthenticationFlows",
+          "Policy.ReadWrite.AuthenticationMethod",
+          "Policy.ReadWrite.Authorization",
+          "Policy.ReadWrite.B2BManagementPolicy",
+          "Policy.ReadWrite.ConditionalAccess",
+          "Policy.ReadWrite.ConsentRequest",
+          "Policy.ReadWrite.CrossTenantAccess",
+          "Policy.ReadWrite.CrossTenantCapability",
+          "Policy.ReadWrite.DeviceConfiguration",
+          "Policy.ReadWrite.ExternalIdentities",
+          "Policy.ReadWrite.FeatureRollout",
+          "Policy.ReadWrite.FedTokenValidation",
+          "Policy.ReadWrite.IdentityProtection",
+          "Policy.ReadWrite.PermissionGrant",
+          "Policy.ReadWrite.Recovery",
+          "Policy.ReadWrite.SecurityDefaults",
+          "Policy.ReadWrite.TrustFramework",
+          "RecordsManagement.ReadWrite.All",
+          "RoleManagement.ReadWrite.CloudPC",
+          "RoleManagement.ReadWrite.Defender",
+          "RoleManagement.ReadWrite.Directory",
+          "RoleManagement.ReadWrite.Exchange",
+          "SecurityAlert.ReadWrite.All",
+          "SecurityIncident.ReadWrite.All",
+          "SharePointTenantSettings.ReadWrite.All",
+          "Sites.Create.All",
+          "Sites.FullControl.All",
+          "Tasks.ReadWrite.All",
+          "Team.ReadBasic.All",
+          "TeamMember.ReadWrite.All",
+          "TeamSettings.ReadWrite.All",
+          "TermStore.ReadWrite.All",
+          "User.ReadWrite.All"
+        ],
+        "roles": [
+          "Compliance Administrator",
+          "Compliance Data Administrator",
+          "Exchange Administrator",
+          "Intune Administrator",
+          "Knowledge Administrator",
+          "Security Administrator",
+          "SharePoint Administrator",
+          "Teams Administrator"
+        ]
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-RetentionCompliancePolicy",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-RetentionCompliancePolicy is not a workload write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-RetentionCompliancePolicy",
+        "parameter": "Force",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-RetentionCompliancePolicy does not take Force from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "purview.retention-policy.update",
+        "kind": "update",
+        "method": "Set-RetentionCompliancePolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-retention",
+        "identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+        "field": "Comment",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "final": null,
+        "contentEffects": [],
+        "ok": false,
+        "readBackVerified": false,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-16T19:36:16.985Z",
+        "error": "Set-RetentionCompliancePolicy failed: Set-RetentionCompliancePolicy: |Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
+      },
+      {
+        "operationId": "purview.retention-rule.update",
+        "kind": "update",
+        "method": "Set-RetentionComplianceRule",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-retention-rule",
+        "identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
+        "field": "Comment",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "final": "KEEL test fixture",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-16T19:37:12.355Z",
+        "error": null
+      },
+      {
+        "operationId": "purview.dlp-policy.update",
+        "kind": "update",
+        "method": "Set-DlpCompliancePolicy",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-dlp",
+        "identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
+        "field": "Comment",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "final": "KEEL test fixture",
+        "contentEffects": [],
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-16T19:37:52.854Z",
+        "error": null
+      },
+      {
+        "operationId": "purview.dlp-rule.update",
+        "kind": "update",
+        "method": "Set-DlpComplianceRule",
+        "version": "3.10.1",
+        "synthetic": false,
+        "scope": "fixture",
+        "fixture": "KEEL-RT-dlp-rule",
+        "identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
+        "field": "Comment",
+        "type": "text",
+        "before": "KEEL test fixture",
+        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "final": null,
+        "contentEffects": [],
+        "ok": false,
+        "readBackVerified": false,
+        "restoredToOriginal": false,
+        "capturedAt": "2026-10-16T19:38:23.004Z",
+        "error": "Set-DlpComplianceRule failed: Set-DlpComplianceRule: A server side error has occurred because of which the operation could not be completed. Please try again after some time. If the problem still persists, please reach out to MS support."
+      }
+    ],
+    "skipped": [],
+    "created": [],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionPolicy",
+          "retentionRule",
+          "dlpPolicy",
+          "dlpRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-RetentionCompliancePolicy",
+        "parameters": {
+          "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
+          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "[],Write-ErrorMessage"
+        }
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-RetentionComplianceRule",
+        "parameters": {
+          "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
+          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-RetentionComplianceRule",
+        "parameters": {
+          "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "retentionRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-DlpCompliancePolicy",
+        "parameters": {
+          "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
+          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-DlpCompliancePolicy",
+        "parameters": {
+          "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
+          "Comment": "KEEL test fixture"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "purview-retention-dlp",
+        "families": [
+          "dlpRule"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-DlpComplianceRule",
+        "parameters": {
+          "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
+          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "Microsoft.PowerShell.Commands.WriteErrorException,Write-ErrorMessage"
+        }
+      }
+    ],
+    "captureLogSha256": "19b705d8f4a28b7f2cecbef9da02f8b6479b9b4878792fc1a228dedb6072bd89"
+  },
+  "proof": {
+    "artifact": {
+      "path": "workload-writers-purview-retention-dlp-live-acceptance.capture.json",
+      "sha256": "19b705d8f4a28b7f2cecbef9da02f8b6479b9b4878792fc1a228dedb6072bd89"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "65480572069f50dc7de1783f71d3d1c2d8200762bfda229a6a0b42cc63f0bff8"
+    }
+  }
+}

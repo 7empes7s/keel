@@ -1,0 +1,66 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "purview-governance",
+      "families": [
+        "retentionLabel"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:38:30.035Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-governance",
+      "families": [
+        "retentionLabel"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:38:38.279Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-ComplianceTag",
+      "parameters": {
+        "Identity": "7c28fd0e-98f6-811e-b725-f1605267ef23",
+        "Comment": "KEEL capture 2026-10-16T19:38:30.035Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:38:45.185Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-governance",
+      "families": [
+        "retentionLabel"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:38:52.380Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-ComplianceTag",
+      "parameters": {
+        "Identity": "7c28fd0e-98f6-811e-b725-f1605267ef23",
+        "Comment": "KEEL test fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:39:00.986Z"
+    },
+    {
+      "credential": "collector",
+      "read": "purview-governance",
+      "families": [
+        "retentionLabel"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:39:21.243Z"
+    }
+  ],
+  "values": {
+    "refusalFamily": "retentionLabel",
+    "purview.retention-label.update": {
+      "written": true
+    }
+  }
+}

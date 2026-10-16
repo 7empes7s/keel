@@ -27,7 +27,7 @@
         "defenderForOffice"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T20:00:21.474Z"
+      "at": "2026-10-16T09:16:17.294Z"
     },
     {
       "credential": "collector",
@@ -36,17 +36,17 @@
         "connectionFilterPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T20:01:26.122Z"
+      "at": "2026-10-16T09:17:25.462Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-HostedConnectionFilterPolicy",
       "parameters": {
         "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-        "AdminDisplayName": "KEEL capture 2026-10-15T20:00:21.474Z"
+        "AdminDisplayName": "KEEL capture 2026-10-16T09:16:17.294Z"
       },
       "outcome": "ok",
-      "at": "2026-10-15T20:01:29.250Z"
+      "at": "2026-10-16T09:17:28.534Z"
     },
     {
       "credential": "collector",
@@ -55,7 +55,7 @@
         "connectionFilterPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T20:01:33.764Z"
+      "at": "2026-10-16T09:17:32.110Z"
     },
     {
       "credential": "restorer",
@@ -65,7 +65,7 @@
         "AdminDisplayName": ""
       },
       "outcome": "ok",
-      "at": "2026-10-15T20:01:36.811Z"
+      "at": "2026-10-16T09:17:35.270Z"
     },
     {
       "credential": "collector",
@@ -74,7 +74,7 @@
         "connectionFilterPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T20:01:40.075Z"
+      "at": "2026-10-16T09:17:38.567Z"
     },
     {
       "credential": "collector",
@@ -83,21 +83,45 @@
         "globalQuarantineSettings"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T20:01:43.070Z"
+      "at": "2026-10-16T09:17:41.761Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-QuarantinePolicy",
       "parameters": {
-        "Identity": "DefaultGlobalPolicy",
+        "Identity": "DefaultGlobalTag",
         "OrganizationBrandingEnabled": true
       },
-      "outcome": "failed",
-      "at": "2026-10-15T20:01:46.111Z",
-      "error": {
-        "code": "CMDLET_ERROR",
-        "errorId": "[],Write-ErrorMessage"
-      }
+      "outcome": "ok",
+      "at": "2026-10-16T09:17:44.901Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "globalQuarantineSettings"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T09:17:48.464Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-QuarantinePolicy",
+      "parameters": {
+        "Identity": "DefaultGlobalTag",
+        "OrganizationBrandingEnabled": false
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T09:17:51.563Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-extended",
+      "families": [
+        "globalQuarantineSettings"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T09:17:55.023Z"
     }
   ],
   "values": {
@@ -106,7 +130,7 @@
       "written": true
     },
     "exchange-extended.quarantine-global-settings.update": {
-      "written": false
+      "written": true
     }
   }
 }

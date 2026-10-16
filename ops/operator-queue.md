@@ -4406,3 +4406,22 @@ item that needs it stays untouched.
   4. Store read-back per workload (rows / bytes) and sync-key counts, compared with the Q62 Run A read-back.
   5. Anything else in the worker log for that run that looks wrong (errors, retries, timeouts).
 - **Report:** in this Result. If a workload failed, also open an `operator-report` issue for it (one per distinct bug).
+
+### Q92: Retry the global quarantine settings write after the global settings were saved in Defender (issue #339; no-change probe)
+- Drafted by the "Quarantine global pipe" thread (2026-10-16). At 09:02Z the human operator opened Defender > Quarantine policies >
+  Global settings and saved once with no change. This retries Q89 and Q90 to see whether the object is now settable, and which form works.
+- Needs: nothing. Restorer via `/etc/keel/exchange-restorer.json`, image `keel-powershell:latest`. Steps 2-4 mount `/opt/keel-live/ops/powershell`
+  over /app as in Q89. Step 5 mounts the branch scripts as in Q90 (`git fetch origin claude/project-thread-yw9qlk && mkdir -p /tmp/keel-q92 &&
+  git archive 247842d ops/powershell | tar -x -C /tmp/keel-q92`, mounted at /app), because only that branch can pipe.
+- Status: todo
+- Do (test tenant only; one tenant-wide object, every Set- writes back the value step 1 read):
+  1. Get-QuarantinePolicy `{"QuarantinePolicyType":"GlobalQuarantinePolicy"}`: report `ok`, the object count, and `Name`, `Identity` (org masked),
+     `WhenChangedUTC` and `OrganizationBrandingEnabled`.
+  2. Set-QuarantinePolicy `{"Identity":"DefaultGlobalTag","OrganizationBrandingEnabled":<value from step 1>}`.
+  3. The same with `"Identity":"<the Name from step 1>"`.
+  4. The same with `"Identity":"<the full Identity from step 1>"`.
+  5. The piped form from Q90: `{"cmdlet":"Set-QuarantinePolicy","parameters":{"OrganizationBrandingEnabled":<value>},"pipeFrom":"global-quarantine-settings",...}`.
+  6. Repeat step 1 and confirm `OrganizationBrandingEnabled` is unchanged.
+  Run every step even if an earlier one succeeds. If any Set- writes a value other than the one step 1 read, put it back. Remove /tmp/keel-q92 afterwards.
+- **Report:** for steps 2-5, `ok` and, on failure, the message and `errorId` verbatim (org masked as `<org>`). For steps 1 and 6, the values above.
+  Then comment the findings on issue #339 as keel-operator.

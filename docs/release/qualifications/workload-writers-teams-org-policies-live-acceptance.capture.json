@@ -13,31 +13,40 @@
         "guestCallingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:38:54.916Z"
+      "at": "2026-10-16T09:05:02.061Z"
+    },
+    {
+      "credential": "collector",
+      "read": "teams-org-policies",
+      "families": [
+        "meetingPolicy"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T09:05:27.348Z"
     },
     {
       "credential": "restorer",
-      "cmdlet": "New-CsTeamsMeetingPolicy",
+      "cmdlet": "Set-CsTeamsMeetingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-223d6cda",
-        "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+        "Identity": "Tag:KEEL-RT-meeting",
+        "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
       },
       "outcome": "denied",
-      "at": "2026-10-15T18:39:21.629Z",
+      "at": "2026-10-16T09:05:30.936Z",
       "error": {
         "code": "CMDLET_ERROR",
-        "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.NewTeamsMeetingPolicyCmdlet"
+        "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.SetTeamsMeetingPolicyCmdlet"
       }
     },
     {
       "credential": "restorer",
       "cmdlet": "New-CsTeamsMessagingPolicy",
       "parameters": {
-        "Identity": "KEEL-RT-capture-c36cf4b1",
-        "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+        "Identity": "KEEL-RT-capture-368138eb",
+        "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:39:26.029Z"
+      "at": "2026-10-16T09:05:34.935Z"
     },
     {
       "credential": "collector",
@@ -46,7 +55,7 @@
         "messagingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:39:30.513Z"
+      "at": "2026-10-16T09:05:42.407Z"
     },
     {
       "credential": "collector",
@@ -55,26 +64,17 @@
         "messagingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:39:34.207Z"
-    },
-    {
-      "credential": "collector",
-      "read": "teams-org-policies",
-      "families": [
-        "messagingPolicy"
-      ],
-      "outcome": "ok",
-      "at": "2026-10-15T18:39:37.961Z"
+      "at": "2026-10-16T09:05:45.881Z"
     },
     {
       "credential": "restorer",
       "cmdlet": "Set-CsTeamsMessagingPolicy",
       "parameters": {
         "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
-        "Description": "KEEL capture 2026-10-15T18:38:54.916Z (again)"
+        "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:39:41.869Z"
+      "at": "2026-10-16T09:05:49.284Z"
     },
     {
       "credential": "collector",
@@ -83,7 +83,7 @@
         "messagingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:39:46.262Z"
+      "at": "2026-10-16T09:05:54.145Z"
     },
     {
       "credential": "restorer",
@@ -93,7 +93,7 @@
         "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:39:49.957Z"
+      "at": "2026-10-16T09:05:57.529Z"
     },
     {
       "credential": "collector",
@@ -102,7 +102,7 @@
         "messagingPolicy"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:39:54.313Z"
+      "at": "2026-10-16T09:06:02.352Z"
     },
     {
       "credential": "collector",
@@ -111,7 +111,7 @@
         "clientConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:39:57.908Z"
+      "at": "2026-10-16T09:06:06.407Z"
     },
     {
       "credential": "restorer",
@@ -121,7 +121,7 @@
         "AllowOrganizationTab": false
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:02.046Z"
+      "at": "2026-10-16T09:06:10.053Z"
     },
     {
       "credential": "collector",
@@ -130,7 +130,7 @@
         "clientConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:06.457Z"
+      "at": "2026-10-16T09:06:14.679Z"
     },
     {
       "credential": "restorer",
@@ -140,7 +140,7 @@
         "AllowOrganizationTab": true
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:09.905Z"
+      "at": "2026-10-16T09:06:18.480Z"
     },
     {
       "credential": "collector",
@@ -149,7 +149,7 @@
         "clientConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:13.808Z"
+      "at": "2026-10-16T09:06:22.839Z"
     },
     {
       "credential": "collector",
@@ -158,7 +158,7 @@
         "guestMeetingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:17.249Z"
+      "at": "2026-10-16T09:06:26.411Z"
     },
     {
       "credential": "restorer",
@@ -168,7 +168,7 @@
         "AllowIPVideo": false
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:21.651Z"
+      "at": "2026-10-16T09:06:30.224Z"
     },
     {
       "credential": "collector",
@@ -177,7 +177,7 @@
         "guestMeetingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:25.836Z"
+      "at": "2026-10-16T09:06:34.392Z"
     },
     {
       "credential": "restorer",
@@ -187,7 +187,7 @@
         "AllowIPVideo": true
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:29.276Z"
+      "at": "2026-10-16T09:06:38.068Z"
     },
     {
       "credential": "collector",
@@ -196,7 +196,7 @@
         "guestMeetingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:33.396Z"
+      "at": "2026-10-16T09:06:42.337Z"
     },
     {
       "credential": "collector",
@@ -205,7 +205,7 @@
         "guestMessagingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:36.811Z"
+      "at": "2026-10-16T09:06:46.059Z"
     },
     {
       "credential": "restorer",
@@ -215,7 +215,7 @@
         "AllowUserEditMessage": false
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:40.353Z"
+      "at": "2026-10-16T09:06:50.015Z"
     },
     {
       "credential": "collector",
@@ -224,7 +224,7 @@
         "guestMessagingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:44.077Z"
+      "at": "2026-10-16T09:06:54.004Z"
     },
     {
       "credential": "restorer",
@@ -234,7 +234,7 @@
         "AllowUserEditMessage": true
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:47.613Z"
+      "at": "2026-10-16T09:06:57.453Z"
     },
     {
       "credential": "collector",
@@ -243,7 +243,7 @@
         "guestMessagingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:51.238Z"
+      "at": "2026-10-16T09:07:01.358Z"
     },
     {
       "credential": "collector",
@@ -252,7 +252,7 @@
         "guestCallingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:40:54.627Z"
+      "at": "2026-10-16T09:07:04.779Z"
     },
     {
       "credential": "restorer",
@@ -262,7 +262,7 @@
         "AllowPrivateCalling": false
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:40:58.357Z"
+      "at": "2026-10-16T09:07:08.203Z"
     },
     {
       "credential": "collector",
@@ -271,7 +271,7 @@
         "guestCallingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:41:02.446Z"
+      "at": "2026-10-16T09:07:12.653Z"
     },
     {
       "credential": "restorer",
@@ -281,7 +281,7 @@
         "AllowPrivateCalling": true
       },
       "outcome": "ok",
-      "at": "2026-10-15T18:41:06.246Z"
+      "at": "2026-10-16T09:07:16.204Z"
     },
     {
       "credential": "collector",
@@ -290,11 +290,14 @@
         "guestCallingConfiguration"
       ],
       "outcome": "ok",
-      "at": "2026-10-15T18:41:10.281Z"
+      "at": "2026-10-16T09:07:20.213Z"
     }
   ],
   "values": {
     "refusalFamily": "meetingPolicy",
+    "teams.meeting-policy.update": {
+      "written": false
+    },
     "teams.messaging-policy.update": {
       "written": true
     },

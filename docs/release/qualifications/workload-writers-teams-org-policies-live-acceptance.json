@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "2235fb349c9139aac024aac742be5dbcdbdc4672",
+  "build": "244756bdc2aab76a0da9f961e01a448bad00f805",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-15T18:41:14.022Z",
+  "observedAt": "2026-10-16T09:07:23.697Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -16,7 +16,7 @@
     "execution": {
       "transport": "powershell-cmdlet-job",
       "module": "MicrosoftTeams",
-      "moduleVersion": "3.10.1"
+      "moduleVersion": "7.9.0"
     },
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
@@ -171,52 +171,52 @@
     },
     "writes": [
       {
-        "operationId": "teams.meeting-policy.add",
-        "kind": "add",
-        "method": "New-CsTeamsMeetingPolicy",
-        "version": "3.10.1",
+        "operationId": "teams.meeting-policy.update",
+        "kind": "update",
+        "method": "Set-CsTeamsMeetingPolicy",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-223d6cda",
-        "identity": "KEEL-RT-capture-223d6cda",
+        "fixture": "KEEL-RT-meeting",
+        "identity": "Tag:KEEL-RT-meeting",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-10-15T18:38:54.916Z",
+        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
         "final": null,
         "contentEffects": [],
         "ok": false,
         "readBackVerified": false,
         "restoredToOriginal": false,
-        "capturedAt": "2026-10-15T18:39:26.029Z",
-        "error": "New-CsTeamsMeetingPolicy failed: New-CsTeamsMeetingPolicy: {\"code\":\"Forbidden\",\"message\":\"You are not authorized to perform this action\",\"action\":\"Please refer to documentation. CorrelationId: 1535f1a2-b738-87dc-aec8-865a03f30fad\",\"errorCode\":40301}"
+        "capturedAt": "2026-10-16T09:05:34.935Z",
+        "error": "Set-CsTeamsMeetingPolicy failed: Set-CsTeamsMeetingPolicy: {\"code\":\"Forbidden\",\"message\":\"You are not authorized to perform this action\",\"action\":\"Please refer to documentation. CorrelationId: 498b6dce-5db6-8ee4-8a0b-ac6e17f575a6\",\"errorCode\":40301}"
       },
       {
         "operationId": "teams.messaging-policy.add",
         "kind": "add",
         "method": "New-CsTeamsMessagingPolicy",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-c36cf4b1",
-        "identity": "KEEL-RT-capture-c36cf4b1",
+        "fixture": "KEEL-RT-capture-368138eb",
+        "identity": "KEEL-RT-capture-368138eb",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-10-15T18:38:54.916Z",
-        "final": "KEEL capture 2026-10-15T18:38:54.916Z",
+        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
+        "final": "KEEL capture 2026-10-16T09:05:02.061Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-10-15T18:39:34.207Z",
+        "capturedAt": "2026-10-16T09:05:45.880Z",
         "error": null
       },
       {
         "operationId": "teams.messaging-policy.update",
         "kind": "update",
         "method": "Set-CsTeamsMessagingPolicy",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
         "fixture": "KEEL-RT-capture-c36cf4b1",
@@ -224,20 +224,20 @@
         "field": "Description",
         "type": "text",
         "before": "KEEL capture 2026-10-15T18:38:54.916Z",
-        "target": "KEEL capture 2026-10-15T18:38:54.916Z (again)",
+        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
         "final": "KEEL capture 2026-10-15T18:38:54.916Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T18:39:57.908Z",
+        "capturedAt": "2026-10-16T09:06:06.406Z",
         "error": null
       },
       {
         "operationId": "teams.client-configuration.update",
         "kind": "update",
         "method": "Set-CsTeamsClientConfiguration",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "tenant-wide",
         "fixture": "Global",
@@ -251,14 +251,14 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T18:40:17.249Z",
+        "capturedAt": "2026-10-16T09:06:26.411Z",
         "error": null
       },
       {
         "operationId": "teams.guest-meeting-configuration.update",
         "kind": "update",
         "method": "Set-CsTeamsGuestMeetingConfiguration",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "tenant-wide",
         "fixture": "Global",
@@ -272,14 +272,14 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T18:40:36.811Z",
+        "capturedAt": "2026-10-16T09:06:46.058Z",
         "error": null
       },
       {
         "operationId": "teams.guest-messaging-configuration.update",
         "kind": "update",
         "method": "Set-CsTeamsGuestMessagingConfiguration",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "tenant-wide",
         "fixture": "Global",
@@ -293,14 +293,14 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T18:40:54.627Z",
+        "capturedAt": "2026-10-16T09:07:04.779Z",
         "error": null
       },
       {
         "operationId": "teams.guest-calling-configuration.update",
         "kind": "update",
         "method": "Set-CsTeamsGuestCallingConfiguration",
-        "version": "3.10.1",
+        "version": "7.9.0",
         "synthetic": false,
         "scope": "tenant-wide",
         "fixture": "Global",
@@ -314,16 +314,11 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T18:41:14.022Z",
+        "capturedAt": "2026-10-16T09:07:23.697Z",
         "error": null
       }
     ],
     "skipped": [
-      {
-        "family": "meetingPolicy",
-        "operationId": "teams.meeting-policy.update",
-        "reason": "no KEEL-RT- object of this kind in the tenant"
-      },
       {
         "family": "federationConfiguration",
         "operationId": "teams.federation-configuration.update",
@@ -334,7 +329,7 @@
     "created": [
       {
         "family": "messagingPolicy",
-        "name": "KEEL-RT-capture-c36cf4b1"
+        "name": "KEEL-RT-capture-368138eb"
       }
     ],
     "requests": [
@@ -353,33 +348,33 @@
         "outcome": "ok"
       },
       {
+        "credential": "collector",
+        "read": "teams-org-policies",
+        "families": [
+          "meetingPolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
         "credential": "restorer",
-        "cmdlet": "New-CsTeamsMeetingPolicy",
+        "cmdlet": "Set-CsTeamsMeetingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-223d6cda",
-          "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+          "Identity": "Tag:KEEL-RT-meeting",
+          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
         },
         "outcome": "denied",
         "error": {
           "code": "CMDLET_ERROR",
-          "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.NewTeamsMeetingPolicyCmdlet"
+          "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.SetTeamsMeetingPolicyCmdlet"
         }
       },
       {
         "credential": "restorer",
         "cmdlet": "New-CsTeamsMessagingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-c36cf4b1",
-          "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+          "Identity": "KEEL-RT-capture-368138eb",
+          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
         },
-        "outcome": "ok"
-      },
-      {
-        "credential": "collector",
-        "read": "teams-org-policies",
-        "families": [
-          "messagingPolicy"
-        ],
         "outcome": "ok"
       },
       {
@@ -403,7 +398,7 @@
         "cmdlet": "Set-CsTeamsMessagingPolicy",
         "parameters": {
           "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
-          "Description": "KEEL capture 2026-10-15T18:38:54.916Z (again)"
+          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
         },
         "outcome": "ok"
       },
@@ -601,16 +596,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "766470938af74c78d28e81fd3224e356d9a12f2f7346da7e6fcab5bbd4b542b4"
+    "captureLogSha256": "9655162aa6a88d3a690d6bbf7ed1a9c6a359c1e5af28c7a706920facd008c425"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-teams-org-policies-live-acceptance.capture.json",
-      "sha256": "766470938af74c78d28e81fd3224e356d9a12f2f7346da7e6fcab5bbd4b542b4"
+      "sha256": "9655162aa6a88d3a690d6bbf7ed1a9c6a359c1e5af28c7a706920facd008c425"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "cbac8e66c1be43e238b3e025204a490d09a204b55142b80450afc0f750f97795"
+      "signature": "62be69a0cd026d60e58867f6011828fb45c6497d292055d5bef6921df7aa6882"
     }
   }
 }

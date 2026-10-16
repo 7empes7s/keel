@@ -18,14 +18,18 @@ import { ApprovalInbox } from "@/components/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
 import { IntegrationConsole } from "@/components/integration-console";
 import { ActivityTimeline, IntegrityNote, activityVerdict, mergeActivity } from "@/components/activity-timeline";
-import { BaselineRegister } from "@/components/baseline-register";
+import { ApprovedSetup } from "@/components/baselines/approved-setup";
+import { RecentWork } from "@/components/baselines/recent-work";
+import { BaselinesStyles } from "@/components/baselines/styles";
+import { ChangeList } from "@/components/baselines/change-list";
+import { CreateWizard } from "@/components/baselines/create-wizard";
+import { quickComparisons, setupStatus, setupVerdict as approvedVerdict } from "@/lib/baselines-view";
+import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
 import { PrincipalDetails } from "@/components/principal-details";
 import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@/components/policy-state";
 import { usePathname } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
-import { DriftTable } from "@/components/drift-table";
-import { BaselineContext } from "@/components/baseline-context";
 import { changesVerdict } from "@/lib/changes-view";
 import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail, jobVerdict } from "@/components/job-detail";
@@ -37,7 +41,7 @@ import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
 import { ComplianceReport } from "@/components/compliance-report";
-import { baselinesVerdict, complianceVerdict } from "@/lib/compliance-view";
+import { complianceVerdict } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { notificationsVerdict } from "@/lib/notifications-view";
@@ -447,7 +451,11 @@ const BASELINES: BaselineRecord[] = [
   { id: "b1160000-0000-4000-8000-000000000116", label: "Before migration", description: null, setAt: "2026-08-20T10:00:00Z", setBy: "scheduler", setByRef: { kind: "person", id: "scheduler", name: "scheduler", href: null }, active: false, resourceCount: 4502,
     version: 1, supersedesId: null, supersededById: "b1170000-0000-4000-8000-000000000117", supersededAt: "2026-09-01T09:00:00Z", capture: CAPTURED("2026-08-20T09:30:00Z", null, "legacy-resource-versions"), changesSinceCapture: COMPARED(44, 12, 3) },
 ];
-const CAPTURE_SOURCES = [{ id: "0b5e0000-0000-4000-8000-0000000000d6", completedAt: "2026-10-02T09:12:00Z" }];
+const CAPTURE_SOURCES = [
+  { id: "0b5e0000-0000-4000-8000-0000000000d6", startedAt: "2026-10-02T09:00:00Z", completedAt: "2026-10-02T09:12:00Z", resourceCount: 4840 },
+  { id: "0b5e0000-0000-4000-8000-0000000000d5", startedAt: "2026-10-01T09:00:00Z", completedAt: "2026-10-01T09:11:00Z", resourceCount: 4838 },
+  { id: "0b5e0000-0000-4000-8000-0000000000c8", startedAt: "2026-09-29T13:30:00Z", completedAt: "2026-09-29T13:40:00Z", resourceCount: 4812 },
+];
 
 // Roadmap task-87: every finding state the compliance view distinguishes.
 const evidenceWindow = (resourceType: string, startedAt: string, endedAt: string, snapshotId: string | null) => ({
@@ -594,8 +602,8 @@ function ContentEffectsReviewHarness() {
   );
 }
 
-const header = (section: NavSection, title: string, description: string, marker?: string) =>
-  <PageHeader description={description} generatedAt={now} marker={marker} section={section} title={title} />;
+const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }) =>
+  <PageHeader description={description} generatedAt={now} marker={marker} section={section} status={status} title={title} />;
 
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 const ALERTS: DashboardData["alerts"][] = [
@@ -1050,6 +1058,8 @@ const COMPARE_TENANTS: CompareTenant[] = [
   { tenantRef: "sha256:5a1e00000000c0a1", label: "This tenant", own: true, snapshots: [
     { id: CMP_SNAP_NEW, completedAt: "2026-10-02T09:12:00Z", resourceCount: 4812 },
     { id: CMP_SNAP_OLD, completedAt: "2026-10-01T09:10:00Z", resourceCount: 4809 },
+    { id: "c0a10000-0000-4000-8000-000000000005", completedAt: "2026-09-29T13:40:00Z", resourceCount: 4812 },
+    { id: "c0a10000-0000-4000-8000-000000000004", completedAt: "2026-09-25T09:10:00Z", resourceCount: 4790 },
   ] },
   { tenantRef: "sha256:5a1e00000000c0b2", label: "Other tenant 1", own: false, snapshots: [{ id: CMP_SNAP_OTHER, completedAt: "2026-10-02T06:00:00Z", resourceCount: 3120 }] },
 ];
@@ -1131,9 +1141,10 @@ const COMPARE_ACROSS: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS
 
 function comparePage(data: CompareData) {
   const verdict = compareVerdict(data);
-  return <>{header("Baselines", "Compare", "Put two snapshots side by side, or two tenants: settings, workload settings and stored content.")}
+  const own = data.tenants.find((tenant) => tenant.own);
+  return <>{header("Baselines", "Compare", "Put two backups side by side, or two tenants, and see what is different.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><CompareView data={data} /></div></>;
+    <div data-layer="explanation"><CompareView data={data} quick={quickComparisons(own, { label: BASELINES[0].label, capture: BASELINES[0].capture && { ...BASELINES[0].capture, sourceSnapshotId: "c0a10000-0000-4000-8000-000000000005" } })} /></div></>;
 }
 
 // Site permissions audit, gap 2: each SharePoint site's stored permissions.
@@ -1241,11 +1252,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
       const sites = path === "/drift/sites" ? SITE_CHANGES : null;
       const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
-      return <>{header("Baselines", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <BaselineContext baseline={BASELINES[0]} now={now} />
-          <DriftTable capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
         </div>
         {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
     }
@@ -1285,11 +1295,21 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
-    case "/baselines": return <>{header("Baselines", "Baselines", "How the tenant should look: the reference every change is measured against.")}
-      <Verdict text={baselinesVerdict(BASELINES[0], now)} />
+    case "/baselines": {
+      const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
+      const backedUp = COVERAGE.types.filter((type) => type.reportStatus === "covered").map((type) => type.type);
+      return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
+      <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
-        <BaselineRegister baselines={BASELINES} canBaseline now={now} snapshots={CAPTURE_SOURCES} />
-        <JobTable headingId="baseline-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} kicker="Recent" now={now} title="Baseline jobs" />
+        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} sources={CAPTURE_SOURCES} />
+        <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
+      </div></>;
+    }
+    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.")}
+      <Verdict text="Three short steps: pick a backup, name it, then check what will happen." />
+      <div data-layer="explanation">
+        <BaselinesStyles />
+        <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
     case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Baselines", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
       <Verdict text={verdict.text} tone={verdict.tone} />

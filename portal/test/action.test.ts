@@ -26,7 +26,7 @@ import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { GET as showJobRoute } from "@/app/api/jobs/[id]/route";
 import { GET as listJobsRoute } from "@/app/api/jobs/route";
-import { BaselineCreateForm } from "@/components/baseline-create-form";
+import { CreateWizard } from "@/components/baselines/create-wizard";
 import {
   ATTEMPT_EVIDENCE_KIND,
   IDEMPOTENCY_KEY_HEADER,
@@ -223,7 +223,7 @@ function findFormElement(
 // The project does not carry a DOM test dependency; using React's hook dispatcher here
 // keeps this assertion at the form-to-action boundary instead of duplicating the body
 // object in an action-route test.
-function renderBaselineCreateForm() {
+function renderCreateWizard() {
   const internals = (React as unknown as {
     __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: unknown;
   }).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as {
@@ -262,9 +262,10 @@ function renderBaselineCreateForm() {
     render(): FormElement {
       hookIndex = 0;
       contextIndex = 0;
-      return BaselineCreateForm({
+      return CreateWizard({
         completedSnapshotsExist: true,
         disabled: false,
+        today: "2026-09-10",
         snapshots: [
           {
             id: "snapshot-default", completedAt: null, startedAt: "2026-09-10T00:00:00.000Z", resourceCount: 2,
@@ -399,8 +400,8 @@ test("a permitted caller enqueues exactly one job with the right kind and params
   );
 });
 
-test("BaselineCreateForm sends the selected snapshotId through the baseline action", async () => {
-  const form = renderBaselineCreateForm();
+test("the guided create sends the chosen backup through the baseline action", async () => {
+  const form = renderCreateWizard();
   const originalFetch = globalThis.fetch;
   let actionRequest: Request | undefined;
   let actionResponse: Promise<Response> | undefined;
@@ -422,30 +423,36 @@ test("BaselineCreateForm sends the selected snapshotId through the baseline acti
       return actionResponse;
     };
 
-    let rendered = form.render();
-    const select = findFormElement(rendered, (element) => element.type === "select");
-    assert.ok(select, "the browser form exposes its snapshot selector");
-    (select.props.onChange as (event: { target: { value: string } }) => void)({
-      target: { value: "snapshot-selected" },
-    });
+    const hasText = (children: unknown, text: string): boolean =>
+      children === text || (Array.isArray(children) && children.includes(text));
+    const clickButton = (text: string) => {
+      const button = findFormElement(form.render(), (element) => element.type === "button" && hasText(element.props.children, text));
+      assert.ok(button, `the wizard exposes its ${text} button`);
+      (button.props.onClick as () => void)();
+    };
 
-    rendered = form.render();
+    // Step 1: start from an earlier backup and pick it.
+    const source = findFormElement(form.render(), (element) => element.props.label === "Start from");
+    assert.ok(source, "the wizard asks where to start from");
+    (source.props.onChange as (value: string) => void)("earlier");
+    const picker = findFormElement(form.render(), (element) => element.props.label === "Backup");
+    assert.ok(picker, "the wizard exposes its backup picker");
+    (picker.props.onChange as (value: string) => void)("snapshot-selected");
+    clickButton("Next");
+
+    // Step 2: name it.
     const label = findFormElement(
-      rendered,
-      (element) => element.type === "input" && element.props.placeholder === "e.g. post-audit-2026-q3",
+      form.render(),
+      (element) => element.type === "input" && element.props.placeholder === "e.g. After the October audit",
     );
-    assert.ok(label, "the browser form exposes its baseline label input");
+    assert.ok(label, "the wizard exposes its name input");
     (label.props.onChange as (event: { target: { value: string } }) => void)({
       target: { value: "selected recovery point" },
     });
+    clickButton("Next");
 
-    rendered = form.render();
-    const button = findFormElement(
-      rendered,
-      (element) => element.type === "button" && element.props.children === "Create baseline",
-    );
-    assert.ok(button, "the browser form exposes its submit button");
-    (button.props.onClick as () => void)();
+    // Step 3: check, then create.
+    clickButton("Create approved setup");
 
     // submit awaits postAction, whose fetch reaches the actual guarded action route above.
     assert.ok(actionResponse, "submitting the form makes an action request");

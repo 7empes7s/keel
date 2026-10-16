@@ -28,6 +28,7 @@ const PAGES = [
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
   { name: "baselines", hash: "/baselines" },
+  { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },
   { name: "principals", hash: "/principals" },
   { name: "notifications", hash: "/notifications" },
@@ -186,107 +187,202 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await expect(page.locator('[data-layer="verdict"]')).toHaveText("Step 5 of 5: sent to approvers. Nothing changes until one of them approves.");
 });
 
-// Task-131: the roll-back preview says what KEEL would do in words, keeps verbs and
-// waves in the record, and states a refusal as a sentence.
-test("the roll-back preview speaks in words and states a refusal as a sentence", async ({ page }) => {
+// The Changes page: a change opens in a details panel from its name; accept, ignore and
+// undo act on the chosen rows of the shared list.
+async function openChange(page: Page, name: string) {
+  await page.locator(".bl-row-link", { hasText: new RegExp(`^${name}$`) }).click();
+  const sheet = page.getByRole("dialog", { name });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+// Task-131: the undo preview says what Keel would do in words, keeps verbs and waves in
+// the record, and states a refusal as a sentence.
+test("the undo preview speaks in words and states a refusal as a sentence", async ({ page }) => {
   await open(page, "/drift");
   await page.getByLabel("Select Finance (group)").check();
-  await page.getByLabel("Select Block legacy auth (Conditional Access policy)").check();
-  await page.getByRole("button", { name: "Preview roll back" }).click();
-  const preview = page.locator(".remediation-preview");
-  await expect(preview).toContainText("Put the baseline settings back");
+  await page.getByLabel("Select Block legacy auth (sign-in rule)").check();
+  await expect(page.locator(".sel-bar")).toContainText("2 changes selected");
+  await page.locator(".sel-bar").getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("button", { name: "Undo these changes…" }).click();
+  const sheet = page.getByRole("dialog", { name: "Undo 2 changes" });
+  await expect(sheet).toContainText("Applies only to: Block legacy auth (sign-in rule), Finance (group).");
+  await sheet.getByRole("button", { name: "Check what undoing would do" }).click();
+  const preview = sheet.locator(".remediation-preview");
+  await expect(preview).toContainText("Put the approved settings back");
   await expect(preview.locator('[role="alert"]')).toHaveText(/KEEL refused to change Finance \(group\) because it is synced from on-premises Active Directory, which owns it\./);
-  await expect(preview.getByRole("button", { name: "Confirm and request approval" })).toBeDisabled();
+  await expect(sheet.getByRole("button", { name: "Send for approval" })).toBeDisabled();
   const record = preview.locator('[data-layer="record"]');
   await record.locator("summary").click();
   await expect(record).toContainText("Write wave 1");
   await expect(record).toContainText("onPremisesSyncEnabled=true");
-  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+});
+
+// Accepting chosen changes says what it does first, asks why, then takes them off the list.
+test("accepting chosen changes says what it does, asks why, and clears them from the list", async ({ page }) => {
+  await open(page, "/drift");
+  await page.getByLabel("Select Old project team (group)").check();
+  await page.getByRole("checkbox", { name: /^Select Windows baseline/ }).check();
+  await page.locator(".sel-bar").getByRole("button", { name: "Accept 2 changes" }).click();
+  const sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
+  await expect(sheet).toContainText("Nothing in Microsoft 365 changes.");
+  await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
+  await expect(sheet.getByRole("alert")).toContainText("Say why");
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Planned clean-up");
+  await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".bl-row-link", { hasText: /^Old project team$/ })).toHaveCount(0);
+  await expect(page.locator(".bl-tile", { hasText: "All open changes" }).locator(".bl-tile-count")).toHaveText("5");
 });
 
 // Task-91: who made a change, in words, with its evidence kept in the record; a missing
-// audit log is said plainly, and a cross-entity roll back is handed to a central approver.
-test("a change says who made it from the audit log and where a roll back goes", async ({ page }) => {
+// audit log is said plainly, and a cross-entity undo is handed to a central approver.
+test("a change says who made it from the audit log and where an undo goes", async ({ page }) => {
   await open(page, "/drift");
-  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Block legacy auth$/ }) }).getByRole("button", { name: "Show what changed" }).click();
-  const panel = page.locator(".change-attribution");
+  let sheet = await openChange(page, "Block legacy auth");
+  const panel = sheet.locator(".change-attribution");
   await expect(panel.locator(".change-attribution-headline")).toContainText("Confirmed by the Microsoft audit log. Amara Okafor made this change, according to the audit log.");
   await expect(panel.locator(".change-attribution-route")).toHaveText("A roll back goes to a central approver (2 people), because it touches more than one entity.");
-  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = panel.locator('[data-layer="record"]');
   await record.locator("summary").click();
   for (const kept of ["Directory_8f2c1d7a-4b3e-4f61-9a20-1c5d7e9b3a44", "a71ce000-0000-4000-8000-0000000000a7", "c0a10000-0000-4000-8000-0000000000ca", "exact · audit-record-names-resource", "central · cross-entity"]) {
     await expect(record).toContainText(kept);
   }
-  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Finance$/ }) }).getByRole("button", { name: "Show what changed" }).click();
-  await expect(page.locator(".change-attribution-headline")).toContainText("Not known. The audit log for that time is no longer available");
-  await expect(page.locator(".change-attribution-route")).toHaveText("A roll back goes to CREOS approvers (1 person).");
+  // The panel is in the address, closes with Esc and gives focus back to the row.
+  await expect(page).toHaveURL(/open=dr1/);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".bl-row-link", { hasText: /^Block legacy auth$/ })).toBeFocused();
+  sheet = await openChange(page, "Finance");
+  await expect(sheet.locator(".change-attribution-headline")).toContainText("Not known. The audit log for that time is no longer available");
+  await expect(sheet.locator(".change-attribution-route")).toHaveText("A roll back goes to CREOS approvers (1 person).");
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
-// Task-98: a change lists only the settings that change behaviour, grouped by what a roll
-// back can do, links the records a decision rests on and says which ones do not match.
-// The comparison opens from the keyboard, and an unknown earlier value is never a removal.
+// Task-98: a change lists only the settings that change behaviour, grouped by what an
+// undo can do, links the records a decision rests on and says which ones do not match.
+// An unknown earlier value is never a removal.
 test("a change shows its behavioural settings and linked records, and flags mismatches", async ({ page }) => {
   await open(page, "/drift");
-  const workbook = page.locator(".decision-workbook");
-  await expect(workbook.locator("tfoot")).toContainText("All open changes76");
-  await expect(workbook).toContainText("1 change rests on records that do not match each other.");
+  const all = page.locator(".bl-tile", { hasText: "All open changes" });
+  await expect(all.locator(".bl-tile-count")).toHaveText("7");
+  await expect(all).toContainText("Everything that differs from the approved setup");
+  await expect(page.locator(".bl-context")).toContainText("1 change rests on records that do not match each other.");
 
-  const toggle = page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Finance$/ }) }).locator("button.comparison-button");
-  await expect(toggle).toHaveText("Show what changed");
-  await toggle.focus();
+  // The name opens the panel from the keyboard.
+  await page.locator(".bl-row-link", { hasText: /^Finance$/ }).focus();
   await page.keyboard.press("Enter");
-  await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  const diff = page.locator(".semantic-diff");
-  await expect(diff.locator(".semantic-summary")).toHaveText("2 settings differ from the baseline in a way that changes behaviour.");
+  const sheet = page.getByRole("dialog", { name: "Finance" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator(".bl-why")).toContainText("Why it matters");
+  const diff = sheet.locator(".semantic-diff");
+  await expect(diff.locator(".semantic-summary")).toHaveText("2 settings differ from the approved setup in a way that changes behaviour.");
   await expect(diff.getByRole("heading", { name: "Cannot be changed back in place (1)" })).toBeVisible();
   await expect(diff.getByRole("heading", { name: "Changes behaviour (1)" })).toBeVisible();
-  const evidence = page.locator(".decision-evidence");
+  const evidence = sheet.locator(".decision-evidence");
   await expect(evidence.locator(".decision-mismatch-note")).toHaveText("2 records do not match the others. Check before you decide.");
   await expect(evidence.locator(".decision-row-mismatch dt")).toHaveText(["Baseline copy · does not match", "Roll-back plan and result · does not match"]);
   await expect(evidence).toContainText("Owned by CREOS.");
   await expect(evidence).toContainText("A roll-back request is approved. Its job is finished.");
   await expect(evidence).toContainText("It restores from a different backup than the baseline's, so it is not linked to this change. Result: KEEL wrote it back and checked the result.");
-  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = evidence.locator('[data-layer="record"]');
   await record.locator("summary").click();
   for (const kept of ["7f3c0000-0000-4000-8000-000000000011", "a9e10000-0000-4000-8000-000000000100", "0b5e0000-0000-4000-8000-0000000000c8", "mismatch"]) {
     await expect(record).toContainText(kept);
   }
-  // Closing from the keyboard returns the row to its collapsed state.
-  await toggle.focus();
-  await page.keyboard.press("Space");
-  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await sheet.getByRole("button", { name: "Close" }).click();
   await expect(page.locator(".semantic-diff")).toHaveCount(0);
 
-  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^HQ egress$/ }) }).getByRole("button", { name: "Show what changed" }).click();
-  const unknown = page.locator(".semantic-diff");
+  const unknownSheet = await openChange(page, "HQ egress");
+  const unknown = unknownSheet.locator(".semantic-diff");
   await expect(unknown.locator(".semantic-summary")).toHaveText("KEEL did not keep the baseline's copy of this, so the earlier values are not known. Nothing is shown as removed.");
-  await expect(unknown.locator("td[data-label='In the baseline']")).toHaveText(["Not known", "Not known"]);
+  await expect(unknown.locator("td[data-label='Approved']")).toHaveText(["Not known", "Not known"]);
   await expect(unknown.locator(".diff-kind")).toHaveText(["Now set", "Now set"]);
-  await expect(page.locator(".decision-evidence")).toContainText("The baseline holds no copy of this, so KEEL cannot check what it compared against.");
-  await expect(page.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so KEEL cannot check it.");
-  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The baseline holds no copy of this, so KEEL cannot check what it compared against.");
+  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so KEEL cannot check it.");
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
-test("an opened change and the decision summary fit a phone without sideways scrolling", async ({ page }) => {
+test("an opened change and the counts fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/drift", "light");
-  await page.locator("tr.drift-row").filter({ has: page.locator(".resource-name", { hasText: /^Block legacy auth$/ }) }).getByRole("button", { name: "Show what changed" }).click();
-  await expect(page.locator(".decision-evidence")).toContainText("Shared by CREOS and ENOVOS.");
+  const sheet = await openChange(page, "Block legacy auth");
+  await expect(sheet.locator(".decision-evidence")).toContainText("Shared by CREOS and ENOVOS.");
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(await overflow()).toBeLessThanOrEqual(0);
-  // On a phone each linked record stacks its label above its sentence.
-  const row = page.locator(".decision-row").first();
+  // On a phone the panel fills the screen, and each linked record stacks its label above its sentence.
+  const panel = (await page.locator(".bl-sheet").boundingBox())!;
+  expect(panel.width).toBeGreaterThanOrEqual(389);
+  const row = sheet.locator(".decision-row").first();
   const [label, value] = await Promise.all([row.locator("dt").boundingBox(), row.locator("dd").boundingBox()]);
   expect(value!.y).toBeGreaterThan(label!.y);
-  await expect(page.locator(".decision-workbook tfoot")).toBeVisible();
+  // The footer's decisions stay on screen while the panel scrolls.
+  const footer = (await sheet.locator(".bl-sheet-foot").boundingBox())!;
+  expect(footer.y + footer.height).toBeLessThanOrEqual(845);
+  await page.keyboard.press("Escape");
+  // The risk tiles are two by two, of equal height.
+  const tiles = await page.locator(".bl-tile").evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect()).map((rect) => ({ x: Math.round(rect.x), h: Math.round(rect.height) })));
+  expect(new Set(tiles.map((tile) => tile.x)).size).toBe(2);
+  expect(await overflow()).toBeLessThanOrEqual(0);
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
+});
+
+// The shared list on the Changes page: Shift+click picks a range, a service header picks
+// its service, select all picks every change, and a tile filters by risk in the address.
+test("changes · Shift+click range, select a service, select all, filter by risk", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift");
+  const rows = page.locator(".sel-row");
+  await rows.nth(0).locator("input").click();
+  await rows.nth(2).locator(".bl-row-who").click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(3);
+  await expect(page.locator(".sel-bar")).toContainText("3 changes selected");
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+  await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "Select all 1 change in Intune" }).check();
+  await expect(page.locator(".sel-bar")).toContainText("1 change selected");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Select all 7 changes" }).click();
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(7);
+  await page.keyboard.press("Escape");
+  await page.locator(".bl-tile", { hasText: "Could lock out admins" }).click();
+  await expect(page).toHaveURL(/risk=tenant-lockout/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".bl-filter-note")).toContainText("Showing could lock out admins only: 2 of 7.");
+  await page.getByRole("link", { name: "Show every change" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(7);
+});
+
+test("changes · phone: hold a change, then drag over others to select them", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
+  const touchPage = await context.newPage();
+  await touchPage.goto(`${HARNESS}#/drift`);
+  await touchPage.locator('.shell[data-statuses="ready"]').waitFor();
+  const rows = touchPage.locator(".sel-row");
+  await rows.nth(2).scrollIntoViewIfNeeded();
+  const box = async (index: number) => (await rows.nth(index).locator(".bl-row-name small").boundingBox())!;
+  const first = await box(0);
+  const third = await box(2);
+  const client = await context.newCDPSession(touchPage);
+  const point = (x: number, y: number) => [{ x: Math.round(x), y: Math.round(y) }];
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: point(first.x + 20, first.y + 6) });
+  await touchPage.waitForTimeout(650);
+  await expect(touchPage.locator(".sel-row[data-selected]")).toHaveCount(1);
+  for (let step = 1; step <= 6; step += 1) {
+    await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: point(first.x + 20, first.y + 6 + ((third.y - first.y) * step) / 6) });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(touchPage.locator(".sel-row[data-selected]")).toHaveCount(3);
+  await expect(touchPage.locator(".sel-bar")).toContainText("3 changes selected");
+  expect(await touchPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await context.close();
 });
 
 // Q45: a restore planned with the command line carries a content effect. The inbox
@@ -535,6 +631,7 @@ const RECORD_IDS: Record<string, string[]> = {
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   "drift-sites": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "a1e70000-0000-4000-8000-0000000000a5", "site:contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
+  "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "c4e10000-0000-4000-8000-0000000000c3", "d0e10000-0000-4000-8000-0000000000d1", "d0e10000-0000-4000-8000-0000000000d3"],
@@ -766,36 +863,80 @@ test("setup reports the restorer's extra grant as observed", async ({ page }) =>
   await expect(restore.locator(".setup-step-waiting-for-you h3")).toHaveText('Activate your "Privileged Role Administrator" role');
 });
 
-// A record inside a stacked table cell stays in the value column on a phone, an empty
-// cell is not shown, the active-row bar clears the text, and the disclosure triangle is
-// text (iOS otherwise draws the default marker as an emoji).
-test("stacked tables on a phone keep records beside their label and hide empty cells", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/baselines", "light");
-  const row = page.locator(".baselines-table tbody tr.active-row");
-  const nameCell = row.locator("th[data-label='Name']");
-  const name = await nameCell.locator(".baseline-table-label").boundingBox();
-  const summary = await nameCell.locator(".technical-details > summary").boundingBox();
-  expect(name && summary, "name and record are laid out").toBeTruthy();
-  // Below 25rem the cell is one column, so the record sits under the name, aligned with it.
-  expect(Math.abs(summary!.x - name!.x)).toBeLessThan(2);
-  // Task-87: the active row offers "Capture new version"; a superseded version has no
-  // actions, so its empty cell is the one that must not be shown.
-  await expect(row.locator("td[data-label='Actions']")).toBeVisible();
-  await expect(page.locator(".baselines-table tbody tr").last().locator("td[data-label='Actions']")).toBeHidden();
-  expect(await nameCell.evaluate((cell) => getComputedStyle(cell).boxShadow)).toBe("none");
-  expect(await nameCell.locator(".technical-details > summary").evaluate((element) => getComputedStyle(element).listStyleType)).toBe("none");
+// The approved setup page: one card for the setup in use, a card per service with what
+// is in line, changed or not covered, and the earlier setups. Fits a phone and a desktop.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+  test(`the approved setup sums up each service and fits ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/baselines", viewport.width < 600 ? "light" : "dark");
+    await expect(page.locator(".status-pill")).toContainText("7 changes to review");
+    const current = page.locator(".bl-current");
+    await expect(current).toContainText("Post-migration golden state");
+    await expect(current).toContainText("4,812 settings in 6 kinds");
+    await expect(current.getByRole("link", { name: "Compare with the latest backup" })).toHaveAttribute("href", /compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d6/);
+    const entra = page.locator(".bl-service", { hasText: "Entra ID" });
+    await expect(entra).toContainText(/Changed\s*3\s*kinds/);
+    // A service with changes links to them, filtered to that service.
+    await expect(entra).toHaveAttribute("href", /drift\?service=/);
+    await entra.click();
+    await expect(page).toHaveURL(/drift\?service=/);
+    await expect(page.locator(".sel-row")).toHaveCount(6);
+    await page.goBack();
+    await page.locator(".bl-current").waitFor();
+    // Service cards in one row are the same height; nothing scrolls sideways.
+    const heights = await page.locator(".bl-service").evaluateAll((cards) => cards.map((card) => { const rect = card.getBoundingClientRect(); return { y: Math.round(rect.y), h: Math.round(rect.height) }; }));
+    for (const card of heights) for (const other of heights) if (card.y === other.y) expect(card.h).toBe(other.h);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    // A replaced setup offers no actions.
+    await expect(page.locator(".bl-version", { hasText: "Replaced by a newer version" }).getByRole("button")).toHaveCount(0);
+    await expect(page.locator(".bl-version", { hasText: "Before migration (v2)" }).getByRole("button", { name: "Use this one" })).toBeVisible();
+  });
+}
 
-  // Between 25rem and 46rem the cell is two columns: the record joins the value column.
-  // The first read after a resize can precede the relayout, so wait for it to settle.
-  await page.setViewportSize({ width: 600, height: 900 });
-  await expect.poll(async () => {
-    const wideName = await nameCell.locator(".baseline-table-label").boundingBox();
-    const wideSummary = await nameCell.locator(".technical-details > summary").boundingBox();
-    return Math.abs(wideSummary!.x - wideName!.x);
-  }).toBeLessThan(2);
+// The guided create: start from a backup, name it, check what happens, then create.
+test("a new approved setup is made in three steps that say what will happen", async ({ page }) => {
+  await open(page, "/baselines/new");
+  const wizard = page.locator(".bl-wizard");
+  await expect(wizard.locator(".bl-steps li[aria-current='step']")).toContainText("Start from");
+  await wizard.getByRole("radio", { name: /An earlier backup/ }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await expect(wizard.getByRole("alert")).toHaveText("Choose the backup to start from.");
+  await wizard.getByRole("button", { name: /^Backup/ }).click();
+  await page.getByRole("option", { name: /1 Oct 2026/ }).click();
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await expect(wizard.locator(".bl-steps li[aria-current='step']")).toContainText("Name it");
+  await wizard.getByRole("button", { name: "Next" }).click();
+  await expect(wizard.getByRole("alert")).toContainText("Give it a name");
+  await wizard.getByPlaceholder("e.g. After the October audit").fill("After the October audit");
+  await wizard.getByRole("button", { name: "Next" }).click();
+  const review = wizard.locator(".bl-review");
+  await expect(review).toContainText("4,838 settings from the backup of 1 Oct 2026, 09:11 UTC");
+  await expect(review).toContainText("Nothing changes. Keel only reads its own backup.");
+  await wizard.getByRole("button", { name: "Create approved setup" }).click();
+  await expect(page.locator(".bl-wizard-done")).toContainText("“After the October audit” is being created");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
+
+// Rule 12, "everything clicks": on every Baselines page, whatever looks clickable is a
+// link or a button, and each one shows a focus ring from the keyboard.
+for (const hash of ["/baselines", "/drift", "/baselines/new", "/compare"]) {
+  test(`everything that looks clickable on ${hash} is a link or a button`, async ({ page }) => {
+    await open(page, hash);
+    const fakes = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("*")]
+      .filter((element) => getComputedStyle(element).cursor === "pointer")
+      .filter((element) => !element.closest("a[href], button, label, summary, input, select, [role='button'], [role='radio'], [role='checkbox'], [role='option']"))
+      .map((element) => element.className || element.tagName));
+    expect(fakes).toEqual([]);
+    const controls = page.locator("main#main-content .bl-card :is(a[href], button:not([disabled])):visible");
+    const count = await controls.count();
+    for (let index = 0; index < Math.min(count, 6); index += 1) {
+      await controls.nth(index).focus();
+      const ring = await controls.nth(index).evaluate((element) => { const style = getComputedStyle(element); return style.boxShadow !== "none" || style.outlineStyle !== "none"; });
+      expect(ring, `focus ring on control ${index}`).toBe(true);
+    }
+  });
+}
 
 // Task-92: an automatic policy that is off shows what turning it on would do, names the
 // dependency above its limit, and a refused turn-on says what changed since the preview.
@@ -850,12 +991,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
   test(`compare groups differences by service and kind and fits ${viewport.width} px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await open(page, "/compare", "dark");
-    await expect(page.locator('[data-layer="verdict"]')).toContainText("8 differences between the two snapshots");
+    await expect(page.locator('[data-layer="verdict"]')).toContainText("8 differences between the two backups");
     await expect(page.locator("form[method='get']")).toHaveCount(1);
     await expect(page.locator("form[method='post']")).toHaveCount(0);
     const settings = page.locator("section", { has: page.locator("#compare-settings-heading") });
     await expect(settings.locator("h3").first()).toHaveText("Entra ID");
-    const policies = settings.locator("details.compare-group", { hasText: "Conditional Access policy" });
+    const policies = settings.locator("details.compare-group", { hasText: "Sign-in rule" });
     await policies.locator("summary").click();
     await expect(policies).toContainText("Block legacy auth");
     await expect(policies).toContainText("enabled for reporting but not enforced");
@@ -864,7 +1005,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     const content = page.locator("section", { has: page.locator("#compare-content-heading") });
     await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
     await expect(content).toContainText("Budget 2027 v2.xlsx");
-    await content.locator("details.compare-group", { hasText: "Mailbox · items › inbox" }).locator("summary").click();
+    await content.locator("details.compare-group", { hasText: "Inbox (mailbox)" }).locator("summary").click();
     await expect(content).toContainText("An item (message)");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 

@@ -33,15 +33,15 @@ export function ActivateBaseline({
         idempotencyKey,
       );
       if (payload.approvalRequest) {
-        setMessage("Activation requested — pending approval. The active baseline has not changed.");
-        toast({ tone: "info", title: "Activation sent for approval", detail: "The active baseline has not changed yet.", href: "/approvals", hrefLabel: "Open approvals" });
+        setMessage("Sent for approval. The approved setup in use stays the same until someone approves.");
+        toast({ tone: "info", title: "Sent for approval", detail: "The approved setup in use stays the same until someone approves.", href: "/approvals", hrefLabel: "Open approvals" });
         setIdempotencyKey(crypto.randomUUID());
         router.refresh();
       } else {
-        setError("Unexpected response: activation did not produce an approval request.");
+        setError("Keel did not get an approval request back. Nothing changed.");
       }
     } catch {
-      setError("The activation request could not be created.");
+      setError("Keel could not send this for approval. Nothing changed.");
     } finally {
       setSubmitting(false);
     }
@@ -51,12 +51,12 @@ export function ActivateBaseline({
     <span className="activate-control">
       <button
         aria-busy={submitting || undefined}
-        className="btn btn-primary btn-sm"
+        className="btn btn-sm"
         disabled={disabled || submitting}
         onClick={() => void requestActivation()}
         type="button"
       >
-        Activate
+        Use this one
       </button>
       {message ? <small aria-live="polite" className="action-message">{message}</small> : null}
       {error ? <small className="action-error" role="alert">{error}</small> : null}

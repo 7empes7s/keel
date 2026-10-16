@@ -1,12 +1,17 @@
+import { CompareForm, type QuickPick } from "@/components/baselines/compare-form";
+import { BaselinesStyles } from "@/components/baselines/styles";
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { fieldWords } from "@/lib/changes-view";
 import {
   CHANGE_WORDS, bytesWords, compareValueWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
-  rawValue, sideWords, snapshotWords, workloadLabel, workloadNotComparedSentence,
+  rawValue, sideWords, workloadLabel, workloadNotComparedSentence,
   type CompareData, type CompareField, type CompareResult, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
-import { resourceTypeLabel } from "@/lib/presentation";
+import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
+import { plainKind } from "@/lib/baselines-view";
+import { SERVICES } from "@/lib/services";
 
 // Wave 2 CMP: the Compare page. The form submits with GET, so comparing never changes
 // anything. Results are grouped by service and kind, plain names first; every key, id
@@ -48,7 +53,6 @@ function CompareStyles() {
   return <style href="keel-compare" precedence="default">{CSS}</style>;
 }
 
-const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /** An object's name, or a plain stand-in when its key is an id or a composed key. */
@@ -66,52 +70,71 @@ function resourceKeyWords(key: string): string {
   return `${name} (${match[1].replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()})`;
 }
 
-function FieldTable({ fields, total, id }: { fields: CompareField[]; total?: number; id: string }) {
+// The two sides' short names, set once per page so every before/after column says which.
+interface Sides { before: string; after: string }
+
+function FieldTable({ fields, total, id, sides }: { fields: CompareField[]; total?: number; id: string; sides: Sides }) {
   if (fields.length === 0) return <p className="compare-note">Only settings Microsoft sets itself differ.</p>;
   return (
     <>
-      <div className="table-scroll">
-        <table aria-labelledby={id} className="data-table diff-table compare-fields">
-          <thead><tr><th scope="col">Setting</th><th scope="col">From</th><th scope="col">To</th></tr></thead>
-          <tbody>
-            {fields.map((field) => (
-              <tr className="diff-changed" key={field.path}>
-                <th data-label="Setting" scope="row">{fieldWords(field.path)}</th>
-                <td data-label="From"><span className="diff-before">{compareValueWords(field.before)}</span></td>
-                <td data-label="To"><span className="diff-after">{compareValueWords(field.after)}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ul aria-labelledby={id} className="bl-sides-list compare-fields">
+        {fields.map((field) => (
+          <li className="bl-sides-row" key={field.path}>
+            <span className="bl-sides-name">{fieldWords(field.path)}</span>
+            <span className="bl-side" data-side="before"><small>{sides.before}</small><span className="diff-before">{compareValueWords(field.before)}</span></span>
+            <Icon className="bl-sides-arrow" name="chevron" />
+            <span className="bl-side" data-side="after"><small>{sides.after}</small><span className="diff-after">{compareValueWords(field.after)}</span></span>
+          </li>
+        ))}
+      </ul>
       {total && total > fields.length ? <p className="compare-note">And {total - fields.length} more settings.</p> : null}
     </>
   );
 }
 
-function ItemHead({ name, changeType, id }: { name: string; changeType: SettingsItem["changeType"]; id: string }) {
+const PRESENCE: Record<string, { before: string; after: string }> = {
+  added: { before: "Not there", after: "There" },
+  removed: { before: "There", after: "Not there" },
+};
+
+function ItemHead({ name, changeType, id, sides }: { name: string; changeType: SettingsItem["changeType"]; id: string; sides?: Sides }) {
+  const presence = PRESENCE[changeType];
   return (
-    <p className="compare-item-head">
+    <div className="compare-item-head">
       <span className="compare-item-name" id={id}>{name}</span>
       <span className={`compare-change compare-change-${changeType}`}>{CHANGE_WORDS[changeType]}</span>
-    </p>
+      {presence && sides ? (
+        <span className="bl-presence">
+          <span className="bl-side" data-side="before"><small>{sides.before}</small>{presence.before}</span>
+          <Icon className="bl-sides-arrow" name="chevron" />
+          <span className="bl-side" data-side="after"><small>{sides.after}</small>{presence.after}</span>
+        </span>
+      ) : null}
+    </div>
   );
 }
 
-function SettingsGroupView({ group, index }: { group: SettingsGroup; index: number }) {
+/** A service heading with Microsoft's own icon for it. */
+function ServiceHeading({ service }: { service: string }) {
+  const known = SERVICES.find((entry) => entry.name === service || entry.name.split(" and ").includes(service) || entry.code === service);
+  return <h3 className="bl-service-heading"><Icon name={known?.icon ?? "cloud"} />{service}</h3>;
+}
+
+function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; index: number; sides: Sides }) {
   return (
     <details className="compare-group">
       <summary>
-        <span className="compare-group-name">{capitalize(resourceTypeLabel(group.resourceType))}</span>
+        <span className="compare-group-name">{plainKind(group.resourceType)}</span>
         <span className="compare-group-counts">{countsWords(group)}</span>
+        <Icon className="compare-group-chevron" name="chevron-down" />
       </summary>
       <ul className="compare-items">
         {group.items.map((item, itemIndex) => {
           const id = `compare-setting-${index}-${itemIndex}`;
           return (
             <li className={`compare-item compare-${item.changeType}`} key={item.naturalKey}>
-              <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} />
-              {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} total={item.fieldsTotal} /> : null}
+              <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} sides={sides} />
+              {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} sides={sides} total={item.fieldsTotal} /> : null}
             </li>
           );
         })}
@@ -127,18 +150,19 @@ function byService<T extends { service: string }>(groups: T[]): [string, T[]][] 
   return [...map.entries()];
 }
 
-function SettingsPanel({ settings, portable }: { settings: SettingsSection; portable: boolean }) {
+function SettingsPanel({ settings, portable, sides }: { settings: SettingsSection; portable: boolean; sides: Sides }) {
   return (
     <section aria-labelledby="compare-settings-heading" className="item-card compare-section">
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
-        {countsWords(settings.totals)} across every kind KEEL backs up; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
+        {countsWords(settings.totals)} across every kind Keel backs up; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
+        {" "}Open a kind to see each setting before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
       {byService(settings.groups).map(([service, groups]) => (
         <div className="compare-section" key={service}>
-          <h3>{service}</h3>
-          {groups.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} />)}
+          <ServiceHeading service={service} />
+          {groups.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
         </div>
       ))}
       {settings.notCompared.length ? (
@@ -147,7 +171,7 @@ function SettingsPanel({ settings, portable }: { settings: SettingsSection; port
           <p className="compare-note">A side that did not read a kind in full proves nothing about it, so nothing is reported as removed.</p>
           <ul className="compare-list">
             {settings.notCompared.map((entry) => (
-              <li key={entry.resourceType}>{capitalize(resourceTypeLabel(entry.resourceType))} ({entry.service}): {notComparedSentence(entry)}</li>
+              <li key={entry.resourceType}>{plainKind(entry.resourceType)} ({entry.service}): {notComparedSentence(entry)}</li>
             ))}
           </ul>
         </>
@@ -158,7 +182,7 @@ function SettingsPanel({ settings, portable }: { settings: SettingsSection; port
           <p className="compare-note">These kinds are known only by an id each tenant gives them, so the same object cannot be found in the other tenant.</p>
           <ul className="compare-list">
             {settings.unmatched.map((entry) => (
-              <li key={entry.resourceType}>{capitalize(resourceTypeLabel(entry.resourceType))} ({entry.service}): {entry.left} in the first, {entry.right} in the second.</li>
+              <li key={entry.resourceType}>{plainKind(entry.resourceType)} ({entry.service}): {entry.left} in the first, {entry.right} in the second.</li>
             ))}
           </ul>
         </>
@@ -175,7 +199,7 @@ function SettingsPanel({ settings, portable }: { settings: SettingsSection; port
   );
 }
 
-function WorkloadGroupView({ group, index }: { group: WorkloadGroup; index: number }) {
+function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; index: number; sides: Sides }) {
   if (group.state !== "compared") {
     return <li><strong>{workloadLabel(group.workload)}</strong>: {workloadNotComparedSentence(group)}</li>;
   }
@@ -185,14 +209,15 @@ function WorkloadGroupView({ group, index }: { group: WorkloadGroup; index: numb
         <summary>
           <span className="compare-group-name">{workloadLabel(group.workload)}</span>
           <span className="compare-group-counts">{countsWords(group)}</span>
+          <Icon className="compare-group-chevron" name="chevron-down" />
         </summary>
         <ul className="compare-items">
           {(group.items ?? []).map((item, itemIndex) => {
             const id = `compare-workload-${index}-${itemIndex}`;
             return (
               <li className={`compare-item compare-${item.changeType}`} key={item.resourceKey}>
-                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey)} />
-                {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} total={item.fieldsTotal} /> : null}
+                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey)} sides={sides} />
+                {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} sides={sides} total={item.fieldsTotal} /> : null}
               </li>
             );
           })}
@@ -205,25 +230,25 @@ function WorkloadGroupView({ group, index }: { group: WorkloadGroup; index: numb
   );
 }
 
-function WorkloadsPanel({ workloads, liveStored }: { workloads: WorkloadsSection; liveStored: boolean }) {
+function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: WorkloadsSection; liveStored: boolean; sides: Sides }) {
   return (
     <section aria-labelledby="compare-workloads-heading" className="item-card compare-section">
-      <h2 id="compare-workloads-heading">Workload settings</h2>
+      <h2 id="compare-workloads-heading">App settings</h2>
       <p className="compare-help">
-        Exchange, Teams, Purview, SharePoint and other workload settings, from the newest collection at each side&apos;s time: {countsWords(workloads.totals)}.
+        Exchange, Teams, Purview, SharePoint and other app settings, as each side last read them: {countsWords(workloads.totals)}.
         {liveStored ? " The second side uses the newest stored collection." : ""}
       </p>
       {workloads.groups.length === 0 ? <p className="compare-note">No workload settings were collected for either side.</p> : null}
       {byService(workloads.groups).map(([service, groups]) => (
         <div className="compare-section" key={service}>
-          <h3>{service}</h3>
+          <ServiceHeading service={service} />
           <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
-            {groups.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} />)}
+            {groups.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
           </ul>
         </div>
       ))}
       {workloads.groups.length ? (
-        <TechnicalDetails summary="Technical details: workload settings">
+        <TechnicalDetails summary="Technical details: app settings">
           {workloads.groups.map((group) => (
             <RecordField key={group.workload} label={`Workload ${group.workload}`}
               value={`${group.left?.collectionId ?? "none"} (${group.left?.outcome ?? "none"}) → ${group.right?.collectionId ?? "none"} (${group.right?.outcome ?? "none"})`}
@@ -240,11 +265,11 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
   return (
     <section aria-labelledby="compare-content-heading" className="item-card compare-section">
       <h2 id="compare-content-heading">Content</h2>
-      <p className="compare-help">Mail, files, sites, Teams and plans KEEL holds, item by item: {countsWords(content.totals)}.</p>
+      <p className="compare-help">Mail, files, sites, Teams and plans Keel holds, item by item: {countsWords(content.totals)}.</p>
       {changed.length === 0 ? <p className="compare-note">No stored item differs.</p> : null}
       {byService(changed).map(([service, groups]) => (
         <div className="compare-section" key={service}>
-          <h3>{service}</h3>
+          <ServiceHeading service={service} />
           {groups.map((group) => (
             <div className="compare-section" key={group.workload}>
               <p className="compare-note">{workloadLabel(group.workload)}: {group.leftItems.toLocaleString("en-GB")} items, then {group.rightItems.toLocaleString("en-GB")}.</p>
@@ -253,6 +278,7 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
                   <summary>
                     <span className="compare-group-name">{containerWords(container.container)}</span>
                     <span className="compare-group-counts">{countsWords(container)}</span>
+                    <Icon className="compare-group-chevron" name="chevron-down" />
                   </summary>
                   <ul className="compare-items">
                     {container.items.map((item, index) => (
@@ -270,7 +296,7 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
           ))}
         </div>
       ))}
-      {content.total > content.shown ? <p className="compare-note">Showing {content.shown} of {content.total} items. Use keel-compare for the full list.</p> : null}
+      {content.total > content.shown ? <p className="compare-note">Showing {content.shown} of {content.total} items. The full list is in Technical details for an operator.</p> : null}
       {changed.length ? (
         <TechnicalDetails summary="Technical details: content">
           {changed.flatMap((group) => group.containers.map((container) => (
@@ -314,15 +340,41 @@ function ContentHoldingsPanel({ content }: { content: ContentHoldingsSection }) 
   );
 }
 
+function shortSide(side: CompareResult["left"], tenants: CompareData["tenants"], portable: boolean): string {
+  const when = side.kind === "live" ? "Now" : formatTimestamp(side.at).replace(/, \d\d:\d\d UTC$/, "");
+  if (!portable) return when;
+  return `${when} · ${tenants.find((tenant) => tenant.tenantRef === side.tenantRef)?.label ?? "another tenant"}`;
+}
+
 function Summary({ data, result }: { data: CompareData; result: CompareResult }) {
   const totals = differenceTotals(result);
+  const tiles = [
+    { key: "settings", label: "Settings", count: totals.settings, note: totals.settings === 1 ? "difference" : "differences", href: "#compare-settings-heading", shown: Boolean(result.settings) },
+    { key: "workloads", label: "App settings", count: totals.workloads, note: totals.workloads === 1 ? "difference" : "differences", href: "#compare-workloads-heading", shown: Boolean(result.workloads) },
+    { key: "content", label: "Content", count: totals.content, note: result.content?.by === "holdings" ? (totals.content === 1 ? "item in one tenant only" : "items in one tenant only") : (totals.content === 1 ? "item differs" : "items differ"), href: "#compare-content-heading", shown: Boolean(result.content) },
+  ];
   return (
-    <section aria-labelledby="compare-summary-heading" className="item-card compare-section">
-      <h2 id="compare-summary-heading">From {sideWords(result.left, data.tenants, result.portable)} to {sideWords(result.right, data.tenants, result.portable)}</h2>
-      <dl className="compare-summary">
-        <div><dt>Settings</dt><dd>{totals.settings.toLocaleString("en-GB")}<small>differences</small></dd></div>
-        <div><dt>Workload settings</dt><dd>{totals.workloads.toLocaleString("en-GB")}<small>differences</small></dd></div>
-        <div><dt>Content</dt><dd>{totals.content.toLocaleString("en-GB")}<small>{result.content?.by === "holdings" ? "items in one tenant only" : "items differ"}</small></dd></div>
+    <section aria-labelledby="compare-summary-heading" className="bl-section compare-section">
+      {/* Two backups of this tenant are already named by the pickers above; two tenants
+          are named here, since the pickers show only times. */}
+      {result.portable ? (
+        <h2 className="bl-compare-title" id="compare-summary-heading">
+          <span className="bl-side" data-side="before"><small>Before</small>{sideWords(result.left, data.tenants, result.portable)}</span>
+          <Icon className="bl-sides-arrow" name="chevron" />
+          <span className="bl-side" data-side="after"><small>After</small>{sideWords(result.right, data.tenants, result.portable)}</span>
+        </h2>
+      ) : <h2 className="visually-hidden" id="compare-summary-heading">What is different</h2>}
+      <dl className="compare-summary bl-tiles">
+        {tiles.map((tile) => (
+          <div className="bl-card bl-tile" key={tile.key}>
+            <dt className="bl-tile-label">{tile.label}</dt>
+            <dd>
+              <b className="bl-tile-count">{tile.count.toLocaleString("en-GB")}</b>
+              <small>{tile.note}</small>
+              {tile.shown ? <a className="bl-inline-link" href={tile.href}>See them</a> : null}
+            </dd>
+          </div>
+        ))}
       </dl>
       <TechnicalDetails>
         <RecordField label="Compare mode" value={result.mode} />
@@ -334,38 +386,19 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
   );
 }
 
-export function CompareView({ data }: { data: CompareData }) {
+export function CompareView({ data, quick = [] }: { data: CompareData; quick?: QuickPick[] }) {
   const result = data.result;
-  const choosable = data.tenants.filter((tenant) => tenant.snapshots.length > 0);
+  const sides: Sides = result
+    ? { before: shortSide(result.left, data.tenants, result.portable), after: shortSide(result.right, data.tenants, result.portable) }
+    : { before: "Before", after: "After" };
   return (
-    <div className="compare-view">
+    <div className="compare-view bl-page">
       <CompareStyles />
-      <section aria-labelledby="compare-form-heading" className="item-card compare-section">
-        <h2 id="compare-form-heading">What to compare</h2>
-        <form action="/compare" className="compare-form" method="get">
-          {(["from", "to"] as const).map((name) => (
-            <label className="filter-field" key={name}>
-              <span>{name === "from" ? "From" : "To"}</span>
-              <select defaultValue={data.input?.[name] ?? ""} name={name}>
-                {data.input ? null : <option value="">Choose a snapshot</option>}
-                {choosable.map((tenant) => (
-                  <optgroup key={tenant.tenantRef} label={tenant.label}>
-                    {tenant.snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshotWords(snapshot)}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          ))}
-          <button className="btn btn-primary" type="submit">Compare</button>
-        </form>
-        <p className="compare-help">
-          Choose two snapshots of this tenant, or one from another tenant to compare the two tenants. To compare a snapshot with the tenant as it is now,
-          an operator runs keel-compare live on the KEEL server; it only reads. Nothing on this page changes anything.
-        </p>
-      </section>
+      <BaselinesStyles />
+      <CompareForm input={data.input} quick={quick} tenants={data.tenants} />
       {result ? <Summary data={data} result={result} /> : null}
-      {result?.settings ? <SettingsPanel portable={result.portable} settings={result.settings} /> : null}
-      {result?.workloads ? <WorkloadsPanel liveStored={Boolean(result.right.latestStored?.includes("workloads"))} workloads={result.workloads} /> : null}
+      {result?.settings ? <SettingsPanel portable={result.portable} settings={result.settings} sides={sides} /> : null}
+      {result?.workloads ? <WorkloadsPanel liveStored={Boolean(result.right.latestStored?.includes("workloads"))} sides={sides} workloads={result.workloads} /> : null}
       {result?.content?.by === "item" ? <ContentItemsPanel content={result.content} /> : null}
       {result?.content?.by === "holdings" ? <ContentHoldingsPanel content={result.content} /> : null}
     </div>

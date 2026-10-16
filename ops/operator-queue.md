@@ -4503,8 +4503,11 @@ item that needs it stays untouched.
 
 ### Q94: Recapture and publish step 35 (roleAssignment create) from its Q51 restore — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-16). Build 050a1ab. **Captured** from the Q51 C restore (R35E, approval d32e6111, snapshot ced73acb), with no
+  new restore and no tenant write. `pseudonymize.mjs check` on the record and capture log: **exit 0**, every id is a pseudonym.
+  **Promoted**: fixture-tested -> live-qualified. Scans are clean apart from the fixture user's UPN in the natural key, as in
+  the records already on master. PR #352 (`claude/live-evidence-q94`, automerge): roleAssignment.create{,.capture}.json only.
 - Needs: nothing. #237 is live.
 - **Test tenant only.** No new restore and no tenant writes. This only reads the journal and snapshot of Q51 C's restore (the job
   run under approval d32e6111, snapshot ced73acb), as Q53 did for step 37.

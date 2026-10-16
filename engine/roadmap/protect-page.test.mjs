@@ -132,15 +132,17 @@ test('Restore: the step title is the verdict and no credential path is rendered 
     const { RestoreSelection } = require('./components/restore-selection.tsx');
     const { restoreCredentialPaths } = require('./lib/restore-config.ts');
     const html = withRouter(createElement(RestoreSelection, {
-      canRestore: true, canApprove: true, snapshotId: 'snap-1',
+      canRestore: true, canApprove: true, snapshotId: 'snap-1', now: '2026-10-02T10:00:00Z',
+      changes: null, lastRestore: null,
       snapshots: [{ id: 'snap-1', startedAt: '2026-10-02T09:01:00Z', completedAt: '2026-10-02T09:12:00Z', resourceCount: 3 }],
       resources: [
         { naturalKey: 'conditionalAccessPolicy:Block legacy auth', resourceType: 'conditionalAccessPolicy', blastRadius: 'tenant-lockout' },
         { naturalKey: 'group:Break-glass admins', resourceType: 'group', blastRadius: 'access-affecting' },
       ],
     }));
-    assert.match(html, /<p class="verdict-sentence">Step 1 of 5: choose what to put back\.<\/p>/);
-    assert.match(html, /aria-label="Select Block legacy auth \(Conditional Access policy\)"/);
+    // The choose step's verdict says what the chosen backup is compared with.
+    assert.match(html, /<p class="verdict-sentence">Restoring to the backup of Fri, 2 Oct 2026\. KEEL could not compare it with now, so choose what to put back\.<\/p>/);
+    assert.match(html, /aria-label="Select Block legacy auth \(sign-in rule\)"/);
     // Credential config paths are server configuration: no input, no value, no label.
     assert.doesNotMatch(html, /\/etc\/keel/);
     assert.doesNotMatch(html, /credential/i);

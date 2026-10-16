@@ -1,4 +1,5 @@
-import { formatTimestamp, resourceLabel } from "@/lib/presentation";
+import { formatTimestamp } from "@/lib/presentation";
+import { plainLabel } from "@/lib/restore-view";
 
 // Roadmap task-64: how each resource of a reviewed dry run will be recovered.
 // The mechanism is part of the immutable artifact and its plan digest, so what
@@ -57,26 +58,26 @@ export function RecoveryMechanismTable({ mechanisms }: { mechanisms: RecoveryMec
   if (mechanisms.length === 0) return null;
   return (
     <div className="recovery-mechanisms">
-      <p className="severity-label">RECOVERY MECHANISM</p>
+      <p className="severity-label">How each setting is put back</p>
       <table className="data-table recovery-table">
         <thead>
           <tr>
-            <th scope="col">Resource</th>
-            <th scope="col">Mechanism</th>
-            <th scope="col">Object ID</th>
-            <th scope="col">Deadline</th>
+            <th scope="col">Setting</th>
+            <th scope="col">How</th>
+            <th scope="col">Identity</th>
+            <th scope="col">Possible until</th>
           </tr>
         </thead>
         <tbody>
           {mechanisms.map((entry) => (
             <tr className={`mechanism-row mechanism-${entry.mechanism}`} key={entry.naturalKey}>
-              <td data-label="Resource"><span className="resource-name">{resourceLabel(entry.naturalKey)}</span></td>
-              <td data-label="Mechanism">
+              <td data-label="Setting"><span className="resource-name">{plainLabel(entry.naturalKey)}</span></td>
+              <td data-label="How">
                 <span className={`pill pill-${TONES[entry.mechanism] ?? "neutral"} mechanism-badge-${entry.mechanism}`}>{mechanismLabel(entry.mechanism)}</span>
                 {entry.reason ? <small className="mechanism-reason">{entry.reason}</small> : null}
               </td>
-              <td data-label="Object ID">{ID_LABELS[entry.idOutcome] ?? entry.idOutcome}</td>
-              <td data-label="Deadline">{entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
+              <td data-label="Identity">{ID_LABELS[entry.idOutcome] ?? entry.idOutcome}</td>
+              <td data-label="Possible until">{entry.deadline ? formatTimestamp(entry.deadline) : "—"}</td>
             </tr>
           ))}
         </tbody>

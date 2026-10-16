@@ -1,24 +1,49 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
 import { PendingSteps, type PendingStep } from "@/components/pending-steps";
+import { RestorePoint } from "@/components/restore/restore-point";
+import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
-import { refusalSentence, resourceName } from "@/lib/changes-view";
+import { fieldWords, refusalSentence } from "@/lib/changes-view";
+import { worstTone, type RiskTone } from "@/lib/menu-status";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
-import { displayEnum, formatTimestamp, resourceLabel } from "@/lib/presentation";
-import { typeName } from "@/lib/protect-view";
+import { resourceLabel, resourceTypeLabel } from "@/lib/presentation";
+import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
+import {
+  IMPACT_ABOUT,
+  IMPACT_ORDER,
+  changeLine,
+  changeTone,
+  dayWords,
+  impactWords,
+  itemName,
+  plainLabel,
+  plainType,
+  plannedWords,
+  plural,
+  restoreVerdict,
+  shortWhen,
+  takenAt,
+  whenWords,
+  whoWords,
+} from "@/lib/restore-view";
+import { orderGroups, smartOrder } from "@/lib/selection";
+import { serviceFor, serviceOrder } from "@/lib/services";
 
-const PAGE_SIZE = 25;
 const DRY_RUN_POLL_MS = 3000;
+const ROWS_PER_GROUP = 8;
 
 interface AdditionReason {
   requiredBy: string;
@@ -98,11 +123,6 @@ interface DryRunArtifact {
 
 const EDGE_RESULT_PREFIX = "edge:";
 
-function describeSnapshot(snapshot: SnapshotOption): string {
-  const captured = formatTimestamp(snapshot.completedAt ?? snapshot.startedAt);
-  return `${captured} — ${snapshot.resourceCount.toLocaleString("en-GB")} resources`;
-}
-
 // The raw reasons (requiring key and field path), for the record layer.
 function formatReasons(reasons: AdditionReason[]): string {
   return reasons
@@ -112,12 +132,13 @@ function formatReasons(reasons: AdditionReason[]): string {
 
 /** "Block legacy auth (Conditional Access policy)", the resources that need this one. */
 function requiredByWords(reasons: AdditionReason[]): string {
-  return [...new Set(reasons.map((reason) => resourceLabel(reason.requiredBy)))].join(", ");
+  return [...new Set(reasons.map((reason) => plainLabel(reason.requiredBy)))].join(", ");
 }
 
 /** "Block legacy auth and Require MFA for admins". */
 function namesList(keys: string[]): string {
-  const names = keys.map((key) => resourceLabel(key));
+  const names = keys.map((key) => plainLabel(key));
+  if (names.length > 3) return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
@@ -151,30 +172,29 @@ async function fetchDryRunArtifact(artifactId: string): Promise<DryRunArtifact |
 
 type RestoreStep = "select" | "dry-run" | "review" | "confirm" | "track";
 
-// Roadmap task-131: the current step's title is the page's verdict sentence.
-export function restoreStepVerdict(step: RestoreStep, failed: boolean): { text: string; tone: VerdictTone } {
+// Roadmap task-131: the current step's title is the page's verdict sentence. The
+// choose step's sentence says what changed instead (lib/restore-view restoreVerdict).
+export function restoreStepVerdict(step: Exclude<RestoreStep, "select">, failed: boolean): { text: string; tone: VerdictTone } {
   switch (step) {
-    case "select": return { text: "Step 1 of 5: choose what to put back.", tone: "good" };
-    case "dry-run": return { text: "Step 2 of 5: KEEL is working out what would change. Nothing is written.", tone: "good" };
+    case "dry-run": return { text: "Step 2 of 4: KEEL is checking what would change. Nothing is written.", tone: "good" };
     case "review": return failed
-      ? { text: "Step 3 of 5: the dry run found problems, so nothing can be restored from it.", tone: "critical" }
-      : { text: "Step 3 of 5: review what will change.", tone: "good" };
-    case "confirm": return { text: "Step 4 of 5: review what will change, then confirm.", tone: "attention" };
-    case "track": return { text: "Step 5 of 5: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
+      ? { text: "Step 3 of 4: the check found problems, so nothing can be put back from it.", tone: "critical" }
+      : { text: "Step 3 of 4: review what will change.", tone: "good" };
+    case "confirm": return { text: "Step 3 of 4: review what will change, then send it for approval.", tone: "attention" };
+    case "track": return { text: "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
   }
 }
 
+// Review and send are one screen: the review ends in the send button.
 const STEPS: { id: RestoreStep; label: string }[] = [
-  { id: "select", label: "Select" },
-  { id: "dry-run", label: "Dry run" },
-  { id: "review", label: "Review" },
-  { id: "confirm", label: "Confirm" },
-  { id: "track", label: "Track" },
+  { id: "select", label: "Choose" },
+  { id: "dry-run", label: "Check" },
+  { id: "confirm", label: "Review and send" },
+  { id: "track", label: "Approval" },
 ];
 
 export function RestoreStepper({ current, failed = false }: { current: RestoreStep; failed?: boolean }) {
-  // Confirm is reached only through a completed review, so it marks Review done too.
-  const index = STEPS.findIndex((step) => step.id === current);
+  const index = STEPS.findIndex((step) => step.id === (current === "review" ? "confirm" : current));
   return (
     <ol aria-label="Restore steps" className="wizard-steps">
       {STEPS.map((step, position) => {
@@ -190,17 +210,79 @@ export function RestoreStepper({ current, failed = false }: { current: RestoreSt
   );
 }
 
-// Restore selection (portal-design §4.1, plan task 8). The operator picks resources;
-// EVERY change is previewed against the server, and the server-computed closure is
-// shown — what was added and why. Promotion is a structural flow, not a mode switch:
-// a raw selection may only start a dry run (POST .../restore/dry-run); once the
-// worker computes it, its ACTUAL planned changes and refusals are rendered here from
-// the persisted, immutable artifact; only THAT completed artifact can be confirmed
-// (POST .../restore, {artifactId}) — there is no field in this component that can
-// request enforce directly. The server-side path is the control throughout: the
+// One row of the list: a setting saved in the chosen backup, with what changed since.
+interface RestoreItem extends RestoreResource {
+  change?: RestoreChange;
+}
+
+const CHANGED_GROUP = "changed";
+const toneOf = (item: RestoreItem) => changeTone(item.change);
+// Smart order: deleted, then changed, newest first; the rest by name.
+const ordered = (items: RestoreItem[]) => [
+  ...smartOrder(items.filter((item) => item.change), toneOf, (item) => item.change?.seenAt ?? null),
+  ...items.filter((item) => !item.change).sort((x, y) => itemName(x.naturalKey).localeCompare(itemName(y.naturalKey))),
+];
+
+function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, meta: (key: string, list: RestoreItem[]) => Omit<ListGroup<RestoreItem>, "items" | "key">, rank?: (key: string) => number): ListGroup<RestoreItem>[] {
+  const map = new Map<string, RestoreItem[]>();
+  for (const item of items) map.set(keyOf(item), [...(map.get(keyOf(item)) ?? []), item]);
+  const groups = [...map.entries()].map(([key, list]) => ({ key, ...meta(key, list), items: ordered(list) }));
+  return rank
+    ? groups.sort((a, b) => rank(a.key) - rank(b.key))
+    : orderGroups(groups, (group) => worstTone(group.items.map((item) => toneOf(item) ?? undefined)));
+}
+
+function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key"> {
+  const service = serviceFor(code === "other" ? null : code);
+  return { label: service.name, icon: service.icon, about: service.about };
+}
+
+const GROUPINGS: Grouping<RestoreItem>[] = [
+  {
+    key: "service",
+    label: "Service",
+    // "Changed recently" leads; every other setting sits under its Microsoft service.
+    groupsOf: (items) => {
+      const changed = items.filter((item) => item.change);
+      const rest = items.filter((item) => !item.change);
+      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code));
+      return changed.length
+        ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
+        : services;
+    },
+  },
+  {
+    key: "type",
+    label: "Type",
+    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type, list) => ({
+      label: plainType(type),
+      icon: serviceFor(list[0]?.service).icon,
+      about: `${serviceFor(list[0]?.service).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
+    })),
+  },
+  {
+    key: "impact",
+    label: "Impact",
+    groupsOf: (items) => grouped(items, (item) => item.blastRadius, (radius) => ({
+      label: impactWords(radius),
+      icon: (radius === "tenant-lockout" ? "alert" : radius === "cosmetic" ? "check" : "info") as IconName,
+      about: IMPACT_ABOUT[radius] ?? "How much a wrong restore could break",
+    }), (radius) => (IMPACT_ORDER.indexOf(radius) === -1 ? IMPACT_ORDER.length : IMPACT_ORDER.indexOf(radius))),
+  },
+];
+
+const TONE_WORDS: Record<RiskTone, string> = { urgent: "Deleted", soon: "Changed", low: "Low risk", fine: "Fine" };
+
+// Restore (portal-design §4.1, plan task 8; redesign "Restore", handoff/redesign/CHOICE.md).
+// The page leads with the point in time and what changed since it, grouped by Microsoft
+// service with "Changed recently" on top; each change and each group has an undo. Every
+// path still runs the same promotion: the server previews what the choice needs (adding
+// what it depends on), a dry run (POST .../restore/dry-run) reads the tenant and persists
+// its ACTUAL planned changes, and only THAT completed artifact can be sent for approval
+// (POST .../restore, {artifactId}); no field here can request enforce directly. The
 // dry-run route strips everything but the validated scope fields, the confirm route
-// re-validates the artifact before creating an approval request, and cli/keel-restore.mjs
-// re-validates it again — against a fresh read of the target — before it ever writes.
+// re-validates the artifact before creating an approval request, and
+// cli/keel-restore.mjs re-validates it again, against a fresh read, before it writes.
 export function RestoreSelection({
   canRestore,
   canApprove = false,
@@ -208,6 +290,9 @@ export function RestoreSelection({
   snapshotId,
   snapshots,
   incident = null,
+  changes = null,
+  now,
+  lastRestore = null,
 }: {
   canRestore: boolean;
   canApprove?: boolean;
@@ -216,15 +301,15 @@ export function RestoreSelection({
   snapshots: SnapshotOption[];
   // Roadmap task-71: plan this restore as a recovery point of an incident.
   incident?: { id: string; title: string } | null;
+  // What changed since the chosen backup; null when it could not be read.
+  changes?: RestoreChangesData | null;
+  now: string;
+  // The last restore job, for its tile: words, when, and its page.
+  lastRestore?: { label: string; detail: string; href: string; tone: RiskTone } | null;
 }) {
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [resourceType, setResourceType] = useState("all");
-  const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<SelectionPreview | null>(null);
-  const [previewing, setPreviewing] = useState(false);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [planning, setPlanning] = useState(false);
   const [justification, setJustification] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [submitting, setSubmitting] = useState(false);
@@ -239,31 +324,19 @@ export function RestoreSelection({
   const [artifact, setArtifact] = useState<DryRunArtifact | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const resourceTypes = useMemo(
-    () => [...new Set(resources.map((resource) => resource.resourceType))].sort(),
-    [resources],
-  );
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return resources
-      .filter(
-        (resource) =>
-          (resourceType === "all" || resource.resourceType === resourceType)
-          && (!needle || resource.naturalKey.toLowerCase().includes(needle)),
-      )
-      .sort((a, b) => a.naturalKey.localeCompare(b.naturalKey));
-  }, [resources, query, resourceType]);
-
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const pageItems = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const refusedKeys = new Set((preview?.guardRefusals ?? []).map((r) => r.naturalKey));
-  const closureKeys = new Set(preview?.closureKeys ?? []);
-  const addedByKey = new Map((preview?.added ?? []).map((a) => [a.naturalKey, a]));
+  const changeByKey = useMemo(() => new Map((changes?.changes ?? []).map((change) => [change.naturalKey, change])), [changes]);
+  const items = useMemo<RestoreItem[]>(() => resources.map((resource) => {
+    const change = changeByKey.get(resource.naturalKey);
+    return change ? { ...resource, change } : resource;
+  }), [resources, changeByKey]);
 
   useEffect(() => () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
   }, []);
+
+  // After an undo, focus moves to the steps, so keyboard and screen-reader users land
+  // where the page changed.
+  const flowRef = useRef<HTMLDivElement>(null);
 
   function resetDryRun() {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -273,60 +346,11 @@ export function RestoreSelection({
     setArtifact(null);
   }
 
-  async function applySelection(next: string[]): Promise<boolean> {
-    setPreviewing(true);
-    setError(null);
-    try {
-      const nextPreview = await previewSelection(snapshotId, next);
-      setSelected(next);
-      setPreview(nextPreview);
-      resetDryRun();
-      return true;
-    } catch {
-      setError("KEEL could not work out what this selection depends on. The selection was not changed.");
-      return false;
-    } finally {
-      setPreviewing(false);
-    }
-  }
-
-  async function toggle(key: string) {
-    setRefusal(null);
+  function startOver() {
+    resetDryRun();
+    setPreview(null);
     setMessage(null);
-    if (!selected.includes(key)) {
-      await applySelection([...selected, key]);
-      return;
-    }
-
-    // §4.1: deselecting something another selection requires is refused with a
-    // reason, not silently allowed. The preview of the candidate selection names
-    // exactly which selected resource still requires this one.
-    const candidate = selected.filter((key2) => key2 !== key);
-    setPreviewing(true);
     setError(null);
-    try {
-      const candidatePreview = await previewSelection(snapshotId, candidate);
-      const missing = candidatePreview.missingRequirements.find((m) => m.naturalKey === key);
-      if (missing) {
-        setRefusal(
-          `${resourceLabel(key)} stays selected because ${requiredByWords(missing.reasons)} ${missing.reasons.length === 1 ? "depends" : "depend"} on it. Deselect ${missing.reasons.length === 1 ? "that" : "those"} first.`,
-        );
-        return;
-      }
-      setSelected(candidate);
-      setPreview(candidatePreview);
-      resetDryRun();
-    } catch {
-      setError("KEEL could not work out what this selection depends on. The selection was not changed.");
-    } finally {
-      setPreviewing(false);
-    }
-  }
-
-  async function clearSelection() {
-    setRefusal(null);
-    setMessage(null);
-    await applySelection([]);
   }
 
   function pollDryRun(jobId: string, artifactId: string) {
@@ -335,7 +359,7 @@ export function RestoreSelection({
         const status = await fetchJobStatus(jobId);
         if (status === "failed" || status === "cancelled") {
           setDryRunStatus("failed");
-          setError("The dry run did not finish. Adjust the selection and try again.");
+          setError("The check did not finish. Change the selection and try again.");
           return;
         }
         if (status === "succeeded") {
@@ -353,22 +377,34 @@ export function RestoreSelection({
     }, DRY_RUN_POLL_MS);
   }
 
-  async function startDryRun() {
-    if (selected.length === 0) {
-      setError("Select at least one resource to restore.");
-      return;
-    }
-
-    setSubmitting(true);
+  // One path for every undo: a row's button, a group's button, or the selection bar.
+  // The server first says what the choice depends on; a refusal stops here with the
+  // reason, otherwise the dry run starts at once.
+  async function plan(selection: string[]) {
+    if (!canRestore || selection.length === 0) return;
+    setPlanning(true);
     setMessage(null);
     setError(null);
     resetDryRun();
+    let nextPreview: SelectionPreview;
+    try {
+      nextPreview = await previewSelection(snapshotId, selection);
+      setPreview(nextPreview);
+    } catch {
+      setError("KEEL could not work out what this choice depends on. Nothing was started.");
+      setPlanning(false);
+      return;
+    }
+    if (nextPreview.guardRefusals.length) {
+      setPlanning(false);
+      return;
+    }
     try {
       const { payload } = await postAction(
         "/api/actions/restore/dry-run",
         {
           snapshotId,
-          selection: selected,
+          selection,
           ...(incident ? { incidentId: incident.id } : {}),
         },
         idempotencyKey,
@@ -376,7 +412,7 @@ export function RestoreSelection({
       const job = payload.job as { id: string };
       const artifactId = payload.artifactId as string;
       if (!job || typeof job.id !== "string" || typeof artifactId !== "string") {
-        setError("KEEL could not start the dry run. Try again in a minute.");
+        setError("KEEL could not start the check. Try again in a minute.");
         return;
       }
       setIdempotencyKey(crypto.randomUUID());
@@ -385,9 +421,9 @@ export function RestoreSelection({
       setDryRunStatus("running");
       pollDryRun(job.id, artifactId);
     } catch {
-      setError("KEEL could not start the dry run. Try again in a minute.");
+      setError("KEEL could not start the check. Try again in a minute.");
     } finally {
-      setSubmitting(false);
+      setPlanning(false);
     }
   }
 
@@ -422,267 +458,200 @@ export function RestoreSelection({
     }
   }
 
-  // The wizard step is derived from the existing promotion state, never stored on its
-  // own, so it cannot disagree with what the server has actually been asked to do.
+  // The step is derived from the existing promotion state, never stored on its own,
+  // so it cannot disagree with what the server has actually been asked to do.
+  const refused = !artifact && dryRunStatus !== "running" && preview !== null && preview.guardRefusals.length > 0;
   const step: RestoreStep = message
     ? "track"
     : artifact
       ? (artifact.status === "completed" ? "confirm" : "review")
-      : dryRunStatus === "running"
+      : dryRunStatus === "running" || planning
         ? "dry-run"
         : "select";
-  const selectionLocked = step !== "select";
-  const closureSize = preview?.closureKeys.length ?? 0;
+  const choosing = step === "select" && !refused;
   const currentSnapshot = snapshots.find((snapshot) => snapshot.id === snapshotId) ?? null;
+  const isNewest = snapshots[0]?.id === snapshotId;
   const reviewFailed = artifact !== null && artifact.status !== "completed";
-  const verdict = restoreStepVerdict(step, reviewFailed);
+  const verdict = step === "select"
+    ? restoreVerdict({ chosen: currentSnapshot ? takenAt(currentSnapshot) : null, isNewest, changes })
+    : restoreStepVerdict(step, reviewFailed);
   const objectResults = (entries: DryRunResourceResult[]) => entries.filter((entry) => !entry.naturalKey.startsWith(EDGE_RESULT_PREFIX));
+  const changedCount = (changes?.changes ?? []).filter((change) => change.kind === "changed").length;
+  const deletedCount = (changes?.changes ?? []).filter((change) => change.kind === "deleted").length;
+  useEffect(() => {
+    if (!choosing) flowRef.current?.focus({ preventScroll: true });
+  }, [choosing]);
+  const pickSnapshot = (id: string, day?: string) => router.push(`/restore?snapshot=${id}${incident ? `&incident=${incident.id}` : ""}${day ? `&day=${day}` : ""}`);
+
+  function undoButton(keys: string[], label: string, name: string, primary = false) {
+    return (
+      <button
+        aria-label={`${label}: ${name}`}
+        className={`btn btn-sm restore-undo${primary ? " btn-primary" : ""}`}
+        disabled={!canRestore || planning || submitting}
+        onClick={() => void plan(keys)}
+        title={canRestore ? "Checks what would change first. Nothing changes until someone else approves." : "You can look, but restoring needs the restore role."}
+        type="button"
+      >
+        <Icon name="restore" />
+        {label}
+      </button>
+    );
+  }
 
   return (
-    <section aria-labelledby="restore-selection-heading" className="report-section restore-wizard">
+    <section aria-label="Plan a restore" className="restore-page">
       <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">From a snapshot</p>
-          <h2 id="restore-selection-heading">Plan a restore</h2>
-        </div>
-        <span aria-live="polite" className="result-count">
-          {closureSize ? `${closureSize} to restore` : `${resources.length} available`}
-        </span>
-      </div>
-
-      <RestoreStepper current={step} failed={reviewFailed} />
-
-      {step === "track" ? (
-        <section aria-labelledby="restore-track-heading" className="wizard-panel wizard-track">
-          <h3 id="restore-track-heading">Sent to approvers</h3>
-          <p aria-live="polite">{message}</p>
-          <ol className="track-timeline">
-            <li className="track-done">Dry run finished</li>
-            <li className="track-done">Approval requested</li>
-            <li className="track-current">Another person reviews this same plan</li>
-            <li>KEEL checks the tenant again, then restores; the job appears below</li>
-          </ol>
-          <div className="form-actions">
-            <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
-            <button
-              className="btn btn-ghost"
-              disabled={submitting || previewing}
-              onClick={() => void clearSelection()}
-              type="button"
-            >
-              Plan another restore
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {selectionLocked && step !== "track" ? (
-        <div className="wizard-summary">
-          <div>
-            <p className="section-kicker">What you chose</p>
-            <p>
-              {preview ? namesList(preview.selected) : `${closureSize} resources`}
-              {preview && preview.added.length ? " and everything it depends on" : null}
-              {currentSnapshot ? `, from the snapshot of ${formatTimestamp(currentSnapshot.completedAt ?? currentSnapshot.startedAt)}` : null}
-            </p>
-          </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            disabled={submitting || dryRunStatus === "running"}
-            onClick={() => resetDryRun()}
-            type="button"
-          >
-            Edit selection
-          </button>
-        </div>
-      ) : null}
 
       {incident ? (
         <p className="incident-restore-banner" role="note">
           Restoring for the incident <strong>{incident.title}</strong>. KEEL refuses unless an investigator cleared this
-          snapshot or approved an override, and checks afterwards that the malicious items are gone.
+          backup or approved an override, and checks afterwards that the harmful items are gone.
         </p>
       ) : null}
 
-      {step === "select" ? (
-        <div className="wizard-panel">
-          <div className="filter-bar">
-            <label className="filter-field">
-              <span>Snapshot</span>
-              <select
-                disabled={submitting}
-                onChange={(event) => router.push(`/restore?snapshot=${event.target.value}${incident ? `&incident=${incident.id}` : ""}`)}
-                value={snapshotId}
-              >
-                {snapshots.map((snapshot) => (
-                  <option key={snapshot.id} value={snapshot.id}>
-                    {describeSnapshot(snapshot)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="filter-field search-field">
-              <span>Find a resource</span>
-              <input
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setPage(1);
+      {currentSnapshot ? (
+        <RestorePoint chosen={currentSnapshot} disabled={!choosing} now={now} onPick={pickSnapshot} snapshots={snapshots} />
+      ) : null}
+
+      {choosing ? (
+        <>
+          <dl className="restore-tiles">
+            <div className="restore-tile" data-tone={changedCount ? "soon" : "fine"}>
+              <dt><Icon name="clock" />Changed since</dt>
+              <dd>{changes ? changedCount + (changes.more ?? 0) : "?"}</dd>
+              <dd className="restore-tile-about">{changes ? "Settings that are different now. Undo puts them back." : "KEEL could not compare this backup with now."}</dd>
+            </div>
+            <div className="restore-tile" data-tone={deletedCount ? "urgent" : "fine"}>
+              <dt><Icon name="alert" />Deleted since</dt>
+              <dd>{changes ? deletedCount : "?"}</dd>
+              <dd className="restore-tile-about">In this backup but gone now. Undo brings them back.</dd>
+            </div>
+            <div className="restore-tile">
+              <dt><Icon name="backup" />In this backup</dt>
+              <dd>{resources.length.toLocaleString("en-GB")}</dd>
+              <dd className="restore-tile-about">Settings you can put back from this point.</dd>
+            </div>
+            <div className="restore-tile" data-tone={lastRestore?.tone ?? undefined}>
+              <dt><Icon name="restore" />Last restore</dt>
+              <dd>{lastRestore ? <Link className="restore-tile-link" href={lastRestore.href}>{lastRestore.label}<Icon name="chevron" /></Link> : "None yet"}</dd>
+              <dd className="restore-tile-about">{lastRestore ? lastRestore.detail : "No restore has run here yet."}</dd>
+            </div>
+          </dl>
+
+          {isNewest && changes?.earlier?.count ? (
+            <div className="restore-earlier" role="note">
+              <Icon name="info" />
+              <p>
+                {plural(changes.earlier.count, "setting")} changed between the backups of {shortWhen(changes.earlier.takenAt)} and {shortWhen(currentSnapshot ? takenAt(currentSnapshot) : null)}.
+                {" "}This backup already has those changes, so undoing them starts from the one before.
+              </p>
+              <Link className="btn btn-sm" href={`/restore?snapshot=${changes.earlier.id}${incident ? `&incident=${incident.id}` : ""}`}>
+                See {changes.earlier.count === 1 ? "it" : "them"} from {dayWords(changes.earlier.takenAt)}
+              </Link>
+            </div>
+          ) : null}
+
+          {items.length ? (
+            <div className="restore-list" id="restore-list">
+              <SelectableList
+                action={{
+                  label: (count) => `Put back ${plural(count, "setting")}`,
+                  detail: () => "KEEL checks what would change first. Nothing changes until someone else approves.",
+                  run: (ids) => void plan(ids),
                 }}
-                placeholder="Name"
-                type="search"
-                value={query}
+                getId={(item) => item.naturalKey}
+                groupAction={(group) => {
+                  const keys = group.items.filter((item) => item.change).map((item) => item.naturalKey);
+                  if (!keys.length) return null;
+                  // The one amber action on the page: undo everything that changed.
+                  return undoButton(keys, keys.length === 1 ? "Undo 1 change" : `Undo all ${keys.length}`, group.label, group.key === CHANGED_GROUP);
+                }}
+                groupings={GROUPINGS}
+                items={items}
+                label={`Settings in the backup of ${dayWords(currentSnapshot ? takenAt(currentSnapshot) : null)}`}
+                matches={(item, query) => `${itemName(item.naturalKey)} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
+                noun={{ one: "setting", many: "settings" }}
+                renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", itemName(item.naturalKey)) : null} />}
+                rowLimit={ROWS_PER_GROUP}
+                rowName={(item) => plainLabel(item.naturalKey)}
+                toneOf={toneOf}
               />
-            </label>
-            <label className="filter-field">
-              <span>Type</span>
-              <select
-                onChange={(event) => {
-                  setResourceType(event.target.value);
-                  setPage(1);
-                }}
-                value={resourceType}
-              >
-                <option value="all">All types</option>
-                {resourceTypes.map((type) => (
-                  <option key={type} value={type}>{typeName(type)}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {visible.length ? (
-            <>
-              <div className="table-scroll">
-                <table className="data-table restore-table" aria-busy={previewing || undefined}>
-                  <thead>
-                    <tr>
-                      <th scope="col">Select</th>
-                      <th scope="col">Resource</th>
-                      <th scope="col">Type</th>
-                      <th scope="col">Impact</th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageItems.map((resource) => {
-                      const isSelected = selected.includes(resource.naturalKey);
-                      const isAdded = !isSelected && closureKeys.has(resource.naturalKey);
-                      const addition = addedByKey.get(resource.naturalKey);
-                      const isRefused = refusedKeys.has(resource.naturalKey);
-                      return (
-                        <tr
-                          className={isRefused ? "row-refused" : isSelected ? "row-selected" : isAdded ? "row-added" : undefined}
-                          key={resource.naturalKey}
-                        >
-                          <td data-label="Select">
-                            <input
-                              aria-label={`Select ${resourceLabel(resource.naturalKey)}`}
-                              checked={isSelected}
-                              disabled={!canRestore || previewing || submitting}
-                              onChange={() => void toggle(resource.naturalKey)}
-                              type="checkbox"
-                            />
-                          </td>
-                          <th data-label="Resource" scope="row">
-                            <span className="resource-name">{resourceName(resource.naturalKey)}</span>
-                          </th>
-                          <td data-label="Type">
-                            <span className="resource-type">{typeName(resource.resourceType)}</span>
-                          </td>
-                          <td data-label="Impact">{displayEnum("blastRadius", resource.blastRadius)}</td>
-                          <td data-label="Status">
-                            {isSelected ? <span className="selection-chip chip-selected">Selected</span> : null}
-                            {isAdded && addition ? (
-                              <span className="selection-chip chip-added">
-                                Added: {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
-                              </span>
-                            ) : null}
-                            {isRefused ? (
-                              <span className="selection-chip chip-refused">Refused: synced from on-premises</span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {pageCount > 1 ? (
-                <nav aria-label="Restore resource pagination" className="pagination">
-                  <span>Page {currentPage} of {pageCount}</span>
-                  <div>
-                    <button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} type="button">
-                      Previous
-                    </button>
-                    <button disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)} type="button">
-                      Next
-                    </button>
-                  </div>
-                </nav>
-              ) : null}
-            </>
+            </div>
           ) : (
-            <p className="empty-state">
-              {resources.length
-                ? "No resources match these filters."
-                : "This snapshot has nothing KEEL can restore."}
-            </p>
+            <p className="empty-state">This backup has nothing KEEL can put back.</p>
           )}
-
-          {refusal ? <p className="action-error" role="alert">{refusal}</p> : null}
-
-          {preview && preview.closureKeys.length > 0 ? (
-            <section aria-labelledby="restore-closure-heading" className="drift-action-panel wizard-closure">
+          {!canRestore ? <p className="restore-readonly">You can look at backups, but putting settings back needs the restore role.</p> : null}
+        </>
+      ) : (
+        <div aria-label="Restore steps in progress" className="restore-flow" data-layer="explanation" ref={flowRef} role="region" tabIndex={-1}>
+          <RestoreStepper current={step} failed={reviewFailed || refused} />
+          {step !== "track" ? (
+            <div className="wizard-summary">
               <div>
-                <p className="section-kicker">What will be restored</p>
-                <h3 id="restore-closure-heading">
-                  {namesList(preview.selected)}{preview.added.length ? " and everything it depends on" : ""}
-                </h3>
+                <p className="section-kicker">What you chose</p>
+                <p>
+                  {preview ? namesList(preview.selected) : "Your selection"}
+                  {preview && preview.added.length ? `, and ${plural(preview.added.length, "setting")} it needs` : null}
+                  {currentSnapshot ? `, as in the backup of ${dayWords(takenAt(currentSnapshot))}` : null}
+                </p>
               </div>
+              <button
+                className="btn btn-sm"
+                disabled={submitting || dryRunStatus === "running" || planning}
+                onClick={() => startOver()}
+                type="button"
+              >
+                Change selection
+              </button>
+            </div>
+          ) : null}
 
-              {preview.added.length ? (
-                <ul className="closure-list">
-                  {preview.added.map((addition) => (
-                    <li key={addition.naturalKey}>
-                      <strong>{resourceLabel(addition.naturalKey)}</strong>
-                      {", because "}
-                      {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
-                    </li>
+          {refused && preview ? (
+            <section aria-labelledby="restore-refused-heading" className="wizard-panel review-refused">
+              <h3 id="restore-refused-heading">KEEL cannot put this back</h3>
+              <div className="data-error" role="alert">
+                <ul>
+                  {preview.guardRefusals.map((guardRefusal) => (
+                    <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
                   ))}
                 </ul>
-              ) : (
-                <p>Nothing else is needed: what you chose depends on nothing outside it.</p>
-              )}
+                <p>Leave these out of your selection and try again.</p>
+              </div>
+              <TechnicalDetails>
+                {preview.guardRefusals.map((guardRefusal) => (
+                  <RecordField copy={false} key={guardRefusal.naturalKey} label={`Safety check · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
+                ))}
+                <RecordField label="Backup ID" value={snapshotId} />
+              </TechnicalDetails>
+            </section>
+          ) : null}
 
+          {preview && !refused && preview.added.length ? (
+            <section aria-labelledby="restore-closure-heading" className="wizard-panel wizard-closure">
+              <h3 id="restore-closure-heading">Also put back, because your choice needs {preview.added.length === 1 ? "it" : "them"}</h3>
+              <ul className="closure-list">
+                {preview.added.map((addition) => (
+                  <li key={addition.naturalKey}>
+                    <strong>{plainLabel(addition.naturalKey)}</strong>
+                    {", because "}
+                    {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
+                  </li>
+                ))}
+              </ul>
               {preview.unresolvedReferences.length ? (
                 <div className="data-error" role="alert">
-                  <p className="severity-label">Missing from this snapshot</p>
+                  <p className="severity-label">Missing from this backup</p>
                   <ul>
                     {preview.unresolvedReferences.map((reference) => (
                       <li key={`${reference.from}:${reference.field}`}>
-                        {resourceLabel(reference.from)} refers to something this snapshot does not hold; the restore
+                        {plainLabel(reference.from)} refers to something this backup does not hold; the restore
                         fails unless it already exists in the tenant.
                       </li>
                     ))}
                   </ul>
                 </div>
               ) : null}
-
-              {preview.guardRefusals.length ? (
-                <div className="data-error" role="alert">
-                  <p className="severity-label">Cannot restore</p>
-                  <ul>
-                    {preview.guardRefusals.map((guardRefusal) => (
-                      <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
-                    ))}
-                  </ul>
-                  <p>Remove these from the selection before you continue.</p>
-                </div>
-              ) : null}
-
               <TechnicalDetails>
                 <RecordField copy={false} label="Selected keys" value={preview.selected.join(", ")} />
                 <RecordField copy={false} label="Closure keys" value={preview.closureKeys.join(", ")} />
@@ -692,82 +661,70 @@ export function RestoreSelection({
                 {preview.unresolvedReferences.map((reference) => (
                   <RecordField copy={false} key={`${reference.from}:${reference.field}`} label={`Unresolved · ${reference.from}`} value={`${reference.field} → ${reference.symbol}`} />
                 ))}
-                {preview.guardRefusals.map((guardRefusal) => (
-                  <RecordField copy={false} key={guardRefusal.naturalKey} label={`Guard refusal · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
-                ))}
-                <RecordField label="Snapshot ID" value={snapshotId} />
+                <RecordField label="Backup ID" value={snapshotId} />
               </TechnicalDetails>
-
-              <div className="drift-action-buttons">
-                <button
-                  aria-busy={submitting || undefined}
-                  className="primary-action"
-                  disabled={
-                    !canRestore
-                    || submitting
-                    || previewing
-                    || preview.guardRefusals.length > 0
-                  }
-                  onClick={() => void startDryRun()}
-                  type="button"
-                >
-                  Next: start dry run
-                </button>
-                <button
-                  className="secondary-action"
-                  disabled={submitting || previewing}
-                  onClick={() => void clearSelection()}
-                  type="button"
-                >
-                  Clear selection
-                </button>
-              </div>
-              <p className="selection-scope">
-                The dry run works out exactly what would change. Nothing is written until someone else approves.
-              </p>
             </section>
-          ) : (
-            <p className="wizard-hint">
-              Select the resources to restore. Anything they depend on is added for you and
-              shown here before you continue.
-            </p>
-          )}
-        </div>
-      ) : null}
-
-      {step === "dry-run" ? (
-        <section aria-live="polite" className="wizard-panel wizard-running">
-          <h3>Working out what would change</h3>
-          <div aria-hidden="true" className="progress-indeterminate"><span /></div>
-          <p>This only reads your tenant; nothing is written. It usually takes under a minute.</p>
-          {dryRunJobId ? (
-            <TechnicalDetails>
-              <RecordField label="Job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} />
-              {dryRunArtifactId ? <RecordField label="Dry run ID" value={dryRunArtifactId} usage={<code>GET /api/actions/restore/dry-run/{dryRunArtifactId}</code>} /> : null}
-              <RecordField copy={false} label="Polling" value={`every ${DRY_RUN_POLL_MS / 1000}s`} />
-            </TechnicalDetails>
           ) : null}
+
+      {step === "track" ? (
+        <section aria-labelledby="restore-track-heading" className="wizard-panel wizard-track">
+          <h3 id="restore-track-heading">Sent to approvers</h3>
+          <p aria-live="polite">{message}</p>
+          <ol className="track-timeline">
+            <li className="track-done">Check finished</li>
+            <li className="track-done">Approval requested</li>
+            <li className="track-current">Another person reviews this same plan</li>
+            <li>KEEL checks the tenant again, then restores; the job appears below</li>
+          </ol>
+          <div className="form-actions">
+            <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
+            <button
+              className="btn btn-ghost"
+              disabled={submitting || planning}
+              onClick={() => startOver()}
+              type="button"
+            >
+              Put back something else
+            </button>
+          </div>
         </section>
       ) : null}
+
+          {step === "dry-run" ? (
+            <section aria-live="polite" className="wizard-panel wizard-running">
+              <h3>Checking what would change</h3>
+              <div aria-hidden="true" className="progress-indeterminate"><span /></div>
+              <p>This only reads your tenant; nothing is written. It usually takes under a minute.</p>
+              {dryRunJobId ? (
+                <TechnicalDetails>
+                  <RecordField label="Job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} />
+                  {dryRunArtifactId ? <RecordField label="Dry run ID" value={dryRunArtifactId} usage={<code>GET /api/actions/restore/dry-run/{dryRunArtifactId}</code>} /> : null}
+                  <RecordField copy={false} label="Polling" value={`every ${DRY_RUN_POLL_MS / 1000}s`} />
+                </TechnicalDetails>
+              ) : null}
+            </section>
+          ) : null}
 
       {artifact ? (
         <section aria-labelledby="restore-dry-run-heading" className={`wizard-panel wizard-review review-${artifact.status}`}>
           <div>
             <h3 id="restore-dry-run-heading">
               {artifact.status === "completed"
-                ? "Ready to confirm"
+                ? "Ready to send for approval"
                 : artifact.status === "refused"
-                  ? "KEEL refused this plan; it cannot be restored"
-                  : "The dry run failed; it cannot be restored"}
+                  ? "KEEL refused this plan; nothing can be put back from it"
+                  : "The check failed; nothing can be put back from it"}
             </h3>
           </div>
 
           <dl className="stat-strip review-stats">
-            <div><dt>Would restore</dt><dd>{objectResults(artifact.results.applied).length}</dd></div>
+            <div><dt>Will be put back</dt><dd>{objectResults(artifact.results.applied).length}</dd></div>
             <div className={artifact.results.skipped.length ? "stat-warn" : undefined}><dt>Refused</dt><dd>{artifact.results.skipped.length}</dd></div>
             <div className={artifact.results.failed.length ? "stat-bad" : undefined}><dt>Would fail</dt><dd>{artifact.results.failed.length}</dd></div>
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Needs doing by hand</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
+
+          <BeforeAfter changes={changeByKey} keys={objectResults(artifact.results.applied).map((entry) => entry.naturalKey)} />
 
           {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} view={artifact.incidentRecoveryView ?? null} /> : null}
 
@@ -791,8 +748,8 @@ export function RestoreSelection({
               <ul className="closure-list">
                 {objectResults(artifact.results.applied).map((entry) => (
                   <li key={entry.naturalKey}>
-                    <strong>{resourceLabel(entry.naturalKey)}</strong>
-                    {entry.reason ? `: ${entry.reason}` : ": will be restored"}
+                    <strong>{plainLabel(entry.naturalKey)}</strong>
+                    {`: ${plannedWords(entry.reason)}`}
                   </li>
                 ))}
               </ul>
@@ -807,7 +764,7 @@ export function RestoreSelection({
 
           {artifact.relationshipOperations?.length ? (
             <div>
-              <p className="severity-label">MEMBERSHIP CHANGES</p>
+              <p className="severity-label">Membership changes: people added to and removed from groups</p>
               <ul className="closure-list edge-list">
                 {artifact.relationshipOperations.map((operation) => (
                   <li
@@ -842,7 +799,7 @@ export function RestoreSelection({
               <ul>
                 {artifact.results.failed.map((entry) => (
                   <li key={entry.naturalKey}>
-                    <strong>{resourceLabel(entry.naturalKey)}</strong> would fail; the error is in Technical details.
+                    <strong>{plainLabel(entry.naturalKey)}</strong> would fail; the error is in Technical details.
                   </li>
                 ))}
               </ul>
@@ -880,7 +837,7 @@ export function RestoreSelection({
             <div className="wizard-confirm">
               <div className="filter-bar">
                 <label className="filter-field">
-                  <span>Why</span>
+                  <span>Why (optional, approvers see it)</span>
                   <input
                     disabled={submitting}
                     onChange={(event) => setJustification(event.target.value)}
@@ -892,17 +849,17 @@ export function RestoreSelection({
               <div className="drift-action-buttons">
                 <button
                   aria-busy={submitting || undefined}
-                  className="danger-action"
+                  className="primary-action"
                   disabled={!canRestore || submitting}
                   onClick={() => void confirm()}
                   type="button"
                 >
-                  Confirm restore
+                  Send for approval
                 </button>
                 <button
                   className="secondary-action"
                   disabled={submitting}
-                  onClick={() => resetDryRun()}
+                  onClick={() => startOver()}
                   type="button"
                 >
                   Discard
@@ -916,20 +873,87 @@ export function RestoreSelection({
           ) : (
             <div className="drift-action-buttons">
               <button
-                className="secondary-action"
+                className="btn"
                 disabled={submitting}
-                onClick={() => resetDryRun()}
+                onClick={() => startOver()}
                 type="button"
               >
-                Start a new dry run
+                Start again
               </button>
             </div>
           )}
         </section>
       ) : null}
 
+        </div>
+      )}
+
       {error ? <p className="action-error" role="alert">{error}</p> : null}
-      </div>
     </section>
+  );
+}
+
+/** A row: the setting's name and type, and either what changed since the backup (with
+ * who and when, and its undo) or how much a wrong restore of it could break. */
+function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNode; compared: boolean }) {
+  const service = serviceFor(item.service);
+  const change = item.change;
+  const tone = changeTone(change);
+  return (
+    <div className="restore-row" data-changed={change ? change.kind : undefined}>
+      <span className="restore-row-name">
+        <b>{itemName(item.naturalKey)}</b>
+        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {service.name}</small>
+      </span>
+      {change ? (
+        <span className="restore-row-change">
+          <span>{tone ? <span className="restore-chip" data-tone={tone}>{TONE_WORDS[tone]}</span> : null}{changeLine(change)}</span>
+          <small title={`Changed ${whenWords(change)} UTC`}>{whoWords(change)} · {whenWords(change)}</small>
+        </span>
+      ) : (
+        <span className="restore-row-impact" data-impact={item.blastRadius} title="How much a wrong restore of it could break">
+          <Icon name={item.blastRadius === "tenant-lockout" ? "alert" : item.blastRadius === "cosmetic" ? "page" : "info"} />
+          {impactWords(item.blastRadius)}
+        </span>
+      )}
+      <span className="restore-row-action">
+        {undo ?? (compared ? <span className="restore-row-same"><Icon name="check" />Same now</span> : null)}
+      </span>
+    </div>
+  );
+}
+
+/** Before and after for the settings a restore changes back, when KEEL knows them. */
+function BeforeAfter({ keys, changes }: { keys: string[]; changes: Map<string, RestoreChange> }) {
+  const known = keys.map((key) => changes.get(key)).filter((change): change is RestoreChange => Boolean(change));
+  if (!known.length) return null;
+  return (
+    <div className="restore-before-after">
+      <p className="severity-label">Before and after</p>
+      <ul>
+        {known.map((change) => (
+          <li key={change.naturalKey}>
+            <strong>{plainLabel(change.naturalKey)}</strong>
+            {change.kind === "deleted" ? (
+              <p className="restore-ba-line"><span>Now: gone</span><Icon name="chevron" /><span>After: recreated as in the backup</span></p>
+            ) : (
+              <table className="restore-ba-table">
+                <thead><tr><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">After the restore</th></tr></thead>
+                <tbody>
+                  {change.fields.map((field) => (
+                    <tr key={field.path}>
+                      <th scope="row">{fieldWords(field.path)}</th>
+                      <td data-label="Now">{field.after}</td>
+                      <td data-label="After">{field.before}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {change.fieldCount > change.fields.length ? <p className="restore-ba-more">{plural(change.fieldCount - change.fields.length, "more setting")} also go back.</p> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

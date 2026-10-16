@@ -48,6 +48,11 @@ interface Props<T> {
   more?: { label: string; run: (ids: string[]) => void }[];
   // Free-text find, kept in the URL as `q`.
   matches?: (item: T, query: string) => boolean;
+  // Rows shown per group before a "Show all" button; every row by default. Selecting a
+  // whole group still selects the rows not shown.
+  rowLimit?: number;
+  // A control in a group's header that acts on the group, such as "Undo all 4".
+  groupAction?: (group: ListGroup<T>) => ReactNode;
 }
 
 const LONG_PRESS_MS = 450;
@@ -61,7 +66,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -69,12 +74,14 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const closed = readList(view.get("closed"));
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [touchMode, setTouchMode] = useState(false);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => (matches && query ? items.filter((item) => matches(item, query.toLowerCase())) : items), [items, matches, query]);
   const groups = useMemo(() => grouping.groupsOf(filtered), [grouping, filtered]);
+  const shownOf = (group: ListGroup<T>) => (rowLimit && !expanded.has(group.key) && group.items.length > rowLimit + 1 ? group.items.slice(0, rowLimit) : group.items);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
-  const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => group.items.map(getId)), [groups, closed, getId]);
+  const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => shownOf(group).map(getId)), [groups, closed, getId, expanded, rowLimit]);
 
   // A filter that hides rows also drops them from the selection.
   useEffect(() => { setSelection((current) => prune(current, allIds)); }, [allIds]);
@@ -239,10 +246,11 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                   {tone && attention ? <StatusBadge status={{ tone, count: attention, note: `${attention} need${attention === 1 ? "s" : ""} attention` }} /> : null}
                   <Icon className="sel-group-chevron" name="chevron-down" />
                 </button>
+                {groupAction ? groupAction(group) : null}
               </header>
               {isClosed ? null : (
                 <ul className="sel-rows">
-                  {group.items.map((item) => {
+                  {shownOf(group).map((item) => {
                     const id = getId(item);
                     const selected = selection.ids.has(id);
                     return (
@@ -252,6 +260,14 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                       </li>
                     );
                   })}
+                  {shownOf(group).length < group.items.length ? (
+                    <li className="sel-more">
+                      <button className="btn btn-sm" onClick={() => setExpanded((current) => new Set([...current, group.key]))} type="button">
+                        Show all {plural(group.items.length, noun)}
+                      </button>
+                      <span>{plural(group.items.length - shownOf(group).length, noun)} more in {group.label}</span>
+                    </li>
+                  ) : null}
                 </ul>
               )}
             </section>

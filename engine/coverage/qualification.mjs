@@ -75,32 +75,15 @@ export const TYPE_DECISIONS = Object.freeze({
   subscribedSku: manual('licences are purchased, not configured'),
   directorySettingTemplate: manual('Microsoft-published template catalogue'),
   // Issue #156: basic tenant settings.
-  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; its logos, background image, favicon and custom stylesheet are backed up and uploaded back (fixture-tested, not yet live)', {
-    liveFailures: {
-      update: failedLive('2026-10-10', 'live restore PATCH of the default company branding returned HTTP 400 (eef1019, test tenant); default branding existed only as an empty localization 0 created with fr-FR',
-        'fix the default branding PATCH body (400 on the test tenant); live gate #148 run 1, to be re-run after the fix'),
-    },
-  }),
+  organizationalBranding: automated('organizationalbranding', 'issue-156 subset: update of the default sign-in page text, colours and layout; its logos, background image, favicon and custom stylesheet are backed up and uploaded back (fixture-tested, not yet live)'),
   organizationalBrandingLocalization: automated('organizationalbrandinglocalization', 'issue-156 subset: update of an existing language\'s sign-in page text, colours and layout; its images and stylesheet are backed up and uploaded back (fixture-tested, not yet live); adding or removing a language is by hand'),
   groupLifecyclePolicy: automated('grouplifecyclepolicy', 'issue-156 subset: update only when the restore makes group expiry less aggressive; a shorter lifetime, wider scope or a dropped renewal notice address could delete groups and is left to a person'),
   groupSetting: automated('groupsetting', 'task-109 subset: update and delete of tenant-wide settings only; the template is never written and a delete needs a complete snapshot observation'),
   user: automated('user', 'task-150 subset: update of reviewed attributes, soft-delete restore and add-only licences; Wave 2: a permanently deleted user is recreated disabled with a password nobody sees and a credentials checklist'),
-  group: automated('group', 'create/update/delete/restore and member/owner edges are registered', {
-    liveFailures: {
-      create: failedLive('2026-10-13', 'The group was created (POST succeeded after #173), but the post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (createdDateTime, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain and the member/owner edges did not run',
-        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
-      'restore-soft-deleted': failedLive('2026-10-13', 'The restore from deleted items worked (same id, read back), but the post-write convergence check reported "residual drift after update" on server-managed fields absent from the snapshot (expirationDateTime set by the group expiration policy, renewedDateTime, securityIdentifier), so the outcome was recorded as uncertain',
-        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
-    },
-  }),
+  group: automated('group', 'create/update/delete/restore and member/owner edges are registered'),
   administrativeUnit: automated('administrativeunit', 'task-109 subset: update of displayName and description only; membership and scoped roles are not written'),
   contact: manual('organizational contacts are directory-synchronised and read-only in Graph'),
-  application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written', {
-    liveFailures: {
-      create: failedLive('2026-10-14', 'application create sends the read-only property createdByAppId; Graph answers 400 \'Property createdByAppId is read-only and cannot be set\' and nothing is created',
-        'drop createdByAppId from the create body (#230, commit 7f4fa299); live gate #148 Q48, re-run in Q51'),
-    },
-  }),
+  application: automated('application', 'task-107 subset: create/update/restore-soft-deleted are registered; delete is not, and credentials are never written'),
   servicePrincipal: automated('serviceprincipal', 'task-107 subset: create bound to its application by appId; Wave 2: update of reviewed attributes and delete of an application\'s own service principal'),
   // Wave 2 ENTRA: written through engine/restore/directoryPolicyOperations.mjs.
   oauth2PermissionGrant: automated('oauth2permissiongrant', 'Wave 2 ENTRA subset: create and update of a delegated consent (scopes as the backup had them), matched on app, resource, consent type and user so a re-run never adds a second grant; delete is not registered'),
@@ -112,29 +95,12 @@ export const TYPE_DECISIONS = Object.freeze({
   roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered'),
   roleEligibilitySchedule: automated('unifiedroleeligibilityschedule', 'task-151 subset: create through an adminAssign schedule request that keeps the snapshot end date; update and removal are not registered'),
   // Roadmap task-151: PIM role settings, their role bindings and active schedules.
-  unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written', {
-    liveFailures: {
-      update: failedLive('2026-10-11', 'Write outcome "uncertain": KEEL could not re-read the PIM policy after the PATCH (direct GET of the policy or rule returns HTTP 400 CultureNotFoundException for these app tokens). A later collection shows the rule did change (MFA on activation back on), so the write works but its read-back path does not.',
-        'send an Accept-Language header on the PIM read-back; live gate #148 run 1, to be re-run after the fix'),
-    },
-  }),
+  unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
   unifiedRoleManagementPolicyAssignment: manual('Entra binds one settings policy to each role; the binding is read to name the role, never written'),
   roleAssignmentSchedule: incomplete('a time-bound active assignment needs the eligibility expiry contract plus a check that an activation is not replayed'),
-  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate', {
-    liveFailures: {
-      create: failedLive('2026-10-13', 'The policy was created (POST succeeded after #173; report-only, read back), but post-create verification reported "created object did not verify": it compares server-managed fields the snapshot cannot match (id, createdDateTime, grantControls.authenticationStrength@odata.context), so the outcome was recorded as uncertain',
-        'verify and converge against what was written, ignoring server-managed fields (PR #212); live gate #148 run 2, to be re-run after the fix'),
-    },
-  }),
+  conditionalAccessPolicy: automated('conditionalaccesspolicy', 'create/update/delete/restore-soft-deleted are registered; writes land report-only, and turning a policy on is a separate approved step behind the break-glass lockout gate'),
   authenticationStrengthPolicy: automated('authenticationstrengthpolicy', 'task-108 subset: create/update of custom strengths only; built-in strengths are immutable and refused, delete is not registered'),
-  namedLocation: automated('namedlocation', 'create/update/delete are registered', {
-    liveFailures: {
-      create: failedLive('2026-10-11', 'Live POST /identity/conditionalAccess/namedLocations returned HTTP 400; the create body carried the collected snapshot shape, including read-only properties (id, createdDateTime, modifiedDateTime, deletedDateTime).',
-        'strip server-managed read-only fields from create bodies; live gate #148 run 1, to be re-run after the fix'),
-      update: failedLive('2026-10-13', 'PATCH returned 400 "1042: Unexpected type: namedLocationType for NamedLocations": the update body (writableProjection) drops @odata.type, which Graph requires to pick the namedLocation subtype. Verified by hand on the fixture: the same PATCH without @odata.type gives 400, with it 204. #173 keeps @odata.type on create bodies only',
-        'keep @odata.type on update bodies so Graph can pick the namedLocation subtype; live gate #148 run 2, to be re-run after the fix'),
-    },
-  }),
+  namedLocation: automated('namedlocation', 'create/update/delete are registered'),
   authenticationContextClassReference: incomplete('ids c1..c99 are fixed per tenant and referenced by Conditional Access policies and SharePoint labels'),
   authenticationMethodsPolicy: automated('authenticationmethodspolicy', 'task-149: update of the policy and its method configurations, only behind the break-glass lockout gate'),
   identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate'),

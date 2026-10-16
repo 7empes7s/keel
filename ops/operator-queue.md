@@ -4362,3 +4362,16 @@ item that needs it stays untouched.
   If step 2 ever writes a value other than the one step 1 read, put it back. Remove /tmp/keel-q90 afterwards.
 - **Report:** for step 2, `ok` and, on failure, the error message and `errorId` verbatim (tenant name masked as `<org>`). For steps 1 and 3,
   `ok` and the `OrganizationBrandingEnabled` value. Then comment the findings on issue #339 as keel-operator.
+
+### Q91: Check the first scheduled nightly content backup (01:00 UTC, 2026-10-16), per workload (read-only)
+- Drafted by the "First nightly content backup" thread (2026-10-16). The content-collect schedule row was added on live 2026-10-15
+  07:35 UTC (daily 01:00 UTC, issue #272). #270 (stale mail cursor fix for #268) was deployed before it.
+- Status: todo
+- Do (read-only: no tenant writes, no schedule or job changes, no reruns):
+  1. Report the deployed build of /opt/keel-live and the content-collect schedule row (enabled, last run, next_due_at).
+  2. Find the content-collect job(s) started from 2026-10-16 00:55 UTC: id, start/end time, final status, exit code.
+  3. Per workload (exchange-mail, onedrive, sharepoint-sites, teams, planner, and any other it ran): status, items, bytes,
+     and for any partial or failed workload the reason verbatim (tenant names masked).
+  4. Store read-back per workload (rows / bytes) and sync-key counts, compared with the Q62 Run A read-back.
+  5. Anything else in the worker log for that run that looks wrong (errors, retries, timeouts).
+- **Report:** in this Result. If a workload failed, also open an `operator-report` issue for it (one per distinct bug).

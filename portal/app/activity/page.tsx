@@ -53,7 +53,7 @@ export default async function ActivityPage({ searchParams }: {
       if (verify.ok) integrity = await verify.json() as ChainIntegrity;
     }
   } catch {
-    return <><PageHeader section="Activity" title="Activity" description={DESCRIPTION} /><DataUnavailable surface="Activity" /></>;
+    return <><PageHeader section="Audit log" title="Activity" description={DESCRIPTION} /><DataUnavailable surface="Activity" /></>;
   }
 
   const generatedAt = jobs?.generatedAt ?? evidence?.generatedAt ?? new Date().toISOString();
@@ -68,7 +68,7 @@ export default async function ActivityPage({ searchParams }: {
   const failedRecently = (jobs?.jobs ?? []).some((job) => job.status === "failed");
 
   return <>
-    <PageHeader section="Activity" title="Activity" description={DESCRIPTION} generatedAt={generatedAt} />
+    <PageHeader section="Audit log" title="Activity" description={DESCRIPTION} generatedAt={generatedAt} />
     <Verdict
       text={jobs ? activityVerdict(jobs.jobs, generatedAt) : "Showing the audit record: who did what, newest first."}
       tone={failedRecently ? "attention" : "good"}

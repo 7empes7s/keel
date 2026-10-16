@@ -19,12 +19,12 @@ export default async function SitesPage() {
   try {
     data = await getSitePermissions();
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Protect" title="Sites" /><DataUnavailable surface="Site permissions" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Backup" title="Sites" /><DataUnavailable surface="Site permissions" /></>;
   }
   const verdict = sitesVerdict(data);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Protect" title="Sites" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Backup" title="Sites" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <SiteList data={data} />

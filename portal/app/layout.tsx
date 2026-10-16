@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
-import Link from "next/link";
 
 import "@fontsource-variable/ibm-plex-sans/wght.css";
 import "@fontsource/ibm-plex-mono/400.css";
@@ -10,20 +9,17 @@ import "./globals.css";
 
 import { DATA_SURFACES, readAccess } from "@/lib/read";
 
-import { CommandPalette } from "@/components/command-palette";
-import { KeelMark } from "@/components/keel-mark";
-import { NavLinks, SectionTabs } from "@/components/nav-links";
-import { SignOutControls } from "@/components/sign-out";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppShell } from "@/components/shell/app-shell";
 import { Toaster } from "@/components/toaster";
 import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { accessSummary } from "@/lib/presentation";
+import { MENU_COOKIE, parseMenuPrefs } from "@/lib/menu-prefs";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "KEEL Operator Portal",
+  title: "Keel",
   description: "Microsoft 365 disaster-recovery operator console",
 };
 
@@ -49,7 +45,9 @@ export default async function RootLayout({
   const canApprove = capabilities.includes("approve");
   // What this operator can do, in words; the raw capability codes stay in the title.
   const actions = capabilities.filter((capability) => capability !== "read");
-  const theme = parseThemePreference((await cookies()).get(THEME_COOKIE)?.value);
+  const cookieStore = await cookies();
+  const theme = parseThemePreference(cookieStore.get(THEME_COOKIE)?.value);
+  const menuPrefs = parseMenuPrefs(cookieStore.get(MENU_COOKIE)?.value);
 
   // Only approvers see the count, and a failed read hides the badge rather than
   // breaking every page's chrome.
@@ -66,41 +64,15 @@ export default async function RootLayout({
   return (
     <html data-theme={theme === "system" ? undefined : theme} lang="en">
       <body>
-        <a className="skip-link" href="#main-content">
-          Skip to content
-        </a>
-        <div className="app-shell">
-          <aside className="sidebar">
-            <Link aria-label="KEEL dashboard" className="brand" href="/">
-              <span className="brand-mark" aria-hidden="true">
-                <KeelMark />
-              </span>
-              <span>
-                <strong>KEEL</strong>
-                <small>Operator portal</small>
-              </span>
-            </Link>
-            <CommandPalette canApprove={canApprove} canConfigure={canConfigure} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
-            <NavLinks canConfigure={canConfigure} canRead={canRead} canPolicies={canPolicies} canUsers={canUsers} canApprove={canApprove} pendingApprovals={pendingApprovals} />
-            <div className="operator-context">
-              <span className="auth-state">
-                <span aria-hidden="true" className="auth-dot" /> Authenticated
-              </span>
-              <span className="operator-email" title={email}>
-                {email}
-              </span>
-              <span className="access-label" title={actions.join(", ") || undefined}>
-                {accessSummary(capabilities)}
-              </span>
-              <ThemeToggle initial={theme} />
-              <SignOutControls />
-            </div>
-          </aside>
-          <main className="workspace" id="main-content">
-            <SectionTabs canApprove={canApprove} canConfigure={canConfigure} canPolicies={canPolicies} canRead={canRead} canUsers={canUsers} />
-            {children}
-          </main>
-        </div>
+        <AppShell
+          capabilities={{ canApprove, canConfigure, canPolicies, canRead, canUsers }}
+          initialPrefs={menuPrefs}
+          pendingApprovals={pendingApprovals}
+          person={{ email, access: accessSummary(capabilities), accessTitle: actions.join(", ") || undefined }}
+          theme={theme}
+        >
+          {children}
+        </AppShell>
         <Toaster />
       </body>
     </html>

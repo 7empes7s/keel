@@ -1,36 +1,52 @@
-import type { NavSection } from "@/components/nav-links";
+import { Suspense } from "react";
+
+import { SECTION_ICONS, type NavSection } from "@/components/nav-links";
+import { Icon, type IconName } from "@/components/shell/icons";
+import { PageActions } from "@/components/shell/page-actions";
+import type { RiskTone } from "@/lib/menu-status";
 import { formatTimestamp } from "@/lib/presentation";
 
-// Portal experience contract: the eyebrow is the navigation section the page sits in,
+const STATUS_ICONS: Record<RiskTone, IconName> = { urgent: "alert", soon: "clock", low: "info", fine: "check" };
+
+// The page frame's header (direction A): the title, a status pill when the page has a
+// verdict, and one plain sentence. `section` is the menu section the page sits in,
 // typed so no page can carry a second taxonomy (portal/test/experience-contract.test.ts
-// checks each page passes the section that owns its route).
+// checks each page passes the section that owns its route); it gives a starred page
+// its icon. The section's name is not repeated above the title: the menu shows it.
 export function PageHeader({
   section,
   title,
   description,
   generatedAt,
   marker,
+  status,
 }: {
   section: NavSection;
   title: string;
   description: string;
   generatedAt?: string;
   marker?: string;
+  status?: { tone: RiskTone; label: string };
 }) {
   return (
     <header className="page-header">
-      <div className="page-title-group">
-        <div className="eyebrow-line">
-          <p className="eyebrow">{section}</p>
-          {marker ? <span className="mode-marker">{marker}</span> : null}
-        </div>
+      <div className="page-title-row">
         <h1>{title}</h1>
-        <p className="page-description">{description}</p>
+        {status ? (
+          <span className="status-pill" data-tone={status.tone}>
+            <Icon name={STATUS_ICONS[status.tone]} />
+            {status.label}
+          </span>
+        ) : null}
+        {marker ? <span className="mode-marker">{marker}</span> : null}
+        <Suspense fallback={null}>
+          <PageActions icon={SECTION_ICONS[section]} title={title} />
+        </Suspense>
       </div>
+      <p className="page-description">{description}</p>
       {generatedAt ? (
         <p className="as-of">
-          <span>Data read</span>
-          <time dateTime={generatedAt}>{formatTimestamp(generatedAt)}</time>
+          Data as of <time dateTime={generatedAt}>{formatTimestamp(generatedAt)}</time>
         </p>
       ) : null}
     </header>

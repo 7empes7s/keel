@@ -72,8 +72,8 @@ test("values read as names, never as ids or address codes", () => {
   assert.equal(containerWords(`drive:${ID(4)}`), "Drive");
 });
 
-test("Compare sits under Changes and needs read", () => {
-  assert.ok(NAV_MAP.Changes.some((route) => route.href === "/compare"));
+test("Compare sits under Baselines and needs read", () => {
+  assert.ok(NAV_MAP.Baselines.some((route) => route.href === "/compare"));
   assert.equal(visibleNavLinks({}).some((link) => link.href === "/compare"), false);
   assert.equal(visibleNavLinks({ canRead: true }).some((link) => link.href === "/compare"), true);
 });

@@ -23,12 +23,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   try {
     report = await getValueReport({ scope: access.scope, period, entity });
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Activity" title="Value report" /><DataUnavailable surface="Value report" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Reports" title="Value report" /><DataUnavailable surface="Value report" /></>;
   }
   const verdict = valueVerdict(report);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={report.generatedAt} section="Activity" title="Value report" />
+      <PageHeader description={DESCRIPTION} generatedAt={report.generatedAt} section="Reports" title="Value report" />
       <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ValueReportView data={{ report, period, entity }} />

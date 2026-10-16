@@ -50,7 +50,7 @@ export default async function BaselinesPage() {
       <>
         <PageHeader
           description="How the tenant should look: the reference every change is measured against."
-          section="Changes"
+          section="Baselines"
           title="Baselines"
         />
         <DataUnavailable surface="Baselines" />
@@ -67,7 +67,7 @@ export default async function BaselinesPage() {
     <>
       <PageHeader
         description="How the tenant should look: the reference every change is measured against."
-        section="Changes"
+        section="Baselines"
         generatedAt={data.generatedAt}
         title="Baselines"
       />

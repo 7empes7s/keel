@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { Icon } from "@/components/shell/icons";
 import { groupNavLinks, isCurrentPath, visibleNavLinks, type NavCapabilities } from "@/components/nav-links";
 import { applyThemePreference, type ThemePreference } from "@/lib/theme";
 
@@ -38,6 +39,33 @@ export function scoreCommand(label: string, keywords: string, query: string): nu
   return isSubsequence(name, q.replace(/\s+/g, "")) ? 1 : 0;
 }
 
+// Any search button opens the one palette through this event, so the menu, the phone's
+// top bar and the keyboard shortcut all share it.
+export const PALETTE_EVENT = "keel-open-palette";
+
+export function openCommandPalette(): void {
+  window.dispatchEvent(new Event(PALETTE_EVENT));
+}
+
+export function usePaletteShortcut(): string {
+  const [shortcut, setShortcut] = useState("Ctrl K");
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/.test(navigator.platform)) setShortcut("⌘K");
+  }, []);
+  return shortcut;
+}
+
+/** A search box look-alike that opens the palette. */
+export function SearchTrigger({ compact = false }: { compact?: boolean }) {
+  const shortcut = usePaletteShortcut();
+  return (
+    <button aria-label={compact ? "Search or jump to a page" : undefined} className={compact ? "icon-button" : "search-trigger"} onClick={openCommandPalette} type="button">
+      <Icon name="search" />
+      {compact ? null : <><span>Search or jump to…</span><kbd>{shortcut}</kbd></>}
+    </button>
+  );
+}
+
 export function CommandPalette(capabilities: NavCapabilities) {
   const links = visibleNavLinks(capabilities);
   const router = useRouter();
@@ -47,11 +75,6 @@ export function CommandPalette(capabilities: NavCapabilities) {
   const listId = useId();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [shortcut, setShortcut] = useState("⌘K");
-
-  useEffect(() => {
-    if (!/Mac|iPhone|iPad/.test(navigator.platform)) setShortcut("Ctrl K");
-  }, []);
 
   const commands = useMemo<Command[]>(() => {
     const pages = groupNavLinks(links).flatMap((section) =>
@@ -107,15 +130,15 @@ export function CommandPalette(capabilities: NavCapabilities) {
       }
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(PALETTE_EVENT, open);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(PALETTE_EVENT, open);
+    };
   });
 
   return (
     <>
-      <button className="palette-trigger" onClick={open} type="button">
-        <span>Jump to…</span>
-        <kbd>{shortcut}</kbd>
-      </button>
       <dialog
         aria-label="Command palette"
         className="command-palette"

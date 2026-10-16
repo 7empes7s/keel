@@ -29,7 +29,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
       <PageHeader
         description="Is this tenant protected right now, and what needs you?"
         generatedAt={data.generatedAt}
-        section="Overview"
+        section="Dashboards"
         title="Overview"
       />
 

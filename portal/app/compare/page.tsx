@@ -22,12 +22,12 @@ export default async function ComparePage({ searchParams }: { searchParams?: Pro
   try {
     data = await getCompareData(input);
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Changes" title="Compare" /><DataUnavailable surface="Compare" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Baselines" title="Compare" /><DataUnavailable surface="Compare" /></>;
   }
   const verdict = compareVerdict(data);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Compare" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" title="Compare" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <CompareView data={data} />

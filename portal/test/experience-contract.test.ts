@@ -4,7 +4,7 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { NAV_MAP, NAV_SECTIONS, sectionForPath, visibleNavEntries } from "@/components/nav-links";
+import { MENU_SECTIONS, NAV_MAP, NAV_SECTIONS, sectionForPath, visibleNavEntries } from "@/components/nav-links";
 import { DISPLAY_ENUMS, accessSummary, displayEnum } from "@/lib/presentation";
 
 // Roadmap task-129: the portal experience contract's shell. Boundary checks over the
@@ -23,16 +23,28 @@ function routeOf(file: string): string {
   return `/${dir}`.replace(/\[[^\]]+\]/g, "x").replace(/\/$/, "") || "/";
 }
 
-test("seven navigation entries, one map, in the contract's order", () => {
-  assert.deepEqual([...NAV_SECTIONS], ["Overview", "Protect", "Changes", "Restore", "Approvals", "Activity", "Settings"]);
-  const everything = visibleNavEntries({ canRead: true, canPolicies: true, canUsers: true, canApprove: true });
-  assert.equal(everything.length, 7);
-  assert.ok(everything.length <= 8, "the index never grows past eight");
-  // A viewer without approve or read-gated pages loses entries, never gets empty ones.
+test("eight menu sections, one map, in the order Marouane set; approvals and alerts sit behind the bell", () => {
+  assert.deepEqual([...MENU_SECTIONS], ["Dashboards", "Backup", "Restore", "Baselines", "Reports", "Automation center", "Audit log", "Settings"]);
+  assert.deepEqual([...NAV_SECTIONS], [...MENU_SECTIONS, "Inbox"]);
+  const everything = visibleNavEntries({ canRead: true, canPolicies: true, canUsers: true, canApprove: true, canConfigure: true });
+  assert.equal(everything.length, 8);
+  assert.ok(everything.every((entry) => entry.group !== "Inbox"), "the inbox is reached from the bell, not the menu list");
+  // A viewer without read-gated pages loses sections, never gets empty ones.
   const minimal = visibleNavEntries({});
-  assert.deepEqual(minimal.map((entry) => entry.label), ["Overview", "Protect", "Changes", "Restore"]);
-  // Settings opens on the first tab the viewer may use.
+  assert.deepEqual(minimal.map((entry) => entry.label), ["Dashboards", "Backup", "Restore", "Baselines"]);
+  // Settings opens on the first page the viewer may use.
   assert.equal(visibleNavEntries({ canRead: true }).find((entry) => entry.label === "Settings")?.href, "/notifications");
+  // The plan's route map (PLAN.md section 7).
+  const owner = (href: string) => sectionForPath(href);
+  assert.equal(owner("/protect"), "Backup");
+  assert.equal(owner("/drift"), "Baselines");
+  assert.equal(owner("/compare"), "Baselines");
+  assert.equal(owner("/emergency-changes"), "Automation center");
+  assert.equal(owner("/policies/p1"), "Automation center");
+  assert.equal(owner("/reports"), "Reports");
+  assert.equal(owner("/evidence"), "Audit log");
+  assert.equal(owner("/approvals"), "Inbox");
+  assert.equal(owner("/alerts"), "Inbox");
 });
 
 test("every portal page belongs to exactly one section, and every mapped route has a page", () => {
@@ -45,7 +57,7 @@ test("every portal page belongs to exactly one section, and every mapped route h
   assert.equal(new Set(all).size, all.length, "a route sits in one section only");
 });
 
-test("every page's eyebrow is the section that owns its route", () => {
+test("every page's header names the section that owns its route", () => {
   const checked: string[] = [];
   for (const file of pages(appDirectory)) {
     const source = readFileSync(file, "utf8");
@@ -58,7 +70,7 @@ test("every page's eyebrow is the section that owns its route", () => {
   }
   // The Overview renders its header through DashboardView.
   const dashboard = readFileSync(fileURLToPath(new URL("../components/dashboard/dashboard-view.tsx", import.meta.url)), "utf8");
-  assert.match(dashboard, /section="Overview"/);
+  assert.match(dashboard, /section="Dashboards"/);
   assert.ok(checked.length >= 15, `only ${checked.length} pages declare a section`);
 });
 
@@ -91,7 +103,7 @@ test("every stored code the UI fixtures use is in the display map", () => {
   }
 });
 
-test("the sidebar says what you can do in words, never 'capabilities'", () => {
+test("the menu says what you can do in words, never 'capabilities'", () => {
   assert.equal(accessSummary(["read"]), "You can view");
   assert.equal(accessSummary(["read", "approve", "restore"]), "You can approve and restore");
   assert.doesNotMatch(accessSummary(["read", "approve", "restore", "rollback", "collect", "backup", "configuration"]), /capabilit/i);

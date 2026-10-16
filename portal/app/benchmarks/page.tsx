@@ -23,7 +23,7 @@ export default async function BenchmarksPage() {
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Changes" title="Compliance" />
+        <PageHeader description={DESCRIPTION} section="Baselines" title="Compliance" />
         <DataUnavailable surface="Compliance" />
       </>
     );
@@ -32,7 +32,7 @@ export default async function BenchmarksPage() {
 
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Compliance" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" title="Compliance" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <ComplianceReport data={data} now={data.generatedAt} />

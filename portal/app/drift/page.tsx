@@ -35,7 +35,7 @@ export default async function DriftPage() {
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Changes" title="Changes" />
+        <PageHeader description={DESCRIPTION} section="Baselines" title="Changes" />
         <DataUnavailable surface="Changes" />
       </>
     );
@@ -46,7 +46,7 @@ export default async function DriftPage() {
   );
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Changes" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" title="Changes" />
       <Verdict
         action={data.baseline ? null : { label: "Set a baseline", href: "/baselines" }}
         text={verdict.text}

@@ -21,7 +21,7 @@ export default async function Home() {
       <>
         <PageHeader
           description="Is this tenant protected right now, and what needs you?"
-          section="Overview"
+          section="Dashboards"
           title="Overview"
         />
         <DataUnavailable surface="The overview" />

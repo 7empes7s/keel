@@ -104,6 +104,16 @@ for (const [name, theme] of [["dark", dark], ["light", light]] as const) {
     check("--on-accent", "--accent-fill-hover", TEXT);
     check("--rail-text", "--rail", TEXT);
     check("--rail-soft", "--rail", TEXT);
+    // The menu: text on its hover and current-page fills, status badges on the navy rail,
+    // phone tab badges (surface-coloured text on a solid risk colour), and selected rows.
+    for (const bg of ["--rail-hover", "--rail-active"]) {
+      check("--rail-text", bg, TEXT);
+      check("--rail-soft", bg, TEXT);
+    }
+    for (const tone of ["--rail-urgent", "--rail-soon", "--rail-low", "--rail-fine"]) check("--navy", tone, TEXT);
+    for (const tone of ["--urgent", "--check-soon", "--low-risk", "--fine"]) check("--surface", tone, TEXT);
+    check("--text", "--accent-soft", TEXT);
+    check("--text-soft", "--accent-soft", TEXT);
     assert.deepEqual(failures, []);
   });
 }

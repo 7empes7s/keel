@@ -29,14 +29,14 @@ export default async function SitePage({ params }: { params: Promise<{ id: strin
   try {
     data = await getSitePermissions(siteId);
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Protect" title="Site" /><DataUnavailable surface="This site" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Backup" title="Site" /><DataUnavailable surface="This site" /></>;
   }
   const site = data.sites[0];
   if (!site || !data.run) notFound();
   const verdict = siteVerdict(site);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Protect" title={siteName(site)} />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Backup" title={siteName(site)} />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <SiteDetail latest={data.latest} now={data.generatedAt} run={data.run} site={site} />

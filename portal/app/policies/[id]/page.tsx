@@ -18,14 +18,14 @@ export default async function PolicyPage({ params }: { params: Promise<{ id: str
   try {
     response = await loadPolicy(new Request(`http://localhost/api/policies/${encodeURIComponent(id)}`, { headers: await headers() }));
   } catch {
-    return <><PageHeader section="Settings" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
+    return <><PageHeader section="Automation center" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
   }
   if (response.status === 404) notFound();
-  if (!response.ok) return <><PageHeader section="Settings" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
+  if (!response.ok) return <><PageHeader section="Automation center" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
   const { policy, automationDisabled, generatedAt } = await response.json() as { policy: Policy; automationDisabled: boolean; generatedAt: string };
   const state = policyStateSentence(policy, generatedAt);
   return <>
-    <PageHeader section="Settings" title={policy.name} description="What this policy does, acting as whom, and what it last did." generatedAt={generatedAt} />
+    <PageHeader section="Automation center" title={policy.name} description="What this policy does, acting as whom, and what it last did." generatedAt={generatedAt} />
     <Verdict text={`${state}. ${policySentence(policy)}`} tone={state === "Running" ? "good" : "attention"} />
     <div data-layer="explanation">
       <Link className="text-link back-link" href="/policies"><span aria-hidden="true">←</span> All policies</Link>

@@ -29,7 +29,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       job = (await response.json() as { job: JobRecord }).job;
     }
   } catch {
-    return <><PageHeader section="Activity" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
+    return <><PageHeader section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
   }
   if (!job) notFound();
   const now = new Date().toISOString();
@@ -45,7 +45,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   const enforced = restoreRef && jobParams.mode === "enforce" && (job.status === "succeeded" || job.status === "failed");
   return (
     <>
-      <PageHeader section="Activity" title="Job" description="What this job did and how it ended." generatedAt={now} />
+      <PageHeader section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
       <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : job.status === "succeeded" ? "good" : "attention"} />
       <Link className="text-link back-link" href="/activity"><span aria-hidden="true">←</span> All activity</Link>
       <JobDetail job={job} now={now} />

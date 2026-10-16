@@ -19,11 +19,11 @@ export default async function SchedulesPage() {
     if (!response.ok) throw new Error("Schedules unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader section="Protect" title="Schedules" description={DESCRIPTION} /><DataUnavailable surface="Schedules" /></>;
+    return <><PageHeader section="Backup" title="Schedules" description={DESCRIPTION} /><DataUnavailable surface="Schedules" /></>;
   }
   const verdict = schedulesVerdict(data.schedules, data.generatedAt, data.forecasts);
   return <>
-    <PageHeader section="Protect" title="Schedules" description={DESCRIPTION} generatedAt={data.generatedAt} />
+    <PageHeader section="Backup" title="Schedules" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation">
       <ScheduleTable schedules={data.schedules} deferrals={data.deferrals} forecasts={data.forecasts} canEdit={access.capabilities.includes("configuration")} now={data.generatedAt} />

@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
-import { usePoll } from "@/lib/use-poll";
+import type { IconName } from "@/components/shell/icons";
 
-// Portal experience contract, "Information architecture": seven entries, one map.
-// Each entry absorbs existing pages, which stay reachable at their own routes and show
-// as tabs inside the entry (SectionTabs). A page's eyebrow is the entry it sits in and
-// nothing else (PageHeader's `section`), so no page can carry a second taxonomy.
-// Absorbed pages become merged views in task-130/131; routes keep working throughout.
-export const NAV_SECTIONS = ["Overview", "Protect", "Changes", "Restore", "Approvals", "Activity", "Settings"] as const;
+// Portal structure (handoff/redesign/PLAN.md section 7): under the cloud, eight
+// sections, top to bottom, then the bell's inbox. Each section absorbs existing pages,
+// which keep their routes and show as sub-items under the section in the menu (and as
+// one scrolling row of tabs on a phone). A page's PageHeader names the section it sits
+// in (`section`), typed, so no page can carry a second taxonomy.
+export const MENU_SECTIONS = ["Dashboards", "Backup", "Restore", "Baselines", "Reports", "Automation center", "Audit log", "Settings"] as const;
+// Approvals and alerts live behind the bell, not in the menu list.
+export const NAV_SECTIONS = [...MENU_SECTIONS, "Inbox"] as const;
+export type MenuSection = (typeof MENU_SECTIONS)[number];
 export type NavSection = (typeof NAV_SECTIONS)[number];
 
 export interface NavCapabilities {
@@ -28,29 +30,46 @@ interface SectionRoute {
   href: string;
   label: string;
   gate: Gate;
-  // Former page names, still searchable in the command palette.
+  // Former page and section names, still searchable in the command palette.
   aliases?: string;
-  // A route that belongs to the section but is not a tab of its own (a redirect or a
-  // detail page reached from the section's main page).
+  // A route that belongs to the section but is not a sub-item of its own (a redirect
+  // or a detail page reached from the section's main page).
   hidden?: boolean;
 }
 
+export const SECTION_ICONS: Record<NavSection, IconName> = {
+  Dashboards: "dashboards",
+  Backup: "backup",
+  Restore: "restore",
+  Baselines: "baselines",
+  Reports: "reports",
+  "Automation center": "automation",
+  "Audit log": "audit",
+  Settings: "settings",
+  Inbox: "bell",
+};
+
+// What each section is for, in one line: the menu's tooltip and the palette's hint.
+export const SECTION_PURPOSE: Record<NavSection, string> = {
+  Dashboards: "How your Microsoft 365 setup is doing, at a glance",
+  Backup: "What Keel saves, when, and what failed",
+  Restore: "Put settings back from a backup",
+  Baselines: "Your approved setup and every change since",
+  Reports: "Answers about your setup, ready to share",
+  "Automation center": "What Keel does on its own when something changes",
+  "Audit log": "Everything Keel did and who decided what",
+  Settings: "People, notifications, connections and setup",
+  Inbox: "Approvals and alerts waiting on someone",
+};
+
 export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
-  Overview: [{ href: "/", label: "Overview", gate: null, aliases: "dashboard home" }],
-  Protect: [
-    { href: "/protect", label: "Protect", gate: null, aliases: "backups coverage configuration types" },
+  Dashboards: [{ href: "/", label: "Overview", gate: null, aliases: "overview dashboard home" }],
+  Backup: [
+    { href: "/protect", label: "What's protected", gate: null, aliases: "protect backups coverage configuration types" },
     { href: "/schedules", label: "Schedules", gate: "canRead" },
     { href: "/sites", label: "Sites", gate: "canRead", aliases: "sharepoint site permissions app access grants groups roles" },
     { href: "/backups", label: "Backups", gate: null, hidden: true },
     { href: "/coverage", label: "Configuration types", gate: null, hidden: true },
-  ],
-  Changes: [
-    { href: "/drift", label: "Changes", gate: null, aliases: "drift" },
-    { href: "/baselines", label: "Baselines", gate: null },
-    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare snapshots tenants differences side by side" },
-    { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
-    { href: "/alerts", label: "Alerts", gate: "canRead", aliases: "alerts inbox acknowledge escalation" },
-    { href: "/emergency-changes", label: "Emergency changes", gate: "canApprove", aliases: "emergency deviation change intent approved change window" },
   ],
   Restore: [
     { href: "/restore", label: "Restore", gate: null },
@@ -58,20 +77,34 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/resilience", label: "Resilience", gate: "canRead", aliases: "recovery point recovery time drills off-site copy" },
     { href: "/readiness", label: "Emergency access", gate: "canRead", aliases: "break glass emergency accounts readiness sign-in test" },
   ],
-  Approvals: [{ href: "/approvals", label: "Approvals", gate: "canApprove" }],
-  Activity: [
-    { href: "/activity", label: "Activity", gate: "canRead", aliases: "jobs evidence audit record history" },
+  Baselines: [
+    { href: "/drift", label: "Changes", gate: null, aliases: "drift changes" },
+    { href: "/baselines", label: "Approved setups", gate: null, aliases: "baselines approved setup" },
+    { href: "/compare", label: "Compare", gate: "canRead", aliases: "compare snapshots tenants differences side by side" },
+    { href: "/benchmarks", label: "Compliance", gate: null, aliases: "benchmarks controls findings exceptions storage residency" },
+  ],
+  Reports: [
     { href: "/reports", label: "Value report", gate: "canRead", aliases: "reports outcomes verified value hours saved export" },
-    { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
-    { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
     { href: "/ask", label: "Ask", gate: "canRead", aliases: "question query search what changed failed jobs coverage" },
   ],
+  "Automation center": [
+    { href: "/policies", label: "Policies", gate: "canPolicies", aliases: "automation rules automatic responses" },
+    { href: "/emergency-changes", label: "Emergency changes", gate: "canApprove", aliases: "emergency deviation change intent approved change window" },
+  ],
+  "Audit log": [
+    { href: "/activity", label: "Activity", gate: "canRead", aliases: "jobs evidence audit record history" },
+    { href: "/jobs", label: "Jobs", gate: "canRead", hidden: true },
+    { href: "/evidence", label: "Audit record", gate: "canRead", hidden: true },
+  ],
   Settings: [
-    { href: "/policies", label: "Policies", gate: "canPolicies" },
     { href: "/principals", label: "People", gate: "canUsers", aliases: "principals users roles" },
     { href: "/notifications", label: "Notifications", gate: "canRead" },
     { href: "/integrations", label: "Integrations", gate: "canRead" },
     { href: "/setup", label: "Setup", gate: "canConfigure", aliases: "onboarding prerequisites consent connect tenant" },
+  ],
+  Inbox: [
+    { href: "/approvals", label: "Approvals", gate: "canApprove", aliases: "approve reject requests waiting" },
+    { href: "/alerts", label: "Alerts", gate: "canRead", aliases: "alerts inbox acknowledge escalation" },
   ],
 };
 
@@ -86,17 +119,22 @@ function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
   return gate === null || capabilities[gate] === true;
 }
 
-/** Every page the viewer may open, each tagged with its section (palette, tests). */
-export function visibleNavLinks(capabilities: NavCapabilities): NavLink[] {
-  return NAV_SECTIONS.flatMap((group) => NAV_MAP[group]
+/** The sub-pages of one section the viewer may open, in menu order. */
+export function sectionLinks(section: NavSection, capabilities: NavCapabilities): NavLink[] {
+  return NAV_MAP[section]
     .filter((route) => !route.hidden && allowed(route.gate, capabilities))
-    .map((route) => ({ href: route.href, label: route.label, group, aliases: route.aliases })));
+    .map((route) => ({ href: route.href, label: route.label, group: section, aliases: route.aliases }));
 }
 
-/** The seven entries the viewer can see; each links to its first page the viewer may open. */
+/** Every page the viewer may open, each tagged with its section (palette, tests). */
+export function visibleNavLinks(capabilities: NavCapabilities): NavLink[] {
+  return NAV_SECTIONS.flatMap((section) => sectionLinks(section, capabilities));
+}
+
+/** The menu sections the viewer can see; each links to its first page the viewer may open. */
 export function visibleNavEntries(capabilities: NavCapabilities): NavLink[] {
-  return NAV_SECTIONS.flatMap((group) => {
-    const first = NAV_MAP[group].find((route) => !route.hidden && allowed(route.gate, capabilities));
+  return MENU_SECTIONS.flatMap((group) => {
+    const first = sectionLinks(group, capabilities)[0];
     return first ? [{ href: first.href, label: group, group }] : [];
   });
 }
@@ -121,106 +159,17 @@ export function isCurrentPath(pathname: string | null, href: string): boolean {
   return routeMatches(pathname, href);
 }
 
-export function NavLinks({
-  canRead = false,
-  canPolicies = false,
-  canUsers = false,
-  canApprove = false,
-  canConfigure = false,
-  pendingApprovals = null,
-}: NavCapabilities & { pendingApprovals?: number | null }) {
-  const pathname = usePathname();
-  const entries = visibleNavEntries({ canRead, canPolicies, canUsers, canApprove, canConfigure });
-  const currentSection = sectionForPath(pathname);
-  const navRef = useRef<HTMLElement>(null);
-  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
-  const [open, setOpen] = useState(false);
-  const [livePending, setLivePending] = useState<{ from: number | null; count: number | null }>({ from: pendingApprovals, count: pendingApprovals });
-  // A server render (navigation or refresh) brings a fresh count; it replaces the polled one.
-  if (livePending.from !== pendingApprovals) setLivePending({ from: pendingApprovals, count: pendingApprovals });
-  const waiting = livePending.count;
-
-  // Approvers only: keep the badge current without a reload. A failed read keeps the
-  // last count.
-  usePoll(async () => {
-    try {
-      const response = await fetch("/api/approvals", { cache: "no-store" });
-      if (!response.ok) return;
-      const data = await response.json() as { pending?: unknown[]; awaitingContentEffects?: unknown[] };
-      if (!Array.isArray(data.pending)) return;
-      const count = data.pending.length + (Array.isArray(data.awaitingContentEffects) ? data.awaitingContentEffects.length : 0);
-      setLivePending((current) => ({ ...current, count }));
-    } catch {
-      // Keep the last count.
-    }
-  }, 10_000, pendingApprovals !== null);
-
-  // The active marker is one element that glides between links rather than each link
-  // drawing its own, so a route change reads as movement from where you were.
-  useLayoutEffect(() => {
-    const active = navRef.current?.querySelector<HTMLElement>('[aria-current="page"], [aria-current="true"]');
-    setIndicator(active ? { top: active.offsetTop, height: active.offsetHeight } : null);
-    setOpen(false);
-  }, [pathname, entries.length]);
-
-  const indicatorStyle = indicator
-    ? ({ "--indicator-y": `${indicator.top}px`, "--indicator-h": `${indicator.height}px` } as CSSProperties)
-    : undefined;
-
-  return (
-    <>
-      <button
-        aria-controls="primary-nav"
-        aria-expanded={open}
-        className="nav-toggle"
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-      >
-        <span aria-hidden="true" className="nav-toggle-icon" />
-        <span>{currentSection ?? "Menu"}</span>
-      </button>
-      <nav
-        aria-label="Primary navigation"
-        className="primary-nav"
-        data-open={open || undefined}
-        id="primary-nav"
-        ref={navRef}
-        style={indicatorStyle}
-      >
-        {indicator ? <span aria-hidden="true" className="nav-indicator" /> : null}
-        <div className="nav-group">
-          {entries.map((entry) => (
-            <Link
-              aria-current={currentSection === entry.group ? (isCurrentPath(pathname, entry.href) ? "page" : "true") : undefined}
-              className="nav-link"
-              href={entry.href}
-              key={entry.group}
-            >
-              <span>{entry.label}</span>
-              {entry.group === "Approvals" && waiting ? (
-                <span className="nav-badge" title={`${waiting} requests waiting for a decision`}>
-                  {waiting > 99 ? "99+" : waiting}
-                  <span className="visually-hidden"> waiting</span>
-                </span>
-              ) : null}
-            </Link>
-          ))}
-        </div>
-      </nav>
-    </>
-  );
-}
-
-/** Tabs for the pages an entry absorbs, shown at the top of the workspace when the
- * current section has more than one page the viewer may open. */
+/** The pages a section absorbs, as one scrolling row of tabs. On a desktop the menu
+ * lists them under the section instead, so the row shows on narrow screens and for the
+ * bell's inbox only. */
 export function SectionTabs(capabilities: NavCapabilities) {
   const pathname = usePathname();
   const section = sectionForPath(pathname);
   if (!section) return null;
-  const routes = NAV_MAP[section].filter((route) => !route.hidden && allowed(route.gate, capabilities));
+  const routes = sectionLinks(section, capabilities);
   if (routes.length < 2) return null;
   return (
-    <nav aria-label={`${section} pages`} className="section-tabs">
+    <nav aria-label={`${section} pages`} className="section-tabs" data-section={section === "Inbox" ? "inbox" : undefined}>
       {routes.map((route) => (
         <Link
           aria-current={isCurrentPath(pathname, route.href) ? "page" : undefined}

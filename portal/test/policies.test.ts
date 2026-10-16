@@ -62,7 +62,7 @@ test("policy writes and navigation retain the policies capability boundary", () 
   }
   const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
   assert.match(layout, /readAccess\(requestHeaders, DATA_SURFACES.policiesPage\)/);
-  assert.match(layout, /canPolicies=\{canPolicies\}/);
+  assert.match(layout, /capabilities=\{\{[^}]*\bcanPolicies\b/);
 });
 
 // Roadmap task-92: the activation preview reads in words; ids, codes and versions stay

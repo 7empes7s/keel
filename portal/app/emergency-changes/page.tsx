@@ -22,14 +22,14 @@ export default async function EmergencyChangesPage() {
     if (!response.ok) throw new Error("Emergency changes unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Changes" title="Emergency changes" /><DataUnavailable surface="Emergency changes" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Automation center" title="Emergency changes" /><DataUnavailable surface="Emergency changes" /></>;
   }
   const verdict = changeIntentsVerdict(data.intents, data.generatedAt);
   const live = data.intents.filter((intent) => intent.state === "active" || intent.state === "scheduled");
   const past = data.intents.filter((intent) => intent.state === "revoked" || intent.state === "ended");
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Changes" title="Emergency changes" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Automation center" title="Emergency changes" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <p className="capture-note">An approved change stays on the Changes page. KEEL only holds back rolling back exactly the approved fields, and checks the resource again when the approval ends.</p>

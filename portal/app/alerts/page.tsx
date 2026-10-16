@@ -23,11 +23,11 @@ export default async function AlertsPage() {
     if (!response.ok) throw new Error("Alerts unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader section="Changes" title="Alerts" description={DESCRIPTION} /><DataUnavailable surface="Alerts" /></>;
+    return <><PageHeader section="Inbox" title="Alerts" description={DESCRIPTION} /><DataUnavailable surface="Alerts" /></>;
   }
   const verdict = alertsVerdict(data.alerts, data.generatedAt);
   return <>
-    <PageHeader section="Changes" title="Alerts" description={DESCRIPTION} generatedAt={data.generatedAt} />
+    <PageHeader section="Inbox" title="Alerts" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation">
       <AlertInbox alerts={data.alerts} canRespond={access.capabilities.includes(ALERT_RESPOND_CAPABILITY)} now={data.generatedAt} />

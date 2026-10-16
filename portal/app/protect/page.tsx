@@ -37,7 +37,7 @@ export default async function ProtectPage() {
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Protect" title="Protect" />
+        <PageHeader description={DESCRIPTION} section="Backup" title="Protect" />
         <DataUnavailable surface="Backup coverage" />
       </>
     );
@@ -61,7 +61,7 @@ export default async function ProtectPage() {
 
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={now} section="Protect" title="Protect" />
+      <PageHeader description={DESCRIPTION} generatedAt={now} section="Backup" title="Protect" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <BackupControls

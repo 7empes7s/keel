@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { CommandPalette } from "@/components/command-palette";
-import { NavLinks, SectionTabs, type NavSection } from "@/components/nav-links";
-import { KeelMark } from "@/components/keel-mark";
-import { SignOutControls } from "@/components/sign-out";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { type NavSection } from "@/components/nav-links";
+import { AppShell } from "@/components/shell/app-shell";
+import { KitPage } from "./kit";
+import { EMPTY_PREFS } from "@/lib/menu-prefs";
 import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
 import { JobTable } from "@/components/job-table";
@@ -106,6 +105,9 @@ function completionResources() {
 }
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
+  // The menu's section statuses read the Overview's data; answer at once so every
+  // screenshot shows them.
+  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
   await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
   if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
   // Task-92: the activation preview of policy p2, and a turn-on refused because the
@@ -1000,7 +1002,7 @@ const VALUE_REPORT_SCOPED: ValueReport = {
 
 function reportsPage(report: ValueReport) {
   const verdict = valueVerdict(report);
-  return <>{header("Activity", "Value report", "What KEEL put back and checked, which failing controls were fixed, and how long recovery took, for a period you choose.")}
+  return <>{header("Reports", "Value report", "What KEEL put back and checked, which failing controls were fixed, and how long recovery took, for a period you choose.")}
     <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><ValueReportView data={{ report, period: "30d", entity: null }} /></div></>;
 }
@@ -1035,7 +1037,7 @@ const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"],
 
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
-  return <>{header("Activity", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
+  return <>{header("Reports", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><AskView data={data} question={data.answer?.question ?? ""} /></div></>;
 }
@@ -1129,7 +1131,7 @@ const COMPARE_ACROSS: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS
 
 function comparePage(data: CompareData) {
   const verdict = compareVerdict(data);
-  return <>{header("Changes", "Compare", "Put two snapshots side by side, or two tenants: settings, workload settings and stored content.")}
+  return <>{header("Baselines", "Compare", "Put two snapshots side by side, or two tenants: settings, workload settings and stored content.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><CompareView data={data} /></div></>;
 }
@@ -1169,7 +1171,7 @@ const SITE_CHANGES: SiteChangesData = { days: 30, changes: [
 
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
-  return <>{header("Protect", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
+  return <>{header("Backup", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><SiteList data={SITES} /></div></>;
 }
@@ -1179,7 +1181,7 @@ function sitePage(path: string) {
   const site = SITES.sites.find((entry) => entry.siteId === id);
   if (!site) return null;
   const verdict = siteVerdict(site);
-  return <>{header("Protect", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+  return <>{header("Backup", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
 }
@@ -1188,8 +1190,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
+    case "/kit": return <KitPage />;
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
-    case "/activity": return <>{header("Activity", "Activity", "What KEEL has done and who decided what, newest first.")}
+    case "/activity": return <>{header("Audit log", "Activity", "What KEEL has done and who decided what, newest first.")}
       <Verdict text={activityVerdict(jobs, now)} tone={jobs.some((item) => item.status === "failed") ? "attention" : "good"} />
       <div data-layer="explanation">
         <IntegrityNote integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
@@ -1198,7 +1201,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       </div></>;
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
-      return <>{header("Protect", "Protect", "Whether every configuration type is being backed up, how often, and whether KEEL can put it back.")}
+      return <>{header("Backup", "Protect", "Whether every configuration type is being backed up, how often, and whether KEEL can put it back.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <BackupControls canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />
@@ -1209,7 +1212,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/schedules": {
       const verdict = schedulesVerdict(SCHEDULES, now, SCHEDULE_FORECASTS);
-      return <>{header("Protect", "Schedules", "When KEEL backs up each tier and runs its upkeep. Times are in UTC.")}
+      return <>{header("Backup", "Schedules", "When KEEL backs up each tier and runs its upkeep. Times are in UTC.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} /></div></>;
     }
@@ -1238,7 +1241,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
       const sites = path === "/drift/sites" ? SITE_CHANGES : null;
       const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
-      return <>{header("Changes", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the active baseline, and what to do about each change.")}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <BaselineContext baseline={BASELINES[0]} now={now} />
@@ -1246,11 +1249,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         </div>
         {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
     }
-    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
-    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
-    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
-    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Activity", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
-    case "/approvals": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
+    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
+    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
+    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
       <Verdict text="2 requests are waiting for you." tone="attention" />
       <div data-layer="explanation"><ApprovalInbox now={now}
       history={[{ id: "a9e10000-0000-4000-8000-000000000100", action: "remediate", params: { driftIds: ["dr3"] }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: null, status: "approved", decidedBy: "8c1e0000-0000-4000-8000-0000000000a1", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: "2026-10-01T16:40:00Z", expiresAt: "2026-10-02T16:40:00Z",
@@ -1261,13 +1264,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         { id: "a9e10000-0000-4000-8000-000000000102", action: "baseline-activate", params: { baselineId: BASELINES[0].id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Post-migration golden state", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T12:00:00Z",
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, baseline: { kind: "baseline", id: BASELINES[0].id, name: "Post-migration golden state", readable: true } } },
       ]} /></div></>;
-    case "/approvals/cli-restore": return <>{header("Approvals", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
+    case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
       <Verdict text="1 request is waiting for you." tone="attention" />
       <div data-layer="explanation"><ApprovalInbox history={[]} now={now} pending={[
         { id: "a9e10000-0000-4000-8000-000000000145", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the baseline", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli",
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: CLI_PLAN_REF } },
       ]} /></div></>;
-    case "/approvals/content-effects": return <>{header("Approvals", "Content effects", "Changes in a dry run that shorten retention, release a hold, widen sharing or destroy content need their own approval.")}
+    case "/approvals/content-effects": return <>{header("Inbox", "Content effects", "Changes in a dry run that shorten retention, release a hold, widen sharing or destroy content need their own approval.")}
       <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
       <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />
@@ -1282,13 +1285,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
-    case "/baselines": return <>{header("Changes", "Baselines", "How the tenant should look: the reference every change is measured against.")}
+    case "/baselines": return <>{header("Baselines", "Baselines", "How the tenant should look: the reference every change is measured against.")}
       <Verdict text={baselinesVerdict(BASELINES[0], now)} />
       <div data-layer="explanation">
         <BaselineRegister baselines={BASELINES} canBaseline now={now} snapshots={CAPTURE_SOURCES} />
         <JobTable headingId="baseline-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} kicker="Recent" now={now} title="Baseline jobs" />
       </div></>;
-    case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Changes", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
+    case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Baselines", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><ComplianceReport data={COMPLIANCE} now={now} /></div></>; }
     case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
@@ -1296,7 +1299,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div className="item-list" data-layer="explanation">
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
       <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
-    case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Changes", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
+    case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Inbox", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }
     case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
@@ -1309,7 +1312,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div className="item-list" data-layer="explanation">
         {SETUP_CHECKED.scopes.map((setup) => <SetupProgress canCheck={SETUP_CHECKED.canCheck} canProvision={SETUP_CHECKED.canProvision} canStart checkFailed={SETUP_CHECKED.checkFailed} key={setup.scope} now={now} setup={setup} />)}
       </div></>;
-    case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Changes", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
+    case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <h2>Approved now</h2>
@@ -1319,21 +1322,21 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <h2>Ended</h2>
         <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state !== "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
       </div></>; }
-    case "/policies/p1": return <>{header("Settings", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
+    case "/policies/p1": return <>{header("Automation center", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
       <Verdict text={`Running. ${policySentence(POLICY)}`} />
       <div data-layer="explanation">
         <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
         <AutomationBanner halted={false} now={now} />
         <PolicyCard canEdit linkName={false} now={now} policy={POLICY} />
       </div></>;
-    case "/policies/p2": return <>{header("Settings", OFF_POLICY.name, "What this policy does, acting as whom, and what it last did.")}
+    case "/policies/p2": return <>{header("Automation center", OFF_POLICY.name, "What this policy does, acting as whom, and what it last did.")}
       <Verdict text={`Turned off. ${policySentence(OFF_POLICY)}`} tone="attention" />
       <div data-layer="explanation">
         <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
         <AutomationBanner halted={false} now={now} />
         <PolicyCard canEdit linkName={false} now={now} policy={OFF_POLICY} preview={ACTIVATION_PREVIEW} />
       </div></>;
-    case "/policies": return <>{header("Settings", "Policies", "What KEEL does on its own when something changes, and the account it acts as.")}
+    case "/policies": return <>{header("Automation center", "Policies", "What KEEL does on its own when something changes, and the account it acts as.")}
       <Verdict text={policiesVerdict(POLICIES, false)} />
       <div data-layer="explanation">
         <AutomationBanner halted={false} now={now} />
@@ -1368,27 +1371,17 @@ function App() {
       <button className="btn btn-secondary btn-sm" onClick={() => { location.hash = "/"; setPosture((value) => (value + 1) % 3); }} type="button">Cycle posture</button>
       <button className="btn btn-secondary btn-sm" onClick={finishJob} type="button">Advance jobs</button>
     </div>
-    <a className="skip-link" href="#main-content">Skip to content</a>
-    <div className="app-shell">
-      <aside className="sidebar">
-        <a aria-label="KEEL dashboard" className="brand" href="#/"><span aria-hidden="true" className="brand-mark"><KeelMark /></span><span><strong>KEEL</strong><small>Operator portal</small></span></a>
-        <CommandPalette canApprove canConfigure canPolicies canRead canUsers />
-        <NavLinks canApprove canConfigure canPolicies canRead canUsers pendingApprovals={2} />
-        <div className="operator-context">
-          <span className="auth-state"><span aria-hidden="true" className="auth-dot" /> Authenticated</span>
-          <span className="operator-email">marouanedefili@gmail.com</span>
-          <span className="access-label">{accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"])}</span>
-          <ThemeToggle initial="system" />
-          <SignOutControls />
-        </div>
-      </aside>
-      <main className="workspace" id="main-content">
-        <SectionTabs canApprove canConfigure canPolicies canRead canUsers />
-        <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>
-          {loading ? <PageSkeleton /> : <Page jobs={jobs} path={path} posture={posture} />}
-        </div>
-      </main>
-    </div>
+    <AppShell
+      capabilities={{ canApprove: true, canConfigure: true, canPolicies: true, canRead: true, canUsers: true }}
+      initialPrefs={EMPTY_PREFS}
+      pendingApprovals={2}
+      person={{ email: "marouanedefili@gmail.com", access: accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"]) }}
+      theme="system"
+    >
+      <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>
+        {loading ? <PageSkeleton /> : <Page jobs={jobs} path={path} posture={posture} />}
+      </div>
+    </AppShell>
     <Toaster />
   </>;
 }

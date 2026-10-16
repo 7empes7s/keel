@@ -24,7 +24,7 @@ export default async function ApprovalsPage() {
       <>
         <PageHeader
           description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
-          section="Approvals"
+          section="Inbox"
           generatedAt={data.generatedAt}
           title="Approvals"
         />
@@ -49,7 +49,7 @@ export default async function ApprovalsPage() {
       <>
         <PageHeader
           description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
-          section="Approvals"
+          section="Inbox"
           title="Approvals"
         />
         <DataUnavailable surface="The approval inbox" />

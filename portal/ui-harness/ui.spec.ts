@@ -52,6 +52,9 @@ async function open(page: Page, hash: string, theme: "light" | "dark" = "dark") 
   await page.goto(`${HARNESS}#${hash}`);
   await page.evaluate(() => { document.documentElement.dataset.harnessCi = ""; });
   await page.locator("main#main-content h1").waitFor();
+  // The menu's section statuses arrive from a stubbed read; wait so every check and
+  // screenshot sees them.
+  await page.locator('.shell[data-statuses="ready"]').waitFor();
   await page.evaluate(() => document.fonts.ready);
   // Let entrance animations and transitions settle: axe measures contrast against
   // the current opacity, and screenshots must not catch a frame mid-fade.
@@ -621,24 +624,27 @@ for (const { name, hash } of PAGES) {
   });
 }
 
-test("contract · shell: seven entries, plain words, the eyebrow is the section", async ({ page }) => {
+test("contract · shell: eight sections, plain words, the page's sub-pages under its section", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/", "dark");
-  const entries = page.locator("#primary-nav a.nav-link");
-  await expect(entries).toHaveCount(7);
-  expect(await Promise.all((await entries.all()).map((entry) => entry.locator("span").first().innerText())))
-    .toEqual(["Overview", "Protect", "Changes", "Restore", "Approvals", "Activity", "Settings"]);
-  expectPlainText(await textOutside(page, "aside.sidebar", ".nope"));
-  // A page absorbed into a section is reached through that section's tabs.
-  for (const { hash, section, tab } of [
-    { hash: "/schedules", section: "Protect", tab: "Schedules" },
-    { hash: "/incidents", section: "Restore", tab: "Incidents" },
-    { hash: "/principals", section: "Settings", tab: "People" },
+  const entries = page.locator('aside.rail section[data-group="everything"] a.menu-link');
+  await expect(entries).toHaveCount(8);
+  expect(await Promise.all((await entries.all()).map((entry) => entry.locator(".menu-label").innerText())))
+    .toEqual(["Dashboards", "Backup", "Restore", "Baselines", "Reports", "Automation center", "Audit log", "Settings"]);
+  expectPlainText(await textOutside(page, "aside.rail", ".nope"));
+  // A page a section absorbs is listed under that section in the menu, which is open
+  // while you are in it; on a desktop the page carries no second row of tabs.
+  for (const { hash, section, sub } of [
+    { hash: "/schedules", section: "Backup", sub: "Schedules" },
+    { hash: "/incidents", section: "Restore", sub: "Incidents" },
+    { hash: "/principals", section: "Settings", sub: "People" },
+    { hash: "/compare", section: "Baselines", sub: "Compare" },
   ]) {
     await open(page, hash, "dark");
-    await expect(page.locator(".eyebrow").first()).toHaveText(section);
-    await expect(page.locator('#primary-nav a[aria-current]')).toContainText(section);
-    await expect(page.locator(".section-tabs a[aria-current='page']")).toHaveText(tab);
+    await expect(page.locator('aside.rail .menu-link[aria-current]')).toContainText(section);
+    await expect(page.locator("aside.rail .menu-sublink[aria-current='page']")).toHaveText(sub);
+    await expect(page.locator(".section-tabs")).toBeHidden();
+    await expect(page.locator(".page-header .eyebrow")).toHaveCount(0);
   }
 });
 

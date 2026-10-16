@@ -24,12 +24,12 @@ export default async function AskPage({ searchParams }: { searchParams?: Promise
   try {
     data = await getAskData(access.scope, input);
   } catch {
-    return <><PageHeader description={DESCRIPTION} section="Activity" title="Ask" /><DataUnavailable surface="Answers" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Reports" title="Ask" /><DataUnavailable surface="Answers" /></>;
   }
   const verdict = askVerdict(data.answer);
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Activity" title="Ask" />
+      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Reports" title="Ask" />
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <AskView data={data} question={input?.question ?? ""} />

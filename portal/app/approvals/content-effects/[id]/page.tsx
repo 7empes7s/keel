@@ -33,7 +33,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Approvals" title={TITLE} />
+        <PageHeader description={DESCRIPTION} section="Inbox" title={TITLE} />
         <DataUnavailable surface="These content effects" />
       </>
     );
@@ -42,7 +42,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
 
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={new Date().toISOString()} section="Approvals" title={TITLE} />
+      <PageHeader description={DESCRIPTION} generatedAt={new Date().toISOString()} section="Inbox" title={TITLE} />
       <Verdict text={contentEffectVerdict(review)} tone={review.effects.length === 0 || review.approvals.length > 0 ? "good" : "attention"} />
       <Link className="text-link back-link" href="/approvals"><span aria-hidden="true">←</span> All approvals</Link>
       <section aria-labelledby="content-effects-plan-heading" className="report-section">

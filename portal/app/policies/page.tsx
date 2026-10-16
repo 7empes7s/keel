@@ -19,13 +19,13 @@ export default async function PoliciesPage() {
     if (!response.ok) throw new Error("Policies unavailable");
     data = await response.json();
   } catch {
-    return <><PageHeader section="Settings" title="Policies" description={DESCRIPTION} /><DataUnavailable surface="Policies" /></>;
+    return <><PageHeader section="Automation center" title="Policies" description={DESCRIPTION} /><DataUnavailable surface="Policies" /></>;
   }
   const paused = data.policies.some((policy) => policy.enabled && (policy.paused_at || policy.run_as_repair_required));
   // Roadmap task-92: an automatic roll-back policy that is off is turned on from a preview.
   const waiting = data.policies.filter((policy) => policy.action === "auto_remediate" && !policy.enabled).length;
   return <>
-    <PageHeader section="Settings" title="Policies" description={DESCRIPTION} generatedAt={data.generatedAt} />
+    <PageHeader section="Automation center" title="Policies" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict text={policiesVerdict(data.policies, data.automationDisabled)} tone={data.automationDisabled ? "critical" : paused ? "attention" : "good"} />
     <div data-layer="explanation">
       <AutomationBanner halted={data.automationDisabled} haltedAt={data.automationHaltedAt} haltFile={data.haltFile} now={data.generatedAt} />

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "244756bdc2aab76a0da9f961e01a448bad00f805",
+  "build": "c9f56e0430eacbfe3da120cabee3a17d82699fa5",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-16T09:07:23.697Z",
+  "observedAt": "2026-10-16T14:56:56.464Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -156,41 +156,20 @@
     },
     "refusals": {
       "remove": {
-        "cmdlet": "Remove-CsTeamsMeetingPolicy",
+        "cmdlet": "Remove-CsTeamsMessagingPolicy",
         "refused": true,
         "sent": false,
-        "reason": "Remove-CsTeamsMeetingPolicy is not a workload write KEEL runs"
+        "reason": "Remove-CsTeamsMessagingPolicy is not a workload write KEEL runs"
       },
       "undeclaredParameter": {
-        "cmdlet": "Set-CsTeamsMeetingPolicy",
+        "cmdlet": "Set-CsTeamsMessagingPolicy",
         "parameter": "Force",
         "refused": true,
         "sent": false,
-        "reason": "Set-CsTeamsMeetingPolicy does not take Force from KEEL"
+        "reason": "Set-CsTeamsMessagingPolicy does not take Force from KEEL"
       }
     },
     "writes": [
-      {
-        "operationId": "teams.meeting-policy.update",
-        "kind": "update",
-        "method": "Set-CsTeamsMeetingPolicy",
-        "version": "7.9.0",
-        "synthetic": false,
-        "scope": "fixture",
-        "fixture": "KEEL-RT-meeting",
-        "identity": "Tag:KEEL-RT-meeting",
-        "field": "Description",
-        "type": "text",
-        "before": null,
-        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
-        "final": null,
-        "contentEffects": [],
-        "ok": false,
-        "readBackVerified": false,
-        "restoredToOriginal": false,
-        "capturedAt": "2026-10-16T09:05:34.935Z",
-        "error": "Set-CsTeamsMeetingPolicy failed: Set-CsTeamsMeetingPolicy: {\"code\":\"Forbidden\",\"message\":\"You are not authorized to perform this action\",\"action\":\"Please refer to documentation. CorrelationId: 498b6dce-5db6-8ee4-8a0b-ac6e17f575a6\",\"errorCode\":40301}"
-      },
       {
         "operationId": "teams.messaging-policy.add",
         "kind": "add",
@@ -198,18 +177,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-368138eb",
-        "identity": "KEEL-RT-capture-368138eb",
+        "fixture": "KEEL-RT-capture-3d7a9af1",
+        "identity": "KEEL-RT-capture-3d7a9af1",
         "field": "Description",
         "type": "text",
         "before": null,
-        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
-        "final": "KEEL capture 2026-10-16T09:05:02.061Z",
+        "target": "KEEL capture 2026-10-16T14:54:54.797Z",
+        "final": "KEEL capture 2026-10-16T14:54:54.797Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": false,
-        "capturedAt": "2026-10-16T09:05:45.880Z",
+        "capturedAt": "2026-10-16T14:55:23.650Z",
         "error": null
       },
       {
@@ -219,18 +198,18 @@
         "version": "7.9.0",
         "synthetic": false,
         "scope": "fixture",
-        "fixture": "KEEL-RT-capture-c36cf4b1",
-        "identity": "Tag:KEEL-RT-capture-c36cf4b1",
+        "fixture": "KEEL-RT-capture-2f02c9da",
+        "identity": "Tag:KEEL-RT-capture-2f02c9da",
         "field": "Description",
         "type": "text",
-        "before": "KEEL capture 2026-10-15T18:38:54.916Z",
-        "target": "KEEL capture 2026-10-16T09:05:02.061Z",
-        "final": "KEEL capture 2026-10-15T18:38:54.916Z",
+        "before": "KEEL capture 2026-10-16T14:52:37.523Z",
+        "target": "KEEL capture 2026-10-16T14:54:54.797Z",
+        "final": "KEEL capture 2026-10-16T14:52:37.523Z",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:06:06.406Z",
+        "capturedAt": "2026-10-16T14:55:43.335Z",
         "error": null
       },
       {
@@ -251,7 +230,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:06:26.411Z",
+        "capturedAt": "2026-10-16T14:56:01.297Z",
         "error": null
       },
       {
@@ -272,7 +251,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:06:46.058Z",
+        "capturedAt": "2026-10-16T14:56:19.985Z",
         "error": null
       },
       {
@@ -293,7 +272,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:07:04.779Z",
+        "capturedAt": "2026-10-16T14:56:39.004Z",
         "error": null
       },
       {
@@ -314,7 +293,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:07:23.697Z",
+        "capturedAt": "2026-10-16T14:56:56.464Z",
         "error": null
       }
     ],
@@ -329,7 +308,7 @@
     "created": [
       {
         "family": "messagingPolicy",
-        "name": "KEEL-RT-capture-368138eb"
+        "name": "KEEL-RT-capture-3d7a9af1"
       }
     ],
     "requests": [
@@ -337,7 +316,6 @@
         "credential": "collector",
         "read": "teams-org-policies",
         "families": [
-          "meetingPolicy",
           "messagingPolicy",
           "federationConfiguration",
           "clientConfiguration",
@@ -348,32 +326,11 @@
         "outcome": "ok"
       },
       {
-        "credential": "collector",
-        "read": "teams-org-policies",
-        "families": [
-          "meetingPolicy"
-        ],
-        "outcome": "ok"
-      },
-      {
-        "credential": "restorer",
-        "cmdlet": "Set-CsTeamsMeetingPolicy",
-        "parameters": {
-          "Identity": "Tag:KEEL-RT-meeting",
-          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
-        },
-        "outcome": "denied",
-        "error": {
-          "code": "CMDLET_ERROR",
-          "errorId": "Forbidden,Microsoft.Teams.Policy.Administration.Cmdlets.Core.SetTeamsMeetingPolicyCmdlet"
-        }
-      },
-      {
         "credential": "restorer",
         "cmdlet": "New-CsTeamsMessagingPolicy",
         "parameters": {
-          "Identity": "KEEL-RT-capture-368138eb",
-          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
+          "Identity": "KEEL-RT-capture-3d7a9af1",
+          "Description": "KEEL capture 2026-10-16T14:54:54.797Z"
         },
         "outcome": "ok"
       },
@@ -397,8 +354,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsMessagingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
-          "Description": "KEEL capture 2026-10-16T09:05:02.061Z"
+          "Identity": "Tag:KEEL-RT-capture-2f02c9da",
+          "Description": "KEEL capture 2026-10-16T14:54:54.797Z"
         },
         "outcome": "ok"
       },
@@ -414,8 +371,8 @@
         "credential": "restorer",
         "cmdlet": "Set-CsTeamsMessagingPolicy",
         "parameters": {
-          "Identity": "Tag:KEEL-RT-capture-c36cf4b1",
-          "Description": "KEEL capture 2026-10-15T18:38:54.916Z"
+          "Identity": "Tag:KEEL-RT-capture-2f02c9da",
+          "Description": "KEEL capture 2026-10-16T14:52:37.523Z"
         },
         "outcome": "ok"
       },
@@ -596,16 +553,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "9655162aa6a88d3a690d6bbf7ed1a9c6a359c1e5af28c7a706920facd008c425"
+    "captureLogSha256": "164f80575d5ef5e9fbec06e227eedfa93f525af9bf92a5550ef4358b8a7dfac5"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-teams-org-policies-live-acceptance.capture.json",
-      "sha256": "9655162aa6a88d3a690d6bbf7ed1a9c6a359c1e5af28c7a706920facd008c425"
+      "sha256": "164f80575d5ef5e9fbec06e227eedfa93f525af9bf92a5550ef4358b8a7dfac5"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "62be69a0cd026d60e58867f6011828fb45c6497d292055d5bef6921df7aa6882"
+      "signature": "3719b204581875d1de3d4b722b6c2745a42e075a6ca8afa27a72c3ac42d52243"
     }
   }
 }

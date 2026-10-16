@@ -11,7 +11,8 @@
   --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
 
-  /* Navy brand rail: the menu sits on it in both themes. */
+  /* Navy brand rail for the new menu (the shell step moves the menu onto it;
+     until then the menu uses --sidebar). Navy in both themes. */
   --navy: #1b2a4a;
   --rail: #1b2a4a;
   --rail-text: #e4eaf3;
@@ -2914,7 +2915,7 @@ section.item-card + section.item-card {
   width: 2px;
   height: var(--indicator-h, 0);
   background: var(--accent-fill);
-  box-shadow: 0 0 12px var(--accent);
+  box-shadow: 0 0 12px var(--accent-fill);
   pointer-events: none;
   transform: translateY(var(--indicator-y, 0));
   transition:

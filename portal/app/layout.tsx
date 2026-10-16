@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
 import Link from "next/link";
 
-import "@fontsource-variable/public-sans";
-import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource-variable/ibm-plex-sans/wght.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/600.css";
 
 import "./globals.css";
 

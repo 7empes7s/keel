@@ -304,14 +304,16 @@ function passingFixture() {
 test('the checked-in qualification records keep readiness from ready and report fixtures separately', () => {
   const live = loadLiveRecords();
   const ledger = buildReleaseLedger({ fixture: journeyFixtureRecord(results), live, hmacKey: null });
-  // The committed Entra demotions (issue #148) are failed live runs, so the honest label is blocked.
-  assert.equal(ledger.readiness.label, 'blocked');
+  // Every committed Entra demotion (issue #148) has a later verified rerun (Q45 to Q53), so no
+  // write is demoted; without the key those reruns are unverified and the label stays pending.
+  // A demotion that still decides is checked with fixtures below (it blocks).
+  assert.equal(ledger.readiness.label, 'pending');
   assert.notEqual(ledger.readiness.label, 'ready');
   const entra = ledger.live.find((gate) => gate.gate === 'entra-live-acceptance');
-  assert.equal(entra.status, 'failed');
-  assert.ok(entra.operations.some((row) => row.status === 'demoted'), JSON.stringify(entra.failures));
+  assert.equal(entra.status, 'pending');
+  assert.ok(entra.operations.every((row) => row.status !== 'demoted'), JSON.stringify(entra.failures));
+  assert.ok(entra.operations.some((row) => row.status === 'unverified'), 'committed reruns are unverified without the key');
   assert.ok(entra.operations.every((row) => row.status !== 'live-qualified'), 'nothing qualifies without the key');
-  assert.ok(ledger.readiness.reasons.some((reason) => /entra-live-acceptance \(issue-148\) failed/.test(reason)));
   assert.equal(ledger.fixture.evidenceLevel, 'fixture-tested');
   assert.ok(ledger.fixture.journeys.every((journey) => journey.outcome === 'passed'));
   // Every required live gate is listed, none is qualified, and pending stays pending.

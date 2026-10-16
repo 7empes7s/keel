@@ -1,0 +1,24 @@
+{
+  "restoreRef": "8b94baf5-58a7-8aa5-8600-34d0cb4a324e",
+  "entry": {
+    "naturalKey": "edge:group:KEEL-RT-Q51-g8|owner|remove|user:keel-rt-20260908-carla@techinsiderbytes.com",
+    "resourceType": "group",
+    "operation": "edge-remove",
+    "targetId": "0d126eaf-e14d-8f6a-a0e8-cc917b04009f",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T19:11:57.395Z",
+    "priorState": {
+      "kind": "relationship-edge",
+      "family": "owner",
+      "present": true,
+      "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "parentTargetId": "0d126eaf-e14d-8f6a-a0e8-cc917b04009f",
+      "parentNaturalKey": "group:KEEL-RT-Q51-g8"
+    },
+    "intendedState": null,
+    "postState": {
+      "present": false
+    }
+  }
+}

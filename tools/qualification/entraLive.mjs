@@ -598,6 +598,27 @@ export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = 
  * Issue #294: a record with a sibling `.demotion.json` is never promoted,
  * however well it verifies; the demotion is the later, overriding decision.
  */
+/**
+ * The sibling `<stem>.demotion.json` that still decides for a committed record,
+ * or null. The later decision wins, as in the release ledger
+ * (acceptanceLedger.mjs): a demotion overrides a record observed before it or at
+ * the same time (issue #294), and a record observed after it is a verified rerun
+ * of the fixed write. A demotion or record without a readable date decides.
+ */
+export function decidingDemotion(dir, recordFile, record) {
+  const name = recordFile.replace(/\.json$/, '.demotion.json');
+  if (!existsSync(join(dir, name))) return null;
+  let demotion;
+  try {
+    demotion = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+  } catch {
+    return name;
+  }
+  const recordAt = Date.parse(record?.observedAt);
+  const demotedAt = Date.parse(demotion?.decidedAt);
+  return Number.isNaN(recordAt) || Number.isNaN(demotedAt) || !(recordAt > demotedAt) ? name : null;
+}
+
 export function applyCommittedEvidence({
   dir = ENTRA_LIVE_EVIDENCE_DIR, hmacKey, now = new Date(), tenantRef = TEST_TENANT_REFS[0], testTenantRefs = TEST_TENANT_REFS,
 } = {}) {
@@ -607,8 +628,8 @@ export function applyCommittedEvidence({
     .sort()
     .map((name) => {
       const record = JSON.parse(readFileSync(join(dir, name), 'utf8'));
-      const demotion = name.replace(/\.json$/, '.demotion.json');
-      if (existsSync(join(dir, demotion))) {
+      const demotion = decidingDemotion(dir, name, record);
+      if (demotion) {
         const { resourceType, operation } = record ?? {};
         const claim = resourceType && operation && operation !== ENFORCEMENT_STEP ? capabilityFor(resourceType, operation).claim : null;
         return { file: name, promoted: false, before: claim, after: claim, failures: [`${demotion} demotes this write, so it is not promoted`] };

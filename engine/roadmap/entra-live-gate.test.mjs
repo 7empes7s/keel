@@ -784,6 +784,16 @@ test('issue #294: --live-evidence never promotes a record that has a sibling dem
   assert.equal(demoted.after, before);
   assert.equal(capabilityFor('roleDefinition', 'update').claim, before, 'the claim is untouched');
 
+  // A demotion dated before the record is an earlier failed run; the record is the
+  // verified rerun of the fixed write and promotes (#148, the release ledger's rule).
+  writeFileSync(join(dir, 'roleDefinition.update.demotion.json'), JSON.stringify(
+    demotionRecord({ resourceType: 'roleDefinition', operation: 'update', reason: 'an earlier run failed before the fix', now: new Date(Date.parse(passed.record.observedAt) - 60 * 1000) }),
+  ));
+  const [rerun] = apply();
+  assert.deepEqual(rerun.failures, []);
+  assert.equal(rerun.promoted, true);
+  assert.equal(rerun.after, 'live-qualified');
+
   // The same record, without the demotion, does promote: the demotion alone blocked it.
   rmSync(join(dir, 'roleDefinition.update.demotion.json'));
   const [promoted] = apply();

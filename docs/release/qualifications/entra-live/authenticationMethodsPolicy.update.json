@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "authenticationMethodsPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T18:55:22.408Z",
+  "restoreRef": "bf8eef95-ca9d-8c0a-96c1-d4d1e39bc6ff",
+  "naturalKey": "authenticationMethodsPolicy:Authentication Methods Policy",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "d4d2a84f4962599ec976b40259ec54719dd8f9818d5adc28012cae3ee1c339d5",
+  "proofRef": "docs/release/qualifications/entra-live/authenticationMethodsPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "737ab6ca1bfe48d65c3a13ceefdf89e83bf93b0ca29dc1d27c85a4a70192b2cc"
+    }
+  }
+}

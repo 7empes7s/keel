@@ -1,0 +1,48 @@
+{
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "entry": {
+    "naturalKey": "roleEligibilitySchedule:a6a04688-4157-8065-857e-f9986290de76",
+    "resourceType": "roleEligibilitySchedule",
+    "operation": "create",
+    "targetId": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-14T14:19:56.914Z",
+    "priorState": null,
+    "intendedState": {
+      "action": "adminAssign",
+      "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "scheduleInfo": {
+        "expiration": {
+          "type": "afterDateTime",
+          "endDateTime": "2026-11-13T12:25:18.113Z"
+        },
+        "startDateTime": "2026-10-14T14:19:56.152Z"
+      },
+      "justification": "Restored by KEEL from a backup snapshot",
+      "directoryScopeId": "/administrativeUnits/ef8cff4b-4c99-8afe-bbcf-0e5dc2742f8a",
+      "roleDefinitionId": "d59ba3a5-e551-85d9-aa2f-4d4f066b76cd"
+    },
+    "postState": {
+      "id": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+      "status": "Provisioned",
+      "appScopeId": null,
+      "memberType": "Direct",
+      "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
+      "createdUsing": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+      "scheduleInfo": {
+        "expiration": {
+          "type": "afterDateTime",
+          "duration": null,
+          "endDateTime": "2026-11-13T12:25:18.113Z"
+        },
+        "recurrence": null,
+        "startDateTime": "2026-10-14T14:19:57.927Z"
+      },
+      "createdDateTime": "2026-10-14T14:19:57.927Z",
+      "directoryScopeId": "/administrativeUnits/ef8cff4b-4c99-8afe-bbcf-0e5dc2742f8a",
+      "modifiedDateTime": "0001-01-01T08:00:00Z",
+      "roleDefinitionId": "d59ba3a5-e551-85d9-aa2f-4d4f066b76cd"
+    }
+  }
+}

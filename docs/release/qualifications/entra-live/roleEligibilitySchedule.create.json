@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "roleEligibilitySchedule",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "95c3a33522c0acfd36e269b699c39e9238f24b38",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-14T14:19:56.914Z",
+  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "naturalKey": "roleEligibilitySchedule:a6a04688-4157-8065-857e-f9986290de76",
+  "fixtureKind": "by-reference",
+  "captureSha256": "06bbea614a3d40fd2543a2429f662524becf31877add84804eb8629541fee969",
+  "proofRef": "docs/release/qualifications/entra-live/roleEligibilitySchedule.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "ee4215e6ce3f713e52ab73f542b4a0d77af701095decea8378cb60fd6c8eb218"
+    }
+  }
+}

@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "82f852a90cae50cf2c288dcc7e0cca3f1d71f021",
+  "build": "95ba5a0414559a3a3815dcec07226957aa081392",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-15T20:01:49.233Z",
+  "observedAt": "2026-10-16T09:17:58.108Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "AdminDisplayName",
         "type": "text",
         "before": "",
-        "target": "KEEL capture 2026-10-15T20:00:21.474Z",
+        "target": "KEEL capture 2026-10-16T09:16:17.294Z",
         "final": "",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-15T20:01:43.070Z",
+        "capturedAt": "2026-10-16T09:17:41.761Z",
         "error": null
       },
       {
@@ -208,19 +208,19 @@
         "version": "3.10.1",
         "synthetic": false,
         "scope": "tenant-wide",
-        "fixture": "DefaultGlobalPolicy",
-        "identity": "DefaultGlobalPolicy",
+        "fixture": "DefaultGlobalTag",
+        "identity": "DefaultGlobalTag",
         "field": "OrganizationBrandingEnabled",
         "type": "switch",
         "before": false,
         "target": true,
-        "final": null,
+        "final": false,
         "contentEffects": [],
-        "ok": false,
-        "readBackVerified": false,
-        "restoredToOriginal": false,
-        "capturedAt": "2026-10-15T20:01:49.233Z",
-        "error": "Set-QuarantinePolicy failed: Set-QuarantinePolicy: ||The operation couldn't be performed because object 'DefaultGlobalPolicy' couldn't be found on 'ZRXPR04A12DC003.EURPR04A012.PROD.OUTLOOK.COM'."
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-16T09:17:58.108Z",
+        "error": null
       }
     ],
     "skipped": [
@@ -365,7 +365,7 @@
         "cmdlet": "Set-HostedConnectionFilterPolicy",
         "parameters": {
           "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-          "AdminDisplayName": "KEEL capture 2026-10-15T20:00:21.474Z"
+          "AdminDisplayName": "KEEL capture 2026-10-16T09:16:17.294Z"
         },
         "outcome": "ok"
       },
@@ -406,26 +406,47 @@
         "credential": "restorer",
         "cmdlet": "Set-QuarantinePolicy",
         "parameters": {
-          "Identity": "DefaultGlobalPolicy",
+          "Identity": "DefaultGlobalTag",
           "OrganizationBrandingEnabled": true
         },
-        "outcome": "failed",
-        "error": {
-          "code": "CMDLET_ERROR",
-          "errorId": "[],Write-ErrorMessage"
-        }
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "globalQuarantineSettings"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-QuarantinePolicy",
+        "parameters": {
+          "Identity": "DefaultGlobalTag",
+          "OrganizationBrandingEnabled": false
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-extended",
+        "families": [
+          "globalQuarantineSettings"
+        ],
+        "outcome": "ok"
       }
     ],
-    "captureLogSha256": "85b14d180b8f640ebdf329a0277e677a3cfacb0c53b80a7f6394d6f45fc9df29"
+    "captureLogSha256": "c45e4731516fd8c5c31b8c355b42946e21dada1ea694fe5bf94272a384ef2ca6"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-exchange-extended-live-acceptance.capture.json",
-      "sha256": "85b14d180b8f640ebdf329a0277e677a3cfacb0c53b80a7f6394d6f45fc9df29"
+      "sha256": "c45e4731516fd8c5c31b8c355b42946e21dada1ea694fe5bf94272a384ef2ca6"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "4f07d76a7632171967666661c80af918d47170fc16780e20cd8ec33018d8707c"
+      "signature": "23782a21d2b11ca1295dfc2c156b84f90130143c5db78cacc34a2a45e5722906"
     }
   }
 }

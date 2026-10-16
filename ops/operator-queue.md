@@ -4549,8 +4549,19 @@ item that needs it stays untouched.
 
 ### Q96: Live proof of Conditional Access policy delete (runbook step 52) — issue #148
 - Drafted by the #148 thread (2026-10-16).
-- Status: in-progress
-- Result:
+- Status: refused
+- Result: refused (2026-10-16). Build 0683b63. Break-glass readiness: **ready** (`overall: ready`, `every-account-ready`).
+  - **A. Fixture.** Report-only `KEEL-RT-148-ca-delete`, created with the Restorer. Read back: state
+    `enabledForReportingButNotEnforced`, includes carla only, excludes marouane.defili and both break-glass accounts, no
+    target apps (`None`). It was never turned on.
+  - **B. Backup.** Snapshot c9e64b5a holds the policy. The delete CLI refuses a key that its source snapshot holds, so, as in
+    Q46 B, the delete ran from 5241aa74 (19:00 UTC, taken before the policy existed).
+  - **C. Dry run: refused** (artifact status `refused`, nothing sent for approval or enforced). Verbatim, with the id replaced:
+    `refusing to delete conditional access policy: <operator break-glass account> is excluded by conditions.users.excludeUsers`
+    The lockout delete guard refuses any CA policy that excludes a break-glass account, and Q96 requires that exclusion.
+    Proving this delete live needs a guard change or a different fixture shape; that is the #148 thread's decision.
+  - **D.** Not run: no restore, so no capture.
+  - **E. Cleanup.** I deleted the policy myself with the Restorer (Graph DELETE 204). A lookup by name now finds nothing.
 - Needs: break-glass readiness **ready** (as in Q46 B). If it is not ready, report the readiness line verbatim and stop.
 - **Test tenant only.** Never target, assign or sign in as marouane.defili.
 - **The policy is never turned on.** It stays report-only for its whole life, and it excludes marouane.defili and both

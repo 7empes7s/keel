@@ -24,9 +24,9 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Setting | Backed up | Coverage | KEEL can restore | Proof |
 | --- | --- | --- | --- | --- |
 | Users | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
-| Groups | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress; live test of bringing back from deleted items failed on 2026-10-13, fix in progress |
+| Groups | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items; add and remove members and owners | Tested against a simulated tenant |
 | Organizational contacts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
-| App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-14, fix in progress |
+| App registrations | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; bring back from deleted items | Tested against a simulated tenant |
 | Enterprise apps | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Delegated app consents | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | External identity providers | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -37,7 +37,7 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-11, fix in progress |
+| Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Role-to-settings links | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Access reviews | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -146,9 +146,9 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 
 | Setting | Backed up | Coverage | KEEL can restore | Proof |
 | --- | --- | --- | --- | --- |
-| Conditional Access policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant; live test of recreating failed on 2026-10-13, fix in progress |
+| Conditional Access policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since; bring back from deleted items | Tested against a simulated tenant |
 | Authentication strengths | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of recreating failed on 2026-10-11, fix in progress; live test of putting settings back failed on 2026-10-13, fix in progress |
+| Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Authentication methods | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -235,7 +235,7 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Licence subscriptions | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Group setting templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Tenant-wide group settings | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Company branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back failed on 2026-10-10, fix in progress |
+| Company branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Company branding per language | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Group expiration policy | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Administrative units | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |

@@ -654,13 +654,13 @@ test('committed demotions are applied, and committed records only verify with th
   for (const result of applyCommittedEvidence({ dir, hmacKey: null })) {
     assert.equal(result.promoted, false, `${result.file} must not verify without the key`);
   }
-  // Run 1 (2026-10-10 to 12) demoted writes whose cause is a KEEL bug with a
-  // fix under way, so each stays registered and its type records the failed
-  // live run, dated and in the demotion's words. (The ledger row itself is
-  // checked in the roleDefinition test above: the simulated promotions earlier
-  // in this file may already have flipped a demoted write's in-process claim.)
+  // A committed demotion whose cause is a KEEL bug with a fix under way keeps
+  // its write registered, and its type records the failed live run, dated and
+  // in the demotion's words. (The ledger row itself is checked in the
+  // roleDefinition test above: the simulated promotions earlier in this file
+  // may already have flipped a demoted write's in-process claim.) The run 1 and
+  // run 2 demotions were removed once verified reruns replaced them (#148).
   const demotions = readdirSync(dir).filter((name) => name.endsWith('.demotion.json'));
-  assert.ok(demotions.length > 0, 'the live gate recorded demotions');
   for (const name of demotions) {
     const demotion = JSON.parse(readFileSync(join(dir, name), 'utf8'));
     const failure = TYPE_DECISIONS[demotion.resourceType.split('#')[0]].liveFailures?.[demotion.operation];

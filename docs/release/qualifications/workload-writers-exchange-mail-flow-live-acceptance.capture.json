@@ -1,0 +1,118 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "transportRule",
+        "inboundConnector",
+        "outboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:33:41.669Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "transportRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:33:50.957Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-TransportRule",
+      "parameters": {
+        "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
+        "Comments": "KEEL capture 2026-10-16T19:33:41.669Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:33:54.158Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "transportRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:34:24.096Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-TransportRule",
+      "parameters": {
+        "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
+        "Comments": "KEEL test fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:34:27.068Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "transportRule"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:34:56.334Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "inboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:34:59.442Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-InboundConnector",
+      "parameters": {
+        "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
+        "Comment": "KEEL capture 2026-10-16T19:33:41.669Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:02.605Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "inboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:06.601Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-InboundConnector",
+      "parameters": {
+        "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
+        "Comment": "KEEL test fixture"
+      },
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:09.669Z"
+    },
+    {
+      "credential": "collector",
+      "read": "exchange-mail-flow",
+      "families": [
+        "inboundConnector"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-16T19:35:13.294Z"
+    }
+  ],
+  "values": {
+    "refusalFamily": "transportRule",
+    "mailflow.transport-rule.update": {
+      "written": true
+    },
+    "mailflow.inbound-connector.update": {
+      "written": true
+    }
+  }
+}

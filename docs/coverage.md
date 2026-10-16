@@ -507,7 +507,6 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **KEEL can restore:**
 
-- Put back: Teams meeting policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Add back: Teams messaging policies (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams external access (federation) configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
@@ -516,7 +515,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Teams guest messaging configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 - Put back: Teams guest calling configuration (switched on only after the restore of team member, guest, messaging and fun settings is proven)
 
-**You do:** Which users and groups a policy is assigned to, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. Turning recording or transcription on needs a second approver.
+**You do:** Meeting policies are changed by hand in the Teams admin center using the backup, because Teams refuses changes to them from KEEL. Which users and groups a policy is assigned to, and settings KEEL does not restore, are changed by hand too. A deleted named messaging policy is recreated assigned to nobody. Turning transcription on for guests needs a second approver.
 
 ### Purview retention and data loss prevention
 

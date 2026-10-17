@@ -243,6 +243,23 @@ test('window boundaries are half-open and a revocation takes effect at its insta
   await refused(revokeChangeIntent(client, { tenantRef, intentId: intent.id, revokedBy: SECOND_APPROVER, reason: 'late', now: end, killSwitchPath }), 'already-ended');
 });
 
+test('a change detection keeps on one row still reads as drifted in a later collection', async () => {
+  const tenantRef = 'sha256:intent-reused-row';
+  const { baselineId, policy } = await seedTenant(tenantRef);
+  const t0 = new Date();
+  const end = new Date(t0.getTime() + HOUR);
+  const { drift: first } = await observe(tenantRef, baselineId, { ...BASE, visibility: 'Public' });
+  const intent = await approve(tenantRef, { driftId: first.id, fields: ['visibility'], windowStart: t0, windowEnd: end, now: t0 });
+  // A later collection sees the same difference; detection reuses the first row, so no
+  // row names this collection.
+  await observe(tenantRef, baselineId, { ...BASE, visibility: 'Public' }, { detect: false });
+  const [settled] = await settleChangeIntents(client, { tenantRef, now: end, killSwitchPath });
+  assert.equal(settled.intentId, intent.id);
+  assert.equal(settled.currentState, 'drifted');
+  assert.equal(settled.driftId, first.id);
+  assert.deepEqual(settled.remediations.map((entry) => [entry.policyId, entry.outcome]), [[policy.id, 'queued']]);
+});
+
 test('when the window ends KEEL re-reads the resource and evaluates its current state, never the approved inverse', async () => {
   const tenantRef = 'sha256:intent-expiry';
   const { baselineId, policy } = await seedTenant(tenantRef);

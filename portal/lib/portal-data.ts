@@ -35,6 +35,8 @@ import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
+import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
+import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
@@ -764,6 +766,25 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
   });
 }
 
+// App settings that carry no name (app consent, app permissions, owners, provisioning
+// jobs) are named from the apps, people and app roles they point to (lib/app-names.ts).
+async function withAppNames(client: KeelClient, ref: string, items: DriftRecord[]): Promise<DriftRecord[]> {
+  const unnamed = items.flatMap((item, index) => {
+    if (item.name) return [];
+    const type = edgeKeyType(item.naturalKey) ?? item.resourceType;
+    return (DERIVED_NAME_TYPES as readonly string[]).includes(type) ? [{ index, payload: item.after ?? item.before }] : [];
+  });
+  if (!unnamed.length) return items;
+  const refs = unnamed.map(({ index, payload }) => referencedIds(items[index].resourceType, items[index].naturalKey, payload));
+  const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
+  const out = [...items];
+  for (const { index, payload } of unnamed) {
+    const name = derivedName(items[index].resourceType, items[index].naturalKey, payload, lookup);
+    if (name) out[index] = { ...items[index], name };
+  }
+  return out;
+}
+
 function driftResult(items: DriftRecord[]): { items: DriftRecord[]; summary: SemanticSummary } {
   return { items, summary: summarizeSemanticDrift(items) as SemanticSummary };
 }
@@ -784,7 +805,7 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       const attributed = found ? await withAttribution(client, ref, found.id, items, scope) : items;
       // Only a central reader gets the names of the objects a change points to: an
       // entity-scoped reader may not see those objects, so their ids stay unnamed.
-      const named = scope.central ? await withRefNames(client, ref, attributed) : attributed;
+      const named = scope.central ? await withAppNames(client, ref, await withRefNames(client, ref, attributed)) : attributed;
       return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, named, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
@@ -979,6 +1000,19 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
       );
       for (const row of rows) {
         if (row.display_name) displayNames.set(`${row.snapshot_id}|${row.natural_key}`, String(row.display_name));
+      }
+      // A setting with no name of its own (app consent, an app permission) is named from
+      // what it points to, as the newest backup names them.
+      const nameless = wanted.filter((entry) => !displayNames.has(`${entry.snapshotId}|${entry.naturalKey}`));
+      if (nameless.length > 0) {
+        const saved = await savedNames(client, ref, nameless.map((entry) => entry.naturalKey)).catch((error) => {
+          console.error("[keel-portal] incident setting names unavailable", error);
+          return {} as Awaited<ReturnType<typeof savedNames>>;
+        });
+        for (const entry of nameless) {
+          const name = saved[entry.naturalKey]?.name;
+          if (name) displayNames.set(`${entry.snapshotId}|${entry.naturalKey}`, name);
+        }
       }
     }
 
@@ -1236,6 +1270,21 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     const answer = (await answerQuestion(client, {
       tenantRef: ref, scope: readerScope, question: input.question ?? null, request, now,
     })) as GroundedAnswer;
+    // App settings that carry no name are named from the apps they point to. Only a
+    // central reader gets those names, as on the Changes page.
+    const nameless = answer.records.filter((record) => record.kind === "change" && !record.name
+      && (DERIVED_NAME_TYPES as readonly string[]).includes(edgeKeyType(record.naturalKey) ?? record.resourceType));
+    if (readerScope.central && nameless.length) {
+      const saved = await savedNames(client, ref, nameless.map((record) => (record as { naturalKey: string }).naturalKey)).catch((error) => {
+        console.error("[keel-portal] ask app names unavailable", error);
+        return {} as Awaited<ReturnType<typeof savedNames>>;
+      });
+      answer.records = answer.records.map((record) => {
+        if (record.kind !== "change" || record.name) return record;
+        const name = saved[record.naturalKey]?.name;
+        return name ? { ...record, name } : record;
+      });
+    }
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });
 }

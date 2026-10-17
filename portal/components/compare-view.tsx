@@ -10,6 +10,7 @@ import {
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
+import { holdsObjectId } from "@/lib/object-ids";
 import { plainKind } from "@/lib/baselines-view";
 import { SERVICES } from "@/lib/services";
 
@@ -53,13 +54,11 @@ function CompareStyles() {
   return <style href="keel-compare" precedence="default">{CSS}</style>;
 }
 
-const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
 /** An object's name, or a plain stand-in when its key is an id or a composed key. */
 function itemName(item: SettingsItem, resourceType: string): string {
   if (item.name) return item.name;
   const rest = item.naturalKey.slice(item.naturalKey.indexOf(":") + 1);
-  return GUID.test(rest) || /[a-z][A-Za-z]+:/.test(rest) ? `An unnamed ${resourceTypeLabel(resourceType)}` : rest;
+  return holdsObjectId(rest) || /[a-z][A-Za-z]+:/.test(rest) ? `An unnamed ${resourceTypeLabel(resourceType)}` : rest;
 }
 
 /** A workload resource by its name: "Finance team (site)", never the site id its key holds. */
@@ -68,9 +67,9 @@ function resourceKeyWords(key: string, name?: string | null): string {
   const match = /^([A-Za-z]+):(.+)$/.exec(key);
   const kind = match ? match[1].replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase() : null;
   const saved = name?.trim();
-  if (saved && !GUID.test(saved)) return kind ? `${saved} (${kind})` : saved;
-  if (!match) return GUID.test(key) ? "An unnamed setting" : key;
-  return GUID.test(match[2]) ? `An unnamed ${kind}` : `${match[2]} (${kind})`;
+  if (saved && !holdsObjectId(saved)) return kind ? `${saved} (${kind})` : saved;
+  if (!match) return holdsObjectId(key) ? "An unnamed setting" : key;
+  return holdsObjectId(match[2]) ? `An unnamed ${kind}` : `${match[2]} (${kind})`;
 }
 
 // The two sides' short names, set once per page so every before/after column says which.

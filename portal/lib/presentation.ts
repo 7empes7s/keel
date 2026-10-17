@@ -1,3 +1,4 @@
+import { holdsObjectId } from "@/lib/object-ids";
 import type { ProtectionState } from "@/lib/types";
 
 export const BLAST_RADIUS_ORDER = [
@@ -92,6 +93,12 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   roleAssignment: "role assignment",
   servicePrincipal: "enterprise app",
   application: "app registration",
+  oauth2PermissionGrant: "app consent",
+  appRoleGrant: "app permission",
+  applicationOwnership: "app registration owner",
+  servicePrincipalOwnership: "enterprise app owner",
+  synchronizationJob: "provisioning job",
+  sharepointSiteAppGrant: "site access for an app",
   user: "user",
   authorizationPolicy: "authorization policy",
   crossTenantAccessPolicyPartner: "cross-tenant access partner",
@@ -108,12 +115,38 @@ export function resourceTypeLabel(type: string): string {
   return RESOURCE_TYPE_LABELS[type] ?? words(type).toLowerCase();
 }
 
+// The stored type of each edge drift key ("edge:appOwner:…").
+const EDGE_KEY_TYPES: Record<string, string> = {
+  member: "groupMembership", owner: "groupOwnership", transitiveMember: "groupTransitiveMembership",
+  appOwner: "applicationOwnership", servicePrincipalOwner: "servicePrincipalOwnership",
+  appRoleGrant: "appRoleGrant", assignment: "policyAssignment",
+};
+
 /** A resource as a person reads it: "Helpdesk Tier 0 (group)". The display name
- * comes from collected data when the reader resolved it; otherwise from the key. */
+ * comes from collected data when the reader resolved it; otherwise from the readable
+ * part of the key. It never returns an object id: a key that is or holds one reads
+ * "Unnamed <kind>", and a key stored under its type reads as that type. */
 export function resourceLabel(naturalKey: string, displayName?: string | null): string {
-  const [type, ...rest] = naturalKey.split(":");
-  const name = displayName?.trim() || rest.join(" · ") || naturalKey;
-  return `${name} (${resourceTypeLabel(type)})`;
+  const index = naturalKey.indexOf(":");
+  const prefix = index > 0 ? naturalKey.slice(0, index) : null;
+  let rest = index > 0 ? naturalKey.slice(index + 1) : "";
+  let type = prefix && !holdsObjectId(prefix) ? prefix : null;
+  if (type === "edge") {
+    const edge = rest.split(":")[0];
+    type = EDGE_KEY_TYPES[edge] ?? null;
+    rest = "";
+  }
+  const typeWords = type ? resourceTypeLabel(type) : null;
+  const saved = displayName?.trim();
+  if (saved && !holdsObjectId(saved)) return typeWords ? `${saved} (${typeWords})` : saved;
+  // A tenant-wide setting is stored under its type: its type is its name.
+  if (index === -1 && !holdsObjectId(naturalKey)) {
+    const label = resourceTypeLabel(naturalKey);
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  const fromKey = rest.replaceAll(":", " · ");
+  if (typeWords && fromKey && !holdsObjectId(fromKey)) return `${fromKey} (${typeWords})`;
+  return `Unnamed ${typeWords ?? "setting"}`;
 }
 
 export const RECOVERY_POINT_LABELS = {

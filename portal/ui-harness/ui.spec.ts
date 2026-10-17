@@ -283,6 +283,32 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
+test("restore puts back several mailboxes at once, each as its own request", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/restore");
+  await page.locator(".restore-workload", { hasText: "Exchange mailbox settings" }).getByRole("button", { name: "Choose what to put back" }).click();
+  const panel = page.locator(".workload-restore");
+  await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
+  // The organization-wide settings are never ticked for you, and need a mailbox.
+  await expect(panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ })).not.toBeChecked();
+  await panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ }).check();
+  await expect(panel).toContainText("The organization-wide settings go with a mailbox: choose one too.");
+  await expect(panel.getByRole("button", { name: "Check what would change" })).toBeDisabled();
+  await panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ }).uncheck();
+  await panel.getByRole("checkbox", { name: /KEEL-RT-Shared@contoso.example/ }).check();
+  await panel.getByRole("checkbox", { name: /KEEL-RT-User1@contoso.example/ }).check();
+  await expect(panel).toContainText("2 mailboxes chosen.");
+  await panel.getByRole("button", { name: "Check 2 mailboxes" }).click();
+  await expect(panel.locator("h3")).toHaveText("Step 3 of 4: review what will change, then send it for approval.", { timeout: 20_000 });
+  await expect(panel).toContainText("KEEL will put back 2 objects, 3 settings in all, as 2 requests.");
+  await expect(panel.locator(".workload-run h4")).toHaveText(["KEEL-RT-Shared@contoso.example", "KEEL-RT-User1@contoso.example"]);
+  const results = await new AxeBuilder({ page }).include(".workload-restore").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  expectPlainText(await textOutside(page, ".workload-restore", '[data-layer="record"]'));
+  await panel.getByRole("button", { name: "Send 2 for approval" }).click();
+  await expect(panel.locator("h3")).toHaveText("Step 4 of 4: sent to approvers. Nothing changes until one of them approves.");
+});
+
 test("restore of another service fits a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/restore");

@@ -367,7 +367,32 @@ assert.throws(
 );
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'], allowTenantWide: true }, artifactId: 'a-1' }, { requested_by: 'p' }),
-  /may carry only workload, collectionId and targets/,
+  /allowTenantWide is only set with includeOrganization/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'], tenantHost: 'x' }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /may carry only workload, collectionId, targets/,
+);
+// One mailbox or one team per dry run; the organization rides along with a mailbox only.
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor(
+    { workloadRestore: { workload: 'exchange-mailbox-settings', collectionId: 'c-1', mailbox: 'keel-rt-a@x.test', includeOrganization: true, allowTenantWide: true }, artifactId: 'a-1' },
+    { requested_by: 'p-1' },
+  ),
+  ['--workload', 'exchange-mailbox-settings', '--collection', 'c-1', '--mailbox', 'keel-rt-a@x.test', '--include-organization',
+    '--allow-tenant-wide-test-writes', '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1' }, artifactId: 'a-1' }, { requested_by: 'p-1' }),
+  ['--workload', 'teams-settings', '--collection', 'c-1', '--team', 't-1', '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1', targets: ['k'] }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /exactly one of targets, mailbox or teamId/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1', includeOrganization: true }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /includeOrganization needs a mailbox/,
 );
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: [] }, artifactId: 'a-1' }, { requested_by: 'p' }),

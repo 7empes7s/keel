@@ -56,8 +56,8 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
         <Icon name="info" />
         <p>
           Choose what to put back on a card, and it goes to <Link href="/approvals">Approvals</Link> like any other
-          restore: nothing changes until someone approves it. SharePoint settings, one mailbox&apos;s settings and one
-          team are still planned by your KEEL operator. KEEL only writes what has been proven on this tenant.
+          restore: nothing changes until someone approves it. SharePoint settings are still planned by your KEEL
+          operator. KEEL only writes what has been proven on this tenant.
         </p>
       </div>
       <div className="restore-services-grid">

@@ -147,11 +147,21 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   // The other services on Restore: mail flow's backups and objects, then its dry run.
   if (url.includes("/api/actions/restore/workload?")) {
-    const collection = new URL(url, "http://harness").searchParams.get("collection");
-    return json({ choices: workloadChoicesFixture(collection) });
+    const params = new URL(url, "http://harness").searchParams;
+    if (params.get("workload") === "exchange-mailbox-settings") return json({ choices: MAILBOX_CHOICES });
+    return json({ choices: workloadChoicesFixture(params.get("collection")) });
   }
-  if (url.endsWith("/api/actions/restore/workload/dry-run")) { jobPolls = 0; return json({ job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }, 202); }
+  if (url.endsWith("/api/actions/restore/workload/dry-run")) {
+    jobPolls = 0;
+    const body = JSON.parse(String(init?.body ?? "{}")) as { workload?: string; targets?: string[] };
+    if (body.workload === "exchange-mailbox-settings") {
+      const boxes = (body.targets ?? []).filter((key) => key !== "organization");
+      return json({ runs: boxes.map((target, index) => ({ target, job: { id: `job-mb-${index}` }, artifactId: `mb000000-0000-4000-8000-00000000000${index}` })) }, 202);
+    }
+    return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
+  }
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
+  if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
   // Task-70: the undo plan of failed restore r10.
   if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
   if (url.includes("/api/actions/restore/dry-run/c0de0000")) return json({ artifact: COMPENSATION_ARTIFACT });
@@ -1283,6 +1293,33 @@ function workloadChoicesFixture(collection: string | null) {
         { key: "accepteddomain:d1", name: "contoso.example", change: null, restorable: false, reason: null, tenantWide: false },
       ] },
     ],
+  };
+}
+// Exchange mailboxes: several picked at once, one check and one request each.
+const MAILBOX_CHOICES = {
+  workload: "exchange-mailbox-settings", backups: [WORKLOAD_BACKUPS[0]], chosen: WORKLOAD_BACKUPS[0],
+  groups: [
+    { kind: "mailbox", name: "Mailboxes", restorable: true, reason: null, items: [
+      { key: "mailbox:keel-rt-shared@contoso.example", name: "KEEL-RT-Shared@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+      { key: "mailbox:keel-rt-user1@contoso.example", name: "KEEL-RT-User1@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+      { key: "mailbox:keel-rt-user2@contoso.example", name: "KEEL-RT-User2@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+    ] },
+    { kind: "organization", name: "Organization", restorable: true, reason: null, items: [
+      { key: "organization", name: "Organization-wide Exchange settings", change: null, restorable: true, reason: "Put back together with a mailbox: tick at least one mailbox too.", tenantWide: true },
+    ] },
+  ],
+};
+function mailboxArtifact(index: string) {
+  const key = index === "0" ? "mailbox:keel-rt-shared@contoso.example" : "mailbox:keel-rt-user1@contoso.example";
+  return {
+    id: `mb000000-0000-4000-8000-00000000000${index}`, status: "completed", guardRefusals: [], contentEffects: [], contentEffectApprovals: [], effectsDigest: null,
+    workloadRestore: {
+      operations: index === "0"
+        ? [{ naturalKey: `exchange:${key}:mailboxSettings`, group: "mailboxSettings", kind: "mailbox-settings", changes: [{ field: "timeZone", before: "Pacific Standard Time", after: "W. Europe Standard Time" }, { field: "automaticRepliesSetting", before: "alwaysEnabled", after: "disabled" }] }]
+        : [{ naturalKey: `exchange:${key}:mailboxSettings`, group: "mailboxSettings", kind: "mailbox-settings", changes: [{ field: "timeZone", before: "UTC", after: "W. Europe Standard Time" }] }],
+      manual: index === "0" ? [] : [{ resourceKey: key, field: "retention.LitigationHoldEnabled", before: false, after: true, reason: "holds are changed by a compliance administrator" }],
+      refusals: [],
+    },
   };
 }
 const WORKLOAD_ARTIFACT = {

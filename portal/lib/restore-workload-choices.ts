@@ -1,5 +1,5 @@
 import { loadWorkloadSource } from "../../engine/restore/workloads/cmdletSettings.mjs";
-import { workloadChoices } from "../../engine/restore/workloads/restoreChoices.mjs";
+import { perItemRequest, workloadChoices } from "../../engine/restore/workloads/restoreChoices.mjs";
 
 import { PAGE_RESTORE_WORKLOADS, type WorkloadBackupPoint, type WorkloadChoiceGroup, type WorkloadChoices } from "@/lib/restore-workloads-view";
 
@@ -49,4 +49,11 @@ export async function getWorkloadChoices(client: Client, tenant: string, workloa
     : await loadWorkloadSource(client, { tenantRef: tenant, collectionId: backups[0].collectionId, workload });
   const groups = workloadChoices(workload, source.observations, newest?.observations ?? null) as WorkloadChoiceGroup[];
   return { workload, backups, chosen, groups };
+}
+
+/** The dry-run requests for the chosen objects of a mailbox or team workload; null when one is not a mailbox or team. */
+export function perItemRequests(workload: string, targets: string[]): { key: string; request: Record<string, string> }[] | null {
+  const requests = targets.filter((key) => key !== "organization").map((key) => ({ key, request: perItemRequest(workload, key) as Record<string, string> | null }));
+  if (requests.some((entry) => entry.request === null)) return null;
+  return requests as { key: string; request: Record<string, string> }[];
 }

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { PAGE_RESTORE_WORKLOADS, workloadChoices } from './restoreChoices.mjs';
+import { PAGE_RESTORE_WORKLOADS, PER_ITEM_WORKLOADS, perItemRequest, workloadChoices } from './restoreChoices.mjs';
 import { WORKLOAD_RESTORES } from './dispatch.mjs';
 
 const rule = (id, fields) => ({ resourceKey: `transportrule:${id}`, kind: 'transportRule', identity: id, fields: { Name: `KEEL-RT ${id}`, ...fields } });
@@ -11,6 +11,10 @@ const rule = (id, fields) => ({ resourceKey: `transportrule:${id}`, kind: 'trans
 test('every page workload plans from the backup and the chosen objects alone', () => {
   for (const workload of PAGE_RESTORE_WORKLOADS) {
     assert.ok(WORKLOAD_RESTORES[workload], `${workload} has a dry run`);
+    if (PER_ITEM_WORKLOADS[workload]) {
+      assert.match(WORKLOAD_RESTORES[workload].usage, /^--collection <id> --(mailbox|team) /, `${workload} needs a collection and one mailbox or team`);
+      continue;
+    }
     assert.match(WORKLOAD_RESTORES[workload].usage, /^--collection <id> (\[--target <key> \.\.\.\]|--target )/, `${workload} needs only a collection and targets`);
   }
   assert.throws(() => workloadChoices('sharepoint-site-settings', []), /does not start a restore/);
@@ -66,4 +70,33 @@ test('Purview labels are grouped by label and publishing policy', () => {
     ['Sensitivity label definitions', 'KEEL-RT Confidential'],
     ['Sensitivity label publishing policies', 'KEEL-RT Publish'],
   ]);
+});
+
+test('mailboxes: one per dry run, a deleted one cannot be picked, the organization rides with a mailbox', () => {
+  const box = (upn, fields) => ({ resourceKey: `mailbox:${upn.toLowerCase()}`, identity: upn, fields });
+  const chosen = [box('KEEL-RT-A@x.test', { mailboxSettings: { timeZone: 'UTC' } }), box('KEEL-RT-B@x.test', { mailboxSettings: {} }),
+    box('KEEL-RT-C@x.test', { mailboxSettings: {} }), { resourceKey: 'organization', fields: { organization: { MailTipsLargeAudienceThreshold: 25 } } }];
+  const newest = [box('KEEL-RT-A@x.test', { mailboxSettings: { timeZone: 'W. Europe Standard Time' } }), chosen[1]];
+  const [mailboxes, organization] = workloadChoices('exchange-mailbox-settings', chosen, newest);
+  assert.equal(mailboxes.name, 'Mailboxes');
+  assert.deepEqual(mailboxes.items.map((item) => [item.name, item.change, item.restorable]), [
+    ['KEEL-RT-A@x.test', 'changed', true],
+    ['KEEL-RT-C@x.test', 'deleted', false],
+    ['KEEL-RT-B@x.test', 'same', true],
+  ]);
+  assert.deepEqual(organization.items.map((item) => [item.key, item.change, item.tenantWide]), [['organization', null, true]]);
+  assert.deepEqual(perItemRequest('exchange-mailbox-settings', 'mailbox:keel-rt-a@x.test'), { mailbox: 'keel-rt-a@x.test' });
+  assert.equal(perItemRequest('exchange-mailbox-settings', 'organization'), null);
+  assert.equal(perItemRequest('exchange-mailbox-settings', 'team:t-1'), null);
+});
+
+test('teams: named by display name, keys outside team: are not offered', () => {
+  const id = '22222222-2222-4222-8222-222222222222';
+  const [teams, ...rest] = workloadChoices('teams-settings', [
+    { resourceKey: `team:${id}`, fields: { displayName: 'KEEL-RT Falcon' } },
+    { resourceKey: 'teamdiscovery', fields: {} },
+  ]);
+  assert.equal(rest.length, 0);
+  assert.deepEqual(teams.items.map((item) => [item.name, item.change, item.restorable]), [['KEEL-RT Falcon', null, true]]);
+  assert.deepEqual(perItemRequest('teams-settings', `team:${id}`), { teamId: id });
 });

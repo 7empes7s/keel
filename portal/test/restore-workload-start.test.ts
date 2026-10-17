@@ -138,7 +138,10 @@ test("a dry run starts for exactly the chosen objects, and only as a dry run", a
 
   const response = await workloadDryRunRoute(request("/api/actions/restore/workload/dry-run", { ...restorer, body }));
   assert.equal(response.status, 202);
-  const { job, artifactId } = await response.json();
+  const { runs } = await response.json();
+  assert.equal(runs.length, 1, "a policy workload is one dry run");
+  const [{ job, artifactId, target }] = runs;
+  assert.equal(target, null);
   const { rows: [stored] } = await client.query("SELECT kind, params, requested_by FROM job WHERE id = $1", [job.id]);
   assert.equal(stored.kind, "restore");
   assert.deepEqual(stored.params, { workloadRestore: { workload: "exchange-mail-flow", collectionId: older, targets: ["transportrule:a"] }, artifactId });
@@ -147,4 +150,71 @@ test("a dry run starts for exactly the chosen objects, and only as a dry run", a
     ["--workload", "exchange-mail-flow", "--collection", older, "--target", "transportrule:a", "--persist-artifact", artifactId, "--requested-by", RESTORER],
     "the worker runs exactly this dry run",
   );
+});
+
+test("several mailboxes start one dry run each; the organization goes with the first mailbox", async () => {
+  const { rows: [run] } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+     VALUES ($1, 'exchange-mailbox-settings', 'complete', $2, $2, $2) RETURNING id`,
+    [tenantRef(), "2026-10-02T06:00:00Z"],
+  );
+  const mailboxes = String(run.id);
+  for (const [key, fields] of [
+    ["mailbox:keel-rt-a@x.test", { identity: "KEEL-RT-A@x.test", mailboxSettings: { timeZone: "UTC" } }],
+    ["mailbox:keel-rt-b@x.test", { identity: "KEEL-RT-B@x.test", mailboxSettings: { timeZone: "UTC" } }],
+    ["organization", { organization: { MailTipsLargeAudienceThreshold: 25 } }],
+  ] as const) {
+    await client.query(`INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, $2, $3)`, [mailboxes, key, JSON.stringify(fields)]);
+  }
+
+  const listed = await choicesRoute(request("/api/actions/restore/workload?workload=exchange-mailbox-settings", restorer));
+  const { choices } = await listed.json();
+  assert.deepEqual(choices.groups.map((group: { name: string; items: { name: string }[] }) => [group.name, group.items.map((item) => item.name)]), [
+    ["Mailboxes", ["KEEL-RT-A@x.test", "KEEL-RT-B@x.test"]],
+    ["Organization", ["Organization-wide Exchange settings"]],
+  ]);
+
+  const post = (targets: string[]) => workloadDryRunRoute(request("/api/actions/restore/workload/dry-run", {
+    ...restorer, body: { workload: "exchange-mailbox-settings", collectionId: mailboxes, targets },
+  }));
+  assert.equal((await post(["organization"])).status, 400, "the organization needs a mailbox");
+  assert.equal((await post(["transportrule:a"])).status, 400, "only mailboxes from this workload");
+
+  const response = await post(["mailbox:keel-rt-a@x.test", "organization", "mailbox:keel-rt-b@x.test"]);
+  assert.equal(response.status, 202);
+  const { runs } = await response.json();
+  assert.deepEqual(runs.map((entry: { target: string }) => entry.target), ["mailbox:keel-rt-a@x.test", "mailbox:keel-rt-b@x.test"]);
+  const argv: unknown[] = [];
+  for (const entry of runs) {
+    const { rows: [stored] } = await client.query("SELECT params, requested_by FROM job WHERE id = $1", [entry.job.id]);
+    const params = stored.params as { artifactId: string };
+    assert.equal(params.artifactId, entry.artifactId);
+    argv.push(JOB_HANDLERS.restore.argsFor(params, { requested_by: stored.requested_by }));
+  }
+  assert.deepEqual(argv, [
+    ["--workload", "exchange-mailbox-settings", "--collection", mailboxes, "--mailbox", "keel-rt-a@x.test", "--include-organization",
+      "--allow-tenant-wide-test-writes", "--persist-artifact", runs[0].artifactId, "--requested-by", RESTORER],
+    ["--workload", "exchange-mailbox-settings", "--collection", mailboxes, "--mailbox", "keel-rt-b@x.test",
+      "--persist-artifact", runs[1].artifactId, "--requested-by", RESTORER],
+  ]);
+});
+
+test("a team plan reads as its settings and one members table, in names", async () => {
+  const { changeTables, targetWords } = await import("@/components/restore/workload-restore");
+  const names = (key: string) => (key === "team:t-1" ? "KEEL-RT Falcon" : "a setting");
+  const tables = changeTables([
+    { naturalKey: "teams:t-1:settings", kind: "settings", changes: [{ field: "memberSettings.allowCreateUpdateChannels", before: false, after: true }] },
+    { naturalKey: "teams:t-1:member:x|1", kind: "member-add", member: { displayName: "KEEL-RT Ana", roles: ["owner"] } },
+    { naturalKey: "teams:t-1:member:x|2", kind: "member-update", member: { displayName: "KEEL-RT Bo", roles: [] }, before: ["owner"] },
+    { naturalKey: "teams:t-1:member:x|3", kind: "member-remove", member: { displayName: "", roles: [] } },
+  ], names);
+  assert.deepEqual(tables.map((table) => [table.title, table.rows.length]), [["Team settings", 1], ["Members", 3]]);
+  assert.deepEqual(tables[1].rows, [
+    { field: "KEEL-RT Ana", before: "Not in the team", after: "Owner" },
+    { field: "KEEL-RT Bo", before: "Owner", after: "Member" },
+    { field: "A member without a name", before: "Member", after: "Removed from the team" },
+  ]);
+  assert.equal(targetWords("exchange:mailbox:keel-rt-a@x.test:retention", names), "Hold and retention");
+  assert.equal(targetWords("teams:t-1:members", names), "Members");
+  assert.equal(targetWords("team:t-1", names), "KEEL-RT Falcon");
 });

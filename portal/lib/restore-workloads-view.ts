@@ -97,9 +97,14 @@ export function workloadSummary(workloads: RestoreWorkload[]): string {
 // The same list as engine/restore/workloads/restoreChoices.mjs PAGE_RESTORE_WORKLOADS
 // (a test keeps them equal); kept here so the client bundle needs no engine module.
 export const PAGE_RESTORE_WORKLOADS: readonly string[] = [
+  "exchange-mailbox-settings", "teams-settings",
   "exchange-mail-flow", "exchange-extended", "teams-org-policies", "teams-voice-policies",
   "purview-retention-dlp", "purview-governance", "purview-labels",
 ];
+
+// Mailboxes and teams: one dry run, and one approval, per chosen mailbox or team
+// (engine PER_ITEM_WORKLOADS; the same test keeps them equal).
+export const PER_ITEM_WORKLOADS: readonly string[] = ["exchange-mailbox-settings", "teams-settings"];
 
 /** True when the page offers "Choose what to put back" for this kind of setting. */
 export function startsFromPage(workload: Pick<RestoreWorkload, "workload" | "writes" | "backup">): boolean {

@@ -1,6 +1,7 @@
 import type { RiskTone } from "@/lib/menu-status";
 import type { Day } from "@/lib/date-range";
 import { fieldWords } from "@/lib/changes-view";
+import { holdsObjectId } from "@/lib/object-ids";
 import { displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
@@ -24,13 +25,10 @@ export function plainType(type: string): string {
   return PLAIN_TYPES[type] ?? typeName(type);
 }
 
-// A Graph object id (GUID). Many types are stored under their id, or carry one inside
-// the key, so a key alone is never shown when it holds one (rule: names, not ids).
-const OBJECT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-
-export function holdsId(text: string): boolean {
-  return OBJECT_ID.test(text);
-}
+// Many types are stored under a Graph id (a GUID, an app consent token, a provisioning
+// job id), or carry one inside the key, so a key alone is never shown when it holds one
+// (rule: names, not ids). One check for every page: lib/object-ids.ts.
+export const holdsId = holdsObjectId;
 
 /** What each saved setting is called, by its stored key: the name the backup holds,
  * else the readable part of the key, else "Unnamed <type>". */

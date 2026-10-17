@@ -3,6 +3,7 @@
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
 import { plainKind } from "@/lib/baselines-view";
+import { holdsObjectId } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
 
@@ -12,14 +13,11 @@ export function resourceName(naturalKey: string): string {
   return rest.join(" · ") || naturalKey;
 }
 
-// A Graph object id (GUID). Many types are stored under their id, or point to users,
-// groups and roles by id, so text holding one is never shown as is (names, not ids).
+// A GUID. Many types are stored under their id, or point to users, groups and roles by
+// id: each GUID found is replaced by the name it points to. holdsObjectId also catches
+// the other id shapes (grant tokens, hex runs), so text holding one is never shown.
 const OBJECT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const ONLY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function holdsObjectId(text: string): boolean {
-  return text.search(OBJECT_ID) !== -1;
-}
 
 /** The fields Microsoft names an object by, in the order the page prefers them. */
 export const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail", "subject"] as const;

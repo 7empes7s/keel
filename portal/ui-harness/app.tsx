@@ -10,9 +10,10 @@ import { PageHeader } from "@/components/page-header";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { BackupControls, ProblemList } from "@/components/backup-controls";
+import { BackUpNow, TierStrip } from "@/components/backup-controls";
+import { ProtectCoverage } from "@/components/protect-coverage";
 import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
-import { protectProblems, protectVerdict, tierSummaries } from "@/lib/protect-view";
+import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
@@ -23,7 +24,7 @@ import { RecentWork } from "@/components/baselines/recent-work";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ChangeList } from "@/components/baselines/change-list";
 import { CreateWizard } from "@/components/baselines/create-wizard";
-import { quickComparisons, setupStatus, setupVerdict as approvedVerdict } from "@/lib/baselines-view";
+import { quickComparisons, setupStatus, setupVerdict as approvedVerdict, typeService } from "@/lib/baselines-view";
 import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
 import { PrincipalDetails } from "@/components/principal-details";
@@ -33,7 +34,6 @@ import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
 import { changesVerdict } from "@/lib/changes-view";
-import { CoverageReport } from "@/components/coverage-report";
 import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
@@ -555,6 +555,11 @@ const COVERAGE_TYPES: CoverageType[] = [
     diagnosis: { diagnosis: "missing-scope", reason: "Policy.Read.All is not consented", original: { httpStatus: 403, graphCode: "Authorization_RequestDenied" } } }),
   ct("retentionLabel", "failed", { criticality: "tier2", outcome: "partial", itemCount: 17, detail: { httpStatus: 504, graphCode: "GatewayTimeout", message: "page 4 timed out", endpoint: "/beta/security/labels/retentionLabels", apiVersion: "beta", pagesCompleted: 3, startedAt: null, completedAt: null } }),
   ct("crossTenantAccessPolicyPartner", "protected", { reportStatus: "never-collected", outcome: "not-requested", lastCollectedAt: null, itemCount: null, detail: null, observation: null }),
+  ct("exchange-mail-flow", "protected", { criticality: "tier1", itemCount: 23, fidelity: { declared: "full", measured: "full", verifiedAt: "2026-09-24T10:00:00Z" } }),
+  ct("exchange-mailbox-settings", "protected", { criticality: "tier2", itemCount: 410 }),
+  ct("sharepoint-site-settings", "protected", { criticality: "tier2", itemCount: 12 }),
+  ct("teams-org-policies", "protected", { criticality: "tier2", itemCount: 9, stale: true, lastCollectedAt: "2026-09-29T02:00:00Z" }),
+  ct("purview-retention-dlp", "failed", { criticality: "tier2", outcome: "unavailable", itemCount: null }),
   ct("managedDevice", "not-covered", { adapter: null, itemCount: null, lastCollectedAt: null, outcome: null, detail: null, fidelity: { declared: null, measured: null, verifiedAt: null }, criticality: "tier3", blastRadius: null, declaredEndpoint: null, writeCapability: null, observation: null }),
 ];
 const COVERAGE: CoverageData = { generatedAt: now, snapshot: { id: "5a2be911-0000-4000-8000-000000000002", status: "complete", startedAt: now, completedAt: now },
@@ -1404,13 +1409,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       </div></>;
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
-      return <>{header("Backup", "Protect", "Whether every configuration type is being backed up, how often, and whether KEEL can put it back.")}
-        <Verdict text={verdict.text} tone={verdict.tone} />
+      return <>
+        <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every kind of setting is backed up, how often, and whether Keel can put it back."
+          generatedAt={now} section="Backup" status={protectStatus(COVERAGE)} title="What's protected" />
+        <Verdict detail={protectVerdictDetail(COVERAGE.types, (type) => typeService(type).name, now)} text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <BackupControls canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />
-          <ProblemList disabled={false} problems={protectProblems(COVERAGE, now)} />
-          <CoverageReport data={COVERAGE} now={now} />
-          <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} now={now} title="On-demand backups" />
+          <ProtectCoverage canBackup data={COVERAGE} now={now} tierStrip={<TierStrip canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />} />
+          <div className="pt-recent">
+            <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup" || item.kind === "collect")} now={now} title="Recent backups" />
+          </div>
         </div></>;
     }
     case "/schedules": {

@@ -29,8 +29,9 @@ export interface Grouping<T> {
 export interface ListAction {
   // Names the action with the count, in plain words: "Restore 12 settings".
   label: (count: number) => string;
-  // What happens, before it happens.
-  detail: (count: number) => string;
+  // What happens, before it happens. `ids` are the chosen rows, for a detail that
+  // depends on which rows they are.
+  detail: (count: number, ids: string[]) => string;
   run: (ids: string[]) => void;
 }
 
@@ -280,7 +281,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
       {count ? (
         <div aria-label="Selection" className="sel-bar" role="region">
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>
-          <span className="sel-bar-detail">{action.detail(count)}</span>
+          <span className="sel-bar-detail">{action.detail(count, selectedIds)}</span>
           <span className="sel-bar-actions">
             <button className="btn btn-primary" onClick={() => action.run(selectedIds)} type="button">{action.label(count)}</button>
             {more.length ? (

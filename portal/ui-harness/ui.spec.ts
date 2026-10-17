@@ -149,7 +149,7 @@ test("destructive writes ask for confirmation with Cancel focused", async ({ pag
 
 test("a queued backup confirms with a toast linking to the job", async ({ page }) => {
   await open(page, "/protect");
-  await page.getByRole("button", { name: "Back up Tier 1" }).click();
+  await page.getByRole("button", { name: "Back up Tier 1", exact: true }).click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Tier 1 backup queued");
   await expect(toast.getByRole("link", { name: /View job/ })).toBeVisible();
@@ -572,28 +572,137 @@ test("a CLI-planned restore's content effects are linked from the inbox and appr
   expect(await overflow()).toBeLessThanOrEqual(0);
 });
 
-// Task-131 (was task-54/63's coverage matrix): a type's drawer answers in one sentence
-// and keeps the recovery decision, remapping proof and proof reference in its record.
-test("a type drawer states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {
+// Task-131 (was task-54/63's coverage matrix), rebuilt as What's protected: a kind's
+// details panel answers in one sentence and keeps the recovery decision, remapping proof
+// and proof reference in its record. The panel is in the address and Back closes it.
+test("a kind's details panel states its standing and keeps the recovery decision and proof in its record", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
-  const drawer = page.locator("details.type-drawer").filter({ hasText: "Conditional Access policy" }).first();
-  await drawer.locator("summary").first().click();
-  await expect(drawer.locator(".type-drawer-standing")).toHaveText("Protected: restore proven on this tenant on 20 Sept 2026.");
-  await expect(drawer.locator(".decision-automated")).toContainText("KEEL restores this type on its own.");
-  const record = drawer.locator('[data-layer="record"]');
+  await page.locator(".pt-row-link", { hasText: /^Sign-in rule$/ }).click();
+  await expect(page).toHaveURL(/open=conditionalAccessPolicy/);
+  const sheet = page.locator(".bl-sheet");
+  await expect(sheet.locator(".pt-details-standing")).toHaveText("Protected: restore proven on this tenant on 20 Sept 2026.");
+  await expect(sheet.locator(".decision-automated")).toContainText("Keel restores this type on its own.");
+  await expect(sheet.getByRole("link", { name: "Restore this kind" })).toHaveAttribute("href", /^#?\/restore\?q=Sign-in%20rule$/);
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+  const record = sheet.locator('[data-layer="record"]');
   await record.locator("summary").click();
   await expect(record.locator(".technical-field").filter({ hasText: "Recovery decision" })).toContainText("automated");
   await expect(record.locator(".technical-field").filter({ hasText: "Remapping · create" })).toContainText("proven");
   await expect(record.locator(".technical-field").filter({ hasText: "Proof reference · update" })).toContainText("docs/release/qualification/ca-update.json");
+  await page.goBack();
+  await expect(sheet).toBeHidden();
+  await expect(page).not.toHaveURL(/open=/);
 });
 
-test("Protect lists failed and out-of-date types by name with a retry", async ({ page }) => {
+test("What's protected sorts failed and out-of-date kinds first, each with a run of its tier", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/protect");
-  await expect(page.locator('[data-layer="verdict"]')).toHaveText("2 types failed their last backup.");
-  const problems = page.locator(".protect-problem");
-  await expect(problems).toHaveText([/Authentication methods policy/, /Retention label/, /Device configuration/, /Cross-tenant access partner/]);
-  await problems.first().getByRole("button", { name: "Retry the backup of Authentication methods policy (Tier 1)" }).click();
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
+  const entra = page.locator(".sel-group", { hasText: "Entra ID" }).first();
+  await expect(entra.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
+  const failed = entra.locator(".sel-row").first();
+  await expect(failed.locator(".badge")).toHaveText("Failed");
+  await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+});
+
+// The page's done-test (portal audit, What's protected): tiles filter the list in the
+// address, the view survives a reload, selection names the tiers it runs, every job
+// title is a link, and the first screen holds exactly one amber action.
+test("What's protected · tiles filter in the address, selection names its tiers, one amber action", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/protect");
+  const amber = page.locator("main .btn-primary:not(.pt-split-more)");
+  await expect(amber).toHaveCount(1);
+  await expect(amber).toHaveText("Back up now");
+  // On a desktop the list is grouped by service; the service cards are the phone's.
+  await expect(page.locator(".pt-by-service")).toBeHidden();
+  const tiles = page.locator(".pt-tile");
+  await expect(tiles).toHaveCount(4);
+  const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/health=/);
+  await tiles.filter({ hasText: "Failed" }).click();
+  await expect(page).toHaveURL(/health=failed/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".pt-filter-note")).toContainText("Showing failed only: 2 of 15.");
+  await page.goto(`${HARNESS}#/protect?health=failed&group=service`);
+  await page.locator("main#main-content h1").waitFor();
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await page.getByRole("link", { name: "Show every kind" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(15);
+  // Shift+click picks a range; the bar says which tiers run before anything runs.
+  const rows = page.locator(".sel-row");
+  await rows.nth(0).locator("input").click();
+  await rows.nth(2).locator(".pt-row-name small").click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(3);
+  await expect(page.locator(".sel-bar")).toContainText("3 kinds selected");
+  await expect(page.locator(".sel-bar")).toContainText("Runs Tier 1 in full. It only reads your tenant.");
+  await page.locator(".sel-bar").getByRole("button", { name: "Back up 3 kinds" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  await page.keyboard.press("Escape");
+  await page.getByRole("checkbox", { name: "Select all 2 kinds in Intune" }).check();
+  await expect(page.locator(".sel-bar")).toContainText("Runs Tier 2 and Tier 3 in full.");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Select all 15 kinds" }).click();
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(15);
+  await page.keyboard.press("Escape");
+  // Every kind name opens its panel; every job title is a link to its job.
+  for (const link of await page.locator(".pt-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  for (const title of await page.locator(".job-list .row-name a").all()) expect(await title.getAttribute("href")).toMatch(/^#?\/jobs\//);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    test(`What's protected · ${width} · ${theme}: no sideways scroll or clipped text`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/protect", theme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      // No text runs out of its box in the page body (a deliberate ellipsis aside).
+      const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".pt-page *, .page-header *")]
+        .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+        .map((element) => element.textContent));
+      expect(clipped).toEqual([]);
+      const tiles = await page.locator(".pt-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+      expect(new Set(tiles).size).toBe(1);
+      if (width === 390) {
+        // Phone: pick B, the service cards come first and open their kinds below.
+        await expect(page.locator(".pt-by-service")).toBeVisible();
+        await page.locator(".pt-service", { hasText: "Intune" }).getByRole("link", { name: "Open 2 kinds" }).click();
+        await expect(page).toHaveURL(/service=Intune/);
+        await expect(page.locator(".sel-row")).toHaveCount(2);
+        await page.locator(".pt-service", { hasText: "Intune" }).getByRole("checkbox").check();
+        await expect(page.locator(".pt-selbar")).toContainText("Runs Tier 2 and Tier 3 in full.");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      }
+    });
+  }
+}
+
+test("What's protected · phone: hold a kind, then drag over others to select them", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce" });
+  const touchPage = await context.newPage();
+  await touchPage.goto(`${HARNESS}#/protect`);
+  await touchPage.locator('.shell[data-statuses="ready"]').waitFor();
+  const rows = touchPage.locator(".sel-row");
+  await rows.nth(2).scrollIntoViewIfNeeded();
+  const box = async (index: number) => (await rows.nth(index).locator(".pt-row-name small").boundingBox())!;
+  const first = await box(0);
+  const third = await box(2);
+  const client = await context.newCDPSession(touchPage);
+  const point = (x: number, y: number) => [{ x: Math.round(x), y: Math.round(y) }];
+  await client.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: point(first.x + 20, first.y + 6) });
+  await touchPage.waitForTimeout(650);
+  await expect(touchPage.locator(".sel-row[data-selected]")).toHaveCount(1);
+  for (let step = 1; step <= 6; step += 1) {
+    await client.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: point(first.x + 20, first.y + 6 + ((third.y - first.y) * step) / 6) });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(touchPage.locator(".sel-row[data-selected]")).toHaveCount(3);
+  await expect(touchPage.locator(".sel-bar")).toContainText("3 kinds selected");
+  expect(await touchPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await context.close();
 });
 
 test("restore completion closes an item with a reference and refuses a pasted secret", async ({ page }) => {

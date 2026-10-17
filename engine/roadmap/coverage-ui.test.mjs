@@ -207,8 +207,8 @@ test('coverage report: cross-tier observation windows are surfaced as an explici
 
 // Exercise the real TS loader and page in a separate portal runtime. Only its
 // database URL and tenant config are replaced; no normalization/render seam is mocked.
-// Roadmap task-131: the report now renders on Protect, one drawer per type, with every
-// task-54 evidence field in the drawer's record layer; these assertions follow it there.
+// Roadmap task-131: the report renders on What's protected, one record per kind under
+// the list, with every task-54 evidence field; these assertions follow it there.
 test('coverage portal: report survives normalization, authorization and page rendering', async (t) => {
   const client = await database.connect();
   t.after(() => client.end());
@@ -266,7 +266,7 @@ test('coverage portal: report survives normalization, authorization and page ren
       const html = renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: router },
         await render(new Headers([[PRINCIPAL_ID_HEADER, 'viewer'], [CAPABILITIES_HEADER, 'read']]))));
       assert.ok(reads > 0, 'authorized positive control reaches the loader');
-      assert.equal((html.match(/<details class="capability-matrix type-drawer/g) || []).length, data.types.length);
+      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length);
       for (const item of data.types) {
         assert.ok(html.includes(item.type));
         if (item.observation) assert.ok(html.includes(item.observation.observationId));

@@ -14,7 +14,7 @@ import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/i
 import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
   getActiveBaseline,
-  listOpenDrift,
+  listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
@@ -34,7 +34,9 @@ import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
 import { getLiveRecords } from "@/lib/live-records";
+import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
@@ -385,6 +387,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     detectedAt: iso(raw.detected_at) ?? "",
     before: raw.before_payload ?? null,
     after: raw.after_payload ?? null,
+    name: payloadName(raw.after_payload) ?? payloadName(raw.before_payload),
   };
 }
 
@@ -501,10 +504,10 @@ async function activeDriftFor(
   activeBaselineId: string | null,
 ): Promise<DriftRecord[]> {
   if (!activeBaselineId) return [];
-  const rows = (await listOpenDrift(client, { tenantRef: ref })) as UnknownRecord[];
-  return rows
-    .filter((row) => String(row.baseline_id) === activeBaselineId)
-    .map(normalizeDrift);
+  // One row per resource: every detect run re-records what it still sees, so reading
+  // every open row loads the same change once per run (77k rows, the heap, on live).
+  const rows = (await listLatestOpenDrift(client, { tenantRef: ref, baselineId: activeBaselineId })) as UnknownRecord[];
+  return rows.map(normalizeDrift);
 }
 
 export const DRIFT_TREND_DAYS = 30;
@@ -533,7 +536,7 @@ async function driftTrendFor(
   if (!activeBaselineId) return fillDriftTrend([], end);
   const { rows } = await client.query(
     `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-            count(*)::int AS count
+            count(DISTINCT natural_key)::int AS count
        FROM drift
       WHERE tenant_ref = $1
         AND baseline_id = $2
@@ -552,22 +555,38 @@ export async function getCoverageData(): Promise<CoverageData> {
   return withClient((client) => coverageFor(client, ref));
 }
 
+const PRINCIPAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * Who approved each baseline, by name: a person's display name (or a name read from
+ * their email), "Keel's scheduler" for Keel's own accounts. Never an id, email or code.
+ */
+export async function withApproverNames(client: KeelClient, baselines: BaselineRecord[]): Promise<BaselineRecord[]> {
+  const ids = [...new Set(baselines.map((baseline) => baseline.setBy).filter((id) => PRINCIPAL_ID.test(id)))];
+  const people = new Map<string, UnknownRecord>();
+  if (ids.length) {
+    const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
+    for (const row of rows) people.set(String(row.id), row);
+  }
+  return baselines.map((baseline) => {
+    const id = baseline.setBy;
+    const person = people.get(id);
+    const name = !PRINCIPAL_ID.test(id)
+      ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
+      : person
+        ? personLabel({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "an account without a name")
+        : "an account that no longer exists";
+    const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
+    return { ...baseline, setByRef };
+  });
+}
+
 export async function getBaselinesData(): Promise<BaselinesData> {
   const ref = tenantRef();
   const now = new Date();
   return withClient(async (client) => {
-    const baselines = await baselinesWithCapture(client, ref, now);
-    const people = await principalRefs(client, baselines.map((baseline) => baseline.setBy).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)));
-    return {
-      generatedAt: now.toISOString(),
-      baselines: baselines.map((baseline) => {
-        // A principal id resolves to a name; a system actor ("scheduler") is named by itself.
-        const setByRef: Ref = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(baseline.setBy)
-          ? people.get(baseline.setBy)!
-          : { kind: "person", id: baseline.setBy, name: baseline.setBy, href: null };
-        return { ...baseline, setByRef };
-      }),
-    };
+    const baselines = await withApproverNames(client, await baselinesWithCapture(client, ref, now));
+    return { generatedAt: now.toISOString(), baselines };
   });
 }
 
@@ -583,8 +602,13 @@ async function scopedOpenDrift(client: KeelClient, ref: string, baselineId: stri
     tenantRef: ref, typeExpr: "d.resource_type", keyExpr: "d.natural_key", asOfExpr: "d.detected_at", nextParam: 3,
   }) as { sql: string; values: unknown[] };
   const { rows } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+    `WITH latest AS (
+       SELECT DISTINCT ON (natural_key) id FROM drift
+        WHERE tenant_ref = $1 AND baseline_id = $2
+        ORDER BY natural_key, detected_at DESC, id DESC
+     )
+     SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
+      WHERE ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
       ORDER BY d.detected_at, d.id`,
     [ref, baselineId, ...visible.values],
   );
@@ -610,8 +634,9 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
 // and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
 // server-side for the changes this reader may already see. The change window runs from
 // when KEEL captured the baseline's version of the resource (the baseline's own time
-// for an added resource) to the collection that saw the change. A reader that cannot
-// be attributed (no audit tables, a failed query) gets null, never a guess.
+// for an added resource) to when KEEL first saw the change: the observed collection
+// moves forward on every run that still sees it, detected_at does not. A reader that
+// cannot be attributed (no audit tables, a failed query) gets null, never a guess.
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
@@ -619,7 +644,7 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
     const { rows } = await client.query(
       `SELECT d.id,
               COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
-              COALESCE(os.completed_at, d.detected_at) AS window_until
+              LEAST(os.completed_at, d.detected_at) AS window_until
          FROM drift d
          JOIN baseline b ON b.id = d.baseline_id
          JOIN snapshot os ON os.id = d.observed_snapshot
@@ -694,6 +719,51 @@ export function displayItems(items: DriftRecord[]): DriftRecord[] {
     : item);
 }
 
+// At most this many ids are named per page load; the rest read "no name" (bounded).
+const MAX_NAMED_IDS = 5000;
+const REF_NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+
+// Names, not ids: the users, groups, roles and apps each change points to by id, as the
+// collections that saw the changes read them. Matched on the object id, an app's appId
+// and a role's template id. A failed read leaves the ids unnamed, never the page down.
+async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[]): Promise<DriftRecord[]> {
+  const perItem = items.map((item) => objectIds(item.naturalKey, item.before, item.after));
+  const wanted = [...new Set(perItem.flat())].slice(0, MAX_NAMED_IDS);
+  if (!wanted.length) return items;
+  const names = new Map<string, string>();
+  try {
+    const { rows } = await client.query(
+      `WITH seen AS (
+         SELECT DISTINCT d.observed_snapshot AS id FROM drift d
+          WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+       )
+       SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
+              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name
+         FROM resource_version rv
+         JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
+        WHERE rv.snapshot_id IN (SELECT id FROM seen)
+          AND (lower(rv.payload->>'id') = ANY($3::text[])
+            OR lower(rv.payload->>'appId') = ANY($3::text[])
+            OR lower(rv.payload->>'roleTemplateId') = ANY($3::text[]))`,
+      [ref, items.map((item) => item.id), wanted],
+    );
+    for (const row of rows) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!name || objectIds(name).length) continue;
+      for (const id of [row.id, row.app_id, row.template_id]) {
+        if (typeof id === "string" && !names.has(id)) names.set(id, name);
+      }
+    }
+  } catch (error) {
+    console.error("[keel-portal] change reference names unavailable", error);
+    return items;
+  }
+  return items.map((item, index) => {
+    const refNames = Object.fromEntries(perItem[index].flatMap((id) => (names.has(id) ? [[id, names.get(id)!]] : [])));
+    return Object.keys(refNames).length ? { ...item, refNames } : item;
+  });
+}
+
 function driftResult(items: DriftRecord[]): { items: DriftRecord[]; summary: SemanticSummary } {
   return { items, summary: summarizeSemanticDrift(items) as SemanticSummary };
 }
@@ -712,7 +782,10 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
     if (scope.central || !found) {
       const items = await activeDriftFor(client, ref, found?.id ?? null);
       const attributed = found ? await withAttribution(client, ref, found.id, items, scope) : items;
-      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, attributed, scope)) };
+      // Only a central reader gets the names of the objects a change points to: an
+      // entity-scoped reader may not see those objects, so their ids stay unnamed.
+      const named = scope.central ? await withRefNames(client, ref, attributed) : attributed;
+      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, named, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
     const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);
@@ -904,7 +977,8 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
     const displayNames = new Map<string, string>();
     if (wanted.length > 0) {
       const { rows } = await client.query(
-        `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key, rv.payload->>'displayName' AS display_name
+        `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key,
+                COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")}) AS display_name
            FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
            JOIN unnest($1::text[], $2::text[]) AS w(snapshot_id, natural_key)
              ON w.snapshot_id = rv.snapshot_id::text AND w.natural_key = rv.natural_key
@@ -1057,10 +1131,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       | UnknownRecord
       | null;
     const baselines = await baselinesFor(client, ref);
-    const activeBaseline = active
+    const found = active
       ? baselines.find((candidate) => candidate.id === String(active.id)) ??
         normalizeBaseline({ ...active, resource_count: 0 })
       : null;
+    const activeBaseline = found ? (await withApproverNames(client, [found]))[0] : null;
     const lastCollectionRaw = (await getLastCollection(client, {
       tenantRef: ref,
     })) as UnknownRecord | null;

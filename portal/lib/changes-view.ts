@@ -2,6 +2,7 @@
 // Pure helpers shared by the Changes and Restore pages and the UI harness. Natural
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
+import { plainKind } from "@/lib/baselines-view";
 import { ago, resourceLabel, words } from "@/lib/presentation";
 import type { DriftRecord } from "@/lib/types";
 
@@ -9,6 +10,76 @@ import type { DriftRecord } from "@/lib/types";
 export function resourceName(naturalKey: string): string {
   const [, ...rest] = naturalKey.split(":");
   return rest.join(" · ") || naturalKey;
+}
+
+// A Graph object id (GUID). Many types are stored under their id, or point to users,
+// groups and roles by id, so text holding one is never shown as is (names, not ids).
+const OBJECT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const ONLY_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function holdsObjectId(text: string): boolean {
+  return text.search(OBJECT_ID) !== -1;
+}
+
+/** The fields Microsoft names an object by, in the order the page prefers them. */
+export const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail", "subject"] as const;
+
+/** The readable name a saved copy carries, or null. */
+export function payloadName(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  for (const field of NAME_FIELDS) {
+    const value = (payload as Record<string, unknown>)[field];
+    if (typeof value === "string" && value.trim() && !holdsObjectId(value)) return value.trim();
+  }
+  return null;
+}
+
+/** Every object id written anywhere in the values, once each, lower case. */
+export function objectIds(...values: unknown[]): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 12 || value === null || value === undefined) return;
+    if (typeof value === "string") {
+      for (const match of value.match(OBJECT_ID) ?? []) found.add(match.toLowerCase());
+    } else if (Array.isArray(value)) {
+      for (const entry of value) visit(entry, depth + 1);
+    } else if (typeof value === "object") {
+      for (const entry of Object.values(value as Record<string, unknown>)) visit(entry, depth + 1);
+    }
+  };
+  for (const value of values) visit(value, 0);
+  return [...found];
+}
+
+type Named = Pick<DriftRecord, "naturalKey" | "resourceType"> & Partial<Pick<DriftRecord, "name" | "refNames">>;
+
+/** What a change is about, by name: the name Microsoft holds, else the readable part of
+ * the key with any ids named, else "Unnamed <kind>". Never an object id. */
+export function changeName(item: Named): string {
+  const name = item.name?.trim();
+  if (name && !holdsObjectId(name)) return name;
+  // A tenant-wide setting is stored under its type: its kind is its name.
+  const kind = kindOf(item.resourceType);
+  if (item.naturalKey === item.resourceType && kind) return kind;
+  const names = item.refNames ?? {};
+  const fromKey = resourceName(item.naturalKey)
+    .replace(/\bunknown:/g, "")
+    .replace(OBJECT_ID, (id) => names[id.toLowerCase()] ?? id);
+  if (!holdsObjectId(fromKey)) return fromKey;
+  return `Unnamed ${(kind ?? "setting").toLowerCase()}`;
+}
+
+// The plain kind of a type, or null when the "type" is itself an id (a bare-id key).
+function kindOf(type: string): string | null {
+  const kind = plainKind(type);
+  return holdsObjectId(kind) ? null : kind;
+}
+
+/** "Block legacy auth (sign-in rule)": the change's name and its plain kind. */
+export function changeLabel(item: Named): string {
+  const name = changeName(item);
+  const kind = kindOf(item.resourceType);
+  return !kind || name === kind || name.startsWith("Unnamed ") ? name : `${name} (${kind.toLowerCase()})`;
 }
 
 /** "Block legacy auth (Conditional Access policy) was changed". */
@@ -48,19 +119,33 @@ export function fieldWords(path: string): string {
   }).join(" › ");
 }
 
-/** A field value as a person reads it; objects too large for a sentence point to the record. */
-export function valueWords(value: unknown): string {
+/** A field value as a person reads it; objects too large for a sentence point to the
+ * record. With names, an object id reads as the name of what it points to; an id KEEL
+ * has no name for is counted, never shown. */
+export function valueWords(value: unknown, names?: Readonly<Record<string, string>>): string {
   if (value === undefined || value === null) return "not set";
   if (typeof value === "boolean") return value ? "yes" : "no";
   if (typeof value === "number") return value.toLocaleString("en-GB");
   if (typeof value === "string") {
     if (value === "") return "empty";
+    if (names) {
+      if (ONLY_ID.test(value)) return names[value.toLowerCase()] ?? "an object KEEL has no name for";
+      if (holdsObjectId(value)) return value.replace(OBJECT_ID, (id) => names[id.toLowerCase()] ?? "(unnamed object)");
+    }
     // Stored enum-like codes ("enabledForReportingButNotEnforced") read as words.
     return /^[a-z]+[A-Z][A-Za-z]*$/.test(value) ? words(value).toLowerCase() : value;
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return "none";
-    if (value.every((entry) => typeof entry === "string" || typeof entry === "number")) return value.map(valueWords).join(", ");
+    if (value.every((entry) => typeof entry === "string" || typeof entry === "number")) {
+      if (!names) return value.map((entry) => valueWords(entry)).join(", ");
+      const unnamed = value.filter((entry) => typeof entry === "string" && ONLY_ID.test(entry) && !names[entry.toLowerCase()]).length;
+      const named = value
+        .filter((entry) => !(typeof entry === "string" && ONLY_ID.test(entry) && !names[entry.toLowerCase()]))
+        .map((entry) => valueWords(entry, names));
+      if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} KEEL has no name for`);
+      return named.join(", ");
+    }
     return `${value.length} ${value.length === 1 ? "entry" : "entries"} (see Technical details)`;
   }
   const keys = Object.keys(value as Record<string, unknown>).length;

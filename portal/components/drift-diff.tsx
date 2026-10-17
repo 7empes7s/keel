@@ -1,7 +1,6 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { changeKindWords, fieldWords, valueWords } from "@/lib/changes-view";
+import { changeKindWords, changeLabel, fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads, formatValue } from "@/lib/drift-diff";
-import { plainLabel } from "@/lib/baselines-view";
 import type { DriftRecord } from "@/lib/types";
 
 function displayPayload(payload: unknown): string {
@@ -25,7 +24,7 @@ export function DriftDiff({ item }: { item: DriftRecord }) {
     <section aria-labelledby={`drift-diff-heading-${item.id}`} className="drift-diff" id={`drift-diff-${item.id}`}>
       <div className="drift-diff-head">
         <p className="section-kicker">Approved setup → now</p>
-        <h3 id={`drift-diff-heading-${item.id}`}>{plainLabel(item.naturalKey)}</h3>
+        <h3 id={`drift-diff-heading-${item.id}`}>{changeLabel(item)}</h3>
         <p className="field-help">{summary}</p>
       </div>
       {changes.length ? (
@@ -47,8 +46,8 @@ export function DriftDiff({ item }: { item: DriftRecord }) {
                       <span>{fieldWords(change.path)}</span>
                     </span>
                   </th>
-                  <td data-label="Approved"><span className="diff-before">{change.kind === "added" ? "—" : valueWords(change.before)}</span></td>
-                  <td data-label="Now"><span className="diff-after">{change.kind === "removed" ? "—" : valueWords(change.after)}</span></td>
+                  <td data-label="Approved"><span className="diff-before">{change.kind === "added" ? "—" : valueWords(change.before, item.refNames ?? {})}</span></td>
+                  <td data-label="Now"><span className="diff-after">{change.kind === "removed" ? "—" : valueWords(change.after, item.refNames ?? {})}</span></td>
                 </tr>
               ))}
             </tbody>

@@ -2630,17 +2630,14 @@ section.item-card + section.item-card {
 
 /* --- Skeletons ------------------------------------------------------------- */
 
+/* A solid block that breathes. The earlier moving gradient (color-mix with transparent,
+   over a 200% background) painted as solid text-coloured slabs with black wedges in
+   iOS Safari, in both themes. */
 .skeleton {
   display: block;
-  background:
-    linear-gradient(
-      100deg,
-      transparent 20%,
-      color-mix(in oklab, var(--text) 7%, transparent) 50%,
-      transparent 80%
-    ) var(--surface-raised);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s linear infinite;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-raised);
+  animation: pulse 1.6s var(--ease-in-out) infinite;
 }
 
 .skeleton-stack {
@@ -2740,11 +2737,6 @@ section.item-card + section.item-card {
 @keyframes grow-x {
   from { transform: scaleX(0); }
   to { transform: none; }
-}
-
-@keyframes shimmer {
-  from { background-position: 150% 0; }
-  to { background-position: -50% 0; }
 }
 
 @keyframes spin {

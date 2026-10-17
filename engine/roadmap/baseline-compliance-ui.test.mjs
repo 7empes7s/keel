@@ -486,7 +486,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       const html = withRouter(await render('/benchmarks', benchmarks, viewerHeaders));
       assert.ok(html.includes('<p class="verdict-sentence">' + verdict.text + '</p>'));
       assert.equal((html.match(/data-layer="verdict"/g) || []).length, 1);
-      assert.match(html, /The exception owned by secops@contoso\.com expired (24 hours|1 day) ago, so this finding is open again\./);
+      assert.match(html, /The exception owned by Secops expired (24 hours|1 day) ago, so this finding is open again\./);
       assert.match(html, /1 open change in the same backup\. 1 open change to these types comes from a different backup, so it is not linked\./);
       assert.match(html, /Backups are configured to be stored on local disk in westeurope\. This storage cannot lock backups against deletion\./);
       assert.match(html, /It is not a certification of compliance with any regulation\./);

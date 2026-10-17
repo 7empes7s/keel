@@ -55,6 +55,13 @@ before(async () => {
     [tenantRef(), baseline.id, snapshot.id, { displayName: "Finance", visibility: "Private" }, { displayName: "Finance", visibility: "Public" }],
   );
   driftId = String(drift.id);
+  // An older drift-detect run left its own row for the same change: only the newest is listed.
+  const { rows: [older] } = await client.query("INSERT INTO snapshot (tenant_ref, status, completed_at) VALUES ($1, 'complete', now() - interval '1 day') RETURNING id", [tenantRef()]);
+  await client.query(
+    `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, before_payload, after_payload, blast_radius, detected_at)
+     VALUES ($1, $2, $3, 'group:Finance', 'group', 'modified', $4, $5, 'cosmetic', now() - interval '1 day')`,
+    [tenantRef(), baseline.id, older.id, { displayName: "Finance", visibility: "Private" }, { displayName: "Finance", visibility: "Public" }],
+  );
 });
 
 after(async () => {

@@ -340,6 +340,14 @@ export interface DriftRecord {
   // stored on the drift row (baseline state vs observed state, null on add/remove).
   before: unknown;
   after: unknown;
+  // The name the resource carries in Microsoft 365 (displayName and the like), read from
+  // the observed or approved copy; null when it has none. The page never shows the key
+  // when it holds an object id.
+  name?: string | null;
+  // Names of the objects the before/after copies point to by id (users, groups, roles,
+  // apps), by id, as the collection that saw the change read them. Ids KEEL could not
+  // name are absent.
+  refNames?: Record<string, string>;
   // Task 91: who made the change, from audit evidence, and where a roll back of it
   // would be routed. Absent when the reader did not compute it.
   attribution?: ChangeAttribution | null;

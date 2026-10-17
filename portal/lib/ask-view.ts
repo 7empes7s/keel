@@ -1,4 +1,5 @@
-import { displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel } from "@/lib/presentation";
+import { namedSubject } from "@/lib/job-names";
+import { displayEnum, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 
 // Roadmap task-99: the shapes engine/query/execute.mjs returns, and the words the Ask
 // page shows for them. Sentences are built from counts and dates only; a record's own
@@ -189,7 +190,7 @@ export function gapSentence(gap: AnswerGap): string {
 
 export function recordTitle(record: AnswerRecord): string {
   switch (record.kind) {
-    case "change": return resourceLabel(record.naturalKey, record.name);
+    case "change": return namedSubject(record.naturalKey, { [record.naturalKey]: { name: record.name, resourceType: record.resourceType } }, record.resourceType);
     case "coverage": return `${resourceTypeLabel(record.resourceType)[0].toUpperCase()}${resourceTypeLabel(record.resourceType).slice(1)}`;
     default: return displayEnum("jobKind", record.jobKind);
   }

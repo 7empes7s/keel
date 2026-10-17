@@ -4,6 +4,7 @@ import { contentEffectsDigest } from "../../../../../../../engine/safety/content
 import { guarded } from "@/lib/action";
 import { principalRefs } from "@/lib/portal-data";
 import { resourceLabel } from "@/lib/presentation";
+import { savedNames } from "@/lib/saved-names";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 
 export const dynamic = "force-dynamic";
@@ -43,8 +44,10 @@ const getDryRunArtifactRoute = guarded(
           WHERE artifact_id::text = $1 AND effects_digest = $2 AND revoked_at IS NULL ORDER BY approved_at`,
         [artifact.id, effectsDigest],
       );
+      // An approver by name, never by account id.
+      const approvers = await principalRefs(client, rows.map((row) => String(row.approved_by)));
       contentEffectApprovals = rows.map((row) => ({
-        approvedBy: String(row.approved_by),
+        approvedBy: approvers.get(String(row.approved_by))?.name ?? "an approver who is no longer readable",
         approvedAt: row.approved_at ? new Date(String(row.approved_at)).toISOString() : null,
       }));
     }
@@ -81,7 +84,18 @@ const getDryRunArtifactRoute = guarded(
       };
     }
 
-    return Response.json({ artifact: { ...artifact, effectsDigest, contentEffectApprovals, incidentRecoveryView } }, { headers: NO_STORE });
+    // The saved name of every resource an undo plan, a refusal or a content effect
+    // names, so the job page shows names, not keys or ids.
+    type Keyed = { naturalKey?: string }[] | undefined;
+    const plan = (artifact.compensation ?? null) as Record<string, Keyed> | null;
+    const keyed = [
+      ...(plan ? ["operations", "conflicts", "notApplied", "manual", "irrecoverable"].flatMap((section) => plan[section] ?? []) : []),
+      ...(((artifact.guardRefusals ?? []) as Keyed) ?? []),
+      ...effects,
+    ] as { naturalKey?: string }[];
+    const names = await savedNames(client, tenantRef, keyed.map((item) => item.naturalKey));
+
+    return Response.json({ artifact: { ...artifact, effectsDigest, contentEffectApprovals, incidentRecoveryView, names } }, { headers: NO_STORE });
   },
 );
 

@@ -5,7 +5,7 @@ import { JobRecordFields } from "@/components/job-table";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import { jobName, jobStatusSentence, refLabel } from "@/lib/sentences";
+import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 function gap(from: string | null, to: string | null): string | null {
   if (!from || !to) return null;
@@ -36,7 +36,7 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
           <JobStatusBadge status={job.status} />
         </div>
         <p>
-          Asked for by {refLabel(job.references?.people.requested_by, "an unknown account")}{" "}
+          Asked for by {personLabel(job.references?.people.requested_by, "an unknown account")}{" "}
           <time dateTime={job.createdAt ?? undefined} title={formatTimestamp(job.createdAt)}>{ago(job.createdAt, now)}</time>.
           {job.startedAt ? <> Started {gap(job.createdAt, job.startedAt) ? `${gap(job.createdAt, job.startedAt)} later` : "right away"}.</> : " Not started yet."}
           {job.finishedAt ? <> Ended after {gap(job.startedAt, job.finishedAt) ?? "an unknown time"}.</> : job.startedAt ? " Still running." : null}

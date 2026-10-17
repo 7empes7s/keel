@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ConfirmButton } from "@/components/ui/confirm-button";
-import { WINDOW_HOURS, type ChangeIntent, type IntentCandidate, type IntentTransition } from "@/lib/change-intents-view";
-import { ago, formatTimestamp, fromNow, resourceLabel, words } from "@/lib/presentation";
+import { WINDOW_HOURS, intentResource, type ChangeIntent, type IntentCandidate, type IntentPerson, type IntentTransition } from "@/lib/change-intents-view";
+import { ago, formatTimestamp, fromNow, words } from "@/lib/presentation";
+import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 
 // Roadmap task-93: an approved emergency change. KEEL keeps showing the change and does
@@ -19,9 +20,9 @@ function fieldList(transitions: IntentTransition[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-function personName(person: { name: string | null; readable: boolean } | null): string {
+function personName(person: IntentPerson | null): string {
   if (!person) return "someone";
-  return person.readable ? person.name ?? "someone" : "a person no longer readable";
+  return personLabel({ kind: "person", id: person.id, name: person.name === person.email ? null : person.name, email: person.email, readable: person.readable }, "someone");
 }
 
 function sideText(side: { present: boolean; value: unknown }): string {
@@ -50,6 +51,7 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const live = intent.state === "active" || intent.state === "scheduled";
+  const resource = intentResource(intent);
 
   async function revoke() {
     setBusy(true);
@@ -72,24 +74,24 @@ export function IntentCard({ intent, now, canRevoke = true }: { intent: ChangeIn
 
   return (
     <li className={`item-card change-intent is-${intent.state}`}>
-      <h3 className="change-intent-name">{resourceLabel(intent.naturalKey)}</h3>
+      <h3 className="change-intent-name">{resource}</h3>
       <p className="change-intent-sentence">{intentStateSentence(intent, now)}</p>
       <ul className="policy-facts">
         <li>Approved by {personName(intent.approver)} for {personName(intent.owner)}, <time dateTime={intent.approvedAt} title={formatTimestamp(intent.approvedAt)}>{ago(intent.approvedAt, now)}</time>. Reason: {intent.reason}</li>
         {intent.externalChangeId ? <li>Change ticket {intent.externalChangeId}.</li> : null}
-        <li>Any other change to {resourceLabel(intent.naturalKey)} is still rolled back as its policies say.</li>
+        <li>Any other change to {resource} is still rolled back as its policies say.</li>
         {intent.settlement ? <li className="change-intent-settled">When it ended, KEEL checked again: {SETTLED_WORDS[intent.settlement.currentState] ?? SETTLED_WORDS.unknown}</li> : null}
       </ul>
       {live && canRevoke ? (
         <div className="form-actions change-intent-revoke">
-          <input aria-label={`Why revoke the approval for ${resourceLabel(intent.naturalKey)}`} onChange={(event) => setReason(event.target.value)} placeholder="Why end it now?" value={reason} />
+          <input aria-label={`Why revoke the approval for ${resource}`} onChange={(event) => setReason(event.target.value)} placeholder="Why end it now?" value={reason} />
           <ConfirmButton
             confirmLabel="Revoke"
-            description={<p>KEEL stops holding back the roll back of this change and checks {resourceLabel(intent.naturalKey)} again now.</p>}
+            description={<p>KEEL stops holding back the roll back of this change and checks {resource} again now.</p>}
             disabled={busy || reason.trim().length === 0}
             onConfirm={revoke}
             size="sm"
-            title={`Revoke the approval for ${resourceLabel(intent.naturalKey)}?`}
+            title={`Revoke the approval for ${resource}?`}
           >
             Revoke
           </ConfirmButton>
@@ -153,7 +155,7 @@ export function ApproveIntentForm({ changes, people }: { changes: IntentCandidat
       <label className="filter-field">
         <span>Change</span>
         <select onChange={(event) => { setDriftId(event.target.value); setFields([]); }} value={driftId}>
-          {changes.map((candidate) => <option key={candidate.driftId} value={candidate.driftId}>{resourceLabel(candidate.naturalKey)}, detected {formatTimestamp(candidate.detectedAt)}</option>)}
+          {changes.map((candidate) => <option key={candidate.driftId} value={candidate.driftId}>{intentResource(candidate)}, detected {formatTimestamp(candidate.detectedAt)}</option>)}
         </select>
       </label>
       <fieldset className="change-intent-fields">

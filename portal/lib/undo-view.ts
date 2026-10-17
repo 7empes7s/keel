@@ -1,15 +1,12 @@
 // The undo plan of a restore (roadmap task-70) in words. The engine's reasons carry
 // codes ("concurrent-change: …") and natural keys; the panel shows these sentences and
 // keeps every raw reason, key and id in its record layer.
-import { resourceLabel } from "@/lib/presentation";
+import { type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 
-const FAMILY_WORDS: Record<string, string> = { member: "member", owner: "owner" };
-
-/** A resource or a relationship edge ("parent|family|target") as a person reads it. */
-export function undoSubject(naturalKey: string): string {
-  const [parent, family, target] = naturalKey.split("|");
-  if (family && target) return `${resourceLabel(target)} as ${FAMILY_WORDS[family] ?? family} of ${resourceLabel(parent)}`;
-  return resourceLabel(naturalKey);
+/** A resource or a relationship edge ("parent|family|target") as a person reads it,
+ * by the saved names the server looked up; never a bare id. */
+export function undoSubject(naturalKey: string, names: NamedKeys = {}, resourceType?: string | null): string {
+  return namedSubject(naturalKey, names, resourceType);
 }
 
 /** "description, visibility" from ["description", "visibility"]; camelCase split into words. */
@@ -44,11 +41,11 @@ export function notAppliedSentence(reason: string): string {
 }
 
 /** What cannot be undone; a content effect keeps its own disclosure. */
-export function irrecoverableSentence(item: { naturalKey: string; effect: string; reason: string }): string {
+export function irrecoverableSentence(item: { naturalKey: string; effect: string; reason: string }, names: NamedKeys = {}): string {
   if (item.effect === "object-deleted") {
     return "This restore deleted it. Undo cannot bring it back with the same ID; restore it again instead, while it is still in deleted items.";
   }
-  return item.reason.split(item.naturalKey).join(resourceLabel(item.naturalKey));
+  return item.reason.split(item.naturalKey).join(namedResource(item.naturalKey, names));
 }
 
 export const UNDO_STATEMENT = "Undo is not atomic: each change is reversed and checked on its own, and only changes this restore actually made are undone. It never brings back erased or disclosed content.";

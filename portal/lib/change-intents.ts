@@ -6,6 +6,9 @@ import {
 } from "../../engine/policy/changeIntent.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
+import { payloadName } from "@/lib/changes-view";
+import { savedNames } from "@/lib/saved-names";
+import { personLabel } from "@/lib/sentences";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { WINDOW_HOURS, type ChangeIntent, type ChangeIntentsData, type IntentTransition } from "@/lib/change-intents-view";
 
@@ -31,23 +34,45 @@ type Client = { query(text: string, values?: unknown[]): Promise<{ rows: Record<
 
 export async function loadChangeIntents(client: Client, tenantRef: string, now = new Date()): Promise<ChangeIntentsData> {
   const intents = (await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[];
-  // Open changes to existing settings, newest first: what an approver can approve.
+  // Open changes to existing settings, newest first: what an approver can approve. One
+  // row per resource against the active baseline, the newest, as on the Changes page;
+  // older drift-detect runs left a row per run for a long-lived change.
   const { rows: drifts } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND d.change_type = 'modified' AND ${OPEN_DRIFT_PREDICATE}
+    `WITH latest AS (
+       SELECT DISTINCT ON (dl.natural_key) dl.id
+         FROM drift dl
+         JOIN baseline b ON b.id = dl.baseline_id AND b.active = true
+        WHERE dl.tenant_ref = $1
+        ORDER BY dl.natural_key, dl.detected_at DESC, dl.id DESC
+     )
+     SELECT d.* FROM drift d
+       JOIN latest ON latest.id = d.id
+      WHERE d.change_type = 'modified' AND ${OPEN_DRIFT_PREDICATE}
       ORDER BY d.detected_at DESC, d.id DESC LIMIT 50`,
     [tenantRef],
   );
   const { rows: people } = await client.query(
     "SELECT id, email, display_name FROM principal WHERE disabled_at IS NULL ORDER BY lower(coalesce(display_name, email)), id",
   );
+  // Names, not ids: the name the change carries, else the newest backup's. A failed
+  // lookup leaves names empty (the page says "Unnamed …"), never the page down.
+  let saved: Awaited<ReturnType<typeof savedNames>> = {};
+  try {
+    saved = await savedNames(client, tenantRef, [...intents.map((intent) => intent.naturalKey), ...drifts.map((drift) => String(drift.natural_key))]);
+  } catch (error) {
+    console.error("[keel-portal] emergency change names unavailable", error);
+  }
   return {
-    intents,
+    intents: intents.map((intent) => ({ ...intent, name: saved[intent.naturalKey]?.name ?? null })),
     changes: drifts.map((drift) => ({
       driftId: String(drift.id), naturalKey: String(drift.natural_key), resourceType: String(drift.resource_type),
+      name: payloadName(drift.after_payload) ?? payloadName(drift.before_payload) ?? saved[String(drift.natural_key)]?.name ?? null,
       detectedAt: iso(drift.detected_at), transitions: (driftTransitions(drift) ?? []) as IntentTransition[],
     })).filter((change) => change.transitions.length > 0),
-    people: people.map((person) => ({ id: String(person.id), name: String(person.display_name ?? person.email) })),
+    people: people.map((person) => ({
+      id: String(person.id),
+      name: personLabel({ kind: "person", id: String(person.id), name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "A person without a name"),
+    })),
     generatedAt: now.toISOString(),
   };
 }

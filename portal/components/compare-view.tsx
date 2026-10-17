@@ -62,12 +62,15 @@ function itemName(item: SettingsItem, resourceType: string): string {
   return GUID.test(rest) || /[a-z][A-Za-z]+:/.test(rest) ? `An unnamed ${resourceTypeLabel(resourceType)}` : rest;
 }
 
-function resourceKeyWords(key: string): string {
+/** A workload resource by its name: "Finance team (site)", never the site id its key holds. */
+function resourceKeyWords(key: string, name?: string | null): string {
   if (key === "organization") return "Organization";
   const match = /^([A-Za-z]+):(.+)$/.exec(key);
+  const kind = match ? match[1].replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase() : null;
+  const saved = name?.trim();
+  if (saved && !GUID.test(saved)) return kind ? `${saved} (${kind})` : saved;
   if (!match) return GUID.test(key) ? "An unnamed setting" : key;
-  const name = GUID.test(match[2]) ? "an id" : match[2];
-  return `${name} (${match[1].replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()})`;
+  return GUID.test(match[2]) ? `An unnamed ${kind}` : `${match[2]} (${kind})`;
 }
 
 // The two sides' short names, set once per page so every before/after column says which.
@@ -216,7 +219,7 @@ function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; inde
             const id = `compare-workload-${index}-${itemIndex}`;
             return (
               <li className={`compare-item compare-${item.changeType}`} key={item.resourceKey}>
-                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey)} sides={sides} />
+                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey, item.name)} sides={sides} />
                 {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} sides={sides} total={item.fieldsTotal} /> : null}
               </li>
             );

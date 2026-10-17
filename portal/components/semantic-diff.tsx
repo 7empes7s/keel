@@ -1,8 +1,7 @@
 import { DecisionStyles } from "@/components/decision-styles";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { changeKindWords, fieldWords, valueWords } from "@/lib/changes-view";
+import { changeKindWords, changeLabel, fieldWords, valueWords } from "@/lib/changes-view";
 import { formatValue } from "@/lib/drift-diff";
-import { plainLabel } from "@/lib/baselines-view";
 import { IMPACT_HEADINGS, cosmeticSentence, semanticSummarySentence } from "@/lib/semantic-drift";
 import type { DriftRecord, SemanticChange, SemanticField } from "@/lib/types";
 
@@ -12,15 +11,15 @@ function kindWords(field: SemanticField): string {
   return field.kind === "unknown-before" ? "Now set" : changeKindWords(field.kind);
 }
 
-function beforeWords(field: SemanticField): string {
+function beforeWords(field: SemanticField, names: Record<string, string>): string {
   if (field.kind === "unknown-before") return "Not known";
   if (field.kind === "added") return "Not set in the approved setup";
-  return valueWords(field.before);
+  return valueWords(field.before, names);
 }
 
-function afterWords(field: SemanticField): string {
+function afterWords(field: SemanticField, names: Record<string, string>): string {
   if (field.kind === "removed") return "No longer set";
-  return valueWords(field.after);
+  return valueWords(field.after, names);
 }
 
 function recordValue(field: SemanticField): string {
@@ -40,7 +39,7 @@ export function SemanticDiff({ item, change }: { item: DriftRecord; change: Sema
       <DecisionStyles />
       <div className="drift-diff-head">
         <p className="section-kicker">Approved setup → now</p>
-        <h3 id={headingId}>{plainLabel(item.naturalKey)}</h3>
+        <h3 id={headingId}>{changeLabel(item)}</h3>
         <p className="field-help semantic-summary">{semanticSummarySentence(change, item.changeType)}</p>
         {cosmetic ? <p className="field-help semantic-cosmetic">{cosmetic}</p> : null}
         {change.rules === "generic" ? (
@@ -74,8 +73,8 @@ export function SemanticDiff({ item, change }: { item: DriftRecord; change: Sema
                           <span>{fieldWords(field.path)}</span>
                         </span>
                       </th>
-                      <td data-label="Approved"><span className="diff-before">{beforeWords(field)}</span></td>
-                      <td data-label="Now"><span className="diff-after">{afterWords(field)}</span></td>
+                      <td data-label="Approved"><span className="diff-before">{beforeWords(field, item.refNames ?? {})}</span></td>
+                      <td data-label="Now"><span className="diff-after">{afterWords(field, item.refNames ?? {})}</span></td>
                     </tr>
                   ))}
                 </tbody>

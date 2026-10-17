@@ -276,10 +276,16 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       [tenantRef],
     ),
     client.query(
-      `SELECT d.id, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
+      // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
+      `WITH latest AS (
+         SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift
+          WHERE tenant_ref = $1
+          ORDER BY baseline_id, natural_key, detected_at DESC, id DESC
+       )
+       SELECT d.id, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
               d.observed_snapshot, d.detected_at
-       FROM drift d
-       WHERE d.tenant_ref = $1 AND ${OPEN_DRIFT_PREDICATE}`,
+       FROM drift d JOIN latest ON latest.id = d.id
+       WHERE ${OPEN_DRIFT_PREDICATE}`,
       [tenantRef],
     ),
     client.query(

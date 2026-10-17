@@ -3,7 +3,9 @@ import Link from "next/link";
 import { PolicyControls } from "@/components/policy-controls";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { ActivationPreview, Policy } from "@/lib/policies";
-import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel } from "@/lib/presentation";
+import { namedSubject } from "@/lib/job-names";
+import { ago, displayEnum, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
+import { personLabel } from "@/lib/sentences";
 
 // Roadmap task-130, the contract's worked example: a policy reads as what it does,
 // acting as whom, and what it last did; every id and code is in the record.
@@ -61,7 +63,7 @@ export function matchPhrase(policy: Policy): string {
 function runAsName(policy: Policy): string | null {
   const ref = policy.run_as_principal;
   if (!ref) return null;
-  return ref.readable && ref.name ? ref.name : `account ${ref.id.slice(0, 8)} (no longer readable)`;
+  return personLabel({ kind: "person", id: ref.id, name: ref.name === ref.email ? null : ref.name, email: ref.email, readable: ref.readable }, "an account without a name");
 }
 
 /** The worked example's one sentence: what it does, how often, acting as whom. */
@@ -96,7 +98,9 @@ function neverTouches(policy: Policy): string | null {
 
 function lastActionSentence(policy: Policy, now: string): string {
   if (!policy.last_action_at) return "Has not acted yet.";
-  const target = policy.last_action_natural_key ? ` on ${resourceLabel(policy.last_action_natural_key)}` : "";
+  const key = policy.last_action_natural_key;
+  const type = policy.last_action_resource_type ?? policy.resource_type ?? "";
+  const target = key ? ` on ${namedSubject(key, { [key]: { name: policy.last_action_name ?? null, resourceType: type } })}` : "";
   return `Last acted ${ago(policy.last_action_at, now)}${target}.`;
 }
 

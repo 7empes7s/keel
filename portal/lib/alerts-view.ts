@@ -1,6 +1,7 @@
 // Roadmap task-83: the alerts inbox's types and words. Client-safe: no engine or
 // server imports, so the inbox component and the UI harness can use it.
-import { resourceLabel } from "@/lib/presentation";
+import { workloadLabel, WORKLOAD_LABELS } from "@/lib/compare-view";
+import { holdsObjectId, namedResource } from "@/lib/job-names";
 
 export type AlertState = "open" | "acknowledged" | "resolved" | "reopened" | "suppressed";
 
@@ -19,6 +20,9 @@ export interface AlertHistoryEntry {
 export interface AlertItem {
   id: string;
   resourceKey: string;
+  // The name the newest backup or workload read holds for the resource, or null.
+  // Looked up by the server (lib/alerts.ts); the key itself stays in Technical details.
+  name: string | null;
   control: string;
   condition: string;
   state: AlertState;
@@ -86,13 +90,60 @@ const CHANGE_WORDS: Record<string, string> = {
   removed: "was removed since the baseline",
 };
 
-export function alertTitle(alert: Pick<AlertItem, "resourceKey">): string {
-  return resourceLabel(alert.resourceKey);
+// Workload settings (SharePoint) have no baseline: each read is compared with the
+// read before it (engine/govern/workloadDrift.mjs).
+const WORKLOAD_CHANGE_WORDS: Record<string, string> = {
+  modified: "Its settings changed since the previous read.",
+  added: "It is new since the previous read.",
+  removed: "It was missing from the latest read.",
+};
+
+const SHAREPOINT_SITES = "sharepoint-site-settings";
+
+/** The workload a key belongs to ("sharepoint-site-settings:site:<id>"), or null for
+ * a key from a backup. Workload drift alerts are keyed `<workload>:<resource key>`. */
+export function alertWorkload(resourceKey: string): string | null {
+  const index = resourceKey.indexOf(":");
+  const prefix = index === -1 ? resourceKey : resourceKey.slice(0, index);
+  return Object.hasOwn(WORKLOAD_LABELS, prefix) ? prefix : null;
+}
+
+function usable(name: string | null | undefined): string | null {
+  const trimmed = name?.trim();
+  return trimmed && !holdsObjectId(trimmed) ? trimmed : null;
+}
+
+/** What an alert is about, by name: "Finance (SharePoint site)", "Block legacy auth
+ * (Conditional Access policy)" or "Unnamed group". Never an object id. */
+export function alertTitle(alert: Pick<AlertItem, "resourceKey"> & Partial<Pick<AlertItem, "name" | "cause">>): string {
+  const key = alert.resourceKey;
+  const name = usable(alert.name);
+  const workload = alertWorkload(key);
+  if (workload) {
+    const rest = key.slice(workload.length + 1);
+    if (workload === SHAREPOINT_SITES) {
+      if (rest === "tenant") return "SharePoint sharing settings";
+      return name ? `${name} (SharePoint site)` : "Unnamed SharePoint site";
+    }
+    const label = workloadLabel(workload);
+    if (name) return `${name} (${label})`;
+    if (!rest || rest === "tenant" || rest === "organization") return label;
+    const fromKey = rest.replaceAll(":", " · ");
+    return holdsObjectId(fromKey) ? `Unnamed item in ${label}` : `${fromKey} (${label})`;
+  }
+  const resourceType = alert.cause?.resourceType ?? null;
+  if (!name) return namedResource(key, {}, resourceType);
+  const index = key.indexOf(":");
+  const typeFromKey = index > 0 && !holdsObjectId(key.slice(0, index)) ? key.slice(0, index) : null;
+  return namedResource(key, { [key]: { name, resourceType: resourceType ?? typeFromKey ?? "setting" } });
 }
 
 /** The current cause in one plain sentence. */
 export function causeSentence(alert: AlertItem): string {
   if (alert.control === "baseline" && alert.condition === "drift") {
+    if (alertWorkload(alert.resourceKey)) {
+      return WORKLOAD_CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "Its settings changed since the previous read.";
+    }
     const change = CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "differs from the baseline";
     return alert.conditionActive ? `It ${change}.` : "It matches the baseline again.";
   }

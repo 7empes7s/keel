@@ -7,8 +7,9 @@ import { useState, type FormEvent } from "react";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { IncidentDetail, IncidentExclusion, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
 import {
-  ASSESSMENT_VERDICT_LABELS, RECOVERY_POINT_LABELS, ago, formatTimestamp, resourceLabel, words,
+  ASSESSMENT_VERDICT_LABELS, RECOVERY_POINT_LABELS, ago, formatTimestamp, words,
 } from "@/lib/presentation";
+import { namedSubject } from "@/lib/job-names";
 import { toast } from "@/lib/toast";
 import type { Ref } from "@/lib/types";
 
@@ -54,7 +55,8 @@ export function parseExclusions(text: string): { exclusions: ParsedExclusion[]; 
 
 /** "the “description” setting of Board (group)" or "Helpdesk Tier 0 (group)". */
 export function exclusionLabel(exclusion: Pick<IncidentExclusion, "naturalKey" | "field"> & { displayName?: string | null }): string {
-  const resource = resourceLabel(exclusion.naturalKey, exclusion.displayName ?? null);
+  const key = exclusion.naturalKey;
+  const resource = namedSubject(key, exclusion.displayName ? { [key]: { name: exclusion.displayName, resourceType: "" } } : {});
   return exclusion.field ? `the “${words(exclusion.field).toLowerCase()}” setting of ${resource}` : resource;
 }
 

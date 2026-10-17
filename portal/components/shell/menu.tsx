@@ -24,6 +24,7 @@ import { SignOutControls } from "@/components/sign-out";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { hasItem, moveItem, removeItem, toggleClosed, type MenuGroup, type MenuItem, type PersonalGroup } from "@/lib/menu-prefs";
 import { inboxNote, worstTone, type MenuStatuses, type SectionStatus } from "@/lib/menu-status";
+import { personLabel } from "@/lib/sentences";
 import { SERVICES } from "@/lib/services";
 import type { ThemePreference } from "@/lib/theme";
 
@@ -357,7 +358,7 @@ export function Menu({
         <p className="menu-person">
           <span aria-hidden="true" className="avatar">{initials(person.email)}</span>
           <span className="menu-person-text">
-            <span className="menu-person-name" title={person.email}>{person.email}</span>
+            <span className="menu-person-name" title={person.email}>{personLabel({ kind: "person", id: "", name: null, email: person.email, readable: true }, person.email)}</span>
             <small title={person.accessTitle}>{person.access}</small>
           </span>
         </p>

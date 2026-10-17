@@ -68,7 +68,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
                 <p className="dash-card-note">
                   {data.activeBaseline.resourceCount.toLocaleString("en-GB")} resources · set{" "}
                   <time dateTime={data.activeBaseline.setAt ?? undefined} title={formatTimestamp(data.activeBaseline.setAt)}>{ago(data.activeBaseline.setAt, data.generatedAt)}</time>
-                  {data.activeBaseline.setBy ? <> by <span className="wrap-value">{data.activeBaseline.setBy}</span></> : null}
+                  {data.activeBaseline.setByRef?.name ? <> by <span className="wrap-value">{data.activeBaseline.setByRef.name}</span></> : null}
                 </p>
               </>
             ) : (

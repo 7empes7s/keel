@@ -248,6 +248,23 @@ const observed = (coverage, path) => {
   return entry === undefined || entry?.status === 'observed';
 };
 
+// The name a workload read carries for a resource (a SharePoint site's title), so the
+// page never has to show the site id its key holds. Absent when the read had none.
+const WORKLOAD_NAME_FIELDS = ['displayName', 'name', 'title', 'webUrl'];
+function workloadName(...rows) {
+  for (const row of rows) {
+    for (const field of WORKLOAD_NAME_FIELDS) {
+      const value = row?.fields?.[field];
+      if (typeof value === 'string' && value.trim()) return value.replace(/^https?:\/\//, '').trim();
+    }
+  }
+  return null;
+}
+const named = (item, ...rows) => {
+  const name = workloadName(...rows);
+  return name ? { ...item, name } : item;
+};
+
 /**
  * The workloads section. `left` and `right` map workload name to
  * { collectionId, outcome, at, observations: [{ resourceKey, fields, fieldCoverage }] }.
@@ -281,11 +298,11 @@ export function compareWorkloads(left, right, { portable = false } = {}) {
       // Across tenants a key holding an id (site:<id>) cannot be matched.
       if (portable && (!a || !b) && HAS_GUID.test(resourceKey)) { counts.unmatched += 1; continue; }
       if (a && !b) {
-        if (rightComplete) { counts.removed += 1; items.push({ resourceKey, changeType: 'removed' }); } else counts.unverified += 1;
+        if (rightComplete) { counts.removed += 1; items.push(named({ resourceKey, changeType: 'removed' }, a)); } else counts.unverified += 1;
         continue;
       }
       if (!a && b) {
-        if (leftComplete) { counts.added += 1; items.push({ resourceKey, changeType: 'added' }); } else counts.unverified += 1;
+        if (leftComplete) { counts.added += 1; items.push(named({ resourceKey, changeType: 'added' }, b)); } else counts.unverified += 1;
         continue;
       }
       const fa = flattenFields(a.fields, workload);
@@ -302,7 +319,7 @@ export function compareWorkloads(left, right, { portable = false } = {}) {
       }
       if (fields.length === 0) { counts.unchanged += 1; continue; }
       counts.changed += 1;
-      items.push({ resourceKey, changeType: 'changed', fields: fields.slice(0, MAX_FIELDS), fieldsTotal: fields.length });
+      items.push(named({ resourceKey, changeType: 'changed', fields: fields.slice(0, MAX_FIELDS), fieldsTotal: fields.length }, b, a));
     }
     for (const key of ['added', 'removed', 'changed', 'unchanged']) totals[key] += counts[key];
     items.sort((x, y) => CHANGE_ORDER[x.changeType] - CHANGE_ORDER[y.changeType] || x.resourceKey.localeCompare(y.resourceKey));

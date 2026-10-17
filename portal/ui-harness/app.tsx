@@ -145,6 +145,23 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const guardRefusals = selected.filter((key) => key === "group:Finance").map((naturalKey) => ({ naturalKey, reason: "onPremisesSyncEnabled=true — source of authority is on-premises Active Directory, cloud-side restore is refused" }));
     return json({ selected, closureKeys: lastClosure, added: [...added].map(([naturalKey, reasons]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], reasons })), unresolvedReferences: [], guardRefusals, missingRequirements: missing });
   }
+  // The other services on Restore: mail flow's backups and objects, then its dry run.
+  if (url.includes("/api/actions/restore/workload?")) {
+    const params = new URL(url, "http://harness").searchParams;
+    if (params.get("workload") === "exchange-mailbox-settings") return json({ choices: MAILBOX_CHOICES });
+    return json({ choices: workloadChoicesFixture(params.get("collection")) });
+  }
+  if (url.endsWith("/api/actions/restore/workload/dry-run")) {
+    jobPolls = 0;
+    const body = JSON.parse(String(init?.body ?? "{}")) as { workload?: string; targets?: string[] };
+    if (body.workload === "exchange-mailbox-settings") {
+      const boxes = (body.targets ?? []).filter((key) => key !== "organization");
+      return json({ runs: boxes.map((target, index) => ({ target, job: { id: `job-mb-${index}` }, artifactId: `mb000000-0000-4000-8000-00000000000${index}` })) }, 202);
+    }
+    return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
+  if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
   // Task-70: the undo plan of failed restore r10.
   if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
   if (url.includes("/api/actions/restore/dry-run/c0de0000")) return json({ artifact: COMPENSATION_ARTIFACT });
@@ -1250,6 +1267,73 @@ const RESTORE_WORKLOADS: RestoreWorkload[] = [
     backup: null, lastRun: { collectionId: "c0110000-0000-4000-8000-000000000007", outcome: "disabled", at: "2026-10-02T06:00:00Z", reasons: ["not live-qualified"] } },
 ];
 
+// Mail flow's two backups on Restore, and the check of two changed rules.
+const WORKLOAD_BACKUPS = [
+  { collectionId: "c0110000-0000-4000-8000-000000000002", takenAt: "2026-10-02T06:12:00Z", items: 7 },
+  { collectionId: "c0110000-0000-4000-8000-000000000012", takenAt: "2026-09-29T06:10:00Z", items: 8 },
+];
+function workloadChoicesFixture(collection: string | null) {
+  const chosen = WORKLOAD_BACKUPS.find((backup) => backup.collectionId === collection) ?? WORKLOAD_BACKUPS[0];
+  const older = chosen !== WORKLOAD_BACKUPS[0];
+  const rule = (id: string, name: string, change: "changed" | "deleted" | "same" | null) => ({
+    key: `transportrule:${id}`, name, change: older ? change : null, restorable: !(older && change === "deleted"),
+    reason: older && change === "deleted" ? "Deleted since this backup. KEEL does not add this back; an admin makes it again by hand from the backup." : null, tenantWide: false,
+  });
+  return {
+    workload: "exchange-mail-flow", backups: WORKLOAD_BACKUPS, chosen,
+    groups: [
+      { kind: "transportRule", name: "Mail flow (transport) rules", restorable: true, reason: null, items: [
+        rule("r1", "KEEL-RT Block external auto-forward", "changed"),
+        rule("r2", "KEEL-RT Disclaimer for outbound mail", "changed"),
+        ...(older ? [rule("r4", "KEEL-RT Route partner mail", "deleted")] : []),
+        rule("r3", "KEEL-RT Quarantine executables", "same"),
+      ] },
+      { kind: "inboundConnector", name: "Inbound connectors", restorable: true, reason: null, items: [rule("i1", "KEEL-RT Partner inbound", "same")] },
+      { kind: "acceptedDomain", name: "Accepted domains", restorable: false, reason: "KEEL does not put this kind of setting back; an admin changes it by hand from the backup.", items: [
+        { key: "accepteddomain:d1", name: "contoso.example", change: null, restorable: false, reason: null, tenantWide: false },
+      ] },
+    ],
+  };
+}
+// Exchange mailboxes: several picked at once, one check and one request each.
+const MAILBOX_CHOICES = {
+  workload: "exchange-mailbox-settings", backups: [WORKLOAD_BACKUPS[0]], chosen: WORKLOAD_BACKUPS[0],
+  groups: [
+    { kind: "mailbox", name: "Mailboxes", restorable: true, reason: null, items: [
+      { key: "mailbox:keel-rt-shared@contoso.example", name: "KEEL-RT-Shared@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+      { key: "mailbox:keel-rt-user1@contoso.example", name: "KEEL-RT-User1@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+      { key: "mailbox:keel-rt-user2@contoso.example", name: "KEEL-RT-User2@contoso.example", change: null, restorable: true, reason: null, tenantWide: false },
+    ] },
+    { kind: "organization", name: "Organization", restorable: true, reason: null, items: [
+      { key: "organization", name: "Organization-wide Exchange settings", change: null, restorable: true, reason: "Put back together with a mailbox: tick at least one mailbox too.", tenantWide: true },
+    ] },
+  ],
+};
+function mailboxArtifact(index: string) {
+  const key = index === "0" ? "mailbox:keel-rt-shared@contoso.example" : "mailbox:keel-rt-user1@contoso.example";
+  return {
+    id: `mb000000-0000-4000-8000-00000000000${index}`, status: "completed", guardRefusals: [], contentEffects: [], contentEffectApprovals: [], effectsDigest: null,
+    workloadRestore: {
+      operations: index === "0"
+        ? [{ naturalKey: `exchange:${key}:mailboxSettings`, group: "mailboxSettings", kind: "mailbox-settings", changes: [{ field: "timeZone", before: "Pacific Standard Time", after: "W. Europe Standard Time" }, { field: "automaticRepliesSetting", before: "alwaysEnabled", after: "disabled" }] }]
+        : [{ naturalKey: `exchange:${key}:mailboxSettings`, group: "mailboxSettings", kind: "mailbox-settings", changes: [{ field: "timeZone", before: "UTC", after: "W. Europe Standard Time" }] }],
+      manual: index === "0" ? [] : [{ resourceKey: key, field: "retention.LitigationHoldEnabled", before: false, after: true, reason: "holds are changed by a compliance administrator" }],
+      refusals: [],
+    },
+  };
+}
+const WORKLOAD_ARTIFACT = {
+  id: "wd000000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], contentEffects: [], contentEffectApprovals: [], effectsDigest: null,
+  workloadRestore: {
+    operations: [
+      { resourceKey: "transportrule:r1", kind: "update", changes: [{ field: "Mode", before: "Audit", after: "Enforce" }, { field: "RejectMessageReasonText", before: null, after: "External forwarding is not allowed." }] },
+      { resourceKey: "transportrule:r2", kind: "update", changes: [{ field: "Priority", before: 3, after: 1 }] },
+    ],
+    manual: [{ resourceKey: "transportrule:r2", field: "State", before: "Disabled", after: "Enabled", reason: "turning this on or off is a separate Enable-/Disable- step an administrator takes" }],
+    refusals: [],
+  },
+};
+
 const RESTORE_RESOURCES: [string, string, string][] = [
   ["conditionalAccessPolicy:Block legacy auth", "tenant-lockout", "Entra"],
   ["conditionalAccessPolicy:Require MFA for admins", "tenant-lockout", "Entra"],
@@ -1299,7 +1383,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
-    <WorkloadServices now={now} workloads={RESTORE_WORKLOADS} />
+    <WorkloadServices canApprove canRestore now={now} workloads={RESTORE_WORKLOADS} />
     <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
   </>;
 }

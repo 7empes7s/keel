@@ -8365,6 +8365,210 @@ section.wizard-panel {
   }
 }
 
+/* Restore: putting back one of the other services, the same four steps as Entra ID and Intune. */
+.restore-workload-start {
+  justify-self: start;
+  min-height: 2.75rem;
+  margin-top: var(--space-2xs);
+}
+
+.workload-restore {
+  display: grid;
+  min-width: 0;
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  gap: var(--space-md);
+}
+
+.workload-restore-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.workload-restore-head h3 {
+  margin: var(--space-2xs) 0;
+  font-size: 1.25rem;
+}
+
+.workload-restore-from,
+.workload-restore-loading,
+.workload-choice-note {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.workload-choices {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.workload-choice-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.workload-choice-group:first-child { border-top: 0; }
+
+.workload-choice-head {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-sm) var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  background: var(--surface-muted);
+  font-weight: 600;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.workload-choice-head label,
+.workload-choice label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+}
+
+.workload-choice-note { padding: var(--space-xs) var(--space-md) 0; }
+
+.workload-choice-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workload-choice {
+  min-height: 2.75rem;
+  padding: var(--space-xs) var(--space-md);
+  border-top: 1px solid var(--line);
+}
+
+.workload-choice:first-child { border-top: 0; }
+
+.workload-choice input,
+.workload-choice-head input {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.workload-choice span {
+  display: grid;
+  min-width: 0;
+}
+
+.workload-choice b {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.workload-choice small {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.workload-choice[data-change="changed"] small:first-of-type { color: var(--check-soon); }
+.workload-choice[data-restorable="no"] label { cursor: default; }
+.workload-choice[data-restorable="no"] b { color: var(--text-soft); }
+
+.workload-restore-bar {
+  display: flex;
+  padding: var(--space-sm) var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  gap: var(--space-sm);
+}
+
+.workload-restore-bar .primary-action { min-height: 2.75rem; }
+
+.workload-restore-bar p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.workload-restore-bar b { color: var(--text); }
+
+.workload-review {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-md);
+}
+
+.workload-review-lead { margin: 0; }
+
+.workload-run {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.workload-run + .workload-run {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--line);
+}
+
+.workload-run h4 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.workload-run-same {
+  color: var(--text-soft);
+  font-weight: 400;
+}
+
+.workload-manual {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--check-soon);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.workload-manual ul {
+  margin: var(--space-2xs) 0 0;
+  padding-left: 1.1rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 40rem) {
+  .workload-restore { padding: var(--space-sm); }
+  .workload-restore-bar .primary-action { width: 100%; }
+}
+
+/* The steps sit on the panel here, not on the page. */
+.workload-restore .wizard-step-label { background: var(--surface); }
+
+.workload-review .restore-ba-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.workload-review .restore-ba-table th[scope="col"]:first-child { width: 34%; }
+
+.workload-restore-head h3:focus { outline: none; }
+.workload-restore-head h3:focus-visible { box-shadow: var(--focus-ring); }
+.workload-restore-head h3 { scroll-margin-top: 5rem; }
+
 /* --- Shared frame (portal audit picks) -------------------------------------
    One status badge (pick A: tinted with an icon), one person token, and the shared
    list surface every job list and activity list sits on (pick A: rows). */

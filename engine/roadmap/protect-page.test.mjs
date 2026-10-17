@@ -66,7 +66,7 @@ function inPortal(script, env) {
   assert.equal(result.status, 0, result.stdout + result.stderr);
 }
 
-test('Protect: the verdict comes from the coverage reader, tier cards from the schedules, and only words are outside the record', async (t) => {
+test('Protect: the verdict comes from the coverage reader, the tier strip from the schedules, and only words are outside the record', async (t) => {
   const client = await database.connect();
   t.after(() => client.end());
   await client.query(schemaSql());
@@ -84,7 +84,9 @@ test('Protect: the verdict comes from the coverage reader, tier cards from the s
   inPortal(String.raw`
     const page = require('./app/protect/page.tsx').default;
     const { getCoverageData } = require('./lib/portal-data.ts');
-    const { protectVerdict, protectProblems, typeName } = require('./lib/protect-view.ts');
+    const { protectVerdict, protectProblems } = require('./lib/protect-view.ts');
+    const { plainKind } = require('./lib/baselines-view.ts');
+    const { TypeDetails } = require('./components/coverage-report.tsx');
     const { PRINCIPAL_ID_HEADER, CAPABILITIES_HEADER } = require('./lib/principal.ts');
     const { workAsyncStorage } = require('next/dist/server/app-render/work-async-storage.external.js');
     const { workUnitAsyncStorage } = require('next/dist/server/app-render/work-unit-async-storage.external.js');
@@ -104,23 +106,27 @@ test('Protect: the verdict comes from the coverage reader, tier cards from the s
       assert.match(html, new RegExp('<p class="verdict-sentence">' + verdict.text.replace('.', '\\.') + '</p>'));
       assert.equal((html.match(/data-layer="verdict"/g) || []).length, 1);
 
-      // Tier cards carry the schedule reader's next run, in words.
+      // The tier strip carries the schedule reader's next run, in words.
       for (const tier of ['Tier 1', 'Tier 2', 'Tier 3']) assert.match(html, new RegExp('Back up ' + tier));
       assert.match(html, /<span class="tier-next">Next run (in \d+ (minute|hour|day)s?|is due now)\.<\/span>/);
-      assert.doesNotMatch(html, /KEEL could not read the schedules/);
+      assert.doesNotMatch(html, /Keel could not read the schedules/);
 
-      // Failed types are listed by name, with a retry.
+      // Failed kinds are listed by name, with a run of their tier.
       const problems = protectProblems(data, data.generatedAt);
       assert.ok(problems.some((problem) => problem.type === 'roleAssignment' && problem.health === 'failed'));
-      assert.match(html, new RegExp('<strong>' + typeName('roleAssignment') + '</strong>'));
-      assert.match(html, /Retry backup/);
+      assert.ok(html.includes('>' + plainKind('roleAssignment') + '</a>'));
+      assert.match(html, /Back up Tier 1 again/);
 
-      // One drawer per type, each with a standing sentence and its proof reference in the record.
-      assert.equal((html.match(/<details class="capability-matrix type-drawer/g) || []).length, data.types.length);
-      assert.equal((html.match(/<p class="type-drawer-standing">/g) || []).length, data.types.length);
+      // One record per kind under the list, each with its proof reference; the details
+      // panel states the standing and keeps the same record.
+      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length);
       for (const item of data.types) {
         if (!item.writeCapability) continue;
         assert.ok(html.includes('Proof reference · update</dt><dd><code>' + (item.writeCapability.operations.update.proofRef ?? 'unknown')), item.type);
+        const details = withRouter(createElement(TypeDetails, { item, now: data.generatedAt, name: plainKind(item.type) }));
+        assert.match(details, /<p class="pt-details-standing">/);
+        assert.ok(details.includes('Proof reference · update</dt><dd><code>'), item.type);
+        assertPlain(visibleText(details), 'Protect details ' + item.type);
       }
       assertPlain(visibleText(html), 'Protect');
     })().catch((error) => { console.error(error); process.exitCode = 1; });

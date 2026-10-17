@@ -177,7 +177,7 @@ export default async function RestorePage({
         <JobTable
           headingId="restore-jobs-heading"
           jobs={jobs}
-          kicker="Recent"
+         
           now={now}
           title="Restores and checks"
         />

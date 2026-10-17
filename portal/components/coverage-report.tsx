@@ -1,21 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import {
-  STANDING_LABEL,
-  backupHealth,
   backupSentence,
   recoveryDecisionSentence,
   restoreOperations,
   restoreStanding,
   standingSentence,
   tierLabel,
-  typeName,
-  workloadLiveLines,
-  type RestoreStanding,
 } from "@/lib/protect-view";
 import type { CoverageData, CoverageType, TypeExpansion, TypeQualification } from "@/lib/types";
 
@@ -31,10 +26,10 @@ interface TypeCompleteness {
 }
 
 const STATE_SENTENCE: Record<CoverageState, string> = {
-  full: "Full coverage: KEEL restores this on its own and nothing is missing.",
-  incomplete: "Incomplete: the backup holds everything KEEL can read, but some parts must be finished by hand after a restore.",
+  full: "Full coverage: Keel restores this on its own and nothing is missing.",
+  incomplete: "Incomplete: the backup holds everything Keel can read, but some parts must be finished by hand after a restore.",
   "microsoft-managed": "Microsoft-managed: Microsoft owns this, so there is nothing to restore.",
-  "not-readable": "Not readable: KEEL cannot read this.",
+  "not-readable": "Not readable: Keel cannot read this.",
 };
 
 const REASON_WORDS: Record<string, string> = {
@@ -43,7 +38,7 @@ const REASON_WORDS: Record<string, string> = {
   "binary-route": "a file the backup does not hold",
   "other-route": "stored separately and not in the backup yet",
   "microsoft-managed": "set by Microsoft",
-  "not-written": "in the backup, but KEEL does not write it yet",
+  "not-written": "in the backup, but Keel does not write it yet",
 };
 
 function completenessOf(item: CoverageType): TypeCompleteness | null {
@@ -54,12 +49,10 @@ function missingWords(completeness: TypeCompleteness): string[] {
   return completeness.missing.map((part) => `${part.part} (${REASON_WORDS[part.reason] ?? part.reason})${part.perObject ? ", listed per object in each backup" : ""}`);
 }
 
-// Roadmap task-131 (superseding task-54's matrix layout): one drawer per configuration
-// type. Its summary and explanation answer "can KEEL put this back?" in one sentence;
-// every task-54 evidence field — collector, endpoint, pagination evidence, diagnosis,
-// projection review, proof reference, credential mode, observation — is kept, labelled,
-// in the drawer's record layer. A native <details> keeps it keyboard- and
-// narrow-screen-accessible without script.
+// Roadmap task-131, rebuilt for the portal audit (What's protected, pick B): one details
+// panel per kind answers "can Keel put this back?" in one sentence; every task-54
+// evidence field (collector, endpoint, pagination evidence, diagnosis, projection review,
+// proof reference, credential mode, observation) is kept, labelled, in its record.
 function observationQuery(item: CoverageType) {
   const observation = item.observation;
   return new URLSearchParams({
@@ -94,13 +87,14 @@ function unrecoverableValue(expansion: TypeExpansion | null | undefined): string
   return items.map((item) => `${item.kind} ${item.name}: ${item.reason}`).join(" · ");
 }
 
-function TypeRecord({ item }: { item: CoverageType }) {
+/** Every recorded field of one kind, for a Technical details list. */
+export function TypeRecordFields({ item }: { item: CoverageType }) {
   const irrecoverable = item.irrecoverableFields ?? null;
   const detail = item.detail;
   const decision = item.qualification;
   const completeness = completenessOf(item);
   return (
-    <TechnicalDetails>
+    <>
       <RecordField label="Configuration type" value={item.type} />
       <RecordField
         label="Coverage state"
@@ -186,147 +180,65 @@ function TypeRecord({ item }: { item: CoverageType }) {
           <RecordField copy={false} label="Observation evidence" value={`completeness ${item.observation.completeness} · evidence ${item.observation.evidenceLevel}`} />
         </>
       ) : <RecordField label="Observation ID" value="no observation recorded" copy={false} />}
-    </TechnicalDetails>
+    </>
   );
 }
 
-/** One configuration type: its name and standing, opening onto the explanation and record. */
-export function TypeDrawer({ item, now }: { item: CoverageType; now: string }) {
-  const standing = restoreStanding(item);
-  const health = backupHealth(item);
+
+/** The details panel's body for one kind: its standing, what a restore brings back, the
+ *  facts, where to go next, and its record last and closed. */
+export function TypeDetails({ item, now, name }: { item: CoverageType; now: string; name: string }) {
   const operations = restoreOperations(item);
   const decision = recoveryDecisionSentence(item);
   const irrecoverable = item.irrecoverableFields?.length ?? 0;
   const completeness = completenessOf(item);
   const missing = completeness ? missingWords(completeness) : [];
+  const standing = restoreStanding(item);
+  // A type Keel cannot read for want of a grant is fixed on Setup.
+  const needsGrant = item.diagnosis && /grant|permission|consent|scope|role/i.test(`${item.diagnosis.diagnosis} ${item.diagnosis.reason ?? ""}`);
   return (
-    <details className={`capability-matrix type-drawer standing-${standing} health-${health}`}>
-      <summary>
-        <span className="type-drawer-name">{typeName(item.type)}</span>
-        <span className={`state-badge standing-badge standing-${standing}`}>{STANDING_LABEL[standing]}</span>
-        <span className="type-drawer-backup">{backupSentence(item, now)}</span>
-      </summary>
-      <div className="type-drawer-body">
-        <p className="type-drawer-standing">{standingSentence(item)}</p>
-        <ul className="type-drawer-facts">
-          <li>{item.criticality ? `${tierLabel(item.criticality)}.` : "Not in a backup tier."}</li>
-          {item.blastRadius ? <li>Impact if it changes: {displayEnum("blastRadius", item.blastRadius).toLowerCase()}.</li> : null}
-          {irrecoverable > 0 ? <li>{irrecoverable} {irrecoverable === 1 ? "field" : "fields"} Microsoft sets itself and KEEL cannot restore.</li> : null}
-          {completeness ? <li className={`coverage-state coverage-${completeness.state}`}>{completeness.why ? `${STATE_SENTENCE[completeness.state]} ${completeness.why}` : STATE_SENTENCE[completeness.state]}</li> : null}
-          {missing.length ? (
-            <li className="coverage-missing">Not brought back by a restore:
-              <ul>{missing.map((line) => <li key={line}>{line}</li>)}</ul>
-            </li>
-          ) : null}
+    <div className="pt-details">
+      <p className="pt-details-standing">{standingSentence(item)}</p>
+      <section aria-label="What a restore brings back" className="pt-details-part">
+        <h3>What a restore brings back</h3>
+        <ul className="pt-details-facts">
           {decision ? <li className={`decision-${item.qualification?.decision ?? "unknown"}`}>{decision}</li> : null}
           {operations.map((line) => <li key={line}>{line}</li>)}
-          {item.lastCollectedAt ? <li>Collected <time dateTime={item.lastCollectedAt} title={formatTimestamp(item.lastCollectedAt)}>{ago(item.lastCollectedAt, now)}</time>.</li> : null}
+          {completeness ? <li>{completeness.why ? `${STATE_SENTENCE[completeness.state]} ${completeness.why}` : STATE_SENTENCE[completeness.state]}</li> : null}
+          {irrecoverable > 0 ? <li>{irrecoverable} {irrecoverable === 1 ? "field" : "fields"} Microsoft sets itself and Keel cannot restore.</li> : null}
+          {!decision && !operations.length && !completeness && !irrecoverable ? <li>Nothing recorded yet.</li> : null}
         </ul>
-        <TypeRecord item={item} />
-      </div>
-    </details>
+        {missing.length ? (
+          <>
+            <h3>Finished by hand</h3>
+            <ul className="pt-details-facts">{missing.map((line) => <li key={line}>{line}</li>)}</ul>
+          </>
+        ) : null}
+      </section>
+      <section aria-label="Facts" className="pt-details-part">
+        <h3>Facts</h3>
+        <ul className="pt-details-facts">
+          <li>{backupSentence(item, now)}</li>
+          <li>{item.criticality ? `${tierLabel(item.criticality)}.` : "Not in a backup tier."}</li>
+          {item.blastRadius ? <li>Impact if it changes: {displayEnum("blastRadius", item.blastRadius).toLowerCase()}.</li> : null}
+          {item.lastCollectedAt ? <li>Last read <time dateTime={item.lastCollectedAt} title={formatTimestamp(item.lastCollectedAt)}>{ago(item.lastCollectedAt, now)}</time>.</li> : null}
+        </ul>
+      </section>
+      <p className="pt-details-links">
+        {standing !== "cannot-restore" ? <Link className="pt-inline-link" href={`/restore?q=${encodeURIComponent(name)}`}>Restore this kind</Link> : null}
+        {standing === "unproven" ? <Link className="pt-inline-link" href="/restore">Plan a test restore</Link> : null}
+        {needsGrant ? <Link className="pt-inline-link" href="/setup">Give Keel the permission it needs</Link> : null}
+      </p>
+      <TechnicalDetails>
+        <TypeRecordFields item={item} />
+      </TechnicalDetails>
+    </div>
   );
 }
 
-const STANDING_ORDER: RestoreStanding[] = ["cannot-restore", "unproven", "partial", "protected"];
-const GROUP_TITLE: Record<RestoreStanding, string> = {
-  "cannot-restore": "Cannot be restored",
-  unproven: "Backed up, restore not yet proven",
-  partial: "Partially protected",
-  protected: "Protected",
-};
-
-export function CoverageReport({ data, now }: { data: CoverageData; now?: string }) {
-  const at = now ?? data.generatedAt;
-  const [query, setQuery] = useState("");
-  const [standing, setStanding] = useState<RestoreStanding | "all">("all");
-  const [tier, setTier] = useState("all");
-
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return data.types.filter((item) =>
-      (standing === "all" || restoreStanding(item) === standing)
-      && (tier === "all" || item.criticality === tier)
-      && (!needle || item.type.toLowerCase().includes(needle) || typeName(item.type).toLowerCase().includes(needle)));
-  }, [data.types, query, standing, tier]);
-
-  const groups = STANDING_ORDER.map((candidate) => ({
-    standing: candidate,
-    items: filtered.filter((item) => restoreStanding(item) === candidate)
-      .sort((a, b) => (a.criticality ?? "tier9").localeCompare(b.criticality ?? "tier9") || a.type.localeCompare(b.type)),
-  })).filter((group) => group.items.length > 0);
-
-  const liveLines = workloadLiveLines(data);
-  const windows = [...new Set(data.types.flatMap((item) => item.observation?.window
+/** The distinct collection windows of a report: more than one means the kinds were read
+ *  at different times. */
+export function coverageWindows(data: CoverageData): string[] {
+  return [...new Set(data.types.flatMap((item) => item.observation?.window
     ? [`${item.observation.window.startedAt} – ${item.observation.window.endedAt}`] : []))];
-
-  return (
-    <section aria-labelledby="coverage-report-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">Every configuration type</p>
-          <h2 id="coverage-report-heading">What KEEL can put back</h2>
-        </div>
-        <span className="result-count">{filtered.length} of {data.types.length}</span>
-      </div>
-
-      {windows.length > 1 ? (
-        <aside className="honesty-note" aria-label="Collection times differ">
-          <strong>These types were collected at different times.</strong>
-          <p>Treat them as separate copies, not one picture of the tenant at a single moment.</p>
-          <TechnicalDetails>
-            <RecordField copy={false} label="Observation windows differ" value={windows.join("; ")} />
-          </TechnicalDetails>
-        </aside>
-      ) : null}
-
-      {liveLines.length ? (
-        <aside className="honesty-note" aria-label="Live runs for workload settings">
-          <strong>Live runs recorded for workload settings</strong>
-          <ul>{liveLines.map((line) => <li key={line}>{line}</li>)}</ul>
-        </aside>
-      ) : null}
-
-      <div className="filter-bar">
-        <label className="filter-field search-field">
-          <span>Find a type</span>
-          <input onChange={(event) => setQuery(event.target.value)} placeholder="e.g. Conditional Access" type="search" value={query} />
-        </label>
-        <label className="filter-field">
-          <span>Can it be restored</span>
-          <select onChange={(event) => setStanding(event.target.value as RestoreStanding | "all")} value={standing}>
-            <option value="all">Any</option>
-            {STANDING_ORDER.map((candidate) => <option key={candidate} value={candidate}>{STANDING_LABEL[candidate]}</option>)}
-          </select>
-        </label>
-        <label className="filter-field">
-          <span>Tier</span>
-          <select onChange={(event) => setTier(event.target.value)} value={tier}>
-            <option value="all">All tiers</option>
-            <option value="tier1">Tier 1</option>
-            <option value="tier2">Tier 2</option>
-            <option value="tier3">Tier 3</option>
-          </select>
-        </label>
-      </div>
-
-      {groups.length ? (
-        <div className="coverage-groups">
-          {groups.map((group) => (
-            <section aria-labelledby={`coverage-${group.standing}`} className={`coverage-group group-${group.standing}`} key={group.standing}>
-              <header className="group-header">
-                <h3 id={`coverage-${group.standing}`}>{GROUP_TITLE[group.standing]}</h3>
-                <span>{group.items.length} {group.items.length === 1 ? "type" : "types"}</span>
-              </header>
-              <div className="type-drawers">
-                {group.items.map((item) => <TypeDrawer item={item} key={item.type} now={at} />)}
-              </div>
-            </section>
-          ))}
-        </div>
-      ) : (
-        <p className="empty-state">No configuration types match these filters.</p>
-      )}
-    </section>
-  );
 }

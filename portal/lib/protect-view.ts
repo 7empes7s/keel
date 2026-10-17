@@ -21,14 +21,14 @@ export function typeName(type: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-// The four answers the contract allows for "can KEEL put this type back?".
+// The four answers the contract allows for "can Keel put this type back?".
 export type RestoreStanding = "protected" | "partial" | "cannot-restore" | "unproven";
 
 /**
- * Whether KEEL has a tested writer for the type: an automated recovery decision and at
+ * Whether Keel has a tested writer for the type: an automated recovery decision and at
  * least one write operation tested on fixtures or proven live. Most types declare
  * "read-only" fidelity only because no restore drill has measured them; the writer, not
- * that declaration, is what says KEEL can put the type back.
+ * that declaration, is what says Keel can put the type back.
  */
 export function hasRestoreWriter(item: CoverageType): boolean {
   if (item.qualification?.decision !== "automated" || !item.writeCapability) return false;
@@ -67,17 +67,17 @@ export function standingSentence(item: CoverageType): string {
     case "protected":
       return `Protected: restore proven on this tenant on ${proven ?? "a recorded date"}.`;
     case "partial":
-      return `Partially protected: some fields Microsoft sets itself and KEEL cannot restore${proven ? `; restore proven on ${proven}` : ""}.`;
+      return `Partially protected: some fields Microsoft sets itself and Keel cannot restore${proven ? `; restore proven on ${proven}` : ""}.`;
     case "unproven":
-      if (provenLive(item)) return "Backed up. KEEL's writes for this type are proven on this tenant, but no restore drill has yet measured what comes back.";
+      if (provenLive(item)) return "Backed up. Keel's writes for this type are proven on this tenant, but no restore drill has yet measured what comes back.";
       return item.fidelity.declared === "partial"
         ? "Backed up, but some fields cannot be restored, and no restore has been proven on this tenant yet."
         : "Backed up, but no restore has been proven on this tenant yet.";
     case "cannot-restore":
-      if (item.protectionState === "not-covered" || !item.adapter) return "KEEL has no collector for this type, so it is neither backed up nor restorable.";
+      if (item.protectionState === "not-covered" || !item.adapter) return "Keel has no collector for this type, so it is neither backed up nor restorable.";
       if (item.outcome === "unavailable") return "Nothing to restore: this tenant does not have the licence or feature Microsoft needs for this type.";
-      if (item.protectionState === "unprotectable" || item.fidelity.declared === "unprotectable") return "KEEL cannot restore this type: Microsoft manages it, so it is kept for reference only.";
-      return "KEEL backs this type up for reference but cannot restore it.";
+      if (item.protectionState === "unprotectable" || item.fidelity.declared === "unprotectable") return "Keel cannot restore this type: Microsoft manages it, so it is kept for reference only.";
+      return "Keel backs this type up for reference but cannot restore it.";
   }
 }
 
@@ -143,7 +143,7 @@ function proofWords(capability: WriteOperationCapability): string {
   return "unknown";
 }
 
-/** What KEEL can do to put a type back, one line per supported operation. */
+/** What Keel can do to put a type back, one line per supported operation. */
 export function restoreOperations(item: CoverageType): string[] {
   if (!item.writeCapability) return [];
   return Object.entries(item.writeCapability.operations)
@@ -164,11 +164,11 @@ export function recoveryDecisionSentence(item: CoverageType): string | null {
   if (!decision) return null;
   const remaps = Object.entries(decision.remapping);
   const remapping = remaps.length === 0 ? ""
-    : remaps.every(([, proven]) => proven) ? " If it comes back with a new ID, KEEL updates what refers to it."
-      : " If it would come back with a new ID, KEEL stops rather than leave broken references.";
-  if (decision.decision === "automated") return `KEEL restores this type on its own.${remapping}`;
-  if (decision.decision === "manual") return "Restoring this type is a manual step; KEEL lists it for you to do by hand.";
-  return "Whether KEEL can restore this type on its own is not yet decided.";
+    : remaps.every(([, proven]) => proven) ? " If it comes back with a new ID, Keel updates what refers to it."
+      : " If it would come back with a new ID, Keel stops rather than leave broken references.";
+  if (decision.decision === "automated") return `Keel restores this type on its own.${remapping}`;
+  if (decision.decision === "manual") return "Restoring this type is a manual step; Keel lists it for you to do by hand.";
+  return "Whether Keel can restore this type on its own is not yet decided.";
 }
 
 export interface ProtectProblem {
@@ -258,4 +258,112 @@ export function tierSummaries(schedules: Schedule[], now: string): TierSummary[]
       failed: schedule?.last_status === "failed",
     };
   });
+}
+
+// The What's protected page (portal audit: grouped list on a desktop, service cards on a phone).
+// Health in four words a tile and a badge can share; tones are risk colours only.
+export type HealthFilter = "backed-up" | "failed" | "out-of-date" | "proven";
+
+export const HEALTH_FILTERS: HealthFilter[] = ["backed-up", "failed", "out-of-date", "proven"];
+
+export function isHealthFilter(value: string): value is HealthFilter {
+  return (HEALTH_FILTERS as string[]).includes(value);
+}
+
+export function matchesHealth(item: CoverageType, filter: HealthFilter): boolean {
+  const health = backupHealth(item);
+  switch (filter) {
+    case "backed-up": return health === "ok" || health === "empty";
+    case "failed": return health === "failed";
+    case "out-of-date": return health === "stale" || health === "never";
+    case "proven": return restoreStanding(item) === "protected" || restoreStanding(item) === "partial";
+  }
+}
+
+export type HealthTone = "urgent" | "soon" | "fine" | "neutral";
+
+export const HEALTH_BADGE: Record<BackupHealth, { label: string; tone: HealthTone }> = {
+  ok: { label: "Backed up", tone: "fine" },
+  empty: { label: "Backed up", tone: "fine" },
+  failed: { label: "Failed", tone: "urgent" },
+  stale: { label: "Out of date", tone: "soon" },
+  never: { label: "Never backed up", tone: "soon" },
+  "not-collected": { label: "Not backed up", tone: "neutral" },
+  unavailable: { label: "Not on this tenant", tone: "neutral" },
+};
+
+/** The list's risk colour for one kind: failures are urgent, out of date or never is soon. */
+export function healthRisk(item: CoverageType): "urgent" | "soon" | undefined {
+  const tone = HEALTH_BADGE[backupHealth(item)].tone;
+  return tone === "urgent" || tone === "soon" ? tone : undefined;
+}
+
+export interface ProtectCounts {
+  total: number;
+  backedUp: number;
+  failed: number;
+  stale: number;
+  never: number;
+  proven: number;
+  restorable: number;
+}
+
+export function protectCounts(types: CoverageType[]): ProtectCounts {
+  const health = types.map(backupHealth);
+  const standing = types.map(restoreStanding);
+  return {
+    total: types.length,
+    backedUp: health.filter((value) => value === "ok" || value === "empty").length,
+    failed: health.filter((value) => value === "failed").length,
+    stale: health.filter((value) => value === "stale").length,
+    never: health.filter((value) => value === "never").length,
+    proven: standing.filter((value) => value === "protected" || value === "partial").length,
+    restorable: standing.filter((value) => value !== "cannot-restore").length,
+  };
+}
+
+export interface BackupPlan {
+  tiers: string[];
+  // Kinds with no tier: no tier run reads them, so the plan leaves them out and says so.
+  untiered: number;
+}
+
+/** Which tier runs back up the chosen kinds: one run per distinct tier, in tier order. */
+export function backupPlan(types: CoverageType[]): BackupPlan {
+  const chosen = new Set(types.map((item) => item.criticality).filter((tier): tier is string => Boolean(tier)));
+  return {
+    tiers: TIERS.map((tier) => tier.id).filter((tier) => chosen.has(tier)),
+    untiered: types.filter((item) => !item.criticality || !TIERS.some((tier) => tier.id === item.criticality)).length,
+  };
+}
+
+function listWords(words: string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/** "Runs Tier 1 and Tier 2 in full. It only reads your tenant." */
+export function backupPlanSentence(plan: BackupPlan): string {
+  if (plan.tiers.length === 0) return "None of these kinds is in a backup tier, so there is nothing to run.";
+  const runs = `Runs ${listWords(plan.tiers.map(tierLabel))} in full. It only reads your tenant.`;
+  if (!plan.untiered) return runs;
+  return `${runs} ${plan.untiered === 1 ? "1 kind has" : `${plan.untiered} kinds have`} no tier and ${plan.untiered === 1 ? "is" : "are"} left out.`;
+}
+
+/** The verdict's second line: where the problems are, or when everything last ran. */
+export function protectVerdictDetail(types: CoverageType[], serviceOf: (type: string) => string, now: string): string | undefined {
+  const problems = types.filter((item) => ["failed", "stale", "never"].includes(backupHealth(item)));
+  if (problems.length === 0) return undefined;
+  const services = [...new Set(problems.map((item) => serviceOf(item.type)))];
+  const fine = types.filter((item) => backupHealth(item) === "ok" || backupHealth(item) === "empty");
+  const newest = fine.map((item) => item.lastCollectedAt).filter((value): value is string => Boolean(value)).sort().at(-1);
+  return `In ${listWords(services)}.${newest ? ` Everything else was backed up ${ago(newest, now)}.` : ""}`;
+}
+
+/** The header's status pill: failures first, then out of date, else backed up. */
+export function protectStatus(data: CoverageData): { tone: "urgent" | "soon" | "fine"; label: string } {
+  const counts = protectCounts(data.types);
+  if (counts.failed) return { tone: "urgent", label: `${counts.failed} failed` };
+  if (counts.stale + counts.never) return { tone: "soon", label: `${counts.stale + counts.never} out of date` };
+  return { tone: "fine", label: "Backed up" };
 }

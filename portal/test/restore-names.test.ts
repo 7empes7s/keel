@@ -9,6 +9,7 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 import { getRestoreResources } from "@/lib/portal-data";
 import { itemName, nameBook, plainLabel } from "@/lib/restore-view";
+import { holdsObjectId } from "@/lib/object-ids";
 import { tenantRef } from "@/lib/runtime-config";
 
 // The Restore page names every saved setting by the name the backup holds, never by
@@ -24,7 +25,13 @@ let client: TestClient;
 let snapshotId = "";
 
 const SCRIPT_ID = "5b1c2d3e-0000-4000-8000-00000000c0de";
-const GRANT_ID = "9a8b7c6d-0000-4000-8000-0000000000ff";
+// Graph's real shape for an app consent grant id: 43 base64url characters, not a GUID.
+const GRANT_ID = "l5eW7x0ga0-WDOntXzHateQDNpSH5-lPk9HjD3Sarjk";
+const NAMED_GRANT_ID = "Qm9vdHN0cmFwR3JhbnQ0Mk1pY3Jvc29mdEdyYXBoX2E";
+const HR_APP_ID = "1fec8e78-bce4-4aaf-ab1b-5451cc387264";
+const HR_SP_ID = "6a0b0000-0000-4000-8000-0000000000a1";
+const GRAPH_APP_ID = "00000003-0000-0000-c000-000000000000";
+const GRAPH_SP_ID = "6a0b0000-0000-4000-8000-0000000000b1";
 const PARTNER_TENANT = "11111111-2222-4333-8444-555555555555";
 
 before(async () => {
@@ -56,6 +63,9 @@ before(async () => {
   const versions: [string, string, Record<string, unknown>][] = [
     [SCRIPT_ID, "deviceManagementScript", { id: SCRIPT_ID, displayName: "Set time zone" }],
     [GRANT_ID, "oauth2PermissionGrant", { id: GRANT_ID, scope: "User.Read" }],
+    [NAMED_GRANT_ID, "oauth2PermissionGrant", { id: NAMED_GRANT_ID, clientId: HR_SP_ID, resourceId: GRAPH_SP_ID, consentType: "AllPrincipals", scope: "User.Read" }],
+    [HR_APP_ID, "servicePrincipal", { id: HR_SP_ID, appId: HR_APP_ID, displayName: "Contoso HR" }],
+    [GRAPH_APP_ID, "servicePrincipal", { id: GRAPH_SP_ID, appId: GRAPH_APP_ID, displayName: "Microsoft Graph" }],
     [PARTNER_TENANT, "crossTenantAccessPolicyPartner", { tenantId: PARTNER_TENANT }],
     ["group:Finance", "group", { displayName: "Finance" }],
     ["user:ada@contoso.example", "user", { displayName: "Ada Lovelace", userPrincipalName: "ada@contoso.example" }],
@@ -81,6 +91,8 @@ test("the resources of a backup carry the name the backup holds", async () => {
   assert.equal(byKey.get(SCRIPT_ID), "Set time zone");
   assert.equal(byKey.get("user:ada@contoso.example"), "Ada Lovelace");
   assert.equal(byKey.get(GRANT_ID), null);
+  assert.equal(byKey.get(NAMED_GRANT_ID), "Contoso HR to Microsoft Graph");
+  assert.equal(byKey.get(HR_APP_ID), "Contoso HR");
   assert.equal(byKey.get(PARTNER_TENANT), null);
 });
 
@@ -91,14 +103,17 @@ test("no setting on the Restore page is named by an object id", async () => {
   assert.deepEqual(new Map(resources.map((resource, index) => [resource.naturalKey, labels[index]])), new Map([
     [PARTNER_TENANT, "Unnamed cross-tenant access partner"],
     [SCRIPT_ID, "Set time zone"],
-    [GRANT_ID, "Unnamed oauth 2 permission grant"],
+    [GRAPH_APP_ID, "Microsoft Graph"],
+    [HR_APP_ID, "Contoso HR"],
+    [NAMED_GRANT_ID, "Contoso HR to Microsoft Graph"],
+    [GRANT_ID, "Unnamed app consent"],
     ["group:Finance", "Finance"],
     ["organizationalBranding", "Company branding"],
     ["user:ada@contoso.example", "Ada Lovelace"],
   ]));
   for (const resource of resources) {
     const shown = `${itemName(resource.naturalKey, names)} ${plainLabel(resource.naturalKey, names)}`;
-    assert.doesNotMatch(shown, /[0-9a-f]{8}-[0-9a-f]{4}-/i, resource.naturalKey);
+    assert.equal(holdsObjectId(shown), false, `${resource.naturalKey}: ${shown}`);
   }
   assert.match(plainLabel(SCRIPT_ID, names), /^Set time zone \(.+\)$/);
 });
@@ -108,5 +123,6 @@ test("without a name book, a key that is only an id still never shows", () => {
   assert.equal(plainLabel("namedLocation:HQ"), "HQ (trusted location)");
   assert.equal(itemName(SCRIPT_ID), "Unnamed setting");
   assert.equal(plainLabel(SCRIPT_ID), "Unnamed setting");
-  assert.doesNotMatch(plainLabel(`roleAssignment:unknown:${GRANT_ID}@user:ada@/`), /9a8b7c6d/);
+  assert.equal(plainLabel(GRANT_ID), "Unnamed setting");
+  assert.equal(holdsObjectId(plainLabel(`roleAssignment:unknown:${GRANT_ID}@user:ada@/`)), false);
 });

@@ -68,11 +68,12 @@ const LOOKUP_TYPES = ["servicePrincipal", "application", "user"];
 
 /**
  * Names for the apps, people and app roles that settings point to by id, from the
- * tenant's newest backup that holds enterprise apps. An app is found by its object id
+ * tenant's newest backup that holds enterprise apps (or from the backup given, when a
+ * page shows one backup). An app is found by its object id
  * or its app id (the enterprise app's name first), an app role by its id in an
  * enterprise app's appRoles. A failed read leaves them unnamed, never the page down.
  */
-export async function idNames(client: QueryClient, tenantRef: string, ids: string[], roleIds: string[] = []): Promise<IdNames> {
+export async function idNames(client: QueryClient, tenantRef: string, ids: string[], roleIds: string[] = [], snapshotId: string | null = null): Promise<IdNames> {
   const wantedIds = [...new Set(ids.map((id) => id.toLowerCase()))].slice(0, MAX_LOOKUP_IDS);
   const wantedRoles = [...new Set(roleIds.map((id) => id.toLowerCase()))].slice(0, MAX_LOOKUP_IDS);
   if (!wantedIds.length && !wantedRoles.length) return NO_ID_NAMES;
@@ -81,7 +82,7 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
     ({ rows } = await client.query(
       `WITH latest AS (
          SELECT s.id FROM snapshot s
-          WHERE s.tenant_ref = $1
+          WHERE s.tenant_ref = $1 AND ($5::uuid IS NULL OR s.id = $5::uuid)
             AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = 'servicePrincipal')
           ORDER BY s.started_at DESC LIMIT 1
        )
@@ -96,7 +97,7 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
             OR (rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                 AND EXISTS (SELECT 1 FROM jsonb_array_elements(rv.payload->'appRoles') role WHERE lower(role->>'id') = ANY($3::text[]))))
         ORDER BY (rv.resource_type = 'servicePrincipal') DESC`,
-      [tenantRef, wantedIds, wantedRoles, LOOKUP_TYPES],
+      [tenantRef, wantedIds, wantedRoles, LOOKUP_TYPES, snapshotId],
     ));
   } catch (error) {
     console.error("[keel-portal] app names unavailable", error);

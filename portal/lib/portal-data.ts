@@ -854,13 +854,21 @@ export async function getRestoreResources(
       ): Promise<{ rows: UnknownRecord[] }>;
     };
     const { rows } = await queryClient.query(
-      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name
+      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
+              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
        ORDER BY rv.natural_key`,
-      [snapshotId, ref],
+      [snapshotId, ref, DERIVED_NAME_TYPES],
     );
+    // App consent, provisioning jobs and the like carry no name: they are named from the
+    // apps and people they point to, as this backup names them.
+    const nameless = rows.filter((row) => row.payload != null);
+    const refs = nameless.map((row) => referencedIds(String(row.resource_type), String(row.natural_key), row.payload));
+    const lookup = nameless.length
+      ? await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles), snapshotId)
+      : null;
     return {
       generatedAt: new Date().toISOString(),
       snapshotId,
@@ -869,7 +877,11 @@ export async function getRestoreResources(
         resourceType: String(row.resource_type),
         blastRadius: String(row.blast_radius),
         service: typeInfo(String(row.resource_type)).service,
-        name: row.display_name == null ? null : String(row.display_name),
+        name: row.display_name != null
+          ? String(row.display_name)
+          : lookup && row.payload != null
+            ? derivedName(String(row.resource_type), String(row.natural_key), row.payload, lookup)
+            : null,
       })),
     };
   });

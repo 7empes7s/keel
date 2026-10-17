@@ -281,6 +281,8 @@ test("pickers · on a phone the date picker opens as a sheet and fits", async ({
   await open(page, "/kit");
   await page.getByRole("button", { name: /^Changed:/ }).click();
   const panel = page.locator(".popover-panel");
+  // The sheet slides up from below; measure where it settles, not where it starts.
+  await panel.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   const box = (await panel.boundingBox())!;
   expect(Math.round(box.x)).toBe(0);
   expect(Math.round(box.width)).toBe(phone.width);

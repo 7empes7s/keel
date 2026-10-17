@@ -32,6 +32,7 @@ function sideText(side: { present: boolean; value: unknown }): string {
 const SETTLED_WORDS: Record<string, string> = {
   "matches-baseline": "the setting was back as the baseline has it, so nothing was rolled back.",
   drifted: "it was still changed, so its policies acted on it as usual.",
+  ignored: "it was still changed, but that change is ignored, so nothing was rolled back.",
   "awaiting-detection": "it had not been checked for changes since, so the next check decides.",
   unknown: "there was no baseline or no backup of this type to compare with, so nothing was rolled back.",
 };

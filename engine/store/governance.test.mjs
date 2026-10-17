@@ -227,6 +227,54 @@ const afterExpiryRun = await createSnapshot(client, { tenantRef });
 assert.notEqual(await dedupeDrift(afterExpiryRun, 'dedupe-hash-2'), reopenedId);
 assert.equal((await dedupeRows()).find((row) => row.id === reopenedId).observed_snapshot, afterRollbackRun);
 
+// An ignored change stays ignored while the ignore lasts: the next run that still sees
+// the same change keeps the ignored row (no new open row, no new policy evaluation).
+// Once the setting changes again, that is a new change and shows as open.
+const ignoredKey = 'user:governance-test-ignored';
+const ignoredDrift = async (afterHash = 'ignored-hash') => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: await createSnapshot(client, { tenantRef }), naturalKey: ignoredKey,
+  resourceType: 'user', changeType: 'modified', beforeHash: 'baseline-hash', afterHash,
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: afterHash },
+  blastRadius: 'access-affecting',
+});
+const ignoredRows = async () => (await client.query(
+  'SELECT id FROM drift WHERE natural_key = $1 ORDER BY detected_at, id', [ignoredKey],
+)).rows.map((row) => row.id);
+const openIds = async () => (await listOpenDrift(client, { tenantRef })).map((row) => row.id);
+const ignoredId = await ignoredDrift();
+await recordDisposition(client, { driftId: ignoredId, action: 'ignore', actor: 'test-operator', reason: 'known change', expiresAt: unexpiredIgnoreAt });
+assert.equal(await ignoredDrift(), ignoredId, 'the ignored change seen again keeps its ignored row');
+assert.equal(await ignoredDrift(), ignoredId);
+assert.deepEqual(await ignoredRows(), [ignoredId], 'no new open row while the ignore lasts');
+assert.ok(!(await openIds()).includes(ignoredId), 'the ignored change does not show as open');
+assert.equal(await evaluations(ignoredId), 1, 'an ignored change is not evaluated again');
+const changedAgainId = await ignoredDrift('ignored-hash-2');
+assert.notEqual(changedAgainId, ignoredId, 'the setting changed again: a new change');
+assert.ok((await openIds()).includes(changedAgainId), 'and it shows as open');
+// The same holds when the ignore has run out by the next run: the change shows again.
+await recordDisposition(client, { driftId: changedAgainId, action: 'ignore', actor: 'test-operator', reason: 'brief', expiresAt: expiredIgnoreAt });
+const afterLapseId = await ignoredDrift('ignored-hash-2');
+assert.notEqual(afterLapseId, changedAgainId, 'an ignore that ran out no longer holds the change back');
+assert.ok((await openIds()).includes(afterLapseId));
+
+// An ignored change that an auto_remediate policy matches is not remediated on the next run.
+const ignoredGroupDrift = async () => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: await createSnapshot(client, { tenantRef }), naturalKey: 'group:governance-test-ignored-auto',
+  resourceType: 'group', changeType: 'modified', beforeHash: 'baseline-hash', afterHash: 'ignored-auto-hash',
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: 'Known change' },
+  blastRadius: 'access-affecting',
+});
+const ignoredGroupId = await ignoredGroupDrift();
+const ignoredGroupJobs = async () => (await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [ignoredGroupId],
+)).rows;
+assert.equal((await ignoredGroupJobs()).length, 1);
+await recordDisposition(client, { driftId: ignoredGroupId, action: 'ignore', actor: 'test-operator', reason: 'known change', expiresAt: unexpiredIgnoreAt });
+const ignoredGroupEvaluations = await evaluations(ignoredGroupId);
+assert.equal(await ignoredGroupDrift(), ignoredGroupId);
+assert.equal(await evaluations(ignoredGroupId), ignoredGroupEvaluations, 'no new evaluation for the ignored change');
+assert.equal((await ignoredGroupJobs()).length, 1, 'and no new remediation');
+
 } finally {
   await client?.end();
   await database.cleanup();

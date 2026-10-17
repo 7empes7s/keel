@@ -1,5 +1,5 @@
 import { formatTimestamp } from "@/lib/presentation";
-import { plainLabel } from "@/lib/restore-view";
+import { plainLabel, type NameBook } from "@/lib/restore-view";
 
 // Roadmap task-64: how each resource of a reviewed dry run will be recovered.
 // The mechanism is part of the immutable artifact and its plan digest, so what
@@ -54,7 +54,7 @@ export function mechanismLabel(mechanism: RecoveryMechanismName): string {
   return LABELS[mechanism] ?? mechanism;
 }
 
-export function RecoveryMechanismTable({ mechanisms }: { mechanisms: RecoveryMechanism[] }) {
+export function RecoveryMechanismTable({ mechanisms, names }: { mechanisms: RecoveryMechanism[]; names?: NameBook }) {
   if (mechanisms.length === 0) return null;
   return (
     <div className="recovery-mechanisms">
@@ -71,7 +71,7 @@ export function RecoveryMechanismTable({ mechanisms }: { mechanisms: RecoveryMec
         <tbody>
           {mechanisms.map((entry) => (
             <tr className={`mechanism-row mechanism-${entry.mechanism}`} key={entry.naturalKey}>
-              <td data-label="Setting"><span className="resource-name">{plainLabel(entry.naturalKey)}</span></td>
+              <td data-label="Setting"><span className="resource-name">{plainLabel(entry.naturalKey, names)}</span></td>
               <td data-label="How">
                 <span className={`pill pill-${TONES[entry.mechanism] ?? "neutral"} mechanism-badge-${entry.mechanism}`}>{mechanismLabel(entry.mechanism)}</span>
                 {entry.reason ? <small className="mechanism-reason">{entry.reason}</small> : null}

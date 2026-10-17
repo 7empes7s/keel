@@ -733,6 +733,9 @@ export interface RestoreResource {
   // The Microsoft service the type belongs to (engine/insights/taxonomy.mjs), or null
   // when the type is not classified yet; the Restore page groups by it.
   service: string | null;
+  // The name the backup holds for it (displayName and the like), or null when the
+  // object has none; the page never falls back to a bare object id.
+  name?: string | null;
 }
 
 export interface RestoreResourcesData {
@@ -740,6 +743,10 @@ export interface RestoreResourcesData {
   snapshotId: string;
   resources: RestoreResource[];
 }
+
+// The readable name a saved object carries, by the field Microsoft uses for it.
+export const PAYLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "userPrincipalName", "mail", "subject"]
+  .map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -753,7 +760,7 @@ export async function getRestoreResources(
       ): Promise<{ rows: UnknownRecord[] }>;
     };
     const { rows } = await queryClient.query(
-      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius
+      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
@@ -768,6 +775,7 @@ export async function getRestoreResources(
         resourceType: String(row.resource_type),
         blastRadius: String(row.blast_radius),
         service: typeInfo(String(row.resource_type)).service,
+        name: row.display_name == null ? null : String(row.display_name),
       })),
     };
   });

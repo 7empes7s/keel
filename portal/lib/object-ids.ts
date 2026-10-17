@@ -22,3 +22,31 @@ export function holdsObjectId(text: string): boolean {
   if (GUID.test(text) || HEX_RUN.test(text)) return true;
   return (text.match(TOKEN) ?? []).some(opaqueToken);
 }
+
+const GUID_ALL = new RegExp(GUID.source, "gi");
+const HEX_RUN_ALL = new RegExp(HEX_RUN.source, "gi");
+
+/** Each id in the text, in every shape holdsObjectId knows, replaced by what `replace`
+ * returns for it. The replacement must not itself hold an id. */
+export function replaceObjectIds(text: string, replace: (id: string) => string): string {
+  return text
+    .replace(GUID_ALL, replace)
+    .replace(HEX_RUN_ALL, replace)
+    .replace(TOKEN, (token) => (opaqueToken(token) ? replace(token) : token));
+}
+
+/** Every id in the text, in every shape holdsObjectId knows, as written. */
+export function objectIdsIn(text: string): string[] {
+  const found: string[] = [];
+  replaceObjectIds(text, (id) => {
+    found.push(id);
+    return "";
+  });
+  return found;
+}
+
+/** True when the whole text is one id. */
+export function isObjectId(text: string): boolean {
+  const ids = objectIdsIn(text);
+  return ids.length === 1 && ids[0] === text;
+}

@@ -4768,8 +4768,6 @@ section.wizard-panel {
   list-style: none;
 }
 
-.completion-item-verified { opacity: 0.85; }
-
 .completion-evidence {
   display: block;
   color: var(--text-soft);

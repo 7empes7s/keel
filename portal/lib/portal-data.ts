@@ -739,20 +739,36 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
           WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
        )
        SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
-              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name
+              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name,
+              rv.resource_type, rv.natural_key,
+              CASE WHEN rv.resource_type = ANY($4::text[]) AND ${REF_NAME_SQL} IS NULL THEN rv.payload END AS payload
          FROM resource_version rv
          JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
         WHERE rv.snapshot_id IN (SELECT id FROM seen)
           AND (lower(rv.payload->>'id') = ANY($3::text[])
             OR lower(rv.payload->>'appId') = ANY($3::text[])
             OR lower(rv.payload->>'roleTemplateId') = ANY($3::text[]))`,
-      [ref, items.map((item) => item.id), wanted],
+      [ref, items.map((item) => item.id), wanted, DERIVED_NAME_TYPES],
     );
-    for (const row of rows) {
-      const name = typeof row.name === "string" ? row.name.trim() : "";
-      if (!name || objectIds(name).length) continue;
+    const add = (row: Record<string, unknown>, name: string) => {
       for (const id of [row.id, row.app_id, row.template_id]) {
         if (typeof id === "string" && !names.has(id)) names.set(id, name);
+      }
+    };
+    // An app consent a value points to (by its grant id) has no name of its own: it is
+    // named from the apps and person it links (lib/app-names).
+    const unnamed: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (name && !objectIds(name).length) add(row, name);
+      else if (!name && row.payload) unnamed.push(row);
+    }
+    if (unnamed.length) {
+      const refs = unnamed.map((row) => referencedIds(String(row.resource_type), String(row.natural_key), row.payload));
+      const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
+      for (const row of unnamed) {
+        const name = derivedName(String(row.resource_type), String(row.natural_key), row.payload, lookup);
+        if (name) add(row, name);
       }
     }
   } catch (error) {

@@ -5,6 +5,9 @@ import {
   ActivationNotFoundError, ActivationRefusedError, activatePolicy, createActivationPreview, summarizeAutomationOutcomes,
 } from "../../engine/policy/activation.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
+import { payloadName } from "@/lib/changes-view";
+import type { NamedKeys } from "@/lib/job-names";
+import { savedNames } from "@/lib/saved-names";
 
 import type { DataSurface } from "@/lib/read";
 
@@ -24,6 +27,9 @@ export interface Policy {
   last_action_at: string | null;
   last_action_status: string | null;
   last_action_natural_key: string | null;
+  /** The saved name of what it last acted on, filled in by the reader; never an id. */
+  last_action_name?: string | null;
+  last_action_resource_type?: string | null;
   actions_last_7_days: number;
   resource_type: string | null;
   blast_radius: string | null;
@@ -64,6 +70,53 @@ export interface ActivationPreview {
   versions: { policy: string; grant: string; ownership: string; projection: string };
   digest: string;
   outcomes?: { queued: number; rolledBack: number; failed: number };
+  /** Names, not ids: the saved name of every resource the preview lists, by key. */
+  names?: NamedKeys;
+}
+
+type QueryClient = { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
+
+/** Each policy with the saved name of what it last acted on. A failed lookup leaves it unnamed. */
+async function withLastActionNames(client: QueryClient, tenantRef: string, policies: Policy[]): Promise<Policy[]> {
+  const keys = policies.map((policy) => policy.last_action_natural_key).filter((key): key is string => Boolean(key));
+  if (keys.length === 0) return policies;
+  let names: NamedKeys = {};
+  try {
+    names = await savedNames(client, tenantRef, keys);
+  } catch (error) {
+    console.error("[keel-portal] policy names unavailable", error);
+  }
+  return policies.map((policy) => {
+    const saved = policy.last_action_natural_key ? names[policy.last_action_natural_key] : undefined;
+    return { ...policy, last_action_name: saved?.name ?? null, last_action_resource_type: saved?.resourceType ?? null };
+  });
+}
+
+/** The name of every resource a preview lists: the changes' own names first, then the newest backup's. */
+export async function previewNames(client: QueryClient, tenantRef: string, preview: ActivationPreview): Promise<NamedKeys> {
+  const keys = [
+    ...preview.matched.map((drift) => drift.naturalKey), ...preview.matchedOverCeiling.map((drift) => drift.naturalKey),
+    ...preview.dependencies.flatMap((dependency) => [dependency.naturalKey, ...dependency.requiredBy]),
+    ...preview.unsupported.map((entry) => entry.naturalKey), ...preview.unknowns.flatMap((unknown) => unknown.naturalKeys),
+  ];
+  let names: NamedKeys = {};
+  try {
+    names = await savedNames(client, tenantRef, keys);
+    const driftIds = [...preview.matched, ...preview.matchedOverCeiling].map((drift) => drift.driftId);
+    if (driftIds.length) {
+      const { rows } = await client.query(
+        "SELECT natural_key, resource_type, after_payload, before_payload FROM drift WHERE tenant_ref = $1 AND id::text = ANY($2::text[])",
+        [tenantRef, driftIds],
+      );
+      for (const row of rows) {
+        const name = payloadName(row.after_payload) ?? payloadName(row.before_payload);
+        if (name) names[String(row.natural_key)] = { name, resourceType: String(row.resource_type) };
+      }
+    }
+  } catch (error) {
+    console.error("[keel-portal] preview names unavailable", error);
+  }
+  return names;
 }
 
 export function automationDisabled(path = AUTOMATION_KILL_SWITCH_PATH): boolean {
@@ -85,7 +138,8 @@ export function guardedPolicyList(deps: GuardDeps = {}) {
   return guarded({ action: "policies:list", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const filter = new URL(request.url).searchParams.get("enabled");
     if (filter !== null && filter !== "true" && filter !== "false") throw new InvalidActionRequest();
-    const policies = await listPolicies(client, { tenantRef, enabled: filter === null ? undefined : filter === "true" });
+    const listed = await listPolicies(client, { tenantRef, enabled: filter === null ? undefined : filter === "true" }) as Policy[];
+    const policies = await withLastActionNames(client as QueryClient, tenantRef, listed);
     return Response.json({
       policies, automationDisabled: automationDisabled(), automationHaltedAt: automationHaltedAt(),
       haltFile: AUTOMATION_KILL_SWITCH_PATH, generatedAt: new Date().toISOString(),
@@ -97,7 +151,8 @@ export function guardedPolicyShow(deps: GuardDeps = {}) {
   return guarded({ action: "policies:show", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const id = new URL(request.url).pathname.split("/").at(-1) ?? "";
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
-    const policy = await getPolicy(client, { tenantRef, id });
+    const found = await getPolicy(client, { tenantRef, id }) as Policy | null;
+    const policy = found ? (await withLastActionNames(client as QueryClient, tenantRef, [found]))[0] : null;
     return Response.json(policy ? { policy, automationDisabled: automationDisabled(), generatedAt: new Date().toISOString() } : { error: "not_found" }, { status: policy ? 200 : 404, headers: NO_STORE });
   }, deps);
 }
@@ -169,7 +224,8 @@ export function guardedPolicyActivationPreview(surface: DataSurface, deps: Guard
     try {
       const preview = await createActivationPreview(client, { tenantRef, policyId: id, requestedBy: principalId });
       const outcomes = await summarizeAutomationOutcomes(client, { tenantRef, policyId: id });
-      return Response.json({ preview: { ...preview, outcomes: { queued: outcomes.queued, rolledBack: outcomes.rolledBack, failed: outcomes.failed } } }, { status: 201, headers: NO_STORE });
+      const names = await previewNames(client as QueryClient, tenantRef, preview as ActivationPreview);
+      return Response.json({ preview: { ...preview, outcomes: { queued: outcomes.queued, rolledBack: outcomes.rolledBack, failed: outcomes.failed }, names } }, { status: 201, headers: NO_STORE });
     } catch (error) {
       if (error instanceof ActivationNotFoundError) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
       throw error;

@@ -6,6 +6,9 @@ import {
 } from "../../engine/policy/changeIntent.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
+import { payloadName } from "@/lib/changes-view";
+import { savedNames } from "@/lib/saved-names";
+import { personLabel } from "@/lib/sentences";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { WINDOW_HOURS, type ChangeIntent, type ChangeIntentsData, type IntentTransition } from "@/lib/change-intents-view";
 
@@ -41,13 +44,25 @@ export async function loadChangeIntents(client: Client, tenantRef: string, now =
   const { rows: people } = await client.query(
     "SELECT id, email, display_name FROM principal WHERE disabled_at IS NULL ORDER BY lower(coalesce(display_name, email)), id",
   );
+  // Names, not ids: the name the change carries, else the newest backup's. A failed
+  // lookup leaves names empty (the page says "Unnamed …"), never the page down.
+  let saved: Awaited<ReturnType<typeof savedNames>> = {};
+  try {
+    saved = await savedNames(client, tenantRef, [...intents.map((intent) => intent.naturalKey), ...drifts.map((drift) => String(drift.natural_key))]);
+  } catch (error) {
+    console.error("[keel-portal] emergency change names unavailable", error);
+  }
   return {
-    intents,
+    intents: intents.map((intent) => ({ ...intent, name: saved[intent.naturalKey]?.name ?? null })),
     changes: drifts.map((drift) => ({
       driftId: String(drift.id), naturalKey: String(drift.natural_key), resourceType: String(drift.resource_type),
+      name: payloadName(drift.after_payload) ?? payloadName(drift.before_payload) ?? saved[String(drift.natural_key)]?.name ?? null,
       detectedAt: iso(drift.detected_at), transitions: (driftTransitions(drift) ?? []) as IntentTransition[],
     })).filter((change) => change.transitions.length > 0),
-    people: people.map((person) => ({ id: String(person.id), name: String(person.display_name ?? person.email) })),
+    people: people.map((person) => ({
+      id: String(person.id),
+      name: personLabel({ kind: "person", id: String(person.id), name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "A person without a name"),
+    })),
     generatedAt: now.toISOString(),
   };
 }

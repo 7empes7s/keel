@@ -39,12 +39,13 @@ const basePolicy: Policy = {
 
 test("a policy reads as what it does, acting as whom — never its codes or ids", () => {
   assert.equal(policySentence(basePolicy),
-    "Rolls back cosmetic changes to any resource automatically, up to 50 an hour, acting as svc-policy@contoso.com.");
+    "Rolls back cosmetic changes to any resource automatically, up to 50 an hour, acting as Svc Policy.");
   assert.equal(policySentence({ ...basePolicy, action: "alert" }), "Alerts on cosmetic changes to any resource.");
   assert.match(matchPhrase({ ...basePolicy, natural_key_glob: "group:Admin*", change_type: null, blast_radius: null }), /^changes to groups named like “Admin\*”$/);
   assert.equal(policyStateSentence({ ...basePolicy, paused_at: "2026-10-02T07:40:00Z" }, "2026-10-02T09:40:00Z"), "Paused 2 hours ago after reaching its limit");
   assert.equal(policyStateSentence({ ...basePolicy, enabled: false }, "2026-10-02T09:40:00Z"), "Turned off");
-  assert.match(policySentence({ ...basePolicy, run_as_principal: { ...basePolicy.run_as_principal!, readable: false, name: null } }), /account 3f9c2b1e \(no longer readable\)/);
+  assert.match(policySentence({ ...basePolicy, run_as_principal: { ...basePolicy.run_as_principal!, readable: false, name: null } }), /acting as an account that no longer exists\./);
+  assert.match(policySentence({ ...basePolicy, run_as_principal: { ...basePolicy.run_as_principal!, name: "Policy service" } }), /acting as Policy service\.$/);
   assert.equal(policiesVerdict([basePolicy, { ...basePolicy, paused_at: "2026-10-02T07:40:00Z" }], false), "Automation is on. 2 policies, 1 paused.");
   for (const sentence of [policySentence(basePolicy), policiesVerdict([basePolicy], true)]) {
     assert.doesNotMatch(sentence, /dispose-accept|auto_remediate|[0-9a-f]{8}-[0-9a-f]{4}/);

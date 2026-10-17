@@ -36,6 +36,7 @@ import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
 import { getLiveRecords } from "@/lib/live-records";
+import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
 import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
@@ -554,22 +555,38 @@ export async function getCoverageData(): Promise<CoverageData> {
   return withClient((client) => coverageFor(client, ref));
 }
 
+const PRINCIPAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+/**
+ * Who approved each baseline, by name: a person's display name (or a name read from
+ * their email), "Keel's scheduler" for Keel's own accounts. Never an id, email or code.
+ */
+export async function withApproverNames(client: KeelClient, baselines: BaselineRecord[]): Promise<BaselineRecord[]> {
+  const ids = [...new Set(baselines.map((baseline) => baseline.setBy).filter((id) => PRINCIPAL_ID.test(id)))];
+  const people = new Map<string, UnknownRecord>();
+  if (ids.length) {
+    const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
+    for (const row of rows) people.set(String(row.id), row);
+  }
+  return baselines.map((baseline) => {
+    const id = baseline.setBy;
+    const person = people.get(id);
+    const name = !PRINCIPAL_ID.test(id)
+      ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
+      : person
+        ? personLabel({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "an account without a name")
+        : "an account that no longer exists";
+    const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
+    return { ...baseline, setByRef };
+  });
+}
+
 export async function getBaselinesData(): Promise<BaselinesData> {
   const ref = tenantRef();
   const now = new Date();
   return withClient(async (client) => {
-    const baselines = await baselinesWithCapture(client, ref, now);
-    const people = await principalRefs(client, baselines.map((baseline) => baseline.setBy).filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id)));
-    return {
-      generatedAt: now.toISOString(),
-      baselines: baselines.map((baseline) => {
-        // A principal id resolves to a name; a system actor ("scheduler") is named by itself.
-        const setByRef: Ref = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(baseline.setBy)
-          ? people.get(baseline.setBy)!
-          : { kind: "person", id: baseline.setBy, name: baseline.setBy, href: null };
-        return { ...baseline, setByRef };
-      }),
-    };
+    const baselines = await withApproverNames(client, await baselinesWithCapture(client, ref, now));
+    return { generatedAt: now.toISOString(), baselines };
   });
 }
 
@@ -951,7 +968,8 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
     const displayNames = new Map<string, string>();
     if (wanted.length > 0) {
       const { rows } = await client.query(
-        `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key, rv.payload->>'displayName' AS display_name
+        `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key,
+                COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")}) AS display_name
            FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
            JOIN unnest($1::text[], $2::text[]) AS w(snapshot_id, natural_key)
              ON w.snapshot_id = rv.snapshot_id::text AND w.natural_key = rv.natural_key
@@ -1104,10 +1122,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       | UnknownRecord
       | null;
     const baselines = await baselinesFor(client, ref);
-    const activeBaseline = active
+    const found = active
       ? baselines.find((candidate) => candidate.id === String(active.id)) ??
         normalizeBaseline({ ...active, resource_count: 0 })
       : null;
+    const activeBaseline = found ? (await withApproverNames(client, [found]))[0] : null;
     const lastCollectionRaw = (await getLastCollection(client, {
       tenantRef: ref,
     })) as UnknownRecord | null;

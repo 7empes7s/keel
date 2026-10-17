@@ -1,3 +1,4 @@
+import { namedResource } from "@/lib/job-names";
 import { fromNow } from "@/lib/presentation";
 
 // Roadmap task-93: the approved emergency change as the portal reads it. Client-safe:
@@ -11,6 +12,8 @@ export interface ChangeIntent {
   id: string;
   naturalKey: string;
   resourceType: string;
+  /** The resource's saved name, filled in by the page's loader; never shown as an id. */
+  name?: string | null;
   transitions: IntentTransition[];
   transitionDigest: string;
   owner: IntentPerson;
@@ -29,12 +32,17 @@ export interface ChangeIntent {
   settlement: { endedAt: string; currentState: string; snapshotId: string | null; observedAt: string | null; driftId: string | null } | null;
   state: "scheduled" | "active" | "revoked" | "ended";
 }
-export interface IntentCandidate { driftId: string; naturalKey: string; resourceType: string; detectedAt: string | null; transitions: IntentTransition[] }
+export interface IntentCandidate { driftId: string; naturalKey: string; resourceType: string; name?: string | null; detectedAt: string | null; transitions: IntentTransition[] }
 export interface ChangeIntentsData {
   intents: ChangeIntent[];
   changes: IntentCandidate[];
   people: { id: string; name: string }[];
   generatedAt: string;
+}
+
+/** What an approval or an open change is about, by name: "Finance (group)", never an id. */
+export function intentResource(item: { naturalKey: string; resourceType: string; name?: string | null }): string {
+  return namedResource(item.naturalKey, { [item.naturalKey]: { name: item.name ?? null, resourceType: item.resourceType } }, item.resourceType);
 }
 
 /** The page's one sentence. Under 25 words, no codes. */

@@ -4,6 +4,7 @@ import { connect } from "../../engine/store/db.mjs";
 
 import { normalizeJob } from "@/lib/action";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { withSavedChangeNames } from "@/lib/saved-names";
 
 // Plan task 16: the server-side data layer for the baselines and backups action
 // surfaces. Lives apart from portal-data.ts (which serves the read-only report pages)
@@ -60,7 +61,9 @@ export async function getRecentJobs(
     // Filtered in the query: newer jobs of other kinds never push these out of the list.
     const rows = (await listJobs(client, { limit, kinds })) as UnknownRecord[];
     // Task-130: requester, plan, baseline and changes resolved to names.
-    return ((await summarizeJobs(client, { tenantRef: tenantRef(), jobs: rows })) as UnknownRecord[]).map(normalizeJob);
+    const jobs = ((await summarizeJobs(client, { tenantRef: tenantRef(), jobs: rows })) as UnknownRecord[]).map(normalizeJob);
+    // Roll backs name their changes by the saved name, never an id.
+    return withSavedChangeNames(client, tenantRef(), jobs);
   });
 }
 

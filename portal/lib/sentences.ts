@@ -4,7 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
-import { holdsObjectId } from "@/lib/job-names";
+import { holdsObjectId, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
   kind: string;
@@ -27,6 +27,7 @@ export interface PlanRef extends EngineRef {
 
 export interface ChangeRef extends EngineRef {
   naturalKey?: string;
+  resourceType?: string;
   changeType?: string;
   blastRadius?: string;
 }
@@ -63,6 +64,36 @@ export function refLabel(ref: EngineRef | null | undefined, fallback = "someone"
   return `${KIND_WORDS[ref.kind] ?? words(ref.kind)} ${ref.id.slice(0, 8)} (no longer readable)`;
 }
 
+// Accounts Keel itself acts as, named in words rather than by their code.
+const SYSTEM_ACTORS: Record<string, string> = {
+  scheduler: "Keel's scheduler",
+  "policy-automation": "Keel's policy automation",
+};
+
+const EMAIL = /^[^\s@]+@[^\s@]+$/;
+
+/**
+ * A person as a name: their display name, else a name read from their email address
+ * ("maro.defili@…" reads "Maro Defili"). Keel's own accounts are named in words. Never
+ * an email, a system code or an account id; those stay in Technical details.
+ */
+export function personLabel(ref: EngineRef | null | undefined, fallback = "an unknown person"): string {
+  if (!ref) return fallback;
+  if (!ref.readable) return "an account that no longer exists";
+  const name = ref.name?.trim() ?? "";
+  const readableName = Boolean(name) && !EMAIL.test(name) && !holdsObjectId(name);
+  if (ref.system) {
+    const code = (readableName && !ref.email ? name : (ref.email ?? name).split("@")[0]).toLowerCase();
+    if (SYSTEM_ACTORS[code]) return SYSTEM_ACTORS[code];
+    if (readableName && ref.email) return name;
+    return code && !holdsObjectId(code) ? `Keel (${words(code).toLowerCase()})` : "Keel";
+  }
+  if (readableName) return name;
+  const local = (ref.email ?? name).split("@")[0];
+  const fromEmail = local.split(/[^A-Za-z]+/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1).toLowerCase()).join(" ");
+  return fromEmail && !holdsObjectId(local) ? fromEmail : fallback;
+}
+
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString("en-GB")} ${count === 1 ? one : many}`;
 }
@@ -78,9 +109,12 @@ function planPhrase(plan: PlanRef | null | undefined): string {
 
 function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const known = changes.filter((change): change is ChangeRef => Boolean(change));
-  // A key that is or holds an object id is never named (names, not ids).
-  const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
   const count = plural(known.length, "change");
+  // The saved name first (filled in by the page that loads it), then a key that holds
+  // no object id. A name or key that is or holds an id is never shown.
+  const named = known.find((change) => change.readable && change.name && !holdsObjectId(change.name));
+  if (named?.name) return `${count}, including ${named.name}`;
+  const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
   return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
 }
 
@@ -183,8 +217,8 @@ interface EvidenceLike {
   subject: unknown;
 }
 
-/** An audit-record entry as a sentence: who did what. */
-export function evidenceSentence(entry: EvidenceLike, actorName: string): string {
+/** An audit-record entry as a sentence: who did what, naming objects by their saved name. */
+export function evidenceSentence(entry: EvidenceLike, actorName: string, names: NamedKeys = {}): string {
   const subject = (entry.subject ?? {}) as Record<string, unknown>;
   const actionWords = (value: unknown) => (typeof value === "string" ? displayEnum("jobKind", value.replace(/:.*/, "")).toLowerCase() : "an action");
   switch (entry.kind) {
@@ -195,7 +229,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string): string
       ? `${actorName} was refused: ${actionWords(subject.action)}`
       : `${actorName} started ${actionWords(subject.action)}`;
     case "policy-evaluation": return typeof subject.naturalKey === "string"
-      ? `Policies checked a change to ${resourceLabel(subject.naturalKey)}${subject.matched ? ", and one applied" : ""}`
+      ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
     case "automation-execution": return `Automation ${subject.outcome === "executed" ? "rolled back a change" : "tried to roll back a change"}`;
     case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared`;

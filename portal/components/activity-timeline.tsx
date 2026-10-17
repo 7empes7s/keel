@@ -6,8 +6,8 @@ import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import { evidenceSentence, jobName, jobStatusSentence, refLabel } from "@/lib/sentences";
-import type { Ref } from "@/lib/types";
+import type { NamedKeys } from "@/lib/job-names";
+import { type EngineRef, evidenceSentence, jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 // Roadmap task-130, the Activity section: what KEEL did and who decided what, as one
 // timeline of sentences with the actor and age. Ids, sequence numbers, worker ids and
@@ -58,9 +58,18 @@ export function IntegrityNote({ integrity }: { integrity: ChainIntegrity | null 
   );
 }
 
-export function ActivityTimeline({ items, people, now }: { items: ActivityEntry[]; people: Record<string, Ref>; now: string }) {
+export function ActivityTimeline({ items, people, names = {}, now }: {
+  items: ActivityEntry[];
+  people: Record<string, EngineRef | undefined>;
+  names?: NamedKeys;
+  now: string;
+}) {
   if (items.length === 0) return <p className="empty-state">Nothing matches these filters.</p>;
-  const actorName = (actor: string) => people[actor]?.name ?? actor;
+  // Never an email, system code or account id: those stay in the record.
+  const actorName = (actor: string) => {
+    const ref = people[actor];
+    return ref ? personLabel(ref).replace(/^./, (letter) => letter.toUpperCase()) : "Someone";
+  };
   return (
     <ol className="activity-list">
       {items.map((item) => item.type === "job" ? (
@@ -70,7 +79,7 @@ export function ActivityTimeline({ items, people, now }: { items: ActivityEntry[
             <p className="activity-meta">
               <JobStatusBadge status={item.job.status} />{" "}
               <time dateTime={item.at ?? undefined} title={formatTimestamp(item.at)}>{jobStatusSentence(item.job, now)}</time>
-              {" · asked by "}{refLabel(item.job.references?.people.requested_by, "an unknown account")}
+              {" · asked by "}{personLabel(item.job.references?.people.requested_by)}
             </p>
           </div>
           <TechnicalDetails><JobRecordFields job={item.job} /></TechnicalDetails>
@@ -78,7 +87,7 @@ export function ActivityTimeline({ items, people, now }: { items: ActivityEntry[
       ) : (
         <li className="activity-item activity-record" key={`record:${item.entry.seq}`}>
           <div className="activity-main">
-            <p className="activity-title">{evidenceSentence(item.entry, actorName(item.entry.actor))}</p>
+            <p className="activity-title">{evidenceSentence(item.entry, actorName(item.entry.actor), names)}</p>
             <p className="activity-meta">
               Recorded <time dateTime={item.at ?? undefined} title={formatTimestamp(item.at)}>{ago(item.at, now)}</time>
             </p>

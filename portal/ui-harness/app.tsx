@@ -437,6 +437,7 @@ const EVIDENCE = [
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
   { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "action-attempt", actor: "marouanedefili@gmail.com", subject: { action: "backup", decision: "attempted" } },
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
+  { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
 ];
 const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
   basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
@@ -1274,7 +1275,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <Verdict text={activityVerdict(jobs, now)} tone={jobs.some((item) => item.status === "failed") ? "attention" : "good"} />
       <div data-layer="explanation">
         <IntegrityNote integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
-        <ActivityTimeline items={mergeActivity(jobs, EVIDENCE)} now={now} people={{ "marouanedefili@gmail.com": { kind: "person", id: "marouanedefili@gmail.com", name: "marouanedefili@gmail.com", href: null } }} />
+        <ActivityTimeline items={mergeActivity(jobs, EVIDENCE)} now={now} people={{ "marouanedefili@gmail.com": personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com"), scheduler: personRef("scheduler", "scheduler") }}
+          names={{ "group:5d1c0000-0000-4000-8000-0000000000f1": { name: "Finance approvers", resourceType: "group" } }} />
         <JobRefresher active={active} />
       </div></>;
     case "/protect": {

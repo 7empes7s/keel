@@ -1,6 +1,7 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
-import type { NamedKeys } from "@/lib/job-names";
+import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
+import type { ChangeRef } from "@/lib/sentences";
 
 interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -44,4 +45,44 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
     };
   }
   return names;
+}
+
+interface WithChanges {
+  references?: { changes: (ChangeRef | undefined)[] };
+}
+
+/**
+ * Each change a job or request rolls back, named by the name its backup holds, so a
+ * roll back reads "Roll back of 2 changes, including Finance (group)", never an id. A
+ * change with no saved name keeps a null name; a failed lookup leaves every change
+ * unnamed rather than taking the page down.
+ */
+export async function withSavedChangeNames<T extends WithChanges>(client: QueryClient, tenantRef: string, rows: T[]): Promise<T[]> {
+  const keys = rows.flatMap((row) => (row.references?.changes ?? []).map((change) => change?.naturalKey));
+  if (!keys.some(Boolean)) return rows;
+  let names: NamedKeys;
+  try {
+    names = await savedNames(client, tenantRef, keys);
+  } catch (error) {
+    console.error("[keel-portal] change names unavailable", error);
+    return rows;
+  }
+  return rows.map((row) => nameChanges(row, names));
+}
+
+/** One row's changes with their saved names. Pure, so it is tested directly. */
+export function nameChanges<T extends WithChanges>(row: T, names: NamedKeys): T {
+  const refs = row.references;
+  if (!refs?.changes.length) return row;
+  return {
+    ...row,
+    references: {
+      ...refs,
+      changes: refs.changes.map((change) => {
+        if (!change?.readable || !change.naturalKey) return change;
+        const name = namedSubject(change.naturalKey, names, change.resourceType);
+        return name.startsWith("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+      }),
+    },
+  } as T;
 }

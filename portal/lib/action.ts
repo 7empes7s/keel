@@ -27,6 +27,7 @@ import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, entityScopeFrom } from "@/lib/principal";
 import { captureApprovalScope } from "../../engine/authz/entityScope.mjs";
 import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
 
@@ -387,8 +388,10 @@ export function guardedJobList(
       >[];
       // Task-130: requester, plan, baseline and changes resolved to names.
       const summarized = (await summarizeJobs(client, { tenantRef, jobs: rows })) as Record<string, unknown>[];
+      // Roll backs name their changes by the saved name, never an id.
+      const jobs = await withSavedChangeNames(client, tenantRef, summarized.map(normalizeJob));
       return Response.json(
-        { generatedAt: new Date().toISOString(), jobs: summarized.map(normalizeJob) },
+        { generatedAt: new Date().toISOString(), jobs },
         { headers: NO_STORE },
       );
     },

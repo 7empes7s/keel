@@ -7,7 +7,7 @@ import { TechnicalDetails } from "@/components/technical-details";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { formatTimestamp } from "@/lib/presentation";
-import { jobName, jobStatusSentence, refLabel } from "@/lib/sentences";
+import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 function statusChip(status: string): { tone: RiskTone | null; label: string } {
   if (status === "succeeded" || status === "finished" || status === "completed") return { tone: "fine", label: "Finished" };
@@ -34,7 +34,7 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
                   <Link className="bl-row-link" href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
                   <small>
                     <time dateTime={at ?? undefined} title={formatTimestamp(at)}>{jobStatusSentence(job, now)}</time>
-                    {" · asked by "}{refLabel(job.references?.people.requested_by, "an unknown account")}
+                    {" · asked by "}{personLabel(job.references?.people.requested_by)}
                   </small>
                 </span>
                 <RiskChip tone={chip.tone}>{chip.label}</RiskChip>

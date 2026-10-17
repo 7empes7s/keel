@@ -301,19 +301,28 @@ export async function evaluateDrift(client, { tenantRef, drift, actor = 'policy-
 }
 
 // A policy can be created or enabled after its matching drift was recorded. Re-run the
-// normal one-drift evaluation for every currently open row so those rows receive the
-// same evidence and auto-remediation path as newly recorded drift.
+// normal one-drift evaluation for every open change so those rows receive the same
+// evidence and auto-remediation path as newly recorded drift. Older drift-detect runs
+// recorded a new row per run for a change they still saw; only the newest row for a
+// resource (per baseline) says where the change stands, so only that row is evaluated,
+// and only while it is open. Superseded rows are left as they are.
 export async function evaluateOpenDrifts(client, {
   tenantRef,
   actor = 'policy-evaluator',
   automationActor = 'policy-automation',
 }) {
   const { rows: drifts } = await client.query(
-    `SELECT d.*
-     FROM drift d
-     WHERE d.tenant_ref = $1
-       AND ${OPEN_DRIFT_PREDICATE}
-     ORDER BY d.detected_at, d.id`,
+    `WITH latest AS (
+       SELECT DISTINCT ON (baseline_id, natural_key) id
+         FROM drift
+        WHERE tenant_ref = $1
+        ORDER BY baseline_id, natural_key, detected_at DESC, id DESC
+     )
+     SELECT d.*
+       FROM drift d
+       JOIN latest ON latest.id = d.id
+      WHERE ${OPEN_DRIFT_PREDICATE}
+      ORDER BY d.detected_at, d.id`,
     [tenantRef],
   );
 

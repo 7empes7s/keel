@@ -500,16 +500,12 @@ function notesFor(ledgerType, entry) {
   return [`- **${entry.name}** (${LIMIT_WORDS[entry.limit]}). ${entry.why}`, ...missingLines(ledgerType), `  - *You do:* ${entry.todo}`];
 }
 
-/** The workload section: settings read, writes declared, and what is left to the reader. */
-function workloadSection(guide) {
-  const lines = [
-    '## Microsoft 365 workloads',
-    '',
-    'KEEL backs up the configuration of these workloads, never their content: no mail, no files, no Teams messages or channels.',
-    '',
-    'Each workload ships switched off. KEEL turns a backup on for your tenant only after a live read from your tenant is checked, and turns a restore on only after a live write and read-back on your tenant is checked, at most 30 days old. A test against a simulated tenant never switches anything on.',
-    '',
-  ];
+/**
+ * Per workload, in WORKLOADS order: its plain name, the settings it backs up, the
+ * writes KEEL declares for it (verb, setting, and the restores that must be proven
+ * first) and the hand step. The Restore page and the coverage doc both read this.
+ */
+export function workloadRestoreGuide(guide = WORKLOAD_GUIDE) {
   const writesByWorkload = new Map();
   for (const [id, write] of Object.entries(WORKLOAD_WRITE_OPERATIONS)) {
     if (!writesByWorkload.has(write.workload)) writesByWorkload.set(write.workload, []);
@@ -520,25 +516,41 @@ function workloadSection(guide) {
     const read = WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === write.readBack);
     return PROPER_START.test(read.resource) ? read.resource : `${read.resource.charAt(0).toLowerCase()}${read.resource.slice(1)}`;
   };
-  for (const workload of WORKLOADS) {
+  return WORKLOADS.map((workload) => {
     const entry = guide[workload];
     if (!entry) throw new Error(`docs/coverage.md: no plain-English entry for workload ${workload}; add one to WORKLOAD_GUIDE`);
+    const reads = WORKLOAD_DESCRIPTORS.filter((descriptor) => descriptor.workload === workload).map((read) => read.resource);
+    const writes = (writesByWorkload.get(workload) ?? []).map((write) => {
+      const verb = WRITE_VERBS[write.id.split('.').at(-1)];
+      if (!verb) throw new Error(`docs/coverage.md: no plain verb for workload write ${write.id}`);
+      const name = write.name ?? WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === write.readBack).resource;
+      return { verb, name, after: (write.requires ?? []).map(writeName) };
+    });
+    return { workload, name: entry.name, reads, writes, todo: entry.todo };
+  });
+}
+
+/** The workload section: settings read, writes declared, and what is left to the reader. */
+function workloadSection(guide) {
+  const lines = [
+    '## Microsoft 365 workloads',
+    '',
+    'KEEL backs up the configuration of these workloads, never their content: no mail, no files, no Teams messages or channels.',
+    '',
+    'Each workload ships switched off. KEEL turns a backup on for your tenant only after a live read from your tenant is checked, and turns a restore on only after a live write and read-back on your tenant is checked, at most 30 days old. A test against a simulated tenant never switches anything on.',
+    '',
+  ];
+  for (const entry of workloadRestoreGuide(guide)) {
     lines.push(`### ${entry.name}`, '');
-    const reads = WORKLOAD_DESCRIPTORS.filter((descriptor) => descriptor.workload === workload);
     lines.push('**Backed up:**', '');
-    for (const read of reads) lines.push(`- ${read.resource}`);
+    for (const read of entry.reads) lines.push(`- ${read}`);
     lines.push('');
-    const writes = writesByWorkload.get(workload) ?? [];
-    if (writes.length === 0) {
+    if (entry.writes.length === 0) {
       lines.push('**KEEL can restore:** nothing yet.', '');
     } else {
       lines.push('**KEEL can restore:**', '');
-      for (const write of writes) {
-        const verb = WRITE_VERBS[write.id.split('.').at(-1)];
-        if (!verb) throw new Error(`docs/coverage.md: no plain verb for workload write ${write.id}`);
-        const after = (write.requires ?? []).map(writeName);
-        const name = write.name ?? WORKLOAD_DESCRIPTORS.find((descriptor) => descriptor.id === write.readBack).resource;
-        lines.push(`- ${verb}: ${name}${after.length ? ` (switched on only after the restore of ${list(after)} is proven)` : ''}`);
+      for (const write of entry.writes) {
+        lines.push(`- ${write.verb}: ${write.name}${write.after.length ? ` (switched on only after the restore of ${list(write.after)} is proven)` : ''}`);
       }
       lines.push('');
     }

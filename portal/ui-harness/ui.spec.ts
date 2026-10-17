@@ -226,6 +226,25 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
 });
 
+test("restore lists every other Microsoft 365 service it backs up, and says what can be put back", async ({ page }) => {
+  await open(page, "/restore");
+  const services = page.locator(".restore-service h3");
+  await expect(services).toHaveText(["Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
+  const flow = page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" });
+  await expect(flow.locator(".restore-chip")).toHaveText("KEEL can put back");
+  await expect(flow.locator(".restore-workload-backup")).toHaveText("Backed up 3 hours ago · 7 items.");
+  const onedrive = page.locator(".restore-workload", { hasText: "OneDrive settings" });
+  await expect(onedrive.locator(".restore-chip")).toHaveText("By hand only");
+  await onedrive.getByText("What you do by hand").click();
+  await expect(onedrive).toContainText("Change them by hand in the SharePoint admin center");
+  await expect(page.locator(".restore-workload", { hasText: "Teams organization policies" })).toContainText("The newest backup failed");
+  const power = page.locator(".restore-workload", { hasText: "Power Platform and Power BI" });
+  await expect(power).toContainText("Not switched on for this tenant yet");
+  await expect(power.locator(".restore-chip")).toHaveText("No backup yet");
+  // No stored code on the screen outside Technical details.
+  await expect(page.locator(".restore-services .restore-workload-head")).not.toContainText(["power-platform-settings"]);
+});
+
 test("restore picks its backup on a calendar that marks backup days", async ({ page }) => {
   await open(page, "/restore");
   await page.getByRole("button", { name: /^Backup day:/ }).click();

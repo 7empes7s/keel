@@ -1,4 +1,4 @@
-import { DRIFT_ACTED_ON_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
 import { executeAutoRemediation } from '../policy/execute.mjs';
 
@@ -32,9 +32,13 @@ export async function recordDrift(client, {
   tenantRef, baselineId, observedSnapshot, naturalKey, resourceType, changeType,
   beforeHash, afterHash, beforePayload, afterPayload, blastRadius,
 }) {
-  const rows = await reuseUndecidedDrift(client, {
+  const reused = await reuseDrift(client, {
     tenantRef, baselineId, naturalKey, changeType, beforeHash, afterHash,
-  }) ?? (await client.query(
+  });
+  // An ignored change seen again stays ignored: its row is kept and nothing acts on it,
+  // just as evaluateOpenDrifts (a policy created later) reads open rows only.
+  if (reused?.ignored) return reused.row.id;
+  const rows = reused ? [reused.row] : (await client.query(
     `INSERT INTO drift
        (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
         before_hash, after_hash, before_payload, after_payload, blast_radius)
@@ -67,30 +71,33 @@ export async function recordDrift(client, {
  * A drift-detect run that still sees the same change keeps that change's row instead of
  * adding another one per run. The newest row for the resource against this baseline is
  * reused, unchanged, when it records the same difference (change type and both hashes)
- * and nothing has acted on it yet (DRIFT_ACTED_ON_PREDICATE: no disposition, not even an
- * expired ignore, and no finished or cancelled auto remediation). The row stays the record of when and in which collection
- * KEEL first saw the change. A row something acted on gets a new row when the change is
- * seen again, so a failed or undone auto remediation runs again for it. Returns the
- * reused row, or null when a new row is needed.
+ * and either nothing has acted on it yet (DRIFT_ACTED_ON_PREDICATE: no disposition, not
+ * even an expired ignore, and no finished or cancelled auto remediation) or it is ignored
+ * right now (DRIFT_IGNORED_PREDICATE), so an ignored change stays ignored until the
+ * setting changes again or the ignore runs out. The row stays the record of when and in
+ * which collection KEEL first saw the change. Any other row something acted on gets a new
+ * row when the change is seen again, so a failed or undone auto remediation runs again
+ * for it. Returns { row, ignored } for the reused row, or null when a new row is needed.
  */
-async function reuseUndecidedDrift(client, {
+async function reuseDrift(client, {
   tenantRef, baselineId, naturalKey, changeType, beforeHash, afterHash,
 }) {
   const { rows: [latest] } = await client.query(
     `SELECT d.*,
-            ${DRIFT_ACTED_ON_PREDICATE} AS acted_on
+            ${DRIFT_ACTED_ON_PREDICATE} AS acted_on,
+            ${DRIFT_IGNORED_PREDICATE} AS ignored
        FROM drift d
       WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.natural_key = $3
       ORDER BY d.detected_at DESC, d.id DESC
       LIMIT 1`,
     [tenantRef, baselineId, naturalKey],
   );
-  if (!latest || latest.acted_on) return null;
+  if (!latest || (latest.acted_on && !latest.ignored)) return null;
   if (latest.change_type !== changeType
     || latest.before_hash !== (beforeHash ?? null)
     || latest.after_hash !== (afterHash ?? null)) return null;
-  const { acted_on: _actedOn, ...row } = latest;
-  return [row];
+  const { acted_on: _actedOn, ignored, ...row } = latest;
+  return { row, ignored };
 }
 
 export async function listOpenDrift(client, { tenantRef }) {
@@ -107,7 +114,7 @@ export async function listOpenDrift(client, { tenantRef }) {
 
 /**
  * The open changes against one baseline, one row per resource. Drift-detect runs before
- * reuseUndecidedDrift recorded a fresh row for each difference they still saw, so an
+ * reuseDrift recorded a fresh row for each difference they still saw, so an
  * older long-lived change can have a row per run. Only the newest row for a resource
  * says where it stands: open when it has no closing disposition, settled when it was
  * accepted or ignored. Ids are picked first so the payloads of superseded rows are never

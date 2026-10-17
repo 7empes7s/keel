@@ -260,6 +260,28 @@ test('a change detection keeps on one row still reads as drifted in a later coll
   assert.deepEqual(settled.remediations.map((entry) => [entry.policyId, entry.outcome]), [[policy.id, 'queued']]);
 });
 
+test('a change an admin ignores reads as ignored at settlement and nothing rolls it back', async () => {
+  const tenantRef = 'sha256:intent-ignored-row';
+  const { baselineId } = await seedTenant(tenantRef);
+  const t0 = new Date();
+  const end = new Date(t0.getTime() + HOUR);
+  const { drift: first } = await observe(tenantRef, baselineId, { ...BASE, visibility: 'Public' });
+  const intent = await approve(tenantRef, { driftId: first.id, fields: ['visibility'], windowStart: t0, windowEnd: end, now: t0 });
+  await client.query(
+    `INSERT INTO disposition (drift_id, action, actor, reason, expires_at)
+     VALUES ($1, 'ignore', 'test-operator', 'known change', $2)`,
+    [first.id, new Date(t0.getTime() + 24 * HOUR)],
+  );
+  // A later collection sees the same difference; detection keeps the ignored row.
+  await observe(tenantRef, baselineId, { ...BASE, visibility: 'Public' }, { detect: false });
+  const [settled] = await settleChangeIntents(client, { tenantRef, now: end, killSwitchPath });
+  assert.equal(settled.intentId, intent.id);
+  assert.equal(settled.currentState, 'ignored');
+  assert.equal(settled.driftId, first.id);
+  assert.deepEqual(settled.remediations, []);
+  assert.equal((await jobsFor(first.id)).length, 0);
+});
+
 test('when the window ends KEEL re-reads the resource and evaluates its current state, never the approved inverse', async () => {
   const tenantRef = 'sha256:intent-expiry';
   const { baselineId, policy } = await seedTenant(tenantRef);

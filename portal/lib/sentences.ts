@@ -4,6 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
+import { holdsObjectId } from "@/lib/job-names";
 
 export interface EngineRef {
   kind: string;
@@ -77,7 +78,8 @@ function planPhrase(plan: PlanRef | null | undefined): string {
 
 function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const known = changes.filter((change): change is ChangeRef => Boolean(change));
-  const first = known.find((change) => change.readable && change.naturalKey);
+  // A key that is or holds an object id is never named (names, not ids).
+  const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
   const count = plural(known.length, "change");
   return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { fieldWords } from "@/lib/changes-view";
+import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 
@@ -36,14 +37,14 @@ export function contentEffectLabel(effect: ContentEffectName): string {
 
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));
 
-export function ContentEffectList({ effects }: { effects: ContentEffect[] }) {
+export function ContentEffectList({ effects, names }: { effects: ContentEffect[]; names?: NamedKeys }) {
   return (
     <ul className="content-effect-list">
       {effects.map((effect) => (
         <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}`}>
           <div className="content-effect-head">
             <span className="pill pill-bad content-effect-badge">{contentEffectLabel(effect.effect)}</span>
-            <strong className="resource-name">{resourceLabel(effect.naturalKey)}</strong>
+            <strong className="resource-name">{names ? namedResource(effect.naturalKey, names, effect.resourceType) : resourceLabel(effect.naturalKey)}</strong>
           </div>
           <p className="content-effect-change">
             <span className="content-effect-field">{fieldWords(effect.field)}</span>
@@ -67,9 +68,11 @@ interface PanelProps {
   approvals: { approvedBy: string; approvedAt: string | null }[];
   canApprove: boolean;
   onApproved?: () => void;
+  // Saved names by key; without them the list names each effect from its key.
+  names?: NamedKeys;
 }
 
-export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approvals, canApprove, onApproved }: PanelProps) {
+export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approvals, canApprove, onApproved, names }: PanelProps) {
   const [justification, setJustification] = useState("");
   const [busy, setBusy] = useState(false);
   if (effects.length === 0) return null;
@@ -97,7 +100,7 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
   return (
     <div className="content-effects" role="region" aria-labelledby={`content-effects-${artifactId}`}>
       <p className="severity-label" id={`content-effects-${artifactId}`}>CONTENT EFFECTS · SEPARATE APPROVAL REQUIRED</p>
-      <ContentEffectList effects={effects} />
+      <ContentEffectList effects={effects} names={names} />
       {approvals.length ? (
         <p className="content-effect-approved">
           Approved for exactly these effects by {approvals.map((approval) => approval.approvedBy).join(", ")}.

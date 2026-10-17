@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { type ContentEffect, ContentEffectsPanel } from "@/components/content-effects";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { refusalSentence } from "@/lib/changes-view";
+import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { toast } from "@/lib/toast";
 import {
   UNDO_STATEMENT,
@@ -41,6 +42,8 @@ interface CompensationArtifact {
   contentEffects?: ContentEffect[] | null;
   effectsDigest?: string | null;
   contentEffectApprovals?: { approvedBy: string; approvedAt: string | null }[];
+  // The saved name of each resource the plan names, looked up by the server.
+  names?: NamedKeys;
 }
 
 const STATUS_TONES: Record<CompensationArtifact["status"], string> = { completed: "ok", refused: "warn", failed: "bad" };
@@ -55,7 +58,7 @@ function operationLabel(op: CompensationPlan["operations"][number]): string {
   return `Revert ${fieldList(op.revertedFields ?? []) || "changed fields"}`;
 }
 
-function Section({ title, tone, items }: { title: string; tone: string; items: { naturalKey: string; text: string }[] }) {
+function Section({ title, tone, items, names }: { title: string; tone: string; items: { naturalKey: string; resourceType?: string; text: string }[]; names: NamedKeys }) {
   if (items.length === 0) return null;
   return (
     <section className="compensation-section">
@@ -63,7 +66,7 @@ function Section({ title, tone, items }: { title: string; tone: string; items: {
       <ul className="compensation-list">
         {items.map((item, index) => (
           <li className={`compensation-item compensation-${tone}`} key={`${item.naturalKey}-${index}`}>
-            <strong className="resource-name">{undoSubject(item.naturalKey)}</strong>
+            <strong className="resource-name">{undoSubject(item.naturalKey, names, item.resourceType)}</strong>
             <span className="compensation-text">{item.text}</span>
           </li>
         ))}
@@ -72,15 +75,15 @@ function Section({ title, tone, items }: { title: string; tone: string; items: {
   );
 }
 
-export function CompensationPlanView({ plan }: { plan: CompensationPlan }) {
+export function CompensationPlanView({ plan, names = {} }: { plan: CompensationPlan; names?: NamedKeys }) {
   return (
     <div className="compensation-plan">
       <p className="compensation-statement">{UNDO_STATEMENT}</p>
-      <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, text: operationLabel(op) }))} title="WILL BE UNDONE" tone="ok" />
-      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} title="CHANGED SINCE · NOT OVERWRITTEN" tone="warn" />
-      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item) }))} title="CANNOT BE UNDONE" tone="bad" />
-      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: manualSentence(item.reason) }))} title="NEEDS MANUAL REVIEW" tone="warn" />
-      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: notAppliedSentence(item.reason) }))} title="NOTHING TO UNDO" tone="neutral" />
+      <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, resourceType: op.resourceType, text: operationLabel(op) }))} names={names} title="WILL BE UNDONE" tone="ok" />
+      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} names={names} title="CHANGED SINCE · NOT OVERWRITTEN" tone="warn" />
+      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item, names) }))} names={names} title="CANNOT BE UNDONE" tone="bad" />
+      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: manualSentence(item.reason) }))} names={names} title="NEEDS MANUAL REVIEW" tone="warn" />
+      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: notAppliedSentence(item.reason) }))} names={names} title="NOTHING TO UNDO" tone="neutral" />
       <TechnicalDetails>
         <RecordField label="Undoes restore plan" value={plan.compensates} usage={<code>GET /api/actions/restore/dry-run/{plan.compensates}</code>} />
         <RecordField copy={false} label="Statement" value={plan.statement} />
@@ -218,7 +221,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
           </TechnicalDetails>
           {artifact.guardRefusals?.length ? (
             <>
-              <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: refusalSentence(item) }))} title="REFUSED BY A SAFETY CHECK" tone="bad" />
+              <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: refusalSentence(item, namedResource(item.naturalKey, artifact.names ?? {})) }))} names={artifact.names ?? {}} title="REFUSED BY A SAFETY CHECK" tone="bad" />
               <TechnicalDetails summary="Technical details for the refusals">
                 {artifact.guardRefusals.map((item, index) => <RecordField copy={false} key={index} label={`Guard refusal · ${item.naturalKey}`} value={item.reason} />)}
               </TechnicalDetails>
@@ -230,11 +233,12 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
               artifactId={artifact.id}
               canApprove={canApprove}
               effects={artifact.contentEffects}
+              names={artifact.names ?? {}}
               effectsDigest={artifact.effectsDigest ?? null}
               onApproved={() => void load(artifact.id)}
             />
           ) : null}
-          {compensation ? <CompensationPlanView plan={compensation} /> : null}
+          {compensation ? <CompensationPlanView names={artifact.names ?? {}} plan={compensation} /> : null}
           {executable && canRestore ? (
             requested ? (
               <p className="compensation-requested">Sent to approvers. Nothing changes until one of them approves.</p>

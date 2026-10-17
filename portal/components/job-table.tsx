@@ -2,9 +2,10 @@ import Link from "next/link";
 
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { jobErrorLine } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { formatTimestamp } from "@/lib/presentation";
-import { jobName, jobStatusSentence, refLabel } from "@/lib/sentences";
+import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 // Recent jobs on the backups, baselines and restore surfaces (plan task 16), named by
 // what they do (roadmap task-130): the job as a sentence, its status as a sentence,
@@ -54,12 +55,13 @@ export function JobTable({
                 <p className="activity-meta">
                   <JobStatusBadge status={job.status} />{" "}
                   <time dateTime={job.finishedAt ?? job.startedAt ?? job.createdAt ?? undefined} title={formatTimestamp(job.finishedAt ?? job.createdAt)}>{jobStatusSentence(job, now)}</time>
-                  {" · asked by "}{refLabel(job.references?.people.requested_by, "an unknown account")}
+                  {" · asked by "}{personLabel(job.references?.people.requested_by)}
                 </p>
-                {job.status === "failed" && job.error ? <p className="job-error-line">{String(job.error).split("\n")[0]}</p> : null}
+                {job.status === "failed" && job.error ? <p className="job-error-line">{jobErrorLine(job.error)}</p> : null}
               </div>
               <TechnicalDetails>
                 <JobRecordFields job={job} />
+                {job.status === "failed" && job.error ? <RecordField copy={false} label="Error" value={String(job.error)} /> : null}
               </TechnicalDetails>
             </li>
           ))}

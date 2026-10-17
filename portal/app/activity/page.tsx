@@ -10,12 +10,11 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
+import { type ActivityNames, entrySubjectKey, getActivityNames } from "@/lib/activity-names";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
-import { getPrincipalNames } from "@/lib/portal-data";
 import type { JobsData } from "@/lib/portal-jobs";
 import { DISPLAY_ENUMS } from "@/lib/presentation";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import type { Ref } from "@/lib/types";
 
 const DESCRIPTION = "What KEEL has done and who decided what, newest first.";
 
@@ -57,10 +56,11 @@ export default async function ActivityPage({ searchParams }: {
   }
 
   const generatedAt = jobs?.generatedAt ?? evidence?.generatedAt ?? new Date().toISOString();
-  let people: Record<string, Ref> = {};
+  let names: ActivityNames = { people: {}, names: {} };
   try {
-    people = await getPrincipalNames([...new Set((evidence?.entries ?? []).map((entry) => entry.actor))]);
-  } catch { /* Actors fall back to their recorded value. */ }
+    const entries = evidence?.entries ?? [];
+    names = await getActivityNames([...new Set(entries.map((entry) => entry.actor))], entries.map((entry) => entrySubjectKey(entry.subject)));
+  } catch { /* Actors and objects are then named in general words. */ }
   const items = mergeActivity(jobs?.jobs ?? [], evidence?.entries ?? []);
   const older = new URLSearchParams(query);
   if (evidence?.nextBefore) older.set("before", evidence.nextBefore);
@@ -94,7 +94,7 @@ export default async function ActivityPage({ searchParams }: {
         <button className="btn btn-secondary btn-sm" type="submit">Apply</button>
       </form>
       {invalid ? <p className="action-error" role="alert">Those filters could not be used. Use UTC dates such as 2026-09-01, with the start before the end.</p> : (
-        <ActivityTimeline items={items} now={generatedAt} people={people} />
+        <ActivityTimeline items={items} names={names.names} now={generatedAt} people={names.people} />
       )}
       <nav aria-label="Activity pages" className="pagination-links">
         {query.has("before") ? <Link className="secondary-action" href="/activity?show=records">Newest entries</Link> : null}

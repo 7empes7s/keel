@@ -42,3 +42,10 @@ export function namedSubject(naturalKey: string, names: NamedKeys = {}, resource
   }
   return namedResource(naturalKey, names, resourceType);
 }
+
+/** A failed job's error as one line for a list; an error that holds an id is not shown. */
+export function jobErrorLine(error: unknown): string {
+  const first = String(error ?? "").split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "").trim();
+  if (!first || holdsObjectId(first)) return "It stopped with an error. Open the job to see what went wrong.";
+  return first;
+}

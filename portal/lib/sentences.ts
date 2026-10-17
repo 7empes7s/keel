@@ -4,7 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
-import { holdsObjectId } from "@/lib/job-names";
+import { holdsObjectId, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
   kind: string;
@@ -217,8 +217,8 @@ interface EvidenceLike {
   subject: unknown;
 }
 
-/** An audit-record entry as a sentence: who did what. */
-export function evidenceSentence(entry: EvidenceLike, actorName: string): string {
+/** An audit-record entry as a sentence: who did what, naming objects by their saved name. */
+export function evidenceSentence(entry: EvidenceLike, actorName: string, names: NamedKeys = {}): string {
   const subject = (entry.subject ?? {}) as Record<string, unknown>;
   const actionWords = (value: unknown) => (typeof value === "string" ? displayEnum("jobKind", value.replace(/:.*/, "")).toLowerCase() : "an action");
   switch (entry.kind) {
@@ -229,7 +229,7 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string): string
       ? `${actorName} was refused: ${actionWords(subject.action)}`
       : `${actorName} started ${actionWords(subject.action)}`;
     case "policy-evaluation": return typeof subject.naturalKey === "string"
-      ? `Policies checked a change to ${resourceLabel(subject.naturalKey)}${subject.matched ? ", and one applied" : ""}`
+      ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
     case "automation-execution": return `Automation ${subject.outcome === "executed" ? "rolled back a change" : "tried to roll back a change"}`;
     case "content-effect-approval": return `${actorName} approved a restore that changes how content is kept or shared`;

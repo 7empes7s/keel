@@ -1,6 +1,8 @@
 import { listCompletionItems, summarizeCompletion } from "../../../../../../../engine/restore/completion.mjs";
 
 import { guarded } from "@/lib/action";
+import { namedResource } from "@/lib/job-names";
+import { savedNames } from "@/lib/saved-names";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +23,13 @@ const getCompletionRoute = guarded(
       return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
     }
     const items = await listCompletionItems(client, { tenantRef, restoreRef: ref });
-    return Response.json({ restoreRef: ref, resources: summarizeCompletion(items) }, { headers: NO_STORE });
+    const resources = summarizeCompletion(items) as { naturalKey: string; resourceType: string }[];
+    // Each resource by the name its backup holds, so the checklist never shows a key.
+    const names = await savedNames(client, tenantRef, resources.map((resource) => resource.naturalKey));
+    return Response.json({
+      restoreRef: ref,
+      resources: resources.map((resource) => ({ ...resource, label: namedResource(resource.naturalKey, names, resource.resourceType) })),
+    }, { headers: NO_STORE });
   },
 );
 

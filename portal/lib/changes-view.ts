@@ -87,14 +87,15 @@ const REFUSAL_REASONS: [RegExp, string][] = [
 ];
 
 /** "KEEL refused to change Finance (group) because it is synced from on-premises Active Directory." */
-export function refusalSentence(refusal: { naturalKey: string; reason: string }): string {
+export function refusalSentence(refusal: { naturalKey: string; reason: string }, label?: string): string {
+  const name = label ?? resourceLabel(refusal.naturalKey);
   const known = REFUSAL_REASONS.find(([pattern]) => pattern.test(refusal.reason))?.[1];
   // A reason that reads as plain words is quoted as is; a coded one stays in the record.
   const plain = !known && !/[=_:{}[\]]|\b[a-z]+[A-Z]/.test(refusal.reason) ? refusal.reason.replace(/\.$/, "") : null;
   const because = known ?? plain;
   return because
-    ? `KEEL refused to change ${resourceLabel(refusal.naturalKey)} because ${because}.`
-    : `KEEL refused to change ${resourceLabel(refusal.naturalKey)}; the reason is in Technical details.`;
+    ? `KEEL refused to change ${name} because ${because}.`
+    : `KEEL refused to change ${name}; the reason is in Technical details.`;
 }
 
 export function changeKindWords(kind: "changed" | "added" | "removed"): string {

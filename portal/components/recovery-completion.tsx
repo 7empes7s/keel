@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { namedResource } from "@/lib/job-names";
 import { formatTimestamp, words } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
 
@@ -25,6 +27,8 @@ export interface CompletionItem {
 
 export interface CompletionResource {
   naturalKey: string;
+  // The resource in words, by its saved name (never a key or id).
+  label?: string;
   resourceType: string;
   mechanism: string;
   state: CompletionState;
@@ -71,7 +75,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
       {resources.map((resource) => (
         <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
           <header className="completion-resource-head">
-            <code className="natural-key">{resource.naturalKey}</code>
+            <strong className="resource-name">{resource.label ?? namedResource(resource.naturalKey, {}, resource.resourceType)}</strong>
             <span className={`pill pill-${STATE_TONES[resource.state] ?? "neutral"} completion-badge-${resource.state}`}>{completionStateLabel(resource.state)}</span>
             <small className="completion-mechanism">{words(resource.mechanism)}</small>
           </header>
@@ -148,6 +152,10 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
               </li>
             ))}
           </ul>
+          <TechnicalDetails summary="Technical details for this resource">
+            <RecordField label="Stored key" value={resource.naturalKey} />
+            <RecordField copy={false} label="Type" value={resource.resourceType} />
+          </TechnicalDetails>
         </section>
       ))}
     </div>

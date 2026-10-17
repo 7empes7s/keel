@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp, fromNow } from "@/lib/presentation";
-import { approvalImpact, approvalSentence, refLabel } from "@/lib/sentences";
+import { approvalImpact, approvalSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { usePoll } from "@/lib/use-poll";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
@@ -82,9 +82,9 @@ function AwaitingContentEffectsCard({ request, now, className }: { request: Appr
     <li className={className}>
       <h3>{approvalSentence(request)}</h3>
       <p>
-        Approved by {refLabel(request.references?.people.decided_by, "an unknown person")}{" "}
+        Approved by {personLabel(request.references?.people.decided_by)}{" "}
         <time dateTime={request.decidedAt ?? undefined} title={formatTimestamp(request.decidedAt)}>{ago(request.decidedAt, now)}</time>.
-        {" "}Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}.
+        {" "}Asked by {personLabel(request.references?.people.requested_by)}.
         {" "}The restore cannot run until its content effects are approved too.
       </p>
       <SubjectLink request={request} />
@@ -190,7 +190,7 @@ export function ApprovalInbox({
                 <li className={cardClass("item-card approval-card", request.id)} key={request.id}>
                   <h3>{approvalSentence(request)}</h3>
                   <p>
-                    Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}{" "}
+                    Asked by {personLabel(request.references?.people.requested_by)}{" "}
                     <time dateTime={request.createdAt ?? undefined} title={formatTimestamp(request.createdAt)}>{ago(request.createdAt, now)}</time>
                     {request.justification ? <>: “{request.justification}”</> : "."}
                   </p>
@@ -266,10 +266,10 @@ export function ApprovalInbox({
                 <p>
                   {request.status === "expired"
                     ? <>Expired <time dateTime={request.expiresAt ?? undefined} title={formatTimestamp(request.expiresAt)}>{ago(request.expiresAt, now)}</time> without a decision.</>
-                    : <>{displayEnum("approvalStatus", request.status)} by {refLabel(request.references?.people.decided_by, "an unknown person")}{" "}
+                    : <>{displayEnum("approvalStatus", request.status)} by {personLabel(request.references?.people.decided_by)}{" "}
                       <time dateTime={request.decidedAt ?? undefined} title={formatTimestamp(request.decidedAt)}>{ago(request.decidedAt, now)}</time>
                       {request.reason ? <>: “{request.reason}”</> : "."}</>}
-                  {" "}Asked by {refLabel(request.references?.people.requested_by, "an unknown person")}.
+                  {" "}Asked by {personLabel(request.references?.people.requested_by)}.
                 </p>
                 {request.action === "restore" ? <SubjectLink request={request} /> : null}
                 {request.status === "approved" ? <ContentEffectsNote request={request} /> : null}

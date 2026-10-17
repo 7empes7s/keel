@@ -1,14 +1,17 @@
 import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
+import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { loadContentEffectReview } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import type { ContentEffect } from "@/components/content-effects";
 import { approvalInboxScope } from "@/lib/approval-inbox";
-import { principalRefs } from "@/lib/portal-data";
+import type { NamedKeys } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { savedNames } from "@/lib/saved-names";
+import { type EngineRef, personLabel } from "@/lib/sentences";
 
 // Q45: the content effects of ANY persisted dry run, whichever surface made it (the
 // portal, or `keel-restore --persist-artifact` from the command line), shown to the
@@ -54,6 +57,8 @@ export interface ContentEffectReviewView {
   effects: ContentEffect[];
   effectsDigest: string | null;
   approvals: { approvedBy: string; approvedAt: string | null }[];
+  // Saved names by key, so each effect names its object, never by id.
+  names: NamedKeys;
 }
 
 export interface EngineContentEffectReview {
@@ -76,10 +81,11 @@ function iso(value: unknown): string | null {
 /** Builds the page's view: people by name, never by id. Pure, so it is tested directly. */
 export function contentEffectReviewView(
   review: EngineContentEffectReview,
-  names: Map<string, { name: string | null }>,
+  people: Map<string, EngineRef>,
   viewerId: string,
+  names: NamedKeys = {},
 ): ContentEffectReviewView {
-  const nameOf = (id: string | null) => (id ? names.get(id)?.name ?? "an unknown person" : "an unknown person");
+  const nameOf = (id: string | null) => personLabel(id ? people.get(id) : null);
   return {
     artifactId: review.artifactId,
     status: review.status,
@@ -90,6 +96,7 @@ export function contentEffectReviewView(
     effects: review.effects,
     effectsDigest: review.effectsDigest,
     approvals: review.approvals.map((approval) => ({ approvedBy: nameOf(approval.approvedBy), approvedAt: iso(approval.approvedAt) })),
+    names,
   };
 }
 
@@ -106,8 +113,9 @@ export async function getContentEffectReview(artifactId: string, viewerId: strin
   try {
     const review = (await loadContentEffectReview(client, { tenantRef: tenantRef(), artifactId })) as EngineContentEffectReview | null;
     if (!review) return null;
-    const names = await principalRefs(client, [review.requestedBy, ...review.approvals.map((approval) => approval.approvedBy)]);
-    return contentEffectReviewView(review, names, viewerId);
+    const people = (await resolvePrincipals(client, [review.requestedBy, ...review.approvals.map((approval) => approval.approvedBy)])) as Map<string, EngineRef>;
+    const names = await savedNames(client, tenantRef(), review.effects.map((effect) => effect.naturalKey));
+    return contentEffectReviewView(review, people, viewerId, names);
   } finally {
     await client.end();
   }

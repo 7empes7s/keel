@@ -58,6 +58,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
           canApprove={!review.viewerIsRequester}
           effects={review.effects}
           effectsDigest={review.effectsDigest}
+          names={review.names}
         />
       </section>
     </>

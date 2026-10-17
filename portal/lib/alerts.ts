@@ -2,7 +2,8 @@ import {
   AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitions, resolveAlert,
 } from "../../engine/notify/alerts.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
-import type { AlertInboxData, AlertItem } from "@/lib/alerts-view";
+import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+import { savedNames } from "@/lib/saved-names";
 
 // Roadmap task-83: what the alerts inbox reads and the two things an operator can do
 // to an alert. Viewing needs `read`; acknowledging and resolving need the drift
@@ -26,6 +27,54 @@ function personName(row: Row | undefined): string | null {
   return (row.display_name as string | null) || (row.email as string | null) || null;
 }
 
+interface QueryClient {
+  query(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
+}
+
+const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "webUrl"].map((field) => `NULLIF(o.fields->>'${field}', '')`).join(", ")})`;
+
+/**
+ * Names, not ids: the name each alerted resource carries. A backup key reads the name
+ * the newest backup holding one saved; a workload key (`<workload>:<key>`, such as a
+ * SharePoint site) reads the newest workload read that named it. A failed read leaves
+ * the resource unnamed, never the page down.
+ */
+export async function alertResourceNames(client: QueryClient, tenantRef: string, keys: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  const unique = [...new Set(keys)];
+  const workloadKeys = unique.filter((key) => alertWorkload(key) !== null);
+  const backupKeys = unique.filter((key) => alertWorkload(key) === null);
+  try {
+    const saved = await savedNames(client, tenantRef, backupKeys);
+    for (const [key, entry] of Object.entries(saved)) if (entry.name?.trim()) names.set(key, entry.name.trim());
+  } catch (error) {
+    console.error("[keel-portal] alert resource names unavailable", error);
+  }
+  if (workloadKeys.length) {
+    const workloads = workloadKeys.map((key) => alertWorkload(key)!);
+    const resources = workloadKeys.map((key, index) => key.slice(workloads[index].length + 1));
+    try {
+      const { rows } = await client.query(
+        `SELECT DISTINCT ON (c.workload, o.resource_key) c.workload, o.resource_key, ${WORKLOAD_NAME_SQL} AS name
+           FROM workload_observation o
+           JOIN workload_collection c ON c.id = o.collection_id
+           JOIN unnest($2::text[], $3::text[]) AS wanted(workload, resource_key)
+             ON wanted.workload = c.workload AND wanted.resource_key = o.resource_key
+          WHERE c.tenant_ref = $1
+          ORDER BY c.workload, o.resource_key, (${WORKLOAD_NAME_SQL} IS NULL), c.created_at DESC, c.id DESC`,
+        [tenantRef, workloads, resources],
+      );
+      for (const row of rows) {
+        const name = typeof row.name === "string" ? row.name.replace(/^https?:\/\//, "").trim() : "";
+        if (name) names.set(`${row.workload}:${row.resource_key}`, name);
+      }
+    } catch (error) {
+      console.error("[keel-portal] alert workload names unavailable", error);
+    }
+  }
+  return names;
+}
+
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
     const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
@@ -43,12 +92,14 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
       const { rows: found } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1)", [[...ids]]);
       for (const person of found) people.set(String(person.id), person);
     }
+    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, rows.map((row) => String(row.resource_key)));
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
       const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
+        name: resourceNames.get(String(row.resource_key)) ?? null,
         control: String(row.control),
         condition: String(row.condition),
         state: row.state as AlertItem["state"],

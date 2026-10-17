@@ -19,7 +19,7 @@ import { fieldWords, refusalSentence } from "@/lib/changes-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
-import { resourceLabel, resourceTypeLabel } from "@/lib/presentation";
+import { resourceTypeLabel } from "@/lib/presentation";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
 import {
   IMPACT_ABOUT,
@@ -29,6 +29,7 @@ import {
   dayWords,
   impactWords,
   itemName,
+  nameBook,
   plainLabel,
   plainType,
   plannedWords,
@@ -38,6 +39,7 @@ import {
   takenAt,
   whenWords,
   whoWords,
+  type NameBook,
 } from "@/lib/restore-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
@@ -131,13 +133,13 @@ function formatReasons(reasons: AdditionReason[]): string {
 }
 
 /** "Block legacy auth (Conditional Access policy)", the resources that need this one. */
-function requiredByWords(reasons: AdditionReason[]): string {
-  return [...new Set(reasons.map((reason) => plainLabel(reason.requiredBy)))].join(", ");
+function requiredByWords(reasons: AdditionReason[], names: NameBook): string {
+  return [...new Set(reasons.map((reason) => plainLabel(reason.requiredBy, names)))].join(", ");
 }
 
 /** "Block legacy auth and Require MFA for admins". */
-function namesList(keys: string[]): string {
-  const names = keys.map((key) => plainLabel(key));
+function namesList(keys: string[], book: NameBook): string {
+  const names = keys.map((key) => plainLabel(key, book));
   if (names.length > 3) return `${names.slice(0, 3).join(", ")} and ${names.length - 3} more`;
   return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
@@ -213,6 +215,8 @@ export function RestoreStepper({ current, failed = false }: { current: RestoreSt
 // One row of the list: a setting saved in the chosen backup, with what changed since.
 interface RestoreItem extends RestoreResource {
   change?: RestoreChange;
+  // What the row is called: the backup's name for it, never a bare id.
+  label: string;
 }
 
 const CHANGED_GROUP = "changed";
@@ -220,7 +224,7 @@ const toneOf = (item: RestoreItem) => changeTone(item.change);
 // Smart order: deleted, then changed, newest first; the rest by name.
 const ordered = (items: RestoreItem[]) => [
   ...smartOrder(items.filter((item) => item.change), toneOf, (item) => item.change?.seenAt ?? null),
-  ...items.filter((item) => !item.change).sort((x, y) => itemName(x.naturalKey).localeCompare(itemName(y.naturalKey))),
+  ...items.filter((item) => !item.change).sort((x, y) => x.label.localeCompare(y.label)),
 ];
 
 function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, meta: (key: string, list: RestoreItem[]) => Omit<ListGroup<RestoreItem>, "items" | "key">, rank?: (key: string) => number): ListGroup<RestoreItem>[] {
@@ -325,10 +329,12 @@ export function RestoreSelection({
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const changeByKey = useMemo(() => new Map((changes?.changes ?? []).map((change) => [change.naturalKey, change])), [changes]);
+  const names = useMemo(() => nameBook(resources), [resources]);
   const items = useMemo<RestoreItem[]>(() => resources.map((resource) => {
     const change = changeByKey.get(resource.naturalKey);
-    return change ? { ...resource, change } : resource;
-  }), [resources, changeByKey]);
+    const label = itemName(resource.naturalKey, names);
+    return change ? { ...resource, change, label } : { ...resource, label };
+  }), [resources, changeByKey, names]);
 
   useEffect(() => () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -570,11 +576,11 @@ export function RestoreSelection({
                 groupings={GROUPINGS}
                 items={items}
                 label={`Settings in the backup of ${dayWords(currentSnapshot ? takenAt(currentSnapshot) : null)}`}
-                matches={(item, query) => `${itemName(item.naturalKey)} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
+                matches={(item, query) => `${item.label} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
                 noun={{ one: "setting", many: "settings" }}
-                renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", itemName(item.naturalKey)) : null} />}
+                renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", item.label) : null} />}
                 rowLimit={ROWS_PER_GROUP}
-                rowName={(item) => plainLabel(item.naturalKey)}
+                rowName={(item) => plainLabel(item.naturalKey, names)}
                 toneOf={toneOf}
               />
             </div>
@@ -591,7 +597,7 @@ export function RestoreSelection({
               <div>
                 <p className="section-kicker">What you chose</p>
                 <p>
-                  {preview ? namesList(preview.selected) : "Your selection"}
+                  {preview ? namesList(preview.selected, names) : "Your selection"}
                   {preview && preview.added.length ? `, and ${plural(preview.added.length, "setting")} it needs` : null}
                   {currentSnapshot ? `, as in the backup of ${dayWords(takenAt(currentSnapshot))}` : null}
                 </p>
@@ -613,7 +619,7 @@ export function RestoreSelection({
               <div className="data-error" role="alert">
                 <ul>
                   {preview.guardRefusals.map((guardRefusal) => (
-                    <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
+                    <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal, plainLabel(guardRefusal.naturalKey, names))}</li>
                   ))}
                 </ul>
                 <p>Leave these out of your selection and try again.</p>
@@ -633,9 +639,9 @@ export function RestoreSelection({
               <ul className="closure-list">
                 {preview.added.map((addition) => (
                   <li key={addition.naturalKey}>
-                    <strong>{plainLabel(addition.naturalKey)}</strong>
+                    <strong>{plainLabel(addition.naturalKey, names)}</strong>
                     {", because "}
-                    {requiredByWords(addition.reasons)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
+                    {requiredByWords(addition.reasons, names)} {addition.reasons.length === 1 ? "depends" : "depend"} on it
                   </li>
                 ))}
               </ul>
@@ -645,7 +651,7 @@ export function RestoreSelection({
                   <ul>
                     {preview.unresolvedReferences.map((reference) => (
                       <li key={`${reference.from}:${reference.field}`}>
-                        {plainLabel(reference.from)} refers to something this backup does not hold; the restore
+                        {plainLabel(reference.from, names)} refers to something this backup does not hold; the restore
                         fails unless it already exists in the tenant.
                       </li>
                     ))}
@@ -724,7 +730,7 @@ export function RestoreSelection({
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Needs doing by hand</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
 
-          <BeforeAfter changes={changeByKey} keys={objectResults(artifact.results.applied).map((entry) => entry.naturalKey)} />
+          <BeforeAfter changes={changeByKey} names={names} keys={objectResults(artifact.results.applied).map((entry) => entry.naturalKey)} />
 
           {artifact.incidentRecovery ? <IncidentQualificationSummary context={artifact.incidentRecovery} view={artifact.incidentRecoveryView ?? null} /> : null}
 
@@ -748,7 +754,7 @@ export function RestoreSelection({
               <ul className="closure-list">
                 {objectResults(artifact.results.applied).map((entry) => (
                   <li key={entry.naturalKey}>
-                    <strong>{plainLabel(entry.naturalKey)}</strong>
+                    <strong>{plainLabel(entry.naturalKey, names)}</strong>
                     {`: ${plannedWords(entry.reason)}`}
                   </li>
                 ))}
@@ -759,7 +765,7 @@ export function RestoreSelection({
           <PendingSteps steps={artifact.results.pendingSteps} />
 
           {artifact.recoveryMechanisms?.length ? (
-            <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} />
+            <RecoveryMechanismTable mechanisms={artifact.recoveryMechanisms} names={names} />
           ) : null}
 
           {artifact.relationshipOperations?.length ? (
@@ -773,9 +779,9 @@ export function RestoreSelection({
                   >
                     <span className="edge-action">{operation.action === "add" ? "+ Add" : "− Remove"}</span>
                     {" "}
-                    <strong>{operation.targetNaturalKey ? resourceLabel(operation.targetNaturalKey) : "an object this restore creates"}</strong>
+                    <strong>{operation.targetNaturalKey ? plainLabel(operation.targetNaturalKey, names) : "an object this restore creates"}</strong>
                     {` as ${operation.family} of `}
-                    <strong>{resourceLabel(operation.parentNaturalKey)}</strong>
+                    <strong>{plainLabel(operation.parentNaturalKey, names)}</strong>
                   </li>
                 ))}
               </ul>
@@ -787,7 +793,7 @@ export function RestoreSelection({
               <p className="severity-label">Cannot restore</p>
               <ul>
                 {artifact.guardRefusals.map((guardRefusal) => (
-                  <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal)}</li>
+                  <li key={guardRefusal.naturalKey}>{refusalSentence(guardRefusal, plainLabel(guardRefusal.naturalKey, names))}</li>
                 ))}
               </ul>
             </div>
@@ -799,7 +805,7 @@ export function RestoreSelection({
               <ul>
                 {artifact.results.failed.map((entry) => (
                   <li key={entry.naturalKey}>
-                    <strong>{plainLabel(entry.naturalKey)}</strong> would fail; the error is in Technical details.
+                    <strong>{plainLabel(entry.naturalKey, names)}</strong> would fail; the error is in Technical details.
                   </li>
                 ))}
               </ul>
@@ -902,7 +908,7 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
   return (
     <div className="restore-row" data-changed={change ? change.kind : undefined}>
       <span className="restore-row-name">
-        <b>{itemName(item.naturalKey)}</b>
+        <b>{item.label}</b>
         <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {service.name}</small>
       </span>
       {change ? (
@@ -924,7 +930,7 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
 }
 
 /** Before and after for the settings a restore changes back, when KEEL knows them. */
-function BeforeAfter({ keys, changes }: { keys: string[]; changes: Map<string, RestoreChange> }) {
+function BeforeAfter({ keys, changes, names }: { keys: string[]; changes: Map<string, RestoreChange>; names: NameBook }) {
   const known = keys.map((key) => changes.get(key)).filter((change): change is RestoreChange => Boolean(change));
   if (!known.length) return null;
   return (
@@ -933,7 +939,7 @@ function BeforeAfter({ keys, changes }: { keys: string[]; changes: Map<string, R
       <ul>
         {known.map((change) => (
           <li key={change.naturalKey}>
-            <strong>{plainLabel(change.naturalKey)}</strong>
+            <strong>{plainLabel(change.naturalKey, names)}</strong>
             {change.kind === "deleted" ? (
               <p className="restore-ba-line"><span>Now: gone</span><Icon name="chevron" /><span>After: recreated as in the backup</span></p>
             ) : (

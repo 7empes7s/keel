@@ -71,6 +71,8 @@ import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { SiteChanges } from "@/components/site-changes";
 import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
+import { WorkloadServices } from "@/components/restore/workload-services";
+import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -1212,6 +1214,42 @@ const RESTORE_SNAPSHOTS = [
   { id: "snap-2", startedAt: "2026-09-30T06:00:00Z", completedAt: "2026-09-30T06:08:00Z", resourceCount: 19 },
   { id: "snap-1", startedAt: "2026-09-26T06:00:00Z", completedAt: "2026-09-26T06:08:00Z", resourceCount: 19 },
 ];
+// The other Microsoft 365 services on Restore: one restorable, one by hand, one failed, one not switched on.
+const backedUp = (collectionId: string, takenAt: string, items: number) => ({ collectionId, takenAt, items, partial: false });
+const RESTORE_WORKLOADS: RestoreWorkload[] = [
+  { workload: "exchange-mailbox-settings", name: "Exchange mailbox settings", service: "Exchange",
+    reads: ["Mailbox settings (automatic replies, time zone, working hours)", "Mailbox client access settings"],
+    writes: [{ verb: "Put back", name: "Mailbox settings (automatic replies, time zone, working hours)", after: ["team member, guest, messaging and fun settings"] }],
+    todo: "Settings KEEL does not restore are changed by hand in the Exchange admin center using the backup.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000001", "2026-10-02T06:10:00Z", 24), lastRun: null },
+  { workload: "exchange-mail-flow", name: "Exchange mail flow and protection", service: "Exchange",
+    reads: ["Mail flow rules", "Connectors"],
+    writes: [{ verb: "Put back", name: "Mail flow rules", after: [] }],
+    todo: "A deleted rule or connector is changed by hand in the Exchange admin center using the backup.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000002", "2026-10-02T06:12:00Z", 7), lastRun: null },
+  { workload: "sharepoint-site-settings", name: "SharePoint settings", service: "SharePoint",
+    reads: ["SharePoint tenant sharing and site settings", "SharePoint site list"],
+    writes: [{ verb: "Put back", name: "SharePoint tenant sharing and site settings", after: [] }, { verb: "Add back", name: "SharePoint site groups", after: [] }],
+    todo: "Settings KEEL does not restore are changed by hand in the SharePoint admin center using the backup.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000003", "2026-10-02T05:40:00Z", 41), lastRun: null },
+  { workload: "onedrive-site-settings", name: "OneDrive settings", service: "SharePoint",
+    reads: ["OneDrive site sharing and storage settings"], writes: [],
+    todo: "KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000004", "2026-10-02T05:41:00Z", 3), lastRun: null },
+  { workload: "teams-org-policies", name: "Teams organization policies", service: "Teams",
+    reads: ["Meeting policies", "Messaging policies"], writes: [{ verb: "Put back", name: "Messaging policies", after: [] }],
+    todo: "Meeting policies are changed by hand in the Teams admin center using the backup.",
+    backup: backedUp("c0110000-0000-4000-8000-000000000005", "2026-10-01T06:00:00Z", 12),
+    lastRun: { collectionId: "c0110000-0000-4000-8000-000000000006", outcome: "failed", at: "2026-10-02T06:00:00Z", reasons: ["timeout"] } },
+  { workload: "purview-labels", name: "Purview sensitivity labels", service: "Purview",
+    reads: ["Sensitivity label definitions"], writes: [{ verb: "Put back", name: "Sensitivity label definitions", after: ["mailbox client access settings"] }],
+    todo: "New labels are made by hand in the Purview portal.", backup: null, lastRun: null },
+  { workload: "power-platform-settings", name: "Power Platform and Power BI settings", service: "Power Platform",
+    reads: ["Power Platform tenant settings"], writes: [],
+    todo: "KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.",
+    backup: null, lastRun: { collectionId: "c0110000-0000-4000-8000-000000000007", outcome: "disabled", at: "2026-10-02T06:00:00Z", reasons: ["not live-qualified"] } },
+];
+
 const RESTORE_RESOURCES: [string, string, string][] = [
   ["conditionalAccessPolicy:Block legacy auth", "tenant-lockout", "Entra"],
   ["conditionalAccessPolicy:Require MFA for admins", "tenant-lockout", "Entra"],
@@ -1261,6 +1299,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
+    <WorkloadServices now={now} workloads={RESTORE_WORKLOADS} />
     <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restores and checks" /></div>
   </>;
 }

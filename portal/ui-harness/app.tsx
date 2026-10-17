@@ -752,7 +752,7 @@ const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"
   ({ id, occurrence, fromState, toState, reason, actor: actorName ? "8c1e0000-0000-4000-8000-0000000000a1" : "condition:drift-detect", actorName, at, eventId: null });
 const INBOX_ALERTS: AlertItem[] = [
   {
-    id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift",
+    id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", control: "baseline", condition: "drift",
     state: "reopened", conditionActive: true, severity: "warning", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
     occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
@@ -767,7 +767,7 @@ const INBOX_ALERTS: AlertItem[] = [
     ],
   },
   {
-    id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", control: "baseline", condition: "drift",
+    id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", name: "Finance", control: "baseline", condition: "drift",
     state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
     occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
     acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: null,
@@ -776,7 +776,7 @@ const INBOX_ALERTS: AlertItem[] = [
     history: [alertEntry("6", 1, null, "open", "condition-firing", "2026-10-02T09:30:00Z")],
   },
   {
-    id: "a1e70000-0000-4000-8000-000000000003", resourceKey: "group:Break-glass admins", control: "baseline", condition: "drift",
+    id: "a1e70000-0000-4000-8000-000000000003", resourceKey: "group:Break-glass admins", name: "Break-glass admins", control: "baseline", condition: "drift",
     state: "resolved", conditionActive: false, severity: "critical", occurrence: 1, firstOpenedAt: "2026-09-28T10:00:00Z",
     occurrenceStartedAt: "2026-09-28T10:00:00Z", lastFiringAt: "2026-09-28T10:00:00Z", ackDeadlineAt: "2026-09-28T10:30:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },

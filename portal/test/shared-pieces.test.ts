@@ -31,6 +31,8 @@ test("Settings is urgent when nobody can approve, and check soon when a channel 
   assert.equal(settingsStatus({ principals: [viewer, { ...admin, disabled_at: "2026-09-01T00:00:00Z" }], deliveries: null })?.tone, "urgent");
   assert.equal(settingsStatus({ principals: [viewer, { ...admin, system_kind: "scheduler" }], deliveries: null })?.tone, "urgent", "a system account is not an approver");
   assert.equal(settingsStatus({ principals: [admin], deliveries: null }), undefined);
+  assert.equal(settingsStatus({ principals: [{ ...viewer, entity_capabilities: { FIN: ["approve"] } }], deliveries: null }), undefined, "an entity approver counts");
+  assert.equal(settingsStatus({ principals: [admin], deliveries: [{ channel_id: "a", status: "cancelled" }, { channel_id: "a", status: "failed" }] }), undefined, "a channel turned off after failing is not failing");
   // Newest first: a channel whose latest finished delivery failed counts; a later success clears it.
   const failing = settingsStatus({ principals: [admin], deliveries: [
     { channel_id: "a", status: "retrying" }, { channel_id: "a", status: "failed" }, { channel_id: "b", status: "delivered" }, { channel_id: "b", status: "failed" },

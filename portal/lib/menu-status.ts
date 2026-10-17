@@ -77,17 +77,20 @@ export function inboxNote(approvals: number, alerts: number): string {
  * deliveries route lists them. A list that could not be read (null) says nothing.
  */
 export function settingsStatus({ principals, deliveries }: {
-  principals: { capabilities: string[]; disabled_at: string | null; system_kind?: string | null }[] | null;
+  principals: { capabilities: string[]; entity_capabilities?: Record<string, string[]>; disabled_at: string | null; system_kind?: string | null }[] | null;
   deliveries: { channel_id: string; status: string }[] | null;
 }): SectionStatus | undefined {
   if (principals && principals.length > 0) {
-    const approvers = principals.filter((principal) => !principal.disabled_at && !principal.system_kind && principal.capabilities.includes("approve"));
+    const approvers = principals.filter((principal) => !principal.disabled_at && !principal.system_kind && (principal.capabilities.includes("approve")
+      // An approver for one entity's resources still works their part of the inbox.
+      || Object.values(principal.entity_capabilities ?? {}).some((held) => held.includes("approve"))));
     if (approvers.length === 0) return { tone: "urgent", note: "Nobody can approve restores and changes" };
   }
   if (deliveries) {
     const latest = new Map<string, string>();
     for (const delivery of deliveries) {
-      if ((delivery.status === "delivered" || delivery.status === "failed") && !latest.has(delivery.channel_id)) latest.set(delivery.channel_id, delivery.status);
+      // Turning a channel off cancels what it still had queued, so a cancel ends a failure too.
+      if (["delivered", "failed", "cancelled"].includes(delivery.status) && !latest.has(delivery.channel_id)) latest.set(delivery.channel_id, delivery.status);
     }
     const failing = [...latest.values()].filter((status) => status === "failed").length;
     if (failing > 0) return { tone: "soon", count: failing, note: `${plural(failing, "alert channel is", "alert channels are")} failing to send` };

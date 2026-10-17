@@ -1,9 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   groupWorkloadsByService,
+  startsFromPage,
   workloadBackupLine,
   workloadRestoreChip,
   workloadSummary,
@@ -11,11 +15,18 @@ import {
   type RestoreWorkload,
 } from "@/lib/restore-workloads-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
+import { WorkloadRestore } from "@/components/restore/workload-restore";
 
 // The Restore page's other Microsoft 365 services: Exchange, SharePoint and OneDrive,
 // Teams, Purview and Power Platform, one card per service. Each kind of setting says
 // whether it is backed up, what KEEL can put back, and what a person does by hand.
-export function WorkloadServices({ workloads, now }: { workloads: RestoreWorkload[] | null; now: string }) {
+export function WorkloadServices({ workloads, now, canRestore = false, canApprove = false }: {
+  workloads: RestoreWorkload[] | null;
+  now: string;
+  canRestore?: boolean;
+  canApprove?: boolean;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
   if (workloads === null) {
     return (
       <section aria-labelledby="restore-services-heading" className="report-section restore-services">
@@ -30,6 +41,7 @@ export function WorkloadServices({ workloads, now }: { workloads: RestoreWorkloa
     );
   }
   const groups = groupWorkloadsByService(workloads, serviceOrder);
+  const openWorkload = workloads.find((workload) => workload.workload === open) ?? null;
   return (
     <section aria-labelledby="restore-services-heading" className="report-section restore-services">
       <div className="section-heading-row report-heading">
@@ -43,9 +55,9 @@ export function WorkloadServices({ workloads, now }: { workloads: RestoreWorkloa
       <div className="restore-services-note" role="note">
         <Icon name="info" />
         <p>
-          These settings cannot be put back from this page yet. Your KEEL operator plans the restore, it comes
-          to <Link href="/approvals">Approvals</Link> like any other, and nothing changes until someone approves it.
-          KEEL only writes what has been proven on this tenant.
+          Choose what to put back on a card, and it goes to <Link href="/approvals">Approvals</Link> like any other
+          restore: nothing changes until someone approves it. SharePoint settings are still planned by your KEEL
+          operator. KEEL only writes what has been proven on this tenant.
         </p>
       </div>
       <div className="restore-services-grid">
@@ -62,17 +74,36 @@ export function WorkloadServices({ workloads, now }: { workloads: RestoreWorkloa
                 </div>
               </header>
               <ul className="restore-workloads">
-                {group.workloads.map((workload) => <WorkloadCard key={workload.workload} now={now} workload={workload} />)}
+                {group.workloads.map((workload) => (
+                  <WorkloadCard
+                    key={workload.workload}
+                    now={now}
+                    onStart={canRestore && startsFromPage(workload) ? () => setOpen(workload.workload) : null}
+                    open={open === workload.workload}
+                    workload={workload}
+                  />
+                ))}
               </ul>
             </section>
           );
         })}
       </div>
+      {openWorkload ? (
+        <WorkloadRestore
+          canApprove={canApprove}
+          canRestore={canRestore}
+          key={openWorkload.workload}
+          name={openWorkload.name}
+          now={now}
+          onClose={() => setOpen(null)}
+          workload={openWorkload.workload}
+        />
+      ) : null}
     </section>
   );
 }
 
-function WorkloadCard({ workload, now }: { workload: RestoreWorkload; now: string }) {
+function WorkloadCard({ workload, now, onStart, open }: { workload: RestoreWorkload; now: string; onStart: (() => void) | null; open: boolean }) {
   const backup = workloadBackupLine(workload, now);
   const chip = workloadRestoreChip(workload);
   return (
@@ -103,6 +134,11 @@ function WorkloadCard({ workload, now }: { workload: RestoreWorkload; now: strin
       ) : (
         <p className="restore-workload-none">KEEL cannot put this back yet.</p>
       )}
+      {onStart ? (
+        <button aria-expanded={open} className={open ? "btn btn-sm" : "primary-action restore-workload-start"} onClick={onStart} type="button">
+          {open ? "Choosing below" : "Choose what to put back"}
+        </button>
+      ) : null}
       <details className="restore-workload-more">
         <summary>What you do by hand</summary>
         <p>{workload.todo}</p>

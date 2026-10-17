@@ -351,6 +351,54 @@ assert.throws(
   /invalid params.tier: everything/,
 );
 
+// A workload restore dry run from the Restore page: the workload, its recorded
+// collection and the chosen objects, never a config path, never --enforce.
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor(
+    { workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['transportrule:a', 'transportrule:b'] }, artifactId: 'a-1' },
+    { requested_by: 'p-1' },
+  ),
+  ['--workload', 'exchange-mail-flow', '--collection', 'c-1', '--target', 'transportrule:a', '--target', 'transportrule:b',
+    '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'] }, artifactId: 'a-1', collectorConfig: '/tmp/x' }, { requested_by: 'p' }),
+  /carries only params.workloadRestore and params.artifactId/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'], allowTenantWide: true }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /allowTenantWide is only set with includeOrganization/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'], tenantHost: 'x' }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /may carry only workload, collectionId, targets/,
+);
+// One mailbox or one team per dry run; the organization rides along with a mailbox only.
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor(
+    { workloadRestore: { workload: 'exchange-mailbox-settings', collectionId: 'c-1', mailbox: 'keel-rt-a@x.test', includeOrganization: true, allowTenantWide: true }, artifactId: 'a-1' },
+    { requested_by: 'p-1' },
+  ),
+  ['--workload', 'exchange-mailbox-settings', '--collection', 'c-1', '--mailbox', 'keel-rt-a@x.test', '--include-organization',
+    '--allow-tenant-wide-test-writes', '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1' }, artifactId: 'a-1' }, { requested_by: 'p-1' }),
+  ['--workload', 'teams-settings', '--collection', 'c-1', '--team', 't-1', '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1', targets: ['k'] }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /exactly one of targets, mailbox or teamId/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'teams-settings', collectionId: 'c-1', teamId: 't-1', includeOrganization: true }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /includeOrganization needs a mailbox/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: [] }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /at least one object/,
+);
+
 // Driven end-to-end through runJob: a requester holding the backup capability passes
 // the task-25 re-authorization and dispatches. The script is swapped for the fixture
 // so no real collection runs; the REAL argsFor still builds the argv.

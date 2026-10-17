@@ -91,3 +91,71 @@ export function workloadSummary(workloads: RestoreWorkload[]): string {
   const restorable = workloads.filter((workload) => workload.writes.length).length;
   return `${count(services, "service")}, ${count(workloads.length, "kind", "kinds")} of settings: ${backedUp} backed up on this tenant, ${restorable} KEEL can put back at least in part.`;
 }
+
+// Starting a restore for one of these services from the Restore page.
+
+// The same list as engine/restore/workloads/restoreChoices.mjs PAGE_RESTORE_WORKLOADS
+// (a test keeps them equal); kept here so the client bundle needs no engine module.
+export const PAGE_RESTORE_WORKLOADS: readonly string[] = [
+  "exchange-mailbox-settings", "teams-settings",
+  "exchange-mail-flow", "exchange-extended", "teams-org-policies", "teams-voice-policies",
+  "purview-retention-dlp", "purview-governance", "purview-labels",
+];
+
+// Mailboxes and teams: one dry run, and one approval, per chosen mailbox or team
+// (engine PER_ITEM_WORKLOADS; the same test keeps them equal).
+export const PER_ITEM_WORKLOADS: readonly string[] = ["exchange-mailbox-settings", "teams-settings"];
+
+/** True when the page offers "Choose what to put back" for this kind of setting. */
+export function startsFromPage(workload: Pick<RestoreWorkload, "workload" | "writes" | "backup">): boolean {
+  return PAGE_RESTORE_WORKLOADS.includes(workload.workload) && workload.writes.length > 0 && workload.backup !== null;
+}
+
+export interface WorkloadChoiceItem {
+  key: string;
+  name: string;
+  // Against the newest backup; null when the chosen backup is the newest.
+  change: "changed" | "deleted" | "same" | null;
+  restorable: boolean;
+  reason: string | null;
+  tenantWide: boolean;
+}
+
+export interface WorkloadChoiceGroup {
+  kind: string;
+  name: string;
+  restorable: boolean;
+  reason: string | null;
+  items: WorkloadChoiceItem[];
+}
+
+export interface WorkloadBackupPoint {
+  collectionId: string;
+  takenAt: string | null;
+  items: number;
+}
+
+export interface WorkloadChoices {
+  workload: string;
+  // Newest first.
+  backups: WorkloadBackupPoint[];
+  chosen: WorkloadBackupPoint;
+  groups: WorkloadChoiceGroup[];
+}
+
+/** "Changed since this backup", in the words the list shows under a name. */
+export function choiceChangeWords(item: Pick<WorkloadChoiceItem, "change" | "tenantWide">): string | null {
+  const words = item.change === "changed" ? "Changed since this backup" : item.change === "same" ? "Same as the newest backup" : item.change === "deleted" ? "Deleted since this backup" : null;
+  const wide = item.tenantWide ? "Affects the whole tenant" : null;
+  return [words, wide].filter(Boolean).join(" · ") || null;
+}
+
+/** "2 Oct, 06:12": how a backup is named on the page (UTC, as the rest of Restore). */
+export function backupPointWords(takenAt: string | null): string {
+  if (!takenAt) return "a backup at an unknown time";
+  const date = new Date(takenAt);
+  if (Number.isNaN(date.getTime())) return "a backup at an unknown time";
+  const day = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  const time = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+  return `${day}, ${time}`;
+}

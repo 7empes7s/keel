@@ -168,7 +168,7 @@ export default async function RestorePage({
         </>
       )}
 
-      <WorkloadServices now={now} workloads={workloads} />
+      <WorkloadServices canApprove={capabilities.includes("approve")} canRestore={canRestore} now={now} workloads={workloads} />
 
       <div data-layer="explanation">
         {followUps === null

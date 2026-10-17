@@ -1,6 +1,7 @@
 // Wave 2 CMP: the shapes engine/govern/compare.mjs returns, and the words the Compare
 // page uses for them. Pure, so the UI harness renders the real page from fixtures.
 import { valueWords } from "@/lib/changes-view";
+import { replaceObjectIds } from "@/lib/object-ids";
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 
 export type ChangeType = "added" | "removed" | "changed";
@@ -294,8 +295,6 @@ export function contentItemWords(item: ContentItem): string {
   return item.kind ? `An item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "An item";
 }
 
-const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-
 /** Readable values: a reference reads as the object's name, a bare id as "an id". */
 function readable(value: unknown): unknown {
   if (typeof value === "string") {
@@ -306,7 +305,7 @@ function readable(value: unknown): unknown {
     // Exchange writes addresses with their type ("smtp:a@b.example"); the type reads after.
     const address = /^(smtp|sip|x500|eum):(.+)$/i.exec(value);
     if (address) return `${address[2]} (${address[1].toUpperCase()} address)`;
-    return value.replace(GUID, "an id");
+    return replaceObjectIds(value, () => "an id");
   }
   if (Array.isArray(value)) return value.map(readable);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, readable(inner)]));

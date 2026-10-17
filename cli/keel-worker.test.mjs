@@ -351,6 +351,29 @@ assert.throws(
   /invalid params.tier: everything/,
 );
 
+// A workload restore dry run from the Restore page: the workload, its recorded
+// collection and the chosen objects, never a config path, never --enforce.
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor(
+    { workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['transportrule:a', 'transportrule:b'] }, artifactId: 'a-1' },
+    { requested_by: 'p-1' },
+  ),
+  ['--workload', 'exchange-mail-flow', '--collection', 'c-1', '--target', 'transportrule:a', '--target', 'transportrule:b',
+    '--persist-artifact', 'a-1', '--requested-by', 'p-1'],
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'] }, artifactId: 'a-1', collectorConfig: '/tmp/x' }, { requested_by: 'p' }),
+  /carries only params.workloadRestore and params.artifactId/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: ['k'], allowTenantWide: true }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /may carry only workload, collectionId and targets/,
+);
+assert.throws(
+  () => JOB_HANDLERS.restore.argsFor({ workloadRestore: { workload: 'exchange-mail-flow', collectionId: 'c-1', targets: [] }, artifactId: 'a-1' }, { requested_by: 'p' }),
+  /at least one object/,
+);
+
 // Driven end-to-end through runJob: a requester holding the backup capability passes
 // the task-25 re-authorization and dispatches. The script is swapped for the fixture
 // so no real collection runs; the REAL argsFor still builds the argv.

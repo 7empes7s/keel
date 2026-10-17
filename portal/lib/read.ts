@@ -75,6 +75,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/actions/restore/dry-run/[id]/route.ts",
   },
+  restoreWorkloadChoicesApi: {
+    capability: "read",
+    source: "api/actions/restore/workload/route.ts",
+  },
   restoreCompletionApi: {
     capability: "read",
     source: "api/actions/restore/completion/[ref]/route.ts",

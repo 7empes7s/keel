@@ -473,6 +473,29 @@ export const JOB_HANDLERS = {
         ];
       }
 
+      // A workload restore dry run from the Restore page (Exchange, Teams, Purview):
+      // one recorded workload collection and the objects chosen from it. The CLI reads
+      // with the server's collector file; promotion is the artifact path above.
+      if (params.workloadRestore !== undefined) {
+        const extra = paramKeys.filter((key) => key !== 'workloadRestore' && key !== 'artifactId');
+        if (extra.length > 0) {
+          throw new Error(`a workload restore dry run carries only params.workloadRestore and params.artifactId (unexpected: ${extra.join(', ')})`);
+        }
+        const request = params.workloadRestore ?? {};
+        const fields = Object.keys(request).filter((key) => !['workload', 'collectionId', 'targets'].includes(key));
+        if (fields.length > 0) throw new Error(`params.workloadRestore may carry only workload, collectionId and targets (unexpected: ${fields.join(', ')})`);
+        if (!Array.isArray(request.targets) || request.targets.length === 0) {
+          throw new Error('params.workloadRestore.targets must name at least one object');
+        }
+        return [
+          '--workload', requireString(request.workload, 'params.workloadRestore.workload'),
+          '--collection', requireString(request.collectionId, 'params.workloadRestore.collectionId'),
+          ...request.targets.flatMap((key) => ['--target', requireString(key, 'params.workloadRestore.targets entry')]),
+          '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
+          '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+        ];
+      }
+
       const args = [
         '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
         '--target-config', requireString(params.targetConfig, 'params.targetConfig'),

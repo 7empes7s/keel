@@ -1,5 +1,6 @@
 import { PrincipalControls, RemoveRoleButton } from "@/components/principal-controls";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge } from "@/components/ui/badge";
 import type { PrincipalView } from "@/lib/principals";
 import { accessSummary, ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 
@@ -37,9 +38,9 @@ export function PrincipalDetails({ principal, now, canRoles = false, canUsers = 
     <section className={`item-card principal-card${principal.disabled_at ? " principal-disabled" : ""}`} id={`person-${principal.id}`}>
       <div className="item-card-head">
         <h2>{name}</h2>
-        <span className={principal.disabled_at ? "inactive-indicator" : "active-indicator"}>
+        <Badge tone={principal.disabled_at ? "neutral" : "fine"}>
           {principal.disabled_at ? <>Disabled <time dateTime={principal.disabled_at} title={formatTimestamp(principal.disabled_at)}>{ago(principal.disabled_at, now)}</time></> : "Active"}
-        </span>
+        </Badge>
       </div>
       {name !== principal.email ? <p className="principal-email">{principal.email}</p> : null}
       <p>{principal.disabled_at ? "Can no longer use KEEL." : `${accessSummary(principal.capabilities)}.`}</p>

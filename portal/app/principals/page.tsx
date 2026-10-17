@@ -26,8 +26,8 @@ export default async function PrincipalsPage() {
   return <>
     <PageHeader section="Settings" title="People" description={DESCRIPTION} generatedAt={data.generatedAt} />
     <Verdict text={`${active.length} ${active.length === 1 ? "person can" : "people can"} use KEEL; ${approvers} can approve.`} tone={approvers === 0 ? "attention" : "good"} />
-    <div className="item-list" data-layer="explanation">
-      {data.principals.length === 0 ? <p className="empty-state">Nobody has been added yet.</p> : data.principals.map((principal) => (
+    <div className="settings-page" data-layer="explanation">
+      {data.principals.length === 0 ? <p className="empty-state">Nobody has been added yet.</p> : <div className="item-list st-rows">{data.principals.map((principal) => (
         <PrincipalDetails
           canRoles={access.capabilities.includes("roles")}
           canUsers={access.capabilities.includes("users")}
@@ -35,7 +35,7 @@ export default async function PrincipalsPage() {
           now={data.generatedAt}
           principal={principal}
         />
-      ))}
+      ))}</div>}
     </div>
   </>;
 }

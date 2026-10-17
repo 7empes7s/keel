@@ -45,7 +45,7 @@ export default async function NotificationsPage() {
   return <>
     <PageHeader section="Settings" title="Notifications" description={DESCRIPTION} generatedAt={history.generatedAt} />
     <Verdict text={notificationsVerdict(known, history.deliveries)} tone={failed || (known !== null && !known.some((channel) => channel.enabled)) ? "attention" : "good"} />
-    <div data-layer="explanation">
+    <div className="settings-page" data-layer="explanation">
       {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : <NotificationConsole canConfiguration={canConfiguration} channels={channels} subscriptions={subscriptions} />}
       <DeliveryTable channels={known} deliveries={history.deliveries} now={history.generatedAt} />
     </div>

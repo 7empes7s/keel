@@ -1,4 +1,5 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge } from "@/components/ui/badge";
 import { formatTimestamp } from "@/lib/presentation";
 import { heldBackSentence, serviceNowSentence, stateValueWords } from "@/lib/integrations-view";
 import type { ServiceNowStatus } from "@/lib/servicenow";
@@ -20,9 +21,9 @@ const FIELD_LABELS: Record<string, string> = {
 export function ServiceNowPanel({ status }: { status: ServiceNowStatus }) {
   const mapping = status.mapping;
   return <section aria-labelledby="servicenow-heading" className="report-section">
-    <div className="section-heading-row report-heading">
-      <div><p className="section-kicker">Where approvals can also be decided</p><h2 id="servicenow-heading">ServiceNow change approvals</h2></div>
-      <span className={status.enabled ? "active-indicator" : "inactive-indicator"}>{status.enabled ? "On" : "Off"}</span>
+    <div className="st-head">
+      <div><h2 id="servicenow-heading">ServiceNow change approvals</h2><p>Where approvals can also be decided.</p></div>
+      <Badge tone={status.enabled ? "fine" : "neutral"}>{status.enabled ? "On" : "Off"}</Badge>
     </div>
     <div className="item-card">
       <p>{serviceNowSentence(status)}</p>

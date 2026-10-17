@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { formatTimestamp } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
@@ -84,18 +85,18 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
   return <>
     {error ? <p className="action-error" role="alert">{error}</p> : null}
     <section aria-labelledby="integrations-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">Where the audit record is copied</p><h2 id="integrations-heading">Destinations</h2></div>
-        <span className="result-count">{destinations.length} registered</span>
+      <div className="st-head">
+        <div><h2 id="integrations-heading">Destinations</h2><p>Where the audit record is copied.</p></div>
+        <span className="st-count">{destinations.length} registered</span>
       </div>
-      {destinations.length === 0 ? <p className="empty-state">No destination is set up.</p> : <ul className="item-list">{destinations.map((destination) => {
+      {destinations.length === 0 ? <p className="empty-state">No destination is set up.</p> : <ul className="item-list st-rows">{destinations.map((destination) => {
         const status = statusFor(statuses, destination.id);
         const paused = isPaused(destination);
         const events = quarantined[destination.id];
         return <li className="item-card" key={destination.id}>
           <div className="item-card-head">
             <strong>{destination.name}</strong>
-            <span className={paused ? "inactive-indicator" : "active-indicator"}>{paused ? "Paused" : "Sending"}</span>
+            <Badge tone={paused ? "soon" : "fine"}>{paused ? "Paused" : "Sending"}</Badge>
           </div>
           <p>{destinationKind(destination)} to {destinationTarget(destination)}.</p>
           {status ? <dl className="stat-strip">
@@ -130,10 +131,10 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
       })}</ul>}
     </section>
     {canConfiguration ? <section aria-labelledby="register-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">New</p><h2 id="register-heading">Add a destination</h2></div>
+      <div className="st-head">
+        <div><h2 id="register-heading">Add a destination</h2><p>Copy the audit record to a SIEM or a webhook.</p></div>
       </div>
-      <form className="form-card" onSubmit={register}><fieldset disabled={busy}><legend>New destination</legend>
+      <form aria-labelledby="register-heading" className="form-card" onSubmit={register}><fieldset disabled={busy}>
         <div className="form-grid">
           <label className="filter-field"><span>Name</span><input autoComplete="off" name="name" required /></label>
           <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="cef">CEF (SIEM)</option></select></label>

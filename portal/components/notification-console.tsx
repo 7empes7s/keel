@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { displayEnum, fromNow } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
@@ -13,14 +14,19 @@ import { channelName, channelSentence, patternWords } from "@/lib/notifications-
 // Roadmap task-130: channels, routing rules and deliveries by name and in words;
 // forms with labelled fields instead of a JSON text box; raw config and ids in the record.
 
+// A delivery's status as the portal's one badge: colour for risk only.
+const DELIVERY_TONES: Record<string, BadgeTone> = {
+  queued: "neutral", delivering: "low", retrying: "soon", delivered: "fine", failed: "urgent", cancelled: "neutral",
+};
+
 export function DeliveryTable({ deliveries, channels = null, now = new Date().toISOString() }: { deliveries: Delivery[]; channels?: Channel[] | null; now?: string }) {
   const channelById = new Map((channels ?? []).map((channel) => [channel.id, channel]));
   return <section aria-labelledby="deliveries-heading" className="report-section">
-    <div className="section-heading-row report-heading">
-      <div><p className="section-kicker">Sent</p><h2 id="deliveries-heading">Recent alerts</h2></div>
-      <span className="result-count">{deliveries.length} shown</span>
+    <div className="st-head">
+      <div><h2 id="deliveries-heading">Recent alerts</h2><p>What KEEL sent, newest first.</p></div>
+      <span className="st-count">{deliveries.length} shown</span>
     </div>
-    {deliveries.length === 0 ? <p className="empty-state">No alerts have been sent yet.</p> : <ul className="activity-list">{deliveries.map((delivery) => {
+    {deliveries.length === 0 ? <p className="empty-state">No alerts have been sent yet.</p> : <ul className="activity-list st-rows">{deliveries.map((delivery) => {
       const channel = channelById.get(delivery.channel_id);
       const to = channel ? channelName(channel) : delivery.channel_kind === "email" ? "an email channel" : delivery.channel_kind === "webhook" ? "a webhook" : channelName({ kind: delivery.channel_kind, config: {} });
       const receipt = delivery.provider_receipt ?? null;
@@ -28,7 +34,7 @@ export function DeliveryTable({ deliveries, channels = null, now = new Date().to
         <div className="activity-main">
           <p className="activity-title">{displayEnum("eventKind", delivery.event.kind)} ({displayEnum("severity", delivery.event.severity).toLowerCase()}), sent to {to}</p>
           <p className="activity-meta">
-            <span className={`delivery-status delivery-${delivery.status}`}>{displayEnum("deliveryStatus", delivery.status)}</span>
+            <Badge tone={DELIVERY_TONES[delivery.status] ?? "neutral"}>{displayEnum("deliveryStatus", delivery.status)}</Badge>
             {delivery.attempts > 1 ? ` after ${delivery.attempts} attempts` : null}
             {delivery.next_attempt_at ? <> · next try <time dateTime={delivery.next_attempt_at}>{fromNow(delivery.next_attempt_at, now)}</time></> : null}
             {delivery.last_error ? <> · last error: {delivery.last_error}</> : null}
@@ -96,14 +102,14 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
   return <>
     {error ? <p className="action-error" role="alert">{error}</p> : null}
     <section aria-labelledby="channels-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">Where alerts go</p><h2 id="channels-heading">Channels</h2></div>
-        <span className="result-count">{channels.length} set up</span>
+      <div className="st-head">
+        <div><h2 id="channels-heading">Channels</h2><p>Where alerts go.</p></div>
+        <span className="st-count">{channels.length} set up</span>
       </div>
-      {channels.length === 0 ? <p className="empty-state">No channels are set up.</p> : <ul className="item-list">{channels.map((channel) => <li className="item-card" key={channel.id}>
+      {channels.length === 0 ? <p className="empty-state">No channels are set up.</p> : <ul className="item-list st-rows">{channels.map((channel) => <li className="item-card st-row" key={channel.id}>
         <div className="item-card-head">
           <strong>{channelName(channel)}</strong>
-          <span className={channel.enabled ? "active-indicator" : "inactive-indicator"}>{channel.enabled ? "On" : "Off"}</span>
+          <Badge tone={channel.enabled ? "fine" : "neutral"}>{channel.enabled ? "On" : "Off"}</Badge>
         </div>
         <p>{channelSentence(channel)}</p>
         {channel.enabled ? <div className="form-actions"><ConfirmButton confirmLabel="Turn off channel" description={<p>Alerts sent to {channelName(channel)} stop immediately, including critical ones. Rules that use it stay set up.</p>} disabled={busy} onConfirm={() => write(`/api/channels/${channel.id}/disable`, "POST", undefined, "disable-channel")} size="sm" title={`Turn off ${channelName(channel)}?`}>Turn off</ConfirmButton></div> : null}
@@ -139,14 +145,14 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
       </fieldset></form>
     </section>
     <section aria-labelledby="subscriptions-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">Which alerts go where</p><h2 id="subscriptions-heading">Rules</h2></div>
-        <span className="result-count">{subscriptions.length} active</span>
+      <div className="st-head">
+        <div><h2 id="subscriptions-heading">Rules</h2><p>Which alerts go where.</p></div>
+        <span className="st-count">{subscriptions.length} active</span>
       </div>
-      {subscriptions.length === 0 ? <p className="empty-state">No rules are set up, so no alert is sent.</p> : <ul className="item-list">{subscriptions.map((subscription) => {
+      {subscriptions.length === 0 ? <p className="empty-state">No rules are set up, so no alert is sent.</p> : <ul className="item-list st-rows">{subscriptions.map((subscription) => {
         const channel = channelById.get(subscription.channel_id);
         const to = channel ? channelName(channel) : "a channel that is no longer readable";
-        return <li className="item-card" key={subscription.id}>
+        return <li className="item-card st-row" key={subscription.id}>
           <p>Sends {patternWords(subscription.event_glob)} rated {displayEnum("severity", subscription.min_severity).toLowerCase()} or above to {to}.</p>
           <div className="form-actions">
             <ConfirmButton confirmLabel="Delete rule" description={<p>{patternWords(subscription.event_glob).replace(/^./, (c) => c.toUpperCase())} will no longer be sent to {to}. Recreate the rule to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this rule?" tone="danger">Delete rule</ConfirmButton>

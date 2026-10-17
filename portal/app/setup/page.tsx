@@ -37,7 +37,7 @@ export default async function SetupPage() {
       tone={verdict.tone}
     />
     {data.firstCollection ? (
-      <section className="item-card setup-first-backup" aria-labelledby="setup-first-backup">
+      <section className="item-card setup-first-backup settings-card" aria-labelledby="setup-first-backup">
         <div className="item-card-head"><h2 id="setup-first-backup">Latest backup</h2></div>
         <p>
           Finished {formatTimestamp(data.firstCollection.completedAt)}: {data.firstCollection.read} configuration types read
@@ -49,7 +49,7 @@ export default async function SetupPage() {
         </TechnicalDetails>
       </section>
     ) : null}
-    <div className="item-list" data-layer="explanation">
+    <div className="item-list settings-page" data-layer="explanation">
       {data.scopes.map((setup) => (
         <SetupProgress
           canCheck={data.canCheck}

@@ -322,6 +322,60 @@ try {
     );
   }
 
+  // Older drift-detect runs left one row per run for a change they still saw. A replay
+  // evaluates only the newest row per resource, and only while that row is open.
+  const legacyTenantRef = 'sha256:policy-evaluate-legacy-duplicates';
+  async function addOlderDuplicate(drift) {
+    const olderSnapshotId = await createSnapshot(client, { tenantRef: legacyTenantRef });
+    const { rows } = await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type,
+                          change_type, before_hash, after_hash, before_payload, after_payload,
+                          blast_radius, detected_at)
+       SELECT tenant_ref, baseline_id, $2, natural_key, resource_type, change_type, before_hash,
+              after_hash, before_payload, after_payload, blast_radius, detected_at - interval '1 day'
+         FROM drift WHERE id = $1
+       RETURNING *`,
+      [drift.id, olderSnapshotId],
+    );
+    return rows[0];
+  }
+  const openLatest = await makeDrift({
+    tenantRef: legacyTenantRef, naturalKey: 'group:legacy-open', resourceType: 'group',
+    changeType: 'modified', blastRadius: 'cosmetic',
+  });
+  const openOlder = [await addOlderDuplicate(openLatest), await addOlderDuplicate(openLatest)];
+  const closedLatest = await makeDrift({
+    tenantRef: legacyTenantRef, naturalKey: 'group:legacy-closed', resourceType: 'group',
+    changeType: 'modified', blastRadius: 'cosmetic',
+  });
+  const closedOlder = await addOlderDuplicate(closedLatest);
+  await recordDisposition(client, {
+    driftId: closedLatest.id, action: 'accept', actor: 'test-operator', reason: 'closed for test',
+  });
+  await createPolicy(client, {
+    tenantRef: legacyTenantRef, name: 'replay legacy group drift', resourceType: 'group',
+    naturalKeyGlob: 'group:legacy-*', action: 'alert', maxBlastRadius: 'tenant-lockout',
+    createdBy: policyAdminId,
+  });
+  const legacyEvaluations = await evaluateOpenDrifts(client, { tenantRef: legacyTenantRef });
+  assert.deepEqual(
+    legacyEvaluations.map((evaluation) => evaluation.driftId),
+    [openLatest.id],
+    'a replay evaluates the newest open row per resource, not its older duplicates',
+  );
+  for (const older of [...openOlder, closedOlder]) {
+    assert.equal(
+      (await policyEvaluationEvidenceRowsFor(older.id)).length,
+      0,
+      'a superseded duplicate row gets no replay evidence',
+    );
+  }
+  const { rows: legacyRowCount } = await client.query(
+    'SELECT count(*)::int AS n FROM drift WHERE tenant_ref = $1',
+    [legacyTenantRef],
+  );
+  assert.equal(legacyRowCount[0].n, 5, 'a replay leaves superseded rows in place');
+
   // A matching alert policy recommends 'alert' verbatim.
   const alertPolicy = await createPolicy(client, {
     tenantRef, name: 'alert on group changes', resourceType: 'group', action: 'alert',

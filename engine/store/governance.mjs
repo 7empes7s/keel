@@ -1,4 +1,4 @@
-import { OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
 import { executeAutoRemediation } from '../policy/execute.mjs';
 
@@ -67,8 +67,8 @@ export async function recordDrift(client, {
  * A drift-detect run that still sees the same change keeps that change's row instead of
  * adding another one per run. The newest row for the resource against this baseline is
  * reused, unchanged, when it records the same difference (change type and both hashes)
- * and nothing has acted on it yet: no disposition (not even an expired ignore) and no
- * finished auto remediation. The row stays the record of when and in which collection
+ * and nothing has acted on it yet (DRIFT_ACTED_ON_PREDICATE: no disposition, not even an
+ * expired ignore, and no finished or cancelled auto remediation). The row stays the record of when and in which collection
  * KEEL first saw the change. A row something acted on gets a new row when the change is
  * seen again, so a failed or undone auto remediation runs again for it. Returns the
  * reused row, or null when a new row is needed.
@@ -78,9 +78,7 @@ async function reuseUndecidedDrift(client, {
 }) {
   const { rows: [latest] } = await client.query(
     `SELECT d.*,
-            EXISTS (SELECT 1 FROM disposition p WHERE p.drift_id = d.id)
-            OR EXISTS (SELECT 1 FROM auto_remediation_execution e
-                        WHERE e.drift_id = d.id AND e.status IN ('executed', 'failed')) AS acted_on
+            ${DRIFT_ACTED_ON_PREDICATE} AS acted_on
        FROM drift d
       WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.natural_key = $3
       ORDER BY d.detected_at DESC, d.id DESC

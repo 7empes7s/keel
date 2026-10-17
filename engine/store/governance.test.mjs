@@ -166,6 +166,14 @@ const { rows: retriedJobs } = await client.query(
   `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [retriedDriftId],
 );
 assert.equal(retriedJobs.length, 1, 'the change seen again is remediated again');
+// A cancelled remediate job leaves its execution 'queued'; the change is still tried again.
+await client.query("UPDATE job SET status = 'cancelled' WHERE id = $1", [retriedJobs[0].id]);
+const afterCancelId = await autoRemediateAgain();
+assert.notEqual(afterCancelId, retriedDriftId, 'a cancelled remediation is never the end of the change');
+const { rows: afterCancelJobs } = await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [afterCancelId],
+);
+assert.equal(afterCancelJobs.length, 1);
 
 // A drift-detect run that still sees the same change reuses its row unchanged (first seen,
 // first collection), so the table holds one row per change, not one per run. A different

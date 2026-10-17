@@ -37,7 +37,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { changedFields } from '../identity/attribution.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
-import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { evaluateDrift } from './evaluate.mjs';
 import { AUTOMATION_KILL_SWITCH_PATH, executeAutoRemediation } from './execute.mjs';
 
@@ -478,7 +478,7 @@ export async function currentResourceState(client, { tenantRef, naturalKey, reso
   }
   // The newest drift row for the resource, as drift detection itself reuses it: it
   // stands for the newest collection when it was recorded for it, or when it records
-  // this same difference (detection keeps one row per unchanged difference).
+  // this same difference and nothing has acted on it (detection would reuse it).
   const { rows: [drift] } = await client.query(
     `WITH latest AS (
        SELECT dl.id FROM drift dl
@@ -488,7 +488,8 @@ export async function currentResourceState(client, { tenantRef, naturalKey, reso
      )
      SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
       WHERE (d.observed_snapshot = $3
-          OR (d.before_hash IS NOT DISTINCT FROM $5 AND d.after_hash IS NOT DISTINCT FROM $6))
+          OR (d.before_hash IS NOT DISTINCT FROM $5 AND d.after_hash IS NOT DISTINCT FROM $6
+              AND NOT ${DRIFT_ACTED_ON_PREDICATE}))
         AND ${OPEN_DRIFT_PREDICATE}`,
     [tenantRef, baseline.id, snapshot.id, naturalKey, base?.payload_hash ?? null, current?.payload_hash ?? null],
   );

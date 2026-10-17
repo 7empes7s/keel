@@ -4,7 +4,7 @@ import {
   createBaseline, seedBaselineFromSnapshot, getActiveBaseline, recordDrift,
   listOpenDrift, recordDisposition,
 } from './governance.mjs';
-import { createPolicy } from '../policy/evaluate.mjs';
+import { createPolicy, POLICY_EVALUATION_EVIDENCE_KIND } from '../policy/evaluate.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from './loadSchema.mjs';
 
@@ -141,6 +141,57 @@ const { rows: autoRemediateJobs } = await client.query(
 );
 assert.equal(autoRemediateJobs.length, 1, 'an auto_remediate policy match must enqueue exactly one remediate job');
 assert.equal(autoRemediateJobs[0].requested_by, runAsPrincipalId);
+
+// A drift-detect run that still sees the same open change reuses its row: the row moves to
+// the newest collection and keeps its first-seen time, so the table holds one row per
+// change, not one per run. A different difference, or a row someone decided on, gets a new row.
+// A user, so the auto_remediate group policy above does not match it.
+const dedupeKey = 'user:governance-test-dedupe';
+const dedupeDrift = (snapshot, afterHash = 'dedupe-hash') => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: snapshot, naturalKey: dedupeKey,
+  resourceType: 'user', changeType: 'modified', beforeHash: 'baseline-hash', afterHash,
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: afterHash },
+  blastRadius: 'access-affecting',
+});
+const dedupeRows = async () => (await client.query(
+  'SELECT * FROM drift WHERE natural_key = $1 ORDER BY detected_at, id', [dedupeKey],
+)).rows;
+const evaluations = async (driftId) => Number((await client.query(
+  'SELECT count(*) FROM evidence WHERE kind = $1 AND subject->>\'driftId\' = $2', [POLICY_EVALUATION_EVIDENCE_KIND, driftId],
+)).rows[0].count);
+
+const firstRun = await createSnapshot(client, { tenantRef });
+const firstId = await dedupeDrift(firstRun);
+const [firstRow] = await dedupeRows();
+const secondRun = await createSnapshot(client, { tenantRef });
+assert.equal(await dedupeDrift(secondRun), firstId, 'the same open change keeps its row');
+let rowsNow = await dedupeRows();
+assert.equal(rowsNow.length, 1, 'no second row for the same open change');
+assert.equal(rowsNow[0].observed_snapshot, secondRun, 'the row names the newest collection that saw it');
+assert.equal(rowsNow[0].detected_at.getTime(), firstRow.detected_at.getTime(), 'first-seen time is kept');
+assert.equal(await evaluations(firstId), 2, 'each run still evaluates the change against policy');
+assert.equal(await dedupeDrift(secondRun), firstId, 're-running detect for the same collection is a no-op');
+assert.equal((await dedupeRows()).length, 1);
+
+const changedRun = await createSnapshot(client, { tenantRef });
+const changedId = await dedupeDrift(changedRun, 'dedupe-hash-2');
+assert.notEqual(changedId, firstId, 'a different difference is a new change');
+assert.equal((await dedupeRows()).length, 2);
+
+await recordDisposition(client, { driftId: changedId, action: 'rollback', actor: 'test-operator', reason: 'rolled back' });
+const afterRollbackRun = await createSnapshot(client, { tenantRef });
+const reopenedId = await dedupeDrift(afterRollbackRun, 'dedupe-hash-2');
+assert.notEqual(reopenedId, changedId, 'a row with a decision is never moved; the change seen again gets a new row');
+rowsNow = await dedupeRows();
+assert.equal(rowsNow.length, 3);
+assert.equal(rowsNow.find((row) => row.id === changedId).observed_snapshot, changedRun, 'the decided row is left as it was');
+
+// An expired ignore is still a decision about the collection it was made on: that row
+// reads as open again, but the next run records a new row rather than moving it.
+await recordDisposition(client, { driftId: reopenedId, action: 'ignore', actor: 'test-operator', reason: 'brief ignore', expiresAt: expiredIgnoreAt });
+const afterExpiryRun = await createSnapshot(client, { tenantRef });
+assert.notEqual(await dedupeDrift(afterExpiryRun, 'dedupe-hash-2'), reopenedId);
+assert.equal((await dedupeRows()).find((row) => row.id === reopenedId).observed_snapshot, afterRollbackRun);
 
 } finally {
   await client?.end();

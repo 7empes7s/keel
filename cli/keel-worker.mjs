@@ -473,6 +473,55 @@ export const JOB_HANDLERS = {
         ];
       }
 
+      // A workload restore dry run from the Restore page (Exchange, Teams, Purview):
+      // one recorded workload collection and the objects chosen from it. The CLI reads
+      // with the server's collector file; promotion is the artifact path above.
+      if (params.workloadRestore !== undefined) {
+        const extra = paramKeys.filter((key) => key !== 'workloadRestore' && key !== 'artifactId');
+        if (extra.length > 0) {
+          throw new Error(`a workload restore dry run carries only params.workloadRestore and params.artifactId (unexpected: ${extra.join(', ')})`);
+        }
+        // One mailbox or one team is its own dry run (mailbox / teamId instead of
+        // targets); the organization-wide Exchange settings ride along with a mailbox,
+        // and only then may the tenant-wide option be set.
+        const request = params.workloadRestore ?? {};
+        const allowed = ['workload', 'collectionId', 'targets', 'mailbox', 'teamId', 'includeOrganization', 'allowTenantWide'];
+        const fields = Object.keys(request).filter((key) => !allowed.includes(key));
+        if (fields.length > 0) throw new Error(`params.workloadRestore may carry only ${allowed.join(', ')} (unexpected: ${fields.join(', ')})`);
+        const scopes = ['targets', 'mailbox', 'teamId'].filter((key) => request[key] !== undefined);
+        if (scopes.length !== 1) throw new Error('params.workloadRestore carries exactly one of targets, mailbox or teamId');
+        const args = [
+          '--workload', requireString(request.workload, 'params.workloadRestore.workload'),
+          '--collection', requireString(request.collectionId, 'params.workloadRestore.collectionId'),
+        ];
+        if (request.targets !== undefined) {
+          if (!Array.isArray(request.targets) || request.targets.length === 0) {
+            throw new Error('params.workloadRestore.targets must name at least one object');
+          }
+          args.push(...request.targets.flatMap((key) => ['--target', requireString(key, 'params.workloadRestore.targets entry')]));
+        } else if (request.mailbox !== undefined) {
+          args.push('--mailbox', requireString(request.mailbox, 'params.workloadRestore.mailbox'));
+        } else {
+          args.push('--team', requireString(request.teamId, 'params.workloadRestore.teamId'));
+        }
+        for (const key of ['includeOrganization', 'allowTenantWide']) {
+          if (request[key] !== undefined && request[key] !== true) throw new Error(`params.workloadRestore.${key} may only be true`);
+        }
+        if (request.includeOrganization === true) {
+          if (request.mailbox === undefined) throw new Error('params.workloadRestore.includeOrganization needs a mailbox');
+          args.push('--include-organization');
+        }
+        if (request.allowTenantWide === true) {
+          if (request.includeOrganization !== true) throw new Error('params.workloadRestore.allowTenantWide is only set with includeOrganization');
+          args.push('--allow-tenant-wide-test-writes');
+        }
+        args.push(
+          '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
+          '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+        );
+        return args;
+      }
+
       const args = [
         '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
         '--target-config', requireString(params.targetConfig, 'params.targetConfig'),

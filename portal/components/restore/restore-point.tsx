@@ -13,19 +13,24 @@ import { backupAge, backupDays, backupForDay, backupsOn, dayWords, plural, taken
 
 /** The point in time a restore goes back to: always visible with its age, picked on a
  * calendar that marks the days with a backup, with the time when a day has several. */
-export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick }: {
+export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick, headingId = "restore-point-heading", urlDay = true }: {
   snapshots: SnapshotOption[];
   chosen: SnapshotOption;
   now: string;
   disabled?: boolean;
   // `day` is the day the person asked for when it had no backup of its own.
   onPick: (snapshotId: string, day?: Day) => void;
+  // A second picker on the page (another service's backups) needs its own heading id
+  // and does not read the main picker's `day` from the URL.
+  headingId?: string;
+  urlDay?: boolean;
 }) {
   const marked = useMemo(() => backupDays(snapshots), [snapshots]);
   const at = takenAt(chosen);
   const day: Day | null = at ? at.slice(0, 10) : null;
   // The day asked for rides in the URL, so the note survives loading the backup.
-  const asked = useSearchParams()?.get("day") ?? null;
+  const params = useSearchParams();
+  const asked = urlDay ? params?.get("day") ?? null : null;
   const notice = asked && asked !== day ? `No backup on ${dayWords(`${asked}T00:00:00Z`)}, so this is the one before it.` : null;
   const sameDay = day ? backupsOn(snapshots, day) : [];
   const newest = snapshots[0];
@@ -40,11 +45,11 @@ export function RestorePoint({ snapshots, chosen, now, disabled = false, onPick 
   const times = [...sameDay].reverse().map((snapshot) => ({ value: snapshot.id, label: timeWords(takenAt(snapshot)).replace(" UTC", ""), hint: plural(snapshot.resourceCount, "setting") }));
 
   return (
-    <section aria-labelledby="restore-point-heading" className="restore-point">
+    <section aria-labelledby={headingId} className="restore-point">
       <div className="restore-point-now">
         <span aria-hidden="true" className="restore-point-icon"><Icon name="restore" /></span>
         <div>
-          <h2 className="restore-point-label" id="restore-point-heading">Restore to</h2>
+          <h2 className="restore-point-label" id={headingId}>Restore to</h2>
           <p className="restore-point-when">
             <time dateTime={at ?? undefined}>{dayWords(at)}, {timeWords(at)}</time>
           </p>

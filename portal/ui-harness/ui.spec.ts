@@ -245,6 +245,82 @@ test("restore lists every other Microsoft 365 service it backs up, and says what
   await expect(page.locator(".restore-services .restore-workload-head")).not.toContainText(["power-platform-settings"]);
 });
 
+// Exchange, Teams and Purview: the same four steps from a service card, then Approvals.
+for (const theme of ["dark", "light"] as const) {
+  test(`restore puts back another service through the same steps and Approvals · ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, "/restore", theme);
+    // Only kinds KEEL can put back from the page get the button.
+    await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
+    await expect(page.locator(".restore-workload", { hasText: "SharePoint settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
+    await page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).getByRole("button", { name: "Choose what to put back" }).click();
+    const panel = page.locator(".workload-restore");
+    await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
+    await expect(panel).toContainText("From the backup of 2 Oct, 06:12.");
+    // An earlier backup: what changed since is chosen for you; a deleted rule cannot be.
+    await panel.getByRole("button", { name: /^Backup day:/ }).click();
+    await page.getByRole("button", { name: /^Tuesday 29 September 2026/ }).click();
+    await expect(panel).toContainText("From the backup of 29 Sept, 06:10.");
+    await expect(panel.getByRole("checkbox", { name: /KEEL-RT Block external auto-forward/ })).toBeChecked();
+    await expect(panel.getByRole("checkbox", { name: /KEEL-RT Quarantine executables/ })).not.toBeChecked();
+    await expect(panel.getByRole("checkbox", { name: "KEEL-RT Route partner mail, cannot be put back" })).toBeDisabled();
+    await expect(panel.locator(".workload-choice-group", { hasText: "Accepted domains" })).toContainText("By hand only");
+    const results = await new AxeBuilder({ page }).include(".workload-restore").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(results.violations.map((violation) => violation.id)).toEqual([]);
+    await expect(panel).toContainText("2 settings chosen.");
+    await panel.getByRole("button", { name: "Check what would change" }).click();
+    await expect(panel.locator("h3")).toHaveText("Step 3 of 4: review what will change, then send it for approval.", { timeout: 20_000 });
+    await expect(panel).toContainText("KEEL will put back 2 objects, 3 settings in all.");
+    const table = panel.locator(".restore-ba-table").first();
+    await expect(table).toContainText("Test only");
+    await expect(table).toContainText("Reject message reason text");
+    await expect(panel.locator(".workload-manual")).toContainText("Turning it on or off is a separate step an admin takes");
+    expectPlainText(await textOutside(page, ".workload-restore", '[data-layer="record"]'));
+    await panel.getByPlaceholder("Why is this restore appropriate?").fill("Undo INC-2301");
+    await panel.getByRole("button", { name: "Send for approval" }).click();
+    await expect(panel.locator("h3")).toHaveText("Step 4 of 4: sent to approvers. Nothing changes until one of them approves.");
+    await expect(panel.getByRole("link", { name: "Open in Approvals" })).toHaveAttribute("href", /\/approvals$/);
+  });
+}
+
+test("restore puts back several mailboxes at once, each as its own request", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/restore");
+  await page.locator(".restore-workload", { hasText: "Exchange mailbox settings" }).getByRole("button", { name: "Choose what to put back" }).click();
+  const panel = page.locator(".workload-restore");
+  await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
+  // The organization-wide settings are never ticked for you, and need a mailbox.
+  await expect(panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ })).not.toBeChecked();
+  await panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ }).check();
+  await expect(panel).toContainText("The organization-wide settings go with a mailbox: choose one too.");
+  await expect(panel.getByRole("button", { name: "Check what would change" })).toBeDisabled();
+  await panel.getByRole("checkbox", { name: /Organization-wide Exchange settings/ }).uncheck();
+  await panel.getByRole("checkbox", { name: /KEEL-RT-Shared@contoso.example/ }).check();
+  await panel.getByRole("checkbox", { name: /KEEL-RT-User1@contoso.example/ }).check();
+  await expect(panel).toContainText("2 mailboxes chosen.");
+  await panel.getByRole("button", { name: "Check 2 mailboxes" }).click();
+  await expect(panel.locator("h3")).toHaveText("Step 3 of 4: review what will change, then send it for approval.", { timeout: 20_000 });
+  await expect(panel).toContainText("KEEL will put back 2 objects, 3 settings in all, as 2 requests.");
+  await expect(panel.locator(".workload-run h4")).toHaveText(["KEEL-RT-Shared@contoso.example", "KEEL-RT-User1@contoso.example"]);
+  const results = await new AxeBuilder({ page }).include(".workload-restore").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  expectPlainText(await textOutside(page, ".workload-restore", '[data-layer="record"]'));
+  await panel.getByRole("button", { name: "Send 2 for approval" }).click();
+  await expect(panel.locator("h3")).toHaveText("Step 4 of 4: sent to approvers. Nothing changes until one of them approves.");
+});
+
+test("restore of another service fits a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/restore");
+  await page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).getByRole("button", { name: "Choose what to put back" }).click();
+  await expect(page.locator(".workload-restore h3")).toHaveText("Step 1 of 4: choose what to put back.");
+  await expect(page.locator(".workload-choice").first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  const button = page.getByRole("button", { name: "Check what would change" });
+  const box = await button.boundingBox();
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+});
+
 test("restore picks its backup on a calendar that marks backup days", async ({ page }) => {
   await open(page, "/restore");
   await page.getByRole("button", { name: /^Backup day:/ }).click();

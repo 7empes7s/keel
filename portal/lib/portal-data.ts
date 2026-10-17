@@ -35,6 +35,8 @@ import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
+import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
+import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
@@ -634,9 +636,8 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
 // and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
 // server-side for the changes this reader may already see. The change window runs from
 // when KEEL captured the baseline's version of the resource (the baseline's own time
-// for an added resource) to when KEEL first saw the change: the observed collection
-// moves forward on every run that still sees it, detected_at does not. A reader that
-// cannot be attributed (no audit tables, a failed query) gets null, never a guess.
+// for an added resource) to the collection that saw the change. A reader that cannot
+// be attributed (no audit tables, a failed query) gets null, never a guess.
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
@@ -644,7 +645,7 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
     const { rows } = await client.query(
       `SELECT d.id,
               COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
-              LEAST(os.completed_at, d.detected_at) AS window_until
+              COALESCE(os.completed_at, d.detected_at) AS window_until
          FROM drift d
          JOIN baseline b ON b.id = d.baseline_id
          JOIN snapshot os ON os.id = d.observed_snapshot
@@ -738,20 +739,36 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
           WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
        )
        SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
-              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name
+              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name,
+              rv.resource_type, rv.natural_key,
+              CASE WHEN rv.resource_type = ANY($4::text[]) AND ${REF_NAME_SQL} IS NULL THEN rv.payload END AS payload
          FROM resource_version rv
          JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
         WHERE rv.snapshot_id IN (SELECT id FROM seen)
           AND (lower(rv.payload->>'id') = ANY($3::text[])
             OR lower(rv.payload->>'appId') = ANY($3::text[])
             OR lower(rv.payload->>'roleTemplateId') = ANY($3::text[]))`,
-      [ref, items.map((item) => item.id), wanted],
+      [ref, items.map((item) => item.id), wanted, DERIVED_NAME_TYPES],
     );
-    for (const row of rows) {
-      const name = typeof row.name === "string" ? row.name.trim() : "";
-      if (!name || objectIds(name).length) continue;
+    const add = (row: Record<string, unknown>, name: string) => {
       for (const id of [row.id, row.app_id, row.template_id]) {
         if (typeof id === "string" && !names.has(id)) names.set(id, name);
+      }
+    };
+    // An app consent a value points to (by its grant id) has no name of its own: it is
+    // named from the apps and person it links (lib/app-names).
+    const unnamed: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (name && !objectIds(name).length) add(row, name);
+      else if (!name && row.payload) unnamed.push(row);
+    }
+    if (unnamed.length) {
+      const refs = unnamed.map((row) => referencedIds(String(row.resource_type), String(row.natural_key), row.payload));
+      const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
+      for (const row of unnamed) {
+        const name = derivedName(String(row.resource_type), String(row.natural_key), row.payload, lookup);
+        if (name) add(row, name);
       }
     }
   } catch (error) {
@@ -762,6 +779,25 @@ async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[
     const refNames = Object.fromEntries(perItem[index].flatMap((id) => (names.has(id) ? [[id, names.get(id)!]] : [])));
     return Object.keys(refNames).length ? { ...item, refNames } : item;
   });
+}
+
+// App settings that carry no name (app consent, app permissions, owners, provisioning
+// jobs) are named from the apps, people and app roles they point to (lib/app-names.ts).
+async function withAppNames(client: KeelClient, ref: string, items: DriftRecord[]): Promise<DriftRecord[]> {
+  const unnamed = items.flatMap((item, index) => {
+    if (item.name) return [];
+    const type = edgeKeyType(item.naturalKey) ?? item.resourceType;
+    return (DERIVED_NAME_TYPES as readonly string[]).includes(type) ? [{ index, payload: item.after ?? item.before }] : [];
+  });
+  if (!unnamed.length) return items;
+  const refs = unnamed.map(({ index, payload }) => referencedIds(items[index].resourceType, items[index].naturalKey, payload));
+  const lookup = await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles));
+  const out = [...items];
+  for (const { index, payload } of unnamed) {
+    const name = derivedName(items[index].resourceType, items[index].naturalKey, payload, lookup);
+    if (name) out[index] = { ...items[index], name };
+  }
+  return out;
 }
 
 function driftResult(items: DriftRecord[]): { items: DriftRecord[]; summary: SemanticSummary } {
@@ -784,7 +820,7 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
       const attributed = found ? await withAttribution(client, ref, found.id, items, scope) : items;
       // Only a central reader gets the names of the objects a change points to: an
       // entity-scoped reader may not see those objects, so their ids stay unnamed.
-      const named = scope.central ? await withRefNames(client, ref, attributed) : attributed;
+      const named = scope.central ? await withAppNames(client, ref, await withRefNames(client, ref, attributed)) : attributed;
       return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, named, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
@@ -806,6 +842,9 @@ export interface RestoreResource {
   // The Microsoft service the type belongs to (engine/insights/taxonomy.mjs), or null
   // when the type is not classified yet; the Restore page groups by it.
   service: string | null;
+  // The name the backup holds for it (displayName and the like), or null when the
+  // object has none; the page never falls back to a bare object id.
+  name?: string | null;
 }
 
 export interface RestoreResourcesData {
@@ -813,6 +852,10 @@ export interface RestoreResourcesData {
   snapshotId: string;
   resources: RestoreResource[];
 }
+
+// The readable name a saved object carries, by the field Microsoft uses for it.
+export const PAYLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "userPrincipalName", "mail", "subject"]
+  .map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -826,13 +869,21 @@ export async function getRestoreResources(
       ): Promise<{ rows: UnknownRecord[] }>;
     };
     const { rows } = await queryClient.query(
-      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius
+      `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
+              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
        ORDER BY rv.natural_key`,
-      [snapshotId, ref],
+      [snapshotId, ref, DERIVED_NAME_TYPES],
     );
+    // App consent, provisioning jobs and the like carry no name: they are named from the
+    // apps and people they point to, as this backup names them.
+    const nameless = rows.filter((row) => row.payload != null);
+    const refs = nameless.map((row) => referencedIds(String(row.resource_type), String(row.natural_key), row.payload));
+    const lookup = nameless.length
+      ? await idNames(client, ref, refs.flatMap((entry) => entry.ids), refs.flatMap((entry) => entry.roles), snapshotId)
+      : null;
     return {
       generatedAt: new Date().toISOString(),
       snapshotId,
@@ -841,6 +892,11 @@ export async function getRestoreResources(
         resourceType: String(row.resource_type),
         blastRadius: String(row.blast_radius),
         service: typeInfo(String(row.resource_type)).service,
+        name: row.display_name != null
+          ? String(row.display_name)
+          : lookup && row.payload != null
+            ? derivedName(String(row.resource_type), String(row.natural_key), row.payload, lookup)
+            : null,
       })),
     };
   });
@@ -979,6 +1035,19 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
       );
       for (const row of rows) {
         if (row.display_name) displayNames.set(`${row.snapshot_id}|${row.natural_key}`, String(row.display_name));
+      }
+      // A setting with no name of its own (app consent, an app permission) is named from
+      // what it points to, as the newest backup names them.
+      const nameless = wanted.filter((entry) => !displayNames.has(`${entry.snapshotId}|${entry.naturalKey}`));
+      if (nameless.length > 0) {
+        const saved = await savedNames(client, ref, nameless.map((entry) => entry.naturalKey)).catch((error) => {
+          console.error("[keel-portal] incident setting names unavailable", error);
+          return {} as Awaited<ReturnType<typeof savedNames>>;
+        });
+        for (const entry of nameless) {
+          const name = saved[entry.naturalKey]?.name;
+          if (name) displayNames.set(`${entry.snapshotId}|${entry.naturalKey}`, name);
+        }
       }
     }
 
@@ -1236,6 +1305,21 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     const answer = (await answerQuestion(client, {
       tenantRef: ref, scope: readerScope, question: input.question ?? null, request, now,
     })) as GroundedAnswer;
+    // App settings that carry no name are named from the apps they point to. Only a
+    // central reader gets those names, as on the Changes page.
+    const nameless = answer.records.filter((record) => record.kind === "change" && !record.name
+      && (DERIVED_NAME_TYPES as readonly string[]).includes(edgeKeyType(record.naturalKey) ?? record.resourceType));
+    if (readerScope.central && nameless.length) {
+      const saved = await savedNames(client, ref, nameless.map((record) => (record as { naturalKey: string }).naturalKey)).catch((error) => {
+        console.error("[keel-portal] ask app names unavailable", error);
+        return {} as Awaited<ReturnType<typeof savedNames>>;
+      });
+      answer.records = answer.records.map((record) => {
+        if (record.kind !== "change" || record.name) return record;
+        const name = saved[record.naturalKey]?.name;
+        return name ? { ...record, name } : record;
+      });
+    }
     return { generatedAt: now.toISOString(), answer, entities, scope: readerScope };
   });
 }

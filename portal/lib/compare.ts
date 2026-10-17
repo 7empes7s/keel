@@ -6,7 +6,9 @@ import { connect } from "../../engine/store/db.mjs";
 import {
   defaultInput, labelTenants, type CompareData, type CompareInput, type CompareProblem, type CompareResult, type CompareSnapshotOption,
 } from "@/lib/compare-view";
+import { DERIVED_NAME_TYPES } from "@/lib/app-names";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { savedNames } from "@/lib/saved-names";
 
 interface KeelClient {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -25,7 +27,7 @@ export async function getCompareData(input: CompareInput | null, now: Date = new
     if (chosen.from === chosen.to) return { ...base, result: null, problem: "same-snapshot" };
     try {
       const result = (await compareSnapshots(client, { leftSnapshotId: chosen.from, rightSnapshotId: chosen.to, now })) as CompareResult;
-      return { ...base, result, problem: null };
+      return { ...base, result: await withAppNames(client, result), problem: null };
     } catch (error) {
       if (error instanceof CompareError && (error.code === "snapshot-not-found" || error.code === "snapshot-incomplete")) {
         return { ...base, result: null, problem: error.code as CompareProblem };
@@ -35,4 +37,37 @@ export async function getCompareData(input: CompareInput | null, now: Date = new
   } finally {
     await client.end();
   }
+}
+
+// App settings that carry no name (app consent, provisioning jobs) are named from the
+// apps they point to, as each side's newest backup names them. A failed read leaves
+// them unnamed, never the page down.
+async function withAppNames(client: KeelClient, result: CompareResult): Promise<CompareResult> {
+  const groups = result.settings?.groups ?? [];
+  const derivable = (group: { resourceType: string }) => (DERIVED_NAME_TYPES as readonly string[]).includes(group.resourceType);
+  const keys = groups.filter(derivable).flatMap((group) => group.items.filter((item) => !item.name).map((item) => item.naturalKey));
+  if (!keys.length || !result.settings) return result;
+  const names: Record<string, string> = {};
+  for (const tenant of new Set([result.right.tenantRef, result.left.tenantRef])) {
+    const missing = keys.filter((key) => !names[key]);
+    if (!missing.length) break;
+    try {
+      const saved = await savedNames(client, tenant, missing);
+      for (const key of missing) {
+        const name = saved[key]?.name;
+        if (name) names[key] = name;
+      }
+    } catch (error) {
+      console.error("[keel-portal] compare app names unavailable", error);
+    }
+  }
+  return {
+    ...result,
+    settings: {
+      ...result.settings,
+      groups: groups.map((group) => derivable(group)
+        ? { ...group, items: group.items.map((item) => (!item.name && names[item.naturalKey] ? { ...item, name: names[item.naturalKey] } : item)) }
+        : group),
+    },
+  };
 }

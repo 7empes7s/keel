@@ -5,6 +5,7 @@ import {
   listOpenDrift, recordDisposition,
 } from './governance.mjs';
 import { createPolicy, POLICY_EVALUATION_EVIDENCE_KIND } from '../policy/evaluate.mjs';
+import { recordAutoRemediationTerminalOutcome } from '../policy/execute.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from './loadSchema.mjs';
 
@@ -142,9 +143,41 @@ const { rows: autoRemediateJobs } = await client.query(
 assert.equal(autoRemediateJobs.length, 1, 'an auto_remediate policy match must enqueue exactly one remediate job');
 assert.equal(autoRemediateJobs[0].requested_by, runAsPrincipalId);
 
-// A drift-detect run that still sees the same open change reuses its row: the row moves to
-// the newest collection and keeps its first-seen time, so the table holds one row per
-// change, not one per run. A different difference, or a row someone decided on, gets a new row.
+// The same change seen again while its remediate job is still queued reuses the row and
+// queues nothing more. Once that job has failed, the change seen again gets a new row and
+// a new remediate job, so a failed auto remediation is tried again on the next run.
+const autoRemediateAgain = async () => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: await createSnapshot(client, { tenantRef }),
+  naturalKey: 'group:governance-test-auto-remediate', resourceType: 'group', changeType: 'modified',
+  beforeHash: 'baseline-hash', afterHash: 'auto-remediate-hash',
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: 'Changed by attacker' },
+  blastRadius: 'access-affecting',
+});
+const remediateJobs = async () => (await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [autoRemediateDriftId],
+)).rows;
+assert.equal(await autoRemediateAgain(), autoRemediateDriftId, 'a queued remediation keeps the row');
+assert.equal((await remediateJobs()).length, 1, 'and is not queued twice');
+await client.query("UPDATE job SET status = 'failed' WHERE id = $1", [autoRemediateJobs[0].id]);
+await recordAutoRemediationTerminalOutcome(client, { job: { id: autoRemediateJobs[0].id, kind: 'remediate' }, status: 'failed', error: 'Graph 503' });
+const retriedDriftId = await autoRemediateAgain();
+assert.notEqual(retriedDriftId, autoRemediateDriftId, 'a failed remediation is never the end of the change');
+const { rows: retriedJobs } = await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [retriedDriftId],
+);
+assert.equal(retriedJobs.length, 1, 'the change seen again is remediated again');
+// A cancelled remediate job leaves its execution 'queued'; the change is still tried again.
+await client.query("UPDATE job SET status = 'cancelled' WHERE id = $1", [retriedJobs[0].id]);
+const afterCancelId = await autoRemediateAgain();
+assert.notEqual(afterCancelId, retriedDriftId, 'a cancelled remediation is never the end of the change');
+const { rows: afterCancelJobs } = await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [afterCancelId],
+);
+assert.equal(afterCancelJobs.length, 1);
+
+// A drift-detect run that still sees the same change reuses its row unchanged (first seen,
+// first collection), so the table holds one row per change, not one per run. A different
+// difference, or a row something acted on, gets a new row.
 // A user, so the auto_remediate group policy above does not match it.
 const dedupeKey = 'user:governance-test-dedupe';
 const dedupeDrift = (snapshot, afterHash = 'dedupe-hash') => recordDrift(client, {
@@ -167,10 +200,11 @@ const secondRun = await createSnapshot(client, { tenantRef });
 assert.equal(await dedupeDrift(secondRun), firstId, 'the same open change keeps its row');
 let rowsNow = await dedupeRows();
 assert.equal(rowsNow.length, 1, 'no second row for the same open change');
-assert.equal(rowsNow[0].observed_snapshot, secondRun, 'the row names the newest collection that saw it');
+assert.equal(rowsNow[0].observed_snapshot, firstRun, 'the row stays the record of the first sighting');
 assert.equal(rowsNow[0].detected_at.getTime(), firstRow.detected_at.getTime(), 'first-seen time is kept');
 assert.equal(await evaluations(firstId), 2, 'each run still evaluates the change against policy');
 assert.equal(await dedupeDrift(secondRun), firstId, 're-running detect for the same collection is a no-op');
+assert.equal(await dedupeDrift(firstRun), firstId, 'detecting an older collection again changes nothing');
 assert.equal((await dedupeRows()).length, 1);
 
 const changedRun = await createSnapshot(client, { tenantRef });
@@ -192,6 +226,54 @@ await recordDisposition(client, { driftId: reopenedId, action: 'ignore', actor: 
 const afterExpiryRun = await createSnapshot(client, { tenantRef });
 assert.notEqual(await dedupeDrift(afterExpiryRun, 'dedupe-hash-2'), reopenedId);
 assert.equal((await dedupeRows()).find((row) => row.id === reopenedId).observed_snapshot, afterRollbackRun);
+
+// An ignored change stays ignored while the ignore lasts: the next run that still sees
+// the same change keeps the ignored row (no new open row, no new policy evaluation).
+// Once the setting changes again, that is a new change and shows as open.
+const ignoredKey = 'user:governance-test-ignored';
+const ignoredDrift = async (afterHash = 'ignored-hash') => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: await createSnapshot(client, { tenantRef }), naturalKey: ignoredKey,
+  resourceType: 'user', changeType: 'modified', beforeHash: 'baseline-hash', afterHash,
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: afterHash },
+  blastRadius: 'access-affecting',
+});
+const ignoredRows = async () => (await client.query(
+  'SELECT id FROM drift WHERE natural_key = $1 ORDER BY detected_at, id', [ignoredKey],
+)).rows.map((row) => row.id);
+const openIds = async () => (await listOpenDrift(client, { tenantRef })).map((row) => row.id);
+const ignoredId = await ignoredDrift();
+await recordDisposition(client, { driftId: ignoredId, action: 'ignore', actor: 'test-operator', reason: 'known change', expiresAt: unexpiredIgnoreAt });
+assert.equal(await ignoredDrift(), ignoredId, 'the ignored change seen again keeps its ignored row');
+assert.equal(await ignoredDrift(), ignoredId);
+assert.deepEqual(await ignoredRows(), [ignoredId], 'no new open row while the ignore lasts');
+assert.ok(!(await openIds()).includes(ignoredId), 'the ignored change does not show as open');
+assert.equal(await evaluations(ignoredId), 1, 'an ignored change is not evaluated again');
+const changedAgainId = await ignoredDrift('ignored-hash-2');
+assert.notEqual(changedAgainId, ignoredId, 'the setting changed again: a new change');
+assert.ok((await openIds()).includes(changedAgainId), 'and it shows as open');
+// The same holds when the ignore has run out by the next run: the change shows again.
+await recordDisposition(client, { driftId: changedAgainId, action: 'ignore', actor: 'test-operator', reason: 'brief', expiresAt: expiredIgnoreAt });
+const afterLapseId = await ignoredDrift('ignored-hash-2');
+assert.notEqual(afterLapseId, changedAgainId, 'an ignore that ran out no longer holds the change back');
+assert.ok((await openIds()).includes(afterLapseId));
+
+// An ignored change that an auto_remediate policy matches is not remediated on the next run.
+const ignoredGroupDrift = async () => recordDrift(client, {
+  tenantRef, baselineId, observedSnapshot: await createSnapshot(client, { tenantRef }), naturalKey: 'group:governance-test-ignored-auto',
+  resourceType: 'group', changeType: 'modified', beforeHash: 'baseline-hash', afterHash: 'ignored-auto-hash',
+  beforePayload: { displayName: 'Governance test' }, afterPayload: { displayName: 'Known change' },
+  blastRadius: 'access-affecting',
+});
+const ignoredGroupId = await ignoredGroupDrift();
+const ignoredGroupJobs = async () => (await client.query(
+  `SELECT id FROM job WHERE kind = 'remediate' AND params->'driftIds' @> to_jsonb($1::text)`, [ignoredGroupId],
+)).rows;
+assert.equal((await ignoredGroupJobs()).length, 1);
+await recordDisposition(client, { driftId: ignoredGroupId, action: 'ignore', actor: 'test-operator', reason: 'known change', expiresAt: unexpiredIgnoreAt });
+const ignoredGroupEvaluations = await evaluations(ignoredGroupId);
+assert.equal(await ignoredGroupDrift(), ignoredGroupId);
+assert.equal(await evaluations(ignoredGroupId), ignoredGroupEvaluations, 'no new evaluation for the ignored change');
+assert.equal((await ignoredGroupJobs()).length, 1, 'and no new remediation');
 
 } finally {
   await client?.end();

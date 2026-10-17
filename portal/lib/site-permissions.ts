@@ -3,6 +3,7 @@
 import { connect } from "../../engine/store/db.mjs";
 
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { idNames } from "@/lib/saved-names";
 import {
   SITES_WORKLOAD, sitePermissionsFrom, siteName, type SitePermissionsData, type SitesRun,
 } from "@/lib/site-permissions-view";
@@ -61,10 +62,36 @@ export async function loadSitePermissions(
 export async function getSitePermissions(siteId: string | null = null, now: Date = new Date()): Promise<SitePermissionsData> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
-    return await loadSitePermissions(client, { tenantRef: tenantRef(), siteId, now });
+    return await withAppNames(client, tenantRef(), await loadSitePermissions(client, { tenantRef: tenantRef(), siteId, now }));
   } finally {
     await client.end();
   }
+}
+
+/**
+ * Graph can leave out the name of an app with site access. Such an app is named by its
+ * app id from the newest backup of enterprise apps and app registrations, so the page
+ * reads "Contoso HR", not "An app with no name".
+ */
+export async function withAppNames(client: KeelClient, tenant: string, data: SitePermissionsData): Promise<SitePermissionsData> {
+  const ids = data.sites.flatMap((site) => (site.appGrants.entries ?? []).flatMap((grant) =>
+    grant.applications.flatMap((application) => (!application.displayName && application.id ? [application.id] : []))));
+  if (!ids.length) return data;
+  const names = await idNames(client, tenant, ids);
+  const nameOf = (id: string | null) => (id ? names.ids[id.toLowerCase()] ?? null : null);
+  return {
+    ...data,
+    sites: data.sites.map((site) => !site.appGrants.entries ? site : {
+      ...site,
+      appGrants: {
+        ...site.appGrants,
+        entries: site.appGrants.entries.map((grant) => ({
+          ...grant,
+          applications: grant.applications.map((application) => application.displayName ? application : { ...application, displayName: nameOf(application.id) }),
+        })),
+      },
+    }),
+  };
 }
 
 /**

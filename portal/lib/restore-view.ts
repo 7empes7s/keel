@@ -1,6 +1,7 @@
 import type { RiskTone } from "@/lib/menu-status";
 import type { Day } from "@/lib/date-range";
 import { fieldWords } from "@/lib/changes-view";
+import { holdsObjectId } from "@/lib/object-ids";
 import { displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
@@ -24,10 +25,44 @@ export function plainType(type: string): string {
   return PLAIN_TYPES[type] ?? typeName(type);
 }
 
-/** The name part of a stored key: "group:Finance" → "Finance". */
-export function itemName(naturalKey: string): string {
+// Many types are stored under a Graph id (a GUID, an app consent token, a provisioning
+// job id), or carry one inside the key, so a key alone is never shown when it holds one
+// (rule: names, not ids). One check for every page: lib/object-ids.ts.
+export const holdsId = holdsObjectId;
+
+/** What each saved setting is called, by its stored key: the name the backup holds,
+ * else the readable part of the key, else "Unnamed <type>". */
+export interface NameEntry { name: string; resourceType: string }
+export type NameBook = ReadonlyMap<string, NameEntry>;
+
+export function nameBook(resources: { naturalKey: string; resourceType: string; name?: string | null }[]): NameBook {
+  return new Map(resources.map((resource) => [resource.naturalKey, { name: settingName(resource), resourceType: resource.resourceType }]));
+}
+
+export function settingName(resource: { naturalKey: string; resourceType: string; name?: string | null }): string {
+  const name = resource.name?.trim();
+  if (name && !holdsId(name)) return name;
+  // A tenant-wide setting is stored under its type: its plain type is its name.
+  if (resource.naturalKey === resource.resourceType) return plainType(resource.resourceType);
+  const fromKey = keyName(resource.naturalKey);
+  if (!holdsId(fromKey)) return fromKey;
+  return `Unnamed ${plainType(resource.resourceType).toLowerCase()}`;
+}
+
+function keyName(naturalKey: string): string {
   const index = naturalKey.indexOf(":");
   return index === -1 ? naturalKey : naturalKey.slice(index + 1).replaceAll(":", " · ");
+}
+
+/** The name part of a stored key: "group:Finance" → "Finance". With a name book, the
+ * name the backup holds; a key that is only an id never shows. */
+export function itemName(naturalKey: string, names?: NameBook): string {
+  const known = names?.get(naturalKey);
+  if (known) return known.name;
+  const fromKey = keyName(naturalKey);
+  if (!holdsId(fromKey)) return fromKey;
+  const index = naturalKey.indexOf(":");
+  return index === -1 ? "Unnamed setting" : `Unnamed ${plainType(naturalKey.slice(0, index)).toLowerCase()}`;
 }
 
 /** When a backup was taken: completed time, else start time. */
@@ -166,10 +201,16 @@ export function lastRestoreTile(jobs: JobRecord[], now: string): { label: string
 }
 
 /** "Block legacy auth (sign-in rule)": a setting by its name and plain type. */
-export function plainLabel(naturalKey: string): string {
+export function plainLabel(naturalKey: string, names?: NameBook): string {
+  const known = names?.get(naturalKey);
+  if (known) {
+    const type = plainType(known.resourceType);
+    return known.name === type || known.name.startsWith("Unnamed ") ? known.name : `${known.name} (${type.toLowerCase()})`;
+  }
   const index = naturalKey.indexOf(":");
-  if (index === -1) return naturalKey;
-  return `${itemName(naturalKey)} (${plainType(naturalKey.slice(0, index)).toLowerCase()})`;
+  if (index === -1) return itemName(naturalKey);
+  const name = itemName(naturalKey);
+  return name.startsWith("Unnamed ") ? name : `${name} (${plainType(naturalKey.slice(0, index)).toLowerCase()})`;
 }
 
 /** What a check says it would do to one setting, in words; the coded reason stays in

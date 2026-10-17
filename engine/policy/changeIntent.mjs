@@ -37,7 +37,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { changedFields } from '../identity/attribution.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
-import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { evaluateDrift } from './evaluate.mjs';
 import { AUTOMATION_KILL_SWITCH_PATH, executeAutoRemediation } from './execute.mjs';
 
@@ -441,9 +441,12 @@ export async function revokeChangeIntent(client, {
  * any resource of this type, compared with the active baseline.
  *   matches-baseline    the resource is as the baseline has it; nothing to roll back
  *   drifted             the newest collection differs; `drift` is the open drift row
- *                       recorded for that collection
- *   awaiting-detection  the newest collection differs but no drift row was recorded for
- *                       it yet; the next drift detection evaluates it normally
+ *                       recorded for that collection, or for this same difference by an
+ *                       earlier one (detection keeps one row per unchanged difference)
+ *   ignored             the newest collection differs and an admin ignores that change
+ *                       right now; `drift` is its row, and nothing acts on it
+ *   awaiting-detection  the newest collection differs but no drift row records this
+ *                       difference yet; the next drift detection evaluates it normally
  *   unknown             no baseline or no collection of this type
  */
 export async function currentResourceState(client, { tenantRef, naturalKey, resourceType }) {
@@ -475,14 +478,28 @@ export async function currentResourceState(client, { tenantRef, naturalKey, reso
   if ((current?.payload_hash ?? null) === (base?.payload_hash ?? null)) {
     return { state: 'matches-baseline', snapshotId: String(snapshot.id), observedAt };
   }
-  const { rows: [drift] } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.observed_snapshot = $3 AND d.natural_key = $4
-        AND ${OPEN_DRIFT_PREDICATE}`,
-    [tenantRef, baseline.id, snapshot.id, naturalKey],
+  // The newest drift row for the resource, as drift detection itself reuses it: it
+  // stands for the newest collection when it was recorded for it, or when it records
+  // this same difference and nothing has acted on it or it is ignored right now
+  // (detection would reuse it). An ignored row is reported as ignored, never acted on.
+  const { rows: [found] } = await client.query(
+    `WITH latest AS (
+       SELECT dl.id FROM drift dl
+        WHERE dl.tenant_ref = $1 AND dl.baseline_id = $2 AND dl.natural_key = $4
+        ORDER BY dl.detected_at DESC, dl.id DESC
+        LIMIT 1
+     )
+     SELECT d.*, ${DRIFT_IGNORED_PREDICATE} AS ignored
+       FROM drift d JOIN latest ON latest.id = d.id
+      WHERE (d.observed_snapshot = $3
+          OR (d.before_hash IS NOT DISTINCT FROM $5 AND d.after_hash IS NOT DISTINCT FROM $6
+              AND (NOT ${DRIFT_ACTED_ON_PREDICATE} OR ${DRIFT_IGNORED_PREDICATE})))
+        AND (${OPEN_DRIFT_PREDICATE} OR ${DRIFT_IGNORED_PREDICATE})`,
+    [tenantRef, baseline.id, snapshot.id, naturalKey, base?.payload_hash ?? null, current?.payload_hash ?? null],
   );
-  if (!drift) return { state: 'awaiting-detection', snapshotId: String(snapshot.id), observedAt };
-  return { state: 'drifted', snapshotId: String(snapshot.id), observedAt, drift };
+  if (!found) return { state: 'awaiting-detection', snapshotId: String(snapshot.id), observedAt };
+  const { ignored, ...drift } = found;
+  return { state: ignored ? 'ignored' : 'drifted', snapshotId: String(snapshot.id), observedAt, drift };
 }
 
 /**

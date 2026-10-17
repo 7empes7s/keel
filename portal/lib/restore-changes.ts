@@ -4,6 +4,7 @@ import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 
 import { valueWords } from "@/lib/changes-view";
+import { isObjectId, replaceObjectIds } from "@/lib/object-ids";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 
 // The Restore page's "Changed recently" group (handoff/redesign/CHOICE.md, "Restore"):
@@ -72,15 +73,14 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-const isGuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const isId = (value: unknown) => typeof value === "string" && isObjectId(value);
 
 // Redesign rule 4: ids never reach the screen. A list of object ids reads as a count;
 // an id inside a value is dropped.
 function short(value: unknown): string {
-  if (Array.isArray(value) && value.length && value.every(isGuid)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;
-  if (isGuid(value)) return "one item";
-  const text = valueWords(value).replace(GUID, "…");
+  if (Array.isArray(value) && value.length && value.every(isId)) return `${value.length} ${value.length === 1 ? "item" : "items"}`;
+  if (isId(value)) return "one item";
+  const text = replaceObjectIds(valueWords(value), () => "…");
   return text.length > MAX_VALUE_LENGTH ? `${text.slice(0, MAX_VALUE_LENGTH - 1)}…` : text;
 }
 

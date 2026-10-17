@@ -30,6 +30,11 @@ const SCRIPT_ID = "5c3e9f1a-0b7d-4e21-9a4c-2f6d8e1b0a11";
 const GROUP_ID = "9f8e7d6c-5b4a-4321-8fed-cba987654321";
 const MISSING_ID = "00000000-1111-4222-8333-444444444444";
 const ROLE_TEMPLATE_ID = "62e90394-69f5-4237-9190-012177145e10";
+// An app consent grant id is an opaque 43-character token, not a GUID.
+const GRANT_ID = "Qm9vdHN0cmFwR3JhbnQ0Mk1pY3Jvc29mdEdyYXBoX2E";
+const UNKNOWN_GRANT_ID = "l5eW7x0ga0-WDOntXzHateQDNpSH5-lPk9HjD3Sarjk";
+const HR_SP_ID = "7d1c0000-0000-4000-8000-0000000000a1";
+const GRAPH_SP_ID = "7d1c0000-0000-4000-8000-0000000000a2";
 
 let database: IsolatedDatabase;
 let client: TestClient;
@@ -83,6 +88,10 @@ test("the Changes data names each change and the objects its settings point to",
   // The referenced group and role, as the collection that saw the change read them.
   await version(observed, `group:Finance approvers`, "group", { id: GROUP_ID, displayName: "Finance approvers" });
   await version(observed, ROLE_TEMPLATE_ID, "directoryRoleTemplate", { id: ROLE_TEMPLATE_ID, displayName: "Global Administrator" });
+  // An app consent carries no name: it is named from the apps it links.
+  await version(observed, GRANT_ID, "oauth2PermissionGrant", { id: GRANT_ID, clientId: HR_SP_ID, resourceId: GRAPH_SP_ID, consentType: "AllPrincipals", scope: "User.Read" });
+  await version(observed, "servicePrincipal:Contoso HR", "servicePrincipal", { id: HR_SP_ID, displayName: "Contoso HR" });
+  await version(observed, "servicePrincipal:Microsoft Graph", "servicePrincipal", { id: GRAPH_SP_ID, displayName: "Microsoft Graph" });
 
   const policyBefore = { displayName: "Block legacy auth", conditions: { users: { excludeGroups: [GROUP_ID], excludeRoles: [] } } };
   const policyAfter = { displayName: "Block legacy auth", conditions: { users: { excludeGroups: [GROUP_ID, MISSING_ID], excludeRoles: [ROLE_TEMPLATE_ID] } } };
@@ -92,6 +101,8 @@ test("the Changes data names each change and the objects its settings point to",
     { key: SCRIPT_ID, type: "deviceManagementScript", kind: "added", before: null, after: { id: SCRIPT_ID, displayName: "Set time zone" } },
     // A key that embeds ids and a copy with no name.
     { key: `roleAssignment:unknown:${ROLE_TEMPLATE_ID}@unknown:${MISSING_ID}@/`, type: "roleAssignment", kind: "removed", before: { roleDefinitionId: ROLE_TEMPLATE_ID, principalId: MISSING_ID }, after: null },
+    // A field value that points to an app consent by its grant id.
+    { key: "accessReviewScheduleDefinition:Consent review", type: "accessReviewScheduleDefinition", kind: "modified", before: { displayName: "Consent review", reviewed: UNKNOWN_GRANT_ID }, after: { displayName: "Consent review", reviewed: GRANT_ID, note: `Covers ${GRANT_ID} and ${UNKNOWN_GRANT_ID}` } },
   ];
   for (const change of changes) {
     await client.query(
@@ -123,6 +134,13 @@ test("the Changes data names each change and the objects its settings point to",
   assert.doesNotMatch(name, GUID);
   assert.match(name, /^Unnamed /);
   assert.doesNotMatch(changeLabel(assignment), GUID);
+
+  const review = byKey.get(changes[3].key)!;
+  const reviewAfter = changes[3].after as { reviewed: string; note: string };
+  assert.equal(review.refNames?.[GRANT_ID.toLowerCase()], "Contoso HR to Microsoft Graph");
+  assert.equal(valueWords(reviewAfter.reviewed, review.refNames), "Contoso HR to Microsoft Graph");
+  assert.equal(valueWords(UNKNOWN_GRANT_ID, review.refNames), "an object KEEL has no name for");
+  assert.equal(valueWords(reviewAfter.note, review.refNames), "Covers Contoso HR to Microsoft Graph and (unnamed object)");
 });
 
 test("names fall back to words, never to an id", () => {
@@ -134,6 +152,8 @@ test("names fall back to words, never to an id", () => {
   assert.equal(valueWords(MISSING_ID, {}), "an object KEEL has no name for");
   assert.equal(valueWords([MISSING_ID, MISSING_ID.replace("0000", "0001")], {}), "2 objects KEEL has no name for");
   assert.equal(valueWords(["All"], {}), "All");
+  assert.equal(valueWords([GRANT_ID, UNKNOWN_GRANT_ID], {}), "2 objects KEEL has no name for");
+  assert.equal(valueWords(`Job AD2AADProvisioning.0123456789abcdef0123456789abcdef.fedcba9876543210fedcba9876543210`, {}), "Job AD2AADProvisioning.(unnamed object).(unnamed object)");
   // Without a name book the words are as before.
   assert.equal(valueWords(["a", "b"]), "a, b");
 });

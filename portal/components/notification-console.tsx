@@ -149,7 +149,7 @@ export function NotificationConsole({ canConfiguration, channels, subscriptions 
         return <li className="item-card" key={subscription.id}>
           <p>Sends {patternWords(subscription.event_glob)} rated {displayEnum("severity", subscription.min_severity).toLowerCase()} or above to {to}.</p>
           <div className="form-actions">
-            <ConfirmButton confirmLabel="Delete rule" description={<p>{patternWords(subscription.event_glob).replace(/^./, (c) => c.toUpperCase())} will no longer be sent to {to}. Recreate the rule to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this rule?">Delete rule</ConfirmButton>
+            <ConfirmButton confirmLabel="Delete rule" description={<p>{patternWords(subscription.event_glob).replace(/^./, (c) => c.toUpperCase())} will no longer be sent to {to}. Recreate the rule to restore it.</p>} disabled={busy} onConfirm={() => write(`/api/subscriptions/${subscription.id}`, "DELETE", undefined, "delete-subscription")} size="sm" title="Delete this rule?" tone="danger">Delete rule</ConfirmButton>
           </div>
           <TechnicalDetails>
             <RecordField label="Subscription ID" value={subscription.id} />

@@ -11,7 +11,7 @@ import { Icon } from "@/components/shell/icons";
 import { Bell, Menu, TabBar, type Person } from "@/components/shell/menu";
 import { ShellStateProvider, useShellState } from "@/components/shell/shell-state";
 import type { MenuPrefs } from "@/lib/menu-prefs";
-import { menuStatuses, type MenuStatuses } from "@/lib/menu-status";
+import { menuStatuses, settingsStatus, type MenuStatuses } from "@/lib/menu-status";
 import type { ThemePreference } from "@/lib/theme";
 import type { DashboardData } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
@@ -37,8 +37,22 @@ export function AppShell(props: ShellProps) {
   );
 }
 
-function useStatuses(canRead: boolean, pendingApprovals: number | null) {
+type SettingsInputs = Parameters<typeof settingsStatus>[0];
+
+// Settings' badge reads the same lists as the People and Notifications pages, each only
+// for someone who may read it. A failed read keeps the last answer.
+async function readJson<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    return response.ok ? await response.json() as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: number | null) {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [settings, setSettings] = useState<SettingsInputs>({ principals: null, deliveries: null });
   const [ready, setReady] = useState(!canRead);
   const [approvals, setApprovals] = useState<{ from: number | null; count: number | null }>({ from: pendingApprovals, count: pendingApprovals });
   // A server render (navigation or refresh) brings a fresh count; it replaces the polled one.
@@ -67,8 +81,21 @@ function useStatuses(canRead: boolean, pendingApprovals: number | null) {
     }
   }
 
+  async function readSettings() {
+    const [people, sent] = await Promise.all([
+      canUsers ? readJson<{ principals: SettingsInputs["principals"] }>("/api/principals") : null,
+      canRead ? readJson<{ deliveries: SettingsInputs["deliveries"] }>("/api/deliveries?limit=100") : null,
+    ]);
+    setSettings((current) => ({
+      principals: Array.isArray(people?.principals) ? people.principals : current.principals,
+      deliveries: Array.isArray(sent?.deliveries) ? sent.deliveries : current.deliveries,
+    }));
+  }
+
   useEffect(() => { if (canRead) void readDashboard(); }, [canRead]);
+  useEffect(() => { if (canRead || canUsers) void readSettings(); }, [canRead, canUsers]);
   usePoll(readDashboard, 60_000, canRead);
+  usePoll(readSettings, 60_000, canRead || canUsers);
   usePoll(readApprovals, 10_000, pendingApprovals !== null);
 
   let statuses: MenuStatuses = {};
@@ -79,13 +106,15 @@ function useStatuses(canRead: boolean, pendingApprovals: number | null) {
       statuses = {};
     }
   }
+  const settingsBadge = settingsStatus(settings);
+  if (settingsBadge) statuses = { ...statuses, Settings: settingsBadge };
   return { statuses, ready, approvals: approvals.count, alerts: dashboard?.waiting?.openAlerts ?? null };
 }
 
 function Frame({ capabilities, pendingApprovals, person, theme, children }: ShellProps) {
   const { prefs, update } = useShellState();
   const pathname = usePathname();
-  const { statuses, ready, approvals, alerts } = useStatuses(capabilities.canRead === true, pendingApprovals);
+  const { statuses, ready, approvals, alerts } = useStatuses(capabilities.canRead === true, capabilities.canUsers === true, pendingApprovals);
   const [sheet, setSheet] = useState(false);
   const railRef = useRef<HTMLElement>(null);
   const revealRef = useRef<HTMLButtonElement>(null);

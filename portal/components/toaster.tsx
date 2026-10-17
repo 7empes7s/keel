@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
+import { Icon, type IconName } from "@/components/shell/icons";
 import {
   dismissToast,
   getServerToasts,
@@ -13,6 +14,7 @@ import {
 
 const LIFETIME_MS = 6000;
 const EXIT_MS = 200;
+const TONE_ICONS: Record<Toast["tone"], IconName> = { success: "check", info: "info", warning: "alert" };
 
 function ToastItem({ item }: { item: Toast }) {
   const [leaving, setLeaving] = useState(false);
@@ -47,7 +49,7 @@ function ToastItem({ item }: { item: Toast }) {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <span aria-hidden="true" className="toast-icon">{item.tone === "warning" ? "!" : item.tone === "info" ? "i" : "✓"}</span>
+      <span aria-hidden="true" className="toast-icon"><Icon name={TONE_ICONS[item.tone]} /></span>
       <div className="toast-body">
         <strong>{item.title}</strong>
         {item.detail ? <p>{item.detail}</p> : null}
@@ -55,6 +57,11 @@ function ToastItem({ item }: { item: Toast }) {
           <Link className="toast-link" href={item.href} onClick={close}>
             {item.hrefLabel ?? "Open"} <span aria-hidden="true">→</span>
           </Link>
+        ) : null}
+        {item.action ? (
+          <button className="toast-action" onClick={() => { close(); item.action?.run(); }} type="button">
+            {item.action.label}
+          </button>
         ) : null}
       </div>
       <button aria-label="Dismiss notification" className="toast-close" onClick={close} type="button">×</button>

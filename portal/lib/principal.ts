@@ -1,4 +1,4 @@
-import { resolvePrincipal } from "../../engine/authz/principals.mjs";
+import { findPrincipalById, resolvePrincipal } from "../../engine/authz/principals.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
 import { databaseUrl } from "@/lib/runtime-config";
@@ -66,6 +66,17 @@ export async function resolveIdentity(email: string): Promise<ResolvedIdentity> 
       capabilities,
       entityCapabilities,
     };
+  } finally {
+    await client.end();
+  }
+}
+
+/** The menu's "who you are": the principal's display name, or null when it has none. */
+export async function principalDisplayName(principalId: string): Promise<string | null> {
+  const client = (await connect(databaseUrl())) as KeelClient;
+  try {
+    const principal = (await findPrincipalById(client, principalId)) as { display_name?: string | null } | null;
+    return principal?.display_name?.trim() || null;
   } finally {
     await client.end();
   }

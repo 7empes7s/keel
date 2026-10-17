@@ -178,9 +178,20 @@ const CAPABILITY_VERBS: Record<string, string> = {
   configuration: "change settings",
 };
 
-export function accessSummary(capabilities: string[]): string {
-  const verbs = [...new Set(capabilities.filter((capability) => capability !== "read")
+function accessVerbs(capabilities: string[]): string[] {
+  return [...new Set(capabilities.filter((capability) => capability !== "read")
     .map((capability) => CAPABILITY_VERBS[capability] ?? words(capability).toLowerCase()))];
+}
+
+/** Every verb, for a tooltip: "You can approve, add or remove people and change roles". */
+export function accessInFull(capabilities: string[]): string {
+  const verbs = accessVerbs(capabilities);
+  if (verbs.length === 0) return capabilities.includes("read") ? "You can view" : "No access";
+  return `You can ${verbs.length === 1 ? verbs[0] : `${verbs.slice(0, -1).join(", ")} and ${verbs[verbs.length - 1]}`}`;
+}
+
+export function accessSummary(capabilities: string[]): string {
+  const verbs = accessVerbs(capabilities);
   if (verbs.length === 0) return capabilities.includes("read") ? "You can view" : "No access";
   // Three verbs at most; the rest are counted, and the full list is in the title.
   const shown = verbs.length > 3 ? [...verbs.slice(0, 3), `${verbs.length - 3} more`] : verbs;

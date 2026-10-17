@@ -10,6 +10,8 @@ export interface Toast {
   detail?: string;
   href?: string;
   hrefLabel?: string;
+  // A button on the toast, such as Undo. Running it closes the toast.
+  action?: { label: string; run: () => void };
 }
 
 type Listener = () => void;

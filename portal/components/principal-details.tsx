@@ -34,7 +34,7 @@ export function PrincipalDetails({ principal, now, canRoles = false, canUsers = 
   const active = principal.role_grants.filter((grant) => isGrantActive(grant, now));
   const past = principal.role_grants.filter((grant) => !isGrantActive(grant, now));
   return (
-    <section className={`item-card principal-card${principal.disabled_at ? " principal-disabled" : ""}`}>
+    <section className={`item-card principal-card${principal.disabled_at ? " principal-disabled" : ""}`} id={`person-${principal.id}`}>
       <div className="item-card-head">
         <h2>{name}</h2>
         <span className={principal.disabled_at ? "inactive-indicator" : "active-indicator"}>

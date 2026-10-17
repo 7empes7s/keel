@@ -9,7 +9,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { AlertInbox } from "@/components/alert-inbox";
 import { alertResourceNames } from "@/lib/alerts";
-import { alertTitle, type AlertItem } from "@/lib/alerts-view";
+import { alertTitle, causeSentence, type AlertItem } from "@/lib/alerts-view";
 
 // The Alerts page names what each alert is about, never by the Graph object id or the
 // SharePoint site id its key holds. Keys stay in Technical details.
@@ -144,4 +144,14 @@ test("the inbox shows names in its headings and keeps the keys in Technical deta
   assert.ok(headings.some((heading) => heading.startsWith("Unnamed ")));
   for (const heading of headings) assert.doesNotMatch(heading, GUID);
   assert.ok(html.includes(SITE_KEY), "the stored key stays available under Technical details");
+});
+
+test("SharePoint alerts say what changed since the previous read, never a baseline", () => {
+  assert.equal(causeSentence(alert({})), "Its settings changed since the previous read.");
+  assert.equal(causeSentence(alert({ cause: { changeType: "added", resourceType: "sharepoint-site-settings", snapshotId: null } })), "It is new since the previous read.");
+  assert.equal(causeSentence(alert({ cause: { changeType: "removed", resourceType: "sharepoint-site-settings", snapshotId: null } })), "It was missing from the latest read.");
+  assert.equal(causeSentence(alert({ resourceKey: "sharepoint-site-settings:tenant", name: null })), "Its settings changed since the previous read.");
+  assert.doesNotMatch(causeSentence(alert({ conditionActive: false })), /baseline/);
+  const backup = alert({ resourceKey: "group:Finance", name: null, cause: { changeType: "modified", resourceType: "group", snapshotId: null } });
+  assert.equal(causeSentence(backup), "It was changed from the baseline.", "configuration drift keeps its baseline wording");
 });

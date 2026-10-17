@@ -135,7 +135,7 @@ function AlertCard({ alert, now, canRespond }: { alert: AlertItem; now: string; 
 
 export function AlertInbox({ alerts, now, canRespond }: { alerts: AlertItem[]; now: string; canRespond: boolean }) {
   if (alerts.length === 0) {
-    return <p className="empty-state">No alerts yet. When a check finds a change from the baseline, it shows here.</p>;
+    return <p className="empty-state">No alerts yet. When a check finds a change, it shows here.</p>;
   }
   return (
     <div className="item-list">

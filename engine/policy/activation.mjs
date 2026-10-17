@@ -226,8 +226,14 @@ export async function buildActivationPreview(client, {
   }
 
   const { rows: openDrifts } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND ${OPEN_DRIFT_PREDICATE}
+    // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
+    `WITH latest AS (
+         SELECT DISTINCT ON (baseline_id, natural_key) id FROM drift
+          WHERE tenant_ref = $1
+          ORDER BY baseline_id, natural_key, detected_at DESC, id DESC
+       )
+       SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
+      WHERE ${OPEN_DRIFT_PREDICATE}
       ORDER BY d.detected_at, d.id`,
     [tenantRef],
   );

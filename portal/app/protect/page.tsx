@@ -74,7 +74,7 @@ export default async function ProtectPage() {
         <CoverageReport data={data} now={now} />
         <DiscoveryInventory data={discoveryResult.status === "fulfilled" ? discoveryResult.value : undefined} now={now} />
         {jobsResult.status === "fulfilled" ? (
-          <JobTable headingId="backup-jobs-heading" jobs={jobs} kicker="Recent" now={now} title="On-demand backups" />
+          <JobTable headingId="backup-jobs-heading" jobs={jobs} now={now} title="On-demand backups" />
         ) : <p className="action-error">KEEL could not read recent backups. Reload in a minute.</p>}
         <JobRefresher active={jobsActive} />
       </div>

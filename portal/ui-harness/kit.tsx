@@ -3,6 +3,9 @@ import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
 import { PageHeader } from "@/components/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Person } from "@/components/ui/person";
+import { Verdict } from "@/components/verdict";
 import { addDays, inRange, rangeFromParam, rangeToParam, type Day } from "@/lib/date-range";
 import type { RiskTone } from "@/lib/menu-status";
 import { orderGroups, smartOrder } from "@/lib/selection";
@@ -112,13 +115,33 @@ export function KitPage() {
         renderRow={(item) => (
           <div className="kit-row">
             <span className="kit-row-name"><b>{item.name}</b><small>{item.kind} · {serviceFor(item.service).name}</small></span>
-            <span className="kit-chip" data-tone={item.tone}>{TONE_WORDS[item.tone]}</span>
+            <Badge tone={item.tone}>{TONE_WORDS[item.tone]}</Badge>
             <span className="kit-who">{item.who}<small>{ago(item.at)}</small></span>
           </div>
         )}
         rowName={(item) => `${item.name}, ${item.kind}`}
         toneOf={(item) => item.tone}
       />
+      <section aria-labelledby="kit-frame" className="report-section kit-frame">
+        <h2 id="kit-frame">Badges, people and status sentences</h2>
+        <div className="kit-badges">
+          <Badge tone="urgent">Failed</Badge>
+          <Badge tone="soon">Out of date</Badge>
+          <Badge tone="low">Restore not tested yet</Badge>
+          <Badge tone="fine">Finished</Badge>
+          <Badge icon="pause" tone="neutral">Turned off</Badge>
+          <Badge icon="play" tone="soon">Running</Badge>
+        </div>
+        <div className="kit-badges">
+          <Person person={{ kind: "principal", id: "p1", name: "Amara Okafor", readable: true, email: "amara@contoso.com" }} />
+          <Person person={{ kind: "principal", id: "scheduler", name: "scheduler", readable: true, system: true }} />
+          <Person person={{ kind: "principal", id: "gone", name: null, readable: false }} />
+        </div>
+        <Verdict action={{ label: "Try both again", href: "#/kit" }} detail="Authentication methods and Retention labels. Try again, or open them to see why." text="2 kinds of settings failed their last backup." tone="urgent" />
+        <Verdict detail="3 by people, 2 not in the audit log." text="5 settings changed since your approved setup." tone="soon" />
+        <Verdict detail="Next backup in 20 minutes." text="Everything was backed up in the last 24 hours." tone="fine" />
+        <Verdict detail="Differences are not good or bad on their own." text="These two backups differ in 4 settings." tone="neutral" />
+      </section>
     </>
   );
 }
@@ -132,10 +155,9 @@ const KIT_CSS = `
 .kit-row-name b { font-weight: 600; }
 .kit-row-name small, .kit-who small { color: var(--text-soft); font-size: 0.8125rem; }
 .kit-who { display: grid; min-width: 7.5rem; line-height: 1.3; font-size: 0.875rem; text-align: right; }
-.kit-chip { padding: 0.125rem var(--space-xs); border-radius: var(--radius-pill); font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
-.kit-chip[data-tone="urgent"] { background: var(--urgent-bg); color: var(--urgent); }
-.kit-chip[data-tone="soon"] { background: var(--check-soon-bg); color: var(--check-soon); }
-.kit-chip[data-tone="low"] { background: var(--low-risk-bg); color: var(--low-risk); }
-.kit-chip[data-tone="fine"] { background: var(--fine-bg); color: var(--fine); }
+.kit-frame { display: grid; gap: var(--space-sm); }
+.kit-frame > h2 { margin: 0; }
+.kit-badges { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+.kit-frame .verdict { margin: 0; }
 @media (max-width: 40rem) { .kit-row { flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); } .kit-row-name { flex-basis: 100%; } .kit-who { display: block; min-width: 0; text-align: left; color: var(--text-soft); } .kit-who small::before { content: " · "; } }
 `;

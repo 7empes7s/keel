@@ -103,7 +103,7 @@ test("a failed name lookup leaves the jobs as they were", async () => {
 });
 
 test("the job table names who asked by name and hides ids in the failed line", () => {
-  const html = renderToStaticMarkup(createElement(JobTable, { headingId: "h", jobs: [rollback("group:Finance")], kicker: "Recent", title: "Jobs", now: NOW }));
+  const html = renderToStaticMarkup(createElement(JobTable, { headingId: "h", jobs: [rollback("group:Finance")], title: "Jobs", now: NOW }));
   const visible = text(html);
   assert.ok(visible.includes("asked by Maro Defili"), visible);
   assert.ok(!visible.includes("@"), "no email outside Technical details");
@@ -111,7 +111,7 @@ test("the job table names who asked by name and hides ids in the failed line", (
   assert.ok(visible.includes("It stopped with an error"));
   assert.ok(html.includes(`Graph 404 on /groups/${GROUP_ID}`), "the full error stays in Technical details");
   const system = renderToStaticMarkup(createElement(JobTable, {
-    headingId: "h", jobs: [rollback("group:Finance", person({ id: "scheduler", name: "scheduler", email: null, system: true }))], kicker: "", title: "", now: NOW,
+    headingId: "h", jobs: [rollback("group:Finance", person({ id: "scheduler", name: "scheduler", email: null, system: true }))], title: "", now: NOW,
   }));
   assert.ok(text(system).includes("asked by Keel's scheduler"), system);
 });

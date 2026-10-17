@@ -49,6 +49,8 @@ export interface SettingsSection {
 
 export interface WorkloadItem {
   resourceKey: string;
+  /** The name the workload read carries (a site's title), when it has one. */
+  name?: string | null;
   changeType: ChangeType;
   fields?: CompareField[];
   fieldsTotal?: number;

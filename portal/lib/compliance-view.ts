@@ -1,5 +1,6 @@
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { personLabel } from "@/lib/sentences";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -120,7 +121,8 @@ export function findingTone(finding: ComplianceFinding): "pill-bad" | "pill-warn
 export function exceptionSentence(finding: ComplianceFinding, now: string): string | null {
   const exception = finding.exception;
   if (!exception) return null;
-  const owner = exception.owner ?? "no named owner";
+  // A person by name; an email address reads as the name in it ("maro.defili@…" reads "Maro Defili").
+  const owner = exception.owner ? personLabel({ kind: "person", id: "", name: exception.owner, readable: true }, "no named owner") : "no named owner";
   switch (finding.exceptionState) {
     case "authorized":
       return `Exception owned by ${owner} until ${formatTimestamp(exception.expiresAt)}: ${exception.reason}`;

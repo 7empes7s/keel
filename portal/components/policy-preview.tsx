@@ -4,7 +4,9 @@ import { useState } from "react";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { ActivationPreview, PreviewDrift } from "@/lib/policies";
-import { ago, formatTimestamp, resourceLabel, words } from "@/lib/presentation";
+import { namedSubject } from "@/lib/job-names";
+import { ago, formatTimestamp, words } from "@/lib/presentation";
+import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 
 // Roadmap task-92: what turning an automatic roll-back policy on would do, shown before
@@ -102,6 +104,9 @@ function rateSentence(preview: ActivationPreview): string | null {
 export function ActivationPreviewView({ preview, now }: { preview: ActivationPreview; now: string }) {
   const overLimit = preview.dependencies.filter((dependency) => dependency.overCeiling);
   const rate = rateSentence(preview);
+  // Names, not ids: every resource by its saved name; keys stay in Technical details.
+  const resourceLabel = (key: string) => namedSubject(key, preview.names ?? {});
+  const runAs = preview.runAs;
   return (
     <section aria-label={`What turning on ${preview.policy.name} would do`} className="policy-preview">
       <p className={`policy-preview-sentence ${preview.verdict === "ready" ? "is-ready" : "is-blocked"}`} role="status">{previewSentence(preview)}</p>
@@ -150,7 +155,9 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
       <h3>Acting as</h3>
       <ul className="policy-facts">
         <li>
-          {preview.runAs.readable ? preview.runAs.name ?? preview.runAs.email : "An account that is no longer readable"}
+          {runAs.readable
+            ? personLabel({ kind: "person", id: runAs.principalId ?? "", name: runAs.name === runAs.email ? null : runAs.name, email: runAs.email, readable: true }, "An account without a name")
+            : "An account that is no longer readable"}
           {preview.runAs.authorized ? " can roll back changes now." : " cannot roll back changes now."}
         </li>
         {preview.runAs.grants.map((grant) => (

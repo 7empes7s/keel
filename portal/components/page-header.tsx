@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { SECTION_ICONS, type NavSection } from "@/components/nav-links";
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -20,6 +20,7 @@ export function PageHeader({
   generatedAt,
   marker,
   status,
+  actions,
 }: {
   section: NavSection;
   title: string;
@@ -27,6 +28,8 @@ export function PageHeader({
   generatedAt?: string;
   marker?: string;
   status?: { tone: RiskTone; label: string };
+  // The page's own control beside the star, such as "Back up now".
+  actions?: ReactNode;
 }) {
   return (
     <header className="page-header">
@@ -42,6 +45,7 @@ export function PageHeader({
         <Suspense fallback={null}>
           <PageActions icon={SECTION_ICONS[section]} title={title} />
         </Suspense>
+        {actions ? <div className="page-header-actions">{actions}</div> : null}
       </div>
       <p className="page-description">{description}</p>
       {generatedAt ? (

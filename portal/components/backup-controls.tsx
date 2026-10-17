@@ -2,141 +2,145 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import { ScheduleEditor } from "@/components/schedule-editor";
+import { Icon } from "@/components/shell/icons";
+import { Popover } from "@/components/shell/popover";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { postAction } from "@/lib/action-client";
-import { TIERS, tierLabel, type ProtectProblem, type TierSummary } from "@/lib/protect-view";
+import { TIERS, tierLabel, type TierSummary } from "@/lib/protect-view";
 import { toast } from "@/lib/toast";
 
 // "Back up now" (plan task 16). Each request enqueues one backup job for a tier; the
 // worker dispatches to the existing tiered collection script, so what runs here is
-// exactly what the tier's schedule runs. The tier cards and the problem list's retry
-// share this one action.
-function useBackup() {
+// exactly what the tier's schedule runs. The header menu, the tier strip, a kind's row
+// and the selection bar all share this one action.
+export function useBackup() {
   const router = useRouter();
-  const [idempotencyKeys, setIdempotencyKeys] = useState<Record<string, string>>(() =>
-    Object.fromEntries(TIERS.map((tier) => [tier.id, crypto.randomUUID()])),
-  );
-  const [submitting, setSubmitting] = useState<string | null>(null);
-  const [queued, setQueued] = useState<{ tier: string; jobId: string } | null>(null);
+  // One key per tier, renewed once that tier's request is accepted, so a double click
+  // or a replayed request returns the job already queued.
+  const keys = useRef<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function backUp(tier: string, source: string) {
-    setSubmitting(source);
-    setQueued(null);
+  async function backUp(tiers: string[], source: string) {
+    setBusy(source);
     setError(null);
-    try {
-      const { payload } = await postAction("/api/actions/backup", { tier }, idempotencyKeys[tier]);
-      const job = payload.job as { id: string };
-      setQueued({ tier, jobId: job.id });
-      toast({ title: `${tierLabel(tier)} backup queued`, detail: "It only reads your tenant; nothing changes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
-      setIdempotencyKeys((current) => ({ ...current, [tier]: crypto.randomUUID() }));
-      router.refresh();
-    } catch {
-      setError(`KEEL could not queue the ${tierLabel(tier)} backup. Try again in a minute.`);
-    } finally {
-      setSubmitting(null);
+    const failed: string[] = [];
+    for (const tier of tiers) {
+      keys.current[tier] ??= crypto.randomUUID();
+      try {
+        const { payload } = await postAction("/api/actions/backup", { tier }, keys.current[tier]);
+        const job = payload.job as { id: string };
+        toast({ title: `${tierLabel(tier)} backup queued`, detail: "It only reads your tenant; nothing changes.", href: `/jobs/${encodeURIComponent(job.id)}`, hrefLabel: "View job" });
+        keys.current[tier] = crypto.randomUUID();
+      } catch {
+        failed.push(tierLabel(tier));
+      }
     }
+    if (failed.length) setError(`Keel could not queue the ${failed.join(" and ")} backup. Try again in a minute.`);
+    setBusy(null);
+    router.refresh();
   }
 
-  const feedback = <>
-    {queued ? (
-      <p aria-live="polite" className="action-message">
-        {tierLabel(queued.tier)} backup queued. <Link href={`/jobs/${encodeURIComponent(queued.jobId)}`}>View job</Link>
-      </p>
-    ) : null}
-    {error ? <p className="action-error" role="alert">{error}</p> : null}
-  </>;
-  return { backUp, submitting, feedback };
+  const feedback = error ? <p className="action-error" role="alert">{error}</p> : null;
+  return { backUp, busy, feedback };
 }
 
-export function BackupControls({ disabled, tiers, canEditSchedules = false }: {
+/** The header's one "Back up now" menu: every tier, or one. Amber only when something
+ *  failed or is out of date, so the page has one amber action at most. */
+export function BackUpNow({ disabled, urgent }: { disabled: boolean; urgent: boolean }) {
+  const { backUp, busy, feedback } = useBackup();
+  const all = TIERS.map((tier) => tier.id);
+  return (
+    <span className="pt-backup-now">
+      <span className="pt-split">
+        <button
+          aria-busy={busy === "all" || undefined}
+          className={urgent ? "btn btn-primary primary" : "btn"}
+          disabled={disabled || busy !== null}
+          onClick={() => void backUp(all, "all")}
+          type="button"
+        >
+          <Icon name="play" />Back up now
+        </button>
+        <Popover
+          button={<Icon name="chevron-down" />}
+          buttonClassName={urgent ? "btn btn-primary primary pt-split-more" : "btn pt-split-more"}
+          label="Choose what to back up"
+          title="Back up now"
+        >
+          {(close) => (
+            <ul className="more-list">
+              <li><button className="more-item" disabled={disabled || busy !== null} onClick={() => { close(); void backUp(all, "all"); }} type="button">All tiers</button></li>
+              {TIERS.map((tier) => (
+                <li key={tier.id}><button className="more-item" disabled={disabled || busy !== null} onClick={() => { close(); void backUp([tier.id], tier.id); }} type="button">{tier.label} only</button></li>
+              ))}
+            </ul>
+          )}
+        </Popover>
+      </span>
+      {feedback}
+    </span>
+  );
+}
+
+function tierBadge(tier: TierSummary): { tone: BadgeTone; label: string } {
+  const status = tier.schedule?.last_status;
+  if (!tier.schedule) return { tone: "neutral", label: "No schedule" };
+  if (!tier.schedule.enabled) return { tone: "neutral", label: "Turned off" };
+  if (status === "failed") return { tone: "urgent", label: "Failed" };
+  if (status === "running" || status === "queued") return { tone: "low", label: "Running" };
+  if (status) return { tone: "fine", label: "Finished" };
+  return { tone: "neutral", label: "Not run yet" };
+}
+
+/** The three tiers in one strip: what each holds, its last and next run, and an outlined
+ *  "Back up" per tier. The schedule itself is changed on Schedules. */
+export function TierStrip({ disabled, tiers, canEditSchedules = false }: {
   disabled: boolean;
   tiers?: TierSummary[];
   canEditSchedules?: boolean;
 }) {
-  const { backUp, submitting, feedback } = useBackup();
-  const cards = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
-
+  const { backUp, busy, feedback } = useBackup();
+  const cells = tiers ?? TIERS.map((tier) => ({ ...tier, schedule: null, next: "", last: "", failed: false }));
   return (
-    <section aria-labelledby="backup-now-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">Tiers</p>
-          <h2 id="backup-now-heading">When each tier is backed up</h2>
-        </div>
-      </div>
-
-      <div className="tier-cards">
-        {cards.map((tier) => (
-          <div className={`tier-card ${tier.id}-card${tier.failed ? " tier-card-failed" : ""}`} key={tier.id}>
-            <strong>{tier.label}</strong>
-            <span>{tier.description.charAt(0).toUpperCase() + tier.description.slice(1)}.</span>
-            {tier.next ? <span className="tier-next">{tier.next}</span> : null}
-            {tier.last ? <span className={tier.failed ? "tier-last tier-last-failed" : "tier-last"}>{tier.last}</span> : null}
-            <button
-              aria-busy={submitting === tier.id || undefined}
-              className="btn btn-primary"
-              disabled={disabled || submitting !== null}
-              onClick={() => void backUp(tier.id, tier.id)}
-              type="button"
-            >
-              Back up {tier.label}
-            </button>
-            {canEditSchedules && tier.schedule ? (
-              <ScheduleEditor key={`${tier.schedule.id}:${tier.schedule.next_due_at}:${tier.schedule.enabled}`} schedule={tier.schedule} />
-            ) : null}
-          </div>
-        ))}
-      </div>
-      {feedback}
-    </section>
-  );
-}
-
-const PROBLEM_TITLE: Record<string, string> = {
-  failed: "Failed",
-  stale: "Out of date",
-  never: "Never backed up",
-};
-
-/** Failed, out-of-date and never-backed-up types by name, each with a retry. */
-export function ProblemList({ problems, disabled }: { problems: ProtectProblem[]; disabled: boolean }) {
-  const { backUp, submitting, feedback } = useBackup();
-  if (problems.length === 0) return null;
-  return (
-    <section aria-labelledby="protect-problems-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">Needs attention</p>
-          <h2 id="protect-problems-heading">Types that are not backed up properly</h2>
-        </div>
-        <span className="result-count">{problems.length} {problems.length === 1 ? "type" : "types"}</span>
-      </div>
-      <ul className="item-list protect-problems">
-        {problems.map((problem) => (
-          <li className={`protect-problem problem-${problem.health}`} key={problem.type}>
-            <div>
-              <strong>{problem.name}</strong>
-              <span className={`state-badge problem-badge problem-${problem.health}`}>{PROBLEM_TITLE[problem.health]}</span>
-              <p>{problem.sentence}</p>
+    <section aria-labelledby="backup-now-heading" className="pt-section">
+      <h2 className="visually-hidden" id="backup-now-heading">When each tier is backed up</h2>
+      <div className="pt-tiers">
+        {cells.map((tier) => {
+          const badge = tierBadge(tier);
+          const jobId = tier.schedule?.last_job_id;
+          return (
+            <div className={`pt-tier ${tier.id}-card`} data-tone={tier.failed ? "urgent" : undefined} key={tier.id}>
+              <span className="pt-tier-head">
+                <b>{tier.label}</b>
+                <Badge tone={badge.tone}>{badge.label}</Badge>
+              </span>
+              <span className="pt-tier-about">{tier.description.charAt(0).toUpperCase() + tier.description.slice(1)}.</span>
+              {tier.next ? <span className="tier-next">{tier.next}</span> : null}
+              {tier.last ? (
+                <span className={tier.failed ? "tier-last tier-last-failed" : "tier-last"}>
+                  {jobId ? <Link href={`/jobs/${encodeURIComponent(jobId)}`}>{tier.last}</Link> : tier.last}
+                </span>
+              ) : null}
+              <span className="pt-tier-actions">
+                <button
+                  aria-busy={busy === tier.id || undefined}
+                  aria-label={`Back up ${tier.label}`}
+                  className="btn btn-sm"
+                  disabled={disabled || busy !== null}
+                  onClick={() => void backUp([tier.id], tier.id)}
+                  type="button"
+                >
+                  <Icon name="play" />Back up
+                </button>
+                {canEditSchedules ? <Link className="btn btn-sm btn-ghost" href="/schedules">Change schedule</Link> : null}
+              </span>
             </div>
-            {problem.tier ? (
-              <button
-                aria-busy={submitting === problem.type || undefined}
-                aria-label={`Retry the backup of ${problem.name} (${tierLabel(problem.tier)})`}
-                className="btn btn-secondary btn-sm"
-                disabled={disabled || submitting !== null}
-                onClick={() => void backUp(problem.tier!, problem.type)}
-                type="button"
-              >
-                Retry backup
-              </button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+          );
+        })}
+      </div>
       {feedback}
     </section>
   );

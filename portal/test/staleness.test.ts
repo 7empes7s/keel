@@ -4,7 +4,9 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { CoverageReport } from "@/components/coverage-report";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+
+import { ProtectCoverage } from "@/components/protect-coverage";
 import { buildAlerts } from "@/lib/portal-data";
 import type { CoverageData, CoverageType, DashboardData } from "@/lib/types";
 
@@ -77,11 +79,14 @@ function dashboardData(stale: number): Pick<
   };
 }
 
-// Task-131: freshness is a sentence in the type's drawer; the raw time is in its record.
+const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
+const renderCoverage = (data: CoverageData) => renderToStaticMarkup(
+  createElement(AppRouterContext.Provider, { value: router as never }, createElement(ProtectCoverage, { data, now: data.generatedAt, canBackup: true })),
+);
+
+// Task-131: freshness is a sentence on the kind's row; the raw time is in its record.
 test("a stale type renders as out of date and not as failed", () => {
-  const html = renderToStaticMarkup(
-    createElement(CoverageReport, { data: coverageData(coverageType({ stale: true })) }),
-  );
+  const html = renderCoverage(coverageData(coverageType({ stale: true })));
 
   assert.match(html, /Out of date: last backed up 1 hour ago, longer ago than its tier allows\./);
   assert.match(html, /health-stale/);
@@ -90,12 +95,10 @@ test("a stale type renders as out of date and not as failed", () => {
 });
 
 test("a fresh type does not render as out of date", () => {
-  const html = renderToStaticMarkup(
-    createElement(CoverageReport, { data: coverageData(coverageType()) }),
-  );
+  const html = renderCoverage(coverageData(coverageType()));
 
   assert.match(html, /health-ok|health-empty/);
-  assert.doesNotMatch(html, /Out of date/);
+  assert.doesNotMatch(html, /Out of date: last backed up/);
 });
 
 test("the dashboard alert appears only when at least one type is stale", () => {

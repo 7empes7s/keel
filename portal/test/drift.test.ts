@@ -11,7 +11,7 @@ import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
-import { getDriftData } from "@/lib/portal-data";
+import { getDashboardData, getDriftData } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -274,4 +274,42 @@ test("bulk remediation enqueues exactly the selected drift IDs", async () => {
     { driftIds: selectedDriftIds },
     "the job must cover the explicit selection, not every visible row",
   );
+});
+
+test("a change seen by several detect runs is one change, shown as its newest record", async () => {
+  // Every drift-detect run records a row for each difference it still sees. Reading every
+  // open row loaded the same change once per run: 77k rows for 815 changes on live, which
+  // ran the portal out of memory.
+  const first = await createModifiedDrift("repeat");
+  const repeats: string[] = [];
+  for (let run = 1; run <= 3; run += 1) {
+    const observed = await createSnapshot();
+    const { rows } = await client.query(
+      `INSERT INTO drift
+         (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
+          before_hash, after_hash, before_payload, after_payload, blast_radius, detected_at)
+       VALUES ($1, $2, $3, $4, 'group', 'modified', 'baseline-hash', 'observed-hash',
+               $5, $6, 'access-affecting', now() + make_interval(secs => $7))
+       RETURNING id`,
+      [currentTenantRef, activeBaselineId, observed, first.naturalKey, first.before, { ...first.after, run: String(run) }, run],
+    );
+    repeats.push(String(rows[0].id));
+  }
+
+  const data = await getDriftData();
+  const shown = data.items.filter((item) => item.naturalKey === first.naturalKey);
+  assert.deepEqual(shown.map((item) => item.id), [repeats[2]], "only the newest record of the change");
+  assert.equal((shown[0].after as Record<string, unknown> | null)?.run, "3");
+
+  const dashboard = await getDashboardData();
+  const keys = new Set(data.items.map((item) => item.naturalKey));
+  assert.equal(dashboard.openDriftTotal, keys.size, "the dashboard counts changes, not detect runs");
+
+  // Settling the newest record settles the change; older records do not resurface.
+  await client.query(
+    `INSERT INTO disposition (drift_id, action, actor, reason) VALUES ($1, 'accept', 'test', 'expected')`,
+    [repeats[2]],
+  );
+  const after = await getDriftData();
+  assert.equal(after.items.some((item) => item.naturalKey === first.naturalKey), false);
 });

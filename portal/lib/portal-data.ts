@@ -14,7 +14,7 @@ import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/i
 import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
   getActiveBaseline,
-  listOpenDrift,
+  listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "../../engine/store/db.mjs";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
@@ -501,10 +501,10 @@ async function activeDriftFor(
   activeBaselineId: string | null,
 ): Promise<DriftRecord[]> {
   if (!activeBaselineId) return [];
-  const rows = (await listOpenDrift(client, { tenantRef: ref })) as UnknownRecord[];
-  return rows
-    .filter((row) => String(row.baseline_id) === activeBaselineId)
-    .map(normalizeDrift);
+  // One row per resource: every detect run re-records what it still sees, so reading
+  // every open row loads the same change once per run (77k rows, the heap, on live).
+  const rows = (await listLatestOpenDrift(client, { tenantRef: ref, baselineId: activeBaselineId })) as UnknownRecord[];
+  return rows.map(normalizeDrift);
 }
 
 export const DRIFT_TREND_DAYS = 30;
@@ -533,7 +533,7 @@ async function driftTrendFor(
   if (!activeBaselineId) return fillDriftTrend([], end);
   const { rows } = await client.query(
     `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-            count(*)::int AS count
+            count(DISTINCT natural_key)::int AS count
        FROM drift
       WHERE tenant_ref = $1
         AND baseline_id = $2
@@ -583,8 +583,13 @@ async function scopedOpenDrift(client: KeelClient, ref: string, baselineId: stri
     tenantRef: ref, typeExpr: "d.resource_type", keyExpr: "d.natural_key", asOfExpr: "d.detected_at", nextParam: 3,
   }) as { sql: string; values: unknown[] };
   const { rows } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
+    `WITH latest AS (
+       SELECT DISTINCT ON (natural_key) id FROM drift
+        WHERE tenant_ref = $1 AND baseline_id = $2
+        ORDER BY natural_key, detected_at DESC, id DESC
+     )
+     SELECT d.* FROM drift d JOIN latest ON latest.id = d.id
+      WHERE ${OPEN_DRIFT_PREDICATE} AND ${visible.sql}
       ORDER BY d.detected_at, d.id`,
     [ref, baselineId, ...visible.values],
   );

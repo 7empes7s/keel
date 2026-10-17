@@ -70,6 +70,31 @@ export async function listOpenDrift(client, { tenantRef }) {
   return rows;
 }
 
+/**
+ * The open changes against one baseline, one row per resource. Every drift-detect run
+ * records a fresh row for each difference it still sees, so a long-lived change has a
+ * row per run. Only the newest row for a resource says where it stands: open when it
+ * has no closing disposition, settled when it was accepted or ignored. Ids are picked
+ * first so the payloads of superseded rows are never read.
+ */
+export async function listLatestOpenDrift(client, { tenantRef, baselineId }) {
+  const { rows } = await client.query(
+    `WITH latest AS (
+       SELECT DISTINCT ON (natural_key) id
+         FROM drift
+        WHERE tenant_ref = $1 AND baseline_id = $2
+        ORDER BY natural_key, detected_at DESC, id DESC
+     )
+     SELECT d.*
+       FROM drift d
+       JOIN latest ON latest.id = d.id
+      WHERE ${OPEN_DRIFT_PREDICATE}
+      ORDER BY d.detected_at, d.id`,
+    [tenantRef, baselineId],
+  );
+  return rows;
+}
+
 export async function recordDisposition(client, {
   driftId, action, actor, reason, expiresAt, planId,
 }) {

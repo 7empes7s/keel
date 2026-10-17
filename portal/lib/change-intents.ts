@@ -31,10 +31,20 @@ type Client = { query(text: string, values?: unknown[]): Promise<{ rows: Record<
 
 export async function loadChangeIntents(client: Client, tenantRef: string, now = new Date()): Promise<ChangeIntentsData> {
   const intents = (await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[];
-  // Open changes to existing settings, newest first: what an approver can approve.
+  // Open changes to existing settings, newest first: what an approver can approve. One
+  // row per resource against the active baseline, the newest, as on the Changes page;
+  // older drift-detect runs left a row per run for a long-lived change.
   const { rows: drifts } = await client.query(
-    `SELECT d.* FROM drift d
-      WHERE d.tenant_ref = $1 AND d.change_type = 'modified' AND ${OPEN_DRIFT_PREDICATE}
+    `WITH latest AS (
+       SELECT DISTINCT ON (dl.natural_key) dl.id
+         FROM drift dl
+         JOIN baseline b ON b.id = dl.baseline_id AND b.active = true
+        WHERE dl.tenant_ref = $1
+        ORDER BY dl.natural_key, dl.detected_at DESC, dl.id DESC
+     )
+     SELECT d.* FROM drift d
+       JOIN latest ON latest.id = d.id
+      WHERE d.change_type = 'modified' AND ${OPEN_DRIFT_PREDICATE}
       ORDER BY d.detected_at DESC, d.id DESC LIMIT 50`,
     [tenantRef],
   );

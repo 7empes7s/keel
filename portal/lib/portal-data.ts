@@ -617,8 +617,9 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
 // and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
 // server-side for the changes this reader may already see. The change window runs from
 // when KEEL captured the baseline's version of the resource (the baseline's own time
-// for an added resource) to the collection that saw the change. A reader that cannot
-// be attributed (no audit tables, a failed query) gets null, never a guess.
+// for an added resource) to when KEEL first saw the change: the observed collection
+// moves forward on every run that still sees it, detected_at does not. A reader that
+// cannot be attributed (no audit tables, a failed query) gets null, never a guess.
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
@@ -626,7 +627,7 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
     const { rows } = await client.query(
       `SELECT d.id,
               COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
-              COALESCE(os.completed_at, d.detected_at) AS window_until
+              LEAST(os.completed_at, d.detected_at) AS window_until
          FROM drift d
          JOIN baseline b ON b.id = d.baseline_id
          JOIN snapshot os ON os.id = d.observed_snapshot

@@ -5,8 +5,10 @@ import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/go
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
+import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
+import { savedNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 
 export const APPROVAL_INBOX_CAPABILITY = "approve";
@@ -131,6 +133,27 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
   };
 }
 
+/**
+ * Each change a request rolls back, named by the name its backup holds, so the title
+ * reads "Roll back 2 changes, including Finance (group)", never an id. A change whose
+ * object has no saved name keeps a null name. Pure, so it is tested directly.
+ */
+export function withChangeNames(request: ApprovalRequestRecord, names: NamedKeys): ApprovalRequestRecord {
+  const refs = request.references;
+  if (!refs?.changes.length) return request;
+  return {
+    ...request,
+    references: {
+      ...refs,
+      changes: refs.changes.map((change) => {
+        if (!change?.readable || !change.naturalKey) return change;
+        const name = namedSubject(change.naturalKey, names, change.resourceType);
+        return name.includes("Unnamed ") || holdsObjectId(name) ? change : { ...change, name };
+      }),
+    },
+  };
+}
+
 async function withClient<T>(operation: (client: KeelClient) => Promise<T>): Promise<T> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
@@ -179,11 +202,15 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
     });
     const awaiting = await awaitingContentEffectIds(client, scope, history);
     // One query per reference kind for both lists together.
-    const summarized = await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] });
-    const decided: ApprovalRequestRecord[] = summarized.slice(pending.length).map(normalizeApprovalRequest);
+    const summarized: ApprovalRequestRecord[] = ((await summarizeApprovalRequests(client, { tenantRef: tenantRef(), requests: [...pending, ...history] })) as UnknownRecord[])
+      .map(normalizeApprovalRequest);
+    // One query for the saved names of every change both lists roll back.
+    const names = await savedNames(client, tenantRef(), summarized.flatMap((request) => (request.references?.changes ?? []).map((change) => change?.naturalKey)));
+    const named = summarized.map((request) => withChangeNames(request, names));
+    const decided = named.slice(pending.length);
     return {
       generatedAt: new Date().toISOString(),
-      pending: summarized.slice(0, pending.length).map(normalizeApprovalRequest),
+      pending: named.slice(0, pending.length),
       awaitingContentEffects: decided.filter((request) => awaiting.has(request.id)),
       history: decided.filter((request) => !awaiting.has(request.id)),
     };

@@ -9,7 +9,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ContentEffectsNote, contentEffectsLink } from "@/components/approval-inbox";
-import type { ContentEffect } from "@/components/content-effects";
+import { ContentEffectList, type ContentEffect } from "@/components/content-effects";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { contentEffectReviewAccess, contentEffectReviewView, contentEffectVerdict, isArtifactId } from "@/lib/content-effect-review";
 import { CAPABILITIES_HEADER, ENTITY_CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -76,7 +76,8 @@ test("only a tenant-wide approver may open the review (the approval route's own 
 });
 
 test("the review names people, refuses the requester and binds to the engine's digest", () => {
-  const names = new Map([[REQUESTER, { name: "Rita Requester" }], [APPROVER, { name: "Ada Approver" }]]);
+  const person = (id: string, name: string) => ({ kind: "person", id, name, readable: true });
+  const names = new Map([[REQUESTER, person(REQUESTER, "Rita Requester")], [APPROVER, person(APPROVER, "Ada Approver")]]);
   const engine = {
     artifactId: ARTIFACT, requestedBy: REQUESTER, status: "completed", createdAt: "2026-10-13T08:00:00.000Z", resources: 1,
     effects: [effect], effectsDigest: "digest-1", approvals: [] as { approvedBy: string; approvedAt: unknown }[],
@@ -165,4 +166,23 @@ test("the content-effects page refuses before its loader without tenant-wide app
     else process.env.KEEL_DB_URL = originalDbUrl;
     fs.rmSync(dbEnvPath, { force: true });
   }
+});
+
+test("the review names each effect's object and its people, never by email or id", () => {
+  const GROUP = "0f5e1c2a-1b2c-4d3e-8f4a-5b6c7d8e9f00";
+  const engine = {
+    artifactId: ARTIFACT, requestedBy: REQUESTER, status: "completed", createdAt: null, resources: 1,
+    effects: [{ ...effect, naturalKey: GROUP, resourceType: "group" }], effectsDigest: "digest-1",
+    approvals: [{ approvedBy: APPROVER, approvedAt: null }],
+  };
+  const people = new Map([
+    [REQUESTER, { kind: "person", id: REQUESTER, name: "rita.requester@contoso.test", email: "rita.requester@contoso.test", readable: true }],
+    [APPROVER, { kind: "person", id: APPROVER, name: null, readable: false }],
+  ]);
+  const view = contentEffectReviewView(engine, people, APPROVER, { [GROUP]: { name: "Finance", resourceType: "group" } });
+  assert.equal(view.requestedByName, "Rita Requester");
+  assert.equal(view.approvals[0].approvedBy, "an account that no longer exists");
+  const html = renderToStaticMarkup(createElement(ContentEffectList, { effects: view.effects, names: view.names }));
+  assert.match(html, /Finance \(group\)/);
+  assert.doesNotMatch(html + JSON.stringify(view.approvals) + view.requestedByName, new RegExp(`${GROUP}|${APPROVER}|@contoso`));
 });

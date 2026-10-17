@@ -25,6 +25,7 @@ const result = await build({
   alias: {
     "next/navigation": join(root, "ui-harness/shims/navigation.tsx"),
     "next/link": join(root, "ui-harness/shims/link.tsx"),
+    "@/lib/url-history": join(root, "ui-harness/shims/url-history.ts"),
   },
   define: { "process.env.NODE_ENV": '"production"' },
   logLevel: "warning",

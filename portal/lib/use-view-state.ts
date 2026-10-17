@@ -1,15 +1,17 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+
+import { replaceUrl } from "@/lib/url-history";
 
 // View state lives in the URL (redesign rule 8): grouping, sort, filters, the chosen
 // dates and which groups are closed. A new tab, Back or a saved view brings the same
-// view back. Defaults stay out of the URL so links stay short.
+// view back. Defaults stay out of the URL so links stay short. Changing it never asks
+// the server for the page again (lib/url-history).
 export function useViewState() {
   const pathname = usePathname() ?? "/";
   const params = useSearchParams();
-  const router = useRouter();
 
   const get = useCallback((key: string, fallback = ""): string => params?.get(key) ?? fallback, [params]);
 
@@ -20,8 +22,8 @@ export function useViewState() {
       else next.set(key, value);
     }
     const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [params, pathname, router]);
+    replaceUrl(query ? `${pathname}?${query}` : pathname);
+  }, [params, pathname]);
 
   return { get, set };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
@@ -39,6 +39,7 @@ import {
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import type { CoverageData, CoverageType } from "@/lib/types";
+import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
 
 // What's protected (portal audit: one grouped list on a desktop, pick A; service cards
@@ -206,7 +207,6 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
   tierStrip?: ReactNode;
 }) {
   const view = useViewState();
-  const router = useRouter();
   const pathname = usePathname() ?? "/protect";
   const params = useSearchParams();
   const { backUp, busy, feedback } = useBackup();
@@ -232,7 +232,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
   const follow = (event: MouseEvent, changes: Record<string, string | null>, push = false) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
     event.preventDefault();
-    if (push) router.push(href(changes), { scroll: false });
+    if (push) pushUrl(href(changes));
     else view.set(changes);
   };
 

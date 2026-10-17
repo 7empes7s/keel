@@ -24,7 +24,7 @@ const row = {
 
 test("the jobs table displays failed-job error text and a detail link", () => {
   const html = renderToStaticMarkup(createElement(JobTable, {
-    headingId: "jobs", jobs: [normalizeJob(row)], kicker: "Queue", title: "Jobs",
+    headingId: "jobs", jobs: [normalizeJob(row)], title: "Jobs",
   }));
   // Task-130: the first line of the error is the explanation; the job reads as a sentence.
   assert.ok(html.includes(row.error.split("\n")[0]));
@@ -33,7 +33,7 @@ test("the jobs table displays failed-job error text and a detail link", () => {
   assert.ok(html.includes("operator"), "the requester is in the record");
   assert.ok(html.includes("Failed"));
   const succeeded = renderToStaticMarkup(createElement(JobTable, {
-    headingId: "jobs", jobs: [normalizeJob({ ...row, status: "succeeded" })], kicker: "Queue", title: "Jobs",
+    headingId: "jobs", jobs: [normalizeJob({ ...row, status: "succeeded" })], title: "Jobs",
   }));
   assert.ok(!succeeded.includes(row.error));
 });

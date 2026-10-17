@@ -1,15 +1,18 @@
 import Link from "next/link";
 
 import { JobStatusBadge } from "@/components/job-status-badge";
+import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Person } from "@/components/ui/person";
 import { jobErrorLine } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { formatTimestamp } from "@/lib/presentation";
-import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
+import { ago, formatTimestamp } from "@/lib/presentation";
+import { jobName, jobStatusSentence } from "@/lib/sentences";
 
 // Recent jobs on the backups, baselines and restore surfaces (plan task 16), named by
-// what they do (roadmap task-130): the job as a sentence, its status as a sentence,
-// who asked for it; the job id, kind code and raw times in the record.
+// what they do (roadmap task-130): the job as a sentence, its status, when and who
+// asked for it. Ids, codes and the raw error sit in one record under the list and in
+// the job page's record (JobRecordFields), never inside a list row.
 export function JobRecordFields({ job }: { job: JobRecord }) {
   return (
     <>
@@ -21,51 +24,95 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
   );
 }
 
+const KIND_ICONS: Record<string, IconName> = {
+  collect: "backup",
+  backup: "backup",
+  "workload-collect": "backup",
+  prune: "backup",
+  offsite: "cloud",
+  restore: "restore",
+  "restore-dry-run": "restore",
+  remediate: "restore",
+  "baseline-create": "baselines",
+  "baseline-activate": "baselines",
+  "drift-detect": "baselines",
+  "policy-evaluate": "automation",
+  notify: "bell",
+  discover: "search",
+};
+
+export function jobKindIcon(kind: string): IconName {
+  return KIND_ICONS[kind] ?? "page";
+}
+
+/** One job as a shared list row (shared frame pick A): kind icon, the job's name and,
+ *  when it failed, why in plain words; its status badge, when and who; no record here,
+ *  the job page holds it. */
+export function JobRow({ job, now }: { job: JobRecord; now: string }) {
+  const at = job.finishedAt ?? job.startedAt ?? job.createdAt ?? null;
+  const failed = job.status === "failed";
+  return (
+    <li className={`activity-item list-row job-row job-row-${job.status}`} data-tone={failed ? "urgent" : undefined}>
+      <span aria-hidden="true" className="row-kind"><Icon name={jobKindIcon(job.kind)} /></span>
+      <span className="row-name">
+        <Link href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
+        {failed && job.error ? <small className="job-error-line">{jobErrorLine(job.error)}</small> : null}
+      </span>
+      <span className="row-mid">
+        <span className="row-status"><JobStatusBadge status={job.status} /></span>
+        <span className="row-meta">
+          <time dateTime={at ?? undefined} title={`${jobStatusSentence(job, now)} · ${formatTimestamp(at)}`}>{ago(at, now)}</time>
+          <span aria-hidden="true">·</span>
+          <span>asked by <Person person={job.references?.people.requested_by} /></span>
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/** One section-level record for the whole list (rows never carry one): each job's id,
+ *  kind, status, who asked by account id, and the raw error of a failed job. */
+function JobListRecord({ job }: { job: JobRecord }) {
+  return (
+    <>
+      <RecordField label={jobName(job)} usage={`${job.kind} · ${job.status} · requested by ${job.requestedBy}`} value={job.id} />
+      {job.status === "failed" && job.error ? <RecordField copy={false} label={`Error of ${jobName(job)}`} value={String(job.error)} /> : null}
+    </>
+  );
+}
+
 export function JobTable({
   headingId,
   jobs,
-  kicker,
   title,
   now = new Date().toISOString(),
 }: {
   headingId: string;
   jobs: JobRecord[];
-  kicker: string;
   title: string;
   now?: string;
 }) {
   return (
-    <section aria-labelledby={headingId} className="report-section">
+    <section aria-labelledby={headingId} className="report-section job-list">
       <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">{kicker}</p>
-          <h2 id={headingId}>{title}</h2>
-        </div>
-        <span className="result-count">
-          {jobs.length} {jobs.length === 1 ? "job" : "jobs"}
+        <h2 id={headingId}>{title}</h2>
+        <span className="section-aside">
+          <span className="job-count">{jobs.length} {jobs.length === 1 ? "job" : "jobs"}</span>
+          <Link className="text-link" href="/activity">All activity</Link>
         </span>
       </div>
 
       {jobs.length ? (
-        <ul className="activity-list">
-          {jobs.map((job) => (
-            <li className={`activity-item job-row job-row-${job.status}`} key={job.id}>
-              <div className="activity-main">
-                <Link className="activity-title" href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
-                <p className="activity-meta">
-                  <JobStatusBadge status={job.status} />{" "}
-                  <time dateTime={job.finishedAt ?? job.startedAt ?? job.createdAt ?? undefined} title={formatTimestamp(job.finishedAt ?? job.createdAt)}>{jobStatusSentence(job, now)}</time>
-                  {" · asked by "}{personLabel(job.references?.people.requested_by)}
-                </p>
-                {job.status === "failed" && job.error ? <p className="job-error-line">{jobErrorLine(job.error)}</p> : null}
-              </div>
-              <TechnicalDetails>
-                <JobRecordFields job={job} />
-                {job.status === "failed" && job.error ? <RecordField copy={false} label="Error" value={String(job.error)} /> : null}
-              </TechnicalDetails>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="activity-list">
+            {jobs.map((job) => <JobRow job={job} key={job.id} now={now} />)}
+          </ul>
+          <TechnicalDetails summary="Technical details for these jobs">
+            {jobs.map((job) => (
+              <JobListRecord job={job} key={job.id} />
+            ))}
+          </TechnicalDetails>
+        </>
       ) : (
         <p className="empty-state">No jobs of this kind have run yet.</p>
       )}

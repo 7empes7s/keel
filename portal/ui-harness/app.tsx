@@ -1300,7 +1300,7 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
     <WorkloadServices now={now} workloads={RESTORE_WORKLOADS} />
-    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} kicker="Recent" now={now} title="Restores and checks" /></div>
+    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
   </>;
 }
 
@@ -1326,7 +1326,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           <BackupControls canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />
           <ProblemList disabled={false} problems={protectProblems(COVERAGE, now)} />
           <CoverageReport data={COVERAGE} now={now} />
-          <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} kicker="Recent" now={now} title="On-demand backups" />
+          <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup")} now={now} title="On-demand backups" />
         </div></>;
     }
     case "/schedules": {

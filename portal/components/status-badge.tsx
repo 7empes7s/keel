@@ -1,34 +1,14 @@
-import { PROTECTION_STATE_LABEL, displayEnum } from "@/lib/presentation";
-import type { CoverageType, ProtectionState } from "@/lib/types";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { displayEnum } from "@/lib/presentation";
 
-export function ProtectionBadge({ item }: { item: CoverageType }) {
-  let label = PROTECTION_STATE_LABEL[item.protectionState];
-
-  if (item.protectionState === "protected") {
-    label = item.fidelity.measured ? "Verified protected" : "Declared protected";
-  } else if (item.protectionState === "partially-protected") {
-    label = item.fidelity.measured
-      ? "Verified partial"
-      : "Declared partial";
-  }
-
-  return (
-    <span className={`state-badge state-${item.protectionState}`}>{label}</span>
-  );
-}
+// Colour is risk only: a change that could lock admins out is urgent, one that
+// affects access is soon, a cosmetic one is low. The kind of change is neutral.
+const BLAST_TONES: Record<string, BadgeTone> = { "tenant-lockout": "urgent", "access-affecting": "soon", cosmetic: "low" };
 
 export function BlastBadge({ value }: { value: string }) {
-  return <span className={`blast-badge blast-${value}`}>{displayEnum("blastRadius", value)}</span>;
+  return <Badge tone={BLAST_TONES[value] ?? "neutral"} icon={value === "tenant-lockout" ? "alert" : undefined}>{displayEnum("blastRadius", value)}</Badge>;
 }
 
 export function ChangeBadge({ value }: { value: string }) {
-  return <span className={`change-badge change-${value}`}>{displayEnum("changeType", value)}</span>;
-}
-
-export function StateBadge({ state }: { state: ProtectionState }) {
-  return (
-    <span className={`state-badge state-${state}`}>
-      {PROTECTION_STATE_LABEL[state]}
-    </span>
-  );
+  return <Badge tone="neutral" icon={value === "added" ? "plus" : value === "removed" ? "close" : "swap"}>{displayEnum("changeType", value)}</Badge>;
 }

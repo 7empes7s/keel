@@ -22,6 +22,8 @@ export interface NavCapabilities {
   canUsers?: boolean;
   canApprove?: boolean;
   canConfigure?: boolean;
+  // Not a page gate: lets the search offer "Back up now" only to people who can.
+  canBackup?: boolean;
 }
 
 type Gate = keyof NavCapabilities | null;

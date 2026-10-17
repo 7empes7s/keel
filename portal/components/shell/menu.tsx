@@ -30,8 +30,12 @@ import type { ThemePreference } from "@/lib/theme";
 
 export interface Person {
   email: string;
+  // The display name from People; null when it has none, then a label from the email.
+  name?: string | null;
   access: string;
   accessTitle?: string;
+  // The person's own entry on People, for someone who may open it.
+  href?: string;
 }
 
 const TONE_WORDS: Record<SectionStatus["tone"], string> = { urgent: "Urgent", soon: "Check soon", low: "Low risk", fine: "Fine" };
@@ -303,10 +307,24 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
   );
 }
 
-function initials(email: string): string {
-  const name = email.split("@")[0].replace(/[^a-z]/gi, " ").trim();
+export function initials(label: string): string {
+  const name = label.split("@")[0].replace(/[^\p{L}]/gu, " ").trim();
   const words = name.split(/\s+/).filter(Boolean);
   return (words.length > 1 ? words[0][0] + words[1][0] : name.slice(0, 2)).toUpperCase() || "?";
+}
+
+// Opening a page keeps its menu entry in sight: the rail scrolls on its own, so a
+// sub-item low in a long section (Settings, Setup) would otherwise sit below the fold.
+function useCurrentInView(ref: { current: HTMLElement | null }, pathname: string) {
+  useEffect(() => {
+    const nav = ref.current;
+    const current = nav?.querySelector<HTMLElement>('[aria-current="page"]') ?? nav?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!nav || !current) return;
+    const scroller = nav.closest<HTMLElement>(".rail") ?? nav;
+    const box = scroller.getBoundingClientRect();
+    const item = current.getBoundingClientRect();
+    if (item.top < box.top || item.bottom > box.bottom) current.scrollIntoView({ block: "center" });
+  }, [ref, pathname]);
 }
 
 export function Menu({
@@ -332,6 +350,18 @@ export function Menu({
 }) {
   const pathname = usePathname() ?? "/";
   const current = useCurrentHref();
+  const navRef = useRef<HTMLElement>(null);
+  useCurrentInView(navRef, pathname);
+  const name = person.name || personLabel({ kind: "person", id: "", name: null, email: person.email, readable: true }, person.email);
+  const who = (
+    <>
+      <span aria-hidden="true" className="avatar">{initials(person.name || person.email)}</span>
+      <span className="menu-person-text">
+        <span className="menu-person-name" title={person.email}>{name}</span>
+        <small title={person.accessTitle}>{person.access}{person.href ? " · your access" : ""}</small>
+      </span>
+    </>
+  );
   return (
     <div className="menu" data-variant={variant}>
       <div className="menu-head">
@@ -348,20 +378,18 @@ export function Menu({
       </div>
       <CloudSwitcher />
       {variant === "rail" ? <SearchTrigger /> : null}
-      <nav aria-label="Menu" className="menu-nav">
+      <nav aria-label="Menu" className="menu-nav" ref={navRef}>
         <PersonalList current={current} group="pinned" onNavigate={onNavigate} />
         <PersonalList current={current} group="favourites" onNavigate={onNavigate} />
         <PersonalList current={current} group="custom" onNavigate={onNavigate} />
         <Everything capabilities={capabilities} onNavigate={onNavigate} pathname={pathname} statuses={statuses} />
       </nav>
       <div className="menu-foot">
-        <p className="menu-person">
-          <span aria-hidden="true" className="avatar">{initials(person.email)}</span>
-          <span className="menu-person-text">
-            <span className="menu-person-name" title={person.email}>{personLabel({ kind: "person", id: "", name: null, email: person.email, readable: true }, person.email)}</span>
-            <small title={person.accessTitle}>{person.access}</small>
-          </span>
-        </p>
+        {person.href ? (
+          <Link className="menu-person menu-person-link" href={person.href} onClick={onNavigate}>{who}</Link>
+        ) : (
+          <p className="menu-person">{who}</p>
+        )}
         <ThemeToggle initial={theme} />
         <SignOutControls />
       </div>

@@ -70,3 +70,27 @@ export function inboxNote(approvals: number, alerts: number): string {
   const parts = [approvals ? plural(approvals, "approval", "approvals") : "", alerts ? plural(alerts, "alert", "alerts") : ""].filter(Boolean);
   return parts.length ? `${parts.join(" and ")} waiting` : "Nothing waiting";
 }
+
+/**
+ * Settings' status: urgent when nobody active can approve, check soon when an alert
+ * channel's latest finished delivery failed. Deliveries come newest first, as the
+ * deliveries route lists them. A list that could not be read (null) says nothing.
+ */
+export function settingsStatus({ principals, deliveries }: {
+  principals: { capabilities: string[]; disabled_at: string | null; system_kind?: string | null }[] | null;
+  deliveries: { channel_id: string; status: string }[] | null;
+}): SectionStatus | undefined {
+  if (principals && principals.length > 0) {
+    const approvers = principals.filter((principal) => !principal.disabled_at && !principal.system_kind && principal.capabilities.includes("approve"));
+    if (approvers.length === 0) return { tone: "urgent", note: "Nobody can approve restores and changes" };
+  }
+  if (deliveries) {
+    const latest = new Map<string, string>();
+    for (const delivery of deliveries) {
+      if ((delivery.status === "delivered" || delivery.status === "failed") && !latest.has(delivery.channel_id)) latest.set(delivery.channel_id, delivery.status);
+    }
+    const failing = [...latest.values()].filter((status) => status === "failed").length;
+    if (failing > 0) return { tone: "soon", count: failing, note: `${plural(failing, "alert channel is", "alert channels are")} failing to send` };
+  }
+  return undefined;
+}

@@ -111,11 +111,26 @@ function completionResources() {
     { naturalKey: "group:Finance approvers", resourceType: "group", mechanism: "recreate", state: stateOf(groupItems), items: groupItems },
   ];
 }
+const HARNESS_PEOPLE = [
+  { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users"], role_grants: [] },
+  { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["read", "approve"], role_grants: [] },
+];
+// The newest delivery on the Teams channel failed, so Settings says a channel is failing.
+const HARNESS_DELIVERIES = [
+  { id: "d-1", channel_id: "c-teams", channel_kind: "teams", status: "failed", event: { kind: "drift.detected", severity: "high" }, attempts: 5, last_error: "403", next_attempt_at: null },
+  { id: "d-2", channel_id: "c-mail", channel_kind: "email", status: "delivered", event: { kind: "drift.detected", severity: "high" }, attempts: 1, last_error: null, next_attempt_at: null },
+  { id: "d-3", channel_id: "c-teams", channel_kind: "teams", status: "delivered", event: { kind: "job.failed", severity: "medium" }, attempts: 1, last_error: null, next_attempt_at: null },
+];
+
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
   if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  // Settings' menu badge and the search's people and kinds of settings.
+  if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
+  if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
+  if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
   await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
   if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
   // Task-92: the activation preview of policy p2, and a turn-on refused because the
@@ -1578,10 +1593,10 @@ function App() {
       <button className="btn btn-secondary btn-sm" onClick={finishJob} type="button">Advance jobs</button>
     </div>
     <AppShell
-      capabilities={{ canApprove: true, canConfigure: true, canPolicies: true, canRead: true, canUsers: true }}
+      capabilities={{ canApprove: true, canBackup: true, canConfigure: true, canPolicies: true, canRead: true, canUsers: true }}
       initialPrefs={EMPTY_PREFS}
       pendingApprovals={2}
-      person={{ email: "marouanedefili@gmail.com", access: accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"]) }}
+      person={{ email: "marouanedefili@gmail.com", name: "Marouane Defili", href: "/principals#person-8c1e0000-0000-4000-8000-0000000000a1", access: accessSummary(["read", "approve", "restore", "rollback", "remediate", "investigate", "collect", "backup", "policies", "users", "roles", "configuration"]) }}
       theme="system"
     >
       <div className="page-transition" key={loading ? "loading" : `${path}:${posture}`}>

@@ -327,3 +327,78 @@ test("visual · kit · desktop", async ({ page }) => {
   await page.getByRole("button", { name: /^Changed:/ }).click();
   await expect(page).toHaveScreenshot("date-picker-dark.png");
 });
+
+test("buttons are outlined, with amber for the main action and red only inside a confirm step", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  for (const path of ["/principals", "/notifications", "/integrations", "/setup", "/kit"]) {
+    await open(page, path);
+    expect(await page.locator(".btn-danger").evaluateAll((buttons) => buttons.filter((button) => !button.closest("dialog")).length), path).toBe(0);
+  }
+  await expect(page.getByRole("button", { name: "Start setup" })).toHaveClass(/btn-primary/);
+  await page.getByRole("button", { name: "Remove access" }).click();
+  const dialog = page.locator("dialog[open]");
+  await expect(dialog.getByRole("button", { name: "Keep the role" })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Remove the role" })).toHaveClass(/btn-danger/);
+  await expect(dialog.locator(".severity-label")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.locator("dialog[open]").getByRole("button", { name: "Pause", exact: true })).toHaveClass(/btn-primary/);
+  await page.keyboard.press("Escape");
+});
+
+test("could-not-read messages say what failed and offer Try again; messages use the portal's icons and Undo", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/kit");
+  const service = page.locator('.data-error[data-cause="service"]');
+  await expect(service).toContainText("Keel could not reach ServiceNow just now. Your other pages still work.");
+  await expect(service.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(service.getByRole("link", { name: "Open the connection" })).toHaveAttribute("href", "/integrations");
+  await expect(page.locator('.data-error[data-cause="database"]')).not.toContainText("portal service");
+  await page.getByRole("button", { name: "Show a message with Undo" }).click();
+  const toast = page.locator(".toast").first();
+  await expect(toast.locator(".toast-icon svg")).toHaveCount(1);
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".toast", { hasText: "Rule turned back on" })).toBeVisible();
+});
+
+test("search finds pages by what they do, your saved views, actions and people", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/kit?group=risk");
+  await page.locator('section[data-group="custom"]').getByRole("button", { name: "New" }).click();
+  await page.getByLabel("Name this view").fill("Settings by risk");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await open(page, "/");
+  await page.keyboard.press("Control+k");
+  const palette = page.locator("dialog.command-palette");
+  await expect(palette.getByRole("group", { name: "Actions" })).toContainText("Back up the critical settings now");
+  await page.keyboard.type("consent");
+  await expect(palette.getByRole("option").first()).toContainText("Setup");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("amara");
+  await expect(palette.getByRole("group", { name: "Items" }).getByRole("option")).toContainText("Amara Okafor");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("settings by");
+  await expect(palette.getByRole("option").first()).toContainText("Saved view");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/kit\?group=risk$/);
+});
+
+test("the menu keeps the open page in view, flags Settings and names the person", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/setup");
+  const current = page.locator('aside.rail a.menu-sublink[aria-current="page"]');
+  await expect(current).toHaveText("Setup");
+  const inView = await current.evaluate((link) => {
+    const rail = link.closest(".rail")!.getBoundingClientRect();
+    const box = link.getBoundingClientRect();
+    return box.top >= rail.top && box.bottom <= rail.bottom;
+  });
+  expect(inView).toBe(true);
+  const settings = page.locator('aside.rail .menu-section:has(.menu-label:text-is("Settings")) .menu-badge').first();
+  await expect(settings).toHaveAttribute("data-tone", "soon");
+  await expect(settings).toHaveAttribute("title", "1 alert channel is failing to send");
+  const person = page.locator("aside.rail a.menu-person-link");
+  await expect(person.locator(".menu-person-name")).toHaveText("Marouane Defili");
+  await expect(person.locator(".avatar")).toHaveText("MD");
+  await expect(person).toContainText("your access");
+});

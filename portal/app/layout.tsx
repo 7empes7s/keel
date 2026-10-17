@@ -13,8 +13,8 @@ import { AppShell } from "@/components/shell/app-shell";
 import { Toaster } from "@/components/toaster";
 import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
-import { CAPABILITIES_HEADER } from "@/lib/principal";
-import { accessSummary } from "@/lib/presentation";
+import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, principalDisplayName } from "@/lib/principal";
+import { accessInFull, accessSummary } from "@/lib/presentation";
 import { MENU_COOKIE, parseMenuPrefs } from "@/lib/menu-prefs";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
@@ -43,8 +43,7 @@ export default async function RootLayout({
     .split(" ")
     .filter(Boolean);
   const canApprove = capabilities.includes("approve");
-  // What this operator can do, in words; the raw capability codes stay in the title.
-  const actions = capabilities.filter((capability) => capability !== "read");
+  const canBackup = capabilities.includes("backup");
   const cookieStore = await cookies();
   const theme = parseThemePreference(cookieStore.get(THEME_COOKIE)?.value);
   const menuPrefs = parseMenuPrefs(cookieStore.get(MENU_COOKIE)?.value);
@@ -61,14 +60,32 @@ export default async function RootLayout({
     }
   }
 
+  // The menu shows the person's name, never their email as a name. A failed read
+  // falls back to the email-derived label rather than breaking every page's chrome.
+  const principalId = requestHeaders.get(PRINCIPAL_ID_HEADER);
+  let displayName: string | null = null;
+  if (principalId) {
+    try {
+      displayName = await principalDisplayName(principalId);
+    } catch {
+      displayName = null;
+    }
+  }
+
   return (
     <html data-theme={theme === "system" ? undefined : theme} lang="en">
       <body>
         <AppShell
-          capabilities={{ canApprove, canConfigure, canPolicies, canRead, canUsers }}
+          capabilities={{ canApprove, canBackup, canConfigure, canPolicies, canRead, canUsers }}
           initialPrefs={menuPrefs}
           pendingApprovals={pendingApprovals}
-          person={{ email, access: accessSummary(capabilities), accessTitle: actions.join(", ") || undefined }}
+          person={{
+            email,
+            name: displayName,
+            access: accessSummary(capabilities),
+            accessTitle: accessInFull(capabilities),
+            href: canUsers && principalId ? `/principals#person-${encodeURIComponent(principalId)}` : undefined,
+          }}
           theme={theme}
         >
           {children}

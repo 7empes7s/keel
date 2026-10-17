@@ -2,10 +2,21 @@
 
 import { useId, useRef, type ReactNode } from "react";
 
+// How the button and its confirm step look:
+// - primary: the screen's one main action; amber button, amber confirm.
+// - neutral: any other change; outlined button, amber confirm.
+// - danger: removes access or deletes; outlined button, red confirm inside the dialog only.
+export type ConfirmTone = "primary" | "neutral" | "danger";
+
+const TRIGGER_CLASS: Record<ConfirmTone, string> = { primary: "btn btn-primary", neutral: "btn", danger: "btn" };
+const CONFIRM_CLASS: Record<ConfirmTone, string> = { primary: "btn btn-primary", neutral: "btn btn-primary", danger: "btn btn-danger" };
+
 // A button that asks before it acts. For writes that take effect immediately with no
 // approval step behind them (disabling a channel, pausing a SIEM feed), the dialog
 // names exactly what changes; Cancel holds focus so Enter never confirms by accident.
+// Red is kept for the final confirm of something that removes access or deletes.
 export function ConfirmButton({
+  cancelLabel = "Cancel",
   children,
   confirmLabel,
   description,
@@ -13,7 +24,9 @@ export function ConfirmButton({
   onConfirm,
   size = "md",
   title,
+  tone = "neutral",
 }: {
+  cancelLabel?: string;
   children: ReactNode;
   confirmLabel: string;
   description: ReactNode;
@@ -21,6 +34,7 @@ export function ConfirmButton({
   onConfirm: () => void | Promise<void>;
   size?: "sm" | "md";
   title: string;
+  tone?: ConfirmTone;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -33,7 +47,8 @@ export function ConfirmButton({
   return (
     <>
       <button
-        className={`btn btn-danger${sizeClass}`}
+        className={`${TRIGGER_CLASS[tone]}${sizeClass}`}
+        data-tone={tone}
         disabled={disabled}
         onClick={() => dialogRef.current?.showModal()}
         type="button"
@@ -43,6 +58,7 @@ export function ConfirmButton({
       <dialog
         aria-labelledby={titleId}
         className="confirm-dialog"
+        data-tone={tone}
         onClick={(event) => {
           // A click on the backdrop lands on the dialog element itself.
           if (event.target === event.currentTarget) close();
@@ -50,15 +66,14 @@ export function ConfirmButton({
         ref={dialogRef}
       >
         <div className="confirm-dialog-body">
-          <p className="severity-label">Confirm change</p>
           <h2 id={titleId}>{title}</h2>
           <div className="confirm-dialog-description">{description}</div>
           <div className="form-actions">
-            <button autoFocus className="btn btn-ghost" onClick={close} type="button">
-              Cancel
+            <button autoFocus className="btn" onClick={close} type="button">
+              {cancelLabel}
             </button>
             <button
-              className="btn btn-danger"
+              className={CONFIRM_CLASS[tone]}
               onClick={() => {
                 close();
                 void onConfirm();

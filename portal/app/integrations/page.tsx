@@ -42,7 +42,7 @@ export default async function IntegrationsPage() {
     <PageHeader section="Settings" title="Integrations" description={DESCRIPTION} generatedAt={generatedAt} />
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation">
-      {servicenow ? <ServiceNowPanel status={servicenow} /> : <DataUnavailable surface="ServiceNow approvals" />}
+      {servicenow ? <ServiceNowPanel status={servicenow} /> : <DataUnavailable service={{ name: "ServiceNow" }} surface="ServiceNow approvals" />}
       <IntegrationConsole canConfiguration={canConfiguration} destinations={destinations} statuses={statuses} />
     </div>
   </>;

@@ -42,6 +42,7 @@ export function RemoveRoleButton({ principalId, grantId, name, role }: { princip
       onConfirm={() => post("revoke", { grantId }, "Role removed")}
       size="sm"
       title={`Remove ${role.toLowerCase()} from ${name}?`}
+      tone="danger"
     >
       Remove
     </ConfirmButton>
@@ -72,6 +73,7 @@ export function PrincipalControls({ principalId, name, canRoles, canUsers }: { p
           onConfirm={() => post("disable", {}, "Person disabled")}
           size="sm"
           title={`Disable ${name}?`}
+          tone="danger"
         >
           Disable
         </ConfirmButton>

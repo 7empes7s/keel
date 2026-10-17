@@ -2,7 +2,9 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
+import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { addDays, inRange, rangeFromParam, rangeToParam, type Day } from "@/lib/date-range";
 import type { RiskTone } from "@/lib/menu-status";
 import { orderGroups, smartOrder } from "@/lib/selection";
@@ -119,6 +121,21 @@ export function KitPage() {
         rowName={(item) => `${item.name}, ${item.kind}`}
         toneOf={(item) => item.tone}
       />
+      <section aria-labelledby="kit-buttons-heading" className="report-section kit-messages">
+        <h2 id="kit-buttons-heading">Buttons and messages</h2>
+        <div className="form-actions">
+          <ConfirmButton confirmLabel="Start" description={<p>Keel makes the changes it can and stops at the first step only you can do.</p>} onConfirm={() => { toast({ title: "Setup started" }); }} title="Start the setup?" tone="primary">Start setup</ConfirmButton>
+          <ConfirmButton confirmLabel="Pause" description={<p>Splunk stops receiving audit entries until it is resumed.</p>} onConfirm={() => { toast({ title: "Paused" }); }} title="Pause Splunk?">Pause</ConfirmButton>
+          <ConfirmButton cancelLabel="Keep the role" confirmLabel="Remove the role" description={<p>Amara will still sign in and see everything, but can no longer approve restores.</p>} onConfirm={() => { toast({ title: "Role removed" }); }} title="Remove Amara Okafor's approver role?" tone="danger">Remove access</ConfirmButton>
+        </div>
+        <div className="form-actions">
+          <button className="btn" onClick={() => toast({ title: "Backup started for the critical settings", href: "/jobs/job-1", hrefLabel: "Watch it" })} type="button">Show a done message</button>
+          <button className="btn" onClick={() => toast({ tone: "info", title: "Rule turned off", action: { label: "Undo", run: () => toast({ title: "Rule turned back on" }) } })} type="button">Show a message with Undo</button>
+          <button className="btn" onClick={() => toast({ tone: "warning", title: "Could not send the test message", detail: "The address was refused." })} type="button">Show a failure message</button>
+        </div>
+        <DataUnavailable service={{ name: "ServiceNow", href: "/integrations" }} surface="ServiceNow approvals" />
+        <DataUnavailable surface="Schedules" />
+      </section>
     </>
   );
 }

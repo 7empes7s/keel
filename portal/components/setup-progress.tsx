@@ -156,6 +156,7 @@ export function SetupProgress({ setup, now, canProvision, canCheck, checkFailed 
               disabled={busy || workloads.length === 0}
               onConfirm={() => post({ scope: setup.scope, workloads })}
               title={`Start ${title.toLowerCase()} setup?`}
+              tone="primary"
             >
               {run ? "Start again" : "Start setup"}
             </ConfirmButton>

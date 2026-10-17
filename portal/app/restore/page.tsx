@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { RestoreFollowUps } from "@/components/restore-follow-ups";
 import { RestoreSelection } from "@/components/restore-selection";
 import { Verdict } from "@/components/verdict";
+import { WorkloadServices } from "@/components/restore/workload-services";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
   getIncidentSummary,
@@ -24,6 +25,7 @@ import {
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { getRestoreChanges, type RestoreChangesData } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
+import { getRestoreWorkloads, type RestoreWorkload } from "@/lib/restore-workloads";
 import type { RestoreFollowUp } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
@@ -91,6 +93,15 @@ export default async function RestorePage({
     }
   }
 
+  // Secondary: the other Microsoft 365 services (Exchange, SharePoint, Teams, Purview,
+  // Power Platform) are backed up as workload collections, not in the snapshot.
+  let workloads: RestoreWorkload[] | null;
+  try {
+    workloads = await getRestoreWorkloads();
+  } catch {
+    workloads = null;
+  }
+
   // Secondary: if it cannot be read, the page still works and says so.
   let followUps: RestoreFollowUp[] | null;
   try {
@@ -156,6 +167,8 @@ export default async function RestorePage({
           </section>
         </>
       )}
+
+      <WorkloadServices now={now} workloads={workloads} />
 
       <div data-layer="explanation">
         {followUps === null

@@ -16,9 +16,9 @@ import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  changedBy, decisionWords, impactTone, impactWords, kindLine, plainKind, plainLabel, setupName, typeService, whyItMatters, type Decision,
+  changedBy, decisionWords, impactTone, impactWords, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
-import { resourceName } from "@/lib/changes-view";
+import { changeLabel, changeName } from "@/lib/changes-view";
 import { toDay } from "@/lib/date-range";
 import { driftActionControls } from "@/lib/drift-actions";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -197,7 +197,7 @@ export function ChangeList({
             groupings={GROUPINGS}
             items={shown}
             label="Open changes"
-            matches={(item, query) => `${resourceName(item.naturalKey)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase().includes(query)}
+            matches={(item, query) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase().includes(query)}
             more={more}
             noun={{ one: "change", many: "changes" }}
             renderRow={(item) => {
@@ -206,7 +206,7 @@ export function ChangeList({
                 <div className="bl-row">
                   <span aria-hidden="true" className="bl-kind-icon" data-tone={toneOf(item)}><Icon name={typeService(item.resourceType).icon} /></span>
                   <span className="bl-row-name">
-                    <Link className="bl-row-link" href={href({ open: item.id })} onClick={(event) => follow(event, { open: item.id })}>{resourceName(item.naturalKey)}</Link>
+                    <Link className="bl-row-link" href={href({ open: item.id })} onClick={(event) => follow(event, { open: item.id })}>{changeName(item)}</Link>
                     <small>{kindLine(item)}</small>
                   </span>
                   <RiskChip tone={toneOf(item)}>{impactWords(item.blastRadius)}</RiskChip>
@@ -217,7 +217,7 @@ export function ChangeList({
                 </div>
               );
             }}
-            rowName={(item) => plainLabel(item.naturalKey)}
+            rowName={(item) => changeLabel(item)}
             toneOf={toneOf}
           />
         ) : (
@@ -248,7 +248,7 @@ export function ChangeList({
           ) : undefined}
           kicker={<><RiskChip tone={toneOf(opened)}>{impactWords(opened.blastRadius)}</RiskChip><span>{kindLine(opened)}</span></>}
           onClose={() => view.set({ open: null })}
-          title={resourceName(opened.naturalKey)}
+          title={changeName(opened)}
           wide
         >
           <section className="bl-why" aria-label="Why it matters">
@@ -271,7 +271,7 @@ export function ChangeList({
 
       {deciding && deciding_items.length ? (
         <DetailsSheet
-          kicker={<span>{deciding_items.length === 1 ? resourceName(deciding_items[0].naturalKey) : `${deciding_items.length} changes`}</span>}
+          kicker={<span>{deciding_items.length === 1 ? changeName(deciding_items[0]) : `${deciding_items.length} changes`}</span>}
           onClose={() => setDeciding(null)}
           title={decisionWords(deciding.decision, deciding_items.length).title}
         >

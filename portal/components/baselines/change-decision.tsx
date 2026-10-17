@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { DatePicker } from "@/components/pickers/date-picker";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { decisionWords, plainLabel, type Decision } from "@/lib/baselines-view";
-import { plannedActionWords, refusalSentence, resourceName } from "@/lib/changes-view";
+import { decisionWords, type Decision } from "@/lib/baselines-view";
+import { changeLabel, changeName, plannedActionWords, refusalSentence } from "@/lib/changes-view";
 import { addDays, type Day, type DayRange } from "@/lib/date-range";
 import { remediationParams } from "@/lib/drift-actions";
 import type { DriftRecord } from "@/lib/types";
@@ -52,6 +52,17 @@ export function ChangeDecision({
   const [preview, setPreview] = useState<UndoPreview | null>(null);
 
   const ids = items.map((item) => item.id);
+  // The plan names resources by key; the chosen changes carry their names. A resource
+  // the plan adds (a dependency) is named from its key, never by its id.
+  const byKey = new Map(items.map((item) => [item.naturalKey, item]));
+  const nameOf = (resource: { naturalKey: string; resourceType?: string }) => {
+    const item = byKey.get(resource.naturalKey);
+    return item ? changeName(item) : changeName({ naturalKey: resource.naturalKey, resourceType: resource.resourceType ?? resource.naturalKey.split(":")[0] });
+  };
+  const labelOf = (resource: { naturalKey: string; resourceType?: string }) => {
+    const item = byKey.get(resource.naturalKey);
+    return item ? changeLabel(item) : changeLabel({ naturalKey: resource.naturalKey, resourceType: resource.resourceType ?? resource.naturalKey.split(":")[0] });
+  };
   const words = decisionWords(decision, items.length);
   // A preview counts only for exactly the changes it was made for.
   const currentPreview = preview && sameIds(preview.driftIds, ids) ? preview : null;
@@ -126,7 +137,7 @@ export function ChangeDecision({
     <div className="bl-decision">
       <p className="bl-decision-what">{words.detail}</p>
       <p className="bl-decision-scope">
-        <b>Applies only to:</b> {items.map((item) => plainLabel(item.naturalKey)).join(", ")}.
+        <b>Applies only to:</b> {items.map((item) => changeLabel(item)).join(", ")}.
       </p>
       <label className="picker-field bl-reason">
         <span className="picker-label">Why</span>
@@ -148,13 +159,13 @@ export function ChangeDecision({
           <p className="bl-help">Worked out from the tenant as it is now. Keel checks again before it changes anything.</p>
           <ul className="bl-undo-list">
             {currentPreview.resources.map((resource) => (
-              <li key={resource.naturalKey}><b>{resourceName(resource.naturalKey)}</b><span>{plannedActionWords(resource.verb)}</span></li>
+              <li key={resource.naturalKey}><b>{nameOf(resource)}</b><span>{plannedActionWords(resource.verb)}</span></li>
             ))}
           </ul>
           {refused ? (
             <div className="data-error" role="alert">
               <p className="severity-label">Cannot undo</p>
-              <ul>{currentPreview.guardRefusals.map((refusal, index) => <li key={index}>{refusalSentence(refusal)}</li>)}</ul>
+              <ul>{currentPreview.guardRefusals.map((refusal, index) => <li key={index}>{refusalSentence(refusal, labelOf(refusal))}</li>)}</ul>
             </div>
           ) : <p className="action-message">Keel found nothing it would refuse to change.</p>}
           <TechnicalDetails>

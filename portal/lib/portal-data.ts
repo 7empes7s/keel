@@ -34,6 +34,7 @@ import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
 import { getLiveRecords } from "@/lib/live-records";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -385,6 +386,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     detectedAt: iso(raw.detected_at) ?? "",
     before: raw.before_payload ?? null,
     after: raw.after_payload ?? null,
+    name: payloadName(raw.after_payload) ?? payloadName(raw.before_payload),
   };
 }
 
@@ -699,6 +701,51 @@ export function displayItems(items: DriftRecord[]): DriftRecord[] {
     : item);
 }
 
+// At most this many ids are named per page load; the rest read "no name" (bounded).
+const MAX_NAMED_IDS = 5000;
+const REF_NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+
+// Names, not ids: the users, groups, roles and apps each change points to by id, as the
+// collections that saw the changes read them. Matched on the object id, an app's appId
+// and a role's template id. A failed read leaves the ids unnamed, never the page down.
+async function withRefNames(client: KeelClient, ref: string, items: DriftRecord[]): Promise<DriftRecord[]> {
+  const perItem = items.map((item) => objectIds(item.naturalKey, item.before, item.after));
+  const wanted = [...new Set(perItem.flat())].slice(0, MAX_NAMED_IDS);
+  if (!wanted.length) return items;
+  const names = new Map<string, string>();
+  try {
+    const { rows } = await client.query(
+      `WITH seen AS (
+         SELECT DISTINCT d.observed_snapshot AS id FROM drift d
+          WHERE d.tenant_ref = $1 AND d.id = ANY($2::uuid[])
+       )
+       SELECT lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
+              lower(rv.payload->>'roleTemplateId') AS template_id, ${REF_NAME_SQL} AS name
+         FROM resource_version rv
+         JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
+        WHERE rv.snapshot_id IN (SELECT id FROM seen)
+          AND (lower(rv.payload->>'id') = ANY($3::text[])
+            OR lower(rv.payload->>'appId') = ANY($3::text[])
+            OR lower(rv.payload->>'roleTemplateId') = ANY($3::text[]))`,
+      [ref, items.map((item) => item.id), wanted],
+    );
+    for (const row of rows) {
+      const name = typeof row.name === "string" ? row.name.trim() : "";
+      if (!name || objectIds(name).length) continue;
+      for (const id of [row.id, row.app_id, row.template_id]) {
+        if (typeof id === "string" && !names.has(id)) names.set(id, name);
+      }
+    }
+  } catch (error) {
+    console.error("[keel-portal] change reference names unavailable", error);
+    return items;
+  }
+  return items.map((item, index) => {
+    const refNames = Object.fromEntries(perItem[index].flatMap((id) => (names.has(id) ? [[id, names.get(id)!]] : [])));
+    return Object.keys(refNames).length ? { ...item, refNames } : item;
+  });
+}
+
 function driftResult(items: DriftRecord[]): { items: DriftRecord[]; summary: SemanticSummary } {
   return { items, summary: summarizeSemanticDrift(items) as SemanticSummary };
 }
@@ -717,7 +764,10 @@ export async function getDriftData(scope: EntityScope = CENTRAL_SCOPE): Promise<
     if (scope.central || !found) {
       const items = await activeDriftFor(client, ref, found?.id ?? null);
       const attributed = found ? await withAttribution(client, ref, found.id, items, scope) : items;
-      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, attributed, scope)) };
+      // Only a central reader gets the names of the objects a change points to: an
+      // entity-scoped reader may not see those objects, so their ids stay unnamed.
+      const named = scope.central ? await withRefNames(client, ref, attributed) : attributed;
+      return { generatedAt: new Date().toISOString(), baseline: found, ...driftResult(await withDecisionEvidence(client, ref, named, scope)) };
     }
     const baseline = { ...found, resourceCount: await scopedBaselineCount(client, ref, found.id, scope) };
     const items = await withAttribution(client, ref, found.id, await scopedOpenDrift(client, ref, found.id, scope), scope);

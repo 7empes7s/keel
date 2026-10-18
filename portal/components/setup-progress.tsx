@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
@@ -33,6 +35,11 @@ function runSentence(run: SetupRun, now: string): string {
     case "ready": return "Approved and ready to start.";
   }
 }
+
+// The step's progress in the portal's one badge: colour for risk only.
+const STEP_TONES: Record<(typeof PROGRESS_TONES)[keyof typeof PROGRESS_TONES], BadgeTone> = {
+  ok: "fine", warn: "soon", bad: "urgent", info: "low", neutral: "neutral",
+};
 
 const RESUMABLE = new Set<SetupRun["state"]>(["waiting-for-you", "stopped", "interrupted", "ready"]);
 
@@ -80,94 +87,117 @@ export function SetupProgress({ setup, now, canProvision, canCheck, checkFailed 
   const startable = canStart && (run === null || run.state === "complete" || !run.resumableByViewer || run.state === "stopped");
 
   return (
-    <section aria-labelledby={headingId} className="item-card setup-card">
-      <div className="item-card-head">
-        <h2 id={headingId}>{title}</h2>
-        <span className={`pill pill-${counts.done === counts.total ? "ok" : "neutral"}`}>
-          {counts.done} of {counts.total} done
-        </span>
+    <section aria-labelledby={headingId} className="pt-section setup-card">
+      <div className="pt-section-head">
+        <div>
+          <h2 id={headingId}>{title}</h2>
+          <p>
+            {setup.scope === "read"
+              ? "What KEEL needs to read your tenant. Nothing here lets KEEL change anything."
+              : "What KEEL needs to write settings back during a restore. Backups do not wait for this."}
+          </p>
+        </div>
+        {canProvision && (startable || continuable) ? (
+          <div className="st-head-actions setup-actions">
+            {startable ? (
+              <ConfirmButton
+                confirmLabel="Start"
+                description={<p>KEEL makes the changes it can, checks each one in the tenant, and stops at the first step only you can do.</p>}
+                disabled={busy || workloads.length === 0}
+                onConfirm={() => post({ scope: setup.scope, workloads })}
+                size="sm"
+                title={`Start ${title.toLowerCase()} setup?`}
+                tone="neutral"
+              >
+                {run ? "Start again" : "Start setup"}
+              </ConfirmButton>
+            ) : null}
+            {continuable ? (
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => post({ resume: run.artifactId })} type="button">
+                Continue setup
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      <p>
-        {setup.scope === "read"
-          ? "What KEEL needs to read your tenant. Nothing here lets KEEL change anything."
-          : "What KEEL needs to write settings back during a restore. Backups do not wait for this."}
-      </p>
       {run ? (
-        <p className="setup-run">
-          {runSentence(run, now)}{" "}
-          <span className="field-help">
-            Started by {run.approvedByName ?? "an earlier admin"}{" "}
-            <time dateTime={run.approvedAt} title={formatTimestamp(run.approvedAt)}>{ago(run.approvedAt, now)}</time>
-            {" "}for {run.workloads.map((workload) => WORKLOAD_LABELS[workload] ?? workload).join(" and ")}.
-            {!run.resumableByViewer && run.state !== "complete" ? " Only the person who started it can continue it; you can start a new one." : ""}
+        <p className="pt-note setup-run">
+          <Icon name={run.state === "complete" ? "check-circle" : run.state === "ready" ? "info" : "clock"} />
+          <span>
+            {runSentence(run, now)}{" "}
+            <span className="st-soft">
+              Started by {run.approvedByName ?? "an earlier admin"}{" "}
+              <time dateTime={run.approvedAt} title={formatTimestamp(run.approvedAt)}>{ago(run.approvedAt, now)}</time>
+              {" "}for {run.workloads.map((workload) => WORKLOAD_LABELS[workload] ?? workload).join(" and ")}.
+              {!run.resumableByViewer && run.state !== "complete" ? " Only the person who started it can continue it; you can start a new one." : ""}
+            </span>
           </span>
         </p>
       ) : !canCheck ? (
-        <p className="field-help">KEEL cannot look at your tenant from this server yet, so these steps show as not checked.</p>
+        <p className="pt-note"><Icon name="info" /><span>KEEL cannot look at your tenant from this server yet, so these steps show as not checked.</span></p>
       ) : checkFailed ? (
-        <p className="field-help">KEEL could not read your tenant just now, so these steps show as not checked. Reload the page to try again.</p>
-      ) : null}
-
-      <ol className="setup-steps">
-        {setup.steps.map((step) => (
-          <li className={`setup-step setup-step-${step.progress}`} key={step.id}>
-            <div className="setup-step-head">
-              <h3>{stepTitle(step)}</h3>
-              <span className={`pill pill-${PROGRESS_TONES[step.progress]}`}>{PROGRESS_LABELS[step.progress]}</span>
-            </div>
-            <p className="field-help">
-              {step.workload ? `${WORKLOAD_LABELS[step.workload] ?? step.workload}. ` : ""}
-              {step.progress === "unclear"
-                ? "KEEL could not tell whether this worked. It checks the tenant before trying again, so it never makes the change twice."
-                : stepHelp(step)}
-            </p>
-          </li>
-        ))}
-      </ol>
-
-      {canProvision && (startable || continuable) ? (
-        <div className="form-actions setup-actions">
-          {startable && setup.workloads.length > 1 ? (
-            <fieldset className="setup-workloads" disabled={busy}>
-              <legend>Set up</legend>
-              {setup.workloads.map((workload) => (
-                <label key={workload}>
-                  <input
-                    checked={workloads.includes(workload)}
-                    onChange={(event) => setWorkloads((current) => event.target.checked
-                      ? [...current, workload]
-                      : current.filter((item) => item !== workload))}
-                    type="checkbox"
-                  />
-                  {WORKLOAD_LABELS[workload] ?? workload}
-                </label>
-              ))}
-            </fieldset>
-          ) : null}
-          {continuable ? (
-            <button className="btn btn-primary" disabled={busy} onClick={() => post({ resume: run.artifactId })} type="button">
-              Continue setup
-            </button>
-          ) : null}
-          {startable ? (
-            <ConfirmButton
-              confirmLabel="Start"
-              description={<p>KEEL makes the changes it can, checks each one in the tenant, and stops at the first step only you can do.</p>}
-              disabled={busy || workloads.length === 0}
-              onConfirm={() => post({ scope: setup.scope, workloads })}
-              title={`Start ${title.toLowerCase()} setup?`}
-              tone="primary"
-            >
-              {run ? "Start again" : "Start setup"}
-            </ConfirmButton>
-          ) : null}
-        </div>
+        <p className="pt-note"><Icon name="info" /><span>KEEL could not read your tenant just now, so these steps show as not checked. Reload the page to try again.</span></p>
       ) : null}
       {!canProvision ? (
-        <p className="field-help">This server cannot make these changes for you. Do each step in the Microsoft admin centers, then reload this page.</p>
+        <p className="pt-note"><Icon name="info" /><span>This server cannot make these changes for you. Do each step in the Microsoft admin centers, then reload this page.</span></p>
       ) : null}
 
-      <TechnicalDetails>
+      <section className="sel-group st-group">
+        <header className="sel-group-head st-group-head">
+          <Icon name={setup.scope === "read" ? "backup" : "restore"} />
+          <span className="sel-group-name"><b>Steps</b><small>A step is done only when KEEL has seen it in the tenant.</small></span>
+          <span className="sel-group-count">{counts.done} of {counts.total} done</span>
+          <span aria-hidden="true" className="st-progress"><i style={{ width: `${counts.total ? Math.round((counts.done / counts.total) * 100) : 0}%` }} /></span>
+        </header>
+        <ol className="sel-rows setup-steps">
+          {setup.steps.map((step, index) => {
+            const tone = STEP_TONES[PROGRESS_TONES[step.progress]];
+            const risk = tone === "urgent" || tone === "soon" ? tone : null;
+            return (
+              <li className={`sel-row st-row setup-step setup-step-${step.progress}`} data-tone={risk ?? undefined} key={step.id}>
+                <div className="sel-row-body pt-row">
+                  <span aria-hidden="true" className="pt-kind st-step-number" data-tone={tone === "neutral" || tone === "low" ? undefined : tone}>
+                    {step.progress === "done" ? <Icon name="check" /> : index + 1}
+                  </span>
+                  <span className="pt-row-name">
+                    <h3>{stepTitle(step)}</h3>
+                    {step.workload ? <small>{WORKLOAD_LABELS[step.workload] ?? step.workload}</small> : null}
+                  </span>
+                  <span className="pt-row-mid">
+                    <Badge tone={tone}>{PROGRESS_LABELS[step.progress]}</Badge>
+                    <span className="pt-row-line">
+                      {step.progress === "unclear"
+                        ? "KEEL could not tell whether this worked. It checks the tenant before trying again, so it never makes the change twice."
+                        : stepHelp(step)}
+                    </span>
+                  </span>
+                  <span className="pt-row-acts" />
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      {canProvision && startable && setup.workloads.length > 1 ? (
+        <fieldset className="st-checks setup-workloads" disabled={busy}>
+          <legend>Set up</legend>
+          {setup.workloads.map((workload) => (
+            <label key={workload}>
+              <input
+                checked={workloads.includes(workload)}
+                onChange={(event) => setWorkloads((current) => event.target.checked
+                  ? [...current, workload]
+                  : current.filter((item) => item !== workload))}
+                type="checkbox"
+              />
+              {WORKLOAD_LABELS[workload] ?? workload}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+
+      <TechnicalDetails summary={`Technical details for ${title.toLowerCase()}`}>
         {run ? (
           <>
             <RecordField label="Setup run ID" usage={<>use with <code>POST /api/actions/setup</code> as <code>resume</code></>} value={run.artifactId} />

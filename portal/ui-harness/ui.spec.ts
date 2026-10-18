@@ -1101,7 +1101,7 @@ test("setup shows the step waiting on the operator and continues through the gua
   await open(page, "/setup", "dark");
   const read = page.locator("section", { has: page.getByRole("heading", { name: "Read access for backups" }) });
   await expect(read.locator(".setup-step-waiting-for-you h3")).toHaveText('Give keel-collector the Intune role "Read Only Operator"');
-  await expect(read.locator(".setup-step-waiting-for-you .pill")).toHaveText("Waiting for you");
+  await expect(read.locator(".setup-step-waiting-for-you .badge")).toHaveText("Waiting for you");
   await expect(page.getByRole("button", { name: /mark|done|complete/i })).toHaveCount(0);
   await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toBeVisible();
   // The harness answers fetch in-page, so record the call where the page's reload keeps it.
@@ -1124,7 +1124,7 @@ test("setup reports the restorer's extra grant as observed", async ({ page }) =>
   await open(page, "/setup/checked", "light");
   const restore = page.locator("section", { has: page.getByRole("heading", { name: "Write access for restores" }) });
   const consent = restore.locator(".setup-step", { has: page.getByRole("heading", { name: "Grant admin consent for keel-restorer" }) });
-  await expect(consent.locator(".pill")).toHaveText("Done");
+  await expect(consent.locator(".badge")).toHaveText("Done");
   await expect(consent).toContainText("The app also holds a permission this setup does not ask for: MailboxSettings.ReadWrite. KEEL reports it and does not remove it");
   await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toHaveCount(0);
   await expect(restore.locator(".setup-step-waiting-for-you h3")).toHaveText('Activate your "Privileged Role Administrator" role');

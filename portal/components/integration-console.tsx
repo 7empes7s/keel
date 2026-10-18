@@ -1,7 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+
+import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { BaselinesStyles } from "@/components/baselines/styles";
+import { Segmented } from "@/components/pickers/segmented";
+import { SettingsGroup, SettingsRow, SettingsSection } from "@/components/settings/parts";
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -15,6 +21,15 @@ import { destinationKind, destinationTarget, isPaused } from "@/lib/integrations
 
 function statusFor(statuses: DestinationStatus[], id: string): DestinationStatus | null {
   return statuses.find((status) => status.destinationId === id) ?? null;
+}
+
+/** "120 received · 3 waiting · 1 held back · behind by 4 seconds". */
+function statusLine(status: DestinationStatus): string {
+  const parts = [`${status.acknowledged} received`];
+  if (status.pending + status.delivering > 0) parts.push(`${status.pending + status.delivering} waiting`);
+  if (status.quarantined > 0) parts.push(`${status.quarantined} held back`);
+  parts.push(status.lagMs === null ? "up to date" : `behind by ${Math.round(status.lagMs / 1000)} seconds`);
+  return parts.join(" · ");
 }
 
 const TOAST_TITLES: Record<string, string> = {
@@ -33,19 +48,23 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
   // The write in flight, so only the control that started it shows a spinner.
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [quarantined, setQuarantined] = useState<Record<string, QuarantinedEvent[]>>({});
-  const [kind, setKind] = useState("webhook");
-  const [transport, setTransport] = useState("https");
-  const [auth, setAuth] = useState("none");
+  const [panel, setPanel] = useState<"add" | "details" | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [kind, setKind] = useState<"webhook" | "cef">("webhook");
+  const [transport, setTransport] = useState<"https" | "udp">("https");
+  const [acknowledgement, setAcknowledgement] = useState<"http-response" | "none">("http-response");
+  const [auth, setAuth] = useState<"none" | "bearer" | "hmac-sha256">("none");
 
-  async function write(url: string, method: string, body?: unknown, action = `${method} ${url}`) {
-    if (!canConfiguration || busy) return;
+  async function write(url: string, method: string, body?: unknown, action = `${method} ${url}`): Promise<boolean> {
+    if (!canConfiguration || busy) return false;
     setBusy(true); setBusyAction(action); setError(null);
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
       if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "Integration update failed"); }
       toast({ title: TOAST_TITLES[action] ?? "Integration updated" });
       router.refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Integration update failed"); }
+      return true;
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Integration update failed"); return false; }
     finally { setBusy(false); setBusyAction(null); }
   }
 
@@ -59,7 +78,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Quarantined events unavailable"); }
   }
 
-  function register(event: FormEvent<HTMLFormElement>) {
+  async function register(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const text = (key: string) => String(form.get(key) ?? "").trim();
@@ -67,13 +86,13 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
     if (kind === "cef") {
       config = transport === "udp"
         ? { transport, host: text("host"), port: Number(text("port")), acknowledgement: "none" }
-        : { transport, url: text("url"), acknowledgement: text("acknowledgement") || "none" };
+        : { transport, url: text("url"), acknowledgement };
     } else {
       config = { url: text("url") };
       if (auth === "bearer") config.auth = { type: "bearer", tokenRef: text("credentialRef") };
       if (auth === "hmac-sha256") config.auth = { type: "hmac-sha256", secretRef: text("credentialRef") };
     }
-    void write("/api/integrations", "POST", { name: text("name"), kind, config }, "register");
+    if (await write("/api/integrations", "POST", { name: text("name"), kind, config }, "register")) setPanel(null);
   }
 
   function replay(id: string, event: FormEvent<HTMLFormElement>) {
@@ -82,80 +101,115 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
     void write(`/api/integrations/${id}/replay`, "POST", { fromSeq: Number(form.get("fromSeq") ?? 0) }, "replay");
   }
 
+  const field = (label: string, input: ReactNode) => <label className="picker-field"><span className="picker-label">{label}</span>{input}</label>;
+  const opened = destinations.find((destination) => destination.id === openId) ?? null;
+  const openedStatus = opened ? statusFor(statuses, opened.id) : null;
+  const openedEvents = opened ? quarantined[opened.id] : undefined;
   return <>
-    {error ? <p className="action-error" role="alert">{error}</p> : null}
-    <section aria-labelledby="integrations-heading" className="report-section">
-      <div className="st-head">
-        <div><h2 id="integrations-heading">Destinations</h2><p>Where the audit record is copied.</p></div>
-        <span className="st-count">{destinations.length} registered</span>
+    {error && panel === null ? <p className="action-error" role="alert">{error}</p> : null}
+    <SettingsSection
+      about="Where KEEL copies its audit record, such as a SIEM or a webhook."
+      extra={canConfiguration ? <button className="btn btn-sm" onClick={() => { setError(null); setPanel("add"); }} type="button"><Icon name="plus" />Add destination</button> : null}
+      id="integrations-heading"
+      title="Audit copies"
+    >
+      {destinations.length === 0 ? <p className="sel-empty">No destination is set up, so the audit record stays in KEEL only.</p> : <>
+        <SettingsGroup about="Each one receives every audit entry in order." count={`${destinations.length} registered`} icon="link" title="Destinations">
+          {destinations.map((destination) => {
+            const status = statusFor(statuses, destination.id);
+            const paused = isPaused(destination);
+            const held = status?.quarantined ?? 0;
+            const tone = held > 0 || paused ? "soon" : null;
+            return <SettingsRow
+              actions={<>
+                <button className="btn btn-sm" onClick={() => { setError(null); setOpenId(destination.id); setPanel("details"); void loadQuarantined(destination.id); }} type="button">Details</button>
+                {canConfiguration ? (paused
+                  ? <button className="btn btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume</button>
+                  : <ConfirmButton confirmLabel="Pause" description={<p>{destination.name} stops receiving audit entries until it is resumed. New entries wait, so it falls behind while paused.</p>} disabled={busy} onConfirm={async () => { await write(`/api/integrations/${destination.id}/revoke`, "POST", undefined, "pause"); }} size="sm" title={`Pause ${destination.name}?`}>Pause</ConfirmButton>) : null}
+              </>}
+              icon={destination.kind === "cef" ? "audit" : "link"}
+              iconTone={tone}
+              key={destination.id}
+              line={status ? statusLine(status) : null}
+              meta={`${destinationKind(destination)} to ${destinationTarget(destination)}`}
+              name={destination.name}
+              status={<Badge tone={paused ? "soon" : "fine"}>{paused ? "Paused" : "Sending"}</Badge>}
+              tone={tone}
+            />;
+          })}
+        </SettingsGroup>
+        <TechnicalDetails summary="Technical details for these destinations">
+          {destinations.map((destination) => {
+            const status = statusFor(statuses, destination.id);
+            return <div className="st-record" key={destination.id}>
+              <RecordField label={`Destination ID (${destination.name})`} usage={<>use with <code>POST /api/integrations/&lt;id&gt;/replay</code></>} value={destination.id} />
+              <RecordField copy={false} label="Kind code" value={destination.kind} />
+              <RecordField copy={false} label="Config" value={JSON.stringify(destination.config, null, 2)} />
+              {status ? <RecordField copy={false} label="Delivery checkpoint" value={JSON.stringify(status.checkpoint ?? null)} /> : null}
+              <RecordField copy={false} label="Created" value={`${destination.created_at} by ${destination.created_by}`} />
+            </div>;
+          })}
+        </TechnicalDetails>
+      </>}
+    </SettingsSection>
+
+    {panel ? <BaselinesStyles /> : null}
+    {panel === "details" && opened ? <DetailsSheet kicker={`${destinationKind(opened)} to ${destinationTarget(opened)}`} onClose={() => setPanel(null)} title={opened.name}>
+      {openedStatus ? <dl className="st-sheet-facts">
+        <div><dt>Waiting to send</dt><dd>{openedStatus.pending}</dd></div>
+        <div><dt>Sending</dt><dd>{openedStatus.delivering}</dd></div>
+        <div><dt>Received</dt><dd>{openedStatus.acknowledged}</dd></div>
+        <div data-tone={openedStatus.quarantined > 0 ? "soon" : undefined}><dt>Held back</dt><dd>{openedStatus.quarantined}</dd></div>
+        <div><dt>Behind by</dt><dd>{openedStatus.lagMs === null ? "Nothing" : `${Math.round(openedStatus.lagMs / 1000)} seconds`}</dd></div>
+      </dl> : null}
+      <div className="st-sheet-part">
+        <h3>Held-back entries</h3>
+        {openedEvents === undefined ? <p className="bl-help">Reading held-back entries…</p> : openedEvents.length === 0 ? <p className="bl-help">Nothing is held back.</p> : <ul className="st-problems">{openedEvents.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
+          <Icon name="clock" /><span>Held back <time dateTime={quarantinedEvent.quarantined_at}>{formatTimestamp(quarantinedEvent.quarantined_at)}</time> after {quarantinedEvent.attempts} {quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: {quarantinedEvent.quarantine_reason ?? "no reason recorded"}</span>
+        </li>)}</ul>}
       </div>
-      {destinations.length === 0 ? <p className="empty-state">No destination is set up.</p> : <ul className="item-list st-rows">{destinations.map((destination) => {
-        const status = statusFor(statuses, destination.id);
-        const paused = isPaused(destination);
-        const events = quarantined[destination.id];
-        return <li className="item-card" key={destination.id}>
-          <div className="item-card-head">
-            <strong>{destination.name}</strong>
-            <Badge tone={paused ? "soon" : "fine"}>{paused ? "Paused" : "Sending"}</Badge>
-          </div>
-          <p>{destinationKind(destination)} to {destinationTarget(destination)}.</p>
-          {status ? <dl className="stat-strip">
-            <div><dt>Waiting to send</dt><dd>{status.pending}</dd></div>
-            <div><dt>Sending</dt><dd>{status.delivering}</dd></div>
-            <div><dt>Received</dt><dd>{status.acknowledged}</dd></div>
-            <div className={status.quarantined > 0 ? "stat-warn" : undefined}><dt>Held back</dt><dd>{status.quarantined}</dd></div>
-            <div><dt>Behind by</dt><dd>{status.lagMs === null ? "nothing" : `${Math.round(status.lagMs / 1000)} seconds`}</dd></div>
-          </dl> : null}
-          <div className="form-actions">
-            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void loadQuarantined(destination.id)} type="button">Show held-back entries</button>
-            {canConfiguration ? (paused
-              ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume</button>
-              : <ConfirmButton confirmLabel="Pause" description={<p>{destination.name} stops receiving audit entries until it is resumed. New entries wait, so it falls behind while paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST", undefined, "pause")} size="sm" title={`Pause ${destination.name}?`}>Pause</ConfirmButton>) : null}
-          </div>
-          {events ? (events.length === 0 ? <p className="field-help">Nothing is held back.</p> : <ul className="quarantine-list">{events.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
-            Held back <time dateTime={quarantinedEvent.quarantined_at}>{formatTimestamp(quarantinedEvent.quarantined_at)}</time> after {quarantinedEvent.attempts} {quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: {quarantinedEvent.quarantine_reason ?? "no reason recorded"}
-          </li>)}</ul>) : null}
-          {canConfiguration ? <form className="inline-form" onSubmit={(event) => replay(destination.id, event)}><fieldset disabled={busy}><legend>Send again</legend>
-            <label className="filter-field"><span>From audit entry number</span><input name="fromSeq" type="number" min={0} defaultValue={0} /></label>
-            <button className="btn btn-secondary" type="submit">Send again</button>
-          </fieldset></form> : null}
-          <TechnicalDetails>
-            <RecordField label="Destination ID" usage={<>use with <code>POST /api/integrations/&lt;id&gt;/replay</code></>} value={destination.id} />
-            <RecordField copy={false} label="Kind code" value={destination.kind} />
-            <RecordField copy={false} label="Config" value={JSON.stringify(destination.config, null, 2)} />
-            {status ? <RecordField copy={false} label="Delivery checkpoint" value={JSON.stringify(status.checkpoint ?? null)} /> : null}
-            {(events ?? []).map((quarantinedEvent) => <RecordField key={quarantinedEvent.id} label="Held-back event ID" value={quarantinedEvent.event_id} />)}
-            <RecordField copy={false} label="Created" value={`${destination.created_at} by ${destination.created_by}`} />
-          </TechnicalDetails>
-        </li>;
-      })}</ul>}
-    </section>
-    {canConfiguration ? <section aria-labelledby="register-heading" className="report-section">
-      <div className="st-head">
-        <div><h2 id="register-heading">Add a destination</h2><p>Copy the audit record to a SIEM or a webhook.</p></div>
-      </div>
-      <form aria-labelledby="register-heading" className="form-card" onSubmit={register}><fieldset disabled={busy}>
-        <div className="form-grid">
-          <label className="filter-field"><span>Name</span><input autoComplete="off" name="name" required /></label>
-          <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="cef">CEF (SIEM)</option></select></label>
-          {kind === "cef" ? <>
-            <label className="filter-field"><span>Transport</span><select onChange={(event) => setTransport(event.target.value)} value={transport}><option value="https">HTTPS</option><option value="udp">UDP (syslog)</option></select></label>
-            {transport === "udp" ? <>
-              <label className="filter-field"><span>Host</span><input autoComplete="off" name="host" placeholder="siem.contoso.com" required /></label>
-              <label className="filter-field"><span>Port</span><input max={65535} min={1} name="port" placeholder="514" required type="number" /></label>
-            </> : <>
-              <label className="filter-field form-grid-wide"><span>Address</span><input autoComplete="off" name="url" placeholder="https://siem.contoso.com/cef" required type="url" /></label>
-              <label className="filter-field"><span>Delivery confirmation</span><select name="acknowledgement"><option value="http-response">From the HTTP response</option><option value="none">None</option></select></label>
-            </>}
-          </> : <>
-            <label className="filter-field form-grid-wide"><span>Address</span><input autoComplete="off" name="url" placeholder="https://hooks.contoso.com/keel" required type="url" /></label>
-            <label className="filter-field"><span>Sign-in</span><select onChange={(event) => setAuth(event.target.value)} value={auth}><option value="none">None</option><option value="bearer">Bearer token</option><option value="hmac-sha256">HMAC signature</option></select></label>
-            {auth !== "none" ? <label className="filter-field"><span>Name of the stored secret (never the secret itself)</span><input autoComplete="off" name="credentialRef" placeholder="env:KEEL_WEBHOOK_TOKEN" required /></label> : null}
-          </>}
+      {canConfiguration ? <form className="st-sheet-part st-form" onSubmit={(event) => replay(opened.id, event)}>
+        <h3>Send again</h3>
+        <p className="bl-help">Sends every audit entry from this number on again, in order.</p>
+        <div className="st-inline">
+          {field("From audit entry number", <input className="bl-input" defaultValue={0} min={0} name="fromSeq" type="number" />)}
+          <button aria-busy={busyAction === "replay" || undefined} className="btn" disabled={busy} type="submit">Send again</button>
         </div>
-        <p className="field-help">UDP syslog cannot confirm delivery, so entries sent that way stay waiting until another destination confirms them.</p>
-        <div className="form-actions"><button aria-busy={busyAction === "register" || undefined} className="btn btn-primary" type="submit">Add destination</button></div>
-      </fieldset></form>
-    </section> : null}
+      </form> : null}
+      {error ? <p className="action-error" role="alert">{error}</p> : null}
+      {openedEvents?.length ? <TechnicalDetails>
+        {openedEvents.map((quarantinedEvent) => <RecordField key={quarantinedEvent.id} label="Held-back event ID" value={quarantinedEvent.event_id} />)}
+      </TechnicalDetails> : null}
+    </DetailsSheet> : null}
+    {panel === "add" ? <DetailsSheet
+      footer={<>
+        <button className="btn" onClick={() => setPanel(null)} type="button">Cancel</button>
+        <button aria-busy={busyAction === "register" || undefined} className="btn btn-primary" disabled={busy} form="add-destination-form" type="submit">Add destination</button>
+      </>}
+      kicker="Integrations"
+      onClose={() => setPanel(null)}
+      title="Add a destination"
+    >
+      <form className="st-form" id="add-destination-form" onSubmit={(event) => void register(event)}>
+        {field("Name", <input autoComplete="off" className="bl-input" name="name" required />)}
+        <Segmented label="Kind" onChange={(value: "webhook" | "cef") => setKind(value)} options={[{ value: "webhook", label: "Webhook" }, { value: "cef", label: "CEF (SIEM)" }]} value={kind} />
+        {kind === "cef" ? <>
+          <Segmented label="Transport" onChange={(value: "https" | "udp") => setTransport(value)} options={[{ value: "https", label: "HTTPS" }, { value: "udp", label: "UDP (syslog)" }]} value={transport} />
+          {transport === "udp" ? <>
+            {field("Host", <input autoComplete="off" className="bl-input" name="host" placeholder="siem.contoso.com" required />)}
+            {field("Port", <input className="bl-input" max={65535} min={1} name="port" placeholder="514" required type="number" />)}
+            <p className="bl-help">UDP syslog cannot confirm delivery, so entries sent that way stay waiting until another destination confirms them.</p>
+          </> : <>
+            {field("Address", <input autoComplete="off" className="bl-input" name="url" placeholder="https://siem.contoso.com/cef" required type="url" />)}
+            <Segmented label="Delivery confirmation" onChange={(value: "http-response" | "none") => setAcknowledgement(value)} options={[{ value: "http-response", label: "From the HTTP response" }, { value: "none", label: "None" }]} value={acknowledgement} />
+          </>}
+        </> : <>
+          {field("Address", <input autoComplete="off" className="bl-input" name="url" placeholder="https://hooks.contoso.com/keel" required type="url" />)}
+          <Segmented label="Sign-in" onChange={(value: "none" | "bearer" | "hmac-sha256") => setAuth(value)} options={[{ value: "none", label: "None" }, { value: "bearer", label: "Bearer token" }, { value: "hmac-sha256", label: "HMAC signature" }]} value={auth} />
+          {auth !== "none" ? field("Name of the stored secret (never the secret itself)", <input autoComplete="off" className="bl-input" name="credentialRef" placeholder="env:KEEL_WEBHOOK_TOKEN" required />) : null}
+        </>}
+        {error ? <p className="action-error" role="alert">{error}</p> : null}
+      </form>
+    </DetailsSheet> : null}
   </>;
 }

@@ -9,7 +9,7 @@ import { grantRole } from "../../engine/authz/administration.mjs";
 import { guardedPrincipalList, guardedPrincipalWrite, type PrincipalView } from "@/lib/principals";
 import { resolveIdentity, CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
-import { PrincipalDetails } from "@/components/principal-details";
+import { PrincipalRecord } from "@/components/principal-details";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 
@@ -90,7 +90,7 @@ test("live portal requests see role writes immediately and display the engine ca
     assert.ok(pageMarkup.includes(`Effective capabilities</dt><dd><code>${(await capabilitiesForPrincipal(client, disabled)).join(", ") || "none"}</code>`));
     assert.ok(pageMarkup.includes(disabled.disabled_at));
     for (const view of [active, disabled]) {
-      const markup = renderToStaticMarkup(createElement(PrincipalDetails, { principal: view, now: new Date().toISOString() }));
+      const markup = renderToStaticMarkup(createElement(PrincipalRecord, { principal: view }));
       const expected = await capabilitiesForPrincipal(client, view);
       // Active snapshot predates disable; use its captured engine answer for rendering.
       assert.ok(markup.includes(`Effective capabilities</dt><dd><code>${view === active ? active.capabilities.join(", ") : expected.join(", ") || "none"}</code>`));

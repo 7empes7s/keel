@@ -5,7 +5,9 @@ import Link from "next/link";
 import { GET as loadSetup } from "@/app/api/setup/route";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { SettingsGroup, SettingsRow, SettingsSection } from "@/components/settings/parts";
 import { SetupProgress } from "@/components/setup-progress";
+import { Badge } from "@/components/ui/badge";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict } from "@/components/verdict";
 import { formatTimestamp } from "@/lib/presentation";
@@ -36,20 +38,25 @@ export default async function SetupPage() {
       text={verdict.text}
       tone={verdict.tone}
     />
-    {data.firstCollection ? (
-      <section className="item-card setup-first-backup settings-card" aria-labelledby="setup-first-backup">
-        <div className="item-card-head"><h2 id="setup-first-backup">Latest backup</h2></div>
-        <p>
-          Finished {formatTimestamp(data.firstCollection.completedAt)}: {data.firstCollection.read} configuration types read
-          {data.firstCollection.notRead ? `, ${data.firstCollection.notRead} could not be read` : ""}.{" "}
-          <Link className="text-link" href="/protect">See every configuration type, including the ones KEEL cannot back up yet</Link>.
-        </p>
-        <TechnicalDetails>
-          <RecordField label="Snapshot ID" usage="the snapshot the Protect page reports" value={data.firstCollection.snapshotId} />
-        </TechnicalDetails>
-      </section>
-    ) : null}
-    <div className="item-list settings-page" data-layer="explanation">
+    <div className="pt-page" data-layer="explanation">
+      {data.firstCollection ? (
+        <SettingsSection about="The newest backup KEEL took with the access below." id="setup-first-backup" title="Latest backup">
+          <SettingsGroup>
+            <SettingsRow
+              actions={<Link className="btn btn-sm" href="/protect">See every type</Link>}
+              icon="backup"
+              iconTone={data.firstCollection.notRead ? "soon" : null}
+              line={<>{data.firstCollection.read} configuration types read{data.firstCollection.notRead ? `, ${data.firstCollection.notRead} could not be read` : ""}, including the ones KEEL cannot back up yet.</>}
+              meta={`Finished ${formatTimestamp(data.firstCollection.completedAt)}`}
+              name="First backup"
+              status={<Badge tone={data.firstCollection.notRead ? "soon" : "fine"}>{data.firstCollection.notRead ? "Partly read" : "Finished"}</Badge>}
+            />
+          </SettingsGroup>
+          <TechnicalDetails>
+            <RecordField label="Snapshot ID" usage="the snapshot the Protect page reports" value={data.firstCollection.snapshotId} />
+          </TechnicalDetails>
+        </SettingsSection>
+      ) : null}
       {data.scopes.map((setup) => (
         <SetupProgress
           canCheck={data.canCheck}

@@ -27,7 +27,7 @@ import { CreateWizard } from "@/components/baselines/create-wizard";
 import { quickComparisons, setupStatus, setupVerdict as approvedVerdict, typeService } from "@/lib/baselines-view";
 import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
-import { PrincipalDetails } from "@/components/principal-details";
+import { PrincipalList } from "@/components/principal-details";
 import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@/components/policy-state";
 import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
@@ -1492,7 +1492,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
       <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />
-      <div className="settings-page" data-layer="explanation">
+      <div className="pt-page" data-layer="explanation">
         <NotificationConsole canConfiguration channels={CHANNELS}
           subscriptions={[{ id: "5b500000-0000-4000-8000-0000000000f1", channel_id: CHANNELS[0].id, event_glob: "drift.detected", min_severity: "warning" }, { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "*", min_severity: "critical" }]} />
         <DeliveryTable channels={CHANNELS} deliveries={DELIVERIES} now={now} />
@@ -1502,7 +1502,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       const verdict = integrationsPageVerdict(DESTINATIONS, DESTINATION_STATUSES, servicenow);
       return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
-      <div className="settings-page" data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
+      <div className="pt-page" data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
       const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
       const backedUp = COVERAGE.types.filter((type) => type.reportStatus === "covered").map((type) => type.type);
@@ -1524,20 +1524,20 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><ComplianceReport data={COMPLIANCE} now={now} /></div></>; }
     case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
       <Verdict text="1 person can use KEEL; 1 can approve." />
-      <div className="settings-page" data-layer="explanation"><div className="item-list st-rows">
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></div></>;
+      <div className="pt-page" data-layer="explanation">
+      <PrincipalList canRoles canUsers now={now} principals={[{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }, { id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }]} />
+      </div></>;
     case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Inbox", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }
     case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
       <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
-      <div className="item-list settings-page" data-layer="explanation">
+      <div className="pt-page" data-layer="explanation">
         {SETUP.scopes.map((setup) => <SetupProgress canCheck={SETUP.canCheck} canProvision={SETUP.canProvision} canStart key={setup.scope} now={now} setup={setup} />)}
       </div></>;
     case "/setup/checked": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
       <Verdict text={setupCheckedVerdict.text} tone={setupCheckedVerdict.tone} />
-      <div className="item-list settings-page" data-layer="explanation">
+      <div className="pt-page" data-layer="explanation">
         {SETUP_CHECKED.scopes.map((setup) => <SetupProgress canCheck={SETUP_CHECKED.canCheck} canProvision={SETUP_CHECKED.canProvision} canStart checkFailed={SETUP_CHECKED.checkFailed} key={setup.scope} now={now} setup={setup} />)}
       </div></>;
     case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}

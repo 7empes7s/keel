@@ -1,6 +1,8 @@
-import { PrincipalControls, RemoveRoleButton } from "@/components/principal-controls";
+import { PrincipalManage } from "@/components/principal-controls";
+import { SettingsGroup, SettingsRow, SettingsSection } from "@/components/settings/parts";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
+import { initials } from "@/components/ui/person";
 import type { PrincipalView } from "@/lib/principals";
 import { accessSummary, ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 
@@ -27,49 +29,79 @@ export function grantSentence(grant: PrincipalView["role_grants"][number], now: 
   return `${role} since ${from}${grant.active_until ? ` until ${DATE.format(new Date(grant.active_until))}` : ""}`;
 }
 
+/** One person as a row: who, what they can do, their roles, and Manage for the rest. */
 export function PrincipalDetails({ principal, now, canRoles = false, canUsers = false }: {
   principal: PrincipalView; now: string; canRoles?: boolean; canUsers?: boolean;
 }) {
   const name = principal.display_name || principal.email;
-
   const active = principal.role_grants.filter((grant) => isGrantActive(grant, now));
-  const past = principal.role_grants.filter((grant) => !isGrantActive(grant, now));
+  const roles = active.map((grant) => displayEnum("role", grant.role));
+  const manage = !principal.disabled_at && (canRoles || canUsers);
   return (
-    <section className={`item-card principal-card${principal.disabled_at ? " principal-disabled" : ""}`} id={`person-${principal.id}`}>
-      <div className="item-card-head">
-        <h2>{name}</h2>
-        <Badge tone={principal.disabled_at ? "neutral" : "fine"}>
-          {principal.disabled_at ? <>Disabled <time dateTime={principal.disabled_at} title={formatTimestamp(principal.disabled_at)}>{ago(principal.disabled_at, now)}</time></> : "Active"}
-        </Badge>
-      </div>
-      {name !== principal.email ? <p className="principal-email">{principal.email}</p> : null}
-      <p>{principal.disabled_at ? "Can no longer use KEEL." : `${accessSummary(principal.capabilities)}.`}</p>
-      {principal.role_grants.length === 0 ? <p className="field-help">No roles.</p> : (
-        <ul className="grant-list">
-          {[...active, ...past].map((grant) => (
-            <li className={isGrantActive(grant, now) ? "grant-active" : "grant-past"} key={grant.id}>
-              <span>{grantSentence(grant, now)}</span>
-              {canRoles && isGrantActive(grant, now) && !principal.disabled_at ? (
-                <RemoveRoleButton grantId={grant.id} name={name} principalId={principal.id} role={displayEnum("role", grant.role)} />
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!principal.disabled_at && (canRoles || canUsers) ? (
-        <PrincipalControls canRoles={canRoles} canUsers={canUsers} name={name} principalId={principal.id} />
+    <SettingsRow
+      actions={manage ? (
+        <PrincipalManage
+          canRoles={canRoles}
+          canUsers={canUsers}
+          grants={active.map((grant) => ({ id: grant.id, role: displayEnum("role", grant.role), sentence: grantSentence(grant, now) }))}
+          name={name}
+          past={principal.role_grants.filter((grant) => !isGrantActive(grant, now)).map((grant) => grantSentence(grant, now))}
+          principalId={principal.id}
+        />
       ) : null}
-      <TechnicalDetails>
-        <RecordField label="Principal ID" usage={<>use with <code>POST /api/principals/&lt;id&gt;/grant</code></>} value={principal.id} />
-        <RecordField copy={false} label="Effective capabilities" value={principal.capabilities.join(", ") || "none"} />
-        {Object.entries(principal.entity_capabilities ?? {}).map(([entity, capabilities]) => (
-          <RecordField copy={false} key={entity} label={`Capabilities for ${entity} only`} value={capabilities.join(", ")} />
-        ))}
-        <RecordField copy={false} label="Disabled at" value={principal.disabled_at ?? "not disabled"} />
-        {principal.role_grants.map((grant) => (
-          <RecordField key={grant.id} label={`Grant ID (${grant.role})`} usage={`active ${grant.active_from} → ${grant.active_until ?? "open-ended"}`} value={grant.id} />
-        ))}
-      </TechnicalDetails>
-    </section>
+      icon={<span aria-hidden="true" className="person-avatar st-avatar" data-initials={initials(name)} data-system={principal.disabled_at || principal.system_kind ? "" : undefined} />}
+      name={name}
+      meta={name !== principal.email ? principal.email : principal.system_kind ? "KEEL's own account" : null}
+      status={principal.disabled_at
+        ? <Badge tone="neutral">Disabled</Badge>
+        : <Badge tone={roles.length ? "fine" : "neutral"}>{roles.length ? roles.join(", ") : "No roles"}</Badge>}
+      line={principal.disabled_at
+        ? <>Disabled <time dateTime={principal.disabled_at} title={formatTimestamp(principal.disabled_at)}>{ago(principal.disabled_at, now)}</time>; can no longer use KEEL.</>
+        : `${accessSummary(principal.capabilities)}.`}
+    />
+  );
+}
+
+/** What the engine answered for one person, with ids and raw times, for the record layer. */
+export function PrincipalRecord({ principal }: { principal: PrincipalView }) {
+  return (
+    <div className="st-record">
+      <RecordField label={`Principal ID (${principal.display_name || principal.email})`} usage={<>use with <code>POST /api/principals/&lt;id&gt;/grant</code></>} value={principal.id} />
+      <RecordField copy={false} label="Effective capabilities" value={principal.capabilities.join(", ") || "none"} />
+      {Object.entries(principal.entity_capabilities ?? {}).map(([entity, capabilities]) => (
+        <RecordField copy={false} key={entity} label={`Capabilities for ${entity} only`} value={capabilities.join(", ")} />
+      ))}
+      <RecordField copy={false} label="Disabled at" value={principal.disabled_at ?? "not disabled"} />
+      {principal.role_grants.map((grant) => (
+        <RecordField key={grant.id} label={`Grant ID (${grant.role})`} usage={`active ${grant.active_from} → ${grant.active_until ?? "open-ended"}`} value={grant.id} />
+      ))}
+    </div>
+  );
+}
+
+/** Everyone as grouped rows: people who can use KEEL, KEEL's own accounts, and people disabled. */
+export function PrincipalList({ principals, now, canRoles = false, canUsers = false }: {
+  principals: PrincipalView[]; now: string; canRoles?: boolean; canUsers?: boolean;
+}) {
+  const groups = [
+    { key: "active", title: "Can use KEEL", about: "People with at least one role, or waiting for one.", icon: "settings" as const, items: principals.filter((principal) => !principal.disabled_at && !principal.system_kind) },
+    { key: "system", title: "KEEL's own accounts", about: "Accounts KEEL runs scheduled work as.", icon: "clock" as const, items: principals.filter((principal) => !principal.disabled_at && principal.system_kind) },
+    { key: "disabled", title: "Disabled", about: "They can no longer sign in. Their roles stay recorded.", icon: "pause" as const, items: principals.filter((principal) => principal.disabled_at) },
+  ].filter((group) => group.items.length > 0);
+  return (
+    <SettingsSection about="Who can use KEEL, their roles and what each can do." id="people-heading" title="Who has access">
+      {principals.length === 0 ? <p className="sel-empty">Nobody has been added yet.</p> : <>
+        <div className="sel-groups">
+          {groups.map((group) => (
+            <SettingsGroup about={group.about} count={`${group.items.length} ${group.items.length === 1 ? "account" : "accounts"}`} icon={group.icon} key={group.key} title={group.title}>
+              {group.items.map((principal) => <PrincipalDetails canRoles={canRoles} canUsers={canUsers} key={principal.id} now={now} principal={principal} />)}
+            </SettingsGroup>
+          ))}
+        </div>
+        <TechnicalDetails summary="Technical details for these accounts">
+          {principals.map((principal) => <PrincipalRecord key={principal.id} principal={principal} />)}
+        </TechnicalDetails>
+      </>}
+    </SettingsSection>
   );
 }

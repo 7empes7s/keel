@@ -307,8 +307,9 @@ test('portal: setup route, first-collect gate and setup page', async (t) => {
           }, () => page()));
         await assert.rejects(render(headers(...READER)), e => e.digest === 'NEXT_HTTP_ERROR_FALLBACK;403');
         const html = renderToStaticMarkup(await render(headers(...OWNER)));
-        assert.match(html, /Give keel-collector the Intune role &quot;Read Only Operator&quot;<\/h3><span class="pill pill-warn">Waiting for you/);
-        assert.doesNotMatch(html, /Read Only Operator&quot;<\/h3><span class="pill pill-ok">Done/);
+        // The step's own row (up to its closing </li>) carries the badge.
+        assert.match(html, /Give keel-collector the Intune role &quot;Read Only Operator&quot;<\/h3>(?:(?!<\/li>)[\s\S])*<span class="badge" data-tone="soon">(?:(?!<\/li>)[\s\S])*Waiting for you/);
+        assert.doesNotMatch(html, /Read Only Operator&quot;<\/h3>(?:(?!<\/li>)[\s\S])*<span class="badge" data-tone="fine">(?:(?!<\/li>)[\s\S])*Done/);
         assert.match(html, /steps are left before KEEL can read your tenant/);
         assert.match(html, new RegExp(paused.artifactId));
         const explanation = html.replace(/<details class="technical-details"[\s\S]*?<\/details>/g, '');

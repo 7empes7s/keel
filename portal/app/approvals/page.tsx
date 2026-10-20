@@ -1,14 +1,18 @@
+import { headers } from "next/headers";
 import { connection } from "next/server";
 
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { Verdict } from "@/components/verdict";
 import {
   getApprovalInboxData,
   requireApprovalInboxAccess,
-  waitingCount,
 } from "@/lib/approval-inbox";
+import { approvalCounts, approvalsStatus } from "@/lib/approval-view";
+import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
+
+const TITLE = "Approvals";
+const DESCRIPTION = "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.";
 
 export default async function ApprovalsPage() {
   // The approval guard is intentionally before connection() and the loader: a pure
@@ -16,42 +20,33 @@ export default async function ApprovalsPage() {
   // database connection or approval-detail signal.
   const scope = await requireApprovalInboxAccess();
   await connection();
+  const viewerId = (await headers()).get(PRINCIPAL_ID_HEADER);
 
   try {
     const data = await getApprovalInboxData(scope);
-    const waiting = waitingCount(data);
+    const status = approvalsStatus(approvalCounts(data, data.generatedAt));
     return (
       <>
         <PageHeader
-          description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
+          description={DESCRIPTION}
           section="Inbox"
           generatedAt={data.generatedAt}
-          title="Approvals"
+          status={status}
+          title={TITLE}
         />
-        <Verdict
-          text={waiting === 0
-            ? "Nothing is waiting for your decision."
-            : `${waiting} ${waiting === 1 ? "request is" : "requests are"} waiting for you.`}
-          tone={waiting ? "attention" : "good"}
+        <ApprovalInbox
+          awaitingContentEffects={data.awaitingContentEffects}
+          history={data.history}
+          now={data.generatedAt}
+          pending={data.pending}
+          viewerId={viewerId}
         />
-        <div data-layer="explanation">
-          <ApprovalInbox
-            awaitingContentEffects={data.awaitingContentEffects}
-            history={data.history}
-            now={data.generatedAt}
-            pending={data.pending}
-          />
-        </div>
       </>
     );
   } catch {
     return (
       <>
-        <PageHeader
-          description="Restores, roll-backs and baseline changes wait here for someone other than the requester."
-          section="Inbox"
-          title="Approvals"
-        />
+        <PageHeader description={DESCRIPTION} section="Inbox" title={TITLE} />
         <DataUnavailable surface="The approval inbox" />
       </>
     );

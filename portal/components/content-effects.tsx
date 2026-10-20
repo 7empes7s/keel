@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Icon, type IconName } from "@/components/shell/icons";
+import { Badge } from "@/components/ui/badge";
 import { fieldWords } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
@@ -35,6 +37,13 @@ export function contentEffectLabel(effect: ContentEffectName): string {
   return EFFECT_LABELS[effect] ?? effect;
 }
 
+const EFFECT_ICONS: Record<ContentEffectName, IconName> = {
+  "retention-reducing": "clock",
+  "hold-releasing": "link",
+  "externally-sharing": "show",
+  irreversible: "x-circle",
+};
+
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));
 
 export function ContentEffectList({ effects, names }: { effects: ContentEffect[]; names?: NamedKeys }) {
@@ -43,8 +52,9 @@ export function ContentEffectList({ effects, names }: { effects: ContentEffect[]
       {effects.map((effect) => (
         <li className={`content-effect content-effect-${effect.effect}`} key={`${effect.naturalKey}|${effect.field}`}>
           <div className="content-effect-head">
-            <span className="pill pill-bad content-effect-badge">{contentEffectLabel(effect.effect)}</span>
+            <span aria-hidden="true" className="content-effect-kind"><Icon name={EFFECT_ICONS[effect.effect] ?? "alert"} /></span>
             <strong className="resource-name">{names ? namedResource(effect.naturalKey, names, effect.resourceType) : resourceLabel(effect.naturalKey)}</strong>
+            <Badge className="content-effect-badge" icon={null} tone="urgent">{contentEffectLabel(effect.effect)}</Badge>
           </div>
           <p className="content-effect-change">
             <span className="content-effect-field">{fieldWords(effect.field)}</span>
@@ -99,32 +109,36 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
 
   return (
     <div className="content-effects" role="region" aria-labelledby={`content-effects-${artifactId}`}>
-      <p className="severity-label" id={`content-effects-${artifactId}`}>CONTENT EFFECTS · SEPARATE APPROVAL REQUIRED</p>
+      <p className="content-effects-head" id={`content-effects-${artifactId}`}>
+        <Icon name="page" />
+        <span>{effects.length === 1 ? "1 change to kept or shared content" : `${effects.length} changes to kept or shared content`} · needs its own approval</span>
+      </p>
       <ContentEffectList effects={effects} names={names} />
       {approvals.length ? (
         <p className="content-effect-approved">
-          Approved for exactly these effects by {approvals.map((approval) => approval.approvedBy).join(", ")}.
+          <Icon name="check-circle" />Approved for exactly these effects by {approvals.map((approval) => approval.approvedBy).join(", ")}.
         </p>
       ) : (
         <p className="content-effect-pending">
-          Not yet approved. The restore will be refused at execution until someone other than the requester approves these effects.
+          Not yet approved. The restore will be refused until someone other than the person who asked approves these changes.
         </p>
       )}
       {canApprove && approvals.length === 0 ? (
         <div className="content-effect-approve">
-          <label className="filter-field">
-            <span>High-impact justification</span>
+          <label className="content-effect-why">
+            <span>Why is this acceptable? (required, kept in the audit log)</span>
             <input onChange={(event) => setJustification(event.target.value)} placeholder="Why are these content effects acceptable?" value={justification} />
           </label>
           <button
             aria-busy={busy || undefined}
-            className="btn btn-danger btn-sm"
+            className="btn btn-primary"
             disabled={busy || justification.trim().length === 0 || !effectsDigest}
             onClick={() => void approve()}
             type="button"
           >
-            Approve content effects
+            <Icon name="check" />{effects.length === 1 ? "Approve this content change" : "Approve these content changes"}
           </button>
+          <p className="content-effect-help">If the restore is planned again with different changes, this approval no longer counts.</p>
         </div>
       ) : null}
     </div>

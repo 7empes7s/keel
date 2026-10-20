@@ -15,8 +15,8 @@ import {
 } from "@/lib/content-effect-review";
 import { formatTimestamp } from "@/lib/presentation";
 
-const TITLE = "Content effects";
-const DESCRIPTION = "Changes in a dry run that shorten retention, release a hold, widen sharing or destroy content need their own approval.";
+const TITLE = "Changes to kept or shared content";
+const DESCRIPTION = "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.";
 
 // Q45: opened from the approval inbox or from a restore's refusal, for a dry run made
 // in the portal or with the command line alike.
@@ -42,15 +42,21 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
 
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={new Date().toISOString()} section="Inbox" title={TITLE} />
-      <Verdict text={contentEffectVerdict(review)} tone={review.effects.length === 0 || review.approvals.length > 0 ? "good" : "attention"} />
+      <PageHeader
+        description={DESCRIPTION}
+        generatedAt={new Date().toISOString()}
+        section="Inbox"
+        status={review.effects.length === 0 || review.approvals.length > 0 ? { tone: "fine", label: "Approved" } : { tone: "soon", label: "Waiting for you" }}
+        title={TITLE}
+      />
+      <Verdict text={contentEffectVerdict(review)} tone={review.effects.length === 0 || review.approvals.length > 0 ? "fine" : "soon"} />
       <Link className="text-link back-link" href="/approvals"><span aria-hidden="true">←</span> All approvals</Link>
-      <section aria-labelledby="content-effects-plan-heading" className="report-section">
-        <h2 id="content-effects-plan-heading">The dry run</h2>
-        <p>
-          A restore of {review.resources} {review.resources === 1 ? "resource" : "resources"}, planned{" "}
+      <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
+        <h2 id="content-effects-plan-heading">The restore</h2>
+        <p className="ce-plan">
+          Restore of {review.resources} {review.resources === 1 ? "setting" : "settings"}, planned{" "}
           <time dateTime={review.createdAt ?? undefined}>{formatTimestamp(review.createdAt)}</time>, asked for by {review.requestedByName}.
-          {" "}An approval here covers exactly the effects listed. If the dry run is planned again with different effects, it no longer counts.
+          {" "}Your approval covers exactly the changes below.
         </p>
         <ContentEffectReview
           approvals={review.approvals}
@@ -60,6 +66,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
           effectsDigest={review.effectsDigest}
           names={review.names}
         />
+        <p className="ce-help">Rejecting happens on the restore request itself. To stop the restore, <Link className="ap-inline-link" href="/approvals">reject the request</Link> in Approvals.</p>
       </section>
     </>
   );

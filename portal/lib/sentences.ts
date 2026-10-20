@@ -107,6 +107,11 @@ function planPhrase(plan: PlanRef | null | undefined): string {
   return `${plural(plan.resources ?? 0, "resource")} from the snapshot of ${when(plan.snapshotAt)}`;
 }
 
+/** "2 Oct 2026, 09:12": the backup's moment without the zone word of a full timestamp. */
+function backupMoment(value: string | null | undefined): string {
+  return value ? formatTimestamp(value).replace(/ UTC$/, "") : "an unknown time";
+}
+
 function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   const known = changes.filter((change): change is ChangeRef => Boolean(change));
   const count = plural(known.length, "change");
@@ -186,18 +191,21 @@ interface RequestLike {
   references?: RowReferences;
 }
 
-/** What an approval request would change, as a sentence with names. */
+/** What an approval request would change, as a sentence with names, in the portal's
+ * plain words: settings and backups, undo changes, approved setups. */
 export function approvalSentence(request: RequestLike): string {
   const refs = request.references ?? EMPTY_REFERENCES;
   switch (request.action) {
     case "restore":
-      if (refs.plan?.readable && refs.plan.undo) return `Undo a restore of ${plural(refs.plan.resources ?? 0, "resource")}`;
-      return refs.plan?.readable ? `Restore ${planPhrase(refs.plan)}` : "Restore from a dry run that is no longer readable";
+      if (refs.plan?.readable && refs.plan.undo) return `Undo a restore of ${plural(refs.plan.resources ?? 0, "setting")}`;
+      return refs.plan?.readable
+        ? `Restore ${plural(refs.plan.resources ?? 0, "setting")} from the backup of ${backupMoment(refs.plan.snapshotAt)}`
+        : "Restore from a preview that is no longer readable";
     case "baseline-activate":
       return refs.baseline?.readable && refs.baseline.name
-        ? `Activate baseline “${refs.baseline.name}”`
-        : "Activate a baseline that is no longer readable";
-    case "remediate": return `Roll back ${changesPhrase(refs.changes)}`;
+        ? `Switch to the approved setup “${refs.baseline.name}”`
+        : "Switch to an approved setup that is no longer readable";
+    case "remediate": return `Undo ${changesPhrase(refs.changes)}`;
     default: return displayEnum("jobKind", request.action);
   }
 }

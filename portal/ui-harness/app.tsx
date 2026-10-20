@@ -16,6 +16,7 @@ import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
 import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
+import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
 import { IntegrationConsole } from "@/components/integration-console";
 import { ActivityTimeline, IntegrityNote, activityVerdict, mergeActivity } from "@/components/activity-timeline";
@@ -201,6 +202,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       ]) } });
   }
   if (url.endsWith("/api/actions/restore/content-effects")) { contentEffectsApproved = true; return json({ approval: { id: "cea-1" } }); }
+  // Approvals: the two-person restore records a first sign-off; everything else starts.
+  if (/\/api\/approvals\/[^/]+\/approve$/.test(url)) return json(url.includes(TWO_PERSON_REQUEST) ? { job: null, signoffs: 1, requiredApprovals: 2 } : { job: { id: "a3" }, signoffs: 1, requiredApprovals: 1 }, 202);
+  if (/\/api\/approvals\/[^/]+\/reject$/.test(url)) return json({ approvalRequest: { id: "rejected" } });
   if (url.endsWith("/api/actions/restore")) return json({ approvalRequest: { id: "req-221" } }, 202);
   if (url.endsWith("/api/actions/remediate/selection")) {
     const { driftIds } = JSON.parse(String(init?.body)) as { driftIds: string[] };
@@ -541,6 +545,7 @@ const COMPLIANCE: ComplianceData = {
   ],
 };
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
+const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
 // Task-131: every configuration-type state task-54 tested, mirrored into the Protect
 // drawers. Each type carries the full evidence its record must keep.
@@ -634,17 +639,62 @@ function ContentEffectsReviewHarness() {
   const [approvals, setApprovals] = useState<{ approvedBy: string; approvedAt: string | null }[]>([]);
   return (
     <>
-      <Verdict text={approvals.length ? "These content effects are approved. The restore can run once its own request is approved." : "Waiting for you: approve these content effects before the restore can run."} tone={approvals.length ? "good" : "attention"} />
+      <Verdict text={approvals.length ? "These content changes are approved. The restore can run once its own request is approved." : "This restore changes kept or shared content. It cannot run until you approve those changes."} tone={approvals.length ? "fine" : "soon"} />
       <a className="text-link back-link" href="#/approvals"><span aria-hidden="true">←</span> All approvals</a>
-      <section aria-labelledby="content-effects-plan-heading" className="report-section">
-        <h2 id="content-effects-plan-heading">The dry run</h2>
-        <p>A restore of 1 resource, planned 2 Oct 2026, 09:12, asked for by ops@contoso.com. An approval here covers exactly the effects listed. If the dry run is planned again with different effects, it no longer counts.</p>
+      <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
+        <h2 id="content-effects-plan-heading">The restore</h2>
+        <p className="ce-plan">Restore of 1 setting, planned 2 Oct 2026, 09:12, asked for by Amara Okafor. Your approval covers exactly the changes below.</p>
         <ContentEffectsPanel approvals={approvals} artifactId={CLI_PLAN_REF.id} canApprove effects={[GROUP_EXPIRY_EFFECT]} effectsDigest="digest-q45"
           onApproved={() => setApprovals([{ approvedBy: "Marouane Defili", approvedAt: now }])} />
+        <p className="ce-help">Rejecting happens on the restore request itself. To stop the restore, <a className="ap-inline-link" href="#/approvals">reject the request</a> in Approvals.</p>
       </section>
     </>
   );
 }
+
+// Approvals (pick B): three requests wait, one approved restore waits on its content
+// changes, and the week's decisions. The restore needs two approvers; Lee Chen signed.
+const AMARA = personRef("8c1e0000-0000-4000-8000-0000000000a2", "amara.okafor@contoso.example");
+const SAM = { ...personRef("8c1e0000-0000-4000-8000-0000000000b3", "sam.ortiz@contoso.example"), name: "Sam Ortiz" };
+const LEE = { ...personRef("8c1e0000-0000-4000-8000-0000000000b4", "lee.chen@contoso.example"), name: "Lee Chen" };
+const MAROUANE = { ...personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com"), name: "Marouane Defili" };
+const APPROVAL_BASE = { decidedBy: null, decidedAt: null, reason: null, executor: "worker" as const, requiredApprovals: 1, signoffs: [], preview: null };
+const APPROVALS_PENDING: ApprovalRequestRecord[] = [
+  { ...APPROVAL_BASE, id: TWO_PERSON_REQUEST, action: "restore", params: { artifactId: PLAN_REF.id }, requestedBy: AMARA.id, justification: "Put the sign-in rules back as they were before Tuesday's incident.", status: "pending", createdAt: "2026-10-02T09:15:00Z", expiresAt: "2026-10-02T12:40:00Z",
+    requiredApprovals: 2, signoffs: [LEE],
+    preview: { total: 12, services: [{ name: "Entra ID", count: 9 }, { name: "Exchange Online", count: 3 }], more: 9, changes: [
+      { name: "Block old sign-in methods", kind: "Sign-in rule", line: null, fields: [{ field: "State", now: "off", after: "on" }], moreFields: 0 },
+      { name: "Require a second check for admins", kind: "Sign-in rule", line: null, fields: [{ field: "State", now: "report only", after: "on" }], moreFields: 2 },
+      { name: "Head office", kind: "Trusted location", line: null, fields: [{ field: "Ranges", now: "2 ranges", after: "3 ranges" }], moreFields: 0 },
+    ] },
+    references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA }, plan: PLAN_REF, changes: [{ kind: "change", id: "dr9", name: null, readable: true, naturalKey: "conditionalAccessPolicy:Block legacy auth", changeType: "modified", blastRadius: "access-affecting" }] } },
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000103", action: "remediate", params: { driftIds: ["dr3", "dr4"] }, requestedBy: SAM.id, justification: "Nobody meant to add the contractors to Finance.", status: "pending", createdAt: "2026-10-02T08:40:00Z", expiresAt: "2026-10-03T05:40:00Z",
+    preview: { total: 2, services: [{ name: "Entra ID", count: 2 }], more: 0, changes: [
+      { name: "Finance", kind: "Group", line: null, fields: [{ field: "Members", now: "Priya Natarajan, 3 others", after: "Priya Natarajan, 2 others" }, { field: "Description", now: "Finance team and contractors", after: "Finance team" }], moreFields: 0 },
+      { name: "Require MFA for admins", kind: "Sign-in rule", line: null, fields: [{ field: "State", now: "report only", after: "on" }], moreFields: 0 },
+    ] },
+    references: { ...EMPTY_REFERENCES, people: { requested_by: SAM }, changes: [
+      { kind: "change", id: "dr3", name: "Finance (group)", readable: true, naturalKey: "group:Finance", changeType: "modified", blastRadius: "access-affecting" },
+      { kind: "change", id: "dr4", name: "Require MFA for admins (sign-in rule)", readable: true, naturalKey: "conditionalAccessPolicy:Require MFA for admins", changeType: "modified", blastRadius: "cosmetic" },
+    ] } },
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000102", action: "baseline-activate", params: { baselineId: BASELINES[0].id }, requestedBy: SAM.id, justification: "Post-migration golden state", status: "pending", createdAt: "2026-10-02T06:30:00Z", expiresAt: "2026-10-03T12:00:00Z",
+    references: { ...EMPTY_REFERENCES, people: { requested_by: SAM }, baseline: { kind: "baseline", id: BASELINES[0].id, name: "Post-migration golden state", readable: true } } },
+];
+const APPROVAL_AWAITING_EFFECTS: ApprovalRequestRecord = {
+  ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000104", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the approved setup", status: "approved", decidedBy: MAROUANE.id, decidedAt: "2026-10-02T07:30:00Z", createdAt: "2026-10-02T07:00:00Z", expiresAt: "2026-10-03T07:00:00Z",
+  preview: { total: 1, services: [{ name: "Entra ID", count: 1 }], changes: [{ name: "Group expiry rule", kind: "Group expiry rule", line: "Put back as the backup holds it", fields: [], moreFields: 0 }], more: 0 },
+  references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com"), decided_by: MAROUANE }, plan: CLI_PLAN_REF },
+};
+const APPROVAL_HISTORY: ApprovalRequestRecord[] = [
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000100", action: "remediate", params: { driftIds: ["dr3"] }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: null, status: "approved", decidedBy: MAROUANE.id, decidedAt: "2026-10-01T17:02:00Z", createdAt: "2026-10-01T16:40:00Z", expiresAt: "2026-10-02T16:40:00Z",
+    references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com"), decided_by: MAROUANE }, changes: [{ kind: "change", id: "dr3", name: "Finance (group)", readable: true, naturalKey: "group:Finance", changeType: "modified", blastRadius: "access-affecting" }] } },
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000098", action: "restore", params: { artifactId: PLAN_REF.id }, requestedBy: AMARA.id, justification: "Undo the change to the guest policy", status: "rejected", decidedBy: SAM.id, decidedAt: "2026-09-30T11:20:00Z", reason: "Outside the change window; ask again on Monday.", createdAt: "2026-09-30T10:05:00Z", expiresAt: "2026-10-01T10:05:00Z",
+    references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA, decided_by: SAM }, plan: PLAN_REF } },
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000097", action: "restore", params: { artifactId: PLAN_REF.id }, requestedBy: SAM.id, justification: "Put the Teams policies back", status: "approved", decidedBy: MAROUANE.id, decidedAt: "2026-09-29T08:10:00Z", createdAt: "2026-09-29T07:00:00Z", expiresAt: "2026-09-30T07:00:00Z", requiredApprovals: 2, signoffs: [LEE, MAROUANE],
+    references: { ...EMPTY_REFERENCES, people: { requested_by: SAM, decided_by: MAROUANE }, plan: PLAN_REF } },
+  { ...APPROVAL_BASE, id: "a9e10000-0000-4000-8000-000000000096", action: "baseline-activate", params: { baselineId: BASELINES[1].id }, requestedBy: AMARA.id, justification: "Try the stricter setup", status: "expired", createdAt: "2026-09-27T09:00:00Z", expiresAt: "2026-09-28T09:00:00Z",
+    references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA }, baseline: { kind: "baseline", id: BASELINES[1].id, name: "Stricter sign-in", readable: true } } },
+];
 
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }) =>
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} status={status} title={title} />;
@@ -1471,24 +1521,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
-    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
-      <Verdict text="2 requests are waiting for you." tone="attention" />
-      <div data-layer="explanation"><ApprovalInbox now={now}
-      history={[{ id: "a9e10000-0000-4000-8000-000000000100", action: "remediate", params: { driftIds: ["dr3"] }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: null, status: "approved", decidedBy: "8c1e0000-0000-4000-8000-0000000000a1", decidedAt: "2026-10-01T17:02:00Z", reason: null, createdAt: "2026-10-01T16:40:00Z", expiresAt: "2026-10-02T16:40:00Z",
-        references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com"), decided_by: personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com") }, changes: [{ kind: "change", id: "dr3", name: null, readable: true, naturalKey: "group:Finance", changeType: "modified", blastRadius: "access-affecting" }] } }]}
-      pending={[
-        { id: "a9e10000-0000-4000-8000-000000000101", action: "restore", params: { artifactId: PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Roll back CA policy edit from incident INC-2291", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z",
-          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: PLAN_REF } },
-        { id: "a9e10000-0000-4000-8000-000000000102", action: "baseline-activate", params: { baselineId: BASELINES[0].id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Post-migration golden state", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T12:00:00Z",
-          references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, baseline: { kind: "baseline", id: BASELINES[0].id, name: "Post-migration golden state", readable: true } } },
-      ]} /></div></>;
-    case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, roll-backs and baseline changes wait here for someone other than the requester.")}
-      <Verdict text="1 request is waiting for you." tone="attention" />
-      <div data-layer="explanation"><ApprovalInbox history={[]} now={now} pending={[
-        { id: "a9e10000-0000-4000-8000-000000000145", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the baseline", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli",
+    case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+      <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
+    case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
+      <ApprovalInbox history={[]} now={now} pending={[
+        { id: "a9e10000-0000-4000-8000-000000000145", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the approved setup", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli", requiredApprovals: 1, signoffs: [],
+          preview: { total: 1, services: [{ name: "Entra ID", count: 1 }], changes: [{ name: "Group expiry rule", kind: "Group expiry rule", line: "Put back as the backup holds it", fields: [], moreFields: 0 }], more: 0 },
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: CLI_PLAN_REF } },
-      ]} /></div></>;
-    case "/approvals/content-effects": return <>{header("Inbox", "Content effects", "Changes in a dry run that shorten retention, release a hold, widen sharing or destroy content need their own approval.")}
+      ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
+    case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" })}
       <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
       <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />

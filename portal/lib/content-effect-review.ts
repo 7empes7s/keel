@@ -102,10 +102,10 @@ export function contentEffectReviewView(
 
 /** The page's one-line verdict. Pure, so it is tested directly. */
 export function contentEffectVerdict(review: ContentEffectReviewView): string {
-  if (review.effects.length === 0) return "This dry run has no content effects. Its restore needs only the usual approval.";
-  if (review.approvals.length > 0) return "These content effects are approved. The restore can run once its own request is approved.";
-  if (review.viewerIsRequester) return "You asked for this restore, so someone else must approve its content effects.";
-  return "Waiting for you: approve these content effects before the restore can run.";
+  if (review.effects.length === 0) return "This restore changes no kept or shared content. It needs only the usual approval.";
+  if (review.approvals.length > 0) return "These content changes are approved. The restore can run once its own request is approved.";
+  if (review.viewerIsRequester) return "You asked for this restore, so someone else must approve its content changes.";
+  return "This restore changes kept or shared content. It cannot run until you approve those changes.";
 }
 
 export async function getContentEffectReview(artifactId: string, viewerId: string): Promise<ContentEffectReviewView | null> {

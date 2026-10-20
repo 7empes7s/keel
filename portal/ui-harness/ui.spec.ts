@@ -129,13 +129,99 @@ test("command palette opens with the keyboard and navigates", async ({ page }) =
 });
 
 test("reject shows the spinner on Reject only", async ({ page }) => {
-  await open(page, "/approvals");
-  const row = page.locator("li.approval-card").first();
-  await row.locator("input").fill("outside the change window");
-  await row.getByRole("button", { name: "Reject" }).click();
-  await expect(row.getByRole("button", { name: "Reject" })).toHaveAttribute("aria-busy", "true");
-  await expect(row.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
+  await open(page, "/approvals?open=a9e10000-0000-4000-8000-000000000103");
+  const card = page.locator(".ap-card").first();
+  await card.getByRole("button", { name: "Reject…" }).click();
+  // Without a reason the rejection is blocked, with the message next to the field.
+  await card.getByRole("button", { name: "Reject the request" }).click();
+  await expect(card.locator(".ap-field-error")).toHaveText("Write a reason to reject.");
+  await card.locator("textarea").fill("outside the change window");
+  await card.getByRole("button", { name: "Reject the request" }).click();
+  await expect(card.getByRole("button", { name: "Reject the request" })).toHaveAttribute("aria-busy", "true");
+  await expect(card.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator(".toast").first()).toContainText("Request rejected");
 });
+
+// The page's done-test (portal audit, Approvals, pick B): tiles filter in the address,
+// a request opens in place and Back closes it, the decision is made from what will
+// change, a two-person request says how far along it is, and one amber action at most.
+test("Approvals · tiles filter, a request opens in place, Back closes it, two-person progress", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/approvals");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 requests are waiting for you. One expires in 3 hours.");
+  await expect(page.locator("main .btn-primary")).toHaveCount(1);
+  const tiles = page.locator(".ap-tile");
+  await expect(tiles).toHaveCount(4);
+  const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
+  await tiles.filter({ hasText: "Expiring within 4 hours" }).click();
+  await expect(page).toHaveURL(/soon=1/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".ap-filter-note")).toContainText("Showing requests expiring within 4 hours only: 1 of 4.");
+  await page.getByRole("link", { name: "Show every request" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+  // Soonest to expire first, grouped by kind; every title opens its card.
+  await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Restores");
+  for (const link of await page.locator(".ap-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  await page.locator(".ap-row-link", { hasText: "Restore 12 settings" }).first().click();
+  await expect(page).toHaveURL(/open=a9e10000-0000-4000-8000-000000000101/);
+  const card = page.locator(".ap-card");
+  await expect(card).toHaveCount(1);
+  // The verdict's action gives way to the card's one amber Approve.
+  await expect(page.locator("main .btn-primary")).toHaveCount(1);
+  await expect(card.locator(".ap-what h4")).toContainText("What will change · 12 settings (Entra ID 9, Exchange Online 3)");
+  await expect(card.locator(".ap-changes > li").first()).toContainText("Block old sign-in methods");
+  await expect(card.locator(".ap-changes > li").first().locator(".ap-after")).toHaveText("on");
+  await expect(card.locator(".ap-progress")).toContainText("Needs 2 approvals");
+  await expect(card.locator(".ap-progress")).toContainText("1 of 2");
+  await expect(card.locator(".ap-progress")).toContainText("Lee Chen");
+  await expect(card.getByRole("link", { name: "Open the full preview" })).toHaveAttribute("href", /^#?\/jobs\/a3$/);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(page.locator(".toast").first()).toContainText("1 of 2 approvals recorded");
+  await page.goBack();
+  await expect(page.locator(".ap-card")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/open=/);
+  // Several requests can be rejected with one reason; Approve stays one at a time.
+  await page.getByRole("checkbox", { name: "Select all 1 request in Undo changes" }).check();
+  await page.getByRole("checkbox", { name: "Select all 1 request in Approved-setup switches" }).check();
+  await expect(page.locator(".sel-bar")).toContainText("2 requests selected");
+  await expect(page.locator(".sel-bar")).toContainText("Approve stays one request at a time.");
+  await page.locator(".sel-bar").getByRole("button", { name: "Reject 2 requests…" }).click();
+  await expect(page.locator(".ap-reject")).toContainText("Why reject these 2 requests?");
+  await page.locator(".ap-reject textarea").fill("Not this week");
+  await page.locator(".ap-reject").getByRole("button", { name: "Reject 2 requests" }).click();
+  await expect(page.locator(".toast", { hasText: "2 requests rejected" })).toHaveCount(1);
+  // History: filter by outcome, open a decision in place.
+  await page.getByRole("radio", { name: "Decided · 4" }).click();
+  await page.getByRole("button", { name: "Rejected" }).click();
+  await expect(page.locator(".ap-history-row")).toHaveCount(1);
+  await page.locator(".ap-history-row .row-name a").click();
+  await expect(page.locator(".ap-history-detail")).toContainText("Outside the change window; ask again on Monday.");
+  await expect(page.locator(".ap-history-detail").getByRole("link", { name: "Open the restore run" })).toHaveAttribute("href", /^#?\/jobs\/a3$/);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    test(`Approvals · ${width} · ${theme}: no sideways scroll or clipped text, open card included`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/approvals?open=a9e10000-0000-4000-8000-000000000101", theme);
+      await expect(page.locator(".ap-card")).toHaveCount(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".ap-page *, .page-header *")]
+        .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+        .map((element) => element.textContent));
+      expect(clipped).toEqual([]);
+      const tiles = await page.locator(".ap-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+      expect(new Set(tiles).size).toBe(1);
+      if (width === 390) {
+        // The decision stays reachable on a phone: the card's footer is in view once scrolled to.
+        await page.locator(".ap-card-foot").scrollIntoViewIfNeeded();
+        await expect(page.locator(".ap-card-foot .btn-primary")).toBeInViewport();
+      }
+    });
+  }
+}
 
 test("destructive writes ask for confirmation with Cancel focused", async ({ page }) => {
   await open(page, "/notifications");
@@ -179,7 +265,7 @@ test("the restore wizard walks select → dry run → review → confirm → tra
   await expect(effects).toContainText("is not recoverable by KEEL");
   await expect(effects).toContainText("Not yet approved");
   await effects.getByPlaceholder("Why are these content effects acceptable?").fill("Visibility was public before INC-2291");
-  await effects.getByRole("button", { name: "Approve content effects" }).click();
+  await effects.getByRole("button", { name: "Approve this content change" }).click();
   await expect(effects).toContainText("Approved for exactly these effects");
   await expect(page.getByText("MEMBERSHIP CHANGES")).toBeVisible();
   await expect(page.locator(".edge-op.edge-add").first()).toContainText("amara.okafor@contoso.example (user)");
@@ -550,10 +636,10 @@ test("a CLI-planned restore's content effects are linked from the inbox and appr
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   const axe = async () => (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations.map((violation) => violation.id);
 
-  await open(page, "/approvals/cli-restore", "light");
+  await open(page, "/approvals/cli-restore?open=a9e10000-0000-4000-8000-000000000145", "light");
   const note = page.locator(".approval-content-effects");
-  await expect(note).toContainText("1 change in this restore affects content. It needs its own approval by someone other than the requester");
-  await expect(note.getByRole("link", { name: "Review content effects" })).toHaveAttribute("href", "/approvals/content-effects/7f3c0000-0000-4000-8000-000000000045");
+  await expect(note).toContainText("1 change in this restore affects kept or shared content. It needs its own approval by someone other than the person who asked");
+  await expect(note.getByRole("link", { name: "Review the content changes" })).toHaveAttribute("href", /^#?\/approvals\/content-effects\/7f3c0000-0000-4000-8000-000000000045$/);
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
   expect(await overflow()).toBeLessThanOrEqual(0);
   expect(await axe()).toEqual([]);
@@ -567,7 +653,7 @@ test("a CLI-planned restore's content effects are linked from the inbox and appr
   }
   const effects = page.locator(".content-effects");
   await effects.getByPlaceholder("Why are these content effects acceptable?").fill("Policy review agreed 365 days");
-  await effects.getByRole("button", { name: "Approve content effects" }).click();
+  await effects.getByRole("button", { name: "Approve this content change" }).click();
   await expect(effects).toContainText("Approved for exactly these effects by Marouane Defili");
   expect(await overflow()).toBeLessThanOrEqual(0);
 });

@@ -5,7 +5,7 @@ import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/go
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { getDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { fieldWords, valueWords } from "@/lib/changes-view";

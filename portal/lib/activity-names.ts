@@ -1,5 +1,5 @@
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import type { NamedKeys } from "@/lib/job-names";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";

@@ -1,4 +1,4 @@
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/attribution.mjs";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";

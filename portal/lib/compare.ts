@@ -1,7 +1,7 @@
 // Wave 2 CMP: the Compare page's loader. Read-only: it lists completed snapshots and
 // asks engine/govern/compare.mjs to compare two of them. Callers check `read` first.
 import { CompareError, compareSnapshots, listCompareSources } from "../../engine/govern/compare.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import {
   defaultInput, labelTenants, type CompareData, type CompareInput, type CompareProblem, type CompareResult, type CompareSnapshotOption,

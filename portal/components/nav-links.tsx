@@ -178,6 +178,7 @@ export function SectionTabs(capabilities: NavCapabilities) {
           className="section-tab"
           href={route.href}
           key={route.href}
+          prefetch={false}
         >
           {route.label}
         </Link>

@@ -19,7 +19,7 @@ import { firstCollectReadiness, selectWorkloads, SETUP_SCOPES } from "../../engi
 import { planBootstrap } from "../../engine/bootstrap/plan.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
 import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 import { acknowledgeForecastWarning } from "../../engine/schedules/forecast.mjs";
 

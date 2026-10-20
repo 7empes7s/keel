@@ -16,7 +16,7 @@ import {
   getActiveBaseline,
   listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";

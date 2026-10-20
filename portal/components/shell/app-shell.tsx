@@ -148,7 +148,7 @@ function Frame({ capabilities, pendingApprovals, person, theme, children }: Shel
       <a className="skip-link" href="#main-content">Skip to content</a>
       <div className="shell" data-menu={hidden ? "hidden" : "shown"} data-sheet={sheet ? "open" : undefined} data-statuses={ready ? "ready" : "loading"}>
         <header className="topbar" inert={sheet || undefined}>
-          <Link aria-label="Keel dashboards" className="brand" href="/">
+          <Link aria-label="Keel dashboards" className="brand" href="/" prefetch={false}>
             <span aria-hidden="true" className="brand-mark"><KeelMark /></span>
             <span className="topbar-name"><strong>KEEL</strong><small>Microsoft 365</small></span>
           </Link>

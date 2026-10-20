@@ -10,7 +10,7 @@ import { useShellState } from "@/components/shell/shell-state";
 import { removeItem } from "@/lib/menu-prefs";
 
 /** Saved filters for this list: each is a real link to the view as it was saved, and
- * also sits under Custom in the menu. Saving keeps the whole URL: grouping, find,
+ * also sits under Favourites in the menu. Saving keeps the whole URL: grouping, find,
  * dates, closed groups. */
 export function SavedFilters() {
   const { prefs, update, add } = useShellState();
@@ -18,7 +18,7 @@ export function SavedFilters() {
   const current = useCurrentHref();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
-  const saved = prefs.custom.filter((item) => item.href.split("?")[0] === pathname && item.href.includes("?"));
+  const saved = prefs.favourites.filter((item) => item.href.split("?")[0] === pathname && item.href.includes("?"));
   const canSave = current.includes("?") && !saved.some((item) => item.href === current);
 
   return (
@@ -30,7 +30,7 @@ export function SavedFilters() {
             <Link aria-current={item.href === current ? "page" : undefined} href={item.href}>
               <Icon name="filter" />{item.label}
             </Link>
-            <button aria-label={`Delete saved filter ${item.label}`} onClick={() => update(removeItem(prefs, "custom", item.href))} title="Delete this saved filter" type="button"><Icon name="close" /></button>
+            <button aria-label={`Delete saved filter ${item.label}`} onClick={() => update(removeItem(prefs, "favourites", item.href))} title="Delete this saved filter" type="button"><Icon name="close" /></button>
           </span>
         ))}
         {naming ? (
@@ -38,7 +38,7 @@ export function SavedFilters() {
             className="saved-filter-form"
             onSubmit={(event) => {
               event.preventDefault();
-              if (add("custom", { href: current, label: name, icon: "filter" })) {
+              if (add("favourites", { href: current, label: name, icon: "filter" })) {
                 setNaming(false);
                 setName("");
               }
@@ -53,7 +53,7 @@ export function SavedFilters() {
             className="btn btn-sm"
             disabled={!canSave}
             onClick={() => setNaming(true)}
-            title={canSave ? "Keep this view under a name; it also appears under Custom in the menu" : saved.some((item) => item.href === current) ? "This view is already saved" : "Change the grouping or find something first"}
+            title={canSave ? "Keep this view under a name; it also appears under Favourites in the menu" : saved.some((item) => item.href === current) ? "This view is already saved" : "Change the grouping or find something first"}
             type="button"
           >
             <Icon name="save" />Save filter

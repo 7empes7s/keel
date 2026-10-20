@@ -80,7 +80,7 @@ export function paletteResults(commands: Command[], query: string): { group: Pal
     .map(({ group, commands: found }) => ({ group, commands: found }));
 }
 
-const VIEW_HINTS = { pinned: "Pinned", favourites: "Favourite", custom: "Saved view" } as const;
+const VIEW_HINTS = { pinned: "Pinned", favourites: "Favourite" } as const;
 
 interface Found { id: string; label: string; hint: string; href: string; icon: IconName; keywords: string }
 
@@ -181,7 +181,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
         run: () => router.push(link.href),
       })),
     );
-    const views: Command[] = (["pinned", "favourites", "custom"] as const).flatMap((kind) =>
+    const views: Command[] = (["pinned", "favourites"] as const).flatMap((kind) =>
       prefs[kind].map((item) => ({
         id: `view:${kind}:${item.href}`,
         label: item.label,

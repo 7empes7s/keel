@@ -8,11 +8,11 @@ import { toast } from "@/lib/toast";
 interface ShellState {
   prefs: MenuPrefs;
   update: (next: MenuPrefs) => void;
-  // Adds to Pinned, Favourites or Custom, and says so when the group is full.
+  // Adds to Pinned or Favourites, and says so when the group is full.
   add: (group: PersonalGroup, item: MenuItem) => boolean;
 }
 
-const GROUP_NAMES: Record<PersonalGroup, string> = { pinned: "Pinned", favourites: "Favourites", custom: "Custom" };
+const GROUP_NAMES: Record<PersonalGroup, string> = { pinned: "Pinned", favourites: "Favourites" };
 
 const ShellContext = createContext<ShellState>({ prefs: EMPTY_PREFS, update: () => {}, add: () => false });
 

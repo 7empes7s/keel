@@ -8,7 +8,7 @@ import { addDays, addMonths, inRange, isDay, monthGrid, presets, rangeFromParam,
 import { serviceFor, SERVICES } from "@/lib/services";
 import { SERVICES as TAXONOMY_SERVICES } from "../../engine/insights/taxonomy.mjs";
 
-// The page frame's menu (Pinned, Favourites, Custom, closed groups, hidden), its
+// The page frame's menu (Pinned, Favourites, closed groups, hidden), its
 // section statuses, the shared list's selection rules and the date picker's dates.
 
 test("menu preferences round-trip through the cookie and drop anything unsafe", () => {
@@ -37,8 +37,17 @@ test("menu preferences round-trip through the cookie and drop anything unsafe", 
   assert.deepEqual(parsed.closed, ["pinned"]);
   assert.equal(parsed.hidden, false);
   assert.deepEqual(parseMenuPrefs("%7Bnot json"), EMPTY_PREFS);
+  // An older cookie's Custom group (saved views) folds into Favourites, after what is there.
+  const legacy = parseMenuPrefs(encodeURIComponent(JSON.stringify({
+    favourites: [{ href: "/jobs", label: "Jobs", icon: "page" }],
+    custom: [{ href: "/drift?group=risk", label: "By risk", icon: "filter" }, { href: "/jobs", label: "Jobs again", icon: "page" }],
+    closed: ["custom", "favourites"],
+  })));
+  assert.deepEqual(legacy.favourites, [{ href: "/jobs", label: "Jobs", icon: "page" }, { href: "/drift?group=risk", label: "By risk", icon: "filter" }]);
+  assert.deepEqual(legacy.closed, ["favourites"]);
+  assert.equal("custom" in legacy, false);
   // The server hands over the cookie already decoded; a % in a saved link must survive.
-  const percent = addItem(EMPTY_PREFS, "custom", { href: "/drift?q=50%25", label: "Half", icon: "page" });
+  const percent = addItem(EMPTY_PREFS, "favourites", { href: "/drift?q=50%25", label: "Half", icon: "page" });
   assert.ok(percent.ok);
   if (percent.ok) {
     assert.deepEqual(parseMenuPrefs(serializeMenuPrefs(percent.prefs)), percent.prefs);

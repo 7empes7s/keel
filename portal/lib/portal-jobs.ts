@@ -1,6 +1,6 @@
 import { listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
 import { listEligibleBaselineSnapshots } from "../../engine/govern/baseline.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import { normalizeJob } from "@/lib/action";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";

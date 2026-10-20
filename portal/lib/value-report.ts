@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { loadValueReport, valueReportCsv } from "../../engine/reports/value.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import type { EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";

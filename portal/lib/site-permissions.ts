@@ -1,6 +1,6 @@
 // Gap 2 of the site permissions audit: the Sites pages' loader. Read-only: it reads the
 // stored SharePoint workload reads and never calls Microsoft. Callers check `read` first.
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { idNames } from "@/lib/saved-names";

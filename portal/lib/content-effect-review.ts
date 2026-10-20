@@ -3,7 +3,7 @@ import { forbidden } from "next/navigation";
 
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
 import { loadContentEffectReview } from "../../engine/safety/contentEffects.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import type { ContentEffect } from "@/components/content-effects";
 import { approvalInboxScope } from "@/lib/approval-inbox";

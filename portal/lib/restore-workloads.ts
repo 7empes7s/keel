@@ -1,4 +1,4 @@
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 

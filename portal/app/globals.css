@@ -2565,27 +2565,30 @@ section.item-card + section.item-card {
 
 /* --- Motion: entrances ----------------------------------------------------- */
 
+/* Short and shallow: a page's content is fully there well under a quarter of a second
+   after it arrives. The earlier 320 ms with up to 200 ms of stagger read as lag on a
+   phone, and the loading skeleton must never fade in (it is the "it is coming" sign). */
 .page-transition > * {
-  animation: rise-in var(--duration-slow) var(--ease-out) both;
+  animation: rise-in var(--duration-base) var(--ease-out) both;
 }
 
-.page-transition > :nth-child(2) { animation-delay: 40ms; }
-.page-transition > :nth-child(3) { animation-delay: 80ms; }
-.page-transition > :nth-child(4) { animation-delay: 120ms; }
-.page-transition > :nth-child(5) { animation-delay: 160ms; }
-.page-transition > :nth-child(n + 6) { animation-delay: 200ms; }
+.page-transition > .page-skeleton {
+  animation: none;
+}
+
+.page-transition > :nth-child(2) { animation-delay: 30ms; }
+.page-transition > :nth-child(3) { animation-delay: 60ms; }
+.page-transition > :nth-child(n + 4) { animation-delay: 90ms; }
 
 .alert-list > .alert,
 .item-list > .item-card {
-  animation: rise-in var(--duration-slow) var(--ease-out) both;
+  animation: rise-in var(--duration-base) var(--ease-out) both;
 }
 
 .alert-list > .alert:nth-child(2),
-.item-list > .item-card:nth-child(2) { animation-delay: 50ms; }
-.alert-list > .alert:nth-child(3),
-.item-list > .item-card:nth-child(3) { animation-delay: 100ms; }
-.alert-list > .alert:nth-child(n + 4),
-.item-list > .item-card:nth-child(n + 4) { animation-delay: 150ms; }
+.item-list > .item-card:nth-child(2) { animation-delay: 30ms; }
+.alert-list > .alert:nth-child(n + 3),
+.item-list > .item-card:nth-child(n + 3) { animation-delay: 60ms; }
 
 .coverage-bar span {
   transform-origin: left center;

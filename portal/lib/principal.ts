@@ -1,5 +1,5 @@
 import { findPrincipalById, resolvePrincipal } from "../../engine/authz/principals.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import { databaseUrl } from "@/lib/runtime-config";
 

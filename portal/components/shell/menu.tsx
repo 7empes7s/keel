@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+// No prefetch on the menu: every page is server-rendered per request, so a prefetched
+// link cost a full layout render (identity, approvals count, name) on the server for
+// each link in view, twice over on a desktop, before anyone clicked. A click still
+// shows the loading skeleton as soon as the page starts streaming.
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -73,7 +77,7 @@ export function Bell({ canApprove, canRead, approvals, alerts, placement }: { ca
         <ul className="bell-list">
           {canApprove ? (
             <li>
-              <Link className="bell-item" href="/approvals" onClick={close}>
+              <Link className="bell-item" href="/approvals" onClick={close} prefetch={false}>
                 <Icon name="inbox" />
                 <span><b>Approvals</b><small>Restores and changes waiting for a second person</small></span>
                 <span className="bell-item-count" data-zero={!approvals || undefined}>{approvals ?? "–"}</span>
@@ -82,7 +86,7 @@ export function Bell({ canApprove, canRead, approvals, alerts, placement }: { ca
           ) : null}
           {canRead ? (
             <li>
-              <Link className="bell-item" href="/alerts" onClick={close}>
+              <Link className="bell-item" href="/alerts" onClick={close} prefetch={false}>
                 <Icon name="bell" />
                 <span><b>Alerts</b><small>Changes someone has to look at, with who owns each</small></span>
                 <span className="bell-item-count" data-zero={!alerts || undefined}>{alerts ?? "–"}</span>
@@ -178,7 +182,7 @@ function PersonalList({ group, current, onNavigate }: { group: PersonalGroup; cu
         <ul className="menu-list">
           {items.map((item, index) => (
             <li className="menu-row" key={item.href}>
-              <Link aria-current={item.href === current ? "page" : undefined} className="menu-link" href={item.href} onClick={onNavigate}>
+              <Link aria-current={item.href === current ? "page" : undefined} className="menu-link" href={item.href} onClick={onNavigate} prefetch={false}>
                 <Icon name={item.icon} />
                 <span className="menu-label">{item.label}</span>
               </Link>
@@ -227,6 +231,7 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
                     className="menu-link"
                     href={entry.href}
                     onClick={onNavigate}
+                    prefetch={false}
                     title={SECTION_PURPOSE[section]}
                   >
                     <Icon name={SECTION_ICONS[section]} />
@@ -239,7 +244,7 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
                   <ul className="menu-sub">
                     {subs.map((sub) => (
                       <li className="menu-row" key={sub.href}>
-                        <Link aria-current={isCurrentPath(pathname, sub.href) ? "page" : undefined} className="menu-sublink" href={sub.href} onClick={onNavigate}>
+                        <Link aria-current={isCurrentPath(pathname, sub.href) ? "page" : undefined} className="menu-sublink" href={sub.href} onClick={onNavigate} prefetch={false}>
                           <span aria-hidden="true" className="menu-tick" />
                           <span className="menu-label">{sub.label}</span>
                         </Link>
@@ -315,7 +320,7 @@ export function Menu({
   return (
     <div className="menu" data-variant={variant}>
       <div className="menu-head">
-        <Link aria-label="Keel dashboards" className="brand" href="/" onClick={onNavigate}>
+        <Link aria-label="Keel dashboards" className="brand" href="/" onClick={onNavigate} prefetch={false}>
           <span aria-hidden="true" className="brand-mark"><KeelMark /></span>
           <strong>KEEL</strong>
         </Link>
@@ -335,7 +340,7 @@ export function Menu({
       </nav>
       <div className="menu-foot">
         {person.href ? (
-          <Link className="menu-person menu-person-link" href={person.href} onClick={onNavigate}>{who}</Link>
+          <Link className="menu-person menu-person-link" href={person.href} onClick={onNavigate} prefetch={false}>{who}</Link>
         ) : (
           <p className="menu-person">{who}</p>
         )}
@@ -359,7 +364,7 @@ export function TabBar({ capabilities, statuses, onAll, allOpen }: { capabilitie
   return (
     <nav aria-label="Main sections" className="tabbar">
       {entries.map((entry) => (
-        <Link aria-current={active === entry.group ? (pathname === entry.href ? "page" : "true") : undefined} className="tab" href={entry.href} key={entry.group}>
+        <Link aria-current={active === entry.group ? (pathname === entry.href ? "page" : "true") : undefined} className="tab" href={entry.href} key={entry.group} prefetch={false}>
           <Icon name={SECTION_ICONS[entry.group] as IconName} />
           <span>{entry.group}</span>
           {statuses[entry.group] && statuses[entry.group]!.tone !== "fine" ? <StatusBadge status={statuses[entry.group]} /> : null}

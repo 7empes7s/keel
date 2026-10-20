@@ -1,5 +1,5 @@
 import { loadLatestDiscovery } from "../../engine/discovery/store.mjs";
-import { connect } from "../../engine/store/db.mjs";
+import { connect } from "@/lib/db";
 
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 

@@ -136,11 +136,10 @@ function PinButton({ item }: { item: MenuItem }) {
   );
 }
 
-const GROUP_TITLES: Record<PersonalGroup, string> = { pinned: "Pinned", favourites: "Favourites", custom: "Custom" };
+const GROUP_TITLES: Record<PersonalGroup, string> = { pinned: "Pinned", favourites: "Favourites" };
 const GROUP_EMPTY: Record<PersonalGroup, string> = {
   pinned: "Pin any page from Everything below with its pin button.",
-  favourites: "Star a page or an item from its title to keep it here.",
-  custom: "Save a filtered view of a list under your own name with + New.",
+  favourites: "Star a page or an item from its title to keep it here. Saved list filters land here too.",
 };
 
 function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup; title: string; count?: number; extra?: ReactNode; actions?: ReactNode }) {
@@ -162,30 +161,19 @@ function GroupHeader({ group, title, count, extra, actions }: { group: MenuGroup
 function PersonalList({ group, current, onNavigate }: { group: PersonalGroup; current: string; onNavigate?: () => void }) {
   const { prefs, update } = useShellState();
   const [editing, setEditing] = useState(false);
-  const [naming, setNaming] = useState(false);
   const items = prefs[group];
   const closed = prefs.closed.includes(group);
   useEffect(() => { if (!items.length) setEditing(false); }, [items.length]);
 
-  const actions = (
-    <>
-      {group === "custom" ? (
-        <button aria-expanded={naming} className="menu-text-button" onClick={() => setNaming((value) => !value)} title="Save this page's view, with its filters, under a name" type="button">
-          <Icon name="plus" />New
-        </button>
-      ) : null}
-      {items.length ? (
-        <button aria-pressed={editing} className="menu-text-button" onClick={() => setEditing((value) => !value)} type="button">
-          {editing ? "Done" : "Edit"}
-        </button>
-      ) : null}
-    </>
-  );
+  const actions = items.length ? (
+    <button aria-pressed={editing} className="menu-text-button" onClick={() => setEditing((value) => !value)} type="button">
+      {editing ? "Done" : "Edit"}
+    </button>
+  ) : null;
 
   return (
     <section aria-label={GROUP_TITLES[group]} className="menu-group" data-group={group}>
       <GroupHeader actions={actions} count={items.length} group={group} title={GROUP_TITLES[group]} />
-      {naming ? <SaveViewForm current={current} onDone={() => setNaming(false)} /> : null}
       {closed ? null : items.length ? (
         <ul className="menu-list">
           {items.map((item, index) => (
@@ -204,48 +192,10 @@ function PersonalList({ group, current, onNavigate }: { group: PersonalGroup; cu
             </li>
           ))}
         </ul>
-      ) : naming ? null : (
+      ) : (
         <p className="menu-empty">{GROUP_EMPTY[group]}</p>
       )}
     </section>
-  );
-}
-
-function pageTitle(): string {
-  if (typeof document === "undefined") return "";
-  return document.querySelector("main h1")?.textContent?.trim() ?? "";
-}
-
-function SaveViewForm({ current, onDone }: { current: string; onDone: () => void }) {
-  const { add } = useShellState();
-  const [name, setName] = useState(() => pageTitle());
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { inputRef.current?.select(); }, []);
-  const section = sectionForPath(current.split("?")[0]);
-  return (
-    <form
-      className="menu-save"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (add("custom", { href: current, label: name, icon: current.includes("?") ? "filter" : SECTION_ICONS[section ?? "Dashboards"] })) onDone();
-      }}
-    >
-      <label className="menu-save-label" htmlFor="menu-save-name">Name this view</label>
-      <input
-        id="menu-save-name"
-        maxLength={60}
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onDone(); } }}
-        ref={inputRef}
-        required
-        value={name}
-      />
-      <small>Saves this page as you see it now, with its filters and grouping.</small>
-      <span className="menu-save-actions">
-        <button className="btn btn-sm btn-primary" type="submit">Save</button>
-        <button className="btn btn-sm" onClick={onDone} type="button">Cancel</button>
-      </span>
-    </form>
   );
 }
 
@@ -381,7 +331,6 @@ export function Menu({
       <nav aria-label="Menu" className="menu-nav" ref={navRef}>
         <PersonalList current={current} group="pinned" onNavigate={onNavigate} />
         <PersonalList current={current} group="favourites" onNavigate={onNavigate} />
-        <PersonalList current={current} group="custom" onNavigate={onNavigate} />
         <Everything capabilities={capabilities} onNavigate={onNavigate} pathname={pathname} statuses={statuses} />
       </nav>
       <div className="menu-foot">

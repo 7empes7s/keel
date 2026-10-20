@@ -81,16 +81,17 @@ test("pin, star and save a view: each lands at the top of the menu as a real lin
   await page.getByRole("button", { name: "Add Schedules to Favourites" }).click();
   await expect(page.getByRole("button", { name: "Remove Schedules from Favourites" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('section[data-group="favourites"] a.menu-link')).toHaveAttribute("aria-current", "page");
-  // Save the kit's grouped view under a name.
+  // Save the kit's grouped view as a filter; it lands under Favourites, next to the starred page.
   await open(page, "/kit?group=risk");
-  await page.locator('section[data-group="custom"]').getByRole("button", { name: "New" }).click();
-  await page.getByLabel("Name this view").fill("Settings by risk");
+  await page.getByRole("button", { name: "Save filter" }).click();
+  await page.getByLabel("Name for this filter").fill("Settings by risk");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  const custom = page.locator('section[data-group="custom"] a.menu-link');
-  await expect(custom).toHaveText("Settings by risk");
-  await expect(custom).toHaveAttribute("href", "#/kit?group=risk");
-  // The same view shows as a saved filter on its list.
   await expect(page.locator(".saved-filter a")).toHaveText("Settings by risk");
+  const favourites = page.locator('section[data-group="favourites"] a.menu-link');
+  await expect(favourites).toHaveCount(2);
+  await expect(favourites.last()).toHaveText("Settings by risk");
+  await expect(favourites.last()).toHaveAttribute("href", "#/kit?group=risk");
+  await expect(page.locator('section[data-group="custom"]')).toHaveCount(0);
   // Reorder and remove pinned items in edit mode.
   await page.locator('section[data-group="pinned"]').getByRole("button", { name: "Edit" }).click();
   await page.getByRole("button", { name: "Remove Restore from Pinned" }).click();
@@ -364,8 +365,8 @@ test("could-not-read messages say what failed and offer Try again; messages use 
 test("search finds pages by what they do, your saved views, actions and people", async ({ page }) => {
   await page.setViewportSize(desktop);
   await open(page, "/kit?group=risk");
-  await page.locator('section[data-group="custom"]').getByRole("button", { name: "New" }).click();
-  await page.getByLabel("Name this view").fill("Settings by risk");
+  await page.getByRole("button", { name: "Save filter" }).click();
+  await page.getByLabel("Name for this filter").fill("Settings by risk");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await open(page, "/");
   await page.keyboard.press("Control+k");
@@ -378,7 +379,7 @@ test("search finds pages by what they do, your saved views, actions and people",
   await expect(palette.getByRole("group", { name: "Items" }).getByRole("option")).toContainText("Amara Okafor");
   await page.keyboard.press("Control+a");
   await page.keyboard.type("settings by");
-  await expect(palette.getByRole("option").first()).toContainText("Saved view");
+  await expect(palette.getByRole("option").first()).toContainText("Favourite");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#\/kit\?group=risk$/);
 });

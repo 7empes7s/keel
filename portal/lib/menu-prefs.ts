@@ -1,13 +1,13 @@
 import { isIconName, type IconName } from "@/components/shell/icons";
 
-// The menu's personal parts: Pinned (menu shortcuts), Favourites (starred pages and
-// items) and Custom (named saved views, including saved list filters), plus which menu
-// groups are closed and whether the menu is hidden. One cookie, like the theme, so the
+// The menu's personal parts: Pinned (menu shortcuts) and Favourites (starred pages,
+// items and saved list filters), plus which menu groups are closed and whether the
+// menu is hidden. One cookie, like the theme, so the
 // server renders the menu as the person left it and nothing jumps after hydration.
 export const MENU_COOKIE = "keel-menu";
 export const MENU_EVENT = "keel-menu-change";
 
-export const PERSONAL_GROUPS = ["pinned", "favourites", "custom"] as const;
+export const PERSONAL_GROUPS = ["pinned", "favourites"] as const;
 export type PersonalGroup = (typeof PERSONAL_GROUPS)[number];
 export type MenuGroup = PersonalGroup | "everything";
 
@@ -20,19 +20,18 @@ export interface MenuItem {
 export interface MenuPrefs {
   pinned: MenuItem[];
   favourites: MenuItem[];
-  custom: MenuItem[];
   // Menu groups the person closed. A closed group keeps its name, count and status.
   closed: MenuGroup[];
   hidden: boolean;
 }
 
-export const LIMITS: Record<PersonalGroup, number> = { pinned: 8, favourites: 12, custom: 12 };
+export const LIMITS: Record<PersonalGroup, number> = { pinned: 8, favourites: 12 };
 const MAX_LABEL = 60;
 const MAX_HREF = 300;
 // Browsers keep cookies up to 4096 bytes; leave room for the name and attributes.
 export const COOKIE_BUDGET = 3600;
 
-export const EMPTY_PREFS: MenuPrefs = Object.freeze({ pinned: [], favourites: [], custom: [], closed: [], hidden: false }) as MenuPrefs;
+export const EMPTY_PREFS: MenuPrefs = Object.freeze({ pinned: [], favourites: [], closed: [], hidden: false }) as MenuPrefs;
 
 /** A path inside the portal: starts with one slash, no scheme, no backslash, no spaces. */
 export function isPortalHref(value: unknown): value is string {
@@ -79,8 +78,8 @@ export function parseMenuPrefs(raw: string | null | undefined): MenuPrefs {
   const record = data as Record<string, unknown>;
   return {
     pinned: items(record.pinned, LIMITS.pinned),
-    favourites: items(record.favourites, LIMITS.favourites),
-    custom: items(record.custom, LIMITS.custom),
+    // Older cookies had a Custom group for saved views; those now live in Favourites.
+    favourites: items([...(Array.isArray(record.favourites) ? record.favourites : []), ...(Array.isArray(record.custom) ? record.custom : [])], LIMITS.favourites),
     closed: strings(record.closed, (entry) => entry === "everything" || (PERSONAL_GROUPS as readonly string[]).includes(entry)) as MenuGroup[],
     hidden: record.hidden === true,
   };

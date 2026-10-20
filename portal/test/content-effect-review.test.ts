@@ -50,10 +50,10 @@ function restoreRequest(overrides: Partial<ApprovalRequestRecord> = {}, contentE
 
 test("the inbox links a restore with content effects to their review, even when the CLI planned it", () => {
   assert.deepEqual(contentEffectsLink(restoreRequest()), {
-    href: `/approvals/content-effects/${ARTIFACT}`, label: "Review content effects", count: 1,
+    href: `/approvals/content-effects/${ARTIFACT}`, label: "Review the content changes", count: 1,
   });
   const html = renderToStaticMarkup(createElement(ContentEffectsNote, { request: restoreRequest({}, 2) }));
-  assert.match(html, /2 changes in this restore affect content\. They need their own approval/);
+  assert.match(html, /2 changes in this restore affect kept or shared content\. They need their own approval/);
   assert.match(html, new RegExp(`href="/approvals/content-effects/${ARTIFACT}"`));
   // No effects, an unreadable plan, or another action: no link.
   assert.equal(contentEffectsLink(restoreRequest({}, 0)), null);
@@ -87,7 +87,7 @@ test("the review names people, refuses the requester and binds to the engine's d
   assert.equal(asApprover.requestedByName, "Rita Requester");
   assert.equal(asApprover.viewerIsRequester, false);
   assert.equal(asApprover.effectsDigest, "digest-1");
-  assert.equal(contentEffectVerdict(asApprover), "Waiting for you: approve these content effects before the restore can run.");
+  assert.equal(contentEffectVerdict(asApprover), "This restore changes kept or shared content. It cannot run until you approve those changes.");
 
   const asRequester = contentEffectReviewView(engine, names, REQUESTER);
   assert.equal(asRequester.viewerIsRequester, true);

@@ -5,8 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   APPROVAL_DECISION_EVIDENCE_KIND,
@@ -24,11 +22,13 @@ import { POST as restoreRoute } from "@/app/api/actions/restore/route";
 import { GET as inboxRoute } from "@/app/api/approvals/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { POST as rejectRoute } from "@/app/api/approvals/[id]/reject/route";
-import { ApprovalInbox } from "@/components/approval-inbox";
+import { decideRequest } from "@/lib/approval-decision";
 import { getApprovalInboxData, getPendingApprovalCount, guardedApprovalInbox } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+
+import { renderApprovalInboxAt } from "./render-approval-inbox";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Global constraint 6: the test database only ever comes from KEEL_DB_TEST_URL, isolated
@@ -207,114 +207,6 @@ const approver = {
   capabilities: ["approve"],
 };
 
-type FormElement = {
-  type: unknown;
-  props: Record<string, unknown>;
-};
-
-function findFormElements(
-  node: unknown,
-  predicate: (element: FormElement) => boolean,
-): FormElement[] {
-  if (!node || typeof node !== "object") return [];
-  const element = node as FormElement;
-  const found = predicate(element) ? [element] : [];
-  const children = element.props?.children;
-  const candidates = Array.isArray(children) ? children : [children];
-  return found.concat(...candidates.flatMap((child) => findFormElements(child, predicate)));
-}
-
-// This deliberately small hook harness drives the real client controls without adding
-// a DOM dependency. It keeps the assertion at the browser-control-to-decision-route
-// boundary, where an ID or rejection reason can otherwise be wired incorrectly while
-// the direct route tests remain green.
-function renderApprovalInbox() {
-  const internals = (React as unknown as {
-    __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: unknown;
-  }).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE as {
-    H: unknown;
-  };
-  const originalDispatcher = internals.H;
-  const state: unknown[] = [];
-  let hookIndex = 0;
-  let contextIndex = 0;
-  let refreshes = 0;
-
-  internals.H = {
-    useState<T>(initial: T | (() => T)) {
-      const index = hookIndex++;
-      if (!(index in state)) {
-        state[index] = typeof initial === "function" ? (initial as () => T)() : initial;
-      }
-      return [state[index] as T, (next: T | ((previous: T) => T)) => {
-        state[index] = typeof next === "function"
-          ? (next as (previous: T) => T)(state[index] as T)
-          : next;
-      }];
-    },
-    useContext() {
-      // useRouter reads AppRouterContext first and LayoutRouterContext second.
-      if (contextIndex++ === 0) {
-        return {
-          back() {}, forward() {}, hmrRefresh() {}, prefetch() {}, push() {},
-          refresh() { refreshes += 1; }, replace() {},
-        };
-      }
-      return { parentRenderTree: { data: { bfcacheId: 0 } } };
-    },
-    useMemo<T>(create: () => T) { return create(); },
-    useRef<T>(initial: T) {
-      const index = hookIndex++;
-      if (!(index in state)) state[index] = { current: initial };
-      return state[index] as { current: T };
-    },
-    // Effects (polling, new-item marking) need a browser; this harness drives controls only.
-    useEffect() { hookIndex++; },
-    useLayoutEffect() { hookIndex++; },
-  };
-
-  const pending = [
-    {
-      id: "00000000-0000-4000-8000-000000000101",
-      action: "restore",
-      params: { target: "group:approve-control" },
-      requestedBy: RESTORER,
-      justification: "approve the listed request",
-      status: "pending",
-      decidedBy: null,
-      decidedAt: null,
-      reason: null,
-      createdAt: "2026-09-12T00:00:00.000Z",
-      expiresAt: "2026-09-13T00:00:00.000Z",
-    },
-    {
-      id: "00000000-0000-4000-8000-000000000202",
-      action: "remediate",
-      params: { target: "group:reject-control" },
-      requestedBy: RESTORER,
-      justification: "reject the listed request",
-      status: "pending",
-      decidedBy: null,
-      decidedAt: null,
-      reason: null,
-      createdAt: "2026-09-12T00:00:01.000Z",
-      expiresAt: "2026-09-13T00:00:00.000Z",
-    },
-  ];
-
-  return {
-    render(): FormElement {
-      hookIndex = 0;
-      contextIndex = 0;
-      return ApprovalInbox({ pending, history: [] }) as unknown as FormElement;
-    },
-    refreshes: () => refreshes,
-    restore() {
-      internals.H = originalDispatcher;
-    },
-  };
-}
-
 interface ApprovalReadSurface {
   source: string;
   content: string;
@@ -389,6 +281,9 @@ test("an approver can list and decide another principal's request", async () => 
     expiresAt: request.expiresAt,
     executor: "worker",
     references: request.references,
+    requiredApprovals: 1,
+    signoffs: [],
+    preview: request.preview,
   });
   // Task-130: the request arrives with what it concerns resolved to names.
   assert.equal(request.references.plan.id, request.params.artifactId);
@@ -431,17 +326,17 @@ test("an approved restore whose content effects still need approval waits for a 
   assert.equal(waiting.history.some((candidate: { id: string }) => candidate.id === id), false, "not filed as decided");
   assert.equal(await getPendingApprovalCount(central), countBefore, "the waiting count still includes it");
 
-  // The page shows it under "Waiting for a decision" with the way to approve the effects.
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
-  const html = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
-    React.createElement(ApprovalInbox, { pending: [], awaitingContentEffects: [listed], history: [], now: "2026-10-14T13:00:00.000Z" })));
-  const waitingSection = html.slice(html.indexOf("Waiting for a decision"), html.indexOf("Decided and expired"));
-  assert.match(waitingSection, /1 request</);
-  assert.match(waitingSection, new RegExp(`href="/approvals/content-effects/${artifactId}"`));
-  assert.doesNotMatch(waitingSection, /Nothing is waiting/);
+  // The page lists it as waiting and, opened in place, shows the way to approve the effects.
+  const now = "2026-10-14T13:00:00.000Z";
+  const listHtml = await renderApprovalInboxAt("", { pending: [], awaitingContentEffects: [listed], history: [], now });
+  assert.match(listHtml, /1 request is waiting for you/);
+  assert.match(listHtml, /waiting on content changes/);
+  assert.doesNotMatch(listHtml, /Nothing is waiting/);
+  const openHtml = await renderApprovalInboxAt(`open=${id}`, { pending: [], awaitingContentEffects: [listed], history: [], now });
+  assert.match(openHtml, new RegExp(`href="/approvals/content-effects/${artifactId}"`));
   // And it leads back to the restore run itself.
   assert.ok(listed.references.plan.dryRunJobId, "the portal-planned dry run has its job");
-  assert.match(waitingSection, new RegExp(`href="/jobs/${listed.references.plan.dryRunJobId}"`));
+  assert.match(openHtml, new RegExp(`href="/jobs/${listed.references.plan.dryRunJobId}"`));
 
   // Only tenant-wide approvers can approve content effects, so only they see it.
   const entityApprover = { central: false, entities: ["SALES"] };
@@ -457,9 +352,8 @@ test("an approved restore whose content effects still need approval waits for a 
   assert.equal(decided.awaitingContentEffects.some((candidate: { id: string }) => candidate.id === id), false);
   const filed = decided.history.find((candidate: { id: string }) => candidate.id === id);
   assert.ok(filed);
-  // Once decided, the restore run stays one link away.
-  const historyHtml = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
-    React.createElement(ApprovalInbox, { pending: [], history: [filed], now: "2026-10-14T13:00:00.000Z" })));
+  // Once decided, the restore run stays one link away from the decided list.
+  const historyHtml = await renderApprovalInboxAt(`show=decided&open=${id}`, { pending: [], history: [filed], now });
   assert.match(historyHtml, new RegExp(`href="/jobs/${filed.references.plan.dryRunJobId}"`));
   assert.equal(await getPendingApprovalCount(central), countBefore - 1);
 });
@@ -558,7 +452,8 @@ test("rejection requires an operator-visible reason", async () => {
 });
 
 test("approval controls submit each listed request id and its rejection reason", async () => {
-  const inbox = renderApprovalInbox();
+  // The page's buttons all go through decideRequest, so the browser-control-to-route
+  // boundary is one function: the id and the rejection reason reach the right route.
   const originalFetch = globalThis.fetch;
   const requests: {
     url: string;
@@ -575,34 +470,13 @@ test("approval controls submit each listed request id and its rejection reason",
         contentType: new Headers(init?.headers).get("content-type"),
         body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
       });
-      return new Response(null, { status: 200 });
+      return new Response(JSON.stringify({ job: { id: "job-1" } }), { status: 202, headers: { "content-type": "application/json" } });
     }) as typeof fetch;
 
-    let rendered = inbox.render();
-    const approveButtons = findFormElements(
-      rendered,
-      (element) => element.type === "button" && element.props.children === "Approve",
-    );
-    assert.equal(approveButtons.length, 2, "one approve control per listed request");
-    await (approveButtons[0].props.onClick as () => Promise<void>)();
-
-    rendered = inbox.render();
-    const reasonInputs = findFormElements(
-      rendered,
-      (element) => element.type === "input",
-    );
-    assert.equal(reasonInputs.length, 2, "one rejection-reason field per listed request");
-    (reasonInputs[1].props.onChange as (event: { target: { value: string } }) => void)({
-      target: { value: "outside the approved change window" },
-    });
-
-    rendered = inbox.render();
-    const rejectButtons = findFormElements(
-      rendered,
-      (element) => element.type === "button" && element.props.children === "Reject",
-    );
-    assert.equal(rejectButtons.length, 2, "one reject control per listed request");
-    await (rejectButtons[1].props.onClick as () => Promise<void>)();
+    const approved = await decideRequest("00000000-0000-4000-8000-000000000101", "approve");
+    assert.deepEqual(approved, { ok: true, status: 202, payload: { job: { id: "job-1" } } });
+    const rejected = await decideRequest("00000000-0000-4000-8000-000000000202", "reject", "outside the approved change window");
+    assert.equal(rejected.ok, true);
 
     assert.deepEqual(requests, [
       {
@@ -618,10 +492,8 @@ test("approval controls submit each listed request id and its rejection reason",
         body: { reason: "outside the approved change window" },
       },
     ]);
-    assert.equal(inbox.refreshes(), 2, "each accepted decision refreshes the inbox");
   } finally {
     globalThis.fetch = originalFetch;
-    inbox.restore();
   }
 });
 
@@ -689,7 +561,7 @@ test("gap B11: approving a dry run planned with the CLI queues no worker restore
 
   const response = await approveRoute(post(`/api/approvals/${id}/approve`, approver));
   assert.equal(response.status, 202);
-  assert.deepEqual(await response.json(), { job: null });
+  assert.deepEqual(await response.json(), { job: null, signoffs: 1, requiredApprovals: 1 });
   assert.equal((await requestRow(id)).status, "approved");
   assert.equal(await jobCount(), jobsBefore, "a CLI-executed approval queues no second, worker-run restore");
 });

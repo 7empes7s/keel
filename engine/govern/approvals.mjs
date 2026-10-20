@@ -134,10 +134,15 @@ export async function listApprovalRequests(client, {
   const { rows } = await client.query(
     `SELECT id, action, params, requested_by, justification, status, executor,
             decided_by, decided_at, reason, created_at, expires_at, entity_scope, route,
+            required_approvals,
             CASE
               WHEN status = 'pending' AND expires_at <= now() THEN 'expired'
               ELSE status
-            END AS effective_status
+            END AS effective_status,
+            -- Two-person progress: who has signed so far, oldest first. The inbox shows
+            -- "1 of 2 approvals recorded" and names them; one approver sees nothing more.
+            (SELECT COALESCE(array_agg(s.approver ORDER BY s.signed_at, s.approver), '{}')
+               FROM approval_signoff s WHERE s.request_id = approval_request.id) AS signoffs
      FROM approval_request
      WHERE CASE
              WHEN status = 'pending' AND expires_at <= now() THEN 'expired'

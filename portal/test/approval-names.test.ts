@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type ContextType, createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-
-import { ApprovalInbox } from "@/components/approval-inbox";
 import { type ApprovalRequestRecord, withChangeNames } from "@/lib/approval-inbox";
 import { EMPTY_REFERENCES, approvalSentence, personLabel } from "@/lib/sentences";
+
+import { renderApprovalInboxAt } from "./render-approval-inbox";
 
 // The approval inbox names what a request changes and who asked or decided, never by
 // an object id, an account id, an email or a system code.
@@ -34,17 +32,17 @@ function rollback(overrides: Partial<ApprovalRequestRecord> = {}): ApprovalReque
   };
 }
 
-test("a roll-back is titled by the saved name of what it changes, never its id", () => {
-  assert.equal(approvalSentence(rollback()), "Roll back 2 changes");
+test("an undo is titled by the saved name of what it changes, never its id", () => {
+  assert.equal(approvalSentence(rollback()), "Undo 2 changes");
   const named = withChangeNames(rollback(), {
     [GROUP]: { name: "Finance", resourceType: "group" },
     [USER]: { name: "Ada Lovelace", resourceType: "user" },
   });
-  assert.equal(approvalSentence(named), "Roll back 2 changes, including Finance (group)");
+  assert.equal(approvalSentence(named), "Undo 2 changes, including Finance (group)");
   assert.equal(named.references?.changes[1]?.name, "Ada Lovelace (user) as member of Finance (group)");
   // No saved name: the count only, never the id.
   const unnamed = withChangeNames(rollback(), {});
-  assert.equal(approvalSentence(unnamed), "Roll back 2 changes");
+  assert.equal(approvalSentence(unnamed), "Undo 2 changes");
 });
 
 test("people are named, never by email, account id or system code", () => {
@@ -70,15 +68,16 @@ test("the inbox shows no id, email or system code outside Technical details", as
     },
   });
   const names = { [GROUP]: { name: "Finance", resourceType: "group" } };
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
-  const html = renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: {} as ContextType<typeof AppRouterContext> },
-    createElement(ApprovalInbox, {
-      pending: [withChangeNames(rollback(), names)], history: [withChangeNames(decided, names)], now: "2026-10-17T10:00:00.000Z",
-    })));
-  const visible = html.replace(/<details[\s\S]*?<\/details>/g, "");
-  assert.match(visible, /Roll back 2 changes, including Finance \(group\)/);
-  assert.match(visible, /Asked by Rita Requester/);
-  assert.match(visible, /Approved by Keel&#x27;s scheduler/);
-  assert.match(visible, /Asked by an account that no longer exists/);
+  const pending = [withChangeNames(rollback(), names)];
+  const history = [withChangeNames(decided, names)];
+  // The waiting request opened in place, then the decided one opened in place.
+  const html = (await renderApprovalInboxAt("open=req-1", { pending, history, now: "2026-10-17T10:00:00.000Z" }))
+    + (await renderApprovalInboxAt("show=decided&open=req-2", { pending, history, now: "2026-10-17T10:00:00.000Z" }));
+  // The shared Person piece shows the email on hover only (a title attribute), never as text.
+  const visible = html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/ title="[^"]*"/g, "");
+  assert.match(visible, /Undo 2 changes, including Finance \(group\)/);
+  assert.match(visible, /Rita Requester<\/span><\/span> asked/);
+  assert.match(visible, /by Keel&#x27;s scheduler/);
+  assert.match(visible, /asked by an account that no longer exists/);
   for (const raw of [GROUP, USER, REQUESTER, DRIFT, "@contoso", "by scheduler"]) assert.ok(!visible.includes(raw), `shows ${raw}`);
 });

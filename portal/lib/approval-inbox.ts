@@ -2,14 +2,19 @@ import { headers } from "next/headers";
 import { forbidden } from "next/navigation";
 
 import { listApprovalRequests, summarizeApprovalRequests } from "../../engine/govern/approvals.mjs";
+import { resolvePrincipals } from "../../engine/govern/references.mjs";
+import { getDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 import { dryRunsAwaitingContentEffectApproval } from "../../engine/safety/contentEffects.mjs";
 import { connect } from "../../engine/store/db.mjs";
 
-import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
+import { plainKind, typeService } from "@/lib/baselines-view";
+import { fieldWords, valueWords } from "@/lib/changes-view";
+import { diffPayloads } from "@/lib/drift-diff";
+import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { savedNames } from "@/lib/saved-names";
-import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
+import { EMPTY_REFERENCES, type EngineRef, type RowReferences } from "@/lib/sentences";
 
 export const APPROVAL_INBOX_CAPABILITY = "approve";
 export const APPROVAL_INBOX_LIMIT = 100;
@@ -47,6 +52,30 @@ export interface ApprovalRequestRecord {
   // Roadmap task-130: requester, decider, dry run, baseline and changes resolved to
   // names by the engine (one query per kind). Absent on rows read without it.
   references?: RowReferences;
+  // Two-person rule: how many approvals the request needs (1 for most) and who has
+  // signed so far, by name. Absent on rows read without it.
+  requiredApprovals?: number;
+  signoffs?: EngineRef[];
+  // What approving would change, in words, for the requests that wait (never for
+  // history). Null when the request has no preview Keel can read.
+  preview?: ApprovalPreview | null;
+}
+
+/** One setting a request would change: before and after as a person reads them. */
+export interface ApprovalChange {
+  name: string;
+  kind: string;
+  // What happens to it, when there are no field values to show.
+  line: string | null;
+  fields: { field: string; now: string; after: string }[];
+  moreFields: number;
+}
+
+export interface ApprovalPreview {
+  total: number;
+  services: { name: string; count: number }[];
+  changes: ApprovalChange[];
+  more: number;
 }
 
 export interface ApprovalInboxData {
@@ -130,7 +159,83 @@ export function normalizeApprovalRequest(row: UnknownRecord): ApprovalRequestRec
     expiresAt: iso(row.expires_at),
     executor: row.executor === "cli" ? "cli" : "worker",
     references: (row.references as RowReferences | undefined) ?? EMPTY_REFERENCES,
+    requiredApprovals: Math.max(1, Number(row.required_approvals ?? 1) || 1),
+    signoffs: [],
   };
+}
+
+const PREVIEW_CHANGES = 5;
+const PREVIEW_FIELDS = 3;
+const EDGE_RESULT_PREFIX = "edge:";
+
+function keyType(naturalKey: string): string {
+  return naturalKey.split(":")[0] ?? naturalKey;
+}
+
+function servicesOf(keys: string[]): ApprovalPreview["services"] {
+  const counts = new Map<string, number>();
+  for (const key of keys) {
+    const name = typeService(keyType(key)).name;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+// A roll back puts each changed setting back as the approved setup holds it: "now" is
+// what the tenant has, "after" is the approved value.
+async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<ApprovalPreview | null> {
+  if (driftIds.length === 0) return null;
+  const { rows } = await client.query(
+    `SELECT id::text AS id, natural_key, resource_type, change_type, before_payload, after_payload
+       FROM drift WHERE tenant_ref = $1 AND id::text = ANY($2::text[])`,
+    [tenantRef(), driftIds],
+  );
+  const ordered = driftIds.map((id) => rows.find((row) => row.id === id)).filter((row): row is UnknownRecord => Boolean(row));
+  const names = await savedNames(client, tenantRef(), ordered.map((row) => String(row.natural_key)));
+  const changes = ordered.slice(0, PREVIEW_CHANGES).map((row) => {
+    const key = String(row.natural_key);
+    const type = String(row.resource_type);
+    const base = { name: namedResource(key, names, type), kind: plainKind(type) };
+    if (row.change_type === "added") return { ...base, line: "Removed: it is not in the approved setup", fields: [], moreFields: 0 };
+    if (row.change_type === "removed") return { ...base, line: "Put back as the approved setup holds it", fields: [], moreFields: 0 };
+    const diff = diffPayloads(row.before_payload, row.after_payload);
+    const fields = diff.slice(0, PREVIEW_FIELDS).map((change) => ({
+      field: fieldWords(change.path),
+      now: change.kind === "removed" ? "not set" : valueWords((change as { after?: unknown }).after),
+      after: change.kind === "added" ? "not set" : valueWords((change as { before?: unknown }).before),
+    }));
+    return { ...base, line: fields.length ? null : "Put back as the approved setup holds it", fields, moreFields: Math.max(0, diff.length - fields.length) };
+  });
+  return { total: ordered.length, services: servicesOf(ordered.map((row) => String(row.natural_key))), changes, more: Math.max(0, ordered.length - changes.length) };
+}
+
+// A restore puts back every setting its dry run found it can apply, as the backup holds it.
+async function restorePreview(client: KeelClient, artifactId: string): Promise<ApprovalPreview | null> {
+  const artifact = (await getDryRunArtifact(client, { id: artifactId, tenantRef: tenantRef() })) as { results?: { applied?: { naturalKey: string }[] } } | null;
+  const applied = (artifact?.results?.applied ?? []).map((entry) => entry.naturalKey).filter((key) => typeof key === "string" && !key.startsWith(EDGE_RESULT_PREFIX));
+  if (applied.length === 0) return null;
+  const names = await savedNames(client, tenantRef(), applied);
+  const changes = applied.slice(0, PREVIEW_CHANGES).map((key) => ({
+    name: namedResource(key, names, keyType(key)), kind: plainKind(keyType(key)), line: "Put back as the backup holds it", fields: [], moreFields: 0,
+  }));
+  return { total: applied.length, services: servicesOf(applied), changes, more: Math.max(0, applied.length - changes.length) };
+}
+
+/** What approving would change, for a request that waits. A preview Keel cannot read
+ * never blocks the inbox: the card then links to the full preview only. */
+export async function approvalPreview(client: KeelClient, request: ApprovalRequestRecord): Promise<ApprovalPreview | null> {
+  const params = (request.params ?? {}) as Record<string, unknown>;
+  try {
+    if (request.action === "remediate" && Array.isArray(params.driftIds)) {
+      return await rollBackPreview(client, params.driftIds.filter((id): id is string => typeof id === "string"));
+    }
+    if (request.action === "restore" && typeof params.artifactId === "string" && request.references?.plan?.readable) {
+      return await restorePreview(client, params.artifactId);
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 /**
@@ -207,11 +312,20 @@ export async function getApprovalInboxData(scope: EntityScope = CENTRAL_SCOPE): 
     // One query for the saved names of every change both lists roll back.
     const names = await savedNames(client, tenantRef(), summarized.flatMap((request) => (request.references?.changes ?? []).map((change) => change?.naturalKey)));
     const named = summarized.map((request) => withChangeNames(request, names));
-    const decided = named.slice(pending.length);
+    // Two-person progress: the approvers who signed so far, by name (one query).
+    const signoffIds = new Map([...pending, ...history].map((row) => [String(row.id), ((row.signoffs as string[] | null) ?? []).map(String)]));
+    const signers = (await resolvePrincipals(client, [...signoffIds.values()].flat())) as Map<string, EngineRef>;
+    const signed = named.map((request) => ({ ...request, signoffs: (signoffIds.get(request.id) ?? []).map((id) => signers.get(id) ?? { kind: "person", id, name: null, readable: false }) }));
+    const decided = signed.slice(pending.length);
+    const awaitingRequests = decided.filter((request) => awaiting.has(request.id));
+    // What each waiting request would change, so the decision is made from it.
+    const waiting: ApprovalRequestRecord[] = [];
+    // Sequential: one client runs one query at a time.
+    for (const request of [...signed.slice(0, pending.length), ...awaitingRequests]) waiting.push({ ...request, preview: await approvalPreview(client, request) });
     return {
       generatedAt: new Date().toISOString(),
-      pending: named.slice(0, pending.length),
-      awaitingContentEffects: decided.filter((request) => awaiting.has(request.id)),
+      pending: waiting.slice(0, pending.length),
+      awaitingContentEffects: waiting.slice(pending.length),
       history: decided.filter((request) => !awaiting.has(request.id)),
     };
   });

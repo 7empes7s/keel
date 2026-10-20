@@ -527,16 +527,18 @@ export function guardedApprovalDecision(
 
       try {
         if (decision === "approve") {
-          const { job } = (await approveRequest(client, {
+          const { job, signoffs, approvers, requiredApprovals } = (await approveRequest(client, {
             tenantRef: tenant,
             id,
             decidedBy: principalId,
             enforceScope: true,
             approverScope: entityScopeFrom(request.headers, "approve"),
-          })) as { job: Record<string, unknown> | null };
-          // Gap B11: a CLI-executed request is approved without queuing a job.
+          })) as { job: Record<string, unknown> | null; signoffs?: number; approvers?: string[]; requiredApprovals?: number };
+          // Gap B11: a CLI-executed request is approved without queuing a job. Under the
+          // two-person rule a first approval is recorded and the request stays pending:
+          // the answer says how far along it is, so the inbox can say so too.
           return Response.json(
-            { job: job ? normalizeJob(job) : null },
+            { job: job ? normalizeJob(job) : null, signoffs: signoffs ?? approvers?.length ?? 1, requiredApprovals: requiredApprovals ?? 1 },
             { status: 202, headers: NO_STORE },
           );
         }

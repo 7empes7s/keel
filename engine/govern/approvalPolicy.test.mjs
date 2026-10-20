@@ -18,6 +18,7 @@ import {
   SelfApprovalError,
   StandingPolicyRefusedError,
   approveRequest,
+  listApprovalRequests,
   rejectRequest,
   requestApproval,
 } from './approvals.mjs';
@@ -124,6 +125,10 @@ try {
   assert.equal(signed.requiredApprovals, 2);
   assert.equal(await status(twoPerson.id), 'pending', 'one approval leaves a two-person request pending');
   assert.equal(await jobCount(), jobsBefore, 'one approval mints no job');
+  // the inbox reads the progress: how many it needs, and who signed so far
+  const listed = (await listApprovalRequests(client, { statuses: ['pending'] })).find((row) => row.id === twoPerson.id);
+  assert.equal(listed.required_approvals, 2);
+  assert.deepEqual(listed.signoffs, [first]);
 
   // the same person approving twice is refused, and changes nothing
   await assert.rejects(approveRequest(client, { tenantRef, id: twoPerson.id, decidedBy: first }), DuplicateApproverError);

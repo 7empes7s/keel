@@ -253,6 +253,24 @@ export const COMPLETENESS = Object.freeze({
   defenderRoleDefinition: { whole: 'not-written' },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
+  // Remaining kinds, batch 6.
+  deviceManagementSettings: { whole: 'not-written' },
+  androidDeviceOwnerEnrollmentProfile: { whole: 'not-written', missing: [part('Enrollment token, QR code and Wi-Fi password', 'secret')] },
+  androidForWorkEnrollmentProfile: { whole: 'not-written', missing: [part('Enrollment token and QR code', 'secret')] },
+  appleUserInitiatedEnrollmentProfile: { whole: 'not-written' },
+  androidForWorkSettings: { whole: 'not-written' },
+  deviceManagementDerivedCredentialSettings: { whole: 'not-written' },
+  microsoftTunnelConfiguration: { whole: 'not-written' },
+  microsoftTunnelHealthThreshold: { whole: 'not-written' },
+  iosLobAppProvisioningConfiguration: { whole: 'not-written', missing: [part('Who the profile is assigned to', 'other-route')] },
+  mobileAppRelationship: { whole: 'not-written' },
+  managedEBook: { whole: 'not-written', missing: [part('Who the book is assigned to', 'other-route')] },
+  managedEBookCategory: { whole: 'not-written' },
+  cartToClassAssociation: { whole: 'not-written' },
+  windowsManagedAppProtection: { whole: 'not-written', missing: [part('Who the policy is assigned to and which apps it covers', 'other-route')] },
+  enterpriseCodeSigningCertificate: { whole: 'not-written' },
+  symantecCodeSigningCertificate: { whole: 'not-written', missing: [part('Certificate file and password', 'secret')] },
+  userExperienceAnalyticsBaseline: { whole: 'not-written', missing: [part('Built-in baselines', 'microsoft-managed')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

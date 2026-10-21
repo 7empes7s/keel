@@ -58,6 +58,13 @@ export const ID_KEY_TYPES = new Set([
   // Remaining kinds, batch 5: built-in Exchange roles carry the same name in every tenant.
   'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope',
   'defenderRoleDefinition', 'defenderRoleAssignment', 'defenderCustomAppScope',
+  // Remaining kinds, batch 6: Intune names are unmeasured, and built-in baselines
+  // carry the same name in every tenant.
+  'androidDeviceOwnerEnrollmentProfile', 'androidForWorkEnrollmentProfile', 'appleUserInitiatedEnrollmentProfile',
+  'deviceManagementDerivedCredentialSettings', 'microsoftTunnelConfiguration', 'microsoftTunnelHealthThreshold',
+  'iosLobAppProvisioningConfiguration', 'mobileAppRelationship', 'managedEBook', 'managedEBookCategory',
+  'cartToClassAssociation', 'windowsManagedAppProtection', 'enterpriseCodeSigningCertificate',
+  'userExperienceAnalyticsBaseline',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -80,6 +87,8 @@ export const CONSTANT_KEY_TYPES = new Set([
   // Remaining kinds, batch 4: Entra ID tenant singletons.
   'externalIdentitiesPolicy', 'accessReviewPolicy', 'directoryRoleAccessReviewPolicy',
   'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
+  // Remaining kinds, batch 6: Intune tenant singletons.
+  'deviceManagementSettings', 'androidForWorkSettings', 'symantecCodeSigningCertificate',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

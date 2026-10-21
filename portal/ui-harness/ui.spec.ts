@@ -2827,3 +2827,76 @@ for (const theme of ["dark", "light"] as const) {
     }
   }
 }
+
+// Overview (portal audit, one design): tiles, chart legends and attention rows are links
+// whose targets exist, both charts open full screen, the verdict is not repeated as a
+// row, names instead of accounts, and plain words.
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    test(`Overview · ${width} · ${theme}: no sideways scroll or clipped text, equal tiles and chart cards`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/", theme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".ov-page *, .page-header *")]
+        .filter((item) => {
+          const style = getComputedStyle(item);
+          if (item.clientWidth <= 1 || style.textOverflow === "ellipsis" || style.display === "none") return false;
+          return item.scrollWidth > item.clientWidth + 1 && style.overflowX !== "auto" && style.overflowX !== "visible";
+        }).map((item) => item.className));
+      expect(clipped).toEqual([]);
+      const heights = await page.locator(".ov-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+      expect(new Set(heights).size).toBe(1);
+      if (width === 1440) {
+        const cards = await page.locator(".ov-charts > .ov-card").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(new Set(cards).size).toBe(1);
+      }
+    });
+  }
+}
+
+test("Overview: every tile, legend row and attention row is a link, both charts open full screen, and the verdict is said once", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Action needed");
+  await expect(page.locator(".verdict-sentence")).toHaveText("4 kinds of settings failed their last backup.");
+  await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(page.locator(".ov-tile")).toHaveCount(4);
+  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity"];
+  for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
+    expect(await link.evaluate((item) => item.tagName)).toBe("A");
+    const href = (await link.getAttribute("href")) ?? "";
+    expect(routes.some((route) => new RegExp(`^#?/${route}([?#]|$)`).test(href)), href).toBe(true);
+  }
+  await expect(page.locator('.ov-legend-link[href*="risk=tenant-lockout"]')).toContainText("2");
+  await expect(page.locator('.ov-legend-link[href*="health=failed"]')).toContainText("4");
+  // The verdict's own sentence is not a "Needs attention" row.
+  await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
+  await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
+  const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  expect(visible).not.toMatch(/Baseline|Conditional Access|CRITICAL|WARNING|KEEL|@|[0-9a-f]{8}-[0-9a-f]{4}-/);
+
+  await page.locator(".ov-tile").first().focus();
+  expect(await page.locator(".ov-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
+
+  await page.getByRole("button", { name: "Changes since your approved setup: open full screen" }).click();
+  const sheet = page.getByRole("dialog", { name: "Changes since your approved setup" });
+  await expect(sheet.locator(".ov-bar")).toHaveCount(30);
+  await expect(sheet.locator(".ov-table tbody tr")).toHaveCount(30);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await page.getByRole("button", { name: "What Keel backs up: open full screen" }).click();
+  const coverage = page.getByRole("dialog", { name: "What Keel backs up" });
+  await expect(coverage.locator(".ov-table tfoot")).toContainText("167");
+  await page.keyboard.press("Escape");
+
+  // Cycle to "Protected": calm, no amber action, no attention rows.
+  // The harness controls are hidden in CI mode, so press the button from the page.
+  const cycle = () => page.evaluate(() => [...document.querySelectorAll<HTMLButtonElement>(".preview-bar button")].find((item) => item.textContent === "Cycle posture")!.click());
+  await cycle();
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Needs attention");
+  await cycle();
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await expect(page.locator(".ov-calm")).toBeVisible();
+});

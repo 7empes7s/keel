@@ -881,12 +881,17 @@ const header = (section: NavSection, title: string, description: string, marker?
   <PageHeader description={description} generatedAt={now} marker={marker} section={section} status={status} title={title} />;
 
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
+// As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
+// Overview leaves it out of "Needs attention".
+const STALE_ALERT: DashboardData["alerts"][number] = { key: "stale", severity: "warning", title: "3 kinds of settings are out of date", detail: "They were backed up, but not recently enough for how critical they are. Run a backup.", href: "/protect?health=out-of-date" };
+const UNCOVERED_ALERT: DashboardData["alerts"][number] = { key: "uncovered", severity: "warning", title: "21 kinds of settings are not backed up", detail: "Keel knows these kinds of settings but has no backup of them.", href: "/protect" };
 const ALERTS: DashboardData["alerts"][] = [
   [
-    { severity: "critical", title: "2 Conditional Access changes could lock out administrators", detail: "They could block sign-in for administrators. Review them before the next backup." },
-    { severity: "warning", title: "3 configuration types are out of date", detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup." },
+    { key: "failed", severity: "critical", title: "4 kinds of settings failed their last backup", detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.", href: "/protect?health=failed" },
+    STALE_ALERT,
+    UNCOVERED_ALERT,
   ],
-  [{ severity: "warning", title: "3 configuration types are out of date", detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup." }],
+  [STALE_ALERT],
   [],
 ];
 // Task-129: the three headline states the contract names, as the engine returns them.
@@ -902,8 +907,9 @@ function dashboard(posture: number): DashboardData {
     activeBaseline: { id: "b-118", label: "Post-migration golden state", setAt: "2026-09-29T14:02:00Z", setBy: "8c1e0000-0000-4000-8000-0000000000a1", setByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" }, resourceCount: 4812 } as never,
     lastCollection: { completedAt: "2026-10-02T09:12:00Z", status: "complete" },
     lastCompletedCollectionAt: "2026-10-02T09:12:00Z",
-    openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 11 }, { blastRadius: "cosmetic", count: 24 }],
-    openDriftTotal: posture === 0 ? 37 : 35,
+    // The same open changes as the Changes page fixture (DRIFT), so tile links land on matching counts.
+    openDriftByBlastRadius: [{ blastRadius: "tenant-lockout", count: posture === 0 ? 2 : 0 }, { blastRadius: "access-affecting", count: 3 }, { blastRadius: "cosmetic", count: 2 }],
+    openDriftTotal: posture === 0 ? 7 : 5,
     driftTrend: trend.map((count, index) => ({ day: new Date(Date.UTC(2026, 8, 3 + index)).toISOString().slice(0, 10), count })),
     coverage: { covered: 142, failed: posture === 0 ? 4 : 0, notCovered: 17, neverCollected: 4, stale: 3, total: 167 },
     evidence: { ok: true, chainLength: 18204 },
@@ -1754,7 +1760,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
     case "/kit": return <KitPage />;
-    case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
+    // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
+    case "/": return <DashboardView data={{ ...dashboard(posture), waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity": case "/activity/viewer": {
       const all = activityJobs(jobs);
       const viewer = path === "/activity/viewer";

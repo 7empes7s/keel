@@ -4,7 +4,7 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { WAITING_CARDS } from "@/components/dashboard/dashboard-view";
+import { WAITING_ROWS } from "@/lib/overview-view";
 import { NAV_MAP, NAV_SECTIONS } from "@/components/nav-links";
 
 // No hidden pages: every portal page is reached by clicking, from the sidebar, a
@@ -91,7 +91,7 @@ test("the check fails for a page nothing links to", () => {
 
 test("every waiting count on the Overview opens a real page", () => {
   const routes = portalPages().map((page) => page.route);
-  for (const card of WAITING_CARDS) {
+  for (const card of WAITING_ROWS) {
     const path = card.href.split(/[?#]/)[0];
     assert.ok(routes.includes(path), `${card.key} links to ${card.href}, which has no page`);
   }

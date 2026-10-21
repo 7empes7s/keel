@@ -1,5 +1,5 @@
 import type { NavSection } from "@/components/nav-links";
-import { overviewVerdict } from "@/components/dashboard/status-hero";
+import { overviewVerdict } from "@/lib/overview-view";
 import type { DashboardData } from "@/lib/types";
 
 // Each menu section's count and status, so a closed section still says whether it

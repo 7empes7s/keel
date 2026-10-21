@@ -1,167 +1,123 @@
 import Link from "next/link";
 
-import { BlastBar } from "@/components/dashboard/blast-bar";
-import { CoverageRing } from "@/components/dashboard/coverage-ring";
-import { Sparkline } from "@/components/dashboard/sparkline";
-import { OverviewVerdict } from "@/components/dashboard/status-hero";
+import { OverviewCharts } from "@/components/dashboard/overview-charts";
 import { PageHeader } from "@/components/page-header";
+import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
-import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
-import type { DashboardData, DashboardWaiting } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Verdict } from "@/components/verdict";
+import {
+  attentionRows,
+  backupLine,
+  overviewStatus,
+  overviewTiles,
+  overviewVerdict,
+  plainWords,
+  setupLine,
+  TONE_WORDS,
+  verdictAction,
+  verdictRisk,
+} from "@/lib/overview-view";
+import { formatTimestamp } from "@/lib/presentation";
+import { setupName } from "@/lib/baselines-view";
+import type { DashboardData } from "@/lib/types";
 
-export const WAITING_CARDS: { key: keyof DashboardWaiting; href: string; title: string; one: string; many: string; note: string; link: string }[] = [
-  { key: "openAlerts", href: "/alerts", title: "Alerts", one: "alert not acknowledged", many: "alerts not acknowledged", note: "Each one needs an owner to acknowledge it.", link: "Open alerts" },
-  { key: "openIncidents", href: "/incidents", title: "Incidents", one: "incident open", many: "incidents open", note: "Recovery from each one is still in progress.", link: "Open incidents" },
-  { key: "restoreFollowUps", href: "/restore#follow-up", title: "Restore follow-up", one: "step still open", many: "steps still open", note: "Restores left work KEEL cannot do itself, such as new secrets or a service check.", link: "Finish follow-up" },
-];
+export const OVERVIEW_DESCRIPTION = "Is this tenant protected right now, and what needs you?";
 
-// The Overview's markup, separate from its data loading so the same view renders for
-// the live page and for fixtures. pendingApprovals is null when the viewer cannot
-// approve (the card is omitted), a number otherwise. Built to the portal experience
-// contract: verdict (the memorable number) → explanation (named facts) → record.
+// The Overview (portal audit, one design): title with a status pill, the verdict with
+// its one amber action, four count tiles that each open the list behind the number, the
+// two chart cards (every legend row a link, each chart opens full screen), then "Needs
+// attention" as linked rows that never repeat the verdict, beside the approved setup and
+// the last backup. Technical details last and closed. The same view renders for the live
+// page and for fixtures; pendingApprovals is null when the viewer cannot approve.
 export function DashboardView({ data, pendingApprovals }: { data: DashboardData; pendingApprovals: number | null }) {
-  const lastBackup = data.lastCompletedCollectionAt;
-  const backupState = data.lastCollection?.status === "complete" ? "finished"
-    : data.lastCollection ? (data.lastCollection.status === "running" ? "still running" : "did not finish") : null;
+  const verdict = overviewVerdict(data.headline, data.alerts);
+  const tiles = overviewTiles(data, pendingApprovals);
+  const rows = attentionRows(data, pendingApprovals);
+  const backup = backupLine(data);
 
   return (
     <>
       <PageHeader
-        description="Is this tenant protected right now, and what needs you?"
+        description={OVERVIEW_DESCRIPTION}
         generatedAt={data.generatedAt}
         section="Dashboards"
+        status={overviewStatus(verdict.tone)}
         title="Overview"
       />
 
-      <OverviewVerdict alerts={data.alerts} headline={data.headline} />
+      <div className="ov-page">
+        <Verdict action={verdictAction(data.headline)} headline={verdict.headline} text={plainWords(verdict.sentence)} tone={verdictRisk(verdict.tone)} />
 
-      <div data-layer="explanation">
-        {data.alerts.length ? (
-          <section aria-labelledby="attention-heading" className="attention-section">
-            <div className="section-heading-row">
-              <h2 id="attention-heading">Needs attention</h2>
-              <span className="section-count">{data.alerts.length}</span>
-            </div>
-            <div className="alert-list">
-              {data.alerts.map((alert) => (
-                <article className={`alert alert-${alert.severity}`} key={alert.title}>
-                  <span className="alert-severity">{displayEnum("severity", alert.severity)}</span>
-                  <div>
-                    <h3>{alert.title}</h3>
-                    <p>{alert.detail}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <section aria-label="What is behind this" className="dashboard-grid">
-          <Link className="dash-card" href="/baselines">
-            <header>
-              <p className="section-kicker">How the tenant should look</p>
-              <h2>Baseline</h2>
-            </header>
-            {data.activeBaseline ? (
-              <>
-                <p className="dash-card-title">{data.activeBaseline.label ?? "Unnamed baseline"}</p>
-                <p className="dash-card-note">
-                  {data.activeBaseline.resourceCount.toLocaleString("en-GB")} resources · set{" "}
-                  <time dateTime={data.activeBaseline.setAt ?? undefined} title={formatTimestamp(data.activeBaseline.setAt)}>{ago(data.activeBaseline.setAt, data.generatedAt)}</time>
-                  {data.activeBaseline.setByRef?.name ? <> by <span className="wrap-value">{data.activeBaseline.setByRef.name}</span></> : null}
-                </p>
-              </>
-            ) : (
-              <p className="dash-card-empty">No baseline is set, so KEEL cannot tell what changed.</p>
-            )}
-            <span className="dash-card-link">View baselines <span aria-hidden="true">→</span></span>
-          </Link>
-
-          <Link className="dash-card" href="/protect">
-            <header>
-              <p className="section-kicker">Freshness</p>
-              <h2>Last backup</h2>
-            </header>
-            <p className="dash-card-title">
-              {lastBackup
-                ? <time dateTime={lastBackup} title={formatTimestamp(lastBackup)}>{ago(lastBackup, data.generatedAt).replace(/^./, (c) => c.toUpperCase())}</time>
-                : "Never"}
-            </p>
-            <p className="dash-card-note">
-              {backupState ? `The most recent backup ${backupState}.` : "No backup has run yet."}
-            </p>
-            <span className="dash-card-link">View backups <span aria-hidden="true">→</span></span>
-          </Link>
-
-          <Link className="dash-card dash-card-span" href="/drift">
-            <header>
-              <p className="section-kicker">Since the baseline</p>
-              <h2>Open changes</h2>
-            </header>
-            <div className="dash-drift">
-              <p className="dash-metric">
-                <strong>{data.openDriftTotal.toLocaleString("en-GB")}</strong>
-                <span>{data.openDriftTotal === 1 ? "open change" : "open changes"}</span>
-              </p>
-              <Sparkline label="Changes found per day" points={data.driftTrend} />
-            </div>
-            <BlastBar items={data.openDriftByBlastRadius} />
-            <span className="dash-card-link">Review changes <span aria-hidden="true">→</span></span>
-          </Link>
-
-          <Link className="dash-card" href="/protect">
-            <header>
-              <p className="section-kicker">What KEEL backs up</p>
-              <h2>Configuration types</h2>
-            </header>
-            <CoverageRing coverage={data.coverage} />
-            <p className="dash-card-note">
-              {data.coverage.total} configuration types known. A restore counts as proven only after a test restore on this tenant.
-            </p>
-            <span className="dash-card-link">See every type <span aria-hidden="true">→</span></span>
-          </Link>
-
-          {pendingApprovals !== null ? (
-            <Link className={`dash-card${pendingApprovals ? " dash-card-attention" : ""}`} href="/approvals">
-              <header>
-                <p className="section-kicker">Waiting on you</p>
-                <h2>Approvals</h2>
-              </header>
-              <p className="dash-metric">
-                <strong>{pendingApprovals}</strong>
-                <span>{pendingApprovals === 1 ? "request waiting" : "requests waiting"}</span>
-              </p>
-              <p className="dash-card-note">
-                {pendingApprovals
-                  ? "Restores, roll-backs and baseline changes wait for a second person."
-                  : "Nothing is waiting for a decision."}
-              </p>
-              <span className="dash-card-link">Open approvals <span aria-hidden="true">→</span></span>
-            </Link>
-          ) : null}
-
-          {/* Work outside the approvals inbox that waits on a person; shown only while something waits. */}
-          {WAITING_CARDS.filter((card) => (data.waiting?.[card.key] ?? 0) > 0).map((card) => {
-            const count = data.waiting![card.key];
-            return (
-              <Link className="dash-card dash-card-attention" href={card.href} key={card.key}>
-                <header>
-                  <p className="section-kicker">Waiting on you</p>
-                  <h2>{card.title}</h2>
-                </header>
-                <p className="dash-metric">
-                  <strong>{count}</strong>
-                  <span>{count === 1 ? card.one : card.many}</span>
-                </p>
-                <p className="dash-card-note">{card.note}</p>
-                <span className="dash-card-link">{card.link} <span aria-hidden="true">→</span></span>
+        <div className="ov-body" data-layer="explanation">
+          <section aria-label="At a glance" className="ov-tiles" style={{ ["--ov-tiles" as string]: tiles.length }}>
+            {tiles.map((tile) => (
+              <Link className="ov-tile" data-tile={tile.key} data-tone={tile.tone} href={tile.href} key={tile.key}>
+                <span className="ov-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+                <b className="ov-tile-count">{tile.value}</b>
+                <small>{tile.detail}</small>
+                {tile.meter ? (
+                  <span aria-hidden="true" className="ov-meter">
+                    {tile.meter.filter((part) => part.share > 0).map((part, index) => <i data-tone={part.tone} key={index} style={{ width: `${Math.min(100, part.share * 100)}%` }} />)}
+                  </span>
+                ) : null}
               </Link>
-            );
-          })}
-        </section>
+            ))}
+          </section>
+
+          <OverviewCharts data={data} />
+
+          <div className="ov-low">
+            <section aria-labelledby="ov-attention-heading" className="ov-attention">
+              <h2 id="ov-attention-heading">Needs attention</h2>
+              {rows.length ? (
+                <ul className="ov-rows">
+                  {rows.map((row) => (
+                    <li key={row.key}>
+                      <Link className="ov-row" data-tone={row.tone} href={row.href}>
+                        <span aria-hidden="true" className="ov-kind" data-tone={row.tone}><Icon name={row.icon} /></span>
+                        <span className="ov-row-name"><b>{row.title}</b><small>{row.detail}</small></span>
+                        <Badge tone={row.tone}>{TONE_WORDS[row.tone]}</Badge>
+                        <Icon name="chevron" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="ov-calm"><Icon name="check-circle" />Nothing else needs you right now.</p>
+              )}
+            </section>
+
+            <div className="ov-side">
+              <Link className="ov-side-card" href="/baselines">
+                <span className="ov-tile-label"><Icon name="baselines" />Approved setup</span>
+                {data.activeBaseline ? (
+                  <>
+                    <b className="ov-side-title">{setupName(data.activeBaseline)}</b>
+                    <small>{setupLine(data.activeBaseline, data.generatedAt)}</small>
+                  </>
+                ) : (
+                  <>
+                    <b className="ov-side-title">None yet</b>
+                    <small>Approve a setup so Keel can tell what changed.</small>
+                  </>
+                )}
+              </Link>
+              <Link className="ov-side-card" href="/protect">
+                <span className="ov-tile-label"><Icon name="clock" />Last backup</span>
+                <b className="ov-side-title">
+                  {data.lastCompletedCollectionAt
+                    ? <time dateTime={data.lastCompletedCollectionAt} title={formatTimestamp(data.lastCompletedCollectionAt)}>{backup.when}</time>
+                    : backup.when}
+                </b>
+                <small>{backup.state ? <Badge tone={backup.state.tone}>{backup.state.label}</Badge> : "No backup has run yet."}</small>
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <TechnicalDetails summary="Technical details for this overview">
+      <TechnicalDetails summary="Technical details">
         <RecordGroup title="What this overview reads">
           <RecordField copy={false} label="Checked" value="active baseline, latest collection, coverage report per catalog type, evidence chain integrity, fidelity-drill evidence" />
           <RecordField copy={false} label="Not checked" value="live restorability of types without fidelity-drill evidence; content (KEEL backs up configuration only)" />
@@ -176,6 +132,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
           <RecordField copy={false} label="Stale" value={data.headline.counts.stale} />
           <RecordField copy={false} label="Never collected" value={data.headline.counts.neverCollected} />
           <RecordField copy={false} label="Last fidelity drill" value={data.headline.lastProvenRestoreAt} />
+          <RecordField copy={false} label="Engine sentence" value={data.headline.sentence} />
         </RecordGroup>
         <RecordGroup title="Snapshots">
           <RecordField copy={false} label="Latest snapshot status" value={data.lastCollection?.status ?? "missing"} />

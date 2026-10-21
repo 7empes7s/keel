@@ -5126,7 +5126,7 @@ item that needs it stays untouched.
 - **Report:** per capture exit code and proven count; the check output and exit code; import counts; the run table as in
   Q103 step 4; the evidence branch and commit.
 
-### Q107: Recheck that Exchange mail flow and Exchange settings report complete (read-only)
+### Q108: Recheck that Exchange mail flow and Exchange settings report complete (read-only)
 - Drafted by the "Exchange backups report partial" thread (2026-10-21). Q105 found the unknown fields were declared
   properties the live module never returns. PR #429 stops declaring them and adds `digest.unknownFields` to each run.
 - Needs: PR #429 live (`git -C /opt/keel-live log --oneline | grep -c "#429"` is 1).

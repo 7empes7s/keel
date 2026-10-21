@@ -430,6 +430,20 @@ export async function listAlertTransitions(client, { tenantRef, actor, alertId, 
   return rows;
 }
 
+/** The histories of several alerts in one read, oldest first per alert, tenant-scoped. */
+export async function listAlertTransitionsFor(client, { tenantRef, actor, alertIds, at = new Date() }) {
+  await authorize(client, { tenantRef, actor, capability: ALERT_READ_CAPABILITY, at });
+  if (!Array.isArray(alertIds)) throw new Error('alertIds must be an array');
+  if (alertIds.length === 0) return [];
+  const { rows } = await client.query(
+    `SELECT t.* FROM alert_transition t JOIN alert a ON a.id = t.alert_id
+      WHERE a.id::text = ANY($1::text[]) AND a.tenant_ref = $2 AND t.tenant_ref = $2
+      ORDER BY t.alert_id, t.id`,
+    [alertIds.map(String), tenantRef],
+  );
+  return rows;
+}
+
 export const BLAST_SEVERITY = Object.freeze({ cosmetic: 'notice', 'access-affecting': 'warning', 'tenant-lockout': 'critical' });
 
 /**

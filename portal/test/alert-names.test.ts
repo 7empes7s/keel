@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
 import { recordSharePointRun } from "../../engine/collect/workloads/sharepoint.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
-import { AlertInbox } from "@/components/alert-inbox";
 import { alertResourceNames } from "@/lib/alerts";
 import { alertTitle, causeSentence, type AlertItem } from "@/lib/alerts-view";
+import { renderAlertsAt } from "./render-alerts";
 
 // The Alerts page names what each alert is about, never by the Graph object id or the
 // SharePoint site id its key holds. Keys stay in Technical details.
@@ -129,20 +127,20 @@ const alert = (over: Partial<AlertItem>): AlertItem => ({
   lastEventId: "workload-drift:1", history: [], ...over,
 });
 
-test("the inbox shows names in its headings and keeps the keys in Technical details", () => {
-  const html = renderToStaticMarkup(createElement(AlertInbox, {
+test("the list shows names in its rows and keeps the keys in Technical details", async () => {
+  const html = await renderAlertsAt("", {
     alerts: [
       alert({}),
       alert({ id: "a1e70000-0000-4000-8000-000000000002", resourceKey: NAMELESS_ID, name: null, cause: { changeType: "removed", resourceType: "oauth2PermissionGrant", snapshotId: null } }),
     ],
     now: "2026-10-15T12:00:00Z",
     canRespond: true,
-  }));
-  const headings = [...html.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map((match) => match[1]);
-  assert.ok(headings.includes("Finance team (SharePoint site)"));
-  assert.ok(headings.includes("Resolve the alert for Finance team (SharePoint site)?"), "the resolve dialog names it too");
-  assert.ok(headings.some((heading) => heading.startsWith("Unnamed ")));
-  for (const heading of headings) assert.doesNotMatch(heading, GUID);
+    canMute: false,
+  });
+  const names = [...html.matchAll(/class="al-row-link"[^>]*>([^<]*)<\/a>/g)].map((match) => match[1]);
+  assert.ok(names.includes("Finance team (SharePoint site)"));
+  assert.ok(names.some((name) => name.startsWith("Unnamed ")));
+  for (const name of names) assert.doesNotMatch(name, GUID);
   assert.ok(html.includes(SITE_KEY), "the stored key stays available under Technical details");
 });
 
@@ -153,5 +151,6 @@ test("SharePoint alerts say what changed since the previous read, never a baseli
   assert.equal(causeSentence(alert({ resourceKey: "sharepoint-site-settings:tenant", name: null })), "Its settings changed since the previous read.");
   assert.doesNotMatch(causeSentence(alert({ conditionActive: false })), /baseline/);
   const backup = alert({ resourceKey: "group:Finance", name: null, cause: { changeType: "modified", resourceType: "group", snapshotId: null } });
-  assert.equal(causeSentence(backup), "It was changed from the baseline.", "configuration drift keeps its baseline wording");
+  assert.equal(causeSentence(backup), "It differs from the approved setup.", "configuration drift is told against the approved setup");
+  assert.equal(causeSentence({ ...backup, conditionActive: false }), "It matches the approved setup again.");
 });

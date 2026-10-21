@@ -54,6 +54,9 @@ interface Props<T> {
   rowLimit?: number;
   // A control in a group's header that acts on the group, such as "Undo all 4".
   groupAction?: (group: ListGroup<T>) => ReactNode;
+  // Groups that start closed (count still shown) until someone opens them, such as
+  // resolved alerts. Opening every group keeps `closed=none` in the URL.
+  closedByDefault?: string[];
 }
 
 const LONG_PRESS_MS = 450;
@@ -67,12 +70,12 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction, closedByDefault = [] }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
   const query = view.get("q");
-  const closed = readList(view.get("closed"));
+  const closed = readList(view.get("closed", closedByDefault.join(",")));
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [touchMode, setTouchMode] = useState(false);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -240,7 +243,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 <button
                   aria-expanded={!isClosed}
                   className="sel-group-toggle"
-                  onClick={() => view.set({ closed: (isClosed ? closed.filter((key) => key !== group.key) : [...closed, group.key]).join(",") })}
+                  onClick={() => view.set({ closed: (isClosed ? closed.filter((key) => key !== group.key) : [...closed, group.key]).join(",") || (closedByDefault.length ? "none" : null) })}
                   type="button"
                 >
                   {group.icon ? <Icon name={group.icon} /> : null}

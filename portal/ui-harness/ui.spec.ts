@@ -1402,7 +1402,7 @@ const RECORD_IDS: Record<string, string[]> = {
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
-  alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance"],
+  alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
   activity: ["a4", "y1", "18205", "18200", "marouanedefili@gmail.com", "sam.ortiz@contoso.example", "Graph 429: throttled after 5 retries", "GET /api/evidence/verify"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -2461,3 +2461,127 @@ for (const theme of ["dark", "light"] as const) {
     });
   }
 }
+
+// The Alerts page's done-test (portal audit, one design): the pill and verdict name the
+// overdue alert and its amber action acknowledges it; the tiles set `state=`; rows carry
+// severity, state, countdown and owner; resolved and muted start closed; a row opens its
+// panel (`open=`), which links to the change and shows the history; two alerts are
+// acknowledged at once and both rows change; Resolve needs a reason; Mute needs policies.
+test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, mute", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/alerts");
+  await expect(page.locator(".status-pill")).toHaveText("1 overdue");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("3 alerts need someone to acknowledge them; 1 is past the deadline.");
+  const tiles = page.locator(".al-tile");
+  await expect(tiles).toHaveCount(4);
+  await expect(tiles.filter({ hasText: "Needs someone" })).toContainText("3");
+  await expect(tiles.filter({ hasText: "Past deadline" })).toContainText("1");
+  await expect(tiles.filter({ hasText: "Resolved this week" })).toContainText("1");
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Needs someone", "Acknowledged", "Resolved", "Muted"]);
+  await expect(page.locator(".sel-group[data-closed]")).toHaveCount(2);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(4);
+  const overdue = rows.filter({ hasText: "Block legacy auth (sign-in rule)" });
+  await expect(overdue.locator(".badge").first()).toHaveText("Critical");
+  await expect(overdue).toContainText("Back again");
+  await expect(overdue.locator(".al-due")).toHaveText("Overdue 30 min");
+  await expect(overdue).toContainText("Marouane");
+  await expect(rows.filter({ hasText: "Finance (group)" })).toContainText("No owner");
+  await expect(rows.filter({ hasText: "Finance team (SharePoint site)" }).locator(".al-due")).toHaveText("Due in 3 h");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(page.locator("main .btn-primary:visible")).toHaveText("Acknowledge the overdue one");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // A tile sets the filter in the address.
+  await tiles.filter({ hasText: "Past deadline" }).click();
+  await expect(page).toHaveURL(/state=overdue/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".al-filter-note")).toContainText("Showing alerts past their deadline only: 1 of 6.");
+  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page).not.toHaveURL(/state=/);
+
+  // The panel: cause, link to the change, owner, history, Technical details last.
+  await rows.filter({ hasText: "Finance (group)" }).getByRole("link", { name: "Finance (group)" }).click();
+  await expect(page).toHaveURL(/open=a1e70000-0000-4000-8000-000000000002/);
+  const sheet = page.getByRole("dialog", { name: "Finance (group)" });
+  await expect(sheet).toContainText("It was removed since the approved setup was saved.");
+  await expect(sheet.getByRole("link", { name: "Open the change" })).toHaveAttribute("href", /drift\?q=Finance$/);
+  await expect(sheet).toContainText("Keel could not escalate it: no channel is set to tell anyone.");
+  await expect(sheet.locator(".al-timeline > li")).toHaveCount(2);
+  await expect(sheet.getByRole("button", { name: "Mute" }).or(sheet.getByRole("link", { name: "Mute" }))).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  // Select two waiting alerts; "Acknowledge 2 alerts" posts twice and both rows change.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await rows.nth(0).locator(".sel-check").click();
+  await rows.nth(1).click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-bar-count")).toContainText("2 alerts");
+  await expect(page.locator(".sel-bar")).toContainText("2 alerts are marked as seen by you");
+  await page.locator(".sel-bar .btn-primary", { hasText: "Acknowledge 2 alerts" }).click();
+  await expect(page.locator(".toast", { hasText: "2 alerts acknowledged" })).toBeVisible();
+  const acks = (await calls()).filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}"));
+  expect(acks.map((body) => body.action)).toEqual(["acknowledge", "acknowledge"]);
+  await expect(page.locator(".sel-group").filter({ has: page.locator(".sel-group-name b", { hasText: /^Acknowledged$/ }) }).locator(".sel-group-count")).toHaveText("3 alerts");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 alert needs someone to acknowledge it.");
+
+  // Resolve needs a reason, then confirms.
+  await open(page, "/alerts?open=a1e70000-0000-4000-8000-000000000005");
+  const acked = page.getByRole("dialog", { name: "Emergency admin 1 (user)" });
+  await expect(acked).toContainText("This emergency account was used.");
+  await expect(acked).toContainText("Planned sign-in test with the service desk");
+  await expect(acked.getByRole("link", { name: "Open emergency access" })).toHaveAttribute("href", /readiness/);
+  await acked.getByRole("link", { name: "Resolve" }).click();
+  const resolve = page.getByRole("dialog", { name: "Resolve this alert?" });
+  await resolve.getByRole("button", { name: "Resolve alert" }).click();
+  await expect(resolve.getByRole("alert")).toHaveText("Write why. It is kept with the record.");
+  await resolve.getByLabel("Why is it resolved?").fill("Planned test, checked with the service desk");
+  await resolve.getByRole("button", { name: "Resolve alert" }).click();
+  await expect(resolve).toBeHidden();
+  const resolved = (await calls()).filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}")).at(-1);
+  expect(resolved).toEqual({ alertId: "a1e70000-0000-4000-8000-000000000005", action: "resolve", note: "Planned test, checked with the service desk" });
+});
+
+test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
+  await open(page, "/alerts/viewer");
+  await expect(page.locator(".al-tile")).toHaveCount(4);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await page.locator(".al-row-link", { hasText: "Finance (group)" }).click();
+  const sheet = page.getByRole("dialog", { name: "Finance (group)" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /Acknowledge|Unmute/ })).toHaveCount(0);
+  await expect(sheet.getByRole("link", { name: /Resolve|Mute/ })).toHaveCount(0);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/alerts", "/alerts?group=severity", "/alerts?open=a1e70000-0000-4000-8000-000000000001"]) {
+      test(`Alerts · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".al-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".al-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .al-tile, .al-row-link")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=")) {
+          const sheet = page.getByRole("dialog", { name: "Block legacy auth (sign-in rule)" });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeInViewport();
+        }
+      });
+    }
+  }
+}
+

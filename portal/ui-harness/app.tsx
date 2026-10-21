@@ -60,8 +60,8 @@ import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
-import { AlertInbox } from "@/components/alert-inbox";
-import { alertsVerdict, type AlertItem } from "@/lib/alerts-view";
+import { AlertsPage } from "@/components/alerts/alerts-page";
+import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessView } from "@/components/readiness-view";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessVerdict, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
@@ -273,7 +273,13 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (url.endsWith("/api/actions/remediate")) return json({ approvalRequest: { id: "req-222" } }, 202);
   if (url.endsWith("/api/actions/dispose")) return json({ disposition: { id: "d" } });
-  if (url.endsWith("/api/actions/alerts")) return json({ alert: { id: INBOX_ALERTS[0].id, state: "acknowledged" } });
+  // Alerts: the action answers the state it asked for, so a test sees rows change.
+  if (url.endsWith("/api/actions/alerts") || url.endsWith("/api/actions/alerts/mute")) {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { alertId?: string; action?: string };
+    const alert = INBOX_ALERTS.find((entry) => entry.id === body.alertId);
+    const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
+    return json({ alert: { id: body.alertId, state } });
+  }
   if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });
   return json({ job: { id: "preview-job" }, approvalRequest: { id: "preview" } });
 }) as typeof fetch;
@@ -1031,13 +1037,15 @@ const SETUP_CHECKED: SetupState = {
 };
 const setupCheckedVerdict = setupVerdict(SETUP_CHECKED);
 
-// Task-83: an overdue, escalated alert; an acknowledged one; a resolved one.
-const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"] | null, toState: AlertItem["state"], reason: string, at: string, actorName: string | null = null) =>
-  ({ id, occurrence, fromState, toState, reason, actor: actorName ? "8c1e0000-0000-4000-8000-0000000000a1" : "condition:drift-detect", actorName, at, eventId: null });
+// Alerts page: an overdue, escalated critical alert; a warning with no owner; a resolved
+// one; a SharePoint site due in 3 hours; an emergency account acknowledged with a note;
+// a muted trusted location.
+const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"] | null, toState: AlertItem["state"], reason: string, at: string, actorName: string | null = null, note: string | null = null) =>
+  ({ id, occurrence, fromState, toState, reason, actor: actorName ? "8c1e0000-0000-4000-8000-0000000000a1" : "condition:drift-detect", actorName, at, eventId: null, note });
 const INBOX_ALERTS: AlertItem[] = [
   {
     id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", control: "baseline", condition: "drift",
-    state: "reopened", conditionActive: true, severity: "warning", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
+    state: "reopened", conditionActive: true, severity: "critical", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
     occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
     escalated: true, escalationError: null, cause: { changeType: "modified", resourceType: "conditionalAccessPolicy", snapshotId: "5a9f0000-0000-4000-8000-000000000031" },
@@ -1054,10 +1062,13 @@ const INBOX_ALERTS: AlertItem[] = [
     id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", name: "Finance", control: "baseline", condition: "drift",
     state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
     occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
-    acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: null,
+    acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: "escalation-failed-no-recipient",
     cause: { changeType: "removed", resourceType: "group", snapshotId: "5a9f0000-0000-4000-8000-000000000032" },
     lastEventId: "drift:5a9f0000-0000-4000-8000-000000000032:group:Finance",
-    history: [alertEntry("6", 1, null, "open", "condition-firing", "2026-10-02T09:30:00Z")],
+    history: [
+      alertEntry("6", 1, null, "open", "condition-firing", "2026-10-02T09:30:00Z"),
+      alertEntry("6b", 1, "open", "open", "escalation-failed-no-recipient", "2026-10-02T09:31:00Z"),
+    ],
   },
   {
     id: "a1e70000-0000-4000-8000-000000000003", resourceKey: "group:Break-glass admins", name: "Break-glass admins", control: "baseline", condition: "drift",
@@ -1068,7 +1079,40 @@ const INBOX_ALERTS: AlertItem[] = [
     lastEventId: "drift-clear:5a9f0000-0000-4000-8000-000000000030:group:Break-glass admins",
     history: [
       alertEntry("7", 1, null, "open", "condition-firing", "2026-09-28T10:00:00Z"),
-      alertEntry("8", 1, "open", "resolved", "resolved-by-operator", "2026-09-28T10:12:00Z", "Marouane"),
+      alertEntry("8", 1, "open", "resolved", "resolved-by-operator", "2026-09-28T10:12:00Z", "Marouane", "Planned change, checked with the owner"),
+    ],
+  },
+  {
+    id: "a1e70000-0000-4000-8000-000000000004", resourceKey: "sharepoint-site-settings:site:contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002", name: "Finance team", control: "baseline", condition: "drift",
+    state: "open", conditionActive: true, severity: "notice", occurrence: 1, firstOpenedAt: "2026-10-02T09:20:00Z",
+    occurrenceStartedAt: "2026-10-02T09:20:00Z", lastFiringAt: "2026-10-02T09:20:00Z", ackDeadlineAt: "2026-10-02T12:40:00Z",
+    acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a3", name: "Dana Reyes" },
+    escalated: false, escalationError: null, cause: { changeType: "modified", resourceType: "sharepoint-site-settings", snapshotId: null },
+    lastEventId: "workload-drift:5e170000-0000-4000-8000-0000000000f1",
+    history: [alertEntry("9", 1, null, "open", "condition-firing", "2026-10-02T09:20:00Z")],
+  },
+  {
+    id: "a1e70000-0000-4000-8000-000000000005", resourceKey: "user:bg1@contoso.onmicrosoft.com", name: "Emergency admin 1", control: "break-glass", condition: "emergency-account-used",
+    state: "acknowledged", conditionActive: true, severity: "critical", occurrence: 1, firstOpenedAt: "2026-10-02T07:00:00Z",
+    occurrenceStartedAt: "2026-10-02T07:00:00Z", lastFiringAt: "2026-10-02T07:00:00Z", ackDeadlineAt: "2026-10-02T07:15:00Z",
+    acknowledgedAt: "2026-10-02T07:05:00Z", acknowledgedByName: "Marouane", owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
+    escalated: false, escalationError: null, cause: { changeType: null, resourceType: "user", snapshotId: null },
+    lastEventId: "break-glass:sign-in:7c2e",
+    history: [
+      alertEntry("10", 1, null, "open", "condition-firing", "2026-10-02T07:00:00Z"),
+      alertEntry("11", 1, "open", "acknowledged", "acknowledged", "2026-10-02T07:05:00Z", "Marouane", "Planned sign-in test with the service desk"),
+    ],
+  },
+  {
+    id: "a1e70000-0000-4000-8000-000000000006", resourceKey: "namedLocation:Head office", name: "Head office", control: "baseline", condition: "drift",
+    state: "suppressed", conditionActive: true, severity: "notice", occurrence: 1, firstOpenedAt: "2026-09-29T12:00:00Z",
+    occurrenceStartedAt: "2026-09-29T12:00:00Z", lastFiringAt: "2026-10-02T06:00:00Z", ackDeadlineAt: null,
+    acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: null,
+    cause: { changeType: "modified", resourceType: "namedLocation", snapshotId: "5a9f0000-0000-4000-8000-000000000033" },
+    lastEventId: "drift:5a9f0000-0000-4000-8000-000000000033:namedLocation:Head office",
+    history: [
+      alertEntry("12", 1, null, "open", "condition-firing", "2026-09-29T12:00:00Z"),
+      alertEntry("13", 1, "open", "suppressed", "suppressed", "2026-09-29T12:30:00Z", "Marouane", "Office move this month"),
     ],
   },
 ];
@@ -1797,9 +1841,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
-    case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Inbox", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }
+    case "/alerts":
+    case "/alerts/viewer": {
+      const viewer = path === "/alerts/viewer";
+      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
+        <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+    }
     case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
       <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
       <div className="item-list" data-layer="explanation">

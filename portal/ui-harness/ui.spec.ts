@@ -1148,35 +1148,109 @@ test("resilience shows measured values, names what does not count, and keeps unm
   await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
 });
 
-// Task-100: the value report counts each request once, keeps hours next to their
-// assumptions, shows no hours without an estimate, and fits a phone.
+// Task-100 and the Value report redesign (pick A): the tiles and chart add up, each
+// request opens its job, security checks read by title, hours only with an estimate,
+// period and owner stay in the URL, and the page fits a phone in both themes.
 test("the value report adds up, shows hours only with an estimate, and withholds tenant-wide sections from a scoped reader", async ({ page }) => {
   await open(page, "/reports");
-  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 of 5 put back and checked; 2 failed or changed again.");
-  const summary = page.locator("table.value-summary");
-  let total = 0;
-  for (const row of await summary.locator("tbody tr").all()) {
-    const cells = (await row.locator("td").allInnerTexts()).map(Number);
-    expect(cells[0] + cells[1]).toBe(cells[2]);
-    total += cells[2];
-  }
-  await expect(summary.locator(".value-total")).toHaveText(String(total));
-  await expect(page.locator(".value-outcomes tr[data-state='reopened']")).toContainText("Changed again: a later backup shows it changed again");
-  await expect(page.locator(".value-hours-list")).toContainText("1 checked restore × 90 minutes = 1.5 hours");
-  await expect(page.locator(".value-assumptions")).toContainText("A manual restore of one group and its members takes about 90 minutes.");
-  await expect(page.locator(".value-card-method")).toContainText("It is not a statement of compliance with any regulation or framework.");
-  await expect(page.getByRole("link", { name: "Download spreadsheet (CSV)" })).toHaveAttribute("href", /format=csv/);
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 of 5 requests put back and checked; 2 failed or changed again.");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("2 need a look");
+  const bars = (await page.locator(".vr-card .vr-bar-label b").allInnerTexts()).map(Number);
+  const legend = (await page.locator(".vr-card .vr-legend-item b").allInnerTexts()).map(Number);
+  const tile = page.locator(".vr-tile", { hasText: "Put back and checked" });
+  const total = Number((await tile.locator(".vr-tile-count small").innerText()).replace(/\D/g, ""));
+  expect(bars.reduce((a, b) => a + b, 0)).toBe(total);
+  expect(legend.reduce((a, b) => a + b, 0)).toBe(total);
+  const still = Number(await page.locator(".vr-tile", { hasText: "Still open" }).locator(".vr-tile-count").innerText());
+  expect(Number((await tile.locator(".vr-tile-count").innerText()).split(" ")[0]) + still).toBe(total);
+  const heights = await page.locator(".vr-tile").evaluateAll((tiles) => tiles.map((item) => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
+
+  // Every request opens its job; every check shows a title, never a code.
+  const links = page.locator(".vr-row-link");
+  await expect(links).toHaveCount(5);
+  for (const href of await links.evaluateAll((items) => items.map((item) => item.getAttribute("href")))) expect(href).toMatch(/^#?\/jobs\/[a-z0-9]+$/);
+  await expect(page.locator(".vr-row[data-state='reopened']")).toContainText("Undo a change to a sign-in rule");
+  await expect(page.locator(".vr-row[data-state='reopened']")).toContainText("A later backup shows it changed again.");
+  await expect(page.locator(".vr-check")).toHaveCount(3);
+  await expect(page.locator(".vr-checks")).toContainText("Groups have at least two owners");
+  await expect(page.locator(".vr-checks")).not.toContainText("keel.");
+  await expect(page.locator(".vr-hours-table")).toContainText("Checked restores");
+  await expect(page.locator(".vr-assumptions")).toContainText("A manual restore of one group and its members takes about 90 minutes.");
+  await expect(page.locator(".vr-claim")).toContainText("It is not a statement of compliance with any regulation or framework.");
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+
+  // One Download menu: spreadsheet, Excel workbook, PDF (print) and the data file.
+  await page.getByRole("button", { name: "Download this report" }).click();
+  await expect(page.getByRole("link", { name: /Spreadsheet \(\.csv\)/ })).toHaveAttribute("href", /format=csv/);
+  await expect(page.getByRole("link", { name: /Excel workbook \(\.xlsx\)/ })).toHaveAttribute("href", /format=xlsx/);
+  await expect(page.getByRole("button", { name: /^PDF/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Data file for tools/ })).toHaveAttribute("href", /format=json/);
+  await page.keyboard.press("Escape");
+
+  // The result tile filters the list; the chart opens full screen and Back closes it.
+  await page.locator(".vr-tile", { hasText: "Still open" }).click();
+  await expect(page.locator(".vr-filter-note")).toContainText("Showing still open only: 4 of 5.");
+  await page.getByRole("link", { name: "Results by kind: open full screen" }).click();
+  const sheet = page.getByRole("dialog", { name: "Results by kind" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator(".vr-total")).toHaveText(String(total));
+  await page.goBack();
+  await expect(sheet).toHaveCount(0);
+
+  // Period and owner go into the URL and survive a reload.
+  await page.getByRole("button", { name: /^Period:/ }).click();
+  await page.getByRole("button", { name: "Last 90 days" }).click();
+  await expect(page).toHaveURL(/period=90d/);
+  await page.getByRole("button", { name: /^Owned by:/ }).click();
+  await page.getByRole("option", { name: "Fin" }).click();
+  await expect(page).toHaveURL(/entity=FIN/);
+  await page.reload();
+  await page.locator("main#main-content h1").waitFor();
+  await expect(page.getByRole("button", { name: /^Period:/ })).toContainText("Last 90 days");
+  await expect(page.getByRole("button", { name: /^Owned by:/ })).toContainText("Fin");
+  await expect(page.getByRole("link", { name: /Excel workbook/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Download this report" }).click();
+  await expect(page.getByRole("link", { name: /Excel workbook/ })).toHaveAttribute("href", /period=90d&entity=FIN&format=xlsx/);
+  await page.keyboard.press("Escape");
 
   await open(page, "/reports/scoped");
-  await expect(page.locator(".value-scope")).toContainText("Showing only what FIN owns.");
-  await expect(page.locator(".value-hours-list")).toHaveCount(0);
-  await expect(page.locator(".value-card-hours")).toContainText("No time-saving estimate is set, so this report shows no hours saved.");
+  await expect(page.locator(".vr-scope")).toContainText("Showing only what Fin owns.");
+  await expect(page.locator(".vr-hours-table")).toHaveCount(0);
+  await expect(page.locator("#vr-hours")).toContainText("No time-saving estimate is set, so this report shows no hours saved.");
   expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/\d+(\.\d+)?\s*hours/i);
-  await expect(page.locator(".value-card-findings .value-sentence")).toContainText("shown only to people who can read all of it");
+  await expect(page.locator("#vr-checks")).toContainText("shown only to people who can read all of it");
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  // No ids outside Technical details.
   await open(page, "/reports");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  expect(await textOutside(page, "main#main-content", '[data-layer="record"]')).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|restore-plan:|finding:|sha256:/i);
+});
+
+test("the value report fits 390 and 1440 in both themes, and every tile, chart and row is a working control", async ({ page }) => {
+  for (const theme of ["dark", "light"] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/reports", theme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const clipped = await page.locator("main#main-content").evaluate((root) => [...root.querySelectorAll<HTMLElement>(".vr-page *")].filter((item) => {
+        const style = getComputedStyle(item);
+        if (item.clientWidth <= 1 || style.textOverflow === "ellipsis" || style.display === "none") return false;
+        return item.scrollWidth > item.clientWidth + 1 && style.overflowX !== "auto" && style.overflowX !== "visible";
+      }).map((item) => item.className));
+      expect(clipped).toEqual([]);
+      for (const control of await page.locator(".vr-tile, .vr-chart-open, .vr-row-link, .vr-link").all()) {
+        const tag = await control.evaluate((item) => item.tagName);
+        expect(["A", "BUTTON"]).toContain(tag);
+        if (tag === "A") expect(await control.getAttribute("href")).toBeTruthy();
+      }
+      if (width === 390) {
+        // Every tile number has its label beside it.
+        for (const item of await page.locator(".vr-tile").all()) await expect(item.locator(".vr-tile-label")).toBeVisible();
+      }
+    }
+  }
+  await page.locator(".vr-tile").first().focus();
+  expect(await page.locator(".vr-tile").first().evaluate((item) => getComputedStyle(item).boxShadow)).not.toBe("none");
 });
 
 // Task-94: each emergency account shows its five checks separately; "Not known" is its

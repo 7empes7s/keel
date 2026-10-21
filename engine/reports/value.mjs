@@ -41,6 +41,7 @@
 import { createHash } from 'node:crypto';
 
 import { CENTRAL, ownershipOfResources, ownershipVisibleTo } from '../authz/entityScope.mjs';
+import { controlFor } from '../benchmarks/registry.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
@@ -330,6 +331,8 @@ export function classifyControlFinding(evaluations, { to }) {
   return {
     id: `finding:${evaluationGroup(last)}`,
     controlId: last.control_id,
+    // The control's own title, so a page never has to show the code.
+    title: controlFor(last.control_id)?.title ?? null,
     framework: last.framework,
     edition: last.edition,
     profile: last.profile,
@@ -672,6 +675,8 @@ function outcomeRow(outcome) {
     planId: outcome.planId ?? null,
     driftId: outcome.driftId ?? null,
     attemptEventIds: outcome.attempts.map((attempt) => attempt.eventId),
+    // The newest attempt's job, so a page can open the job that did it.
+    lastJobId: outcome.attempts.at(-1)?.jobId ?? null,
   };
 }
 

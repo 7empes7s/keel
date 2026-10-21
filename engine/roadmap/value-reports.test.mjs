@@ -149,7 +149,7 @@ test('a retried restore and a retried remediation each count once', async () => 
   const { planId } = await plan(tenantRef);
   await restoreJob(planId, { status: 'failed', createdAt: '2026-09-20T10:00:00Z', finishedAt: '2026-09-20T10:01:00Z' });
   await journal(planId, { outcome: 'failed', at: '2026-09-20T10:00:30Z' });
-  await restoreJob(planId, { status: 'succeeded', createdAt: '2026-09-20T11:00:00Z', finishedAt: '2026-09-20T11:02:00Z' });
+  const retryJob = await restoreJob(planId, { status: 'succeeded', createdAt: '2026-09-20T11:00:00Z', finishedAt: '2026-09-20T11:02:00Z' });
   // The retry wrote the same resource again, and read it back: the newer row decides.
   await journal(planId, { outcome: 'succeeded', at: '2026-09-20T11:01:00Z' });
   await completionItem(tenantRef, planId, { state: 'verified', closedAt: '2026-09-20T11:30:00Z' });
@@ -174,6 +174,7 @@ test('a retried restore and a retried remediation each count once', async () => 
   assert.equal(restoreRow.retries, 1);
   assert.equal(restoreRow.verifiedAt, '2026-09-20T11:30:00.000Z', 'verified when the last completion item closed');
   assert.ok(restoreRow.attemptEventIds.every((id) => id.startsWith('job:')), 'attempts carry their canonical correlation ids');
+  assert.equal(restoreRow.lastJobId, String(retryJob), 'a row names the newest attempt\'s job, so a page can open it');
   const changeRow = value.outcomes.rows.find((row) => row.family === 'remediation');
   assert.equal(changeRow.id, `change:${driftId}`);
   assert.equal(changeRow.verifiedAt, '2026-09-22T00:00:00.000Z');
@@ -329,8 +330,8 @@ test('a reopened change or finding is not permanently closed', async () => {
   const resolving = await evaluation(tenantRef, { controlId: 'owners', verdict: 'pass', at: '2026-09-12T00:00:00Z' });
   await evaluation(tenantRef, { controlId: 'owners', verdict: 'pass', at: '2026-09-19T00:00:00Z' });
   // Fail, then the evaluator could not decide: unchecked, not resolved.
-  await evaluation(tenantRef, { controlId: 'guests', verdict: 'fail', at: '2026-09-05T00:00:00Z' });
-  await evaluation(tenantRef, { controlId: 'guests', verdict: 'unknown', at: '2026-09-15T00:00:00Z' });
+  await evaluation(tenantRef, { controlId: 'keel-custom.role-assignment.admin-count-at-most', verdict: 'fail', at: '2026-09-05T00:00:00Z' });
+  await evaluation(tenantRef, { controlId: 'keel-custom.role-assignment.admin-count-at-most', verdict: 'unknown', at: '2026-09-15T00:00:00Z' });
   // A fail under one edition and a pass under the next is not a fix.
   await evaluation(tenantRef, { controlId: 'legacy', verdict: 'fail', at: '2026-09-05T00:00:00Z', edition: '1.0.0' });
   await evaluation(tenantRef, { controlId: 'legacy', verdict: 'pass', at: '2026-09-15T00:00:00Z', edition: '2.0.0' });
@@ -350,6 +351,9 @@ test('a reopened change or finding is not permanently closed', async () => {
   const mfa = findings.rows.find((row) => row.controlId === 'mfa');
   assert.equal(mfa.state, 'open');
   assert.equal(mfa.reopened, true);
+  assert.equal(mfa.title, null, 'a control the registry does not hold has no title');
+  const admins = findings.rows.find((row) => row.controlId === 'keel-custom.role-assignment.admin-count-at-most');
+  assert.equal(admins.title, 'Global Administrator assignment count stays at or below a set limit', 'a row carries the control\'s title');
   const owners = findings.rows.find((row) => row.controlId === 'owners');
   assert.equal(owners.resolvedBy.evaluationId, resolving, 'the resolving evaluation is the canonical identity');
   assert.equal(owners.resolvedAt, '2026-09-12T00:00:00.000Z');

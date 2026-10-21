@@ -338,3 +338,29 @@ test("the Overview counts open service setting changes beside the approved-setup
   const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
   assert.equal(accessAffecting(after), accessAffecting(before) + 1);
 });
+
+// PR #435 follow-up: a changed Intune script reaches read views as its size and a
+// fingerprint, never its text (scripts often hold passwords).
+test("a changed script shows as changed without its text", async () => {
+  const secret = Buffer.from('$password = "KEEL-RT-not-a-real-secret"', "utf8").toString("base64");
+  const naturalKey = `deviceManagementScript:KEEL-RT-${randomUUID()}`;
+  const observedSnapshot = await createSnapshot();
+  const { rows } = await client.query(
+    `INSERT INTO drift
+       (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
+        before_hash, after_hash, before_payload, after_payload, blast_radius)
+     VALUES ($1, $2, $3, $4, 'deviceManagementScript', 'modified', 'baseline-hash', 'observed-hash',
+             $5, $6, 'access-affecting')
+     RETURNING id`,
+    [currentTenantRef, activeBaselineId, observedSnapshot, naturalKey,
+      { displayName: "KEEL-RT-script", scriptContent: Buffer.from("Write-Output 1").toString("base64") },
+      { displayName: "KEEL-RT-script", scriptContent: secret }],
+  );
+  const data = await getDriftData();
+  const record = data.items.find((item) => item.id === String(rows[0].id));
+  assert.ok(record, "the change is listed");
+  const shown = JSON.stringify(record);
+  assert.ok(!shown.includes(secret) && !shown.includes("not-a-real-secret"), "no script text reaches the page");
+  assert.match(String((record.after as Record<string, unknown>).scriptContent), /^Script text hidden \(/);
+  assert.notEqual((record.before as Record<string, unknown>).scriptContent, (record.after as Record<string, unknown>).scriptContent);
+});

@@ -4745,6 +4745,20 @@ section.wizard-panel {
 }
 
 .content-effect-disclosure { color: var(--text-soft); }
+.content-effect-script { font-size: 0.875rem; }
+.content-effect-script summary { cursor: pointer; font-weight: 600; }
+.content-effect-script-label { margin: var(--space-xs) 0 0; color: var(--text-soft); }
+.content-effect-script pre {
+  margin: 0;
+  max-height: 20rem;
+  overflow: auto;
+  padding: var(--space-xs);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .content-effect-approved { color: var(--protected); }
 .content-effect-pending { font-weight: 600; }
 

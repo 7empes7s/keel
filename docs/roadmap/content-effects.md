@@ -76,6 +76,17 @@ How a change is judged:
   503 are), and no other path such as delete-and-recreate is tried.
 - **Conditional Access is unchanged.** Writes stay forced to report-only by
   applyEngine.
+- **Intune scripts run on devices (`runs-on-devices`).** An update that changes
+  the text of a script or remediation (`scriptContent`,
+  `detectionScriptContent`, `remediationScriptContent`) pushes that text to
+  every device the script is assigned to. Which devices those are is not read,
+  so every such update is judged as reaching devices, and a live text that was
+  not read counts as different. The effect's before and after are the text's
+  size and full sha256, so an approval binds to exactly that text. The effect
+  also carries the text itself (`script`), which the review shows to the person
+  approving. Creates are not judged: a restore never assigns a script. The
+  script writer re-checks the approval before it writes (a dry run only plans
+  the write).
 
 ## Plan binding and the separate approval
 
@@ -116,6 +127,15 @@ The schema changes are additive: a new nullable column, plus the
 persisted earlier read as having no content effects. If a fresh recomputation
 of such an artifact finds effects, the digest no longer matches, so a new dry
 run is required.
+
+## Script text in read views
+
+The backup holds each script's text, and scripts often hold passwords. Read
+views (Changes, Activity, Compare and their Technical details) never show it:
+`semanticChange` and the portal's change records replace it with its size and
+a short fingerprint (`engine/safety/scriptBodies.mjs`). A changed script still
+reads as changed. Only restore paths carry the text: a dry run (needs
+`restore`) and the content-effect review (needs `approve`).
 
 ## Limitations
 

@@ -50,6 +50,8 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
+import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import {
   applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue,
@@ -791,16 +793,6 @@ function builtInScopeTag(resource, verb) {
 
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
 
-/** Each script kind and the fields that hold its script, the first of which every script has. */
-const SCRIPT_BODIES = Object.freeze({
-  deviceManagementScript: ['scriptContent'],
-  deviceShellScript: ['scriptContent'],
-  deviceHealthScript: ['detectionScriptContent', 'remediationScriptContent'],
-  deviceComplianceScript: ['detectionScriptContent'],
-  // Restore gaps, batch 5.
-  deviceCustomAttributeShellScript: ['scriptContent'],
-});
-
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
 const SCRIPT_SERVER_FIELDS = Object.freeze([
   'assignments', 'groupAssignments', 'runSummary', 'deviceRunStates', 'userRunStates', 'isGlobalScript', 'highestAvailableVersion',
@@ -812,7 +804,7 @@ const SCRIPT_SERVER_FIELDS = Object.freeze([
  * Microsoft publishes is never written: it is not tenant configuration.
  */
 function scriptRefusal([body]) {
-  return (resource, verb) => {
+  return (resource, verb, ctx = {}) => {
     const payload = resource.payload ?? {};
     if (payload.isGlobalScript === true || resource.live?.payload?.isGlobalScript === true) {
       return { outcome: 'skipped', reason: 'built-in: Microsoft publishes this remediation in every tenant, so it is never written' };
@@ -823,7 +815,27 @@ function scriptRefusal([body]) {
         reason: 'manual: this backup holds the script\'s settings but not the script itself (backups before the script read was added), so it is not written; take a new backup, or recreate the script by hand from your own copy',
       };
     }
-    return null;
+    return scriptTextUnapproved(resource, verb, ctx);
+  };
+}
+
+/**
+ * PR #435 follow-up: putting back a script's text runs it on every device the script
+ * is assigned to, so an update that changes the text is written only when the
+ * restore's promotion checked a separate approval of exactly that text (the
+ * 'runs-on-devices' content effect). A dry run cannot carry that approval yet, so it
+ * simulates the write and lists the effect for review.
+ */
+function scriptTextUnapproved(resource, verb, { mode, approvedContentEffects = [] } = {}) {
+  if (verb !== 'update' || mode === 'dry-run') return null;
+  const { effects } = classifyContentEffects([{ ...resource, verb }]);
+  const approved = (effect) => (approvedContentEffects ?? []).some((entry) => entry?.effect === effect.effect
+    && entry.naturalKey === effect.naturalKey && entry.field === effect.field && entry.before === effect.before && entry.after === effect.after);
+  if (effects.every(approved)) return null;
+  return {
+    outcome: 'skipped',
+    reason: 'manual: this puts back the script\'s text, which then runs on every device the script is assigned to, so a second person approves the script first: '
+      + 'run the restore as a dry run, have someone other than you approve "Runs on devices" in Approvals, then run it again',
   };
 }
 
@@ -1012,7 +1024,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // script on its own, so it holds the script body; a backup without it is
   // refused. Who a script runs on is not written (its /assign body differs
   // from a policy's), so a recreated script is assigned again by hand.
-  ...Object.fromEntries(Object.entries(SCRIPT_BODIES).map(([resourceType, bodies]) => [resourceType, defineRecord({
+  ...Object.fromEntries(Object.entries(SCRIPT_BODY_FIELDS).map(([resourceType, bodies]) => [resourceType, defineRecord({
     resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update'],
     excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: 'DeviceManagementConfiguration.ReadWrite.All',
   })])),

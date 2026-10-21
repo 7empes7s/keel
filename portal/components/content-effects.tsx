@@ -14,7 +14,7 @@ import { toast } from "@/lib/toast";
 // setting later does not bring back what was deleted or disclosed. Promotion
 // needs a separate approval of exactly these effects by someone other than
 // the requester.
-export type ContentEffectName = "retention-reducing" | "hold-releasing" | "externally-sharing" | "irreversible";
+export type ContentEffectName = "retention-reducing" | "hold-releasing" | "externally-sharing" | "irreversible" | "runs-on-devices";
 
 export interface ContentEffect {
   naturalKey: string;
@@ -24,6 +24,8 @@ export interface ContentEffect {
   before: unknown;
   after: unknown;
   disclosure: string;
+  // "runs-on-devices" only: the script text a restore puts back, and the text now.
+  script?: { before: string | null; after: string | null };
 }
 
 const EFFECT_LABELS: Record<ContentEffectName, string> = {
@@ -31,6 +33,7 @@ const EFFECT_LABELS: Record<ContentEffectName, string> = {
   "hold-releasing": "Releases a hold",
   "externally-sharing": "Widens sharing",
   irreversible: "Destroys content",
+  "runs-on-devices": "Runs on devices",
 };
 
 export function contentEffectLabel(effect: ContentEffectName): string {
@@ -42,6 +45,7 @@ const EFFECT_ICONS: Record<ContentEffectName, IconName> = {
   "hold-releasing": "link",
   "externally-sharing": "show",
   irreversible: "x-circle",
+  "runs-on-devices": "alert",
 };
 
 const show = (value: unknown) => (value === null || value === undefined ? "—" : typeof value === "string" ? value : JSON.stringify(value));
@@ -65,9 +69,24 @@ export function ContentEffectList({ effects, names }: { effects: ContentEffect[]
             </span>
           </p>
           <p className="content-effect-disclosure">{effect.disclosure}</p>
+          {effect.script ? <ScriptText script={effect.script} /> : null}
         </li>
       ))}
     </ul>
+  );
+}
+
+// The script a restore would run on devices, and the one there now, so the person
+// approving reads the code itself, not a fingerprint.
+function ScriptText({ script }: { script: { before: string | null; after: string | null } }) {
+  return (
+    <details className="content-effect-script">
+      <summary>Show the script</summary>
+      <p className="content-effect-script-label">The backup puts back</p>
+      <pre><code>{script.after ?? "—"}</code></pre>
+      <p className="content-effect-script-label">On devices now</p>
+      <pre><code>{script.before ?? "Not read: Keel could not read the script that is there now."}</code></pre>
+    </details>
   );
 }
 

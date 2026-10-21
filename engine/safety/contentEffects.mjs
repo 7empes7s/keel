@@ -35,8 +35,9 @@ import { createHash } from 'node:crypto';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
+import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible']);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices']);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -46,6 +47,10 @@ const DISCLOSURES = Object.freeze({
   'hold-releasing': `Content released from the hold can be deleted by users or by retention. ${NOT_BACKED_UP}`,
   'externally-sharing': `Content becomes visible to people outside its current audience. ${NOT_BACKED_UP}`,
   irreversible: `This change destroys content when it takes effect. ${NOT_BACKED_UP}`,
+  // PR #435 follow-up: putting back an assigned script's text runs that text on devices.
+  'runs-on-devices': 'This puts the backup\'s script text back. Intune then runs it on every device the script is assigned to, '
+    + 'with administrator rights, the next time each device checks in. If the backup was changed after it was taken, that changed code runs. '
+    + `Read the script before approving. A script can delete or send out data on those devices. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -130,7 +135,19 @@ function valueAt(payload, path) {
   return path.split('.').reduce((value, key) => value?.[key], payload);
 }
 
-const rule = (field, effect, when, read = (payload) => valueAt(payload, field)) => Object.freeze({ field, effect, when, read });
+const rule = (field, effect, when, read = (payload) => valueAt(payload, field), detail = null) => Object.freeze({ field, effect, when, read, detail });
+
+// PR #435 follow-up: a script body compares by its full sha256, so the effect (and
+// the digest an approval binds to) names exactly this text without holding it. A
+// live body that was not read reads as null: a difference, the safe direction.
+const scriptBody = (field) => (payload) => {
+  const value = payload?.[field];
+  if (typeof value !== 'string' || value.length === 0) return null;
+  return `${scriptText(value).length} characters, sha256 ${scriptFingerprint(value, { full: true })}`;
+};
+const bodyChanges = (before, after) => after !== null && before !== after;
+// The text itself, for the people who review the restore (restore and approve holders).
+const scriptDetail = (field) => (before, after) => ({ before: scriptText(before?.[field]), after: scriptText(after?.[field]) });
 
 /**
  * Reviewed types and their dangerous transitions. Field names follow Microsoft
@@ -273,6 +290,15 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
     rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),
   ] },
+  // PR #435 follow-up: Intune scripts and remediations. An update that changes a
+  // script's text pushes that text to every device the script is assigned to, so it
+  // needs the separate approval, showing the text. Which devices it is assigned to
+  // is not read here, so every such update is judged as reaching devices. A
+  // recreated script is never assigned by a restore, so creates are not judged.
+  ...Object.fromEntries(Object.entries(SCRIPT_BODY_FIELDS).map(([resourceType, fields]) => [resourceType, {
+    reviewed: true,
+    rules: fields.map((field) => rule(field, 'runs-on-devices', bodyChanges, scriptBody(field), scriptDetail(field))),
+  }])),
 });
 
 // A changed leaf whose NAME suggests content consequences, on a type with no
@@ -335,7 +361,10 @@ export function classifyContentEffects(resources) {
         const a = entry.read(after);
         if (JSON.stringify(b ?? null) === JSON.stringify(a ?? null)) continue; // unchanged: benign
         if (entry.when(b, a)) {
-          effects.push({ naturalKey, resourceType, field: entry.field, effect: entry.effect, before: b ?? null, after: a ?? null, disclosure: disclosureFor(entry.effect) });
+          effects.push({
+            naturalKey, resourceType, field: entry.field, effect: entry.effect, before: b ?? null, after: a ?? null, disclosure: disclosureFor(entry.effect),
+            ...(entry.detail ? { script: entry.detail(before, after) } : {}),
+          });
         }
       }
       continue;

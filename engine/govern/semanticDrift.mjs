@@ -27,6 +27,7 @@ import { classifyForOperation } from '../contracts/fieldProjection.mjs';
 import { ownershipOfResources } from '../authz/entityScope.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { complianceFindings } from './baselineCompliance.mjs';
+import { withoutScriptBodies } from '../safety/scriptBodies.mjs';
 
 /** At most this many settings per change are serialized; the rest are counted. */
 export const MAX_SEMANTIC_FIELDS = 50;
@@ -104,8 +105,13 @@ function impactOf(classOf, path) {
  * - total: every behavioural difference; cosmetic: differing fields Microsoft sets
  *   itself, counted and never listed.
  * - projected: both payloads without those fields, for display.
+ * This is for display: an Intune script's text never appears in it, only its
+ * size and fingerprint (engine/safety/scriptBodies.mjs), which still differ when
+ * the text does.
  */
-export function semanticChange({ resourceType, changeType, before, after, limit = MAX_SEMANTIC_FIELDS }) {
+export function semanticChange({ resourceType, changeType, before: storedBefore, after: storedAfter, limit = MAX_SEMANTIC_FIELDS }) {
+  const before = withoutScriptBodies(resourceType, storedBefore);
+  const after = withoutScriptBodies(resourceType, storedAfter);
   const { rules, classOf, project } = classifier(resourceType);
   const hasBefore = before !== null && before !== undefined;
   const hasAfter = after !== null && after !== undefined;

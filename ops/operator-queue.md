@@ -5339,3 +5339,42 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5 and 6
   results; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q114: Live backup and restore of macOS custom attribute scripts and administrative templates (restore gaps batch 5, after #436)
+- Drafted by the "Restore batch 5" thread (2026-10-21). Code: PR #436. The backup now reads each macOS custom attribute script
+  on its own (so it holds `scriptContent`), and reads the values of each administrative template setting
+  (`definitionValues[].presentationValues`, one GET per setting). New record writers, fixture-tested only, beta, create + update:
+  `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
+  `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
+- Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
+  to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403, report
+  blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never assign either fixture to a group, user or device.**
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing runs or applies them):
+  - macOS custom attribute script `KEEL-RT-attribute`, attribute name `KEEL-RTAttribute`, type string, body `echo KEEL-RT`,
+    run as system, assigned to nobody;
+  - administrative template `KEEL-RT-admx` with one **built-in** setting turned on that has a text value (for example Microsoft
+    Edge > Startup > "Configure the home page URL" = `https://example.com`), plus one built-in setting set to Disabled, assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg5/plan-B.md`. Use its steps for these two types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (one tier run that reads both types). **Backup check:** confirm both are in S, that
+     the script payload holds a non-empty `scriptContent`, and that every `definitionValues[]` of `KEEL-RT-admx` holds a
+     `presentationValues` list (the text setting with one value whose `presentation.id` is set). Report both types' read outcome
+     (complete / failed). If the template read fails, report the exact Graph error on the `presentationValues` read.
+  3. **Create round:** delete both fixtures, restore from S selecting them, approve, enforce, capture each `create`. Read back
+     equal to the backup (script: name, attribute name and type, body; template: name, description, both settings on/off as
+     before, the home page value).
+  4. **Update round:** change both descriptions; in `KEEL-RT-admx` change the home page value to `https://drifted.example` and add a
+     third built-in setting. Restore from S, approve, enforce, capture each `update`. Expect the value back, the extra setting gone.
+  5. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the two.
+  6. Cleanup: delete both fixtures. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-5`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
+  result; approval ids; the evidence branch and commit; anything left in the tenant.

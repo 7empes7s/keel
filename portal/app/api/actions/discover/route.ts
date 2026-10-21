@@ -4,9 +4,11 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // Run now on the Schedules page. Read-only for the tenant; the capability comes from
-// engine/authz/jobCapabilities.mjs.
+// engine/authz/jobCapabilities.mjs. It takes no parameters: the job always runs on the
+// server's own config files, never on paths from the request.
 export const POST = guardedAction({
   action: "discover",
   jobKind: "discover",
   requiresApproval: false,
+  acceptsParams: false,
 });

@@ -420,6 +420,19 @@ test("Run now on Schedules enqueues one read-only job of the schedule's own kind
   }
 });
 
+test("Run now refuses request-chosen file paths and enqueues nothing", async () => {
+  const operator = { principalId: OPERATOR, capabilities: ["collect"] };
+  const bodies = [{ config: "/etc/shadow" }, { scope: "/root/.ssh/id_rsa" }, { reader: "/etc/keel/../passwd" }, { tenantRef: "sha256:x" }];
+  for (const [kind, route] of [["discover", discoverRoute], ["workload-collect", workloadCollectRoute], ["content-collect", contentCollectRoute]] as const) {
+    const before = (await jobRows(kind)).length;
+    for (const body of bodies) {
+      const response = await route(postAction(`/api/actions/${kind}`, { ...operator, body }));
+      assert.equal(response.status, 400, `${kind} ${JSON.stringify(body)}`);
+    }
+    assert.equal((await jobRows(kind)).length, before, `no ${kind} job from a refused body`);
+  }
+});
+
 test("the guided create sends the chosen backup through the baseline action", async () => {
   const form = renderCreateWizard();
   const originalFetch = globalThis.fetch;

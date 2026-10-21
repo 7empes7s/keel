@@ -237,6 +237,13 @@ test('every object is one observation under its Guid, with declared fields only'
   const clean = await readExchangeExtended({ powershell: fakeExchange().powershell, now: () => NOW });
   assert.equal(clean.outcome, 'complete');
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read' && family.objects === 1));
+  assert.deepEqual(clean.unknownFields, {});
+
+  // A declared property the answer does not carry is a gap, and the run names it.
+  const { Path, ...withoutPath } = answersFor('addressList')[0];
+  const missing = await readExchangeExtended({ powershell: fakeExchange({ answers: { addressList: [withoutPath] } }).powershell, now: () => NOW });
+  assert.equal(missing.outcome, 'partial');
+  assert.deepEqual(missing.unknownFields, { addressList: { Path: 1 } });
 });
 
 test('a Defender read that is not available is labelled and is a gap; other failures are structured', async () => {
@@ -298,6 +305,7 @@ test('collection stays off until Exchange and every core read are qualified; Def
   exchange.calls.length = 0;
   const full = await collectExchangeExtended(client, { tenantRef, ledger: ledgerWith(tenantRef, ALL_READS), powershell: exchange.powershell, now: () => NOW });
   assert.equal(full.run.outcome, 'complete');
+  assert.deepEqual(full.run.digest.unknownFields, {}, 'the stored run says which fields were missing: none');
   assert.equal(exchange.calls.length, FAMILY_NAMES.length);
   const { rows } = await client.query('SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1', [full.run.id]);
   assert.equal(rows.length, FAMILY_NAMES.length);

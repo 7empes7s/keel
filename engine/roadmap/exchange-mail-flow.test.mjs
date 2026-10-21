@@ -60,6 +60,8 @@ const WHEN = '2026-09-01T00:00:00Z';
 
 // One or two objects per family, as Exchange answers them, with the extra
 // properties a careless reader would keep.
+// Shaped like the live answers (Q105): no WhenChangedUTC on transport rules, no
+// UseTranslatedNotificationText on Safe Links policies.
 const SAMPLE = Object.freeze({
   'Get-AcceptedDomain': [
     { Name: 'contoso.test', DomainName: 'Contoso.test', DomainType: 'Authoritative', Default: true, MatchSubDomains: false, Guid: guid(1), WhenChangedUTC: WHEN, OrganizationId: 'internal' },
@@ -80,7 +82,7 @@ const SAMPLE = Object.freeze({
       ModerateMessageByUser: null, RejectMessageReasonText: 'Executables are blocked', RejectMessageEnhancedStatusCode: '5.7.1', DeleteMessage: false, Quarantine: false,
       ApplyHtmlDisclaimerText: null, ApplyHtmlDisclaimerLocation: null, ApplyHtmlDisclaimerFallbackAction: null,
       RouteMessageOutboundConnector: null, RouteMessageOutboundRequireTls: false, ApplyRightsProtectionTemplate: null, GenerateIncidentReport: null,
-      WhenChangedUTC: WHEN, RuleVersion: '15.0.5.6', ImmutableId: guid(4),
+      RuleVersion: '15.0.5.6', ImmutableId: guid(4),
     },
   ],
   'Get-InboundConnector': [
@@ -102,7 +104,7 @@ const SAMPLE = Object.freeze({
     { Domain: 'contoso.test', Guid: guid(10), Enabled: true, Status: 'Valid', Selector1CNAME: 'selector1-contoso-test._domainkey.contoso.onmicrosoft.com', Selector2CNAME: 'selector2-contoso-test._domainkey.contoso.onmicrosoft.com', Selector1KeySize: 2048, Selector2KeySize: 2048, HeaderCanonicalization: 'Relaxed', BodyCanonicalization: 'Relaxed', RotateOnDate: '2026-12-01T00:00:00Z', WhenChangedUTC: WHEN, Selector1PublicKey: 'v=DKIM1; k=rsa; p=MIIBIjANBgkq', Selector2PublicKey: 'v=DKIM1; k=rsa; p=MIIBIjANBgkr', LastChecked: '2026-10-08T00:00:00Z' },
   ],
   'Get-SafeLinksPolicy': [
-    { Name: 'Built-In Protection Policy', Guid: guid(11), IsBuiltInProtection: true, EnableSafeLinksForEmail: true, EnableSafeLinksForTeams: true, EnableSafeLinksForOffice: true, TrackClicks: true, AllowClickThrough: false, ScanUrls: true, EnableForInternalSenders: false, DeliverMessageAfterScan: true, DisableUrlRewrite: false, DoNotRewriteUrls: [], EnableOrganizationBranding: false, CustomNotificationText: null, UseTranslatedNotificationText: false, WhenChangedUTC: WHEN },
+    { Name: 'Built-In Protection Policy', Guid: guid(11), IsBuiltInProtection: true, EnableSafeLinksForEmail: true, EnableSafeLinksForTeams: true, EnableSafeLinksForOffice: true, TrackClicks: true, AllowClickThrough: false, ScanUrls: true, EnableForInternalSenders: false, DeliverMessageAfterScan: true, DisableUrlRewrite: false, DoNotRewriteUrls: [], EnableOrganizationBranding: false, CustomNotificationText: null, WhenChangedUTC: WHEN },
   ],
   'Get-SafeAttachmentPolicy': [
     { Name: 'Built-In Protection Policy', Guid: guid(12), IsBuiltInProtection: true, Enable: true, Action: 'Block', QuarantineTag: 'AdminOnlyAccessPolicy', Redirect: false, RedirectAddress: null, WhenChangedUTC: WHEN },
@@ -311,6 +313,14 @@ test('every object is one observation under a stable identity, with declared fie
   const clean = await readMailFlow({ powershell: fakeExchange().powershell, now: () => NOW });
   assert.equal(clean.outcome, 'complete');
   assert.equal(clean.resources.length, 12);
+  assert.deepEqual(clean.unknownFields, {});
+
+  // A declared property the answer does not carry is a gap, and the run names it.
+  const { TestModeAction, ...withoutTestMode } = SAMPLE['Get-HostedContentFilterPolicy'][0];
+  const missing = await readMailFlow({ powershell: fakeExchange({ answers: { 'Get-HostedContentFilterPolicy': [withoutTestMode] } }).powershell, now: () => NOW });
+  assert.equal(missing.outcome, 'partial');
+  assert.equal(missing.fieldCounts.unknown, 1);
+  assert.deepEqual(missing.unknownFields, { antiSpamPolicy: { TestModeAction: 1 } });
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));
 });
 
@@ -393,6 +403,7 @@ test('collection stays off until Exchange and every core read are qualified; Def
   exchange.calls.length = 0;
   const full = await collectMailFlow(client, { tenantRef, ledger: ledgerWith(tenantRef, ALL_READS), powershell: exchange.powershell, now: () => NOW });
   assert.equal(full.run.outcome, 'complete');
+  assert.deepEqual(full.run.digest.unknownFields, {}, 'the stored run says which fields were missing: none');
   assert.equal(exchange.calls.length, FAMILY_NAMES.length);
   const { rows } = await client.query(`SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`, [full.run.id]);
   assert.equal(rows.length, 12);

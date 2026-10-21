@@ -183,6 +183,31 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-cleanup`, drift: 'lower it to 180 days: the restore puts back 270 (longer only; a shorter backup value is refused)',
     note: 'Update only: a deleted rule is recreated by hand. The test tenant has no managed devices, so no device can be retired.',
   },
+  // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
+  // Conditional Access or any account; each is set back to its value after the run.
+  externalIdentitiesPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant external identities policy (whether external users can leave the organization themselves)',
+    select: 'externalIdentitiesPolicy', drift: 'switch allowExternalIdentitiesToLeave to the other value; write the original down first',
+  },
+  accessReviewPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant access review settings (whether group owners can manage access reviews)',
+    select: 'accessReviewPolicy', drift: 'switch isGroupOwnerManagementEnabled to the other value; write the original down first',
+  },
+  directoryRoleAccessReviewPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant default settings of admin role access reviews',
+    select: 'directoryRoleAccessReviewPolicy', drift: 'change settings.instanceDurationInDays (for example 14 to 7); write the original down first',
+    note: 'No review is created or changed. If GET answers 404, the tenant has no such policy: report this step as blocked.',
+  },
+  multiTenantOrganizationIdentitySyncPolicyTemplate: {
+    kind: 'tenant-setting', fixture: 'the multitenant organization user sync template', select: 'multiTenantOrganizationIdentitySyncPolicyTemplate',
+    drift: 'switch userSyncInbound.isSyncAllowed to the other value; write the original down first',
+    note: 'It only applies to tenants that join a multitenant organization later; the test tenant has no partner tenants joining.',
+  },
+  multiTenantOrganizationPartnerConfigurationTemplate: {
+    kind: 'tenant-setting', fixture: 'the multitenant organization cross-tenant access template', select: 'multiTenantOrganizationPartnerConfigurationTemplate',
+    drift: 'switch automaticUserConsentSettings.inboundAllowed to the other value; never change inboundTrust; write the original down first',
+    note: 'It only applies to tenants that join a multitenant organization later; existing partner settings are not touched.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

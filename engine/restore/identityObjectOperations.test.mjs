@@ -276,6 +276,63 @@ test('governance singletons are updated in place and verified', async () => {
   }
 });
 
+test('restore gaps batch 2: Entra ID tenant singletons write only their settings, in place, and read back', async () => {
+  const MTO = '/policies/crossTenantAccessPolicy/templates';
+  const name = { id: 'policy', displayName: 'Microsoft name', description: 'Microsoft description' };
+  const cases = [
+    ['externalIdentitiesPolicy', 'beta', '/policies/externalIdentitiesPolicy',
+      { ...name, allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
+      { ...name, displayName: 'Other', allowExternalIdentitiesToLeave: false, allowDeletedIdentitiesDataRemoval: false },
+      { allowExternalIdentitiesToLeave: true }],
+    ['accessReviewPolicy', 'beta', '/policies/accessReviewPolicy',
+      { ...name, isGroupOwnerManagementEnabled: true }, { ...name, isGroupOwnerManagementEnabled: false },
+      { isGroupOwnerManagementEnabled: true }],
+    ['directoryRoleAccessReviewPolicy', 'beta', '/policies/directoryRoleAccessReviewPolicy',
+      { id: 'policy', settings: { instanceDurationInDays: 14, mailNotificationsEnabled: true } },
+      { id: 'policy', settings: { instanceDurationInDays: 3, mailNotificationsEnabled: true } },
+      { settings: { instanceDurationInDays: 14, mailNotificationsEnabled: true } }],
+    ['multiTenantOrganizationIdentitySyncPolicyTemplate', 'v1.0', `${MTO}/multiTenantOrganizationIdentitySynchronization`,
+      { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
+      { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: false } },
+      { userSyncInbound: { isSyncAllowed: true } }],
+    ['multiTenantOrganizationPartnerConfigurationTemplate', 'v1.0', `${MTO}/multiTenantOrganizationPartnerConfiguration`,
+      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } },
+      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
+      { automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } }],
+  ];
+  for (const [type, version, path, desired, live, patched] of cases) {
+    assert.equal(IDENTITY_RECORDS[type].singleton, true, type);
+    assert.deepEqual(IDENTITY_RECORDS[type].operations, ['update'], type);
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const writes = graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
+    assert.equal(writes.length, 1, `${type}: one write`);
+    assert.equal(writes[0].method, 'PATCH');
+    assert.equal(writes[0].version, version, type);
+    assert.equal(writes[0].path, path);
+    assert.deepEqual(writes[0].body, patched, `${type}: only the changed setting is sent, never its name or id`);
+  }
+});
+
+test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
+  const path = '/policies/accessReviewPolicy';
+  const live = { id: 'policy', displayName: 'Access review policy', isGroupOwnerManagementEnabled: true };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'accessReviewPolicy', resourceType: 'accessReviewPolicy', payload: { ...live, displayName: 'Renamed by Microsoft' }, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0);
+});
+
+test('restore gaps batch 2: a tenant singleton is never created or deleted', async () => {
+  const graph = idoFakeGraph();
+  for (const verb of ['create', 'delete']) {
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'externalIdentitiesPolicy', resourceType: 'externalIdentitiesPolicy', payload: { allowExternalIdentitiesToLeave: true }, references: [] }, verb, FAST);
+    assert.ok(result.failed || result.skipped, `${verb} is refused`);
+  }
+  assert.equal(graph.calls.filter((call) => call.method === 'POST' || call.method === 'DELETE').length, 0);
+});
+
 test('catalogs, app policies and task extensions are created and read back', async () => {
   const cases = [
     ['accessPackageCatalog', { id: 'src-cat', displayName: 'KEEL-RT-Catalog', description: 'Fixture', state: 'published', isExternallyVisible: false, createdDateTime: '2026-01-01T00:00:00Z' }],

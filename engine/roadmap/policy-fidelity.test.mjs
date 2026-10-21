@@ -121,8 +121,12 @@ test('the policy family ledger lists every policy type; the remainder stays rese
     // Wave 2 ENTRA: the directory policy writers (directoryPolicyOperations.mjs) are tested in entra-directory-writers.test.mjs.
     if (['authenticationStrengthPolicy', 'conditionalAccessPolicy', 'namedLocation', ...Object.keys(TENANT_POLICY_PATHS), ...Object.keys(DIRECTORY_POLICY_RECORDS)].includes(family.resourceType)) continue;
     // Wave 2 IDO: app credential policies and the multitenant organization are
-    // written by identityObjectOperations.mjs's record writer.
-    if (['appManagementPolicy', 'multiTenantOrganization'].includes(family.resourceType)) {
+    // written by identityObjectOperations.mjs's record writer, and so are the
+    // tenant singletons of restore gaps batch 2.
+    if ([
+      'appManagementPolicy', 'multiTenantOrganization', 'externalIdentitiesPolicy',
+      'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
+    ].includes(family.resourceType)) {
       assert.equal(family.status, 'qualified-subset', family.resourceType);
       assert.ok(family.supportedOperations.length > 0, family.resourceType);
       for (const operation of family.supportedOperations) assert.equal(capabilityFor(family.resourceType, operation).claim, 'fixture-tested');

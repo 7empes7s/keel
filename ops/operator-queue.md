@@ -4700,7 +4700,7 @@ item that needs it stays untouched.
   can read but Keel doesn't back up yet. The thread needs the list itself (path, version, object count) to plan and
   prioritise them. Only the counts are in the queue so far (Q82).
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns. Can run before Q99; it is one SELECT.
-- Status: todo
+- Status: in-progress
 - Do (with `set -a; . /etc/keel/db.env; set +a`):
   1. ```sql
      SELECT r.id, r.finished_at, r.summary->'counts' AS counts FROM discovery_run r ORDER BY r.finished_at DESC LIMIT 3;

@@ -36,6 +36,7 @@ import { pathToFileURL } from 'node:url';
 import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
+import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
   knownWorkload, provenReads, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
@@ -49,8 +50,9 @@ const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 
 /**
  * Runs the workload's collector once with the collector's PowerShell options. Returns the
- * unsigned record and, for the operator only, each failed read's error message (messages
- * can name the tenant, so they stay out of the record). It never signs or writes files.
+ * unsigned record, with ids such as the collector's app id pseudonymized so it can be
+ * published, and, for the operator only, each failed read's error message (messages can
+ * name the tenant, so they stay out of the record). It never signs or writes files.
  */
 export async function captureWorkloadReads({
   workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(),
@@ -104,7 +106,7 @@ export async function captureWorkloadReads({
       reads,
     },
   };
-  return { record, diagnostics };
+  return { record: pseudonymizeCapture({ record, log: {} }).record, diagnostics };
 }
 
 /**

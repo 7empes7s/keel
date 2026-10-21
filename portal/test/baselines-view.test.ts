@@ -23,6 +23,33 @@ test("each service sums up what is in line, changed and not covered, worst first
   assert.deepEqual([intune.changed, intune.notCovered], [1, ["deviceCompliancePolicy"]]);
 });
 
+test("every service shows: service reads are measured against the previous backup", () => {
+  const summaries = serviceSummaries(active, [
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", alertId: null, alertState: null } },
+  ], ["group"], [
+    { type: "exchange-mail-flow", read: true },
+    { type: "exchange-mailbox-settings", read: true },
+    { type: "sharepoint-site-settings", read: true },
+    { type: "onedrive-site-settings", read: false },
+    { type: "teams-org-policies", read: true },
+    { type: "purview-labels", read: false },
+    { type: "power-platform-settings", read: true },
+  ]);
+  const by = new Map(summaries.map((summary) => [summary.service.name, summary]));
+  assert.deepEqual([...by.keys()].sort(), ["Entra ID", "Exchange Online", "Intune", "Power Platform", "Purview", "SharePoint and OneDrive", "Teams"]);
+  assert.equal(by.get("Entra ID")!.basis, "approved-setup");
+  assert.equal(by.get("Intune")!.basis, "approved-setup");
+  const exchange = by.get("Exchange Online")!;
+  assert.equal(exchange.basis, "previous-backup");
+  assert.deepEqual([exchange.changed, exchange.changedKinds, exchange.inLine, exchange.notCovered], [1, ["exchange-mail-flow"], ["exchange-mailbox-settings"], []]);
+  assert.equal(exchange.tone, "soon");
+  const sharepoint = by.get("SharePoint and OneDrive")!;
+  assert.deepEqual([sharepoint.basis, sharepoint.inLine, sharepoint.notCovered], ["previous-backup", ["sharepoint-site-settings"], ["onedrive-site-settings"]]);
+  assert.deepEqual(by.get("Purview")!.notCovered, ["purview-labels"]);
+  // A service read is never listed as missing from the approved setup.
+  assert.ok(summaries.every((summary) => summary.basis === "previous-backup" || !summary.notCovered.some((type) => type.includes("-"))));
+});
+
 test("the status and verdict say how the tenant stands, in words", () => {
   assert.deepEqual(setupStatus(null, []), { tone: "urgent", label: "None approved" });
   assert.deepEqual(setupStatus(active, []), { tone: "fine", label: "In line" });

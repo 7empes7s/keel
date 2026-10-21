@@ -281,6 +281,9 @@ export interface ActionSpec {
   action: string;
   jobKind: string;
   requiresApproval: boolean;
+  // false: the route takes no parameters and always enqueues `{}`, so the job runs on the
+  // server-side defaults. A body that sets any field is refused (issue #411).
+  acceptsParams?: boolean;
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -313,9 +316,13 @@ export function guardedAction(
           );
         }
       }
+      const params = await readActionParams(request);
+      if (spec.acceptsParams === false && Object.keys(params).length > 0) {
+        throw new InvalidActionRequest("this action takes no parameters");
+      }
       const job = (await enqueue(client, {
         kind: spec.jobKind,
-        params: await readActionParams(request),
+        params: spec.acceptsParams === false ? {} : params,
         requestedBy: principalId,
         idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
         notBefore: undefined,

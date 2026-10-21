@@ -830,3 +830,17 @@ console.log('keel-worker offsite — all assertions passed');
   assert.ok(queries.length > before);
 }
 console.log('keel-worker break-glass canary — all assertions passed');
+
+// Issue #411: file-path params must name a file under /etc/keel, whoever enqueued the job.
+for (const kind of ['discover', 'workload-collect', 'content-collect', 'collect', 'prune', 'drift-detect', 'api-drift']) {
+  for (const config of ['/etc/passwd', '/etc/keel/../shadow', '/etc/keelx/tenant.json', 'tenant.json', '/etc/keel', '/etc/keel/a\0b']) {
+    assert.throws(() => JOB_HANDLERS[kind].argsFor({ config }), /must be a file under \/etc\/keel\//, `${kind} config ${config}`);
+  }
+}
+assert.throws(() => JOB_HANDLERS['workload-collect'].argsFor({ scope: '/root/.ssh/id_rsa' }), /params.scope must be a file under/);
+assert.throws(() => JOB_HANDLERS['content-collect'].argsFor({ reader: '/var/lib/keel/../../etc/shadow' }), /params.reader must be a file under/);
+assert.deepEqual(
+  JOB_HANDLERS['content-collect'].argsFor({ config: '/etc/keel/./tenant.json', reader: '/etc/keel/content-reader.json' }),
+  ['run', '--config', '/etc/keel/tenant.json', '--reader', '/etc/keel/content-reader.json'],
+);
+console.log('keel-worker config paths — all assertions passed');

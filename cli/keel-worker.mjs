@@ -18,7 +18,7 @@ import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
@@ -199,6 +199,20 @@ function requireString(value, label) {
   return value;
 }
 
+// Issue #411: the config, scope and reader params are file paths the child reads as root.
+// Anything that can enqueue a job can set them, so they must name a file under /etc/keel,
+// where only the operator writes. The path is resolved first, so `..` cannot step out.
+const KEEL_CONFIG_DIR = '/etc/keel/';
+
+export function requireKeelConfigPath(value, label) {
+  const path = requireString(value, label);
+  const resolved = resolve('/', path);
+  if (path.includes('\0') || !resolved.startsWith(KEEL_CONFIG_DIR)) {
+    throw new Error(`${label} must be a file under ${KEEL_CONFIG_DIR}`);
+  }
+  return resolved;
+}
+
 // Whitelisted params -> CLI flags, one entry per job kind. Deliberately explicit rather
 // than a generic pass-through: job params can be written by anything that can enqueue a
 // job (the portal, an operator, a schedule), and must never be able to smuggle an
@@ -238,7 +252,7 @@ export const JOB_HANDLERS = {
         args.push('--tier', params.tier);
       }
       if (params.config !== undefined) {
-        args.push('--config', requireString(params.config, 'params.config'));
+        args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
       }
       return args;
     },
@@ -248,7 +262,7 @@ export const JOB_HANDLERS = {
     argsFor(params = {}) {
       const args = [];
       if (params.config !== undefined) {
-        args.push('--config', requireString(params.config, 'params.config'));
+        args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
       }
       // Retention go (2026-10-15): a scheduled prune deletes what its own report lists.
       // dryRun: true keeps it to the report.
@@ -263,7 +277,7 @@ export const JOB_HANDLERS = {
       if (params.snapshotId !== undefined) args.push('--snapshot-id', requireString(params.snapshotId, 'params.snapshotId'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       if (params.config !== undefined) {
-        args.push('--config', requireString(params.config, 'params.config'));
+        args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
       }
       return args;
     },
@@ -278,7 +292,7 @@ export const JOB_HANDLERS = {
     argsFor(params = {}) {
       const args = [];
       if (params.config !== undefined) {
-        args.push('--config', requireString(params.config, 'params.config'));
+        args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
       }
       if (params.sources !== undefined) {
         args.push('--sources', requireString(params.sources, 'params.sources'));
@@ -299,8 +313,8 @@ export const JOB_HANDLERS = {
         throw new Error('workload-collect params may contain only config, scope and tenantRef');
       }
       const args = ['run'];
-      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
-      if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
+      if (params.config !== undefined) args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
+      if (params.scope !== undefined) args.push('--scope', requireKeelConfigPath(params.scope, 'params.scope'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       return args;
     },
@@ -317,9 +331,9 @@ export const JOB_HANDLERS = {
         throw new Error('content-collect params may contain only config, reader, scope and tenantRef');
       }
       const args = ['run'];
-      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
-      if (params.reader !== undefined) args.push('--reader', requireString(params.reader, 'params.reader'));
-      if (params.scope !== undefined) args.push('--scope', requireString(params.scope, 'params.scope'));
+      if (params.config !== undefined) args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
+      if (params.reader !== undefined) args.push('--reader', requireKeelConfigPath(params.reader, 'params.reader'));
+      if (params.scope !== undefined) args.push('--scope', requireKeelConfigPath(params.scope, 'params.scope'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       return args;
     },
@@ -336,7 +350,7 @@ export const JOB_HANDLERS = {
         throw new Error('discover params may contain only config and tenantRef');
       }
       const args = ['run'];
-      if (params.config !== undefined) args.push('--config', requireString(params.config, 'params.config'));
+      if (params.config !== undefined) args.push('--config', requireKeelConfigPath(params.config, 'params.config'));
       if (params.tenantRef !== undefined) args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
       return args;
     },

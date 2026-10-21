@@ -4715,3 +4715,35 @@ item that needs it stays untouched.
      These are Graph paths and counts only, no tenant content. Commit the file as `ops/q100/uncatalogued.tsv` on a new
      branch `claude/q100-uncatalogued` (never master) and push it.
 - **Report:** step 1, the row count of step 2, and the branch commit. Nothing is written to the tenant or the DB.
+
+### Q101: Widen the nightly content backup from KEEL-RT- fixtures to the whole tenant (read-only)
+- Drafted by the "Content backup whole tenant" thread (2026-10-21).
+- **Marouane's decision (2026-10-21 17:29 UTC, comment on the executive deck): "get everything in the scope".** Content
+  backup covers the whole tenant, not only the `KEEL-RT-` test fixtures.
+- Needs: nothing (Q99 and Q100 can run first or after; it does not change anything).
+- Status: todo
+- **Read-only toward the tenant.** The collectors only read. No tenant writes, no fixtures, no permission grants: if the
+  Collector cannot read some mailboxes, drives or sites (403), report the count and the reason verbatim (masked) and do not
+  grant anything. That is a separate decision.
+- **A. Headroom check (before any change).** Report each number:
+  1. `storage.root` from `/etc/keel/tenant.json` (path only): `df -h` and `du -sh` for it, and `df -h` for the Postgres
+     data directory.
+  2. Tenant content size, read-only, with the Collector's token: user count and licensed mailbox count; OneDrive used bytes
+     summed from `GET /users/{id}/drive?$select=quota` (404 = no OneDrive); SharePoint site count and used bytes from
+     `GET /sites/getAllSites` + each site's `drive?$select=quota`; team count. Mailbox bytes from
+     `GET /reports/getMailboxUsageDetail(period='D7')` if the Collector has Reports.Read.All, otherwise say "no report
+     access" and estimate from item counts.
+  3. **Gate:** estimated first-run bytes (OneDrive + SharePoint + mailboxes) must be under **50 %** of the free space on the
+     `storage.root` volume. If not, stop here, change nothing, and report the numbers.
+- **B. Change the scope file.** `cp -p /etc/keel/content-scope.json /etc/keel/content-scope.json.bak-q101`, then write the
+  file with **`namePrefix` removed** and every other key (such as `tenantHost`) unchanged, keeping owner and mode. Check it
+  parses (`node -e "JSON.parse(require('fs').readFileSync('/etc/keel/content-scope.json','utf8'))"`, exit 0) and paste it
+  (tenantHost masked). No restart is needed: the worker reads the file at each run. No manual run: the nightly
+  `content-collect` at **01:00 UTC** is the first whole-tenant run (its job timeout is 6 h).
+- **C. After the 2026-10-22 01:00 UTC run finishes:** the job id, start, end, status and exit code; per workload the
+  outcome, items, bytes, containers found vs read, throttled count and any `reasons` verbatim (masked); `df -h` and
+  `du -sh` for `storage.root` again, and `SELECT count(*), sum(stored_bytes) FROM content_chunk` before vs after.
+- **Rollback:** if the run fails, times out, or free space on `storage.root` drops below 20 %, copy
+  `content-scope.json.bak-q101` back over the scope file and say so. A `partial` outcome from 403s alone is not a rollback
+  reason; report it.
+- **Report:** A1-A3, the new scope file (masked), and C. Open an issue labelled `operator-report` only if a rollback happened.

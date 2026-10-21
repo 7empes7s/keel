@@ -5,7 +5,7 @@ import { resourceTypeLabel } from "@/lib/presentation";
 
 // The setting that changed and its value before and after, on Activity and Compare.
 // A value that holds several settings (an object, a list of objects) reads as one
-// line per setting inside it, so nothing hides behind "3 settings (see Technical details)".
+// line per setting inside it, so nothing hides behind a count of settings.
 const CSS = `
 .cv-list { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
 .cv-row { display: grid; gap: var(--space-xs) var(--space-sm); align-items: start; grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr) auto minmax(0, 1.2fr); padding: var(--space-xs) 0; border-top: 1px solid var(--line); }

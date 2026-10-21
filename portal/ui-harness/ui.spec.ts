@@ -808,7 +808,12 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   for (const kept of ["Directory_8f2c1d7a-4b3e-4f61-9a20-1c5d7e9b3a44", "a71ce000-0000-4000-8000-0000000000a7", "c0a10000-0000-4000-8000-0000000000ca", "exact · audit-record-names-resource", "central · cross-entity"]) {
     await expect(record).toContainText(kept);
   }
-  // The panel is in the address, closes with Esc and gives focus back to the row.
+  // The record opens as its own panel on top of the sheet; the first Esc closes only it.
+  await expect(record.locator(".technical-body")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(record.locator(".technical-body")).toBeHidden();
+  await expect(sheet).toBeVisible();
+  // The sheet is in the address, closes with Esc and gives focus back to the row.
   await expect(page).toHaveURL(/open=dr1/);
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
@@ -852,7 +857,9 @@ test("a change shows its behavioural settings and linked records, and flags mism
   for (const kept of ["7f3c0000-0000-4000-8000-000000000011", "a9e10000-0000-4000-8000-000000000100", "0b5e0000-0000-4000-8000-0000000000c8", "mismatch"]) {
     await expect(record).toContainText(kept);
   }
-  await sheet.getByRole("button", { name: "Close" }).click();
+  await sheet.getByRole("button", { name: "Close technical details" }).click();
+  await expect(record.locator(".technical-body")).toBeHidden();
+  await sheet.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.locator(".semantic-diff")).toHaveCount(0);
 
   const unknownSheet = await openChange(page, "HQ egress");
@@ -1438,6 +1445,8 @@ test("the incident view recommends the cleared snapshot, not the newest, and ref
   await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("Snapshot ID");
   await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("5a2be911-0000-4000-8000-000000000002");
   await expect(rows.nth(1).getByRole("button", { name: "Copy Snapshot ID" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(rows.nth(1).locator(".technical-body")).toBeHidden();
 
   await rows.nth(2).getByRole("button", { name: "Record a check" }).click();
   await page.getByLabel("Result").selectOption("compromised");

@@ -85,6 +85,23 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
  * setting changes (`serviceRead`) sit in the same list, so its filters and grouping
  * cover every service; they have no approved setup, so decisions skip them and their
  * details point to the Alerts page. */
+/** What the change list knows about an opened change beyond its comparison, added to the
+ *  comparison's own Technical details so the sheet has one record. */
+function OpenedRecord({ item }: { item: DriftRecord }) {
+  if (!item.serviceRead) return <RecordField copy={false} label="Detected at" value={item.detectedAt} />;
+  return (
+    <>
+      <RecordField label="Resource" value={item.serviceRead.resourceKey} />
+      <RecordField label="Service change ID" value={item.id} />
+      <RecordField copy={false} label="Service" value={item.serviceRead.workload} />
+      <RecordField label="Service read ID" value={item.serviceRead.collectionId} />
+      <RecordField label="Compared with read" value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Alert ID" value={item.serviceRead.alertId} />
+      <RecordField copy={false} label="Seen at" value={item.detectedAt} />
+    </>
+  );
+}
+
 export function ChangeList({
   baseline,
   capabilities,
@@ -290,25 +307,11 @@ export function ChangeList({
                 : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${typeService(opened.resourceType).name}.`}
             </p>
           </section>
-          {opened.semantic ? <SemanticDiff change={opened.semantic} item={opened} /> : <DriftDiff item={opened} />}
+          {opened.semantic
+            ? <SemanticDiff change={opened.semantic} item={opened} record={<OpenedRecord item={opened} />} />
+            : <DriftDiff item={opened} record={<OpenedRecord item={opened} />} />}
           {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} now={now} /> : null}
           {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
-          {opened.serviceRead ? (
-            <TechnicalDetails>
-              <RecordField label="Resource" value={opened.serviceRead.resourceKey} />
-              <RecordField label="Service change ID" value={opened.id} />
-              <RecordField copy={false} label="Service read" value={`${opened.serviceRead.workload} · ${opened.serviceRead.collectionId}`} />
-              <RecordField label="Compared with read" value={opened.serviceRead.previousCollectionId} />
-              <RecordField label="Alert" value={opened.serviceRead.alertId} />
-              <RecordField copy={false} label="Seen at" value={opened.detectedAt} />
-            </TechnicalDetails>
-          ) : (
-            <TechnicalDetails>
-              <RecordField label="Natural key" value={opened.naturalKey} />
-              <RecordField label="Drift ID" value={opened.id} />
-              <RecordField copy={false} label="Detected at" value={opened.detectedAt} />
-            </TechnicalDetails>
-          )}
         </DetailsSheet>
       ) : null}
 

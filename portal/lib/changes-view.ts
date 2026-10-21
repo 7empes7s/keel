@@ -116,8 +116,8 @@ export function fieldWords(path: string): string {
   }).join(" › ");
 }
 
-/** A field value as a person reads it; objects too large for a sentence point to the
- * record. With names, an object id reads as the name of what it points to; an id KEEL
+/** A field value as a person reads it; an object or a list of objects reads as its
+ * first few settings. With names, an object id reads as the name of what it points to; an id KEEL
  * has no name for is counted, never shown. */
 export function valueWords(value: unknown, names?: Readonly<Record<string, string>>): string {
   if (value === undefined || value === null) return "not set";
@@ -143,10 +143,35 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
       if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} KEEL has no name for`);
       return named.join(", ");
     }
-    return `${value.length} ${value.length === 1 ? "entry" : "entries"} (see Technical details)`;
   }
-  const keys = Object.keys(value as Record<string, unknown>).length;
-  return `${keys} ${keys === 1 ? "setting" : "settings"} (see Technical details)`;
+  return settingsWords(value, names);
+}
+
+/** A list of objects or an object as its settings in a short line ("State: on; Users:
+ *  all users; and 4 more"), so the value itself shows, not a pointer to the record. */
+function settingsWords(value: object, names?: Readonly<Record<string, string>>, limit = 3): string {
+  const leaves: string[] = [];
+  let count = 0;
+  const walk = (inner: unknown, path: string[]) => {
+    const scalarList = Array.isArray(inner) && inner.every((entry) => entry === null || typeof entry !== "object");
+    if (inner === null || typeof inner !== "object" || scalarList || (typeof inner === "object" && !Array.isArray(inner) && !Object.keys(inner).length)) {
+      count += 1;
+      if (leaves.length < limit) {
+        const label = path.map((part, index) => (/^#\d+$/.test(part) ? part : index === 0 ? fieldWords(part) : fieldWords(part).toLowerCase())).join(" › ");
+        const text = inner !== null && typeof inner === "object" && !Array.isArray(inner) ? "none" : valueWords(inner, names);
+        leaves.push(label ? `${label}: ${text}` : text);
+      }
+      return;
+    }
+    if (Array.isArray(inner)) {
+      inner.forEach((entry, index) => walk(entry, inner.length > 1 || path.length ? [...path, `#${index + 1}`] : path));
+      return;
+    }
+    for (const key of Object.keys(inner).sort()) walk((inner as Record<string, unknown>)[key], [...path, key]);
+  };
+  walk(value, []);
+  if (!count) return "none";
+  return count > leaves.length ? `${leaves.join("; ")}; and ${count - leaves.length} more` : leaves.join("; ");
 }
 
 const VERB_WORDS: Record<string, string> = {

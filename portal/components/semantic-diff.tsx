@@ -1,7 +1,10 @@
+import type { ReactNode } from "react";
+
+import { ChangedValuesStyles, Value } from "@/components/changed-values";
 import { DecisionStyles } from "@/components/decision-styles";
+import { FieldRecord } from "@/components/drift-diff";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { changeKindWords, changeLabel, fieldWords, valueWords } from "@/lib/changes-view";
-import { formatValue } from "@/lib/drift-diff";
+import { changeKindWords, changeLabel, fieldWords } from "@/lib/changes-view";
 import { IMPACT_HEADINGS, cosmeticSentence, semanticSummarySentence } from "@/lib/semantic-drift";
 import type { DriftRecord, SemanticChange, SemanticField } from "@/lib/types";
 
@@ -11,32 +14,27 @@ function kindWords(field: SemanticField): string {
   return field.kind === "unknown-before" ? "Now set" : changeKindWords(field.kind);
 }
 
-function beforeWords(field: SemanticField, names: Record<string, string>): string {
+function beforeWords(field: SemanticField, names: Record<string, string>): ReactNode {
   if (field.kind === "unknown-before") return "Not known";
   if (field.kind === "added") return "Not set in the approved setup";
-  return valueWords(field.before, names);
+  return <Value names={names} value={field.before} />;
 }
 
-function afterWords(field: SemanticField, names: Record<string, string>): string {
+function afterWords(field: SemanticField, names: Record<string, string>): ReactNode {
   if (field.kind === "removed") return "No longer set";
-  return valueWords(field.after, names);
-}
-
-function recordValue(field: SemanticField): string {
-  const before = field.kind === "unknown-before" ? "unknown" : field.kind === "added" ? "absent" : formatValue(field.before);
-  const after = field.kind === "removed" ? "absent" : formatValue(field.after);
-  return `${field.kind} · ${field.impact}: ${before} → ${after}`;
+  return <Value names={names} value={field.after} />;
 }
 
 // Roadmap task-98: the settings of one change that alter behaviour, grouped by what a
 // roll back can do with them. Fields Microsoft sets itself are counted, never listed;
 // an earlier value KEEL did not keep reads "Not known", never as a removal.
-export function SemanticDiff({ item, change }: { item: DriftRecord; change: SemanticChange }) {
+export function SemanticDiff({ item, change, record }: { item: DriftRecord; change: SemanticChange; record?: ReactNode }) {
   const headingId = `semantic-diff-heading-${item.id}`;
   const cosmetic = cosmeticSentence(change);
   return (
     <section aria-labelledby={headingId} className="drift-diff semantic-diff" id={`drift-diff-${item.id}`}>
       <DecisionStyles />
+      <ChangedValuesStyles />
       <div className="drift-diff-head">
         <p className="section-kicker">Approved setup → now</p>
         <h3 id={headingId}>{changeLabel(item)}</h3>
@@ -91,10 +89,22 @@ export function SemanticDiff({ item, change }: { item: DriftRecord; change: Sema
       <TechnicalDetails>
         <RecordField label="Natural key" value={item.naturalKey} />
         <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />
-        <RecordField copy={false} label="Change and blast radius" value={`${item.changeType} · ${item.blastRadius}`} />
-        <RecordField copy={false} label="Comparison" value={`${change.state} · rules ${change.rules} · ${change.total} behavioural (${change.groups.fixed} immutable, ${change.groups.behaviour} writable, ${change.groups["unknown-before"]} unknown before) · ${change.cosmetic} server-owned not shown`} />
+        <RecordField copy={false} label="Change type" value={item.changeType} />
+        <RecordField copy={false} label="Blast radius" value={item.blastRadius} />
+        {record}
+        <RecordField copy={false} label="Comparison state" value={change.state} />
+        <RecordField copy={false} label="Comparison rules" value={change.rules} />
+        <RecordField copy={false} label="Behavioural settings" value={`${change.total} (${change.groups.fixed} immutable, ${change.groups.behaviour} writable, ${change.groups["unknown-before"]} unknown before)`} />
+        <RecordField copy={false} label="Server-owned settings not shown" value={change.cosmetic} />
         {change.fields.map((field) => (
-          <RecordField copy={false} key={field.path} label={`Field ${field.path}`} value={recordValue(field)} />
+          <FieldRecord
+            after={field.kind === "removed" ? undefined : field.after}
+            before={field.kind === "unknown-before" || field.kind === "added" ? undefined : field.before}
+            change={field.kind}
+            key={field.path}
+            note={field.impact}
+            path={field.path}
+          />
         ))}
         <RecordField copy={false} label="Baseline copy (compared settings)" value={item.before === null || item.before === undefined ? "not kept" : JSON.stringify(item.before, null, 2) ?? "not kept"} />
         <RecordField copy={false} label="Current copy (compared settings)" value={item.after === null || item.after === undefined ? "not kept" : JSON.stringify(item.after, null, 2) ?? "not kept"} />

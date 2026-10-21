@@ -117,6 +117,8 @@ export async function createPrincipal(client, { email, displayName = null, role,
     return { principal, grant };
   } catch (error) {
     await client.query('ROLLBACK');
+    // Two adds of the same email at once: the unique index refuses the second.
+    if (error?.code === '23505') throw new PrincipalExistsError('a person with this email already exists');
     throw error;
   }
 }

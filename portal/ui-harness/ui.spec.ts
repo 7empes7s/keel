@@ -1857,6 +1857,10 @@ test("People · someone who may disable but not grant sees no role controls", as
   const panel = page.getByRole("dialog", { name: "Amara Okafor" });
   await expect(panel.getByRole("button", { name: "Disable" })).toBeVisible();
   await expect(panel.getByRole("button", { name: /Remove|Add role/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Without the roles permission the bulk action is Disable, never a grant.
+  await page.locator(".sel-row").nth(1).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Disable 1 person");
 });
 
 for (const theme of ["dark", "light"] as const) {

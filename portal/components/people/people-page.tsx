@@ -114,6 +114,8 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
   }
   const addRole = (role: Role, ids: string[]) => forEach(ids, `${ROLES[role].label} added`, (person) => changePerson(person.id, { kind: "grant", role }), (person) => Boolean(person.disabled_at) || liveRoles(person, now).includes(role));
 
+  const disableMany = (ids: string[]) => forEach(ids, "Disabled", (person) => changePerson(person.id, { kind: "disable" }), (person) => Boolean(person.disabled_at));
+
   function exportCsv() {
     const blob = new Blob([accessReviewCsv(everyone, now)], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -198,10 +200,15 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
             <p className="sel-empty">Nobody matches this filter.</p>
           ) : canRoles || canUsers ? (
             <SelectableList
-              action={{
+              action={canRoles ? {
                 label: (count) => `Add Viewer to ${peopleWord(count)}`,
                 detail: (_count, ids) => addRoleDetail("viewer", shown.filter((person) => ids.includes(person.id)), now),
-                run: (ids) => { if (!busy && canRoles) void addRole("viewer", ids); },
+                run: (ids) => { if (!busy) void addRole("viewer", ids); },
+              } : {
+                // Without the roles permission the one bulk action is Disable.
+                label: (count) => `Disable ${peopleWord(count)}`,
+                detail: () => "They can no longer sign in. Their roles are kept, and Enable again lets them back.",
+                run: (ids) => { if (!busy) void disableMany(ids); },
               }}
               getId={(item) => item.id}
               groupings={groupings}
@@ -210,7 +217,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
               matches={(item, text) => `${personName(item)} ${item.email}`.toLowerCase().includes(text)}
               more={[
                 ...(canRoles ? (["approver", "operator", "restorer", "investigator", "admin"] as Role[]).map((role) => ({ label: `Add ${ROLES[role].label} instead`, run: (ids: string[]) => void addRole(role, ids) })) : []),
-                ...(canUsers ? [{ label: "Disable these people", run: (ids: string[]) => void forEach(ids, "Disabled", (person) => changePerson(person.id, { kind: "disable" }), (person) => Boolean(person.disabled_at)) }] : []),
+                ...(canUsers && canRoles ? [{ label: "Disable these people", run: (ids: string[]) => void disableMany(ids) }] : []),
               ]}
               noun={{ one: "person", many: "people" }}
               renderRow={renderRow}
@@ -246,7 +253,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
 
       {opened || adding ? <BaselinesStyles /> : null}
       {opened && !adding ? (
-        <PersonSheet canRoles={canRoles} canUsers={canUsers && canChange} now={now} onClose={() => view.set({ open: null })} people={everyone} person={opened} />
+        <PersonSheet key={opened.id} canRoles={canRoles} canUsers={canUsers && canChange} now={now} onClose={() => view.set({ open: null })} people={everyone} person={opened} />
       ) : null}
       {adding ? <AddPersonSheet initialRole={isRole(view.get("as")) ? (view.get("as") as Role) : "viewer"} onAdded={(person) => { if (person) setAdded((list) => [...list, person]); view.set({ new: null, as: null, role: null, state: null }); router.refresh(); }} onClose={() => view.set({ new: null, as: null })} /> : null}
     </div>

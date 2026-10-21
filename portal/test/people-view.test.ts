@@ -9,6 +9,7 @@ import {
   addRoleDetail,
   changeRefusal,
   filterWords,
+  grantWindowWords,
   isLastAdmin,
   parseFilters,
   peopleCounts,
@@ -61,6 +62,13 @@ test("rows: role chips, since when, and filters set by the tiles", () => {
   assert.deepEqual(roleChips(PEOPLE[3], NOW), [{ label: "Viewer from 5 Oct 2026", tone: "low" }]);
   assert.equal(sinceWords(PEOPLE[0], NOW), "Since 1 Sept 2026");
   assert.equal(sinceWords(PEOPLE[4], NOW), "Disabled on 20 Sept 2026");
+  // Access lasts until the last live role ends.
+  assert.equal(sinceWords({ ...PEOPLE[1], role_grants: [grant("10", "viewer", "2026-09-01T00:00:00Z", "2026-11-30T00:00:00Z"), grant("11", "approver", "2026-09-01T00:00:00Z", "2026-11-05T00:00:00Z")] }, NOW), "Since 1 Sept 2026, until 30 Nov 2026");
+  // A role cancelled before it started reads as ended, never as starting later.
+  const cancelled = { ...PEOPLE[3], role_grants: [grant("12", "viewer", "2026-10-05T00:00:00Z", "2026-10-01T12:00:00Z")] };
+  assert.equal(personState(cancelled, NOW), "no-role");
+  assert.deepEqual(roleChips(cancelled, NOW), []);
+  assert.equal(grantWindowWords(cancelled.role_grants[0], NOW), "Cancelled before it started, 1 Oct 2026");
   const approvers = parseFilters((key) => (key === "role" ? "approver" : null));
   assert.deepEqual(PEOPLE.filter((person) => personMatches(person, approvers, NOW)).map((person) => person.id), [PEOPLE[0].id, PEOPLE[1].id]);
   assert.equal(filterWords(approvers), "approvers");

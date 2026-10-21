@@ -61,8 +61,10 @@ export function personName(person: Pick<PrincipalView, "id" | "email" | "display
 
 export function grantWhen(grant: Pick<Grant, "active_from" | "active_until">, now: string): GrantWhen {
   const at = new Date(now).valueOf();
-  if (new Date(grant.active_from).valueOf() > at) return "scheduled";
-  if (grant.active_until !== null && new Date(grant.active_until).valueOf() <= at) return "ended";
+  const from = new Date(grant.active_from).valueOf();
+  // A role cancelled before it started ends before its start: it never applies.
+  if (grant.active_until !== null && new Date(grant.active_until).valueOf() <= Math.max(at, from)) return "ended";
+  if (from > at) return "scheduled";
   return "active";
 }
 
@@ -85,7 +87,7 @@ export function grantRoleWords(grant: Pick<Grant, "role" | "scope">): string {
 /** "Since 1 Sept 2026", "From 3 Nov 2026 until 10 Nov 2026", "Ended 20 Sept 2026". */
 export function grantWindowWords(grant: Pick<Grant, "active_from" | "active_until">, now: string): string {
   const when = grantWhen(grant, now);
-  if (when === "ended") return `Ended ${date(grant.active_until as string)}`;
+  if (when === "ended") return new Date(grant.active_until as string).valueOf() <= new Date(grant.active_from).valueOf() ? `Cancelled before it started, ${date(grant.active_until as string)}` : `Ended ${date(grant.active_until as string)}`;
   const until = grant.active_until ? ` until ${date(grant.active_until)}` : "";
   return when === "scheduled" ? `From ${date(grant.active_from)}${until}` : `Since ${date(grant.active_from)}${until}`;
 }
@@ -236,7 +238,8 @@ export function sinceWords(person: PrincipalView, now: string): string {
   const live = activeGrants(person, now);
   if (live.length === 0) return personState(person, now) === "starts-later" ? "Nothing until their role starts" : "No role yet";
   const oldest = live.map((grant) => grant.active_from).sort()[0];
-  const ending = live.map((grant) => grant.active_until).filter((value): value is string => Boolean(value)).sort()[0];
+  // Access lasts until the last live role ends.
+  const ending = live.map((grant) => grant.active_until).filter((value): value is string => Boolean(value)).sort().at(-1);
   return `Since ${date(oldest)}${ending && live.every((grant) => grant.active_until) ? `, until ${date(ending)}` : ""}`;
 }
 

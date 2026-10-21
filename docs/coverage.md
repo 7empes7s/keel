@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 21 are full, 120 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 55 at least in part; the other 93 are restored by hand from the backup.
+KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 63 at least in part; the other 85 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -57,8 +57,8 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Access review settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Access review settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -154,10 +154,9 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate the access package first, then add the same groups, apps and sites with the roles in the backup.
 - **Custom authentication extensions** (not built yet). KEEL backs these up but does not restore them yet.
   - *You do:* Recreate the extension in the Entra admin center from the backup, then check that its endpoint still answers. Sign-ins and workflows that call it need it back first.
-- **Access review settings** (not built yet). KEEL backs this up but does not restore it yet.
-  - *You do:* Set whether group owners can manage access reviews again in Entra ID Governance, under Access reviews, Settings, from the backup.
-- **Admin role access review defaults** (not built yet). KEEL backs this up but does not restore it yet.
-  - *You do:* Set the same defaults with PowerShell from the backup. There is no admin center page for it.
+- **Access review settings.** Puts back whether group owners can manage access reviews of their groups.
+- **Admin role access review defaults.** Puts back the default settings of access reviews of admin roles.
+  - *You do:* Reviews already running keep the settings they started with.
 - **User flow attributes** (not built yet). KEEL backs up the custom attributes but does not restore them yet. The built-in attributes are set by Microsoft.
   - *Not brought back:* built-in attributes (set by Microsoft).
   - *You do:* Recreate each custom attribute in the Entra admin center, under External Identities, Custom user attributes, from the backup, before the user flows that collect it.
@@ -205,13 +204,13 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| External user leave settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | App creation policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| App permission pre-approval policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| App permission pre-approval policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 
 ### Details and what you do
 
@@ -267,21 +266,22 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.
 - **Cross-tenant sync per organization** (not built yet). These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.
   - *You do:* Set the partner's sync settings again in the Entra admin center under cross-tenant access settings, using the backup.
-- **External user leave settings** (not built yet). KEEL backs this up but does not restore it yet.
-  - *You do:* Set whether external users can leave your organization again in the Entra admin center, under External collaboration settings, from the backup.
-- **Guest invitation domain restrictions** (not built yet). KEEL backs up the allowed or blocked guest domains but does not restore them yet.
-  - *You do:* Set the same allowed or blocked domains in the Entra admin center, under External collaboration settings, from the backup.
+- **External user leave settings.** Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.
+- **Guest invitation domain restrictions.** Puts back the list of domains guests may, or may not, be invited from.
+  - *You do:* If the restriction was removed completely, set the domains again in the Entra admin center, under External collaboration settings.
 - **App creation policies** (not built yet). KEEL backs up each policy's name and settings but not yet its include and exclude conditions.
   - *Not brought back:* its include and exclude conditions (stored separately and not in the backup yet).
   - *You do:* Recreate the policy with PowerShell from the backup, then add its conditions again. There is no admin center page for it.
-- **App permission pre-approval policies** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each policy with PowerShell from the backup. There is no admin center page for it.
-- **Multitenant organization sync template** (not built yet). KEEL backs this up but does not restore it yet. It only affects tenants that join later.
-  - *You do:* Set the same template with PowerShell from the backup before another tenant joins. There is no admin center page for it.
-- **Multitenant organization access template** (not built yet). KEEL backs this up but does not restore it yet. It only affects tenants that join later.
-  - *You do:* Set the same template with PowerShell from the backup before another tenant joins. There is no admin center page for it.
-- **Guest SAML or WS-Fed sign-in** (not built yet). KEEL backs up each partner's federation settings and public signing certificate but does not restore them yet.
-  - *You do:* Recreate the identity provider in the Entra admin center, under External Identities, All identity providers, from the backup, and check the partner's metadata is still current.
+- **App permission pre-approval policies.** Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).
+  - *Not brought back:* which app it is assigned to (stored separately and not in the backup yet).
+  - *You do:* A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.
+- **Multitenant organization sync template.** Puts back the user sync settings a tenant gets when it joins your multitenant organization.
+  - *You do:* Tenants that already joined keep their own settings; change those per organization.
+- **Multitenant organization access template.** Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.
+  - *You do:* Tenants that already joined keep their own settings; change those per organization.
+- **Guest SAML or WS-Fed sign-in.** Puts back each partner's sign-in addresses, protocol and public signing certificate.
+  - *Not brought back:* its domains (stored separately and not in the backup yet).
+  - *You do:* A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner's certificate is still current.
 
 ## Tenant settings
 

@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import {
   IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
-  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, userCreateBody,
+  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, sameJsonStrings, userCreateBody,
 } from './identityObjectOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 
@@ -274,6 +274,160 @@ test('governance singletons are updated in place and verified', async () => {
     assert.equal(patch.path, path);
     assert.equal('state' in patch.body, false);
   }
+});
+
+test('restore gaps batch 2: Entra ID tenant singletons write only their settings, in place, and read back', async () => {
+  const MTO = '/policies/crossTenantAccessPolicy/templates';
+  const name = { id: 'policy', displayName: 'Microsoft name', description: 'Microsoft description' };
+  const cases = [
+    ['externalIdentitiesPolicy', 'beta', '/policies/externalIdentitiesPolicy',
+      { ...name, allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
+      { ...name, displayName: 'Other', allowExternalIdentitiesToLeave: false, allowDeletedIdentitiesDataRemoval: false },
+      { allowExternalIdentitiesToLeave: true }],
+    ['accessReviewPolicy', 'beta', '/policies/accessReviewPolicy',
+      { ...name, isGroupOwnerManagementEnabled: true }, { ...name, isGroupOwnerManagementEnabled: false },
+      { isGroupOwnerManagementEnabled: true }],
+    ['directoryRoleAccessReviewPolicy', 'beta', '/policies/directoryRoleAccessReviewPolicy',
+      { id: 'policy', settings: { instanceDurationInDays: 14, mailNotificationsEnabled: true } },
+      { id: 'policy', settings: { instanceDurationInDays: 3, mailNotificationsEnabled: true } },
+      { settings: { instanceDurationInDays: 14, mailNotificationsEnabled: true } }],
+    ['multiTenantOrganizationIdentitySyncPolicyTemplate', 'v1.0', `${MTO}/multiTenantOrganizationIdentitySynchronization`,
+      { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
+      { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: false } },
+      { userSyncInbound: { isSyncAllowed: true } }],
+    ['multiTenantOrganizationPartnerConfigurationTemplate', 'v1.0', `${MTO}/multiTenantOrganizationPartnerConfiguration`,
+      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } },
+      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
+      { automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } }],
+  ];
+  for (const [type, version, path, desired, live, patched] of cases) {
+    assert.equal(IDENTITY_RECORDS[type].singleton, true, type);
+    assert.deepEqual(IDENTITY_RECORDS[type].operations, ['update'], type);
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const writes = graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
+    assert.equal(writes.length, 1, `${type}: one write`);
+    assert.equal(writes[0].method, 'PATCH');
+    assert.equal(writes[0].version, version, type);
+    assert.equal(writes[0].path, path);
+    assert.deepEqual(writes[0].body, patched, `${type}: only the changed setting is sent, never its name or id`);
+  }
+});
+
+test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
+  const path = '/policies/accessReviewPolicy';
+  const live = { id: 'policy', displayName: 'Access review policy', isGroupOwnerManagementEnabled: true };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'accessReviewPolicy', resourceType: 'accessReviewPolicy', payload: { ...live, displayName: 'Renamed by Microsoft' }, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0);
+});
+
+test('restore gaps batch 2: a tenant singleton is never created or deleted', async () => {
+  const graph = idoFakeGraph();
+  for (const verb of ['create', 'delete']) {
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'externalIdentitiesPolicy', resourceType: 'externalIdentitiesPolicy', payload: { allowExternalIdentitiesToLeave: true }, references: [] }, verb, FAST);
+    assert.ok(result.failed || result.skipped, `${verb} is refused`);
+  }
+  assert.equal(graph.calls.filter((call) => call.method === 'POST' || call.method === 'DELETE').length, 0);
+});
+
+const B2B = '/policies/b2bManagementPolicies';
+const b2bDefinition = (blocked) => [JSON.stringify({ B2BManagementPolicy: { InvitationsAllowedAndBlockedDomainsPolicy: { BlockedDomains: blocked } } })];
+const PRE_APPROVAL = '/policies/permissionGrantPreApprovalPolicies';
+const preApprovalCondition = (scopeType) => ({
+  scopeType,
+  sensitivityLabels: { '@odata.type': '#microsoft.graph.allScopeSensitivityLabels', labelKind: 'all' },
+  permissions: {
+    '@odata.type': '#microsoft.graph.enumeratedPreApprovedPermissions', permissionKind: 'enumerated', permissionType: 'application',
+    resourceApplicationId: '00000003-0000-0000-c000-000000000000', permissionIds: ['permission-1'],
+  },
+});
+const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
+
+test('restore gaps batch 3: the guest domain restriction writes only its definition, in place, and reads back', async () => {
+  const live = { id: 'b2b-1', displayName: 'B2B policy', isOrganizationDefault: true, definition: b2bDefinition([]) };
+  const desired = { ...live, displayName: 'Renamed', isOrganizationDefault: false, definition: b2bDefinition(['keel-rt-blocked.example']) };
+  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: desired, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'PATCH');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].version, 'beta');
+  assert.equal(writes[0].path, `${B2B}/b2b-1`);
+  assert.deepEqual(writes[0].body, { definition: desired.definition }, 'never its name or default flag');
+});
+
+test('restore gaps batch 3: a definition Graph returns with other spacing is not written again', async () => {
+  const backup = b2bDefinition(['keel-rt-blocked.example']);
+  const spaced = [JSON.stringify(JSON.parse(backup[0]), null, 2)];
+  assert.equal(sameJsonStrings(backup, spaced), true);
+  assert.equal(sameJsonStrings(backup, b2bDefinition([])), false);
+  assert.equal(sameJsonStrings(['not json'], ['not json']), true, 'text that is not JSON is compared as text');
+  const live = { id: 'b2b-1', displayName: 'B2B policy', definition: spaced };
+  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: { ...live, definition: backup }, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0);
+});
+
+test('restore gaps batch 3: a deleted guest domain restriction or federation is never recreated', async () => {
+  for (const [resourceType, payload] of [
+    ['b2bManagementPolicy', { id: 'b2b-1', definition: b2bDefinition([]) }],
+    ['externalDomainFederation', { id: 'fed-1', displayName: 'KEEL-RT-148-fed', issuerUri: 'https://keel-rt-fed.example/issuer' }],
+  ]) {
+    const graph = idoFakeGraph();
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: payload.id, resourceType, payload, references: [] }, 'create', FAST);
+    assert.ok(result.failed, `${resourceType} create is refused`);
+    assert.equal(graph.calls.filter((call) => call.method === 'POST').length, 0, resourceType);
+  }
+});
+
+test('restore gaps batch 3: a pre-approval policy is recreated with its conditions and updated in place', async () => {
+  const backup = { id: 'old-id', deletedDateTime: null, conditions: [preApprovalCondition('chat')] };
+  const graph = idoFakeGraph();
+  const created = await applyIdentityObjectWrite(graph, { naturalKey: 'old-id', resourceType: 'permissionGrantPreApprovalPolicy', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, PRE_APPROVAL);
+  assert.deepEqual(post.body, { conditions: backup.conditions }, 'only the conditions are sent, never the old id');
+  const newId = created.applied.targetId;
+  assert.ok(newId && newId !== 'old-id');
+
+  const drifted = { id: newId, conditions: [preApprovalCondition('group')] };
+  const second = idoFakeGraph({ seed: { [`${PRE_APPROVAL}/${newId}`]: drifted } });
+  const updated = await applyIdentityObjectWrite(second, { naturalKey: newId, resourceType: 'permissionGrantPreApprovalPolicy', payload: { ...backup, id: newId }, references: [], live: { state: 'present', targetId: newId, payload: drifted } }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = second.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, `${PRE_APPROVAL}/${newId}`);
+  assert.deepEqual(patch.body, { conditions: backup.conditions });
+});
+
+test('restore gaps batch 3: a guest federation updates its settings in place, never its domains', async () => {
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
+    issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/drifted',
+    preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture', domains: [{ id: 'keel-rt-fed.example' }],
+  };
+  const desired = { ...live, passiveSignInUri: 'https://keel-rt-fed.example/sso', domains: [{ id: 'other.example' }] };
+  const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [], live: { state: 'present', targetId: 'fed-1', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'PATCH');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].version, 'v1.0');
+  assert.equal(writes[0].path, `${FEDERATIONS}/fed-1`);
+  assert.deepEqual(writes[0].body, { passiveSignInUri: 'https://keel-rt-fed.example/sso' });
+});
+
+test('restore gaps batch 3: a federation of another kind has no write route', async () => {
+  const payload = { '@odata.type': '#microsoft.graph.internalDomainFederation', id: 'fed-2', displayName: 'KEEL-RT-148-internal' };
+  const graph = idoFakeGraph();
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'fed-2', resourceType: 'externalDomainFederation', payload, references: [], live: { state: 'present', targetId: 'fed-2', payload } }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /no write route/);
+  assert.equal(graph.calls.length, 0);
 });
 
 test('catalogs, app policies and task extensions are created and read back', async () => {

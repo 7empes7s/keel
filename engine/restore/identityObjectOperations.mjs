@@ -34,7 +34,7 @@ import { randomBytes } from 'node:crypto';
 
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import {
-  applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue,
+  applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
@@ -172,6 +172,23 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
 }
 
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
+const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
+
+const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
+
+const parsedOrRaw = (entry) => {
+  try {
+    return JSON.parse(entry);
+  } catch {
+    return entry;
+  }
+};
+
+/** Two lists of JSON strings are the same when each entry parses to the same value (Graph may change the spacing). */
+export function sameJsonStrings(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return sameValue(left, right);
+  return left.length === right.length && left.every((entry, index) => sameValue(parsedOrRaw(entry), parsedOrRaw(right[index])));
+}
 
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
@@ -221,6 +238,69 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'multiTenantOrganization', version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
+  }),
+  // Restore gaps, batch 2: Entra ID tenant settings that are one object per
+  // tenant. Each is only updated in place, and only its settings are written
+  // (its name and description are Microsoft's).
+  externalIdentitiesPolicy: defineRecord({
+    resourceType: 'externalIdentitiesPolicy', version: 'beta', collection: '/policies/externalIdentitiesPolicy',
+    singleton: true, operations: ['update'], writable: ['allowExternalIdentitiesToLeave', 'allowDeletedIdentitiesDataRemoval'],
+    permission: 'Policy.ReadWrite.ExternalIdentities', docs: beta('externalidentitiespolicy-update'),
+  }),
+  accessReviewPolicy: defineRecord({
+    resourceType: 'accessReviewPolicy', version: 'beta', collection: '/policies/accessReviewPolicy',
+    singleton: true, operations: ['update'], writable: ['isGroupOwnerManagementEnabled'],
+    permission: 'Policy.ReadWrite.AccessReview', docs: beta('accessreviewpolicy-update'),
+  }),
+  directoryRoleAccessReviewPolicy: defineRecord({
+    resourceType: 'directoryRoleAccessReviewPolicy', version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
+    singleton: true, operations: ['update'], writable: ['settings'],
+    permission: 'RoleManagement.ReadWrite.Directory', docs: beta('directoryroleaccessreviewpolicy-update'),
+  }),
+  // The multitenant organization templates only shape the settings a tenant
+  // gets when it joins later; partners already in place keep their own.
+  multiTenantOrganizationIdentitySyncPolicyTemplate: defineRecord({
+    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', version: 'v1.0',
+    collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization',
+    singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'userSyncInbound'],
+    permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationidentitysyncpolicytemplate-update'),
+  }),
+  multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
+    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
+    collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
+    singleton: true, operations: ['update'],
+    writable: [
+      'templateApplicationLevel', 'inboundTrust', 'automaticUserConsentSettings',
+      'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+    ],
+    permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
+  }),
+  // Restore gaps, batch 3: guest and app consent settings.
+  // The guest invitation domain lists live in `definition`, a list of JSON
+  // strings. Only the definition is written, in place: the tenant keeps one
+  // such policy, and its name and default flag are left as they are.
+  b2bManagementPolicy: defineRecord({
+    resourceType: 'b2bManagementPolicy', version: 'beta', collection: '/policies/b2bManagementPolicies',
+    operations: ['update'], writable: ['definition'], sameField: (field, left, right) => (field === 'definition' ? sameJsonStrings(left, right) : null),
+    permission: 'Policy.ReadWrite.B2BManagementPolicy', docs: beta('b2bmanagementpolicy-update'),
+  }),
+  // A pre-approval policy does nothing until it is assigned to an app's
+  // service principal; that assignment is not backed up, so it stays a step.
+  permissionGrantPreApprovalPolicy: defineRecord({
+    resourceType: 'permissionGrantPreApprovalPolicy', version: 'beta', collection: '/policies/permissionGrantPreApprovalPolicies',
+    operations: ['create', 'update'], writable: ['conditions'],
+    permission: 'Policy.ReadWrite.PermissionGrant', docs: beta('permissiongrantpreapprovalpolicy-post'),
+  }),
+  // A guest federation's settings are updated in place. Its domains are a
+  // separate collection the backup does not read yet, so a deleted federation
+  // is set up again by hand.
+  externalDomainFederation: defineRecord({
+    resourceType: 'externalDomainFederation', version: 'v1.0', collection: FEDERATIONS,
+    collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
+      ? FEDERATIONS : null),
+    operations: ['update'],
+    writable: ['displayName', 'issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'preferredAuthenticationProtocol', 'signingCertificate'],
+    permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
 });
 

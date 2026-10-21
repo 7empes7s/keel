@@ -183,6 +183,49 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-cleanup`, drift: 'lower it to 180 days: the restore puts back 270 (longer only; a shorter backup value is refused)',
     note: 'Update only: a deleted rule is recreated by hand. The test tenant has no managed devices, so no device can be retired.',
   },
+  // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
+  // Conditional Access or any account; each is set back to its value after the run.
+  externalIdentitiesPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant external identities policy (whether external users can leave the organization themselves)',
+    select: 'externalIdentitiesPolicy', drift: 'switch allowExternalIdentitiesToLeave to the other value; write the original down first',
+  },
+  accessReviewPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant access review settings (whether group owners can manage access reviews)',
+    select: 'accessReviewPolicy', drift: 'switch isGroupOwnerManagementEnabled to the other value; write the original down first',
+  },
+  directoryRoleAccessReviewPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant default settings of admin role access reviews',
+    select: 'directoryRoleAccessReviewPolicy', drift: 'change settings.instanceDurationInDays (for example 14 to 7); write the original down first',
+    note: 'No review is created or changed. If GET answers 404, the tenant has no such policy: report this step as blocked.',
+  },
+  multiTenantOrganizationIdentitySyncPolicyTemplate: {
+    kind: 'tenant-setting', fixture: 'the multitenant organization user sync template', select: 'multiTenantOrganizationIdentitySyncPolicyTemplate',
+    drift: 'switch userSyncInbound.isSyncAllowed to the other value; write the original down first',
+    note: 'It only applies to tenants that join a multitenant organization later; the test tenant has no partner tenants joining.',
+  },
+  multiTenantOrganizationPartnerConfigurationTemplate: {
+    kind: 'tenant-setting', fixture: 'the multitenant organization cross-tenant access template', select: 'multiTenantOrganizationPartnerConfigurationTemplate',
+    drift: 'switch automaticUserConsentSettings.inboundAllowed to the other value; never change inboundTrust; write the original down first',
+    note: 'It only applies to tenants that join a multitenant organization later; existing partner settings are not touched.',
+  },
+  // Restore gaps, batch 3: guest and app consent settings. None touches
+  // Conditional Access or any account.
+  b2bManagementPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant guest invitation domain restriction (the one b2bManagementPolicy)',
+    select: 'the policy id KEEL shows for b2bManagementPolicy',
+    drift: `add keel-rt-blocked.example to BlockedDomains (or remove it if the backup holds it); write the original definition down first`,
+    note: 'Only the definition is written. If the tenant has no policy, set one blocked domain keel-rt-blocked.example in the admin center first. Never block or allow a real domain.',
+  },
+  permissionGrantPreApprovalPolicy: {
+    kind: 'tenant-setting', fixture: 'a pre-approval policy assigned to no app: one condition, scopeType chat, Microsoft Graph application permission ChatMessage.Read.Chat',
+    select: 'the policy id KEEL shows for the fixture', drift: 'change the condition scopeType from chat to group',
+    note: 'Never assign it to a service principal: unassigned, it pre-approves nothing. Delete it at the end.',
+  },
+  externalDomainFederation: {
+    kind: 'named-object', fixture: `a SAML federation ${FIXTURE_PREFIX}-fed for the domain keel-rt-fed.example (sign-in https://keel-rt-fed.example/sso, a self-signed certificate)`,
+    select: `${FIXTURE_PREFIX}-fed`, drift: 'change its passiveSignInUri to https://keel-rt-fed.example/drifted',
+    note: 'Update only: a deleted federation is set up again by hand. No guest is invited from the domain. Delete it at the end.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

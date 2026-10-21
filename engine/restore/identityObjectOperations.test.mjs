@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
+  FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
   buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, sameJsonStrings, userCreateBody,
 } from './identityObjectOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
@@ -408,10 +408,10 @@ test('restore gaps batch 3: a pre-approval policy is recreated with its conditio
 test('restore gaps batch 3: a guest federation updates its settings in place, never its domains', async () => {
   const live = {
     '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
-    issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/drifted',
+    issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/sso',
     preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture', domains: [{ id: 'keel-rt-fed.example' }],
   };
-  const desired = { ...live, passiveSignInUri: 'https://keel-rt-fed.example/sso', domains: [{ id: 'other.example' }] };
+  const desired = { ...live, displayName: 'KEEL-RT-148-fed-renamed', domains: [{ id: 'other.example' }] };
   const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
   const result = await applyIdentityObjectWrite(graph, { naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [], live: { state: 'present', targetId: 'fed-1', payload: live } }, 'update', FAST);
   assert.equal(result.failed, undefined, result.failed?.error);
@@ -419,7 +419,47 @@ test('restore gaps batch 3: a guest federation updates its settings in place, ne
   assert.equal(writes.length, 1);
   assert.equal(writes[0].version, 'v1.0');
   assert.equal(writes[0].path, `${FEDERATIONS}/fed-1`);
-  assert.deepEqual(writes[0].body, { passiveSignInUri: 'https://keel-rt-fed.example/sso' });
+  assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
+});
+
+test('a guest federation update never writes its sign-in endpoints or signing certificate', async () => {
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
+    issuerUri: 'https://keel-rt-fed.example/issuer', metadataExchangeUri: 'https://keel-rt-fed.example/mex',
+    passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture',
+  };
+  const tampered = {
+    issuerUri: 'https://keel-rt-other.example/issuer',
+    metadataExchangeUri: 'https://keel-rt-other.example/mex',
+    passiveSignInUri: 'https://keel-rt-other.example/sso',
+    signingCertificate: 'MIIOther',
+  };
+  for (const [field, value] of Object.entries(tampered)) {
+    for (const mode of ['enforce', 'dry-run']) {
+      const desired = { ...live, displayName: 'KEEL-RT-148-fed-renamed', [field]: value };
+      const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
+      const result = await applyIdentityObjectWrite(graph, {
+        naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [],
+        live: { state: 'present', targetId: 'fed-1', payload: live },
+      }, 'update', { ...FAST, mode });
+      assert.equal(result.applied, undefined, `${field} (${mode}) is withheld`);
+      assert.match(result.skipped?.reason ?? '', new RegExp(`^manual: .*${field}`), `${field} (${mode})`);
+      assert.equal(result.skipped.completion.kind, 'manual-setting');
+      assert.deepEqual(result.skipped.completion.fields, [field]);
+      assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, `${field} (${mode}): nothing is written`);
+    }
+  }
+  assert.deepEqual([...FEDERATION_SIGN_IN_FIELDS].sort(), Object.keys(tampered).sort());
+});
+
+test('a guest federation update with no live copy to compare is withheld when it carries a sign-in field', async () => {
+  const desired = { id: 'fed-1', displayName: 'KEEL-RT-148-fed', passiveSignInUri: 'https://keel-rt-fed.example/sso' };
+  const graph = idoFakeGraph();
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [], targetId: 'fed-1',
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /passiveSignInUri/);
+  assert.equal(graph.calls.length, 0);
 });
 
 test('restore gaps batch 3: a federation of another kind has no write route', async () => {

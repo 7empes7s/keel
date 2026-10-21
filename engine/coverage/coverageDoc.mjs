@@ -478,8 +478,8 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.',
     'Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.'),
   externalDomainFederation: auto('Guest SAML or WS-Fed sign-in', {
-    keeps: 'Puts back each partner\'s sign-in addresses, protocol and public signing certificate.',
-    todo: 'A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner\'s certificate is still current.',
+    keeps: 'Puts back each partner\'s name and sign-in protocol.',
+    todo: 'KEEL never puts back a partner\'s sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.',
   }),
   exchangeRoleDefinition: manual('Exchange admin roles', NOT_BUILT,
     'KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.',

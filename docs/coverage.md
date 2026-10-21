@@ -279,9 +279,9 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Tenants that already joined keep their own settings; change those per organization.
 - **Multitenant organization access template.** Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.
   - *You do:* Tenants that already joined keep their own settings; change those per organization.
-- **Guest SAML or WS-Fed sign-in.** Puts back each partner's sign-in addresses, protocol and public signing certificate.
+- **Guest SAML or WS-Fed sign-in.** Puts back each partner's name and sign-in protocol.
   - *Not brought back:* its domains (stored separately and not in the backup yet).
-  - *You do:* A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner's certificate is still current.
+  - *You do:* KEEL never puts back a partner's sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.
 
 ## Tenant settings
 

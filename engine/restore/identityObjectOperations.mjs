@@ -83,6 +83,40 @@ function servicePrincipalRefusal(resource, verb) {
   return null;
 }
 
+// ------------------------------------------------------ guest federation
+
+/**
+ * The guest federation fields that decide where guests from the domain sign in
+ * and which tokens Entra trusts for them. A backup that was tampered with
+ * could point them at another identity provider, so a restore never writes
+ * them: a change to any of them withholds the whole update for a person to
+ * check against the partner's identity provider and set by hand.
+ */
+export const FEDERATION_SIGN_IN_FIELDS = Object.freeze(['issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'signingCertificate']);
+
+const FEDERATION_PORTAL_PATH = 'Microsoft Entra admin center > External Identities > All identity providers > SAML/WS-Fed';
+
+function federationSignInRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? null;
+  const changed = FEDERATION_SIGN_IN_FIELDS.filter((field) => resource.payload?.[field] !== undefined
+    && (!live || !sameValue(resource.payload[field], live[field])));
+  if (changed.length === 0) return null;
+  return {
+    outcome: 'skipped',
+    reason: `manual: the backup changes where this guest federation's guests sign in (${changed.join(', ')}); `
+      + 'a restore never writes that, so check the values with the partner and set them by hand',
+    completion: Object.freeze({
+      kind: 'manual-setting',
+      requirement: 'externalDomainFederationSignIn',
+      fields: Object.freeze([...changed]),
+      portalPath: FEDERATION_PORTAL_PATH,
+      description: `Confirm ${changed.join(', ')} with the partner organisation's identity provider, then set them in the ${FEDERATION_PORTAL_PATH}. `
+        + 'Do not copy them from the backup without that check: wrong values send guests to another sign-in page.',
+    }),
+  };
+}
+
 // ------------------------------------------------------------- governance
 
 /** Lifecycle workflow fields Entra computes, or that are read separately. */
@@ -293,13 +327,15 @@ export const IDENTITY_RECORDS = Object.freeze({
   }),
   // A guest federation's settings are updated in place. Its domains are a
   // separate collection the backup does not read yet, so a deleted federation
-  // is set up again by hand.
+  // is set up again by hand. Its sign-in endpoints and signing certificate are
+  // never written back (federationSignInRefusal).
   externalDomainFederation: defineRecord({
     resourceType: 'externalDomainFederation', version: 'v1.0', collection: FEDERATIONS,
     collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
       ? FEDERATIONS : null),
     operations: ['update'],
     writable: ['displayName', 'issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'preferredAuthenticationProtocol', 'signingCertificate'],
+    refusal: federationSignInRefusal,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
 });

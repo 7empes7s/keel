@@ -1,9 +1,9 @@
 import { Suspense, type ReactNode } from "react";
 
-import { SECTION_ICONS, type NavSection } from "@/components/nav-links";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { PageActions } from "@/components/shell/page-actions";
 import type { RiskTone } from "@/lib/menu-status";
+import { SECTION_ICONS, type NavSection } from "@/lib/nav-sections";
 import { formatTimestamp } from "@/lib/presentation";
 
 const STATUS_ICONS: Record<RiskTone, IconName> = { urgent: "alert", soon: "clock", low: "info", fine: "check" };

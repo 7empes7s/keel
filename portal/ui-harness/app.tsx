@@ -65,8 +65,9 @@ import { ReadinessView } from "@/components/readiness-view";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessVerdict, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
-import { ValueReportView } from "@/components/value-report-view";
-import { valueVerdict, type ValueReport } from "@/lib/value-report-view";
+import { DownloadMenu } from "@/components/value-report/download-menu";
+import { ValueReportPage } from "@/components/value-report/value-report-page";
+import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
@@ -1204,11 +1205,11 @@ const VALUE_REPORT: ValueReport = {
     ...VALUE_SUMMARY(1, 1, 1, 1, 1, 7),
     byFamily: { restore: VALUE_SUMMARY(1, 0, 1, 0, 1, 4), remediation: VALUE_SUMMARY(0, 1, 0, 1, 0, 3) },
     rows: [
-      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000100", family: "restore", state: "verified", reason: "journal-and-completion-verified", attempts: 2, retries: 1, firstRequestedAt: "2026-09-20T10:00:00.000Z", lastEventAt: "2026-09-20T11:30:00.000Z", verifiedAt: "2026-09-20T11:30:00.000Z", reopenedAt: null, resources: 3, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000100", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000001", "job:a1000000-0000-4000-8000-000000000002"] },
-      { id: "change:d1f70000-0000-4000-8000-000000000101", family: "remediation", state: "reopened", reason: "changed-again", attempts: 2, retries: 1, firstRequestedAt: "2026-09-15T00:00:00.000Z", lastEventAt: "2026-09-28T00:00:00.000Z", verifiedAt: null, reopenedAt: "2026-09-28T00:00:00.000Z", resources: 1, resourceType: "conditionalAccessPolicy", changeType: "modified", planId: null, driftId: "d1f70000-0000-4000-8000-000000000101", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000003", "job:a1000000-0000-4000-8000-000000000004"] },
-      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000102", family: "restore", state: "unconfirmed", reason: "completion-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-09-30T08:00:00.000Z", lastEventAt: "2026-09-30T08:05:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000102", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000005"] },
-      { id: "change:d1f70000-0000-4000-8000-000000000103", family: "remediation", state: "queued", reason: "attempt-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-10-02T09:00:00.000Z", lastEventAt: "2026-10-02T09:00:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: "group", changeType: "added", planId: null, driftId: "d1f70000-0000-4000-8000-000000000103", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000006"] },
-      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000104", family: "restore", state: "failed", reason: "all-attempts-failed", attempts: 1, retries: 0, firstRequestedAt: "2026-09-10T12:00:00.000Z", lastEventAt: "2026-09-10T12:01:00.000Z", verifiedAt: null, reopenedAt: null, resources: 2, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000104", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000007"] },
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000100", family: "restore", state: "verified", reason: "journal-and-completion-verified", attempts: 2, retries: 1, firstRequestedAt: "2026-09-20T10:00:00.000Z", lastEventAt: "2026-09-20T11:30:00.000Z", verifiedAt: "2026-09-20T11:30:00.000Z", reopenedAt: null, resources: 3, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000100", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000001", "job:a1000000-0000-4000-8000-000000000002"], lastJobId: "a3" },
+      { id: "change:d1f70000-0000-4000-8000-000000000101", family: "remediation", state: "reopened", reason: "changed-again", attempts: 2, retries: 1, firstRequestedAt: "2026-09-15T00:00:00.000Z", lastEventAt: "2026-09-28T00:00:00.000Z", verifiedAt: null, reopenedAt: "2026-09-28T00:00:00.000Z", resources: 1, resourceType: "conditionalAccessPolicy", changeType: "modified", planId: null, driftId: "d1f70000-0000-4000-8000-000000000101", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000003", "job:a1000000-0000-4000-8000-000000000004"], lastJobId: "a4" },
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000102", family: "restore", state: "unconfirmed", reason: "completion-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-09-30T08:00:00.000Z", lastEventAt: "2026-09-30T08:05:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000102", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000005"], lastJobId: "r9" },
+      { id: "change:d1f70000-0000-4000-8000-000000000103", family: "remediation", state: "queued", reason: "attempt-pending", attempts: 1, retries: 0, firstRequestedAt: "2026-10-02T09:00:00.000Z", lastEventAt: "2026-10-02T09:00:00.000Z", verifiedAt: null, reopenedAt: null, resources: 1, resourceType: "group", changeType: "added", planId: null, driftId: "d1f70000-0000-4000-8000-000000000103", attemptEventIds: ["job:a1000000-0000-4000-8000-000000000006"], lastJobId: "a3" },
+      { id: "restore-plan:7f3c0000-0000-4000-8000-000000000104", family: "restore", state: "failed", reason: "all-attempts-failed", attempts: 1, retries: 0, firstRequestedAt: "2026-09-10T12:00:00.000Z", lastEventAt: "2026-09-10T12:01:00.000Z", verifiedAt: null, reopenedAt: null, resources: 2, resourceType: null, changeType: null, planId: "7f3c0000-0000-4000-8000-000000000104", driftId: null, attemptEventIds: ["job:a1000000-0000-4000-8000-000000000007"], lastJobId: "r10" },
     ],
     rowsShown: 5,
     undoRunsExcluded: 1,
@@ -1216,9 +1217,9 @@ const VALUE_REPORT: ValueReport = {
   findings: {
     withheld: false, total: 3, states: { resolved: 1, open: 1, unchecked: 1 }, reopened: 1, percentResolved: 33.3, rowsShown: 3,
     rows: [
-      { id: "finding:keel-custom|1.0.0|default|keel.mfa.admins|1", controlId: "keel.mfa.admins", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "open", reopened: true, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-25T00:00:00.000Z", lastEvaluatedAt: "2026-09-25T00:00:00.000Z", lastVerdict: "fail", lastEvaluationId: "e7a10000-0000-4000-8000-000000000201" },
-      { id: "finding:keel-custom|1.0.0|default|keel.guests.invite|1", controlId: "keel.guests.invite", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "unchecked", reopened: false, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-15T00:00:00.000Z", lastVerdict: "unknown", lastEvaluationId: "e7a10000-0000-4000-8000-000000000202" },
-      { id: "finding:keel-custom|1.0.0|default|keel.groups.owner|1", controlId: "keel.groups.owner", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "resolved", reopened: false, resolvedAt: "2026-09-12T00:00:00.000Z", resolvedBy: { evaluationId: "e7a10000-0000-4000-8000-000000000203", evidenceSeq: "18190" }, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-19T00:00:00.000Z", lastVerdict: "pass", lastEvaluationId: "e7a10000-0000-4000-8000-000000000204" },
+      { id: "finding:keel-custom|1.0.0|default|keel.mfa.admins|1", controlId: "keel.mfa.admins", title: "Admins sign in with more than a password", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "open", reopened: true, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-25T00:00:00.000Z", lastEvaluatedAt: "2026-09-25T00:00:00.000Z", lastVerdict: "fail", lastEvaluationId: "e7a10000-0000-4000-8000-000000000201" },
+      { id: "finding:keel-custom|1.0.0|default|keel.guests.invite|1", controlId: "keel.guests.invite", title: "Only admins can invite guests", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "unchecked", reopened: false, resolvedAt: null, resolvedBy: null, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-15T00:00:00.000Z", lastVerdict: "unknown", lastEvaluationId: "e7a10000-0000-4000-8000-000000000202" },
+      { id: "finding:keel-custom|1.0.0|default|keel.groups.owner|1", controlId: "keel.groups.owner", title: "Groups have at least two owners", framework: "keel-custom", edition: "1.0.0", profile: "default", state: "resolved", reopened: false, resolvedAt: "2026-09-12T00:00:00.000Z", resolvedBy: { evaluationId: "e7a10000-0000-4000-8000-000000000203", evidenceSeq: "18190" }, failedAt: "2026-09-05T00:00:00.000Z", lastEvaluatedAt: "2026-09-19T00:00:00.000Z", lastVerdict: "pass", lastEvaluationId: "e7a10000-0000-4000-8000-000000000204" },
     ],
   },
   recovery: {
@@ -1253,11 +1254,12 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   hoursSaved: null,
 };
 
-function reportsPage(report: ValueReport) {
-  const verdict = valueVerdict(report);
-  return <>{header("Reports", "Value report", "What KEEL put back and checked, which failing controls were fixed, and how long recovery took, for a period you choose.")}
-    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><ValueReportView data={{ report, period: "30d", entity: null }} /></div></>;
+// The server reads `period=` and `entity=`; here they only change what the controls show.
+function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
+  const params = useSearchParams();
+  const entity = params.get("entity");
+  return <><PageHeader actions={<DownloadMenu />} description="What Keel put back and checked, which security checks were fixed, and how fast recovery was, for a period you choose." generatedAt={now} section="Reports" status={valueStatus(report)} title="Value report" />
+    <ValueReportPage data={{ report, period: resolvePeriod(params.get("period"), report.period.to), entity: entity && owners.includes(entity) ? entity : null, owners }} /></>;
 }
 
 // Task-99: bounded, grounded answers. A partial answer (part of the week not compared
@@ -1671,8 +1673,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
-    case "/reports": return reportsPage(VALUE_REPORT);
-    case "/reports/scoped": return reportsPage(VALUE_REPORT_SCOPED);
+    case "/reports": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT} />;
+    case "/reports/scoped": return <HarnessReports owners={["FIN"]} report={VALUE_REPORT_SCOPED} />;
     case "/sites": return sitesPage();
     case "/compare": return comparePage(COMPARE);
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);

@@ -1948,6 +1948,18 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(page.locator(".sel-row")).toHaveCount(6);
     await page.goBack();
     await page.locator(".bl-current").waitFor();
+    // Every service has a card, not only Entra ID and Intune. Service reads are measured
+    // against the previous backup, and their changes link to the Changes page too.
+    for (const name of ["Entra ID", "Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Purview", "Power Platform"]) {
+      await expect(page.locator(".bl-service", { hasText: name })).toHaveCount(1);
+    }
+    const exchange = page.locator(".bl-service", { hasText: "Exchange Online" });
+    await expect(exchange).toHaveAttribute("data-basis", "previous-backup");
+    await expect(exchange).toContainText(/Changed\s*1\s*kind/);
+    await expect(exchange).toContainText(/Unchanged\s*1\s*kind/);
+    await expect(exchange).toHaveAttribute("href", /drift\?service=Exchange/);
+    await expect(page.locator(".bl-service", { hasText: "Intune" })).toHaveAttribute("data-basis", "approved-setup");
+    await expect(page.locator(".bl-legend")).toContainText("Not read");
     // Service cards in one row are the same height; nothing scrolls sideways.
     const heights = await page.locator(".bl-service").evaluateAll((cards) => cards.map((card) => { const rect = card.getBoundingClientRect(); return { y: Math.round(rect.y), h: Math.round(rect.height) }; }));
     for (const card of heights) for (const other of heights) if (card.y === other.y) expect(card.h).toBe(other.h);

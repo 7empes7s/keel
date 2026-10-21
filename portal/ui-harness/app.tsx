@@ -74,7 +74,7 @@ import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
-import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
+import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
@@ -1842,11 +1842,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
       const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
-      const backedUp = COVERAGE.types.filter((type) => type.reportStatus === "covered").map((type) => type.type);
+      // As on the live page: Entra ID and Intune kinds from the coverage types, the other
+      // services as service reads with their changes since the previous backup.
+      const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
+      const backedUp = COVERAGE.types.filter((type) => !isRead(type.type) && type.reportStatus === "covered").map((type) => type.type);
+      const serviceReads = COVERAGE.types.filter((type) => isRead(type.type)).map((type) => ({ type: type.type, read: type.reportStatus === "covered" }));
       return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
-        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} sources={CAPTURE_SOURCES} />
+        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }

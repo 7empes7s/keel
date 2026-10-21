@@ -5037,3 +5037,42 @@ item that needs it stays untouched.
       ORDER BY created_at DESC LIMIT 4;
      ```
 - **Report:** both outputs verbatim. Nothing is written to the tenant or the DB.
+
+### Q106: Which roles the Collector actually holds, against what Keel has stored (read-only)
+- Drafted by the "Reader app role record check" thread (2026-10-21). Source: Q103 step 4. Retention labels
+  (`purview-governance`) stays off because the stored Collector grants don't list "eDiscovery Manager", yet its eDiscovery
+  reads answered in Q103. Teams org-wide and voice policies wait on "Teams Administrator" and Power Platform settings on
+  "Power Platform Administrator" the same way. This item checks whether the stored record is stale or the roles are missing.
+- Background (from the code): `workload_ledger_grants` (app `collector`) is written only by the four Wave 1 acceptance
+  imports (SharePoint, Teams, Exchange, OneDrive + Purview), from the grants declared at capture time. The Wave 2 writer
+  and read imports never change it.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Tenant:** reads only. Graph GETs and PowerShell `Get-` cmdlets only. Grant, assign, remove or register nothing; no
+  `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Read with the Collector first; only where the Collector is refused, repeat
+  that same `Get-` read with the Restorer config and say so.
+- Do, with `set -a; . /etc/keel/db.env; set +a`:
+  1. Stored record:
+     ```sql
+     SELECT app, roles, jsonb_array_length(permissions) AS n_permissions, imported_at FROM workload_ledger_grants ORDER BY app;
+     ```
+     Report the rows verbatim (roles are role names, no ids).
+  2. Entra directory roles of the KEEL Collector service principal (Collector token from `/etc/keel/tenant.json`; it holds
+     RoleManagement.Read.Directory):
+     `GET /v1.0/roleManagement/directory/roleAssignments?$filter=principalId eq '<Collector SP id>'&$expand=roleDefinition`.
+     Report each role's displayName and directoryScopeId. Then say yes/no for each: Teams Administrator, Power Platform
+     Administrator, Fabric Administrator, Compliance Administrator, eDiscovery-related Entra roles (none is expected).
+     Also report the Collector's group memberships that are role-assignable (`GET /v1.0/servicePrincipals/<id>/memberOf`,
+     names and `isAssignableToRole` only), in case a role comes through a group.
+  3. Purview role groups. eDiscovery Manager is a Purview role group, not an Entra role, so step 2 cannot show it.
+     `Connect-IPPSSession` with the Collector's purview config (`powershellConfigs.purview` in
+     `/etc/keel/workload-scope.json`), then:
+     - `Get-ServicePrincipal | Select-Object DisplayName, AppId` (is the Collector app registered in Purview? yes/no).
+     - `Get-RoleGroupMember -Identity eDiscoveryManager` and `Get-eDiscoveryCaseAdmin`: is the Collector in either? yes/no.
+     - `(Get-RoleGroup -Identity ComplianceAdministrator).Roles`: list the role names (expected to include Case Management and
+       Hold; that would explain why the eDiscovery reads answer).
+     - In the same Collector session: `Get-Command Get-ComplianceCase, Get-CaseHoldPolicy, Get-CaseHoldRule | Select Name`
+       (present means the session holds the roles those reads need).
+     If the Collector is refused on a `Get-RoleGroup*` cmdlet, repeat only that read with the Restorer's purview config.
+- **Report:** step 1 rows; step 2 role list plus the yes/no list; step 3 answers. Nothing changes in the tenant, the host or the DB.

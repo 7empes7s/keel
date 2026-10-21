@@ -62,9 +62,9 @@ import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
-import { ReadinessView } from "@/components/readiness-view";
+import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
-import { readinessVerdict, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
+import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
 import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
@@ -280,6 +280,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
     return json({ alert: { id: body.alertId, state } });
   }
+  // Emergency access: every change to an emergency account is recorded.
+  if (url.endsWith("/api/actions/breakglass")) return json({ ok: true });
   if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });
   return json({ job: { id: "preview-job" }, approvalRequest: { id: "preview" } });
 }) as typeof fetch;
@@ -1194,7 +1196,7 @@ const bgPolicies = (bg2Reached: boolean) => [
   { policy: "conditionalAccessPolicy:Report only risk", treatment: "report-only" as const, reason: "not-enforced" },
 ];
 const BG1_ACCOUNT: ReadinessAccount = {
-  accountId: BG1, label: "bg1@contoso.onmicrosoft.com", resourceKey: "user:bg1@contoso.onmicrosoft.com",
+  accountId: BG1, label: "bg1@contoso.onmicrosoft.com", displayName: "Emergency admin 1", signInName: "bg1@contoso.onmicrosoft.com", resourceKey: "user:bg1@contoso.onmicrosoft.com",
   validationIntervalDays: 90, rotationIntervalDays: 180, registeredAt: "2026-06-01T08:00:00Z",
   lastValidatedAt: "2026-09-12T10:00:00Z", lastRotatedAt: "2026-08-01T10:00:00Z",
   methodEvidence: { basis: "observed", occurredAt: "2026-10-01T09:00:00Z", methods: ["fido2", "password"] },
@@ -1212,7 +1214,7 @@ const BG1_ACCOUNT: ReadinessAccount = {
   ],
 };
 const BG2_ACCOUNT: ReadinessAccount = {
-  ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com",
+  ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", displayName: "Emergency admin 2", signInName: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com",
   rotationIntervalDays: null, lastValidatedAt: "2026-06-20T10:00:00Z", lastRotatedAt: null, methodEvidence: null, overall: "not-ready",
   dimensions: {
     ...BG1_ACCOUNT.dimensions,
@@ -1254,15 +1256,18 @@ const READINESS: ReadinessData = {
 };
 const READINESS_READY: ReadinessData = {
   ...READINESS, overall: "ready", reason: "every-account-ready",
-  accounts: [BG1_ACCOUNT, { ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com" }],
+  accounts: [BG1_ACCOUNT, { ...BG1_ACCOUNT, accountId: BG2, label: "bg2@contoso.onmicrosoft.com", displayName: "Emergency admin 2", signInName: "bg2@contoso.onmicrosoft.com", resourceKey: "user:bg2@contoso.onmicrosoft.com" }],
   alerts: [{ ...READINESS.alerts[0], state: "resolved", active: false }],
 };
 
-function readinessPage(data: ReadinessData) {
-  const verdict = readinessVerdict(data);
-  return <>{header("Restore", "Emergency access", "Whether the emergency accounts would let an administrator in when everything else fails, and whether anyone has used them.")}
-    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><ReadinessView data={data} /></div></>;
+// No emergency account registered yet.
+const READINESS_EMPTY: ReadinessData = {
+  ...READINESS, configured: false, overall: "not-configured", reason: "no-accounts-registered", accounts: [], alerts: [],
+};
+
+function readinessPage(data: ReadinessData, { canConfigure = true, canRespond = true } = {}) {
+  return <>{header("Restore", "Emergency access", "Whether the emergency accounts would let an administrator in when everything else fails, and whether anyone has used them.", undefined, readinessStatus(data))}
+    <ReadinessPage canConfigure={canConfigure} canRespond={canRespond} data={data} /></>;
 }
 
 function resiliencePage(data: ResilienceData) {
@@ -1777,6 +1782,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
+    case "/readiness/empty": return readinessPage(READINESS_EMPTY);
+    case "/readiness/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
     case "/drift":
     case "/drift/services": {
       // The visual baseline is the plain Changes page; /drift/services adds service setting changes.

@@ -605,6 +605,32 @@ export async function loadLockoutGateInputs(client, { tenantRef, now = new Date(
   return { configured: accounts.length > 0, accounts, inventory, groupMembers, now };
 }
 
+// The person-facing names of an account from the newest user backup: its display name
+// and sign-in name. Null when the backup does not have it.
+function accountNames(accountId, inventory) {
+  const user = (inventory.user?.resources ?? []).find((resource) => String(resource.payload?.id ?? '').toLowerCase() === accountId);
+  const displayName = typeof user?.payload?.displayName === 'string' && user.payload.displayName.trim() ? user.payload.displayName.trim() : null;
+  const signInName = typeof user?.payload?.userPrincipalName === 'string' && user.payload.userPrincipalName ? user.payload.userPrincipalName : null;
+  return { displayName, signInName };
+}
+
+/**
+ * Finds an account in the newest complete user backup by its sign-in name, so a person
+ * can register an emergency account without copying its object id. Returns
+ * { accountId, displayName, signInName }, or null when the backup has no such account
+ * (or there is no complete user backup).
+ */
+export async function findBreakGlassCandidate(client, { tenantRef, signInName }) {
+  if (typeof signInName !== 'string' || !signInName.includes('@')) return null;
+  const wanted = signInName.trim().toLowerCase();
+  const inventory = await loadInventory(client, tenantRef);
+  if (inventory.user.status !== 'covered') return null;
+  const user = inventory.user.resources.find((resource) => String(resource.payload?.userPrincipalName ?? '').toLowerCase() === wanted);
+  const id = String(user?.payload?.id ?? '').toLowerCase();
+  if (!OBJECT_ID.test(id)) return null;
+  return { accountId: id, ...accountNames(id, inventory) };
+}
+
 export async function loadBreakGlassReadiness(client, { tenantRef, now = new Date() }) {
   const generatedAt = new Date(now).toISOString();
   if (!await tableExists(client, 'breakglass_account')) {
@@ -613,7 +639,9 @@ export async function loadBreakGlassReadiness(client, { tenantRef, now = new Dat
   const accountsRaw = await loadAccounts(client, tenantRef);
   const inventory = await loadInventory(client, tenantRef);
   const groupMembers = await loadGroupMembership(client, tenantRef, inventory);
-  const accounts = accountsRaw.map((account) => ({ ...account, ...evaluateAccountReadiness({ account, inventory, groupMembers, now }) }));
+  const accounts = accountsRaw.map((account) => ({
+    ...account, ...accountNames(account.accountId, inventory), ...evaluateAccountReadiness({ account, inventory, groupMembers, now }),
+  }));
   const surfaces = evaluateSurfaces(inventory);
   const verdict = accountsRaw.length ? tenantReadiness(accounts) : { overall: 'not-configured', reason: 'no-accounts-registered' };
   return {

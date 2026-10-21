@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { useBackup } from "@/components/backup-controls";
+import { ChangedObjects, ChangedValuesStyles } from "@/components/changed-values";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
@@ -43,6 +44,7 @@ import {
   type ActivityRow,
   type Retry,
 } from "@/lib/activity-view";
+import { changesQuery, type ActivityChanges } from "@/lib/changed-values";
 import { rangeToParam, toDay, type DayRange } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
 import type { NamedKeys } from "@/lib/job-names";
@@ -372,6 +374,7 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
             <div><b>Nothing was changed.</b><p>Keel refused it before anything ran, and recorded who asked.</p></div>
           </div>
         ) : null}
+        <WhatChanged row={row} />
         {entry ? <p className="ac-plain ac-muted">Audit entries cannot be changed or removed. Each one is chained to the one before it, and the chain is checked against an off-site copy.</p> : null}
         <TechnicalDetails>
           {job ? <>
@@ -392,6 +395,47 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
         </TechnicalDetails>
       </div>
     </DetailsSheet>
+  );
+}
+
+type ChangesState = { state: "loading" } | { state: "failed" } | { state: "none" } | { state: "read"; data: ActivityChanges };
+
+/** What the row changed: each setting with its value before and after, read when the panel opens. */
+function WhatChanged({ row }: { row: ActivityRow }) {
+  const query = changesQuery(row);
+  const [result, setResult] = useState<ChangesState>({ state: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!query) return;
+    let live = true;
+    setResult({ state: "loading" });
+    fetch(`/api/activity/changes?${query}`, { headers: { accept: "application/json" } })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        const body = await response.json() as { changes: ActivityChanges | null };
+        if (live) setResult(body.changes ? { state: "read", data: body.changes } : { state: "none" });
+      })
+      .catch(() => { if (live) setResult({ state: "failed" }); });
+    return () => { live = false; };
+  }, [query, attempt]);
+  if (!query) return null;
+  const heading = <h3 className="ac-changes-heading">What changed</h3>;
+  if (result.state === "loading") return <section aria-busy="true" className="ac-changes">{heading}<p className="ac-muted" role="status">Reading the settings this changed…</p></section>;
+  if (result.state === "failed") {
+    return <section className="ac-changes">{heading}<p className="ac-muted" role="status">Keel could not read what this changed. <button className="ac-inline-link" onClick={() => setAttempt((value) => value + 1)} type="button">Try again</button></p></section>;
+  }
+  if (result.state === "none") return <section className="ac-changes">{heading}<p className="ac-muted">Keel has no record of the settings this changed.</p></section>;
+  const { data } = result;
+  const more = data.total - data.changes.length;
+  return (
+    <section aria-labelledby="ac-changes-heading" className="ac-changes">
+      <ChangedValuesStyles />
+      <h3 className="ac-changes-heading" id="ac-changes-heading">What changed{data.total ? ` (${data.total.toLocaleString("en-GB")})` : ""}</h3>
+      <p className="ac-muted">{data.total || data.basis !== "backup" ? data.about : data.compare ? "Nothing changed since the backup before this one." : data.about}</p>
+      {data.changes.length ? <ChangedObjects changes={data.changes} names={data.names} sides={data.sides} /> : null}
+      {more > 0 ? <p className="ac-muted">And {more.toLocaleString("en-GB")} more {more === 1 ? "object" : "objects"}.</p> : null}
+      {data.compare && data.total ? <Link className="btn btn-sm" href={`/compare?from=${encodeURIComponent(data.compare.from)}&to=${encodeURIComponent(data.compare.to)}`}><Icon name="swap" />See every difference in Compare</Link> : null}
+    </section>
   );
 }
 

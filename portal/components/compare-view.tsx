@@ -1,10 +1,10 @@
 import { CompareForm, type QuickPick } from "@/components/baselines/compare-form";
+import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import { fieldWords } from "@/lib/changes-view";
 import {
-  CHANGE_WORDS, bytesWords, compareValueWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
+  CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
   rawValue, sideWords, workloadLabel, workloadNotComparedSentence,
   type CompareData, type CompareField, type CompareResult, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
@@ -72,26 +72,12 @@ function resourceKeyWords(key: string, name?: string | null): string {
   return holdsObjectId(match[2]) ? `An unnamed ${kind}` : `${match[2]} (${kind})`;
 }
 
-// The two sides' short names, set once per page so every before/after column says which.
-interface Sides { before: string; after: string }
+// The two sides' short names, set once per page so every before/after column says
+// which, and the names Keel has for the ids inside values.
+interface Sides { before: string; after: string; names?: Readonly<Record<string, string>> }
 
-function FieldTable({ fields, total, id, sides }: { fields: CompareField[]; total?: number; id: string; sides: Sides }) {
-  if (fields.length === 0) return <p className="compare-note">Only settings Microsoft sets itself differ.</p>;
-  return (
-    <>
-      <ul aria-labelledby={id} className="bl-sides-list compare-fields">
-        {fields.map((field) => (
-          <li className="bl-sides-row" key={field.path}>
-            <span className="bl-sides-name">{fieldWords(field.path)}</span>
-            <span className="bl-side" data-side="before"><small>{sides.before}</small><span className="diff-before">{compareValueWords(field.before)}</span></span>
-            <Icon className="bl-sides-arrow" name="chevron" />
-            <span className="bl-side" data-side="after"><small>{sides.after}</small><span className="diff-after">{compareValueWords(field.after)}</span></span>
-          </li>
-        ))}
-      </ul>
-      {total && total > fields.length ? <p className="compare-note">And {total - fields.length} more settings.</p> : null}
-    </>
-  );
+function FieldTable({ fields, total, id, sides, change = "changed" }: { fields: CompareField[]; total?: number; id: string; sides: Sides; change?: SettingsItem["changeType"] }) {
+  return <ChangedFieldList change={change} fields={fields} label={`${id}: settings`} names={sides.names} sides={sides} total={total} />;
 }
 
 const PRESENCE: Record<string, { before: string; after: string }> = {
@@ -136,7 +122,7 @@ function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; inde
           return (
             <li className={`compare-item compare-${item.changeType}`} key={item.naturalKey}>
               <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} sides={sides} />
-              {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} sides={sides} total={item.fieldsTotal} /> : null}
+              {item.changeType === "changed" || item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields ?? []} id={itemName(item, group.resourceType)} sides={sides} total={item.fieldsTotal} /> : null}
             </li>
           );
         })}
@@ -158,7 +144,7 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
         {countsWords(settings.totals)} across every kind Keel backs up; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
-        {" "}Open a kind to see each setting before and after.
+        {" "}Open a kind to see each setting and its value before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
       {byService(settings.groups).map(([service, groups]) => (
@@ -219,7 +205,7 @@ function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; inde
             return (
               <li className={`compare-item compare-${item.changeType}`} key={item.resourceKey}>
                 <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey, item.name)} sides={sides} />
-                {item.changeType === "changed" ? <FieldTable fields={item.fields ?? []} id={id} sides={sides} total={item.fieldsTotal} /> : null}
+                {item.changeType === "changed" || item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields ?? []} id={resourceKeyWords(item.resourceKey, item.name)} sides={sides} total={item.fieldsTotal} /> : null}
               </li>
             );
           })}
@@ -391,12 +377,13 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
 export function CompareView({ data, quick = [] }: { data: CompareData; quick?: QuickPick[] }) {
   const result = data.result;
   const sides: Sides = result
-    ? { before: shortSide(result.left, data.tenants, result.portable), after: shortSide(result.right, data.tenants, result.portable) }
+    ? { before: shortSide(result.left, data.tenants, result.portable), after: shortSide(result.right, data.tenants, result.portable), names: result.names }
     : { before: "Before", after: "After" };
   return (
     <div className="compare-view bl-page">
       <CompareStyles />
       <BaselinesStyles />
+      <ChangedValuesStyles />
       <CompareForm input={data.input} quick={quick} tenants={data.tenants} />
       {result ? <Summary data={data} result={result} /> : null}
       {result?.settings ? <SettingsPanel portable={result.portable} settings={result.settings} sides={sides} /> : null}

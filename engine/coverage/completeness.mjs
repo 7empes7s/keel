@@ -197,16 +197,18 @@ export const COMPLETENESS = Object.freeze({
   mobileAppConfiguration: {},
   // Wave 1 CAT-INTUNE. Assignments are backed up as relationship reads
   // (engine/collect/relationships.mjs); none of these writers puts them back yet.
-  deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
-  deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
-  deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
-  deviceComplianceScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
+  // Scripts (restore gaps batch 4): the script body is read per script and written back.
+  deviceManagementScript: { missing: [part('Who the script runs on', 'not-written')] },
+  deviceShellScript: { missing: [part('Who the script runs on', 'not-written')] },
+  deviceHealthScript: { missing: [part('Who the remediation runs on, and its schedule', 'not-written'), part('Remediations published by Microsoft', 'microsoft-managed')] },
+  deviceComplianceScript: { missing: [part('Who the script runs on', 'not-written')] },
   assignmentFilter: {},
   roleScopeTag: { missing: [part('The built-in Default tag', 'microsoft-managed')] },
   windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
   windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
   windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
-  groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route')] },
+  // Restore gaps batch 5: the values of each setting are read per setting and written back.
+  groupPolicyConfiguration: { missing: [part('Who the template is assigned to', 'not-written')] },
   groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
@@ -232,7 +234,8 @@ export const COMPLETENESS = Object.freeze({
   managedDeviceCleanupRule: { missing: [part('A deleted rule, and a shorter wait before devices are retired', 'not-written')] },
   windowsQualityUpdatePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
   operationApprovalPolicy: { whole: 'not-written' },
-  deviceCustomAttributeShellScript: { whole: 'not-written', missing: [part('The script body', 'other-route'), part('Who the script is assigned to', 'other-route')] },
+  // Restore gaps batch 5: the script body is read per script and written back.
+  deviceCustomAttributeShellScript: { missing: [part('Who the script is assigned to', 'other-route')] },
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},

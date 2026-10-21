@@ -47,6 +47,14 @@ export function catalogedGraphPaths({ catalog = CATALOG, workloadPaths = WORKLOA
   for (const entry of catalog) {
     if (!isUnderItem(entry.path)) push(entry.path, { type: entry.type, version: entry.version, source: 'catalogue' });
   }
+  // A kind read per object (Intune scripts: list, then one GET each) is backed up
+  // through the list it reads first, when no other kind already claims that list.
+  for (const entry of catalog) {
+    const listed = entry.parent?.path;
+    if (isUnderItem(entry.path) && listed && !isUnderItem(listed) && !out.has(key(listed))) {
+      push(listed, { type: entry.type, version: entry.version, source: 'catalogue' });
+    }
+  }
   for (const [path, workload] of Object.entries(workloadPaths)) push(path, { type: workload, version: 'v1.0', source: 'workload' });
   for (const [path, type] of Object.entries(aliasPaths)) {
     if (!out.has(key(path))) push(path, { type, version: null, source: 'alias' });

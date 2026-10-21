@@ -1,9 +1,8 @@
 /** Catalogue family: Intune tenant settings (remaining kinds, batch 3). See ../catalog.mjs for the entry shape. */
-// Read-only list or singleton reads. Each path is in the operator's export of
+// Read-only list, singleton or per-object reads. Each path is in the operator's export of
 // what tenant discovery found readable but not backed up (Q100, run of
 // 2026-10-19), so the grant each needs is one the Collector already holds.
 // Most are beta only, a fidelity risk the spec flags.
-// No writer is built for any of them yet: the backup is a record to rebuild from.
 // Who a policy is assigned to sits on a separate /assignments route and is not
 // read for these types yet.
 export default [
@@ -43,7 +42,12 @@ export default [
   // Multi admin approval: which changes need a second admin, and who approves.
   { type: 'operationApprovalPolicy', path: '/deviceManagement/operationApprovalPolicies', version: 'beta', criticality: 'tier1', blastRadius: 'access-affecting',
     note: 'A missing policy lets one admin make changes that should need a second one.' },
-  // macOS custom attribute scripts.
-  { type: 'deviceCustomAttributeShellScript', path: '/deviceManagement/deviceCustomAttributeShellScripts', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
-    note: 'scriptContent is returned only per script.' },
+  // macOS custom attribute scripts. Graph leaves the script body out of list
+  // reads, so each script is listed, then read on its own (restore gaps batch
+  // 5, as for the scripts in intune-extended.mjs).
+  { type: 'deviceCustomAttributeShellScript', path: '/deviceManagement/deviceCustomAttributeShellScripts/{parent}', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
+    parent: { path: '/deviceManagement/deviceCustomAttributeShellScripts', select: 'id', key: 'id', as: 'id' },
+    // A script deleted between the list and its own read is gone, not a failed read.
+    absentWhenNotFound: true,
+    note: 'The script body is read per script.' },
 ];

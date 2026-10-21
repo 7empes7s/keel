@@ -15,7 +15,9 @@
  * `parent.path` (with `parent.select`/`parent.query`). Parents without
  * `parent.requires` are skipped, each object read is tagged with the key as
  * `parent.as`, and `childField` takes the objects from that field of each
- * response. engine/collect/entraAdapter.mjs performs the reads.
+ * response. `childReads` reads one more collection per child of each object
+ * (`field` holds the children; `path` holds `{item}` and `{child}`; the result
+ * lands in each child's `as`). engine/collect/entraAdapter.mjs performs the reads.
  *
  * Entries live in catalog.d/, one file per family, so families can change in
  * parallel. CATALOG is the families in the order below; a new family adds one

@@ -791,6 +791,156 @@ function builtInScopeTag(resource, verb) {
 
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
 
+/** Each script kind and the fields that hold its script, the first of which every script has. */
+const SCRIPT_BODIES = Object.freeze({
+  deviceManagementScript: ['scriptContent'],
+  deviceShellScript: ['scriptContent'],
+  deviceHealthScript: ['detectionScriptContent', 'remediationScriptContent'],
+  deviceComplianceScript: ['detectionScriptContent'],
+  // Restore gaps, batch 5.
+  deviceCustomAttributeShellScript: ['scriptContent'],
+});
+
+// Run results, assignments and Intune's own version bookkeeping: never part of a write body.
+const SCRIPT_SERVER_FIELDS = Object.freeze([
+  'assignments', 'groupAssignments', 'runSummary', 'deviceRunStates', 'userRunStates', 'isGlobalScript', 'highestAvailableVersion',
+]);
+
+/**
+ * A script is written only from a backup that holds its body (backups taken
+ * before the per-script read hold only its settings), and a remediation
+ * Microsoft publishes is never written: it is not tenant configuration.
+ */
+function scriptRefusal([body]) {
+  return (resource, verb) => {
+    const payload = resource.payload ?? {};
+    if (payload.isGlobalScript === true || resource.live?.payload?.isGlobalScript === true) {
+      return { outcome: 'skipped', reason: 'built-in: Microsoft publishes this remediation in every tenant, so it is never written' };
+    }
+    if (verb !== 'delete' && (typeof payload[body] !== 'string' || payload[body].length === 0)) {
+      return {
+        outcome: 'skipped',
+        reason: 'manual: this backup holds the script\'s settings but not the script itself (backups before the script read was added), so it is not written; take a new backup, or recreate the script by hand from your own copy',
+      };
+    }
+    return null;
+  };
+}
+
+// ------------------------------------------ administrative templates (batch 5)
+
+const GROUP_POLICY_DEFINITIONS = 'https://graph.microsoft.com/beta/deviceManagement/groupPolicyDefinitions';
+const groupPolicyPath = (targetId) => `/deviceManagement/groupPolicyConfigurations/${encodeURIComponent(targetId)}`;
+const definitionIdOf = (setting) => setting?.definition?.id ?? null;
+const presentationIdOf = (value) => value?.presentation?.id ?? null;
+
+/** One setting as restore compares it: which setting, on or off, and each value entered. */
+export function settingShape(setting) {
+  return {
+    definition: lower(definitionIdOf(setting)),
+    enabled: setting?.enabled === true,
+    values: (setting?.presentationValues ?? [])
+      .map((value) => ({ presentation: lower(presentationIdOf(value)), kind: stripGraph(value?.['@odata.type']), value: value?.value ?? null, values: withoutAnnotations(value?.values ?? null) }))
+      .sort((left, right) => left.presentation.localeCompare(right.presentation)),
+  };
+}
+
+/** The updateDefinitionValues entry that adds one setting with its values. */
+export function addedSetting(setting) {
+  const definitionId = definitionIdOf(setting);
+  return {
+    enabled: setting.enabled === true,
+    'definition@odata.bind': `${GROUP_POLICY_DEFINITIONS}('${definitionId}')`,
+    presentationValues: (setting.presentationValues ?? []).map((value) => ({
+      '@odata.type': value['@odata.type'],
+      ...(value.value !== undefined && value.value !== null ? { value: value.value } : {}),
+      ...(Array.isArray(value.values) ? { values: withoutAnnotations(value.values) } : {}),
+      'presentation@odata.bind': `${GROUP_POLICY_DEFINITIONS}('${definitionId}')/presentations('${presentationIdOf(value)}')`,
+    })),
+  };
+}
+
+/**
+ * An administrative template is written only from a backup that holds every
+ * setting with the values entered for it (backups before batch 5 hold the
+ * settings without their values).
+ */
+function groupPolicyRefusal(resource, verb) {
+  if (verb === 'delete') return null;
+  const settings = resource.payload?.definitionValues;
+  const manual = (why) => ({ outcome: 'skipped', reason: `manual: ${why}, so it is not written; take a new backup, or recreate the template by hand from the backup` });
+  if (!Array.isArray(settings)) return manual('this backup does not hold the template\'s settings');
+  for (const setting of settings) {
+    if (!definitionIdOf(setting)) return manual('a setting in this backup does not say which setting it is');
+    if (!Array.isArray(setting.presentationValues)) {
+      return manual('this backup holds the template\'s settings but not the values entered for them (backups before setting values were read)');
+    }
+    if (setting.presentationValues.some((value) => !presentationIdOf(value) || typeof value['@odata.type'] !== 'string')) {
+      return manual('a value in this backup does not say which field of its setting it fills');
+    }
+  }
+  return null;
+}
+
+/** Every setting a template uses must exist in the target (an imported ADMX file is put back first). */
+async function groupPolicyDefinitionsExist(io, { payload }) {
+  for (const definitionId of new Set((payload?.definitionValues ?? []).map(definitionIdOf))) {
+    const found = await io.retryOperation(() => io.writer.read('beta', `/deviceManagement/groupPolicyDefinitions/${encodeURIComponent(definitionId)}?$select=id`));
+    if (found?.ok !== true) {
+      return `the setting ${definitionId} this template uses ${recordNotFound(found) ? 'does not exist in the target (it may come from an imported template file that is not there)' : 'could not be read'}`;
+    }
+  }
+  return null;
+}
+
+/** A template's live settings, each with its values. */
+async function readGroupPolicySettings(io, targetId) {
+  const base = `${groupPolicyPath(targetId)}/definitionValues`;
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${base}?$expand=definition`));
+  if (listed?.ok !== true) return { error: `the template's settings could not be read (${outcomeDetail(listed)})` };
+  const settings = [];
+  for (const setting of listed.body?.value ?? []) {
+    const values = await io.retryOperation(() => io.writer.read('beta', `${base}/${encodeURIComponent(setting.id)}/presentationValues?$expand=presentation`));
+    if (values?.ok !== true) return { error: `the values of a setting could not be read (${outcomeDetail(values)})` };
+    settings.push({ ...setting, presentationValues: values.body?.value ?? [] });
+  }
+  return { settings };
+}
+
+const settingSet = (settings) => settings.map(settingShape).sort((left, right) => left.definition.localeCompare(right.definition));
+
+/**
+ * Puts a template's settings back: a live setting that is not in the backup,
+ * or differs from it, is removed, then each backup setting live lacks is
+ * added with its values. Two calls, so a setting is never removed and added
+ * in the same request.
+ */
+async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
+  const want = payload.definitionValues;
+  let have = [];
+  if (verb !== 'create') {
+    const read = await readGroupPolicySettings(io, targetId);
+    if (read.error) return { error: `${read.error}, so they were not changed` };
+    have = read.settings;
+  }
+  const wantBy = new Map(want.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
+  const haveBy = new Map(have.map((setting) => [settingShape(setting).definition, settingShape(setting)]));
+  const removed = have.filter((setting) => !sameValue(wantBy.get(settingShape(setting).definition), settingShape(setting)));
+  const added = want.filter((setting) => !sameValue(haveBy.get(settingShape(setting).definition), settingShape(setting)));
+  if (removed.length === 0 && added.length === 0) return verb === 'create' ? null : { changes: { settings: 'already as in the backup' } };
+  const path = `${groupPolicyPath(targetId)}/updateDefinitionValues`;
+  for (const body of [
+    removed.length > 0 ? { added: [], updated: [], deletedIds: removed.map((setting) => setting.id) } : null,
+    added.length > 0 ? { added: added.map(addedSetting), updated: [], deletedIds: [] } : null,
+  ].filter(Boolean)) {
+    const result = await io.retryOperation(() => io.writer.write('beta', path, { method: 'POST', body }));
+    if (!result.ok) return { error: `writing the template's settings failed: ${outcomeDetail(result)}` };
+  }
+  const check = await readGroupPolicySettings(io, targetId);
+  if (check.error || !sameValue(settingSet(check.settings), settingSet(want))) return { error: 'post-state: the template\'s settings did not read back as written' };
+  return { changes: { settings: { removed: removed.length, added: added.length } } };
+}
+
 /** The Wave 2 Intune records (resourceType -> record). */
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
@@ -858,6 +1008,24 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     operations: ['update'], createOnly: ['deviceCleanupRulePlatformType'], refusal: cleanupRuleRefusal,
     permission: 'DeviceManagementManagedDevices.ReadWrite.All',
   }),
+  // Restore gaps, batch 4: scripts and remediations. The backup reads each
+  // script on its own, so it holds the script body; a backup without it is
+  // refused. Who a script runs on is not written (its /assign body differs
+  // from a policy's), so a recreated script is assigned again by hand.
+  ...Object.fromEntries(Object.entries(SCRIPT_BODIES).map(([resourceType, bodies]) => [resourceType, defineRecord({
+    resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update'],
+    excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  })])),
+  // Restore gaps, batch 5: administrative templates. The backup reads the
+  // values of each setting, so the template, its settings and their values
+  // come back; every setting it uses must exist in the target first. Who it
+  // is assigned to is not written, as for scripts.
+  groupPolicyConfiguration: defineRecord({
+    resourceType: 'groupPolicyConfiguration', version: 'beta', collection: '/deviceManagement/groupPolicyConfigurations', operations: ['create', 'update'],
+    excluded: ['definitionValues', 'assignments', 'policyConfigurationIngestionType'],
+    refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: groupPolicySettingsAfterWrite,
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
 });
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */
@@ -876,11 +1044,6 @@ export function cleanupRuleRefusal(resource, verb) {
 
 /** Intune types read in wave 1 that no record can write in full, and why. */
 export const INTUNE_BEST_EFFORT = Object.freeze({
-  deviceManagementScript: 'the script body is returned only by a per-script read that is not backed up',
-  deviceShellScript: 'the script body is returned only by a per-script read that is not backed up',
-  deviceHealthScript: 'the detection and remediation script bodies are returned only by a per-script read that is not backed up',
-  deviceComplianceScript: 'the detection script body is returned only by a per-script read that is not backed up',
-  groupPolicyConfiguration: 'each setting\'s presentation values are on a per-setting route that is not backed up',
   groupPolicyUploadedDefinitionFile: 'the ADMX and ADML file content is returned only per file and is not backed up',
   windowsAutopilotDeviceIdentity: 'the hardware hash is never returned; a device is re-imported from the device itself',
   deviceManagementRoleAssignment: 'it grants Intune admin access to groups by id; remapping them is not qualified',

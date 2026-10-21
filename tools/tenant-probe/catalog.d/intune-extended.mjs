@@ -1,20 +1,26 @@
 /** Catalogue family: Intune, extended (wave 1: CAT-INTUNE). See ../catalog.mjs for the entry shape. */
-// Every entry is a read-only list read. Endpoints follow Graph's documented
+// Every entry is a read-only read. Endpoints follow Graph's documented
 // Intune routes and are unmeasured until the operator's first collect run on
 // the test tenant; most are beta-only, a fidelity risk the spec flags.
 // Policy assignments sit on a separate /assignments route; they are read per
 // policy as relationship reads (ASSIGNMENT_ROUTES in engine/collect/relationships.mjs).
 export default [
   // Scripts. Graph leaves the script body out of list reads and returns it
-  // only on a GET of the single script.
-  { type: 'deviceManagementScript', path: '/deviceManagement/deviceManagementScripts', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'Windows PowerShell scripts. scriptContent is returned only per script.' },
-  { type: 'deviceShellScript', path: '/deviceManagement/deviceShellScripts', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'macOS shell scripts. scriptContent is returned only per script.' },
-  { type: 'deviceHealthScript', path: '/deviceManagement/deviceHealthScripts', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'Remediations. Microsoft-published scripts are listed beside tenant ones; script bodies are returned only per script.' },
-  { type: 'deviceComplianceScript', path: '/deviceManagement/deviceComplianceScripts', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'Custom compliance discovery scripts. detectionScriptContent is returned only per script.' },
+  // only on a GET of the single script, so each script is listed, then read
+  // on its own (restore gaps batch 4). Tagging with `id` keeps the payload as
+  // Graph returns it: the tag is the script's own id.
+  ...[
+    ['deviceManagementScript', 'deviceManagementScripts', 'Windows PowerShell scripts.'],
+    ['deviceShellScript', 'deviceShellScripts', 'macOS shell scripts.'],
+    ['deviceHealthScript', 'deviceHealthScripts', 'Remediations. Microsoft-published scripts are listed beside tenant ones.'],
+    ['deviceComplianceScript', 'deviceComplianceScripts', 'Custom compliance discovery scripts.'],
+  ].map(([type, collection, note]) => ({
+    type, path: `/deviceManagement/${collection}/{parent}`, version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
+    parent: { path: `/deviceManagement/${collection}`, select: 'id', key: 'id', as: 'id' },
+    // A script deleted between the list and its own read is gone, not a failed read.
+    absentWhenNotFound: true,
+    note: `${note} The script body is read per script.`,
+  })),
   // Targeting. Filters and scope tags are referenced by id from assignments
   // and role assignments, so they restore before the objects that use them.
   { type: 'assignmentFilter', path: '/deviceManagement/assignmentFilters', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
@@ -27,11 +33,16 @@ export default [
   { type: 'windowsQualityUpdateProfile', path: '/deviceManagement/windowsQualityUpdateProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'windowsDriverUpdateProfile', path: '/deviceManagement/windowsDriverUpdateProfiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   // Administrative templates (ADMX). A policy's configured settings are a
-  // separate collection, listed only when expanded; each setting's
-  // presentation values sit one level further down and are not expanded.
+  // separate collection, listed only when expanded; the values entered for
+  // each setting (its presentation values) sit one level further down and are
+  // read per setting (restore gaps batch 5), so a restore can put them back.
   { type: 'groupPolicyConfiguration', path: '/deviceManagement/groupPolicyConfigurations', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     query: '$expand=definitionValues($expand=definition)',
-    note: 'Presentation values of each setting are on a per-setting route.' },
+    childReads: {
+      field: 'definitionValues', as: 'presentationValues', query: '$expand=presentation',
+      path: '/deviceManagement/groupPolicyConfigurations/{item}/definitionValues/{child}/presentationValues',
+    },
+    note: 'The values of each setting are read per setting.' },
   { type: 'groupPolicyUploadedDefinitionFile', path: '/deviceManagement/groupPolicyUploadedDefinitionFiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
     note: 'Imported custom ADMX files. The file content is returned only per file.' },
   // Compliance notification emails. The message text per language is a

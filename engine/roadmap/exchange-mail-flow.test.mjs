@@ -60,6 +60,8 @@ const WHEN = '2026-09-01T00:00:00Z';
 
 // One or two objects per family, as Exchange answers them, with the extra
 // properties a careless reader would keep.
+// Shaped like the live answers (Q105): no WhenChangedUTC on transport rules, no
+// UseTranslatedNotificationText on Safe Links policies.
 const SAMPLE = Object.freeze({
   'Get-AcceptedDomain': [
     { Name: 'contoso.test', DomainName: 'Contoso.test', DomainType: 'Authoritative', Default: true, MatchSubDomains: false, Guid: guid(1), WhenChangedUTC: WHEN, OrganizationId: 'internal' },
@@ -80,7 +82,7 @@ const SAMPLE = Object.freeze({
       ModerateMessageByUser: null, RejectMessageReasonText: 'Executables are blocked', RejectMessageEnhancedStatusCode: '5.7.1', DeleteMessage: false, Quarantine: false,
       ApplyHtmlDisclaimerText: null, ApplyHtmlDisclaimerLocation: null, ApplyHtmlDisclaimerFallbackAction: null,
       RouteMessageOutboundConnector: null, RouteMessageOutboundRequireTls: false, ApplyRightsProtectionTemplate: null, GenerateIncidentReport: null,
-      WhenChangedUTC: WHEN, RuleVersion: '15.0.5.6', ImmutableId: guid(4),
+      RuleVersion: '15.0.5.6', ImmutableId: guid(4),
     },
   ],
   'Get-InboundConnector': [
@@ -102,7 +104,7 @@ const SAMPLE = Object.freeze({
     { Domain: 'contoso.test', Guid: guid(10), Enabled: true, Status: 'Valid', Selector1CNAME: 'selector1-contoso-test._domainkey.contoso.onmicrosoft.com', Selector2CNAME: 'selector2-contoso-test._domainkey.contoso.onmicrosoft.com', Selector1KeySize: 2048, Selector2KeySize: 2048, HeaderCanonicalization: 'Relaxed', BodyCanonicalization: 'Relaxed', RotateOnDate: '2026-12-01T00:00:00Z', WhenChangedUTC: WHEN, Selector1PublicKey: 'v=DKIM1; k=rsa; p=MIIBIjANBgkq', Selector2PublicKey: 'v=DKIM1; k=rsa; p=MIIBIjANBgkr', LastChecked: '2026-10-08T00:00:00Z' },
   ],
   'Get-SafeLinksPolicy': [
-    { Name: 'Built-In Protection Policy', Guid: guid(11), IsBuiltInProtection: true, EnableSafeLinksForEmail: true, EnableSafeLinksForTeams: true, EnableSafeLinksForOffice: true, TrackClicks: true, AllowClickThrough: false, ScanUrls: true, EnableForInternalSenders: false, DeliverMessageAfterScan: true, DisableUrlRewrite: false, DoNotRewriteUrls: [], EnableOrganizationBranding: false, CustomNotificationText: null, UseTranslatedNotificationText: false, WhenChangedUTC: WHEN },
+    { Name: 'Built-In Protection Policy', Guid: guid(11), IsBuiltInProtection: true, EnableSafeLinksForEmail: true, EnableSafeLinksForTeams: true, EnableSafeLinksForOffice: true, TrackClicks: true, AllowClickThrough: false, ScanUrls: true, EnableForInternalSenders: false, DeliverMessageAfterScan: true, DisableUrlRewrite: false, DoNotRewriteUrls: [], EnableOrganizationBranding: false, CustomNotificationText: null, WhenChangedUTC: WHEN },
   ],
   'Get-SafeAttachmentPolicy': [
     { Name: 'Built-In Protection Policy', Guid: guid(12), IsBuiltInProtection: true, Enable: true, Action: 'Block', QuarantineTag: 'AdminOnlyAccessPolicy', Redirect: false, RedirectAddress: null, WhenChangedUTC: WHEN },

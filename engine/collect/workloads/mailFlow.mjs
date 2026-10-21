@@ -49,7 +49,10 @@ const WHEN = 'WhenChangedUTC';
  *    added again is the same domain;
  *  - `guid`: the object's Guid (rules, connectors, policies). Names are unique too,
  *    but they can be renamed; the Guid survives a rename. The name is kept as a field.
- * Fields were declared from Microsoft's cmdlet documentation, not measured live.
+ * Fields were declared from Microsoft's cmdlet documentation, then checked against the
+ * live module (Q105, 2026-10-21): Get-TransportRule carries no WhenChangedUTC, and
+ * Get-SafeLinksPolicy no UseTranslatedNotificationText, so neither is declared. A
+ * declared field an answer does not carry is `unknown` and makes the run partial.
  */
 export const FAMILIES = Object.freeze({
   acceptedDomain: Object.freeze({
@@ -80,7 +83,6 @@ export const FAMILIES = Object.freeze({
       'ModerateMessageByUser', 'RejectMessageReasonText', 'RejectMessageEnhancedStatusCode', 'DeleteMessage', 'Quarantine',
       'ApplyHtmlDisclaimerText', 'ApplyHtmlDisclaimerLocation', 'ApplyHtmlDisclaimerFallbackAction',
       'RouteMessageOutboundConnector', 'RouteMessageOutboundRequireTls', 'ApplyRightsProtectionTemplate', 'GenerateIncidentReport',
-      WHEN,
     ]),
   }),
   inboundConnector: Object.freeze({
@@ -143,7 +145,7 @@ export const FAMILIES = Object.freeze({
     fields: Object.freeze([
       'Name', 'IsBuiltInProtection', 'EnableSafeLinksForEmail', 'EnableSafeLinksForTeams', 'EnableSafeLinksForOffice', 'TrackClicks',
       'AllowClickThrough', 'ScanUrls', 'EnableForInternalSenders', 'DeliverMessageAfterScan', 'DisableUrlRewrite', 'DoNotRewriteUrls',
-      'EnableOrganizationBranding', 'CustomNotificationText', 'UseTranslatedNotificationText', WHEN,
+      'EnableOrganizationBranding', 'CustomNotificationText', WHEN,
     ]),
   }),
   safeAttachmentPolicy: Object.freeze({

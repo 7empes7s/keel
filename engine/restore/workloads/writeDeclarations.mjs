@@ -111,7 +111,7 @@ extended('antiSpamRule', 'anti-spam-rule', 'anti-spam-rules', 'Set-HostedContent
 extended('antiPhishRule', 'anti-phish-rule', 'anti-phish-rules', 'Set-AntiPhishRule', 'exchangeAntiPhishRule', RECIPIENT_SCOPE);
 extended('antiMalwareRule', 'anti-malware-rule', 'anti-malware-rules', 'Set-MalwareFilterRule', 'exchangeAntiMalwareRule', RECIPIENT_SCOPE);
 extended('quarantinePolicy', 'quarantine-policy', 'quarantine-policies', 'Set-QuarantinePolicy', 'exchangeQuarantinePolicy', [
-  'EndUserQuarantinePermissionsValue', 'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress',
+  'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress',
 ], { identity: 'object-name' });
 extended('globalQuarantineSettings', 'quarantine-global-settings', 'quarantine-global-settings', 'Set-QuarantinePolicy', 'exchangeGlobalQuarantineSettings', [
   'EndUserSpamNotificationFrequencyInDays', 'EndUserSpamNotificationCustomFromAddress', 'MultiLanguageSetting', 'MultiLanguageCustomDisclaimer',

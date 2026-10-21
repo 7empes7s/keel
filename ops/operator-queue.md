@@ -5268,3 +5268,34 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per type and operation: promoted / refused (exact message) / blocked; the step 5, 6 and 7 results; approval
   ids; the evidence branch and commit; anything left in the tenant.
+
+### Q112: Check the new backup kinds of batches 5 and 6 land in a snapshot (read-only, after #434)
+- Drafted by the "Back up remaining Intune kinds" thread (2026-10-21). Code: PR #431 (batch 5, 6 Exchange and Defender
+  admin role kinds) and PR #434 (batch 6, 17 Intune kinds). All are GET-only catalogue reads; no writer.
+- Needs: PR #434 live (`git -C /opt/keel-live log --oneline | grep -c "#434"` is 1).
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
+     line that names one of the types below with an error or a 400/403/404.
+  2. ```sql
+     WITH s AS (SELECT id FROM snapshot ORDER BY created_at DESC LIMIT 1)
+     SELECT t.type, count(rv.resource_type) AS objects
+       FROM unnest('{exchangeRoleDefinition,exchangeRoleAssignment,exchangeCustomAppScope,defenderRoleDefinition,defenderRoleAssignment,defenderCustomAppScope,deviceManagementSettings,androidDeviceOwnerEnrollmentProfile,androidForWorkEnrollmentProfile,appleUserInitiatedEnrollmentProfile,androidForWorkSettings,deviceManagementDerivedCredentialSettings,microsoftTunnelConfiguration,microsoftTunnelHealthThreshold,iosLobAppProvisioningConfiguration,mobileAppRelationship,managedEBook,managedEBookCategory,cartToClassAssociation,windowsManagedAppProtection,enterpriseCodeSigningCertificate,symantecCodeSigningCertificate,userExperienceAnalyticsBaseline}'::text[]) AS t(type)
+       LEFT JOIN resource_version rv ON rv.resource_type = t.type AND rv.snapshot_id = (SELECT id FROM s)
+      GROUP BY t.type ORDER BY t.type;
+     ```
+     If the table or column names differ, use the newest snapshot id the same way batch 4's check did and report what you ran.
+  3. Secret check: confirm no stored payload of the new kinds holds a secret field:
+     ```sql
+     SELECT resource_type, count(*) FROM resource_version
+      WHERE snapshot_id = (SELECT id FROM snapshot ORDER BY created_at DESC LIMIT 1)
+        AND resource_type IN ('androidDeviceOwnerEnrollmentProfile','androidForWorkEnrollmentProfile','symantecCodeSigningCertificate')
+        AND (payload::text ~* '"(tokenValue|qrCodeContent|qrCodeImage|wifiPassword|password|content)"')
+      GROUP BY 1;
+     ```
+- **Expected:** step 1 exit 0. Step 2 from discovery run 3: about 107 / 231 / 1 for the Exchange kinds, 0 for Defender,
+  1 `deviceManagementSettings`, 1 `androidForWorkSettings`, 13 `microsoftTunnelHealthThreshold`,
+  0 or 1 `symantecCodeSigningCertificate` (absent when none was uploaded), 0 for the rest. Step 3 returns no rows.
+- **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.

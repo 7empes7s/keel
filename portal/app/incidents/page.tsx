@@ -2,8 +2,9 @@ import { connection } from "next/server";
 import { headers } from "next/headers";
 
 import { DataUnavailable } from "@/components/data-unavailable";
-import { IncidentRecovery } from "@/components/incident-recovery";
+import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { PageHeader } from "@/components/page-header";
+import { DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { getIncidentRecoveryData, type IncidentRecoveryData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
@@ -11,7 +12,7 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 // Roadmap task-71: incident-qualified recovery points and retention pins. Reading
 // needs `read`; every change goes through /api/actions/incidents, which requires the
 // investigator's `investigate` capability and is re-checked in the engine.
-export default async function IncidentsPage({
+export default async function IncidentsRoute({
   searchParams,
 }: {
   searchParams: Promise<{ incident?: string }>;
@@ -22,7 +23,7 @@ export default async function IncidentsPage({
     .split(" ")
     .filter((capability) => capability.length > 0);
   const canInvestigate = capabilities.includes("investigate");
-  const description = "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.";
+  const marker = canInvestigate ? undefined : "Read-only";
 
   let data: IncidentRecoveryData;
   try {
@@ -30,7 +31,7 @@ export default async function IncidentsPage({
   } catch {
     return (
       <>
-        <PageHeader description={description} section="Restore" marker={canInvestigate ? "Actionable" : "Read-only"} title="Incidents" />
+        <PageHeader description={DESCRIPTION} marker={marker} section="Restore" title="Incidents" />
         <DataUnavailable surface="Incident data" />
       </>
     );
@@ -39,13 +40,14 @@ export default async function IncidentsPage({
   return (
     <>
       <PageHeader
-        description={description}
-        section="Restore"
+        description={DESCRIPTION}
         generatedAt={data.generatedAt}
-        marker={canInvestigate ? "Actionable" : "Read-only"}
+        marker={marker}
+        section="Restore"
+        status={incidentStatus(data.incidents, data.selected)}
         title="Incidents"
       />
-      <IncidentRecovery canInvestigate={canInvestigate} incidents={data.incidents} now={data.generatedAt} selected={data.selected} />
+      <IncidentsPage canInvestigate={canInvestigate} incidents={data.incidents} now={data.generatedAt} selected={data.selected} />
     </>
   );
 }

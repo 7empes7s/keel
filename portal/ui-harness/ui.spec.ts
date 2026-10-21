@@ -13,6 +13,8 @@ const PAGES = [
   { name: "drift-services", hash: "/drift/services" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
+  { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
+  { name: "incidents-viewer", hash: "/incidents/viewer" },
   { name: "resilience", hash: "/resilience" },
   { name: "resilience-unmeasured", hash: "/resilience/unmeasured" },
   { name: "reports", hash: "/reports" },
@@ -1382,6 +1384,8 @@ const RECORD_IDS: Record<string, string[]> = {
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
+  incidents: ["1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "7e000000-0000-4000-8000-000000000071", "9b000000-0000-4000-8000-000000000071", "3f9c2b1e-0000-4000-8000-0000000000aa"],
+  "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "c4e10000-0000-4000-8000-0000000000c3", "d0e10000-0000-4000-8000-0000000000d1", "d0e10000-0000-4000-8000-0000000000d3"],
   integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
@@ -1495,36 +1499,217 @@ test("contract · shell: eight sections, plain words, the page's sub-pages under
   }
 });
 
-// Task-71: the incident view recommends the newest cleared snapshot, keeps the check
-// form honest, keeps ids in Technical details, and fits a phone.
-test("the incident view recommends the cleared snapshot, not the newest, and refuses exclusions on an unsafe result", async ({ page }) => {
-  await open(page, "/incidents", "dark");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("Restore from the snapshot of 30 Sept 2026, 06:00 UTC");
-  const rows = page.locator("tr.incident-point");
-  await expect(rows.nth(0)).toContainText("Unsafe");
-  await expect(rows.nth(0)).not.toContainText("Recommended");
-  await expect(rows.nth(1)).toContainText("Recommended");
-  await expect(rows.nth(1)).toContainText("Being kept does not mean it is clean");
-  await expect(rows.nth(1)).toContainText("Mail Sync Helper (enterprise app)");
+// Incidents (portal audit, pick B): the page names the newest CLEARED backup, a tile
+// filters the list, each backup opens its panel, every step asks first in a sheet (no
+// window.prompt), the check lists items by name, and a closed incident is a record.
+type IncidentCall = { url: string; method: string; body: string | null };
+const incidentPosts = async (page: Page) => (await page.evaluate(() => (window as unknown as { __harnessCalls: IncidentCall[] }).__harnessCalls))
+  .filter((call) => call.method === "POST" && call.url === "/api/actions/incidents")
+  .map((call) => JSON.parse(call.body ?? "{}") as Record<string, unknown>);
 
-  // The id is one click away, labelled, with a copy control.
-  await rows.nth(1).locator("summary", { hasText: "Technical details" }).click();
-  await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("Snapshot ID");
-  await expect(rows.nth(1).locator('[data-layer="record"]')).toContainText("5a2be911-0000-4000-8000-000000000002");
-  await expect(rows.nth(1).getByRole("button", { name: "Copy Snapshot ID" })).toBeVisible();
+test("Incidents · verdict, tiles and rows name the cleared backup, people by name", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  page.on("dialog", () => { throw new Error("window.prompt or confirm must not be used"); });
+  await open(page, "/incidents");
+  await expect(page.locator(".status-pill")).toHaveText("Incident open, backup cleared");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Restore from the backup of 30 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("It leaves out 1 harmful item: Mail Sync Helper (enterprise app).");
+  expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
+  await expect(page.locator(".ir-tile")).toHaveCount(4);
+  await expect(page.locator(".ir-tile", { hasText: "Not checked yet" })).toContainText("1 during the attack");
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(5);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Cleared", "Not checked", "Unsafe"]);
+  await expect(rows.nth(0)).toContainText("30 Sept 2026, 06:00 UTC");
+  await expect(rows.nth(0)).toContainText("Recommended");
+  await expect(rows.nth(0)).toContainText("Checked by Dana Reyes · 24 hours ago");
+  await expect(rows.filter({ hasText: "2 Oct 2026" })).toContainText("Taken during the attack");
+  await expect(rows.filter({ hasText: "29 Sept 2026" })).toContainText("Needs a new check");
+  await expect(rows.filter({ hasText: "28 Sept 2026" })).toContainText("Restore allowed");
+  expect(await rows.filter({ hasText: "28 Sept 2026" }).getByRole("link", { name: "Restore anyway" }).getAttribute("href")).toMatch(/\/restore\?snapshot=6d110000-.*&incident=1c1d0000-/);
+  const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  expectPlainText(visible);
+  for (const word of ["@contoso", "snapshot", "Snapshot", "override", "qualified"]) expect(visible).not.toContain(word);
+  // The timeline draws one dot per backup and the attack window as a band.
+  await expect(page.locator(".ir-timeline .ir-dot")).toHaveCount(5);
+  await expect(page.locator(".ir-timeline .ir-band")).toHaveCount(1);
+  await expect(page.locator(".ir-windows")).toContainText("From 30 Sept 2026, 22:40 UTC, still ongoing");
 
-  await rows.nth(2).getByRole("button", { name: "Record a check" }).click();
-  await page.getByLabel("Result").selectOption("compromised");
-  await page.getByLabel("Why").fill("captured the backdoor");
-  await page.getByLabel(/Malicious items to leave out/).fill("group:backdoor | attacker group");
-  await page.getByRole("button", { name: "Save check" }).click();
-  await expect(page.getByRole("alert")).toContainText("Leaving items out applies only to a clean one");
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(page.locator('[data-layer="verdict"]')).toBeInViewport();
+  // A tile sets state= and narrows the list.
+  await page.locator(".ir-tile", { hasText: "Not checked yet" }).click();
+  await expect(page).toHaveURL(/state=unchecked/);
+  await expect(page.locator(".sel-row")).toHaveCount(3);
+  await page.getByRole("link", { name: "Show every backup" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(5);
 });
+
+test("Incidents · a backup opens its panel; keep, allow and check ask first, then post", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  page.on("dialog", () => { throw new Error("window.prompt or confirm must not be used"); });
+  await open(page, "/incidents");
+
+  // The panel keeps open= in the URL and the incident stays chosen.
+  await page.locator(".ir-row-link", { hasText: "30 Sept 2026, 06:00 UTC" }).click();
+  await expect(page).toHaveURL(/open=5a2be911-0000-4000-8000-000000000002/);
+  const panel = page.getByRole("dialog", { name: "30 Sept 2026, 06:00 UTC" });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("The newest backup an investigator cleared. Taken 17 hours before the attacker got in.");
+  await expect(panel).toContainText("“App list matches the day before; no new mail rules.”");
+  await expect(panel).toContainText("Mail Sync Helper (enterprise app): Consent granted by the attacker on 29 Sept");
+  await expect(panel).toContainText("Kept from clean-up by Dana Reyes: “Last known good before the attack”");
+  await expect(panel.locator(".bl-sheet-foot .btn-primary")).toHaveText("Restore from this backup");
+
+  // Let clean-up remove it: a sheet with the consequence; a reason is required.
+  await panel.getByRole("link", { name: "Let clean-up remove it" }).click();
+  await expect(page).toHaveURL(/do=release/);
+  const release = page.getByRole("dialog", { name: /Let clean-up remove the backup/ });
+  await expect(release).toContainText("Nothing is deleted now.");
+  await release.getByRole("button", { name: "Let clean-up remove it" }).click();
+  await expect(release.locator(".ir-error")).toHaveText("Write why. It is kept with the record.");
+  await release.getByLabel("Why it may go").fill("Evidence exported to the case file");
+  await release.getByRole("button", { name: "Let clean-up remove it" }).click();
+  await expect(page.locator(".toast", { hasText: "No longer kept" })).toBeVisible();
+  expect((await incidentPosts(page)).at(-1)).toEqual({ op: "release", pinId: "9b000000-0000-4000-8000-000000000071", reason: "Evidence exported to the case file" });
+  // Closing the step returns to the backup's panel.
+  await expect(panel).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+
+  // Allow a restore from an unchecked backup.
+  await page.locator(".ir-row-link", { hasText: "2 Oct 2026, 06:00 UTC" }).click();
+  const fresh = page.getByRole("dialog", { name: "2 Oct 2026, 06:00 UTC" });
+  await expect(fresh.getByRole("button", { name: "Restore anyway" })).toBeDisabled();
+  await fresh.getByRole("link", { name: "Allow a restore from this backup" }).click();
+  const allow = page.getByRole("dialog", { name: "Allow a restore from this backup" });
+  await expect(allow).toContainText("Someone else must still ask for the restore, and approvers see your reason.");
+  await allow.getByLabel("Why a restore must use it anyway").fill("Only backup with the new finance group");
+  await allow.getByRole("button", { name: "Allow a restore" }).click();
+  await expect(page.locator(".toast", { hasText: "Restore allowed" })).toBeVisible();
+  expect((await incidentPosts(page)).at(-1)).toEqual({ op: "override", incidentId: "1c1d0000-0000-4000-8000-000000000071", snapshotId: "b7e20000-0000-4000-8000-000000000004", reason: "Only backup with the new finance group" });
+
+  // Record a check: clean, with a harmful item picked by name (never a key).
+  await fresh.getByRole("link", { name: "Record your check" }).click();
+  await expect(page).toHaveURL(/do=check/);
+  const check = page.getByRole("dialog", { name: "Record your check" });
+  await check.getByRole("button", { name: /^Add a harmful item/ }).click();
+  const options = page.locator(".option-panel [role='option']");
+  await expect(options).toHaveText([/Mail Sync Helper/, /Helpdesk Tier 0/, /Block legacy auth/]);
+  for (const text of await options.allTextContents()) expect(text).not.toMatch(/:/);
+  await options.filter({ hasText: "Mail Sync Helper" }).click();
+  await check.getByLabel("Why", { exact: true }).fill("Captured after the attacker's consent");
+  await check.getByRole("button", { name: "Save check" }).click();
+  await expect(check.locator(".ir-error")).toHaveText("Say why Mail Sync Helper is harmful.");
+  await check.getByLabel("Why it is harmful").fill("Consent granted by the attacker");
+  await check.getByRole("button", { name: "Save check" }).click();
+  await expect(page.locator(".toast", { hasText: "Check recorded" })).toBeVisible();
+  expect((await incidentPosts(page)).at(-1)).toEqual({
+    op: "assess", incidentId: "1c1d0000-0000-4000-8000-000000000071", snapshotId: "b7e20000-0000-4000-8000-000000000004", verdict: "clean",
+    rationale: "Captured after the attacker's consent", exclusions: [{ naturalKey: "servicePrincipal:Mail Sync Helper", field: null, reason: "Consent granted by the attacker" }],
+  });
+});
+
+test("Incidents · keep several backups at once, one call each", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/incidents");
+  await page.getByLabel("Select 2 Oct 2026, 06:00 UTC").check();
+  await page.getByLabel("Select 1 Oct 2026, 06:00 UTC").check();
+  await expect(page.locator(".sel-bar")).toContainText("Keeping them stops routine clean-up removing the evidence.");
+  await page.locator(".sel-bar .btn-primary").click();
+  await expect(page).toHaveURL(/do=keep&pick=/);
+  const sheet = page.getByRole("dialog", { name: "Keep 2 backups" });
+  await sheet.getByLabel("Why it must be kept").fill("Evidence for the case");
+  await sheet.getByRole("button", { name: "Keep 2 backups" }).click();
+  await expect(page.locator(".toast", { hasText: "2 backups kept" })).toBeVisible();
+  const pins = (await incidentPosts(page)).filter((body) => body.op === "pin");
+  expect(pins.map((body) => body.snapshotId).sort()).toEqual(["93c41e07-0000-4000-8000-000000000003", "b7e20000-0000-4000-8000-000000000004"]);
+});
+
+test("Incidents · new incident, attack window and close each open a sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/incidents");
+  await page.getByRole("link", { name: "Add attack window" }).click();
+  const windowSheet = page.getByRole("dialog", { name: "Add attack window" });
+  await windowSheet.getByRole("button", { name: /^Day/ }).first().click();
+  await page.locator(".date-panel input[type='date']").first().fill("2026-09-30");
+  await page.keyboard.press("Escape");
+  await windowSheet.getByLabel("Time (24-hour)").first().fill("21:15");
+  await windowSheet.getByLabel("How you know").fill("Mail audit log");
+  await windowSheet.getByRole("button", { name: "Add attack window" }).click();
+  await expect(page.locator(".toast", { hasText: "Attack window added" })).toBeVisible();
+  expect((await incidentPosts(page)).at(-1)).toEqual({ op: "interval", incidentId: "1c1d0000-0000-4000-8000-000000000071", startsAt: "2026-09-30T21:15:00.000Z", endsAt: null, reason: "Mail audit log" });
+
+  await page.getByRole("link", { name: "Close incident" }).click();
+  const close = page.getByRole("dialog", { name: "Close “Admin consent phishing”?" });
+  await expect(close).toContainText("Backups you kept stay kept until you let them go.");
+  await close.getByRole("button", { name: "Close incident" }).click();
+  await expect(page.locator(".toast", { hasText: "Incident closed" })).toBeVisible();
+  expect((await incidentPosts(page)).at(-1)).toEqual({ op: "close", incidentId: "1c1d0000-0000-4000-8000-000000000071" });
+
+  await page.getByRole("link", { name: "New incident" }).click();
+  const create = page.getByRole("dialog", { name: "New incident" });
+  await create.getByRole("button", { name: "Open incident" }).click();
+  await expect(create.locator(".ir-error")).toHaveText("Give the incident a title.");
+  await create.getByLabel("Title").fill("Payroll mailbox takeover");
+  await create.getByRole("button", { name: "Open incident" }).click();
+  await expect(page).toHaveURL(/incident=1c1d0000-0000-4000-8000-000000000072/);
+  expect((await incidentPosts(page)).at(-1)).toEqual({ op: "open", title: "Payroll mailbox takeover" });
+});
+
+test("Incidents · the picker switches incident; a closed one and a reader see no changes", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/incidents");
+  await page.getByRole("radio", { name: "All" }).click();
+  await expect(page).toHaveURL(/show=all/);
+  await page.getByRole("button", { name: /^Incident: Admin consent phishing/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Lost break-glass token (drill)" }).click();
+  await expect(page).toHaveURL(/incident=1c1d0000-0000-4000-8000-000000000070/);
+  await expect(page.locator(".status-pill")).toHaveText("Incident closed");
+  await expect(page.locator(".ir-closed-note")).toContainText("This incident is closed, so nothing on it can change.");
+  await expect(page.getByRole("link", { name: /Record (your|a new) check|Close incident|Add attack window/ })).toHaveCount(0);
+  await expect(page.locator("main .btn-primary")).toHaveCount(0);
+
+  await open(page, "/incidents/viewer");
+  await expect(page.locator(".mode-marker")).toHaveText("Read-only");
+  await expect(page.getByText("Only investigators can change incidents.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /New incident|Record your check|Close incident/ })).toHaveCount(0);
+  await page.locator(".sel-row").nth(0).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 backup");
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/incidents", "/incidents?group=day", "/incidents?open=5a2be911-0000-4000-8000-000000000002", "/incidents?open=b7e20000-0000-4000-8000-000000000004&do=check", "/incidents?do=window", "/incidents?incident=1c1d0000-0000-4000-8000-000000000070"]) {
+      test(`Incidents · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".ir-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".ir-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .ir-tile, .ir-row-link, .bl-sheet a, .bl-sheet .btn")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=") || hash.includes("do=")) {
+          const sheet = page.getByRole("dialog");
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".bl-sheet-foot .btn").first()).toBeInViewport();
+        }
+        if (width === 390) {
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await expect(page.locator('[data-layer="verdict"]')).toBeInViewport();
+        }
+      });
+    }
+  }
+}
 
 // Task-70: undo of a failed restore — planned against the live tenant, reviewed,
 // then sent for the normal approval. Never written from this page.

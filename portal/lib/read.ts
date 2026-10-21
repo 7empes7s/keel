@@ -135,6 +135,10 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "incidents/page.tsx",
   },
+  snapshotItemsApi: {
+    capability: "read",
+    source: "api/snapshots/[id]/items/route.ts",
+  },
   protectPage: {
     capability: "read",
     source: "protect/page.tsx",

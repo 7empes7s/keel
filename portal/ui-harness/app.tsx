@@ -42,7 +42,8 @@ import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CompensationPanel } from "@/components/compensation-panel";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
-import { IncidentRecovery } from "@/components/incident-recovery";
+import { IncidentsPage } from "@/components/incidents/incidents-page";
+import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
@@ -157,6 +158,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.
+  // Incidents: every change succeeds (a new incident answers its id); a backup lists its items.
+  if (url.endsWith("/api/actions/incidents")) {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { op?: string };
+    return json(body.op === "open" ? { incident: { id: "1c1d0000-0000-4000-8000-000000000072" } } : { ok: true });
+  }
+  if (/\/api\/snapshots\/[^/]+\/items$/.test(url)) return json({ generatedAt: now, snapshotId: "", resources: BACKUP_ITEMS });
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
@@ -883,24 +890,33 @@ function dashboard(posture: number): DashboardData {
   };
 }
 
-// Task-71: an open incident whose newest snapshot captured the attack. The engine
-// recommends the newest CLEARED snapshot, not the newest one. Every reference is a
-// resolved name, as the portal readers return it.
-const INVESTIGATOR = { kind: "person", id: "3f9c2b1e-0000-4000-8000-0000000000aa", name: "investigator@contoso.example", href: "/principals" };
+// Task-71: an open incident whose newest backup captured the attack. The engine
+// recommends the newest CLEARED backup, not the newest one. Every reference is a
+// resolved name, as the portal readers return it; the investigator's email shows only
+// in Technical details. One backup needs a new check (the window moved after it was
+// checked), one was allowed for a restore anyway, and a closed drill stays as a record.
+const INVESTIGATOR = { kind: "person", id: "3f9c2b1e-0000-4000-8000-0000000000aa", name: "Dana Reyes", href: "/principals" };
+const SNAP_NEW = "b7e20000-0000-4000-8000-000000000004";
 const SNAP_BAD = "93c41e07-0000-4000-8000-000000000003";
 const SNAP_GOOD = "5a2be911-0000-4000-8000-000000000002";
 const SNAP_OLD = "0f7d3c52-0000-4000-8000-000000000001";
+const SNAP_ALLOWED = "6d110000-0000-4000-8000-000000000000";
 const snapshotRef = (id: string, name: string) => ({ kind: "snapshot", id, name, href: `/restore?snapshot=${id}` });
 const INCIDENT: IncidentDetail = {
   incident: { id: "1c1d0000-0000-4000-8000-000000000071", title: "Admin consent phishing", owner: INVESTIGATOR, status: "open", openedAt: "2026-10-01T08:10:00Z", closedAt: null },
   intervals: [{ id: "7e000000-0000-4000-8000-000000000071", startsAt: "2026-09-30T22:40:00Z", endsAt: null, reason: "First malicious sign-in (risky sign-in report)", recordedBy: INVESTIGATOR }],
   pins: [{ id: "9b000000-0000-4000-8000-000000000071", snapshotId: SNAP_GOOD, reason: "Last known good before the attack", pinnedBy: INVESTIGATOR, pinnedAt: "2026-10-01T08:30:00Z" }],
+  overrides: [{ id: "0e710000-0000-4000-8000-000000000071", snapshotId: SNAP_ALLOWED, reason: "The only backup with last week's membership changes", authorizedBy: INVESTIGATOR, authorizedAt: "2026-10-01T09:30:00Z" }],
   points: [
+    {
+      snapshotId: SNAP_NEW, snapshot: snapshotRef(SNAP_NEW, "Snapshot of 2 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-02T05:55:00Z", observedTo: "2026-10-02T06:00:00Z",
+      inCompromiseWindow: true, status: "unassessed", stale: false, pinned: false, reasons: ["observed during a compromise interval", "not assessed for this incident"], assessment: null,
+    },
     {
       snapshotId: SNAP_BAD, snapshot: snapshotRef(SNAP_BAD, "Snapshot of 1 Oct 2026, 06:00 UTC"), observedFrom: "2026-10-01T05:55:00Z", observedTo: "2026-10-01T06:00:00Z",
       inCompromiseWindow: true, status: "unsuitable", stale: false, pinned: false,
       reasons: ["observed during a compromise interval", "assessed compromised (v1)"],
-      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:00:00Z", fingerprint: "3c".repeat(32) },
+      assessment: { version: 1, verdict: "compromised", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:00:00Z", fingerprint: "3c".repeat(32), rationale: "Holds the attacker's consent to Mail Sync Helper and two new inbox rules." },
     },
     {
       snapshotId: SNAP_GOOD, snapshot: snapshotRef(SNAP_GOOD, "Snapshot of 30 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-30T05:55:00Z", observedTo: "2026-09-30T06:00:00Z",
@@ -909,16 +925,42 @@ const INCIDENT: IncidentDetail = {
       assessment: {
         version: 2, verdict: "clean",
         exclusions: [{ naturalKey: "servicePrincipal:Mail Sync Helper", field: null, reason: "Consent granted by the attacker on 29 Sept", displayName: "Mail Sync Helper" }],
-        assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:20:00Z", fingerprint: "a2".repeat(32),
+        assessedBy: INVESTIGATOR, assessedAt: "2026-10-01T09:20:00Z", fingerprint: "a2".repeat(32), rationale: "App list matches the day before; no new mail rules.",
       },
     },
     {
       snapshotId: SNAP_OLD, snapshot: snapshotRef(SNAP_OLD, "Snapshot of 29 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-29T05:55:00Z", observedTo: "2026-09-29T06:00:00Z",
+      inCompromiseWindow: false, status: "unassessed", stale: true, pinned: false, reasons: ["assessment v1 predates a compromise-interval change across this snapshot — reassess"], assessment: null,
+    },
+    {
+      snapshotId: SNAP_ALLOWED, snapshot: snapshotRef(SNAP_ALLOWED, "Snapshot of 28 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-28T05:55:00Z", observedTo: "2026-09-28T06:00:00Z",
       inCompromiseWindow: false, status: "unassessed", stale: false, pinned: false, reasons: ["not assessed for this incident"], assessment: null,
     },
   ],
   recommended: SNAP_GOOD,
 };
+const DRILL_SNAP = "d2110000-0000-4000-8000-000000000070";
+const INCIDENT_CLOSED: IncidentDetail = {
+  incident: { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" },
+  intervals: [{ id: "7e000000-0000-4000-8000-000000000070", startsAt: "2026-09-12T08:00:00Z", endsAt: "2026-09-12T12:00:00Z", reason: "Drill: token marked lost at 08:00, rotated at 12:00", recordedBy: INVESTIGATOR }],
+  pins: [],
+  overrides: [],
+  points: [
+    {
+      snapshotId: DRILL_SNAP, snapshot: snapshotRef(DRILL_SNAP, "Snapshot of 12 Sept 2026, 06:00 UTC"), observedFrom: "2026-09-12T05:55:00Z", observedTo: "2026-09-12T06:00:00Z",
+      inCompromiseWindow: false, status: "qualified", stale: false, pinned: false, reasons: ["assessed clean (v1)"],
+      assessment: { version: 1, verdict: "clean", exclusions: [], assessedBy: INVESTIGATOR, assessedAt: "2026-09-12T13:00:00Z", fingerprint: "d1".repeat(32), rationale: "Drill only: nothing changed." },
+    },
+  ],
+  recommended: DRILL_SNAP,
+};
+const INCIDENTS = [INCIDENT.incident, INCIDENT_CLOSED.incident];
+// What a backup holds, for the "leave out" picker: names and kinds, keys stay hidden.
+const BACKUP_ITEMS = [
+  { naturalKey: "servicePrincipal:Mail Sync Helper", resourceType: "servicePrincipal", blastRadius: "access-affecting", service: "entra", name: "Mail Sync Helper" },
+  { naturalKey: "group:7c1a0000-0000-4000-8000-0000000000aa", resourceType: "group", blastRadius: "access-affecting", service: "entra", name: "Helpdesk Tier 0" },
+  { naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", blastRadius: "tenant-lockout", service: "entra", name: "Block legacy auth" },
+];
 
 // Task-76: read setup paused on the one step only the operator can do; restore
 // setup not started and not checked.
@@ -1634,6 +1676,16 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   </>;
 }
 
+// The incident the URL names (the portal's server reads it the same way), the open one first.
+function IncidentsRoute({ viewer }: { viewer: boolean }) {
+  const id = useSearchParams().get("incident");
+  const selected = id === INCIDENT_CLOSED.incident.id ? INCIDENT_CLOSED : INCIDENT;
+  return <>
+    <PageHeader description={INCIDENTS_DESCRIPTION} generatedAt={now} marker={viewer ? "Read-only" : undefined} section="Restore" status={incidentStatus(INCIDENTS, selected)} title="Incidents" />
+    <IncidentsPage canInvestigate={!viewer} incidents={INCIDENTS} now={now} selected={selected} />
+  </>;
+}
+
 function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: number }) {
   const active = jobs.some((item) => item.status === "running" || item.status === "queued");
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
@@ -1669,8 +1721,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} /></div></>;
     }
     case "/restore": return <HarnessRestore jobs={jobs} />;
-    case "/incidents": return <>{header("Restore", "Incidents", "During a security incident, restore from a snapshot an investigator has checked, not simply the newest one.", "Actionable")}
-      <IncidentRecovery canInvestigate incidents={[INCIDENT.incident, { id: "1c1d0000-0000-4000-8000-000000000070", title: "Lost break-glass token (drill)", owner: INVESTIGATOR, status: "closed", openedAt: "2026-09-12T10:00:00Z", closedAt: "2026-09-13T16:00:00Z" }]} now={now} selected={INCIDENT} /></>;
+    case "/incidents": case "/incidents/viewer": return <IncidentsRoute viewer={path === "/incidents/viewer"} />;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);
     case "/reports": return <HarnessReports owners={["FIN", "SALES"]} report={VALUE_REPORT} />;

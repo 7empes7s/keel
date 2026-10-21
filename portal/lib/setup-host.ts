@@ -31,6 +31,9 @@ export interface CredentialReference {
 }
 
 export interface SetupHost {
+  // The tenant's Entra id: an identifier, not a secret. The page builds Microsoft
+  // admin links from it and shows it in Technical details only.
+  tenantId?: string | null;
   readers: ReadAdapters | null;
   adapters: ProvisioningAdapters | null;
   credentials: { collector: CredentialReference; restorer: CredentialReference } | null;
@@ -42,6 +45,7 @@ export interface SetupHost {
 }
 
 export const NO_SETUP_HOST: SetupHost = Object.freeze({
+  tenantId: null,
   readers: null,
   adapters: null,
   credentials: null,

@@ -85,12 +85,22 @@ async function latestRun(client, tenantRef, identity) {
   return { row, events };
 }
 
-const stepView = (step, progress) => ({
+const stepView = (step, progress, app = null) => ({
   id: step.id, kind: step.kind, identity: step.identity, workload: step.workload ?? null, name: step.name,
   action: step.action, requiredScopes: step.requiredScopes ?? [], missingScopes: step.missingScopes ?? [],
   excessScopes: step.excessScopes ?? [],
-  manual: MANUAL_KINDS.includes(step.kind), progress,
+  manual: MANUAL_KINDS.includes(step.kind), progress, app,
 });
+
+// The app a scope's steps are about: the observed registration's display name and app
+// id (identifiers, not secrets), or the app id the host is bound to when the
+// registration has not been observed. Only these two fields leave the plan.
+function appFor(steps, identity, appIds) {
+  const reference = steps.find((step) => step.kind === 'registration')?.reference ?? null;
+  const appId = reference?.appId ?? appIds?.[identity] ?? null;
+  if (!appId && !reference?.displayName) return null;
+  return { displayName: reference?.displayName ?? null, appId };
+}
 
 async function latestCompletedSnapshot(client, tenantRef) {
   const { rows: [row] } = await client.query(`SELECT id, completed_at, coverage_digest FROM snapshot
@@ -133,9 +143,11 @@ function firstCollection(snapshot) {
 /**
  * Everything the setup page shows. `readers` are the host's planBootstrap
  * read adapters; null means the server cannot look at the tenant, and every
- * step without journal evidence is reported 'not-checked'.
+ * step without journal evidence is reported 'not-checked'. `appIds` maps an
+ * identity to the app id the host is bound to, so the page can link to the
+ * app before its registration has been observed.
  */
-export async function loadSetupState(client, { tenantRef, viewerId, readers = null, operatorPrincipalId = null, now = new Date() }) {
+export async function loadSetupState(client, { tenantRef, viewerId, readers = null, operatorPrincipalId = null, appIds = null, now = new Date() }) {
   assertTenantRef(tenantRef);
   const journal = await journalTablesExist(client);
   const scopes = [];
@@ -145,6 +157,7 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
     const run = journal ? await latestRun(client, tenantRef, identity) : null;
     if (run) {
       const steps = run.row.artifact.plan.steps.filter((step) => step.identity === identity);
+      const app = appFor(steps, identity, appIds);
       scopes.push({
         scope, workloads, observed: true,
         run: {
@@ -159,7 +172,7 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
           build: run.row.artifact.build,
           qualificationMode: run.row.artifact.qualificationMode,
         },
-        steps: steps.map((step) => stepView(step, stepProgress(step, run.events))),
+        steps: steps.map((step) => stepView(step, stepProgress(step, run.events), app)),
       });
       continue;
     }
@@ -168,10 +181,11 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
     // Intune roles without an Intune RBAC read grant). Those steps stay
     // "not checked": an unreadable state is never shown as missing or present.
     const unchecked = new Set(readers?.uncheckedKinds ? await readers.uncheckedKinds() : []);
+    const app = appFor(plan.steps.filter((step) => step.identity === identity), identity, appIds);
     scopes.push({
       scope, workloads, observed: readers !== null, run: null, planId: plan.planId,
       steps: plan.steps.map((step) => stepView(step,
-        stepProgress(step, null, { observed: readers !== null && !unchecked.has(step.kind) }))),
+        stepProgress(step, null, { observed: readers !== null && !unchecked.has(step.kind) }), app)),
     });
   }
   return {

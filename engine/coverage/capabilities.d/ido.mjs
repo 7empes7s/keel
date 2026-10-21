@@ -33,6 +33,12 @@ export default [
   { resourceType: 'appManagementPolicy', operation: 'create', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'appManagementPolicy', operation: 'update', path: '/policies/appManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'multiTenantOrganization', operation: 'update', path: '/tenantRelationships/multiTenantOrganization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Restore gaps, batch 2: Entra ID tenant singletons.
+  { resourceType: 'externalIdentitiesPolicy', operation: 'update', path: '/policies/externalIdentitiesPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'accessReviewPolicy', operation: 'update', path: '/policies/accessReviewPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'directoryRoleAccessReviewPolicy', operation: 'update', path: '/policies/directoryRoleAccessReviewPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', operation: 'update', path: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', operation: 'update', path: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'user', operation: 'create', path: '/users', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'deviceCompliancePolicy', operation: 'delete', path: '/deviceManagement/deviceCompliancePolicies', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },
   { resourceType: 'deviceConfiguration', operation: 'delete', path: '/deviceManagement/deviceConfigurations', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },

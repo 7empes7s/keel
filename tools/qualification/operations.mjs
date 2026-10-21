@@ -237,6 +237,12 @@ const FIXTURE_PAYLOADS = Object.freeze({
   windowsQualityUpdatePolicy: { displayName: 'Fixture hotpatch', description: 'Fixture', hotpatchEnabled: true, roleScopeTagIds: ['0'] },
   deviceCategory: { displayName: 'Fixture category', description: 'Fixture' },
   managedDeviceCleanupRule: { displayName: 'Fixture cleanup', description: 'Fixture', deviceCleanupRulePlatformType: 'windows', deviceInactivityBeforeRetirementInDays: 90 },
+  // Restore gaps, batch 2: Entra ID tenant singletons.
+  externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
+  accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
+  directoryRoleAccessReviewPolicy: { settings: { mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false, defaultDecision: 'None', instanceDurationInDays: 14, recommendationsEnabled: true } },
+  multiTenantOrganizationIdentitySyncPolicyTemplate: { templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
+  multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners', automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true } },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
@@ -288,6 +294,12 @@ const FIXTURE_DRIFT = Object.freeze({
   attributeSet: () => ({ description: 'Drifted' }),
   customSecurityAttributeDefinition: () => ({ description: 'Drifted' }),
   entitlementManagementSettings: () => ({ externalUserLifecycleAction: 'none' }),
+  // Restore gaps, batch 2: each singleton drifts one writable setting.
+  externalIdentitiesPolicy: () => ({ allowExternalIdentitiesToLeave: false }),
+  accessReviewPolicy: () => ({ isGroupOwnerManagementEnabled: false }),
+  directoryRoleAccessReviewPolicy: (payload) => ({ settings: { ...payload.settings, instanceDurationInDays: 3 } }),
+  multiTenantOrganizationIdentitySyncPolicyTemplate: () => ({ userSyncInbound: { isSyncAllowed: false } }),
+  multiTenantOrganizationPartnerConfigurationTemplate: () => ({ automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the

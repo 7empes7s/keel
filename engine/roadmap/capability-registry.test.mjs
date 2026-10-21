@@ -79,6 +79,12 @@ const REGISTERED = Object.freeze({
   entitlementManagementSettings: ['update'],
   appManagementPolicy: ['create', 'update'],
   multiTenantOrganization: ['update'],
+  // Restore gaps, batch 2: Entra ID tenant singletons.
+  externalIdentitiesPolicy: ['update'],
+  accessReviewPolicy: ['update'],
+  directoryRoleAccessReviewPolicy: ['update'],
+  multiTenantOrganizationIdentitySyncPolicyTemplate: ['update'],
+  multiTenantOrganizationPartnerConfigurationTemplate: ['update'],
   // Wave 2 IDO: Intune app protection and configuration, filters, scope tags,
   // Windows update profiles and notification templates.
   managedAppPolicy: ['create', 'update', 'delete'],

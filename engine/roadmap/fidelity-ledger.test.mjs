@@ -56,7 +56,7 @@ test('mutation check: omitting an unqualified catalogue type fails the ledger, n
 test('supported rows carry credential, id outcome, idempotency, field classification and proof', () => {
   const ledger = buildOperationLedger();
   const supported = ledger.types.flatMap((row) => row.operations).filter((op) => op.decision === 'supported');
-  assert.equal(supported.length, 109, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×4 (restore, task-152), application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151), Intune compliance, configuration and settings catalog create and update (issue #155), branding, branding language, group expiration and authentication flows updates (issue #156), create and update of six directory policy and consent types (Wave 2 ENTRA), and Wave 2 IDO\'s 43: service principal update and delete, user create, nine identity governance and policy types (13), three Intune policy deletes, and nine Intune types (24); restore gaps batch 1: reusable settings groups, hotpatch policies and device categories create and update, cleanup rule update (7)');
+  assert.equal(supported.length, 114, 'group×4, roleAssignment×3, namedLocation×3, conditionalAccessPolicy×4 (restore, task-152), application×3 and servicePrincipal×1 (task-107), authenticationStrengthPolicy×2 (task-108), administrativeUnit×1 and groupSetting×2 (task-109), six tenant policy updates and crossTenantAccessPolicyPartner×2 (task-149), user update and restore (task-150), roleDefinition×2, roleEligibilitySchedule create and unifiedRoleManagementPolicy update (task-151), Intune compliance, configuration and settings catalog create and update (issue #155), branding, branding language, group expiration and authentication flows updates (issue #156), create and update of six directory policy and consent types (Wave 2 ENTRA), and Wave 2 IDO\'s 43: service principal update and delete, user create, nine identity governance and policy types (13), three Intune policy deletes, and nine Intune types (24); restore gaps batch 1: reusable settings groups, hotpatch policies and device categories create and update, cleanup rule update (7); restore gaps batch 2: five Entra ID tenant singleton updates (5)');
   for (const op of supported) {
     assert.equal(op.credentialMode, 'restorer');
     assert.ok(op.idOutcome);
@@ -208,7 +208,7 @@ test('relabelling a type cannot forge a capability or live evidence', () => {
 test('the fixture harness drives every registered operation and never changes a claim', async () => {
   const before = buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim));
   const results = await runFixtureHarness();
-  assert.equal(results.length, 109);
+  assert.equal(results.length, 114);
   assert.deepEqual(results.filter((result) => result.result !== 'passed'), []);
   assert.ok(results.every((result) => result.synthetic === true));
   assert.deepEqual(buildOperationLedger().types.map((row) => row.operations.map((op) => op.claim)), before);

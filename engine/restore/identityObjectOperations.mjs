@@ -172,6 +172,7 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
 }
 
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
+const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
@@ -221,6 +222,42 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'multiTenantOrganization', version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
+  }),
+  // Restore gaps, batch 2: Entra ID tenant settings that are one object per
+  // tenant. Each is only updated in place, and only its settings are written
+  // (its name and description are Microsoft's).
+  externalIdentitiesPolicy: defineRecord({
+    resourceType: 'externalIdentitiesPolicy', version: 'beta', collection: '/policies/externalIdentitiesPolicy',
+    singleton: true, operations: ['update'], writable: ['allowExternalIdentitiesToLeave', 'allowDeletedIdentitiesDataRemoval'],
+    permission: 'Policy.ReadWrite.ExternalIdentities', docs: beta('externalidentitiespolicy-update'),
+  }),
+  accessReviewPolicy: defineRecord({
+    resourceType: 'accessReviewPolicy', version: 'beta', collection: '/policies/accessReviewPolicy',
+    singleton: true, operations: ['update'], writable: ['isGroupOwnerManagementEnabled'],
+    permission: 'Policy.ReadWrite.AccessReview', docs: beta('accessreviewpolicy-update'),
+  }),
+  directoryRoleAccessReviewPolicy: defineRecord({
+    resourceType: 'directoryRoleAccessReviewPolicy', version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
+    singleton: true, operations: ['update'], writable: ['settings'],
+    permission: 'RoleManagement.ReadWrite.Directory', docs: beta('directoryroleaccessreviewpolicy-update'),
+  }),
+  // The multitenant organization templates only shape the settings a tenant
+  // gets when it joins later; partners already in place keep their own.
+  multiTenantOrganizationIdentitySyncPolicyTemplate: defineRecord({
+    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', version: 'v1.0',
+    collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization',
+    singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'userSyncInbound'],
+    permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationidentitysyncpolicytemplate-update'),
+  }),
+  multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
+    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
+    collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
+    singleton: true, operations: ['update'],
+    writable: [
+      'templateApplicationLevel', 'inboundTrust', 'automaticUserConsentSettings',
+      'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+    ],
+    permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
 });
 

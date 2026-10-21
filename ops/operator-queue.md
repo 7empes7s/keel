@@ -5009,3 +5009,31 @@ item that needs it stays untouched.
      ```
      Commit it as `ops/q104/uncatalogued.tsv` on a new branch `claude/q104-uncatalogued` (never master) and push.
 - **Report:** step 1, the distinct path count of step 2, and the branch commit. Nothing in the tenant changes; one stored run.
+
+### Q105: Which Exchange fields came back unknown in Q103 (read-only, DB only)
+- Drafted by the "Exchange backups report partial" thread (2026-10-21). Q103 step 4: `exchange-mail-flow` is `partial`
+  with `fieldCounts {"unknown": 11, "observed": 752}`, every family read; `exchange-extended` is `partial` too, every
+  family read. A field is `unknown` when the cmdlet's answer did not carry a declared property at all. The fields were
+  declared from Microsoft's docs, not measured live, so this item lists which ones the live module does not return.
+- Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
+- Status: todo
+- Do (with `set -a; . /etc/keel/db.env; set +a`). Field names and family kinds only; no values are selected:
+  1. ```sql
+     WITH latest AS (
+       SELECT DISTINCT ON (workload) id, workload, outcome, created_at FROM workload_collection
+        WHERE workload IN ('exchange-mail-flow', 'exchange-extended') AND outcome <> 'disabled'
+        ORDER BY workload, created_at DESC)
+     SELECT l.workload, l.outcome, o.fields->>'kind' AS kind, c.key AS field, c.value->>'status' AS status, count(*) AS objects
+       FROM latest l JOIN workload_observation o ON o.collection_id = l.id
+       CROSS JOIN LATERAL jsonb_each(o.field_coverage) c
+      WHERE c.value->>'status' <> 'observed'
+      GROUP BY 1, 2, 3, 4, 5 ORDER BY 1, 3, 4;
+     ```
+  2. ```sql
+     SELECT workload, outcome, created_at, digest->'fieldCounts' AS field_counts, digest->'discovery'->>'unidentified' AS unidentified,
+            digest->'discovery'->>'capped' AS capped, jsonb_array_length(COALESCE(digest->'skipped','[]'::jsonb)) AS n_skipped,
+            jsonb_array_length(COALESCE(digest->'unavailable','[]'::jsonb)) AS n_unavailable
+       FROM workload_collection WHERE workload IN ('exchange-mail-flow', 'exchange-extended') AND outcome <> 'disabled'
+      ORDER BY created_at DESC LIMIT 4;
+     ```
+- **Report:** both outputs verbatim. Nothing is written to the tenant or the DB.

@@ -38,6 +38,8 @@ export const ALIAS_PATHS = Object.freeze({
   '/directorySettingTemplates': 'directorySettingTemplate',
   '/identity/conditionalAccess/authenticationStrength/policies': 'authenticationStrengthPolicy',
   '/identity/conditionalAccess/authenticationStrengths/policies': 'authenticationStrengthPolicy',
+  // Same object as /policies/accessReviewPolicy.
+  '/identityGovernance/accessReviews/policy': 'accessReviewPolicy',
   '/identityGovernance/catalogs': 'accessPackageCatalog',
   '/identityGovernance/entitlementManagement/accessPackageAssignmentPolicies': 'accessPackageAssignmentPolicy',
   '/identityGovernance/entitlementManagement/accessPackageAssignments': 'accessPackageAssignment',
@@ -199,6 +201,8 @@ export const SKIPPED_PATHS = Object.freeze({
   '/roleManagement/directory/roleAssignmentScheduleInstances': 'not-configuration',
   '/roleManagement/directory/roleEligibilityScheduleInstances': 'not-configuration',
   '/roleManagement/entitlementManagement/deletedItems/roleDefinitions': 'not-configuration',
+  // Entitlement management has built-in roles only (catalog owner, reader and so on).
+  '/roleManagement/entitlementManagement/roleDefinitions': 'microsoft-published',
   '/security/attackSimulation/trainingCampaigns': 'not-configuration',
   '/security/attackSimulation/trainings': 'not-configuration',
   '/security/secureScoreControlProfiles': 'not-configuration',

@@ -2,6 +2,10 @@
 export default Object.freeze({
   service: 'Exchange',
   entries: Object.freeze({
+    // Exchange admin roles, read from Microsoft Graph (catalogue types take their tier's priority).
+    exchangeRoleDefinition: { name: 'Exchange admin role' },
+    exchangeRoleAssignment: { name: 'Exchange admin role assignment' },
+    exchangeCustomAppScope: { name: 'Exchange app access scope' },
     'exchange-mailbox-settings': {
       name: 'Exchange mailbox setting',
       priority: 'high',

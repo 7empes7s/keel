@@ -5104,3 +5104,24 @@ item that needs it stays untouched.
        (present means the session holds the roles those reads need).
      If the Collector is refused on a `Get-RoleGroup*` cmdlet, repeat only that read with the Restorer's purview config.
 - **Report:** step 1 rows; step 2 role list plus the yes/no list; step 3 answers. Nothing changes in the tenant, the host or the DB.
+
+### Q107: Recapture the four Q103 read records with the #427 fix and publish them (read-only toward the tenant)
+- Drafted by the "Proof file publishing fix" thread (2026-10-21). Finishes Q103 step 5.
+- PR #428 (merge f149729) fixes #427: `workloadReadsLive.mjs capture` now pseudonymizes the record before signing, so
+  `subject.credentials.collector` carries `app:<pseudonym>` like the writer records.
+- Needs: PR #428 live (`git -C /opt/keel-live log --oneline | grep -c "#428"` is 1).
+- Status: todo
+- Result:
+- **Tenant:** reads only, same as Q103 step 2. Each capture sends only the workload's declared `Get-` cmdlets with the
+  collector credential. Nothing is created, changed or deleted. No grant or role changes.
+- Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. Rerun the four Q103 captures exactly as Q103 step 2 (exchange-mail-flow, exchange-extended, purview-retention-dlp,
+     purview-governance), same flags, `--build` = the live commit.
+  2. `node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-*-live-acceptance.json`:
+     expect exit 0 on all four. If any id is still raw, stop and file an issue; do not publish.
+  3. Import as Q103 step 3 and run `keel-workload-collect.mjs run` once, as Q103 step 4.
+  4. Commit the four records to `claude/live-evidence-q103` and push. Then set Q103 to `done` with a pointer to this item,
+     and delete `/root/q103-records/` (the held records with the raw id).
+- **Report:** per capture exit code and proven count; the check output and exit code; import counts; the run table as in
+  Q103 step 4; the evidence branch and commit.

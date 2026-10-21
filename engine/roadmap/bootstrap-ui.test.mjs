@@ -306,10 +306,14 @@ test('portal: setup route, first-collect gate and setup page', async (t) => {
             url: { pathname: '/setup', search: '' }, rootParams: {}, resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
           }, () => page()));
         await assert.rejects(render(headers(...READER)), e => e.digest === 'NEXT_HTTP_ERROR_FALLBACK;403');
-        const html = renderToStaticMarkup(await render(headers(...OWNER)));
-        assert.match(html, /Give keel-collector the Intune role &quot;Read Only Operator&quot;<\/h3><span class="pill pill-warn">Waiting for you/);
-        assert.doesNotMatch(html, /Read Only Operator&quot;<\/h3><span class="pill pill-ok">Done/);
-        assert.match(html, /steps are left before KEEL can read your tenant/);
+        // The page's client parts (Check again, the setup cards) need a mounted router.
+        const { createElement } = require('react');
+        const { AppRouterContext } = require('next/dist/shared/lib/app-router-context.shared-runtime');
+        const html = renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: { refresh() {} } }, await render(headers(...OWNER))));
+        assert.match(html, /data-state="current"><div class="su-step-head">[\s\S]{0,120}<h3>Give the backup reader app the Intune role &quot;Read Only Operator&quot;<\/h3><span class="badge" data-tone="soon">/);
+        assert.doesNotMatch(html, /Read Only Operator&quot;<\/h3><span class="su-step-done">Done/);
+        assert.match(html, /steps are left before Keel can read your tenant/);
+        assert.doesNotMatch(html, /keel-collector|keel-restorer/, 'apps are named by what they are for, not a code name');
         assert.match(html, new RegExp(paused.artifactId));
         const explanation = html.replace(/<details class="technical-details"[\s\S]*?<\/details>/g, '');
         assert.doesNotMatch(explanation, /\b(artifact|adapter|observation|qualifi|capabilit|fixture)/i, 'internal words stay in the record');

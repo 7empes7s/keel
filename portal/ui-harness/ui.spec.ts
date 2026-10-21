@@ -1940,6 +1940,142 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks");
+  await expect(page.locator("main#main-content h1")).toHaveText("Compliance");
+  await expect(page.locator(".status-pill")).toHaveText("1 failing");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago.");
+  await expect(page.locator(".cp-context")).toContainText("Measured against Post-migration golden state");
+  const tiles = page.locator(".cp-tile");
+  await expect(tiles).toHaveCount(4);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Entra ID"]);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText("No more than 5 people hold the top admin role");
+  await expect(rows.nth(0)).toContainText("Exception ended 2 days ago");
+  await expect(rows.filter({ hasText: "No trusted location" })).toContainText("Owner Amara Okafor");
+  await expect(rows.filter({ hasText: "Groups that grant admin roles" })).toContainText("The newest group backup is too old for this check");
+  // The phone scorecard is hidden at desktop width.
+  await expect(page.locator(".cp-by-service")).toBeHidden();
+  expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
+  const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  expectPlainText(visible);
+  for (const word of ["secops@", "@contoso", "westeurope", "KEEL", "Baseline", "Conditional Access", "Named location"]) expect(visible).not.toContain(word);
+
+  // (1) The Failing tile sets result=failing and shows only the failing control.
+  await tiles.filter({ hasText: "Failing" }).click();
+  await expect(page).toHaveURL(/result=failing/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".cp-filter-note")).toContainText("Showing failing only: 1 of 4.");
+  await page.getByRole("link", { name: "Show every control" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+
+  // (2) A control's name opens its panel with open=<evaluationId>; Esc closes it and focus returns.
+  const name = page.locator(".cp-row-link", { hasText: "No more than 5 people hold the top admin role" });
+  await name.click();
+  await expect(page).toHaveURL(/open=e7a10000-0000-4000-8000-0000000000e1/);
+  const panel = page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Every extra top admin is one more account");
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("Two break-glass accounts during the migration");
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("granted by Marouane Defili");
+  // (4) A linked change links to the Changes page, opened on that change.
+  expect(await panel.getByRole("link", { name: /Global Administrator · Adele added/ }).getAttribute("href")).toMatch(/\/drift\?open=d7100000-0000-4000-8000-0000000000d1/);
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(name).toBeFocused();
+
+  // (3) Renew: the sheet asks for an owner, a reason and a future date, posts, and toasts.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await page.locator('[data-layer="verdict"]').getByRole("link", { name: "Renew the exception" }).click();
+  const sheet = page.getByRole("dialog", { name: "Renew the exception" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("The control still fails; it stops counting as failing until the date you pick.");
+  await expect(sheet.getByLabel("Or pick a date")).toHaveAttribute("min", "2026-10-03");
+  await sheet.getByLabel(/Reason/).fill("");
+  await sheet.getByRole("button", { name: /^Renew until/ }).click();
+  await expect(sheet.locator(".cp-error")).toHaveText("Say why the control may fail for now.");
+  await sheet.getByRole("button", { name: /^Owner/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Amara Okafor" }).click();
+  await sheet.getByLabel(/Reason/).fill("Emergency accounts stay until the November cut-over.");
+  await sheet.getByRole("button", { name: /^30 days/ }).click();
+  await sheet.getByRole("button", { name: "Renew until 1 Nov 2026" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Exception saved until 1 Nov 2026");
+  const posts = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/exception");
+  expect(posts.length).toBe(1);
+  expect(JSON.parse(posts[0].body ?? "{}")).toEqual({ evaluationId: "e7a10000-0000-4000-8000-0000000000e1", owner: "amara.okafor@contoso.example", reason: "Emergency accounts stay until the November cut-over.", expiresAt: "2026-11-01T23:59:59.000Z" });
+  await expect(sheet).toBeHidden();
+  // Back on the control's panel, which now shows the exception in force.
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("Until 1 Nov 2026");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".sel-row", { hasText: "No more than 5 people" })).toContainText("Accepted until 1 Nov 2026");
+  await expect(page.locator(".sel-row", { hasText: "No more than 5 people" })).toContainText("Owner Amara Okafor");
+
+  // (6) Export evidence reads both kinds and downloads JSON.
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export evidence" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^keel-compliance-evidence-.*\.json$/);
+  expect((await calls()).some((call) => call.url.startsWith("/api/evidence?kind=benchmark-evaluation,benchmark-exception"))).toBe(true);
+});
+
+test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
+  await open(page, "/benchmarks/viewer");
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
+  await expect(page.locator("main .btn-primary")).toHaveCount(0);
+  await page.locator(".sel-row").nth(0).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 control");
+});
+
+test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/benchmarks");
+  const card = page.locator(".cp-by-service .cp-service");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
+  await expect(card.locator(".cp-ctile")).toHaveCount(4);
+  await card.locator(".cp-ctile", { hasText: "At most 5 top admins" }).click();
+  await expect(page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" })).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+      test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".cp-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        if (width === 390) {
+          const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+          expect(new Set(scorecard).size).toBe(1);
+        }
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .cp-tile, .cp-ctile, .cp-row-link, .bl-sheet a, .bl-sheet .btn")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=")) {
+          const sheet = page.getByRole("dialog");
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toHaveCount(1);
+        }
+      });
+    }
+  }
+}
+
 // Task-99: a grounded answer cites each record and its window, says which part of the
 // period is not known, never reads missing history as "nothing changed", and fits a phone.
 test("ask cites its records, states unknown periods, and fits a phone", async ({ page }) => {

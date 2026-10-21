@@ -307,6 +307,8 @@ test('mutation check: findings link only to records resting on the same collecti
   assert.equal(findings.length, 1);
   const [finding] = findings;
   assert.equal(finding.title, 'Global Administrator assignment count stays at or below a set limit');
+  assert.equal(finding.severity, 'high');
+  assert.match(finding.description, /^Counts active roleAssignment records/);
   assert.equal(finding.links.backup.state, 'linked');
   assert.deepEqual(finding.links.backup.linked.map((entry) => entry.snapshotId), [evidenceSnapshot]);
   assert.deepEqual(finding.links.change.linked.map((change) => change.id), [sameCollection]);
@@ -452,6 +454,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
   const tenantRef = tenantRefFor(tenantId);
   const now = new Date();
   const viewer = await person(client, 'viewer-portal@contoso.com', 'viewer');
+  const admin = await person(client, 'admin-portal@contoso.com', 'admin');
   const evidenceSnapshot = await snapshot(client, tenantRef, new Date(now.getTime() - 10 * DAY), admins(6));
   const laterSnapshot = await snapshot(client, tenantRef, new Date(now.getTime() - 60 * 60_000), admins(7));
   const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId: evidenceSnapshot, setBy: viewer, label: 'Golden state' });
@@ -473,6 +476,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
     const benchmarks = require('./app/benchmarks/page.tsx').default;
     const baselines = require('./app/baselines/page.tsx').default;
     const { POST } = require('./app/api/actions/baseline/route.ts');
+    const { POST: grantException } = require('./app/api/actions/compliance/exception/route.ts');
     const { getComplianceData } = require('./lib/portal-data.ts');
     const { complianceVerdict } = require('./lib/compliance-view.ts');
     const viewerHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(viewer)}], [CAPABILITIES_HEADER, 'read']]);
@@ -482,20 +486,48 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       const data = await getComplianceData();
       assert.equal(data.summary.expiredExceptions, 1);
       const verdict = complianceVerdict(data);
-      assert.equal(verdict.text, '1 control fails, including one whose exception expired.');
+      assert.match(verdict.text, /^1 control fails, and its exception ended (24 hours|1 day) ago\.$/);
+      assert.equal(data.findings[0].exception.ownerRef, null, 'an owner who is not in Keel stays unresolved');
       const html = withRouter(await render('/benchmarks', benchmarks, viewerHeaders));
       assert.ok(html.includes('<p class="verdict-sentence">' + verdict.text + '</p>'));
       assert.equal((html.match(/data-layer="verdict"/g) || []).length, 1);
-      assert.match(html, /The exception owned by Secops expired (24 hours|1 day) ago, so this finding is open again\./);
-      assert.match(html, /1 open change in the same backup\. 1 open change to these types comes from a different backup, so it is not linked\./);
-      assert.match(html, /Backups are configured to be stored on local disk in westeurope\. This storage cannot lock backups against deletion\./);
+      assert.match(html, /1 failing/, 'the status pill counts the failing control');
+      assert.match(html, /No more than 5 people hold the top admin role/);
+      assert.match(html, /Exception ended (24 hours|1 day) ago/);
+      assert.match(html, /Owner .*Secops/);
+      assert.match(html, /Backups are kept on this server(&#x27;|')s disk \(West Europe\)\.<\/b> They cannot be locked against deletion\./);
       assert.match(html, /It is not a certification of compliance with any regulation\./);
-      assert.match(html, /Captured 10 days ago from one complete backup/);
+      assert.match(html, /Golden state<\/a>, captured 10 days ago/);
+      // A viewer holds no configuration permission: no exception control is offered.
+      assert.doesNotMatch(html, /Renew (the )?exception|Grant (an )?exception/);
       const record = records(html);
       for (const id of [${JSON.stringify(evaluation.id)}, ${JSON.stringify(exception.id)}, ${JSON.stringify(linked)}, ${JSON.stringify(mismatched)}, ${JSON.stringify(laterSnapshot)}]) {
         assert.ok(record.includes(id), 'record keeps ' + id);
       }
       assertPlain(visibleText(html), 'Compliance');
+      for (const word of ['secops@', 'westeurope', 'KEEL', 'Baseline', 'Conditional Access', 'Named location']) {
+        assert.ok(!visibleText(html).includes(word), 'Compliance shows "' + word + '"');
+      }
+
+      // Grant an exception: a viewer is refused; an admin's is saved; a past end is refused.
+      const grant = (headers, body) => grantException(new Request('http://keel.test/api/actions/compliance/exception', {
+        method: 'POST', headers, body: JSON.stringify(body),
+      }));
+      const evaluationId = ${JSON.stringify(evaluation.id)};
+      const future = new Date(Date.now() + 30 * 86400000).toISOString();
+      assert.equal((await grant(viewerHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: future })).status, 403);
+      const adminHeaders = new Headers([[PRINCIPAL_ID_HEADER, ${JSON.stringify(admin)}], [CAPABILITIES_HEADER, 'read configuration']]);
+      const past = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: new Date(Date.now() - 1000).toISOString() });
+      assert.equal(past.status, 400);
+      assert.equal((await past.json()).error, 'expiry_in_future');
+      assert.equal((await grant(adminHeaders, { evaluationId, owner: '', reason: 'cut-over', expiresAt: future })).status, 400);
+      const saved = await grant(adminHeaders, { evaluationId, owner: 'admin-portal@contoso.com', reason: 'cut-over', expiresAt: future });
+      assert.equal(saved.status, 201, await saved.clone().text());
+      const after = await getComplianceData();
+      assert.equal(after.findings[0].exceptionState, 'authorized');
+      assert.equal(after.findings[0].exception.ownerRef.name, 'admin-portal@contoso.com', 'the owner resolves to the person in Keel');
+      assert.equal(after.findings[0].exception.grantedByRef.id, ${JSON.stringify(admin)});
+      assert.equal(complianceVerdict(after).tone, 'fine');
 
       // Baselines: the age is the capture's; a viewer sees the re-capture disabled.
       const baselineHtml = withRouter(await render('/baselines', baselines, viewerHeaders));
@@ -517,4 +549,10 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
   assert.equal(rows[0].count, 0);
   const { rows: baselineCount } = await client.query('SELECT count(*)::int AS count FROM baseline WHERE tenant_ref = $1', [tenantRef]);
   assert.equal(baselineCount[0].count, 1);
+  // Only the admin's grant was written, beside the fixture's ended one; the evaluation is untouched.
+  const { rows: exceptions } = await client.query('SELECT owner, actor FROM benchmark_exception WHERE evaluation_id = $1 ORDER BY granted_at', [evaluation.id]);
+  assert.deepEqual(exceptions.map((row) => row.owner), ['secops@contoso.com', 'admin-portal@contoso.com']);
+  assert.equal(exceptions[1].actor, admin);
+  const { rows: evidence } = await client.query("SELECT count(*)::int AS count FROM evidence WHERE tenant_ref = $1 AND kind = 'benchmark-exception'", [tenantRef]);
+  assert.equal(evidence[0].count, 2);
 });

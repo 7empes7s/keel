@@ -275,6 +275,9 @@ export interface ComplianceFinding {
   id: string;
   controlId: string;
   title: string | null;
+  // The control's own registry wording and weight (engine/benchmarks/registry.mjs).
+  description?: string | null;
+  severity?: string | null;
   framework: string;
   edition: string;
   profile: string;
@@ -291,6 +294,9 @@ export interface ComplianceFinding {
     grantedBy: string | null;
     grantedAt: string | null;
     expiresAt: string | null;
+    // Resolved on the server: the owner when it is a person in Keel, and who granted it.
+    ownerRef?: Ref | null;
+    grantedByRef?: Ref | null;
   } | null;
   exposed: boolean;
   evidence: ComplianceEvidence[];

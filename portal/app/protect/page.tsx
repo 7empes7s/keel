@@ -3,6 +3,7 @@ import { connection } from "next/server";
 
 import { GET as loadSchedules } from "@/app/api/schedules/route";
 import { BackUpNow, TierStrip } from "@/components/backup-controls";
+import { ContentBackups } from "@/components/content-backups";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { DiscoveryInventory } from "@/components/discovery-inventory";
 import { JobRefresher } from "@/components/job-refresher";
@@ -10,6 +11,7 @@ import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
 import { ProtectCoverage } from "@/components/protect-coverage";
 import { Verdict } from "@/components/verdict";
+import { getContentBackups } from "@/lib/content-backups";
 import { getDiscoveryInventory } from "@/lib/discovery";
 import { getCoverageData } from "@/lib/portal-data";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
@@ -23,7 +25,7 @@ import type { CoverageData } from "@/lib/types";
 // SharePoint, Teams, Purview, Power Platform) all read the tenant into a backup.
 export const BACKUP_JOB_KINDS = ["backup", "collect", "workload-collect"];
 const TITLE = "What's protected";
-const DESCRIPTION = "Whether every kind of setting is backed up, how often, and whether Keel can put it back.";
+const DESCRIPTION = "Whether every kind of setting and content is backed up, how often, and whether Keel can put it back.";
 
 // Roadmap task-131: Protect merges Backups and the per-type coverage report. The
 // verdict comes from the coverage reader, the tier cards from the schedule reader.
@@ -48,7 +50,7 @@ export default async function ProtectPage() {
   }
 
   const requestHeaders = await headers();
-  const [schedulesResult, jobsResult, discoveryResult] = await Promise.allSettled([
+  const [schedulesResult, jobsResult, discoveryResult, contentResult] = await Promise.allSettled([
     loadSchedules(new Request("http://localhost/api/schedules", { headers: requestHeaders }))
       .then(async (response) => {
         if (!response.ok) throw new Error("Schedules unavailable");
@@ -56,6 +58,7 @@ export default async function ProtectPage() {
       }),
     getRecentJobs(BACKUP_JOB_KINDS, 10),
     getDiscoveryInventory(),
+    getContentBackups(new Date(data.generatedAt)),
   ]);
   const schedules = schedulesResult.status === "fulfilled" ? schedulesResult.value : null;
   const jobs: JobRecord[] = jobsResult.status === "fulfilled" ? jobsResult.value : [];
@@ -85,6 +88,7 @@ export default async function ProtectPage() {
             {schedules === null ? <p className="action-error">Keel could not read the schedules, so next run times are missing. Reload in a minute.</p> : null}
           </>}
         />
+        <ContentBackups data={contentResult.status === "fulfilled" ? contentResult.value : undefined} now={now} />
         <div className="pt-recent">
           {jobsResult.status === "fulfilled" ? (
             <JobTable headingId="backup-jobs-heading" jobs={jobs} now={now} title="Recent backups" />

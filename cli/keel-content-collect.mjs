@@ -35,6 +35,7 @@ import { createPgContentIndex } from '../engine/content/index.mjs';
 import { CONTENT_WORKLOADS, createContentStore, parseContentKey } from '../engine/content/store.mjs';
 import { contentReadTransport, sharePointReadTransport } from '../engine/content/transport.mjs';
 import { CONTENT_COLLECTORS } from '../engine/content/collectors.mjs';
+import { recordContentRun } from '../engine/coverage/serviceBackups.mjs';
 
 export const DEFAULT_READER_PATH = '/etc/keel/content-reader.json';
 export const DEFAULT_SCOPE_PATH = '/etc/keel/content-scope.json';
@@ -75,12 +76,23 @@ export async function runContentCollection(client, {
   for (const entry of collectors) {
     if (!CONTENT_WORKLOADS.includes(entry.workload)) throw new Error(`content collector for unknown workload ${entry.workload}`);
     let result;
+    const startedAt = now();
     try {
       result = await entry.collect(client, { tenantRef, tenantId, store, transport, sharePointTransportFor, scope, sleep, now, logger });
     } catch (error) {
       result = { outcome: 'failed', items: 0, bytes: 0, reasons: [String(error?.message ?? error)] };
     }
     runs.push({ workload: entry.workload, ...result });
+    // Each workload's run is kept so freshness and reports count content beside settings.
+    const namePrefix = typeof scope?.namePrefix === 'string' && scope.namePrefix ? scope.namePrefix : null;
+    try {
+      await recordContentRun(client, {
+        tenantRef, workload: entry.workload, outcome: result.outcome, items: result.items, bytes: result.bytes,
+        reasons: result.reasons ?? [], namePrefix, startedAt, completedAt: now(),
+      });
+    } catch (error) {
+      logger.log(`${entry.workload}: the run could not be recorded: ${error?.message ?? error}`);
+    }
     logger.log(`${entry.workload}: ${result.outcome} (${result.items ?? 0} items, ${result.bytes ?? 0} bytes)${result.reasons?.length ? `: ${result.reasons.join('; ')}` : ''}`);
   }
   return { tenantRef, outcome: 'ran', runs, exitCode: runs.some((run) => run.outcome !== 'succeeded') ? 1 : 0 };

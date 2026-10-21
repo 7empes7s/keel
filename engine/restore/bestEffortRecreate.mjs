@@ -74,6 +74,19 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   b2xIdentityUserFlow: at(ENTRA, 'External Identities', 'User flows'),
   identityApiConnector: at(ENTRA, 'External Identities', 'API connectors'),
   customAuthenticationExtension: at(ENTRA, 'Identity', 'External Identities', 'Custom authentication extensions'),
+  externalIdentitiesPolicy: at(ENTRA, 'External Identities', 'External collaboration settings'),
+  b2bManagementPolicy: at(ENTRA, 'External Identities', 'External collaboration settings', 'Collaboration restrictions'),
+  accessReviewPolicy: at(ENTRA, 'Identity Governance', 'Access reviews', 'Settings'),
+  identityUserFlowAttribute: at(ENTRA, 'External Identities', 'Custom user attributes'),
+  externalDomainFederation: at(ENTRA, 'External Identities', 'All identity providers'),
+  // These have no page in the admin center; Microsoft Graph or PowerShell is
+  // the only way to manage them.
+  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, no admin center page)',
+  permissionGrantPreApprovalPolicy: 'Microsoft Graph: /policies/permissionGrantPreApprovalPolicies (beta, no admin center page)',
+  directoryRoleAccessReviewPolicy: 'Microsoft Graph: /policies/directoryRoleAccessReviewPolicy (beta, no admin center page)',
+  multiTenantOrganizationIdentitySyncPolicyTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization (no admin center page)',
+  multiTenantOrganizationPartnerConfigurationTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration (no admin center page)',
+  authenticationEventListener: 'Microsoft Graph: /identity/authenticationEventListeners, set per app with a custom authentication extension (no admin center page)',
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),

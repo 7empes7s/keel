@@ -51,6 +51,10 @@ export const ID_KEY_TYPES = new Set([
   // Remaining kinds, batch 3: names are unmeasured and Apple tokens carry no name.
   'deviceManagementCompliancePolicy', 'deviceManagementReusablePolicySetting', 'policySet', 'vppToken', 'depOnboardingSetting',
   'managedDeviceCleanupRule', 'windowsQualityUpdatePolicy', 'operationApprovalPolicy', 'deviceCustomAttributeShellScript',
+  // Remaining kinds, batch 4: names are unmeasured, and built-in user flow
+  // attributes carry the same name in every tenant.
+  'b2bManagementPolicy', 'servicePrincipalCreationPolicy', 'permissionGrantPreApprovalPolicy',
+  'identityUserFlowAttribute', 'authenticationEventListener', 'externalDomainFederation',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -70,6 +74,9 @@ export const CONSTANT_KEY_TYPES = new Set([
   'applePushNotificationCertificate', 'onPremisesConditionalAccessSettings',
   // Remaining kinds, batch 3: the Managed Google Play binding.
   'androidManagedStoreAccountEnterpriseSettings',
+  // Remaining kinds, batch 4: Entra ID tenant singletons.
+  'externalIdentitiesPolicy', 'accessReviewPolicy', 'directoryRoleAccessReviewPolicy',
+  'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

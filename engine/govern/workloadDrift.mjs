@@ -12,11 +12,23 @@
 // refires it.
 import { compareWorkloads } from './compare.mjs';
 import { BLAST_SEVERITY, applyConditionEvent } from '../notify/alerts.mjs';
+import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { SHAREPOINT_WORKLOAD } from '../collect/workloads/sharepoint.mjs';
 
-// Workloads whose runs raise drift. Each field it ignores changes on its own (a site's
-// lastModifiedDateTime moves on every content edit) and is not a setting.
+// Fields that move on their own, without a setting changing: the time Microsoft last
+// saved the object and its version tag.
+const MOVES_ON_ITS_OWN = ['WhenChangedUTC', 'lastModifiedTime', 'lastModifiedDateTime', 'etag'];
+// A change limited to these fields renames or re-describes a resource; anything else
+// changes how it behaves or who can reach what.
+const NAMES = ['displayName', 'DisplayName', 'name', 'Name', 'description', 'Description', 'Comment', 'webUrl'];
+
+const DEFAULT_RULES = Object.freeze({ volatile: new Set(MOVES_ON_ITS_OWN), cosmetic: new Set(NAMES) });
+
+// Workloads whose runs raise drift: every workload Keel collects, so the Changes page
+// covers every service. SharePoint keeps its own rules: a site's lastModifiedDateTime
+// moves on every content edit.
 export const DRIFT_WORKLOADS = Object.freeze({
+  ...Object.fromEntries(WORKLOAD_COLLECTORS.map((entry) => [entry.workload, DEFAULT_RULES])),
   [SHAREPOINT_WORKLOAD]: {
     volatile: new Set(['lastModifiedDateTime']),
     // A change limited to these fields renames a site; anything else (app grants,

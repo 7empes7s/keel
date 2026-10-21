@@ -359,6 +359,22 @@ export interface DriftRecord {
   // did not compute them; evidence is null when it could not be read.
   semantic?: SemanticChange;
   evidence?: ChangeEvidence | null;
+  // Set on a change found by comparing a service read (Exchange, SharePoint, Teams,
+  // Purview, Power Platform) with the read before it. Those settings have no approved
+  // setup, so the change has no accept or undo: its alert is where someone reviews it.
+  serviceRead?: ServiceRead;
+}
+
+// engine/govern/workloadDrift.mjs, table workload_drift.
+export interface ServiceRead {
+  // The workload code ("exchange-mail-flow"), also the record's resourceType.
+  workload: string;
+  // As stored: "transport-rule:Block forwarding", "site:<id>" or "tenant".
+  resourceKey: string;
+  collectionId: string;
+  previousCollectionId: string;
+  alertId: string | null;
+  alertState: string | null;
 }
 
 // engine/govern/semanticDrift.mjs#semanticChange.

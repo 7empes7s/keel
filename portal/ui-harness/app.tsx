@@ -75,8 +75,6 @@ import { compareVerdict, type CompareData, type CompareResult, type CompareTenan
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
-import { SiteChanges } from "@/components/site-changes";
-import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
@@ -1418,16 +1416,31 @@ const SITES: SitePermissionsData = {
 };
 
 // Site permissions audit: site settings that changed between two daily reads.
-const SITE_CHANGES: SiteChangesData = { days: 30, changes: [
-  { id: "d1a00000-0000-4000-8000-0000000000d1", resourceKey: `site:${SITE_FINANCE}`, siteId: SITE_FINANCE, name: "Finance", changeType: "modified",
-    fields: ["appPermissionGrants"], blastRadius: "access-affecting", seenAt: "2026-10-02T02:00:00Z",
-    collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4",
-    alertId: "a1e70000-0000-4000-8000-0000000000a5", alertState: "open" },
-  { id: "d1a00000-0000-4000-8000-0000000000d2", resourceKey: `site:${SITE_ARCHIVE}`, siteId: SITE_ARCHIVE, name: "Records archive with a long name that wraps on a phone", changeType: "modified",
-    fields: ["displayName", "webUrl"], blastRadius: "cosmetic", seenAt: "2026-10-01T02:00:00Z",
-    collectionId: "c0110000-0000-4000-8000-0000000000c4", previousCollectionId: "c0110000-0000-4000-8000-0000000000c3",
-    alertId: "a1e70000-0000-4000-8000-0000000000a6", alertState: "acknowledged" },
-] };
+// Service setting changes: each service read compared with the one before it, so the
+// Changes list's service filter and grouping cover more than Entra ID and Intune.
+const serviceChange = (id: string, workload: string, resourceKey: string, name: string, over: Partial<DriftRecord>, alert: string): DriftRecord => ({
+  id, naturalKey: `${workload}:${resourceKey}`, resourceType: workload, changeType: "modified", blastRadius: "access-affecting",
+  detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
+  serviceRead: { workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", alertId: alert, alertState: "open" },
+  ...over,
+});
+const SERVICE_CHANGES: DriftRecord[] = [
+  serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
+    before: { appPermissionGrants: [] }, after: { appPermissionGrants: [{ roles: ["write"], applications: [{ displayName: "Payroll connector" }] }] },
+  }, "a1e70000-0000-4000-8000-0000000000a5"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d2", "exchange-mail-flow", "transport-rule:Forward finance mail", "Forward finance mail", {
+    before: { State: "Disabled" }, after: { State: "Enabled" }, detectedAt: "2026-10-01T22:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a6"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d3", "teams-org-policies", "external-access:Global", "Global", {
+    before: { AllowFederatedUsers: false }, after: { AllowFederatedUsers: true }, detectedAt: "2026-10-01T20:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a7"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d4", "purview-labels", "label:Confidential", "Confidential", {
+    blastRadius: "cosmetic", before: { DisplayName: "Confidential" }, after: { DisplayName: "Confidential (internal)" }, detectedAt: "2026-10-01T18:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a8"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d5", "power-platform-settings", "dlp-policy:Block social connectors", "Block social connectors", {
+    changeType: "removed", before: { displayName: "Block social connectors", environmentType: "AllEnvironments" }, detectedAt: "2026-10-01T16:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a9"),
+];
 
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
@@ -1662,16 +1675,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/drift":
-    case "/drift/sites": {
-      // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
-      const sites = path === "/drift/sites" ? SITE_CHANGES : null;
-      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
+    case "/drift/services": {
+      // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
+      const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
+      const verdict = changesVerdict(items, BASELINES[0].setAt, now);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
-        </div>
-        {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
+        </div></>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }

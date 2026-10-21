@@ -4,16 +4,14 @@ import { headers } from "next/headers";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { ChangeList } from "@/components/baselines/change-list";
 import { PageHeader } from "@/components/page-header";
-import { SiteChanges } from "@/components/site-changes";
 import { Verdict } from "@/components/verdict";
 import { setupStatus } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import { displayItems, getDriftData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
-import { getSiteChanges } from "@/lib/site-permissions";
-import type { DriftData } from "@/lib/types";
+import { getServiceChanges } from "@/lib/service-changes";
+import type { DriftData, DriftRecord } from "@/lib/types";
 
 const DESCRIPTION = "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.";
 
@@ -25,12 +23,13 @@ export default async function DriftPage() {
     .filter((capability) => capability.length > 0);
 
   let data: DriftData;
-  // Site settings are tenant-wide, so only a central administrator sees their changes.
-  let siteChanges: SiteChangesData | null;
+  // Service settings (Exchange, SharePoint, Teams, Purview, Power Platform) are
+  // tenant-wide, so only a central administrator sees their changes.
+  let serviceChanges: DriftRecord[];
   try {
-    [data, siteChanges] = await Promise.all([
+    [data, serviceChanges] = await Promise.all([
       getDriftData(access.scope),
-      access.scope.central ? getSiteChanges() : Promise.resolve(null),
+      access.scope.central ? getServiceChanges() : Promise.resolve([]),
     ]);
   } catch {
     return (
@@ -41,9 +40,9 @@ export default async function DriftPage() {
     );
   }
 
-  const verdict = changesVerdict(
-    data.items, data.baseline?.setAt ?? null, data.generatedAt, siteChanges?.changes.filter(waitingForReview).length ?? 0,
-  );
+  // One list for every service: approved-setup changes and service setting changes.
+  const items = [...displayItems(data.items), ...serviceChanges];
+  const verdict = changesVerdict(items, data.baseline?.setAt ?? null, data.generatedAt);
   return (
     <>
       <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" status={data.baseline ? setupStatus(data.baseline, data.items) : undefined} title="Changes" />
@@ -52,7 +51,7 @@ export default async function DriftPage() {
         text={verdict.text}
         tone={verdict.tone}
       />
-      {data.baseline ? (
+      {data.baseline || serviceChanges.length ? (
         <div data-layer="explanation">
           {data.scope ? (
             <p className="capture-note">
@@ -60,12 +59,7 @@ export default async function DriftPage() {
               other resources in this tenant are reviewed by a central administrator.
             </p>
           ) : null}
-          <ChangeList baseline={data.baseline} capabilities={capabilities} items={displayItems(data.items)} now={data.generatedAt} summary={data.summary} />
-        </div>
-      ) : null}
-      {siteChanges ? (
-        <div data-layer="explanation">
-          <SiteChanges data={siteChanges} now={data.generatedAt} />
+          <ChangeList baseline={data.baseline} capabilities={capabilities} items={items} now={data.generatedAt} summary={data.summary} />
         </div>
       ) : null}
     </>

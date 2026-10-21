@@ -230,6 +230,13 @@ const FIXTURE_PAYLOADS = Object.freeze({
   windowsQualityUpdateProfile: { displayName: 'Fixture quality update', description: 'Fixture', expeditedUpdateSettings: { qualityUpdateRelease: '2026-09-09T00:00:00Z', daysUntilForcedReboot: 1 }, roleScopeTagIds: ['0'] },
   windowsDriverUpdateProfile: { displayName: 'Fixture driver update', description: 'Fixture', approvalType: 'manual', roleScopeTagIds: ['0'] },
   notificationMessageTemplate: { displayName: 'Fixture compliance email', description: 'Fixture', brandingOptions: 'includeCompanyLogo', roleScopeTagIds: ['0'] },
+  deviceManagementReusablePolicySetting: {
+    displayName: 'Fixture firewall addresses', description: 'Fixture', settingDefinitionId: 'vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}',
+    settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance', settingDefinitionId: 'vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}', groupSettingCollectionValue: [] },
+  },
+  windowsQualityUpdatePolicy: { displayName: 'Fixture hotpatch', description: 'Fixture', hotpatchEnabled: true, roleScopeTagIds: ['0'] },
+  deviceCategory: { displayName: 'Fixture category', description: 'Fixture' },
+  managedDeviceCleanupRule: { displayName: 'Fixture cleanup', description: 'Fixture', deviceCleanupRulePlatformType: 'windows', deviceInactivityBeforeRetirementInDays: 90 },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose

@@ -832,7 +832,47 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     readQuery: '$expand=localizedNotificationMessages', operations: ['create', 'update'], excluded: ['localizedNotificationMessages'],
     afterWrite: localizedMessagesAfterWrite, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
+  // Restore gaps, batch 1: Intune tenant settings whose backup is complete.
+  // A reusable settings group is referenced by id from settings catalog
+  // policies, so it is rebuilt before them; its setting definition never changes.
+  deviceManagementReusablePolicySetting: defineRecord({
+    resourceType: 'deviceManagementReusablePolicySetting', version: 'beta', collection: '/deviceManagement/reusablePolicySettings',
+    operations: ['create', 'update'], createOnly: ['settingDefinitionId'],
+    excluded: ['version', 'referencingConfigurationPolicyCount', 'referencingConfigurationPolicies'],
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  windowsQualityUpdatePolicy: defineRecord({
+    resourceType: 'windowsQualityUpdatePolicy', version: 'beta', collection: '/deviceManagement/windowsQualityUpdatePolicies',
+    operations: ['create', 'update'], excluded: ['assignments'], permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // A category is only a name: which devices were in it is set at enrollment and is not restored.
+  deviceCategory: defineRecord({
+    resourceType: 'deviceCategory', version: 'v1.0', collection: '/deviceManagement/deviceCategories',
+    operations: ['create', 'update'], permission: 'DeviceManagementManagedDevices.ReadWrite.All',
+  }),
+  // A cleanup rule retires devices that stopped checking in. A restore only
+  // ever makes a rule wait as long or longer than it does now, never retires
+  // sooner; a deleted rule is recreated by hand.
+  managedDeviceCleanupRule: defineRecord({
+    resourceType: 'managedDeviceCleanupRule', version: 'beta', collection: '/deviceManagement/managedDeviceCleanupRules',
+    operations: ['update'], createOnly: ['deviceCleanupRulePlatformType'], refusal: cleanupRuleRefusal,
+    permission: 'DeviceManagementManagedDevices.ReadWrite.All',
+  }),
 });
+
+/** A cleanup rule is never made to retire devices sooner than it does now. */
+export function cleanupRuleRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = Number(resource.payload?.deviceInactivityBeforeRetirementInDays);
+  const now = Number(resource.live?.payload?.deviceInactivityBeforeRetirementInDays);
+  if (Number.isFinite(want) && Number.isFinite(now) && want < now) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the backup retires devices after ${want} days without check-in, sooner than the ${now} days set now; a shorter wait could retire devices at once, so a person changes it`,
+    };
+  }
+  return null;
+}
 
 /** Intune types read in wave 1 that no record can write in full, and why. */
 export const INTUNE_BEST_EFFORT = Object.freeze({

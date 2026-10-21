@@ -30,7 +30,7 @@ import { quickComparisons, setupStatus, setupVerdict as approvedVerdict, typeSer
 import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
 import { Icon } from "@/components/shell/icons";
-import { PrincipalDetails } from "@/components/principal-details";
+import { PeoplePage } from "@/components/people/people-page";
 import { PoliciesPage } from "@/components/policies/policies-page";
 import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -46,8 +46,8 @@ import { IncidentRecovery } from "@/components/incident-recovery";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
 import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
-import { ComplianceReport } from "@/components/compliance-report";
-import { complianceVerdict } from "@/lib/compliance-view";
+import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
+import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { integrationsPageVerdict } from "@/lib/integrations-view";
@@ -55,6 +55,8 @@ import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
+import { peopleCounts, peopleStatus } from "@/lib/people-view";
+import type { PrincipalView } from "@/lib/principals";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
@@ -73,8 +75,6 @@ import { compareVerdict, type CompareData, type CompareResult, type CompareTenan
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
-import { SiteChanges } from "@/components/site-changes";
-import { waitingForReview, type SiteChangesData } from "@/lib/site-changes-view";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
@@ -120,6 +120,21 @@ const HARNESS_PEOPLE = [
   { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users", "remediate"], role_grants: [] },
   { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["read", "approve"], role_grants: [] },
 ];
+// People page: an admin who is also an approver (the only admin), an approver, an
+// operator with a restorer role starting later, a viewer who is an operator for one part
+// of the company, someone whose only role starts later, a disabled former contractor and
+// Keel's scheduler.
+const grant = (id: string, role: string, from: string, until: string | null = null, scope = "*", by: string | null = "8c1e0000-0000-4000-8000-0000000000a1", reason: string | null = null) => ({ id: `6a000000-0000-4000-8000-0000000000${id}`, role, active_from: from, active_until: until, granted_by: by, scope, reason });
+const PEOPLE_PAGE: PrincipalView[] = [
+  { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration", "automation"], role_grants: [grant("01", "admin", "2026-09-01T00:00:00Z", null, "*", null), grant("02", "approver", "2026-09-01T00:00:00Z", null, "*", null)] },
+  { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["approve"], role_grants: [grant("03", "approver", "2026-09-03T00:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b3", email: "sam.ortiz@contoso.example", display_name: "Sam Ortiz", disabled_at: null, capabilities: ["collect", "backup", "baseline-create", "dispose-accept", "discover", "content-backup", "export"], role_grants: [grant("04", "operator", "2026-09-10T00:00:00Z"), grant("05", "restorer", "2026-10-06T00:00:00Z", "2026-10-20T23:59:59Z", "*", "8c1e0000-0000-4000-8000-0000000000a1", "Covers restores while Lee is away")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b4", email: "lee.chen@contoso.example", display_name: "Lee Chen", disabled_at: null, capabilities: ["read"], entity_capabilities: { CONTOSO_FR: ["collect", "backup", "baseline-create", "dispose-accept", "discover", "content-backup", "export"] }, role_grants: [grant("06", "viewer", "2026-09-12T00:00:00Z"), grant("07", "operator", "2026-09-12T00:00:00Z", null, "entity:CONTOSO_FR")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b5", email: "priya.nair@contoso.example", display_name: null, disabled_at: null, capabilities: [], role_grants: [grant("08", "viewer", "2026-10-05T00:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [grant("09", "operator", "2026-06-01T00:00:00Z", "2026-09-20T10:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000d1", email: "scheduler@keel.internal", display_name: "KEEL scheduler", system_kind: "scheduler", disabled_at: null, capabilities: ["collect", "configuration"], role_grants: [] },
+];
+const NEW_PERSON = (body: { email: string; displayName?: string | null; role: string }): PrincipalView => ({ id: "8c1e0000-0000-4000-8000-0000000000e9", email: body.email, display_name: body.displayName ?? null, disabled_at: null, capabilities: body.role === "viewer" ? ["read"] : [], role_grants: [grant("99", body.role, "2026-10-02T09:40:00Z")] });
 // The newest delivery on the Teams channel failed, so Settings says a channel is failing.
 const HARNESS_DELIVERIES = [
   { id: "d-1", channel_id: "c-teams", channel_kind: "teams", status: "failed", event: { kind: "drift.detected", severity: "high" }, attempts: 5, last_error: "403", next_attempt_at: null },
@@ -139,6 +154,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   // screenshot shows them.
   if (url.endsWith("/api/dashboard")) return json(dashboard(0));
   // Settings' menu badge and the search's people and kinds of settings.
+  // People: adding someone answers the new person; every change to a person succeeds.
+  // Compliance: an exception is saved; the evidence export answers two records.
+  if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
+  if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
+  if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
+  if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);
   if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
@@ -639,9 +660,11 @@ const COMPLIANCE: ComplianceData = {
   storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   findings: [
     { id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.role-assignment.admin-count-at-most", title: "Global Administrator assignment count stays at or below a set limit",
+      description: "Counts active roleAssignment records against a named admin role definition.", severity: "high",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4182",
       exceptionState: "expired", exposed: true,
-      exception: { id: "e7c10000-0000-4000-8000-0000000000c1", owner: "secops@contoso.com", reason: "Two break-glass accounts during the migration", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-01T10:00:00Z", expiresAt: "2026-09-30T00:00:00Z" },
+      exception: { id: "e7c10000-0000-4000-8000-0000000000c1", owner: "secops@contoso.com", reason: "Two break-glass accounts during the migration", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-01T10:00:00Z", expiresAt: "2026-09-30T00:00:00Z",
+        ownerRef: null, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
       evidence: [ROLE_EVIDENCE],
       links: {
         backup: { state: "linked", linked: [ROLE_EVIDENCE], mismatched: [] },
@@ -650,17 +673,18 @@ const COMPLIANCE: ComplianceData = {
           mismatched: [{ id: "d7100000-0000-4000-8000-0000000000d2", naturalKey: "roleAssignment:Global Administrator · grady@contoso.com", resourceType: "roleAssignment", changeType: "added", snapshotId: "0b5e0000-0000-4000-8000-0000000000c8", detectedAt: "2026-09-30T09:14:00Z" }] },
         restorePlan: { state: "linked", linked: [{ requestId: "a9e10000-0000-4000-8000-000000000100", dryRunId: "7f3c0000-0000-4000-8000-000000000011", snapshotId: "0b5e0000-0000-4000-8000-0000000000d6", createdAt: "2026-10-02T09:30:00Z", expiresAt: "2026-10-03T09:30:00Z" }], mismatched: [] },
       } },
-    { id: "e7a10000-0000-4000-8000-0000000000e2", controlId: "keel-custom.named-location.no-untrusted-all-countries", title: "No named location marks unknown-country traffic as trusted",
+    { id: "e7a10000-0000-4000-8000-0000000000e2", controlId: "keel-custom.named-location.no-untrusted-all-countries", title: "No named location marks unknown-country traffic as trusted", severity: "medium",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4183",
       exceptionState: "authorized", exposed: false,
-      exception: { id: "e7c10000-0000-4000-8000-0000000000c2", owner: "network@contoso.com", reason: "Branch offices route through a trusted proxy until the November cutover.", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z" },
+      exception: { id: "e7c10000-0000-4000-8000-0000000000c2", owner: "amara.okafor@contoso.example", reason: "Branch offices route through a trusted proxy until the November cutover.", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z",
+        ownerRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", href: "/principals" }, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
       evidence: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")],
       links: {
         backup: { state: "linked", linked: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] },
         change: { state: "none", linked: [], mismatched: [] },
         restorePlan: { state: "none", linked: [], mismatched: [] },
       } },
-    { id: "e7a10000-0000-4000-8000-0000000000e3", controlId: "keel-custom.group.role-assignable-not-synced", title: "Role-assignable groups are not synchronized from on-premises AD",
+    { id: "e7a10000-0000-4000-8000-0000000000e3", controlId: "keel-custom.group.role-assignable-not-synced", title: "Role-assignable groups are not synchronized from on-premises AD", severity: "high",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
       exceptionState: "none", exposed: false, exception: null, evidence: [],
       links: { backup: { state: "none", linked: [], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
@@ -1398,16 +1422,31 @@ const SITES: SitePermissionsData = {
 };
 
 // Site permissions audit: site settings that changed between two daily reads.
-const SITE_CHANGES: SiteChangesData = { days: 30, changes: [
-  { id: "d1a00000-0000-4000-8000-0000000000d1", resourceKey: `site:${SITE_FINANCE}`, siteId: SITE_FINANCE, name: "Finance", changeType: "modified",
-    fields: ["appPermissionGrants"], blastRadius: "access-affecting", seenAt: "2026-10-02T02:00:00Z",
-    collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4",
-    alertId: "a1e70000-0000-4000-8000-0000000000a5", alertState: "open" },
-  { id: "d1a00000-0000-4000-8000-0000000000d2", resourceKey: `site:${SITE_ARCHIVE}`, siteId: SITE_ARCHIVE, name: "Records archive with a long name that wraps on a phone", changeType: "modified",
-    fields: ["displayName", "webUrl"], blastRadius: "cosmetic", seenAt: "2026-10-01T02:00:00Z",
-    collectionId: "c0110000-0000-4000-8000-0000000000c4", previousCollectionId: "c0110000-0000-4000-8000-0000000000c3",
-    alertId: "a1e70000-0000-4000-8000-0000000000a6", alertState: "acknowledged" },
-] };
+// Service setting changes: each service read compared with the one before it, so the
+// Changes list's service filter and grouping cover more than Entra ID and Intune.
+const serviceChange = (id: string, workload: string, resourceKey: string, name: string, over: Partial<DriftRecord>, alert: string): DriftRecord => ({
+  id, naturalKey: `${workload}:${resourceKey}`, resourceType: workload, changeType: "modified", blastRadius: "access-affecting",
+  detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
+  serviceRead: { workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", alertId: alert, alertState: "open" },
+  ...over,
+});
+const SERVICE_CHANGES: DriftRecord[] = [
+  serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
+    before: { appPermissionGrants: [] }, after: { appPermissionGrants: [{ roles: ["write"], applications: [{ displayName: "Payroll connector" }] }] },
+  }, "a1e70000-0000-4000-8000-0000000000a5"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d2", "exchange-mail-flow", "transport-rule:Forward finance mail", "Forward finance mail", {
+    before: { State: "Disabled" }, after: { State: "Enabled" }, detectedAt: "2026-10-01T22:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a6"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d3", "teams-org-policies", "external-access:Global", "Global", {
+    before: { AllowFederatedUsers: false }, after: { AllowFederatedUsers: true }, detectedAt: "2026-10-01T20:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a7"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d4", "purview-labels", "label:Confidential", "Confidential", {
+    blastRadius: "cosmetic", before: { DisplayName: "Confidential" }, after: { DisplayName: "Confidential (internal)" }, detectedAt: "2026-10-01T18:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a8"),
+  serviceChange("d1a00000-0000-4000-8000-0000000000d5", "power-platform-settings", "dlp-policy:Block social connectors", "Block social connectors", {
+    changeType: "removed", before: { displayName: "Block social connectors", environmentType: "AllEnvironments" }, detectedAt: "2026-10-01T16:00:00Z",
+  }, "a1e70000-0000-4000-8000-0000000000a9"),
+];
 
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
@@ -1642,16 +1681,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/drift":
-    case "/drift/sites": {
-      // The visual baseline is the plain Changes page; /drift/sites adds site permission changes.
-      const sites = path === "/drift/sites" ? SITE_CHANGES : null;
-      const verdict = changesVerdict(DRIFT_DECIDED, BASELINES[0].setAt, now, sites?.changes.filter(waitingForReview).length ?? 0);
+    case "/drift/services": {
+      // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
+      const items = path === "/drift/services" ? [...DRIFT_DECIDED, ...SERVICE_CHANGES] : DRIFT_DECIDED;
+      const verdict = changesVerdict(items, BASELINES[0].setAt, now);
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={DRIFT_DECIDED} now={now} summary={DRIFT_SUMMARY} />
-        </div>
-        {sites ? <div data-layer="explanation"><SiteChanges data={sites} now={now} /></div> : null}</>;
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
+        </div></>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
@@ -1693,14 +1731,19 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <BaselinesStyles />
         <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
-    case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Baselines", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation"><ComplianceReport data={COMPLIANCE} now={now} /></div></>; }
-    case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
-      <Verdict text="1 person can use KEEL; 1 can approve." />
-      <div className="item-list" data-layer="explanation">
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
+    case "/benchmarks": case "/benchmarks/viewer": {
+      // The viewer variant holds read only: no exception controls.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/principals": case "/principals/viewer": {
+      // A viewer here holds users but not roles: they see everyone and can disable, not grant.
+      const rolesToo = path === "/principals";
+      return <>
+        <PageHeader actions={rolesToo ? <a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
+      </>;
+    }
     case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Inbox", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }

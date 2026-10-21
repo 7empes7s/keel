@@ -20,6 +20,7 @@ export const DATA_SURFACES = {
   principalGrantApi: { capability: "roles", source: "api/principals/[id]/grant/route.ts" },
   principalRevokeApi: { capability: "roles", source: "api/principals/[id]/revoke/route.ts" },
   principalDisableApi: { capability: "users", source: "api/principals/[id]/disable/route.ts" },
+  principalEnableApi: { capability: "users", source: "api/principals/[id]/enable/route.ts" },
   channelsApi: { capability: "configuration", source: "api/channels/route.ts" },
   subscriptionsApi: { capability: "configuration", source: "api/subscriptions/route.ts" },
   escalationRulesApi: { capability: "configuration", source: "api/escalation-rules/route.ts" },

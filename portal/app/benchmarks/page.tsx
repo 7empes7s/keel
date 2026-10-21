@@ -1,21 +1,21 @@
 import { connection } from "next/server";
 
-import { ComplianceReport } from "@/components/compliance-report";
+import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { Verdict } from "@/components/verdict";
-import { complianceVerdict } from "@/lib/compliance-view";
+import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { getComplianceData } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { ComplianceData } from "@/lib/types";
 
-const DESCRIPTION = "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.";
+const DESCRIPTION = "Which security controls pass on this tenant, what each result rests on, and where backups are kept.";
 
-// Roadmap task-87: control findings against the baseline, linked to changes, backups
-// and pending restores only when they rest on the same collection.
+// Compliance (portal audit, pick A on a desktop and B on a phone): controls grouped by
+// service with count tiles that filter, a panel per control with its linked changes,
+// and Grant or renew an exception as the one amber action on a failing control.
 export default async function BenchmarksPage() {
   await connection();
-  await requireReadAccess(DATA_SURFACES.benchmarksPage);
+  const access = await requireReadAccess(DATA_SURFACES.benchmarksPage);
 
   let data: ComplianceData;
   try {
@@ -28,15 +28,18 @@ export default async function BenchmarksPage() {
       </>
     );
   }
-  const verdict = complianceVerdict(data);
 
   return (
     <>
-      <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Baselines" title="Compliance" />
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation">
-        <ComplianceReport data={data} now={data.generatedAt} />
-      </div>
+      <PageHeader
+        actions={<ExportEvidence />}
+        description={DESCRIPTION}
+        generatedAt={data.generatedAt}
+        section="Baselines"
+        status={complianceStatus(complianceCounts(data.findings))}
+        title="Compliance"
+      />
+      <CompliancePage canConfigure={access.capabilities.includes("configuration")} data={data} now={data.generatedAt} />
     </>
   );
 }

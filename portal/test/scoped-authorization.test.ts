@@ -22,7 +22,7 @@ import {
   entityScopeFrom,
 } from "@/lib/principal";
 import { DATA_SURFACES, readAccess } from "@/lib/read";
-import { grantSentence } from "@/components/principal-details";
+import { grantRoleWords, grantWindowWords } from "@/lib/people-view";
 import { tenantRef } from "@/lib/runtime-config";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
@@ -151,8 +151,10 @@ test("the read guard admits an entity-only reader only on entity-scoped surfaces
   assert.equal(readAccess(headers("p", [], []), DATA_SURFACES.driftApi), null);
   assert.deepEqual(readAccess(headers("p", ["read"], ["read:CREOS"]), DATA_SURFACES.dashboardApi)?.scope, { central: true, entities: [] });
   const grant = { id: "g", role: "viewer", active_from: "2026-09-01T00:00:00Z", active_until: null };
-  assert.equal(grantSentence({ ...grant, scope: "entity:CREOS" }, "2026-10-03T00:00:00Z"), "Viewer for CREOS resources only since 1 Sept 2026");
-  assert.equal(grantSentence({ ...grant, scope: "*" }, "2026-10-03T00:00:00Z"), "Viewer since 1 Sept 2026");
+  assert.equal(grantRoleWords({ ...grant, scope: "entity:CREOS" }), "Viewer, only for Creos");
+  assert.equal(grantRoleWords({ ...grant, scope: "entity:CONTOSO_FR" }), "Viewer, only for Contoso FR");
+  assert.equal(grantRoleWords({ ...grant, scope: "*" }), "Viewer");
+  assert.equal(grantWindowWords(grant, "2026-10-03T00:00:00Z"), "Since 1 Sept 2026");
 });
 
 test("the drift API returns only the reader's entity, and its counts say so", async () => {

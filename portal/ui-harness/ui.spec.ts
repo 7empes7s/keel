@@ -10,7 +10,7 @@ const PAGES = [
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },
   { name: "drift", hash: "/drift" },
-  { name: "drift-sites", hash: "/drift/sites" },
+  { name: "drift-services", hash: "/drift/services" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
@@ -1251,20 +1251,28 @@ test("site permissions fit a phone without sideways scrolling", async ({ page })
   expect(await overflow()).toBeLessThanOrEqual(0);
 });
 
-// Site permissions audit: site setting changes are listed on the Changes page, fit a
-// phone, and each site's name opens its own page.
-test("site permission changes show on the Changes page and fit a phone", async ({ page }) => {
+// Service setting changes sit in the Changes list beside the approved-setup changes, so
+// grouping and filtering by service cover every service, not only Entra ID and Intune.
+// They fit a phone, and their details point to the Alerts page instead of accept or undo.
+test("the Changes list groups and filters every service, and service changes point to Alerts", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await open(page, "/drift/sites", "dark");
-  const list = page.locator(".site-change-list .site-change");
-  await expect(list).toHaveCount(2);
-  await expect(list.nth(0)).toContainText("App access changed.");
-  await expect(list.nth(0)).toContainText("Alert: open");
-  await expect(list.nth(1)).toContainText("Name and web address changed.");
-  await expect(page.getByRole("link", { name: "Review the open alert on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  await open(page, "/drift/services", "dark");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("5 service setting changes wait for review");
+  const groups = page.locator(".sel-group-name");
+  for (const service of ["Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Purview", "Power Platform"]) {
+    await expect(page.locator(".sel-group-head", { hasText: service }).first()).toBeVisible();
+  }
+  expect(await groups.count()).toBeGreaterThanOrEqual(6);
+  await expect(page.getByText("have no approved setup yet, so Keel compares each read with the one before it")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await list.nth(0).getByRole("link", { name: "Finance" }).click();
-  await expect(page.locator("main#main-content h1")).toHaveText("Finance");
+
+  await page.getByRole("link", { name: "Forward finance mail" }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
+  await expect(sheet).toContainText("Previous read → newest read");
+  await expect(sheet).toContainText("1 setting changed since the previous read.");
+  await expect(sheet.getByRole("link", { name: "Review on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  await expect(sheet.getByRole("button", { name: "Accept this change" })).toHaveCount(0);
 });
 
 // Portal experience contract, mechanical checks (roadmap task-129). They run on every
@@ -1296,7 +1304,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
   restore: ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
-  "drift-sites": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "a1e70000-0000-4000-8000-0000000000a5", "site:contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002"],
+  "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],
@@ -1787,6 +1795,281 @@ for (const theme of ["dark", "light"] as const) {
           await expect(page.locator(".sel-bar-count")).toContainText("5 rules");
           await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Turn off 5 rules");
           await expect(page.locator(".sel-bar")).toContainText("1 is already off and stays as it is.");
+        }
+      });
+    }
+  }
+}
+
+test("People · tiles, groups, Add person, Add Viewer to several, the last admin, Keel's accounts", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/principals");
+  await expect(page.locator("main#main-content h1")).toHaveText("People");
+  await expect(page.locator(".status-pill")).toHaveText("Only 1 admin");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 people can use Keel; 2 can approve.");
+  const tiles = page.locator(".pe-tile");
+  await expect(tiles).toHaveCount(4);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/principals/);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Admins", "Approvers", "Operators", "Starting later", "Disabled"]);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(6);
+  for (const link of await page.locator(".pe-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  // A sentence about someone else never says "You".
+  for (const line of await page.locator(".pe-row-can").allTextContents()) expect(line).not.toMatch(/^You\b/);
+  await expect(rows.filter({ hasText: "Lee Chen" })).toContainText("Operator, only for Contoso FR");
+  await expect(rows.filter({ hasText: "Former Contractor" }).locator(".badge")).toHaveText("Disabled");
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // Keel's own accounts: listed apart, with no controls.
+  const keel = page.locator(".pe-keel-row");
+  await expect(keel).toHaveText(/Keel's scheduler/);
+  await expect(keel.locator("a, button, input")).toHaveCount(0);
+
+  // The Can approve tile sets ?role=approver and shows only approvers.
+  await tiles.filter({ hasText: "Can approve" }).click();
+  await expect(page).toHaveURL(/role=approver/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".pe-filter-note")).toContainText("Showing approvers only: 2 of 6.");
+  await page.getByRole("link", { name: "Show everyone" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(6);
+
+  // Shift+click a range of 3, then "Add Viewer to 3 people" posts a grant per person who lacks it.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await rows.nth(0).locator(".sel-check").click();
+  await rows.nth(2).click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-bar-count")).toContainText("3 people");
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Add Viewer to 3 people");
+  await expect(page.locator(".sel-bar")).toContainText("From now on they can see backups, changes and reports.");
+  await page.locator(".sel-bar .btn-primary").click();
+  await expect(page.locator(".toast").first()).toContainText("Viewer added: 3 people");
+  const grants = (await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/grant"));
+  expect(grants.length).toBe(3);
+  for (const call of grants) expect(JSON.parse(call.body ?? "{}")).toEqual({ role: "viewer" });
+  await page.keyboard.press("Escape");
+
+  // The last admin: Disable and the admin role's Remove are off, with the reason shown before any click.
+  await page.locator(".pe-row-link", { hasText: "Marouane Defili" }).click();
+  const panel = page.getByRole("dialog", { name: "Marouane Defili" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Disable" })).toBeDisabled();
+  await expect(panel.locator(".pe-grant", { hasText: "Admin" }).getByRole("button", { name: "Remove" })).toBeDisabled();
+  await expect(panel.locator(".pe-grant", { hasText: "Admin" })).toContainText("Keel keeps at least one admin. Make someone else an admin first.");
+  await expect(panel.locator(".pe-grant", { hasText: "Approver" }).getByRole("button", { name: "Remove" })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+
+  // Someone else: a role starting later can be cancelled; Disable confirms first.
+  await page.locator(".pe-row-link", { hasText: "Sam Ortiz" }).click();
+  const sam = page.getByRole("dialog", { name: "Sam Ortiz" });
+  await expect(sam.locator(".pe-grant", { hasText: "Restorer" })).toContainText("From 6 Oct 2026 until 20 Oct 2026 · granted by Marouane Defili");
+  await expect(sam.locator(".pe-grant", { hasText: "Restorer" }).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await sam.getByRole("button", { name: "Disable" }).click();
+  await expect(page.locator("dialog[open]")).toContainText("Sam Ortiz can no longer sign in to Keel.");
+  await page.locator("dialog[open]").getByRole("button", { name: "Keep access" }).click();
+  await page.keyboard.press("Escape");
+
+  // A disabled person: Enable again is the one amber action in their panel, and posts to enable.
+  await page.locator(".pe-row-link", { hasText: "Former Contractor" }).click();
+  const former = page.getByRole("dialog", { name: "Former Contractor" });
+  await former.getByRole("button", { name: "Enable again" }).click();
+  await expect(page.locator(".toast", { hasText: "Former Contractor can use Keel again" })).toBeVisible();
+  expect((await calls()).some((call) => call.method === "POST" && call.url === "/api/principals/8c1e0000-0000-4000-8000-0000000000c3/enable")).toBe(true);
+  await page.keyboard.press("Escape");
+
+  // Add person posts {email, displayName, role} and the new row appears.
+  await page.getByRole("link", { name: "Add person" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add person" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("They can sign in once your sign-in gate lets their email through.");
+  await sheet.getByLabel("Email").fill("jo.martin@contoso.example");
+  await sheet.getByLabel("Name (optional)").fill("Jo Martin");
+  await sheet.getByRole("button", { name: /^Role/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Approver" }).click();
+  await sheet.getByRole("button", { name: "Add person" }).click();
+  const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/principals");
+  expect(created.length).toBe(1);
+  expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ email: "jo.martin@contoso.example", displayName: "Jo Martin", role: "approver" });
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".sel-row", { hasText: "Jo Martin" })).toBeVisible();
+});
+
+test("People · someone who may disable but not grant sees no role controls", async ({ page }) => {
+  await open(page, "/principals/viewer");
+  await expect(page.getByRole("link", { name: "Add person" })).toHaveCount(0);
+  await page.locator(".pe-row-link", { hasText: "Amara Okafor" }).click();
+  const panel = page.getByRole("dialog", { name: "Amara Okafor" });
+  await expect(panel.getByRole("button", { name: "Disable" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Remove|Add role/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Without the roles permission the bulk action is Disable, never a grant.
+  await page.locator(".sel-row").nth(1).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Disable 1 person");
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/principals", "/principals?group=state", "/principals?open=8c1e0000-0000-4000-8000-0000000000b3", "/principals?new=1"]) {
+      test(`People · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pe-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".pe-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .pe-tile, .pe-row-link, .bl-sheet a, .bl-sheet .btn")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=") || hash.includes("new=")) {
+          const sheet = page.getByRole("dialog");
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toHaveCount(1);
+        }
+      });
+    }
+  }
+}
+
+test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks");
+  await expect(page.locator("main#main-content h1")).toHaveText("Compliance");
+  await expect(page.locator(".status-pill")).toHaveText("1 failing");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago.");
+  await expect(page.locator(".cp-context")).toContainText("Measured against Post-migration golden state");
+  const tiles = page.locator(".cp-tile");
+  await expect(tiles).toHaveCount(4);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Entra ID"]);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(0)).toContainText("No more than 5 people hold the top admin role");
+  await expect(rows.nth(0)).toContainText("Exception ended 2 days ago");
+  await expect(rows.filter({ hasText: "No trusted location" })).toContainText("Owner Amara Okafor");
+  await expect(rows.filter({ hasText: "Groups that grant admin roles" })).toContainText("The newest group backup is too old for this check");
+  // The phone scorecard is hidden at desktop width.
+  await expect(page.locator(".cp-by-service")).toBeHidden();
+  expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
+  const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  expectPlainText(visible);
+  for (const word of ["secops@", "@contoso", "westeurope", "KEEL", "Baseline", "Conditional Access", "Named location"]) expect(visible).not.toContain(word);
+
+  // (1) The Failing tile sets result=failing and shows only the failing control.
+  await tiles.filter({ hasText: "Failing" }).click();
+  await expect(page).toHaveURL(/result=failing/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".cp-filter-note")).toContainText("Showing failing only: 1 of 4.");
+  await page.getByRole("link", { name: "Show every control" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+
+  // (2) A control's name opens its panel with open=<evaluationId>; Esc closes it and focus returns.
+  const name = page.locator(".cp-row-link", { hasText: "No more than 5 people hold the top admin role" });
+  await name.click();
+  await expect(page).toHaveURL(/open=e7a10000-0000-4000-8000-0000000000e1/);
+  const panel = page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("Every extra top admin is one more account");
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("Two break-glass accounts during the migration");
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("granted by Marouane Defili");
+  // (4) A linked change links to the Changes page, opened on that change.
+  expect(await panel.getByRole("link", { name: /Global Administrator · Adele added/ }).getAttribute("href")).toMatch(/\/drift\?open=d7100000-0000-4000-8000-0000000000d1/);
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(name).toBeFocused();
+
+  // (3) Renew: the sheet asks for an owner, a reason and a future date, posts, and toasts.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await page.locator('[data-layer="verdict"]').getByRole("link", { name: "Renew the exception" }).click();
+  const sheet = page.getByRole("dialog", { name: "Renew the exception" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("The control still fails; it stops counting as failing until the date you pick.");
+  await expect(sheet.getByLabel("Or pick a date")).toHaveAttribute("min", "2026-10-03");
+  await sheet.getByLabel(/Reason/).fill("");
+  await sheet.getByRole("button", { name: /^Renew until/ }).click();
+  await expect(sheet.locator(".cp-error")).toHaveText("Say why the control may fail for now.");
+  await sheet.getByRole("button", { name: /^Owner/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Amara Okafor" }).click();
+  await sheet.getByLabel(/Reason/).fill("Emergency accounts stay until the November cut-over.");
+  await sheet.getByRole("button", { name: /^30 days/ }).click();
+  await sheet.getByRole("button", { name: "Renew until 1 Nov 2026" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Exception saved until 1 Nov 2026");
+  const posts = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/exception");
+  expect(posts.length).toBe(1);
+  expect(JSON.parse(posts[0].body ?? "{}")).toEqual({ evaluationId: "e7a10000-0000-4000-8000-0000000000e1", owner: "amara.okafor@contoso.example", reason: "Emergency accounts stay until the November cut-over.", expiresAt: "2026-11-01T23:59:59.000Z" });
+  await expect(sheet).toBeHidden();
+  // Back on the control's panel, which now shows the exception in force.
+  await expect(panel.locator(".cp-block", { hasText: "Exception" })).toContainText("Until 1 Nov 2026");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".sel-row", { hasText: "No more than 5 people" })).toContainText("Accepted until 1 Nov 2026");
+  await expect(page.locator(".sel-row", { hasText: "No more than 5 people" })).toContainText("Owner Amara Okafor");
+
+  // (6) Export evidence reads both kinds and downloads JSON.
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export evidence" }).click();
+  expect((await download).suggestedFilename()).toMatch(/^keel-compliance-evidence-.*\.json$/);
+  expect((await calls()).some((call) => call.url.startsWith("/api/evidence?kind=benchmark-evaluation,benchmark-exception"))).toBe(true);
+});
+
+test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
+  await open(page, "/benchmarks/viewer");
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
+  await expect(page.locator("main .btn-primary")).toHaveCount(0);
+  await page.locator(".sel-row").nth(0).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 control");
+});
+
+test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/benchmarks");
+  const card = page.locator(".cp-by-service .cp-service");
+  await expect(card).toHaveCount(1);
+  await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
+  await expect(card.locator(".cp-ctile")).toHaveCount(4);
+  await card.locator(".cp-ctile", { hasText: "At most 5 top admins" }).click();
+  await expect(page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" })).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+      test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".cp-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        if (width === 390) {
+          const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+          expect(new Set(scorecard).size).toBe(1);
+        }
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .cp-tile, .cp-ctile, .cp-row-link, .bl-sheet a, .bl-sheet .btn")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=")) {
+          const sheet = page.getByRole("dialog");
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toHaveCount(1);
         }
       });
     }

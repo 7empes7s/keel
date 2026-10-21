@@ -339,6 +339,8 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       controlId: evaluation.control_id,
       // The control's own wording from the registry; null for a control it no longer holds.
       title: controlFor(evaluation.control_id)?.title ?? null,
+      description: controlFor(evaluation.control_id)?.description ?? null,
+      severity: controlFor(evaluation.control_id)?.severity ?? null,
       framework: evaluation.framework,
       edition: evaluation.edition,
       profile: evaluation.profile,

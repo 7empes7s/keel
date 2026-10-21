@@ -3,6 +3,7 @@
 // Pure helpers, shared by the pages, the UI harness and the tests. "Approved setup" is
 // the reader's word for a baseline (redesign rule 3); ids stay in the record layer.
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
@@ -42,9 +43,11 @@ const PLAIN_KINDS: Record<string, string> = {
   namedLocation: "Trusted location",
 };
 
-/** "Sign-in rule" for a Conditional Access policy; the catalogue name for everything else. */
+/** "Sign-in rule" for a Conditional Access policy; the taxonomy name for a service read
+ * ("Exchange mail flow or protection rule"); the catalogue name for everything else. */
 export function plainKind(type: string): string {
-  return PLAIN_KINDS[type] ?? typeName(type);
+  if (PLAIN_KINDS[type]) return PLAIN_KINDS[type];
+  return Object.hasOwn(WORKLOAD_LABELS, type) ? typeInfo(type).name : typeName(type);
 }
 
 /** "Block legacy auth (sign-in rule)" */

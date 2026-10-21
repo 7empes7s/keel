@@ -9,7 +9,10 @@
 //  - detecting the same run again neither doubles the row nor refires the alert;
 //  - a later run with no further change leaves the alert open;
 //  - a failed run is skipped, and the next run compares with the last usable one;
-//  - workloads not tracked for drift raise nothing.
+//  - every collected workload raises drift, not only SharePoint: a mail flow rule's
+//    setting change is an access-affecting row, a rename is cosmetic, and a move of
+//    WhenChangedUTC alone raises nothing;
+//  - workloads not tracked for drift (content reads) raise nothing.
 // Mutation checks:
 //  - compare with any previous run instead of the last usable one;
 //  - count lastModifiedDateTime as a setting;
@@ -22,7 +25,8 @@ import { saveLedgerInputs } from '../collect/workloadLedgerStore.mjs';
 import { SHAREPOINT_OPERATIONS, SHAREPOINT_WORKLOAD } from '../collect/workloads/sharepoint.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
-import { detectWorkloadDrift } from './workloadDrift.mjs';
+import { DRIFT_WORKLOADS, detectWorkloadDrift } from './workloadDrift.mjs';
+import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { readOnlyGraphTransport, runWorkloadCollection } from '../../cli/keel-workload-collect.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -187,21 +191,57 @@ test('a failed run is skipped and the next run compares with the last usable one
   assert.equal((await alerts(client, tenantRef)).length, 1);
 });
 
+async function storedRun(client, tenantRef, workload, at, observations) {
+  const { rows: [collection] } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+     VALUES ($1, $2, 'complete', $3, $3, $3) RETURNING id`,
+    [tenantRef, workload, at],
+  );
+  for (const [resourceKey, fields] of Object.entries(observations)) {
+    await client.query(
+      `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, $2, $3)`,
+      [collection.id, resourceKey, fields],
+    );
+  }
+  return collection.id;
+}
+
+test('every collected workload raises drift', () => {
+  for (const { workload } of WORKLOAD_COLLECTORS) assert.ok(DRIFT_WORKLOADS[workload], `${workload} raises drift`);
+});
+
+test('a mail flow rule change is drift; a rename is cosmetic; WhenChangedUTC alone is not a change', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = `sha256:wd-${crypto.randomUUID()}`;
+  const rule = (over) => ({ identity: 'KEEL-RT-rule', kind: 'transportRule', Name: 'KEEL-RT-rule', State: 'Disabled', Mode: 'Enforce', WhenChangedUTC: '2026-10-01T00:00:00Z', ...over });
+  const connector = (over) => ({ identity: 'KEEL-RT-connector', kind: 'inboundConnector', Name: 'KEEL-RT-connector', Enabled: false, WhenChangedUTC: '2026-10-01T00:00:00Z', ...over });
+  await storedRun(client, tenantRef, 'exchange-mail-flow', '2026-10-12T02:00:00Z', {
+    'transport-rule:KEEL-RT-rule': rule({}), 'inbound-connector:KEEL-RT-connector': connector({}), 'remote-domain:Default': { identity: 'Default', kind: 'remoteDomain', AutoForwardEnabled: false, WhenChangedUTC: '2026-10-01T00:00:00Z' },
+  });
+  const second = await storedRun(client, tenantRef, 'exchange-mail-flow', '2026-10-13T02:00:00Z', {
+    'transport-rule:KEEL-RT-rule': rule({ State: 'Enabled', WhenChangedUTC: '2026-10-12T09:00:00Z' }),
+    'inbound-connector:KEEL-RT-connector': connector({ Name: 'KEEL-RT-connector renamed', WhenChangedUTC: '2026-10-12T09:00:00Z' }),
+    'remote-domain:Default': { identity: 'Default', kind: 'remoteDomain', AutoForwardEnabled: false, WhenChangedUTC: '2026-10-12T09:30:00Z' },
+  });
+  const result = await detectWorkloadDrift(client, { collectionId: second });
+  assert.equal(result.status, 'detected');
+  const rows = await driftRows(client, tenantRef);
+  assert.deepEqual(rows.map((row) => [row.workload, row.resource_key, row.change_type, row.blast_radius]).sort(), [
+    ['exchange-mail-flow', 'inbound-connector:KEEL-RT-connector', 'modified', 'cosmetic'],
+    ['exchange-mail-flow', 'transport-rule:KEEL-RT-rule', 'modified', 'access-affecting'],
+  ]);
+  const rule_ = rows.find((row) => row.resource_key.startsWith('transport-rule:'));
+  assert.deepEqual(rule_.fields.map((field) => [field.path, field.before, field.after]), [['State', 'Disabled', 'Enabled']]);
+  const keys = (await alerts(client, tenantRef)).map((alert) => alert.resource_key).sort();
+  assert.deepEqual(keys, ['exchange-mail-flow:inbound-connector:KEEL-RT-connector', 'exchange-mail-flow:transport-rule:KEEL-RT-rule']);
+});
+
 test('workloads not tracked for drift raise nothing', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = `sha256:wd-${crypto.randomUUID()}`;
   const ids = [];
   for (const at of ['2026-10-12T02:00:00Z', '2026-10-13T02:00:00Z']) {
-    const { rows: [collection] } = await client.query(
-      `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
-       VALUES ($1, 'exchange-mailbox-settings', 'complete', $2, $2, $2) RETURNING id`,
-      [tenantRef, at],
-    );
-    await client.query(
-      `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'org', $2)`,
-      [collection.id, { org: { value: ids.length } }],
-    );
-    ids.push(collection.id);
+    ids.push(await storedRun(client, tenantRef, 'exchange-mail', at, { org: { org: { value: ids.length } } }));
   }
   const result = await detectWorkloadDrift(client, { collectionId: ids[1] });
   assert.equal(result.status, 'not-tracked');

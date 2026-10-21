@@ -1,12 +1,18 @@
-import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
+import type { IconName } from "@/components/shell/icons";
+import { typeService } from "@/lib/baselines-view";
+import { changeName } from "@/lib/changes-view";
+import type { RiskTone } from "@/lib/menu-status";
+import { ago, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
-import { personLabel } from "@/lib/sentences";
+import { type EngineRef, personLabel } from "@/lib/sentences";
+import type { CloudService } from "@/lib/services";
 import type {
   BaselineCapture,
   BaselineChanges,
   BaselineRecord,
   ComplianceData,
   ComplianceFinding,
+  ComplianceSummary,
   StorageResidency,
 } from "@/lib/types";
 
@@ -58,7 +64,7 @@ export function baselineState(baseline: BaselineRecord): string {
 
 /** The Baselines page verdict: the active baseline and how old its capture is. */
 export function baselinesVerdict(active: BaselineRecord | null, now: string): string {
-  if (!active) return "No baseline is active, so KEEL cannot tell what changed.";
+  if (!active) return "No baseline is active, so Keel cannot tell what changed.";
   const name = active.label ?? "Unnamed baseline";
   if (!active.capture?.capturedAt) return `The active baseline is “${name}”; when its backup was collected is not recorded.`;
   return `The active baseline is “${name}”, captured ${ago(active.capture.capturedAt, now)}.`;
@@ -84,56 +90,288 @@ export function resnapshotSource<T extends { id: string; completedAt: string | n
 
 /* ---------------------------------------------------------------- findings -- */
 
-export function controlName(finding: ComplianceFinding): string {
-  return finding.title ?? "A control KEEL no longer holds";
+// Compliance (portal audit, pick A on a desktop, B on a phone): each control in plain
+// words. Microsoft's terms and the registry wording stay in Technical details.
+
+interface ControlWords {
+  title: string;
+  // The phone tile's two-to-four words.
+  short: string;
+  what: string;
+  why: string;
+  types: string[];
 }
 
-export function complianceVerdict(data: ComplianceData): { text: string; tone: "good" | "attention" | "critical" } {
-  const { summary } = data;
-  if (summary.controls === 0) return { text: "No control has been checked on this tenant yet.", tone: "attention" };
-  if (summary.exposed > 0) {
-    const expired = summary.expiredExceptions
-      ? `, including ${summary.expiredExceptions === 1 ? "one" : summary.expiredExceptions.toLocaleString("en-GB")} whose exception expired`
-      : "";
-    return {
-      text: `${plural(summary.exposed, "control fails", "controls fail")}${expired}.`,
-      tone: summary.expiredExceptions || summary.exposed > 1 ? "critical" : "attention",
-    };
-  }
-  if (summary.unknown > 0) {
-    return { text: `No control fails; ${plural(summary.unknown, "control")} could not be checked.`, tone: "attention" };
-  }
-  return { text: `All ${plural(summary.controls, "checked control")} pass or have a current exception.`, tone: "good" };
+const CONTROL_WORDS: Record<string, ControlWords> = {
+  "keel-custom.role-assignment.admin-count-at-most": {
+    title: "No more than 5 people hold the top admin role",
+    short: "At most 5 top admins",
+    what: "Counts the people who hold the top admin role (Global Administrator) in the newest backup.",
+    why: "Every extra top admin is one more account that can change everything if it is taken over.",
+    types: ["roleAssignment"],
+  },
+  "keel-custom.named-location.no-untrusted-all-countries": {
+    title: "No trusted location trusts unknown countries",
+    short: "No trusted unknown countries",
+    what: "Looks for a trusted location that also takes in traffic from countries that cannot be told.",
+    why: "Sign-ins from places nobody can name would count as coming from a trusted network.",
+    types: ["namedLocation"],
+  },
+  "keel-custom.group.role-assignable-not-synced": {
+    title: "Groups that grant admin roles are not copied from on-premises",
+    short: "Admin groups not copied",
+    what: "Looks for groups that can hold admin roles and are kept in step with your on-premises directory.",
+    why: "Whoever takes over that group on-premises gets a cloud admin role with it.",
+    types: ["group"],
+  },
+  "keel-custom.conditional-access.block-legacy": {
+    title: "Old sign-in methods are blocked",
+    short: "Old sign-in blocked",
+    what: "Looks for a sign-in rule that turns on blocking of old sign-in methods.",
+    why: "Old sign-in methods skip multi-factor sign-in, so a stolen password is enough.",
+    types: ["conditionalAccessPolicy"],
+  },
+};
+
+const CHECK_WORDS: Record<string, string> = {
+  roleAssignment: "admin role assignments",
+  namedLocation: "trusted locations",
+  group: "groups",
+  conditionalAccessPolicy: "sign-in rules",
+};
+
+function kindWords(type: string): string {
+  return CHECK_WORDS[type] ?? typeName(type).toLowerCase();
+}
+
+export function controlName(finding: ComplianceFinding): string {
+  return CONTROL_WORDS[finding.controlId]?.title ?? finding.title ?? "A control Keel no longer holds";
+}
+
+export function controlShort(finding: ComplianceFinding): string {
+  return CONTROL_WORDS[finding.controlId]?.short ?? controlName(finding);
+}
+
+/** The kinds of setting a control reads: from its own words, else from its evidence. */
+export function controlTypes(finding: ComplianceFinding): string[] {
+  const own = CONTROL_WORDS[finding.controlId]?.types;
+  if (own?.length) return own;
+  return [...new Set(finding.evidence.map((entry) => entry.resourceType))];
+}
+
+/** "admin role assignments" */
+export function findingTypes(finding: ComplianceFinding): string {
+  const types = controlTypes(finding);
+  return types.length ? types.map(kindWords).join(", ") : "nothing Keel backs up yet";
+}
+
+export function controlWhat(finding: ComplianceFinding): string {
+  return CONTROL_WORDS[finding.controlId]?.what ?? `Checks ${findingTypes(finding)}.`;
+}
+
+export function controlWhy(finding: ComplianceFinding): string | null {
+  return CONTROL_WORDS[finding.controlId]?.why ?? null;
+}
+
+export function controlService(finding: ComplianceFinding): CloudService {
+  return typeService(controlTypes(finding)[0] ?? "other");
+}
+
+export function standardName(finding: ComplianceFinding): string {
+  return finding.framework === "keel-custom" ? "Keel checks" : finding.framework.replace(/[-_]/g, " ").toUpperCase();
+}
+
+export type ControlResult = "failing" | "excepted" | "unknown" | "passing" | "not-relevant";
+
+export const RESULTS: Record<ControlResult, { label: string; plural: string; tone: RiskTone | null; badge: "urgent" | "soon" | "fine" | "neutral"; icon: IconName; rank: number }> = {
+  failing: { label: "Failing", plural: "Failing", tone: "urgent", badge: "urgent", icon: "x-circle", rank: 0 },
+  excepted: { label: "With exception", plural: "With an exception", tone: "soon", badge: "soon", icon: "pause", rank: 1 },
+  unknown: { label: "Could not check", plural: "Could not be checked", tone: "soon", badge: "soon", icon: "info", rank: 2 },
+  passing: { label: "Passing", plural: "Passing", tone: "fine", badge: "fine", icon: "check-circle", rank: 3 },
+  "not-relevant": { label: "Not relevant here", plural: "Not relevant here", tone: null, badge: "neutral", icon: "hide", rank: 4 },
+};
+
+export function isResult(value: string | null): value is ControlResult {
+  return value !== null && value in RESULTS;
+}
+
+/** A fail hides only behind an exception in force; an ended or incomplete one leaves it failing. */
+export function resultOf(finding: ComplianceFinding): ControlResult {
+  if (finding.verdict === "fail") return finding.exposed ? "failing" : "excepted";
+  if (finding.verdict === "unknown") return "unknown";
+  if (finding.verdict === "pass") return "passing";
+  return "not-relevant";
 }
 
 export function findingStatus(finding: ComplianceFinding): string {
-  if (finding.verdict === "fail" && finding.exceptionState === "authorized") return "Fails, with a current exception";
-  return displayEnum("controlVerdict", finding.verdict);
+  return RESULTS[resultOf(finding)].label;
 }
 
-export function findingTone(finding: ComplianceFinding): "pill-bad" | "pill-warn" | "pill-ok" | "pill-neutral" {
-  if (finding.exposed) return "pill-bad";
-  if (finding.verdict === "unknown" || finding.exceptionState === "authorized") return "pill-warn";
-  if (finding.verdict === "pass") return "pill-ok";
-  return "pill-neutral";
+export type ComplianceCounts = Record<ControlResult, number> & { total: number; ended: number };
+
+export function complianceCounts(findings: ComplianceFinding[]): ComplianceCounts {
+  const counts: ComplianceCounts = { failing: 0, excepted: 0, unknown: 0, passing: 0, "not-relevant": 0, total: findings.length, ended: 0 };
+  for (const finding of findings) {
+    counts[resultOf(finding)] += 1;
+    if (finding.exposed && finding.exceptionState === "expired") counts.ended += 1;
+  }
+  return counts;
+}
+
+export function countsFromSummary(summary: ComplianceSummary): ComplianceCounts {
+  return {
+    failing: summary.exposed, excepted: summary.excepted, unknown: summary.unknown, passing: summary.passing,
+    "not-relevant": summary.notApplicable, total: summary.controls, ended: summary.expiredExceptions,
+  };
+}
+
+/** The header's status pill. */
+export function complianceStatus(counts: ComplianceCounts): { tone: RiskTone; label: string } {
+  if (counts.total === 0) return { tone: "low", label: "Not checked yet" };
+  if (counts.failing) return { tone: "urgent", label: `${counts.failing} failing` };
+  if (counts.unknown) return { tone: "soon", label: `${counts.unknown} could not be checked` };
+  return { tone: "fine", label: "All pass" };
+}
+
+export interface ComplianceVerdict { text: string; detail?: string; tone: "urgent" | "soon" | "fine" | "neutral" }
+
+export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
+  const counts = complianceCounts(data.findings);
+  const now = data.generatedAt;
+  if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: "Keel does not run these checks on its own yet.", tone: "neutral" };
+  if (counts.failing === 1) {
+    const finding = data.findings.find((entry) => entry.exposed)!;
+    const text = finding.exceptionState === "expired"
+      ? `1 control fails, and its exception ended ${ago(finding.exception?.expiresAt ?? null, now)}.`
+      : finding.exceptionState === "incomplete"
+        ? "1 control fails; its exception has no owner or end date, so it does not count."
+        : "1 control fails, with no exception.";
+    return { text, detail: `${controlName(finding)}: fix it in Microsoft 365, or accept it for a while with an exception.`, tone: "urgent" };
+  }
+  if (counts.failing > 1) {
+    const ended = counts.ended ? `; ${counts.ended === 1 ? "one exception has" : `${counts.ended} exceptions have`} ended` : "";
+    return { text: `${plural(counts.failing, "control fails", "controls fail")}${ended}.`, detail: "Open each one to see what it rests on, then fix it or accept it with an exception.", tone: "urgent" };
+  }
+  if (counts.unknown) {
+    return { text: `No control fails; ${plural(counts.unknown, "control")} could not be checked.`, detail: "The backup each one needs is missing or too old.", tone: "soon" };
+  }
+  return { text: `All ${plural(counts.total, "checked control")} pass or have a current exception.`, tone: "fine" };
+}
+
+/** Why a control could not be checked, from the engine's reason code ("group:stale-observation"). */
+export function reasonWords(finding: ComplianceFinding): string {
+  const reason = finding.reason ?? "";
+  const split = reason.indexOf(":");
+  const type = split > 0 ? reason.slice(0, split) : controlTypes(finding)[0] ?? null;
+  const code = split > 0 ? reason.slice(split + 1) : reason;
+  const kind = type ? kindWords(type) : "settings";
+  const one = kind.replace(/s$/, "");
+  if (code === "no-observation") return `No backup of ${kind} has been made yet.`;
+  if (code === "stale" || code === "stale-observation") return `The newest ${one} backup is too old for this check.`;
+  if (code.startsWith("observation-")) return `The newest ${one} backup did not finish.`;
+  if (code) return `The ${one} backup it needs cannot be used.`;
+  return "Keel could not check it.";
+}
+
+/** The second line of a row and of a phone tile: the result in a few words. */
+export function resultLine(finding: ComplianceFinding, now: string): string {
+  switch (resultOf(finding)) {
+    case "failing":
+      if (finding.exceptionState === "expired") return `Exception ended ${ago(finding.exception?.expiresAt ?? null, now)}`;
+      if (finding.exceptionState === "incomplete") return "Exception has no owner or end date";
+      return "No exception";
+    case "excepted":
+      return `Accepted until ${formatDay(finding.exception?.expiresAt ?? null)}`;
+    case "unknown":
+      return reasonWords(finding).replace(/\.$/, "");
+    case "passing":
+      return "Met on the last check";
+    default:
+      return "Nothing to check on this tenant";
+  }
+}
+
+export function formatDay(value: string | null): string {
+  if (!value) return "an unknown date";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "an unknown date" : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** Worst first: failing, then excepted, could not check, passing; then by name. */
+export function orderFindings(findings: ComplianceFinding[]): ComplianceFinding[] {
+  return [...findings].sort((left, right) => RESULTS[resultOf(left)].rank - RESULTS[resultOf(right)].rank || controlName(left).localeCompare(controlName(right)));
+}
+
+/* --------------------------------------------------------------- exceptions -- */
+
+/** The owner as a person: by name when they are in Keel, else the name an address reads as. */
+export function ownerPerson(finding: ComplianceFinding): EngineRef | null {
+  const exception = finding.exception;
+  if (!exception?.owner && !exception?.ownerRef) return null;
+  if (exception.ownerRef) return { kind: "person", id: exception.ownerRef.id, name: exception.ownerRef.name, readable: true, email: exception.owner ?? undefined } as EngineRef;
+  return { kind: "person", id: "", name: exception.owner ?? "", readable: true } as EngineRef;
+}
+
+export function ownerName(finding: ComplianceFinding): string {
+  return personLabel(ownerPerson(finding), "no named owner");
+}
+
+export function grantedByName(finding: ComplianceFinding): string | null {
+  const ref = finding.exception?.grantedByRef;
+  return ref ? ref.name : null;
+}
+
+/** The exception chip: in force until a date, ended, or not counted. */
+export function exceptionChip(finding: ComplianceFinding, now: string): { tone: "urgent" | "soon"; label: string } | null {
+  switch (finding.exceptionState) {
+    case "authorized": return { tone: "soon", label: `Until ${formatDay(finding.exception?.expiresAt ?? null)}` };
+    case "expired": return { tone: "urgent", label: `Ended ${ago(finding.exception?.expiresAt ?? null, now)}` };
+    case "incomplete": return { tone: "urgent", label: "Not counted: no owner or end date" };
+    default: return null;
+  }
 }
 
 export function exceptionSentence(finding: ComplianceFinding, now: string): string | null {
   const exception = finding.exception;
   if (!exception) return null;
-  // A person by name; an email address reads as the name in it ("maro.defili@…" reads "Maro Defili").
-  const owner = exception.owner ? personLabel({ kind: "person", id: "", name: exception.owner, readable: true }, "no named owner") : "no named owner";
+  const owner = ownerName(finding);
   switch (finding.exceptionState) {
     case "authorized":
-      return `Exception owned by ${owner} until ${formatTimestamp(exception.expiresAt)}: ${exception.reason}`;
+      return `Exception owned by ${owner} until ${formatDay(exception.expiresAt)}.`;
     case "expired":
-      return `The exception owned by ${owner} expired ${ago(exception.expiresAt, now)}, so this finding is open again.`;
+      return `The exception owned by ${owner} ended ${ago(exception.expiresAt, now)}, so this control counts as failing again.`;
     case "incomplete":
-      return "An exception was recorded without an owner or an expiry, so it does not hide this finding.";
+      return "An exception was recorded without an owner or an end date, so it does not count.";
     default:
       return null;
   }
 }
+
+/** Who may grant: someone with the configuration permission, on a control that fails. */
+export function canGrantOn(finding: ComplianceFinding, canConfigure: boolean): boolean {
+  return canConfigure && finding.verdict === "fail";
+}
+
+/** "Grant an exception", or "Renew the exception" when one ended or was incomplete. */
+export function grantLabel(finding: ComplianceFinding): string {
+  if (finding.exceptionState === "authorized") return "Extend the exception";
+  return finding.exception ? "Renew the exception" : "Grant an exception";
+}
+
+export const EXCEPTION_EFFECT = "The control still fails; it stops counting as failing until the date you pick. The check itself does not change.";
+
+export function exceptionRefusal(status: number, error: string | undefined): string {
+  if (status === 403) return "You need the configuration permission to grant an exception.";
+  if (status === 404) return "Keel no longer holds this result. Reload the page.";
+  if (error === "owner_required") return "Name who owns the exception.";
+  if (error === "reason_required") return "Say why the control may fail for now.";
+  if (error === "expiry_in_future") return "Pick an end date after today.";
+  if (error === "not_failing") return "Only a failing control can have an exception.";
+  if (status === 0) return "Keel could not be reached. Check your connection and try again.";
+  return "Keel could not save the exception. Try again.";
+}
+
+/* ------------------------------------------------------------------ links -- */
 
 export function evidenceSentence(finding: ComplianceFinding, now: string): string {
   const { backup } = finding.links;
@@ -141,12 +379,29 @@ export function evidenceSentence(finding: ComplianceFinding, now: string): strin
   if (backup.state === "mismatch") {
     return "No stored backup matches the collection this check used, so it is not linked to one.";
   }
-  const newest = backup.linked
+  return `Checked against the backup collected ${ago(newestBackup(finding), now)}.`;
+}
+
+export function newestBackup(finding: ComplianceFinding): string | null {
+  return finding.links.backup.linked
     .map((entry) => entry.completedAt)
     .filter((value): value is string => Boolean(value))
     .sort()
     .at(-1) ?? null;
-  return `Checked against the backup collected ${ago(newest, now)}.`;
+}
+
+export function evidenceSnapshot(finding: ComplianceFinding): string | null {
+  const newest = newestBackup(finding);
+  return finding.links.backup.linked.find((entry) => entry.completedAt === newest)?.snapshotId ?? null;
+}
+
+/** A linked change by name: "Global Administrator · adele@… added" reads as a name and a verb. */
+export function linkedChangeName(change: ComplianceFinding["links"]["change"]["linked"][number]): string {
+  const name = changeName({ naturalKey: change.naturalKey, resourceType: change.resourceType, name: null });
+  const verb = change.changeType === "added" ? "added" : change.changeType === "removed" ? "removed" : "changed";
+  // An address inside the key reads as the name in it ("adele@…" reads "Adele").
+  const plain = name.replace(/[^\s@·]+@[^\s@·]+/g, (email) => personLabel({ kind: "person", id: "", name: email, readable: true }, "someone"));
+  return `${plain} ${verb}`;
 }
 
 export function changeLinkSentence(finding: ComplianceFinding): string | null {
@@ -156,7 +411,7 @@ export function changeLinkSentence(finding: ComplianceFinding): string | null {
     ? `${plural(change.linked.length, "open change")} in the same backup.`
     : null;
   const mismatched = change.mismatched.length
-    ? `${plural(change.mismatched.length, "open change")} to these types ${change.mismatched.length === 1 ? "comes" : "come"} from a different backup, so ${change.mismatched.length === 1 ? "it is" : "they are"} not linked.`
+    ? `${plural(change.mismatched.length, "open change")} to these kinds ${change.mismatched.length === 1 ? "comes" : "come"} from a different backup, so ${change.mismatched.length === 1 ? "it is" : "they are"} not linked.`
     : null;
   return [linked, mismatched].filter(Boolean).join(" ");
 }
@@ -173,45 +428,54 @@ export function planLinkSentence(finding: ComplianceFinding): string | null {
   return [linked, mismatched].filter(Boolean).join(" ");
 }
 
-export function findingTypes(finding: ComplianceFinding): string {
-  const types = [...new Set(finding.evidence.map((entry) => entry.resourceType))];
-  return types.length ? types.map(typeName).join(", ") : "no configuration type";
-}
-
-/** Failing findings first (open before excepted), then unknown, then the rest. */
-export function orderFindings(findings: ComplianceFinding[]): ComplianceFinding[] {
-  const rank = (finding: ComplianceFinding) => (finding.exposed ? 0
-    : finding.verdict === "fail" ? 1
-      : finding.verdict === "unknown" ? 2
-        : 3);
-  return [...findings].sort((left, right) => rank(left) - rank(right) || controlName(left).localeCompare(controlName(right)));
-}
-
 /* ----------------------------------------------------------------- storage -- */
 
 const PROVIDER_WORDS: Record<string, string> = {
-  "local-disk": "local disk",
+  "local-disk": "this server's disk",
   "s3-compatible": "S3-compatible object storage",
 };
 
+const REGION_WORDS: Record<string, string> = {
+  westeurope: "West Europe",
+  northeurope: "North Europe",
+  uksouth: "UK South",
+  ukwest: "UK West",
+  francecentral: "France Central",
+  germanywestcentral: "Germany West Central",
+  eastus: "East US",
+  eastus2: "East US 2",
+  westus: "West US",
+  "eu-west-1": "Ireland",
+  "eu-central-1": "Frankfurt",
+  "us-east-1": "North Virginia",
+};
+
+export function regionWords(region: string | null): string | null {
+  if (!region) return null;
+  return REGION_WORDS[region.toLowerCase()] ?? region.replace(/[-_]/g, " ");
+}
+
 export function storageSentence(storage: StorageResidency): string {
   if (!storage.configured || !storage.provider) {
-    return "Where backups are stored is not configured, so KEEL cannot say where they are kept.";
+    return "Where backups are stored is not set, so Keel cannot say where they are kept.";
   }
   const where = PROVIDER_WORDS[storage.provider] ?? storage.provider.replaceAll("-", " ");
-  return `Backups are configured to be stored on ${where}${storage.region ? ` in ${storage.region}` : ""}.`;
+  const region = regionWords(storage.region);
+  return `Backups are kept on ${where}${region ? ` (${region})` : ""}.`;
 }
 
 export function immutabilitySentence(storage: StorageResidency): string {
   switch (storage.immutability) {
     case "unsupported":
-      return "This storage cannot lock backups against deletion.";
+      return "They cannot be locked against deletion.";
     case "live-qualified":
-      return "Locking backups against deletion is proven on this tenant.";
+      return "Locking them against deletion is proven on this tenant.";
     default:
-      return "Locking backups against deletion is not yet proven on this tenant.";
+      return "Locking them against deletion is not yet proven on this tenant.";
   }
 }
 
 export const NOT_A_CERTIFICATION =
   "This states where backups are kept. It is not a certification of compliance with any regulation.";
+
+export const NOT_RUN_YET = "Keel does not run these checks on its own yet. Results come from the last check.";

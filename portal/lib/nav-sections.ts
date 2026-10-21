@@ -1,0 +1,28 @@
+import type { IconName } from "@/components/shell/icons";
+
+// The menu's sections and their icons, in a plain module so server components (the
+// page header) can read them. A constant imported from a "use client" module is
+// undefined on the server (portal/test/client-boundary.test.ts).
+
+// Portal structure (handoff/redesign/PLAN.md section 7): under the cloud, eight
+// sections, top to bottom, then the bell's inbox. Each section absorbs existing pages,
+// which keep their routes and show as sub-items under the section in the menu (and as
+// one scrolling row of tabs on a phone). A page's PageHeader names the section it sits
+// in (`section`), typed, so no page can carry a second taxonomy.
+export const MENU_SECTIONS = ["Dashboards", "Backup", "Restore", "Baselines", "Reports", "Automation center", "Audit log", "Settings"] as const;
+// Approvals and alerts live behind the bell, not in the menu list.
+export const NAV_SECTIONS = [...MENU_SECTIONS, "Inbox"] as const;
+export type MenuSection = (typeof MENU_SECTIONS)[number];
+export type NavSection = (typeof NAV_SECTIONS)[number];
+
+export const SECTION_ICONS: Record<NavSection, IconName> = {
+  Dashboards: "dashboards",
+  Backup: "backup",
+  Restore: "restore",
+  Baselines: "baselines",
+  Reports: "reports",
+  "Automation center": "automation",
+  "Audit log": "audit",
+  Settings: "settings",
+  Inbox: "bell",
+};

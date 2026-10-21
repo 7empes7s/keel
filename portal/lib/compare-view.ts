@@ -1,8 +1,8 @@
 // Wave 2 CMP: the shapes engine/govern/compare.mjs returns, and the words the Compare
 // page uses for them. Pure, so the UI harness renders the real page from fixtures.
 import { valueWords } from "@/lib/changes-view";
-import { replaceObjectIds } from "@/lib/object-ids";
-import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
+import { readableValue } from "@/lib/changed-values";
+import { formatTimestamp } from "@/lib/presentation";
 
 export type ChangeType = "added" | "removed" | "changed";
 
@@ -123,6 +123,8 @@ export interface CompareResult {
   settings: SettingsSection | null;
   workloads: WorkloadsSection | null;
   content: ContentItemsSection | ContentHoldingsSection | null;
+  /** Names for the ids inside setting values (lower-case id to name), from both backups. */
+  names?: Record<string, string>;
 }
 
 export interface CompareSnapshotOption {
@@ -295,25 +297,9 @@ export function contentItemWords(item: ContentItem): string {
   return item.kind ? `An item (${item.kind.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("-", " ").toLowerCase()})` : "An item";
 }
 
-/** Readable values: a reference reads as the object's name, a bare id as "an id". */
-function readable(value: unknown): unknown {
-  if (typeof value === "string") {
-    if (value === "<id>") return "an id";
-    const ref = /^ref:([A-Za-z]+):(.+)$/.exec(value);
-    if (ref) return `${ref[2]} (${resourceTypeLabel(ref[1])})`;
-    if (value === "ref:unresolved") return "an object KEEL could not name";
-    // Exchange writes addresses with their type ("smtp:a@b.example"); the type reads after.
-    const address = /^(smtp|sip|x500|eum):(.+)$/i.exec(value);
-    if (address) return `${address[2]} (${address[1].toUpperCase()} address)`;
-    return replaceObjectIds(value, () => "an id");
-  }
-  if (Array.isArray(value)) return value.map(readable);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, readable(inner)]));
-  return value;
-}
-
-export function compareValueWords(value: unknown): string {
-  return valueWords(readable(value));
+/** A value in words: a reference reads as the object's name, an id as the name Keel has for it. */
+export function compareValueWords(value: unknown, names: Readonly<Record<string, string>> = {}): string {
+  return valueWords(readableValue(value, names));
 }
 
 export function rawValue(value: unknown): string {

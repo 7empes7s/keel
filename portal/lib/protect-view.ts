@@ -98,10 +98,19 @@ function items(count: number | null): string {
   return `, ${count.toLocaleString("en-GB")} ${count === 1 ? "item" : "items"}`;
 }
 
+/** What's protected lists every service: the Microsoft 365 workloads join the Entra ID
+ * and Intune types, so the tiles, the verdict, the service cards and the list agree. */
+export function withWorkloadKinds(data: CoverageData): CoverageData {
+  return data.workloads?.length ? { ...data, types: [...data.types, ...data.workloads] } : data;
+}
+
 /** The last backup of one type, in words. */
 export function backupSentence(item: CoverageType, now: string): string {
   switch (backupHealth(item)) {
-    case "not-collected": return "Not backed up: no collector exists for this type yet.";
+    case "not-collected": return item.type.includes("-")
+      // A workload (exchange-mail-flow…) ships switched off for each tenant.
+      ? "Not backed up yet: Keel switches this on for your tenant once a live read from it is checked."
+      : "Not backed up: no collector exists for this type yet.";
     case "unavailable": return "Not available on this tenant: Microsoft needs a licence or tenant feature this tenant does not have.";
     case "never": return item.outcome === "not-requested" ? "Not part of the latest backup run." : "Never backed up yet.";
     case "failed":

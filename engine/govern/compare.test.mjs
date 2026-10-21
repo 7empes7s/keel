@@ -108,6 +108,13 @@ test('two snapshots of one tenant: added, removed and changed, never a removal f
   const items = settingsItems(result);
   assert.equal(items['group:KEEL-RT-Old'].changeType, 'removed');
   assert.equal(items['group:KEEL-RT-New'].changeType, 'added');
+  // An object on one side only lists the settings it holds, each with its value.
+  const added = items['group:KEEL-RT-New'];
+  assert.ok(added.fields.length > 0 && added.fieldsTotal >= added.fields.length);
+  assert.ok(added.fields.every((field) => field.kind === 'added' && field.before === null));
+  assert.equal(added.fields.find((field) => field.path === 'displayName')?.after, 'KEEL-RT-New');
+  const removed = items['group:KEEL-RT-Old'];
+  assert.ok(removed.fields.length > 0 && removed.fields.every((field) => field.kind === 'removed' && field.after === null));
   assert.equal(items['group:KEEL-RT-Finance'].changeType, 'changed');
   assert.deepEqual(items['group:KEEL-RT-Finance'].fields.map((field) => [field.path, field.before, field.after]), [['securityEnabled', true, false]]);
   assert.equal(items['group:KEEL-RT-Same'], undefined);

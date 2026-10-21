@@ -30,6 +30,7 @@ import {
 } from "../../status/queries.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
+import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
@@ -38,6 +39,7 @@ import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
+import { workloadKinds } from "@/lib/workload-kinds";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -413,6 +415,11 @@ async function rawCoverageReport(client: KeelClient, ref: string): Promise<Unkno
   })) as UnknownRecord;
 }
 
+// Workloads Keel declares at least one restore for (the Restore page's "KEEL can put back").
+const RESTORABLE_WORKLOADS: ReadonlySet<string> = new Set(
+  (workloadRestoreGuide() as { workload: string; writes: unknown[] }[]).filter((entry) => entry.writes.length > 0).map((entry) => entry.workload),
+);
+
 async function coverageFor(client: KeelClient, ref: string, report?: UnknownRecord): Promise<CoverageData> {
   const raw = report ?? await rawCoverageReport(client, ref);
   const rawSummary = raw.summary as UnknownRecord;
@@ -437,6 +444,7 @@ async function coverageFor(client: KeelClient, ref: string, report?: UnknownReco
       total: types.length,
     },
     types,
+    workloads: workloadKinds(raw.workloads, RESTORABLE_WORKLOADS),
     liveEvidence: normalizeLiveEvidence(raw.liveEvidence),
   };
 }

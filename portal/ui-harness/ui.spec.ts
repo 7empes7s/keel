@@ -416,6 +416,42 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
 
+// A row's panel says what it changed: each object, each setting, its value before and
+// after, ids read as names, and nested values one line per setting.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
+  test(`Activity · a backup's panel shows each changed setting before and after at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/activity?open=job:y2", "dark");
+    const panel = page.getByRole("dialog");
+    const changes = panel.locator(".ac-changes");
+    await expect(changes.locator("h3")).toHaveText("What changed (3)");
+    const policy = changes.locator(".cv-object", { hasText: "Block legacy auth" });
+    await expect(policy.locator(".cv-chip")).toHaveText("Changed");
+    const state = policy.locator(".cv-row", { hasText: "State" });
+    await expect(state.locator('[data-side="before"]')).toContainText("Previous backup");
+    await expect(state.locator('[data-side="before"]')).toContainText("enabled");
+    await expect(state.locator('[data-side="after"]')).toContainText("enabled for reporting but not enforced");
+    await expect(policy.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="after"]')).toContainText("Break-glass admins, an object Keel has no name for");
+    const removed = changes.locator(".cv-object", { hasText: "Old project team" });
+    await expect(removed.locator(".cv-chip")).toHaveText("Removed");
+    await expect(removed.locator(".cv-row", { hasText: "Description" }).locator('[data-side="before"]')).toContainText("Project Atlas, closed in September");
+    await expect(removed.locator(".cv-row", { hasText: "Description" }).locator('[data-side="after"]')).toContainText("Not there");
+    await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).toContainText("#1 › grace period hours: 24");
+    await expect(changes.getByRole("link", { name: "See every difference in Compare" })).toHaveAttribute("href", /\/compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d5/);
+    expect(await panel.evaluate((element) => element.textContent ?? "")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    // A restore says what it put back, and a row that changed no settings has no section.
+    await open(page, "/activity?open=job:y1", "light");
+    const restore = page.getByRole("dialog").locator(".ac-changes");
+    await expect(restore.locator(".cv-row", { hasText: "Security enabled" }).locator('[data-side="before"]')).toContainText("no");
+    await expect(restore.locator(".cv-row", { hasText: "Security enabled" }).locator('[data-side="after"]')).toContainText("yes");
+    await open(page, "/activity?open=record:18204", "light");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").locator(".ac-changes")).toHaveCount(0);
+  });
+}
+
 test("Activity · a viewer sees the timeline and no way to run anything", async ({ page }) => {
   await open(page, "/activity/viewer");
   await expect(page.locator(".ac-tile")).toHaveCount(4);
@@ -589,23 +625,24 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
 });
 
-test("restore lists every other Microsoft 365 service it backs up, and says what can be put back", async ({ page }) => {
+test("restore lists the backups of other services, and only those", async ({ page }) => {
   await open(page, "/restore");
-  const services = page.locator(".restore-service h3");
-  await expect(services).toHaveText(["Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
-  const flow = page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" });
-  await expect(flow.locator(".restore-chip")).toHaveText("KEEL can put back");
+  const section = page.locator(".restore-services");
+  await expect(section.locator("h2")).toHaveText("Other services");
+  // Only services with a backup or a failed backup run; Power Platform (not switched on)
+  // and Purview (no backup) are left out.
+  await expect(section.locator(".restore-service h3")).toHaveText(["Exchange Online", "SharePoint and OneDrive", "Teams"]);
+  await expect(section.locator(".restore-workload", { hasText: "Purview sensitivity labels" })).toHaveCount(0);
+  await expect(section.locator(".restore-workload", { hasText: "Power Platform and Power BI" })).toHaveCount(0);
+  const flow = section.locator(".restore-workload", { hasText: "Exchange mail flow and protection" });
   await expect(flow.locator(".restore-workload-backup")).toHaveText("Backed up 3 hours ago · 7 items.");
-  const onedrive = page.locator(".restore-workload", { hasText: "OneDrive settings" });
-  await expect(onedrive.locator(".restore-chip")).toHaveText("By hand only");
-  await onedrive.getByText("What you do by hand").click();
-  await expect(onedrive).toContainText("Change them by hand in the SharePoint admin center");
-  await expect(page.locator(".restore-workload", { hasText: "Teams organization policies" })).toContainText("The newest backup failed");
-  const power = page.locator(".restore-workload", { hasText: "Power Platform and Power BI" });
-  await expect(power).toContainText("Not switched on for this tenant yet");
-  await expect(power.locator(".restore-chip")).toHaveText("No backup yet");
+  await expect(section.locator(".restore-workload", { hasText: "Teams organization policies" })).toContainText("The newest backup failed");
+  // No capability lists or how-to copy: that lives in the docs.
+  await expect(section).not.toContainText("What you do by hand");
+  await expect(section).not.toContainText("What the backup holds");
+  await expect(section).not.toContainText("More services");
   // No stored code on the screen outside Technical details.
-  await expect(page.locator(".restore-services .restore-workload-head")).not.toContainText(["power-platform-settings"]);
+  await expect(section.locator(".restore-workload-head")).not.toContainText(["power-platform-settings", "exchange-mail-flow"]);
 });
 
 // Exchange, Teams and Purview: the same four steps from a service card, then Approvals.
@@ -1938,7 +1975,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await policies.locator("summary").click();
     await expect(policies).toContainText("Block legacy auth");
     await expect(policies).toContainText("enabled for reporting but not enforced");
-    await expect(policies).toContainText("an id, an id");
+    await expect(policies.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="before"]')).toContainText("Break-glass admins");
+    await expect(policies.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="after"]')).toContainText("Break-glass admins, an object Keel has no name for");
+    // Added and removed objects list the settings they hold, each with its value.
+    const groups = settings.locator("details.compare-group").filter({ has: page.locator(".compare-group-name", { hasText: /^Group$/ }) });
+    await groups.locator("summary").click();
+    await expect(groups.locator(".compare-item", { hasText: "Old project team" }).locator(".cv-row", { hasText: "Description" })).toContainText("Project Atlas, closed in September");
+    const contractors = groups.locator(".compare-item", { hasText: "KEEL-RT-Contractors" });
+    await expect(contractors.locator(".cv-row", { hasText: "Membership rule" }).locator('[data-side="after"]')).toContainText("Processing state: On");
+    await expect(contractors.locator(".cv-row", { hasText: "Membership rule" }).locator('[data-side="before"]')).toContainText("Not there");
     await expect(settings).toContainText("Device configuration (Intune): First side read in full, second side failed to read.");
     const content = page.locator("section", { has: page.locator("#compare-content-heading") });
     await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
@@ -1952,7 +1997,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
     await across.locator("details.compare-group").first().locator("summary").click();
     await expect(across).toContainText("Break-glass admins (group)");
-    await expect(across).toContainText("an object KEEL could not name");
+    await expect(across).toContainText("an object Keel could not name");
     await expect(across).toContainText("Device category (Intune): 3 in the first, 2 in the second.");
     await expect(page.locator("section", { has: page.locator("#compare-content-heading") })).toContainText("812 items in both");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);

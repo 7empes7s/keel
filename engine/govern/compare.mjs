@@ -145,6 +145,16 @@ function fieldDifferences(resourceType, before, after) {
 }
 
 /**
+ * The settings of an object found on one side only, so an added or removed object
+ * shows what it holds, not only that it is there: each top-level setting is listed
+ * as added (or removed) with its value. Fields Microsoft sets itself are left out.
+ */
+export function presenceFields(resourceType, payload, changeType) {
+  const added = changeType === 'added';
+  return fieldDifferences(resourceType, added ? {} : payload, added ? payload : {});
+}
+
+/**
  * The settings section. `left` and `right` are { rows, coverage }: rows carry
  * natural_key, resource_type, payload, payload_hash, hash_version, blast_radius and,
  * when portable, references [{ field_path, to_symbol }].
@@ -197,12 +207,14 @@ export function compareSettings(left, right, { portable = false } = {}) {
       }
       if (was && !now) {
         group.removed += 1;
-        group.items.push({ naturalKey, name: nameOf(was.payload), changeType: 'removed', blastRadius: was.blast_radius ?? null });
+        const payload = portable ? portablePayload(was.payload, was.references) : was.payload;
+        group.items.push({ naturalKey, name: nameOf(was.payload), changeType: 'removed', blastRadius: was.blast_radius ?? null, ...presenceFields(resourceType, payload, 'removed') });
         continue;
       }
       if (!was && now) {
         group.added += 1;
-        group.items.push({ naturalKey, name: nameOf(now.payload), changeType: 'added', blastRadius: now.blast_radius ?? null });
+        const payload = portable ? portablePayload(now.payload, now.references) : now.payload;
+        group.items.push({ naturalKey, name: nameOf(now.payload), changeType: 'added', blastRadius: now.blast_radius ?? null, ...presenceFields(resourceType, payload, 'added') });
         continue;
       }
       if (settingsFingerprint(was, { portable }) === settingsFingerprint(now, { portable })) {

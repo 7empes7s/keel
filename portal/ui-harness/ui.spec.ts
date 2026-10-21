@@ -291,7 +291,7 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(page.locator(".sel-row")).toHaveCount(10);
 
   // (3) The Failed tile sets status=failed and Sent shows failures only.
-  await tiles.filter({ hasText: "Failed" }).click();
+  await tiles.filter({ hasText: "failed in the last 7 days" }).click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
@@ -342,6 +342,129 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   // (7) Still one amber action at most on the page itself.
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 });
+
+// The page's done-test (portal audit, Activity, pick A: a timeline by day): the status
+// pill and verdict name what failed, the tiles are links that set a filter, the newest
+// day comes first, a row opens its panel (Back closes it), "Run again" on a failed
+// backup posts the same request the Backup page makes, the Who picker narrows to one
+// person, and the first screen holds one amber action.
+test("Activity · tiles, day groups, panel, run again, who filter, one amber action", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/activity");
+  await expect(page.locator(".status-pill")).toHaveText("2 failed today");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Keel ran 6 jobs in the last day; the backup of Tier 1 failed, and 1 more.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  const amber = page.locator("main .btn-primary:visible");
+  await expect(amber).toHaveCount(1);
+  await expect(amber).toHaveText("Run the Tier 1 backup again");
+  const tiles = page.locator(".ac-tile");
+  await expect(tiles).toHaveCount(4);
+  const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/activity/);
+  await expect(tiles.filter({ hasText: "Audit record" })).toContainText("Intact");
+  // Newest day first, and every row title is a link that opens its panel.
+  const groups = page.locator(".sel-group .sel-group-name b");
+  await expect(groups.nth(0)).toHaveText("Today");
+  await expect(groups.nth(1)).toHaveText("Yesterday");
+  await expect(groups.nth(2)).toHaveText("Wednesday 30 September");
+  await expect(page.locator(".sel-group").first()).toContainText("1 failed, 1 refused");
+  for (const link of await page.locator(".ac-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  await expect(page.locator(".ac-row-link").first()).toHaveText("Amara Okafor approved a restore");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // The panel of a failed backup: what went wrong, one amber "Run again", the job page link.
+  await page.locator(".ac-row-link", { hasText: "Backup of Tier 1" }).first().click();
+  await expect(page).toHaveURL(/open=job%3Aa4|open=job:a4/);
+  const panel = page.getByRole("dialog", { name: "Backup of Tier 1" });
+  await expect(panel).toBeVisible();
+  await expect(panel.locator(".ac-note")).toContainText("Graph 429: throttled after 5 retries");
+  await expect(panel.getByRole("link", { name: "Open the job page" })).toHaveAttribute("href", /\/jobs\/a4$/);
+  await expect(panel.locator(".btn-primary:visible")).toHaveText("Run the Tier 1 backup again");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await page.goBack();
+  await expect(panel).toBeHidden();
+
+  // "Run again" posts to the backup action with the failed job's tier.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await amber.click();
+  await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
+  const backups = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/backup");
+  expect(backups.length).toBe(1);
+  expect(JSON.parse(backups[0].body ?? "{}")).toEqual({ tier: "tier1" });
+
+  // The Failed tile sets the filter in the address; the list shows failures only.
+  await tiles.filter({ hasText: "failed in the last 7 days" }).click();
+  await expect(page).toHaveURL(/outcome=failed/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
+  await expect(page.locator(".ac-filter-note")).toContainText("Showing failed jobs only: 2 of 18 loaded.");
+  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page).not.toHaveURL(/outcome=/);
+  await expect(page.locator(".sel-row")).toHaveCount(18);
+
+  // Who: one person's jobs and audit entries, no one else's.
+  await page.getByRole("button", { name: /^Who:/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Amara Okafor" }).click();
+  await expect(page).toHaveURL(/who=8c1e0000-0000-4000-8000-0000000000a2/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".ac-filter-note")).toContainText("Showing entries by Amara Okafor only");
+  // Group by outcome: failed first.
+  await page.getByRole("radio", { name: "Outcome" }).click();
+  await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Failed");
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+});
+
+test("Activity · a viewer sees the timeline and no way to run anything", async ({ page }) => {
+  await open(page, "/activity/viewer");
+  await expect(page.locator(".ac-tile")).toHaveCount(4);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Run again" })).toHaveCount(0);
+  await expect(page.locator(".sel-row").first()).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const search of ["", "show=records", "group=who"]) {
+      test(`Activity · ${width} · ${theme} · ${search || "everything"}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, `/activity${search ? `?${search}` : ""}`, theme);
+        await expect(page.locator(".sel-row").first()).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".ac-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".ac-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .ac-tile, .ac-row-link")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        if (width === 390 && !search) {
+          // The panel is a full sheet with its actions in view; Shift+click still selects a range.
+          await page.locator(".ac-row-link", { hasText: "Backup of Tier 1" }).first().click();
+          const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".btn-primary:visible")).toBeInViewport();
+          await page.keyboard.press("Escape");
+          await expect(sheet).toBeHidden();
+        }
+        if (width === 1440 && !search) {
+          const rows = page.locator(".sel-row");
+          await rows.nth(0).locator(".sel-check").click();
+          await rows.nth(3).click({ modifiers: ["Shift"] });
+          await expect(page.locator(".sel-bar-count")).toContainText("4 entries");
+          await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 4 entries");
+          await page.getByRole("button", { name: /Select all 18 entries/ }).click();
+          await expect(page.locator(".sel-bar-count")).toContainText("18 entries");
+        }
+      });
+    }
+  }
+}
 
 test("Notifications · a viewer sees what was sent and no controls", async ({ page }) => {
   await open(page, "/notifications/viewer");
@@ -863,7 +986,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
   for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/health=/);
-  await tiles.filter({ hasText: "Failed" }).click();
+  await tiles.filter({ hasText: "failed in the last 7 days" }).click();
   await expect(page).toHaveURL(/health=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.locator(".pt-filter-note")).toContainText("Showing failed only: 2 of 15.");
@@ -871,7 +994,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await page.locator("main#main-content h1").waitFor();
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await page.getByRole("link", { name: "Show every kind" }).click();
-  await expect(page.locator(".sel-row")).toHaveCount(15);
+  await expect(page.locator(".sel-row")).toHaveCount(18);
   // Shift+click picks a range; the bar says which tiers run before anything runs.
   const rows = page.locator(".sel-row");
   await rows.nth(0).locator("input").click();
@@ -886,7 +1009,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await expect(page.locator(".sel-bar")).toContainText("Runs Tier 2 and Tier 3 in full.");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Select all 15 kinds" }).click();
-  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(15);
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(18);
   await page.keyboard.press("Escape");
   // Every kind name opens its panel; every job title is a link to its job.
   for (const link of await page.locator(".pt-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
@@ -1150,6 +1273,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
   alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance"],
+  activity: ["a4", "y1", "18205", "18200", "marouanedefili@gmail.com", "sam.ortiz@contoso.example", "Graph 429: throttled after 5 retries", "GET /api/evidence/verify"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
   resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],

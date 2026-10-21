@@ -119,16 +119,19 @@ export async function summarizeJobs(client, { tenantRef, jobs }) {
 
 // kinds narrows the list in the query, so a page about one kind (restores) never loses
 // its rows to a busier kind (scheduled backups) crowding the newest-N window.
+// statuses narrows the same way, so "every failed job" is found past the newest-N window
+// of jobs that finished.
 /**
  * @param {any} client
- * @param {{ limit?: number, kinds?: string[] | null }} [options]
+ * @param {{ limit?: number, kinds?: string[] | null, statuses?: string[] | null }} [options]
  */
-export async function listJobs(client, { limit = 50, kinds = null } = {}) {
+export async function listJobs(client, { limit = 50, kinds = null, statuses = null } = {}) {
   const { rows } = await client.query(
     `SELECT *, started_at::text AS event_started_at FROM job
       WHERE ($2::text[] IS NULL OR kind = ANY($2))
+        AND ($3::text[] IS NULL OR status = ANY($3))
       ORDER BY created_at DESC LIMIT $1`,
-    [limit, kinds],
+    [limit, kinds, statuses],
   );
   return rows;
 }

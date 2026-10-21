@@ -373,16 +373,29 @@ export function guardedDispose(
   );
 }
 
+export const JOB_STATUSES = ["queued", "running", "succeeded", "failed", "cancelled"] as const;
+
 export function guardedJobList(
   deps: GuardDeps = {},
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "jobs:list", capability: "read" },
     async ({ client, tenantRef, request }) => {
-      const requestedLimit = Number(new URL(request.url).searchParams.get("limit") ?? 100);
+      const params = new URL(request.url).searchParams;
+      const requestedLimit = Number(params.get("limit") ?? 100);
       const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0
         ? requestedLimit : 100;
-      const rows = (await listJobs(client, { limit })) as Record<
+      // Activity filters: `kind` and `status` are comma-separated lists, narrowed in the
+      // query so a filtered page is never short because busier jobs crowded the window.
+      const list = (key: string, allowed?: readonly string[]) => {
+        const values = (params.get(key) ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+        if (!values.length) return null;
+        if (values.some((value) => !/^[a-z][a-z0-9-]*$/.test(value) || (allowed && !allowed.includes(value)))) throw new InvalidActionRequest();
+        return values;
+      };
+      const kinds = list("kind");
+      const statuses = list("status", JOB_STATUSES);
+      const rows = (await listJobs(client, { limit, kinds, statuses })) as Record<
         string,
         unknown
       >[];

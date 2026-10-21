@@ -38,15 +38,22 @@ export function guardedEvidenceList(deps: GuardDeps = {}) {
       if (date !== null && (!/^\d{4}-\d{2}-\d{2}(?:T.*Z)?$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date.slice(0, 10))) throw new InvalidActionRequest();
     }
     if (from && to && Date.parse(from) > Date.parse(to)) throw new InvalidActionRequest();
+    // Activity filters: `kind` takes one kind or a comma-separated list; `actor` is the
+    // actor exactly as recorded (a principal id, an email, or one of Keel's own accounts).
+    const kinds = (params.get("kind") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    if (kinds.some((kind) => !/^[a-z][a-z0-9.-]*$/.test(kind))) throw new InvalidActionRequest();
+    const actor = params.get("actor") || null;
+    if (actor !== null && (actor.length > 320 || /[\s]/.test(actor))) throw new InvalidActionRequest();
     const { rows } = await client.query(`
       SELECT seq, occurred_at, kind, subject, actor FROM evidence
       WHERE tenant_ref = $1
-        AND ($2::text IS NULL OR kind = $2)
+        AND ($2::text[] IS NULL OR kind = ANY($2))
         AND ($3::timestamptz IS NULL OR occurred_at >= $3)
         AND ($4::timestamptz IS NULL OR occurred_at <= $4)
         AND ($5::bigint IS NULL OR seq < $5)
+        AND ($7::text IS NULL OR actor = $7)
       ORDER BY seq DESC LIMIT $6`,
-    [tenantRef, params.get("kind") || null, from ? new Date(from).toISOString() : null, to ? new Date(to).toISOString() : null, before, limit + 1]);
+    [tenantRef, kinds.length ? kinds : null, from ? new Date(from).toISOString() : null, to ? new Date(to).toISOString() : null, before, limit + 1, actor]);
     const entries = rows.slice(0, limit).map((row) => ({ ...row, seq: String(row.seq) }));
     return Response.json({ entries, nextBefore: rows.length > limit ? entries.at(-1)!.seq : null, generatedAt: new Date().toISOString() }, { headers: NO_STORE });
   }, deps);

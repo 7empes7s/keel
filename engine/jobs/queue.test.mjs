@@ -227,6 +227,14 @@ const restoreOnly = await listJobs(client, { limit: 100, kinds: ['restore'] });
 assert.ok(restoreOnly.length >= 1);
 assert.ok(restoreOnly.every((job) => job.kind === 'restore'));
 
+// --- listJobs filters by status in the query, so failed jobs are found past newer ones ---
+const failedOnly = await listJobs(client, { limit: 100, statuses: ['failed'] });
+assert.ok(failedOnly.length >= 1);
+assert.ok(failedOnly.every((job) => job.status === 'failed'));
+assert.ok(failedOnly.some((job) => job.id === failed.id));
+const failedRestores = await listJobs(client, { limit: 100, kinds: ['restore'], statuses: ['failed', 'cancelled'] });
+assert.ok(failedRestores.every((job) => job.kind === 'restore' && (job.status === 'failed' || job.status === 'cancelled')));
+
 // --- resetOrphaned never reclaims a fresh heartbeat, even for the SAME worker_id ---
 const ownJob = await enqueue(client, { kind: 'collect', params: {}, requestedBy: 'test-operator' });
 await claimNext(client, { workerId: 'worker-recover-me' });

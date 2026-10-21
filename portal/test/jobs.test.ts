@@ -80,11 +80,19 @@ test("existing guarded job handlers serve the requested history limit and job de
   assert.deepEqual({ ...listed, references: undefined }, { ...normalizeJob(row), references: undefined });
   assert.equal(listed.references.people.requested_by.name, "operator");
   assert.match(queries[0].sql, /ORDER BY created_at DESC/);
-  assert.deepEqual(queries[0].values, [50, null]);
+  assert.deepEqual(queries[0].values, [50, null, null]);
   for (const limit of ["-1", "invalid", "1.5", "0"]) {
     await guardedJobList(deps)(new Request(`http://localhost/api/jobs?limit=${limit}`, { headers }));
-    assert.deepEqual(queries.at(-1)?.values, [100, null]);
+    assert.deepEqual(queries.at(-1)?.values, [100, null, null]);
   }
+  // Activity: kind and status narrow the query itself; an unknown status is refused.
+  const filtered = await guardedJobList(deps)(new Request("http://localhost/api/jobs?limit=20&kind=backup,collect&status=failed", { headers }));
+  assert.equal(filtered.status, 200);
+  assert.match(queries.at(-1)?.sql ?? "", /status = ANY/);
+  assert.deepEqual(queries.at(-1)?.values, [20, ["backup", "collect"], ["failed"]]);
+  const refused = await guardedJobList(deps)(new Request("http://localhost/api/jobs?status=exploded", { headers }));
+  assert.equal(refused.status, 400);
+  assert.equal((await guardedJobList(deps)(new Request("http://localhost/api/jobs?kind=drop%20table", { headers }))).status, 400);
   const show = await guardedJobShow(deps)(new Request(`http://localhost/api/jobs/${row.id}`, { headers }));
   assert.equal(show.status, 200);
   const shown = (await show.json()).job;

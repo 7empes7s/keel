@@ -7,13 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
-import { ActivityTimeline, mergeActivity } from "@/components/activity-timeline";
 import { JobTable } from "@/components/job-table";
 import { asPerson, entrySubjectKey } from "@/lib/activity-names";
 import { normalizeJob } from "@/lib/action";
 import { jobErrorLine } from "@/lib/job-names";
 import { nameChanges, withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type EngineRef, evidenceSentence, jobName } from "@/lib/sentences";
+import { renderActivityAt } from "./render-activity";
 
 // Activity and the job lists name people and objects, never by an email address, a
 // system code or an object id; those stay in Technical details.
@@ -122,7 +122,7 @@ test("a failed line keeps a plain error and drops the error class", () => {
   assert.equal(jobErrorLine(""), "It stopped with an error. Open the job to see what went wrong.");
 });
 
-test("audit entries name the actor and the object, never an email, code or id", () => {
+test("audit entries name the actor and the object, never an email, code or id", async () => {
   const entries = [
     { seq: "3", occurred_at: "2026-10-02T09:30:00Z", kind: "approval-decision", actor: PERSON_ID, subject: { decision: "approve" } },
     { seq: "2", occurred_at: "2026-10-02T09:20:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: GROUP_KEY, matched: true } },
@@ -134,8 +134,8 @@ test("audit entries name the actor and the object, never an email, code or id", 
     "7c6d5e4f-0000-4000-8000-0000000000aa": { kind: "person", id: "7c6d5e4f-0000-4000-8000-0000000000aa", name: null, email: null, readable: false, system: false },
   };
   const names = { [GROUP_KEY]: { name: "Finance approvers", resourceType: "group" } };
-  const html = renderToStaticMarkup(createElement(ActivityTimeline, { items: mergeActivity([], entries), people, names, now: NOW }));
-  const visible = text(html);
+  const html = await renderActivityAt("show=records", { canBackup: false, jobs: [], entries, integrity: null, people, names, now: NOW });
+  const visible = text(html.replace(/ title="[^"]*"/g, ""));
   assert.ok(visible.includes("Maro Defili approved a request"), visible);
   assert.ok(visible.includes("Policies checked a change to Finance approvers (group), and one applied"), visible);
   assert.ok(visible.includes("An account that no longer exists asked for approval"), visible);
@@ -143,7 +143,7 @@ test("audit entries name the actor and the object, never an email, code or id", 
   // Without a saved name the object is named in general words.
   assert.equal(evidenceSentence(entries[1], "Keel", {}), "Policies checked a change to Unnamed group, and one applied");
   // A lookup that failed leaves the actor as "Someone", never the stored value.
-  const unresolved = renderToStaticMarkup(createElement(ActivityTimeline, { items: mergeActivity([], entries.slice(0, 1)), people: {}, now: NOW }));
+  const unresolved = await renderActivityAt("show=records", { canBackup: false, jobs: [], entries: entries.slice(0, 1), integrity: null, people: {}, now: NOW });
   assert.ok(text(unresolved).includes("Someone approved a request"));
 });
 

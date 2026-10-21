@@ -237,6 +237,11 @@ const FIXTURE_PAYLOADS = Object.freeze({
   windowsQualityUpdatePolicy: { displayName: 'Fixture hotpatch', description: 'Fixture', hotpatchEnabled: true, roleScopeTagIds: ['0'] },
   deviceCategory: { displayName: 'Fixture category', description: 'Fixture' },
   managedDeviceCleanupRule: { displayName: 'Fixture cleanup', description: 'Fixture', deviceCleanupRulePlatformType: 'windows', deviceInactivityBeforeRetirementInDays: 90 },
+  // Restore gaps, batch 4: script bodies are base64, as Graph returns them.
+  deviceManagementScript: { displayName: 'Fixture script', description: 'Fixture', fileName: 'fixture.ps1', scriptContent: 'V3JpdGUtT3V0cHV0ICdmaXh0dXJlJw==', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false, roleScopeTagIds: ['0'] },
+  deviceShellScript: { displayName: 'Fixture shell script', description: 'Fixture', fileName: 'fixture.sh', scriptContent: 'ZWNobyBmaXh0dXJl', runAsAccount: 'system', executionFrequency: 'PT0S', retryCount: 0, blockExecutionNotifications: true, roleScopeTagIds: ['0'] },
+  deviceHealthScript: { displayName: 'Fixture remediation', description: 'Fixture', publisher: 'Fixture', detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAw', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false, roleScopeTagIds: ['0'] },
+  deviceComplianceScript: { displayName: 'Fixture compliance script', description: 'Fixture', publisher: 'Fixture', detectionScriptContent: 'cmV0dXJuIEB7fQ==', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false, roleScopeTagIds: ['0'] },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

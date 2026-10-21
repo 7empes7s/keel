@@ -335,18 +335,23 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Add the app first. Values Microsoft never returns are entered again by hand.',
   }),
   // Wave 1: backed up, no restore built yet.
-  deviceManagementScript: manual('Windows PowerShell scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
-  deviceShellScript: manual('macOS shell scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
-  deviceHealthScript: manual('Remediations', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.',
-    'Recreate your own remediations in the Intune admin center from the backup, then assign them to the groups and schedule in the backup.'),
-  deviceComplianceScript: manual('Custom compliance scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.'),
+  // Restore gaps batch 4: the script body is backed up per script.
+  deviceManagementScript: auto('Windows PowerShell scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
+  deviceShellScript: auto('macOS shell scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
+  deviceHealthScript: auto('Remediations', {
+    keeps: 'Recreates your own remediations and puts the detection and fix scripts and their settings back. Remediations published by Microsoft are left alone.',
+    todo: 'Who a remediation runs on and its schedule are not put back yet, so assign it again by hand from the backup.',
+  }),
+  deviceComplianceScript: auto('Custom compliance scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back, before the compliance policies that use them.',
+    todo: 'A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
   assignmentFilter: auto('Assignment filters', {
     keeps: 'Recreates filters and puts their rules back.',
     todo: 'A filter is never moved to another platform; recreate it by hand if its platform changed.',

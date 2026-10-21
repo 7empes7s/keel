@@ -183,6 +183,24 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-cleanup`, drift: 'lower it to 180 days: the restore puts back 270 (longer only; a shorter backup value is refused)',
     note: 'Update only: a deleted rule is recreated by hand. The test tenant has no managed devices, so no device can be retired.',
   },
+  // Restore gaps, batch 4: scripts and remediations. Each is assigned to
+  // nobody, so no device runs it; each body only prints or exits 0.
+  deviceManagementScript: {
+    kind: 'named-object', fixture: `Windows PowerShell script ${FIXTURE_PREFIX}-script (body: Write-Output 'KEEL-RT'), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-script`, drift: 'delete it: the restore recreates it with the same script body',
+  },
+  deviceShellScript: {
+    kind: 'named-object', fixture: `macOS shell script ${FIXTURE_PREFIX}-shell (body: echo KEEL-RT), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-shell`, drift: 'change its description',
+  },
+  deviceHealthScript: {
+    kind: 'named-object', fixture: `remediation ${FIXTURE_PREFIX}-remediation (detection and fix scripts both: exit 0), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-remediation`, drift: 'delete it: the restore recreates it with both script bodies',
+  },
+  deviceComplianceScript: {
+    kind: 'named-object', fixture: `custom compliance script ${FIXTURE_PREFIX}-compliance-script (body: return @{}), used by no compliance policy`,
+    select: `${FIXTURE_PREFIX}-compliance-script`, drift: 'change its description',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

@@ -263,6 +263,64 @@ test('a cleanup rule is only ever made to wait longer before retiring devices, a
   assert.match(create.failed.error, /unsupported operation/);
 });
 
+// ------------------------------------------- restore gaps, batch 4
+
+const SCRIPT_CASES = Object.freeze([
+  ['deviceManagementScript', { scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==', fileName: 'keel-rt.ps1', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false }],
+  ['deviceShellScript', { scriptContent: 'ZWNobyBLRUVMLVJU', fileName: 'keel-rt.sh', runAsAccount: 'system', executionFrequency: 'PT0S', retryCount: 0, blockExecutionNotifications: true }],
+  ['deviceHealthScript', { detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAw', publisher: 'KEEL-RT', runAsAccount: 'system', isGlobalScript: false, highestAvailableVersion: '1' }],
+  ['deviceComplianceScript', { detectionScriptContent: 'cmV0dXJuIEB7fQ==', publisher: 'KEEL-RT', runAsAccount: 'system' }],
+]);
+
+test('scripts and remediations are created with their script body, without run results or assignments', async () => {
+  for (const [type, fields] of SCRIPT_CASES) {
+    const payload = {
+      id: `${type}-1`, displayName: `KEEL-RT-${type}`, description: 'Fixture', roleScopeTagIds: ['0'], createdDateTime: 'x', lastModifiedDateTime: 'x',
+      assignments: [], runSummary: { successCount: 3 }, ...fields,
+    };
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, payload), 'create', FAST);
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const post = graph.calls.find((call) => call.method === 'POST');
+    assert.equal(post.path, `/deviceManagement/${type}s`, type);
+    assert.equal(post.version, 'beta', type);
+    for (const [field, value] of Object.entries(fields)) {
+      if (['isGlobalScript', 'highestAvailableVersion'].includes(field)) assert.equal(field in post.body, false, `${type}.${field}`);
+      else assert.deepEqual(post.body[field], value, `${type}.${field}`);
+    }
+    for (const field of ['id', 'createdDateTime', 'lastModifiedDateTime', 'assignments', 'runSummary']) assert.equal(field in post.body, false, `${type}.${field}`);
+  }
+});
+
+test('a script update writes back a changed script body', async () => {
+  const path = '/deviceManagement/deviceManagementScripts/s-1';
+  const live = { id: 's-1', displayName: 'KEEL-RT-script', description: 'Fixture', scriptContent: 'dGFtcGVyZWQ=', runAsAccount: 'system' };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementScript', { ...live, scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' }, {
+    live: { state: 'present', targetId: 's-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.deepEqual(patch.body, { scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' });
+});
+
+test('a script backed up without its body, and a Microsoft-published remediation, are never written', async () => {
+  for (const [type, fields] of SCRIPT_CASES) {
+    const { scriptContent, detectionScriptContent, ...settingsOnly } = fields;
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, { id: 'old', displayName: `KEEL-RT-${type}`, ...settingsOnly }), 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', /not the script itself/, type);
+    assert.equal(graph.calls.length, 0, type);
+  }
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceHealthScript', {
+    id: 'ms-1', displayName: 'Restart stopped Office C2R svc', publisher: 'Microsoft', isGlobalScript: true, detectionScriptContent: 'ZXhpdCAw',
+  }), 'create', FAST);
+  assert.match(result.skipped?.reason ?? '', /Microsoft publishes this remediation/);
+  assert.equal(graph.calls.length, 0);
+});
+
 // ------------------------------------------------------------------- delete
 
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {

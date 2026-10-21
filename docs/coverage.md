@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 63 at least in part; the other 85 are restored by hand from the backup.
+KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 67 at least in part; the other 81 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -342,10 +342,10 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Managed app configuration | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Windows PowerShell scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| macOS shell scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Remediations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Custom compliance scripts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Windows PowerShell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| macOS shell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Remediations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Custom compliance scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Assignment filters | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Scope tags | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows feature update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
@@ -432,18 +432,18 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* The apps it targets are not backed up yet, so a missing configuration is recreated by hand until they are.
 - **App configuration for managed devices.** Recreates configurations and puts their settings back when the app they configure exists, and removes an unassigned one added since the backup.
   - *You do:* Add the app first. Values Microsoft never returns are entered again by hand.
-- **Windows PowerShell scripts** (not built yet). KEEL backs these up but does not restore them yet.
-  - *Not brought back:* the script itself (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.
-- **macOS shell scripts** (not built yet). KEEL backs these up but does not restore them yet.
-  - *Not brought back:* the script itself (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.
-- **Remediations** (not built yet). KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.
-  - *Not brought back:* the detection and remediation scripts (stored separately and not in the backup yet); remediations published by Microsoft (set by Microsoft).
-  - *You do:* Recreate your own remediations in the Intune admin center from the backup, then assign them to the groups and schedule in the backup.
-- **Custom compliance scripts** (not built yet). KEEL backs these up but does not restore them yet.
-  - *Not brought back:* the script itself (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.
+- **Windows PowerShell scripts.** Recreates scripts and puts the script and its settings back.
+  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **macOS shell scripts.** Recreates scripts and puts the script and its settings back.
+  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **Remediations.** Recreates your own remediations and puts the detection and fix scripts and their settings back. Remediations published by Microsoft are left alone.
+  - *Not brought back:* who the remediation runs on, and its schedule (in the backup, but KEEL does not write it yet); remediations published by Microsoft (set by Microsoft).
+  - *You do:* Who a remediation runs on and its schedule are not put back yet, so assign it again by hand from the backup.
+- **Custom compliance scripts.** Recreates scripts and puts the script and its settings back, before the compliance policies that use them.
+  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
+  - *You do:* A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Assignment filters.** Recreates filters and puts their rules back.
   - *You do:* A filter is never moved to another platform; recreate it by hand if its platform changed.
 - **Scope tags.** Recreates your own tags and puts their names back.

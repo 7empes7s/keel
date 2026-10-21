@@ -791,6 +791,40 @@ function builtInScopeTag(resource, verb) {
 
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
 
+/** Each script kind and the fields that hold its script, the first of which every script has. */
+const SCRIPT_BODIES = Object.freeze({
+  deviceManagementScript: ['scriptContent'],
+  deviceShellScript: ['scriptContent'],
+  deviceHealthScript: ['detectionScriptContent', 'remediationScriptContent'],
+  deviceComplianceScript: ['detectionScriptContent'],
+});
+
+// Run results, assignments and Intune's own version bookkeeping: never part of a write body.
+const SCRIPT_SERVER_FIELDS = Object.freeze([
+  'assignments', 'groupAssignments', 'runSummary', 'deviceRunStates', 'userRunStates', 'isGlobalScript', 'highestAvailableVersion',
+]);
+
+/**
+ * A script is written only from a backup that holds its body (backups taken
+ * before the per-script read hold only its settings), and a remediation
+ * Microsoft publishes is never written: it is not tenant configuration.
+ */
+function scriptRefusal([body]) {
+  return (resource, verb) => {
+    const payload = resource.payload ?? {};
+    if (payload.isGlobalScript === true || resource.live?.payload?.isGlobalScript === true) {
+      return { outcome: 'skipped', reason: 'built-in: Microsoft publishes this remediation in every tenant, so it is never written' };
+    }
+    if (verb !== 'delete' && (typeof payload[body] !== 'string' || payload[body].length === 0)) {
+      return {
+        outcome: 'skipped',
+        reason: 'manual: this backup holds the script\'s settings but not the script itself (backups before the script read was added), so it is not written; take a new backup, or recreate the script by hand from your own copy',
+      };
+    }
+    return null;
+  };
+}
+
 /** The Wave 2 Intune records (resourceType -> record). */
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
@@ -858,6 +892,14 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     operations: ['update'], createOnly: ['deviceCleanupRulePlatformType'], refusal: cleanupRuleRefusal,
     permission: 'DeviceManagementManagedDevices.ReadWrite.All',
   }),
+  // Restore gaps, batch 4: scripts and remediations. The backup reads each
+  // script on its own, so it holds the script body; a backup without it is
+  // refused. Who a script runs on is not written (its /assign body differs
+  // from a policy's), so a recreated script is assigned again by hand.
+  ...Object.fromEntries(Object.entries(SCRIPT_BODIES).map(([resourceType, bodies]) => [resourceType, defineRecord({
+    resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update'],
+    excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  })])),
 });
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */
@@ -876,10 +918,6 @@ export function cleanupRuleRefusal(resource, verb) {
 
 /** Intune types read in wave 1 that no record can write in full, and why. */
 export const INTUNE_BEST_EFFORT = Object.freeze({
-  deviceManagementScript: 'the script body is returned only by a per-script read that is not backed up',
-  deviceShellScript: 'the script body is returned only by a per-script read that is not backed up',
-  deviceHealthScript: 'the detection and remediation script bodies are returned only by a per-script read that is not backed up',
-  deviceComplianceScript: 'the detection script body is returned only by a per-script read that is not backed up',
   groupPolicyConfiguration: 'each setting\'s presentation values are on a per-setting route that is not backed up',
   groupPolicyUploadedDefinitionFile: 'the ADMX and ADML file content is returned only per file and is not backed up',
   windowsAutopilotDeviceIdentity: 'the hardware hash is never returned; a device is re-imported from the device itself',

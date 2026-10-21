@@ -4,14 +4,21 @@ import { test } from 'node:test';
 import intuneExtended from './catalog.d/intune-extended.mjs';
 import { CATALOG, catalogEntryFor, catalogReadPath } from './catalog.mjs';
 import { GraphReader } from './graph.mjs';
+import { get } from '../../engine/collect/registry.mjs';
+import '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
-const EXPECTED = [
-  ['deviceManagementScript', '/beta/deviceManagement/deviceManagementScripts', 'tier2'],
-  ['deviceShellScript', '/beta/deviceManagement/deviceShellScripts', 'tier2'],
-  ['deviceHealthScript', '/beta/deviceManagement/deviceHealthScripts', 'tier2'],
-  ['deviceComplianceScript', '/beta/deviceManagement/deviceComplianceScripts', 'tier2'],
+// Scripts are listed, then each is read on its own: Graph returns the script
+// body only on a GET of one script.
+const SCRIPTS = [
+  ['deviceManagementScript', '/beta/deviceManagement/deviceManagementScripts', 'scriptContent'],
+  ['deviceShellScript', '/beta/deviceManagement/deviceShellScripts', 'scriptContent'],
+  ['deviceHealthScript', '/beta/deviceManagement/deviceHealthScripts', 'detectionScriptContent'],
+  ['deviceComplianceScript', '/beta/deviceManagement/deviceComplianceScripts', 'detectionScriptContent'],
+];
+
+const LISTED = [
   ['assignmentFilter', '/beta/deviceManagement/assignmentFilters', 'tier2'],
   ['roleScopeTag', '/beta/deviceManagement/roleScopeTags', 'tier2'],
   ['windowsFeatureUpdateProfile', '/beta/deviceManagement/windowsFeatureUpdateProfiles', 'tier2'],
@@ -24,6 +31,8 @@ const EXPECTED = [
   ['deviceManagementRoleAssignment', '/beta/deviceManagement/roleAssignments', 'tier1'],
 ];
 
+const EXPECTED = [...SCRIPTS.map(([type, list]) => [type, list, 'tier2']), ...LISTED];
+
 test('the extended Intune family holds exactly the planned types, all in CATALOG', () => {
   assert.deepEqual(intuneExtended.map((entry) => entry.type), EXPECTED.map(([type]) => type));
   for (const [type, , criticality] of EXPECTED) {
@@ -31,7 +40,7 @@ test('the extended Intune family holds exactly the planned types, all in CATALOG
     assert.ok(entry, `${type} is in CATALOG`);
     assert.equal(entry.criticality, criticality, type);
     assert.ok(['tenant-lockout', 'access-affecting', 'cosmetic'].includes(entry.blastRadius), type);
-    assert.ok(!entry.singleton && !entry.needsOrgId, `${type} is a plain collection`);
+    assert.ok(!entry.singleton && !entry.needsOrgId, `${type} is a collection`);
     // A page cap would leave the backup incomplete; these types are read in full.
     assert.equal(entry.pageCap, undefined, type);
   }
@@ -43,10 +52,32 @@ test('no extended Intune type duplicates an existing catalogue path', () => {
   for (const entry of intuneExtended) assert.ok(!otherPaths.has(`${entry.version}${entry.path}`), entry.type);
 });
 
+test('each script is listed, then read on its own so the backup holds its body', async () => {
+  for (const [type, list, body] of SCRIPTS) {
+    const entry = catalogEntryFor(type);
+    assert.equal(`/${entry.version}${entry.parent.path}`, list, type);
+    const urls = [];
+    const reader = {
+      async collect(version, path) {
+        urls.push(`/${version}${path}`);
+        if (path.startsWith(entry.parent.path + '?')) return { items: [{ id: 's-1' }, { id: 's-2' }], pages: 1, status: 200, capped: false, error: null };
+        const id = path.split('/').pop();
+        if (id === 's-2') return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
+        return { items: [{ id, displayName: `KEEL-RT-${type}`, [body]: 'ZWNobyBLRUVMLVJU' }], pages: 1, status: 200, capped: false, error: null };
+      },
+    };
+    const result = await get(type).adapter.collectRaw(reader, {});
+    assert.deepEqual(urls, [`${list}?$select=id`, `${list}/s-1`, `${list}/s-2`], `${type}: list, then one GET per script`);
+    assert.equal(result.error, null, type);
+    // A script deleted between the list and its own read is absent, not a failure.
+    assert.deepEqual(result.items, [{ id: 's-1', displayName: `KEEL-RT-${type}`, [body]: 'ZWNobyBLRUVMLVJU' }], `${type}: the payload is the script as Graph returns it`);
+  }
+});
+
 test('each extended Intune type reads a KEEL-RT- fixture with GET only, across pages', async () => {
   const originalFetch = globalThis.fetch;
   try {
-    for (const [type, endpoint] of EXPECTED) {
+    for (const [type, endpoint] of LISTED) {
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };

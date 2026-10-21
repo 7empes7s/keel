@@ -197,10 +197,11 @@ export const COMPLETENESS = Object.freeze({
   mobileAppConfiguration: {},
   // Wave 1 CAT-INTUNE. Assignments are backed up as relationship reads
   // (engine/collect/relationships.mjs); none of these writers puts them back yet.
-  deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
-  deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
-  deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
-  deviceComplianceScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
+  // Scripts (restore gaps batch 4): the script body is read per script and written back.
+  deviceManagementScript: { missing: [part('Who the script runs on', 'not-written')] },
+  deviceShellScript: { missing: [part('Who the script runs on', 'not-written')] },
+  deviceHealthScript: { missing: [part('Who the remediation runs on, and its schedule', 'not-written'), part('Remediations published by Microsoft', 'microsoft-managed')] },
+  deviceComplianceScript: { missing: [part('Who the script runs on', 'not-written')] },
   assignmentFilter: {},
   roleScopeTag: { missing: [part('The built-in Default tag', 'microsoft-managed')] },
   windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },

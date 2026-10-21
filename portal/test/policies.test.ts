@@ -7,21 +7,29 @@ import { visibleNavLinks } from "@/components/nav-links";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { automationDisabled } from "@/lib/policies";
-import { AutomationBanner, matchPhrase, policiesVerdict, policySentence, policyStateSentence } from "@/components/policy-state";
+import { ruleSentence, rulesStatus, rulesVerdict, ruleCounts, ruleState } from "@/lib/policy-view";
 import type { Policy } from "@/lib/policies";
+import { renderPoliciesAt } from "./render-policies";
 
-test("the automation banner reflects the halt file's absence and presence using a read-only check", () => {
+test("the page reflects the stop file's absence and presence using a read-only check, and keeps its path in the record", async () => {
   const directory = mkdtempSync(join(process.cwd(), ".policy-switch-test-"));
   const path = join(directory, "AUTOMATION_DISABLED");
   const now = "2026-10-02T09:40:00Z";
   try {
     assert.equal(automationDisabled(path), false);
-    assert.match(renderToStaticMarkup(createElement(AutomationBanner, { halted: automationDisabled(path), now })), /Automation is on\./);
+    const on = await renderPoliciesAt("", { canEdit: true, policies: [basePolicy], halted: automationDisabled(path), haltFile: path, now });
+    assert.doesNotMatch(on, /stopped by an operator/);
+    assert.deepEqual(rulesStatus(ruleCounts([basePolicy]), automationDisabled(path)), { tone: "fine", label: "Automation on" });
     writeFileSync(path, "");
     assert.equal(automationDisabled(path), true);
-    const halted = renderToStaticMarkup(createElement(AutomationBanner, { halted: automationDisabled(path), haltFile: path, now }));
-    assert.match(halted, /Automation is halted/);
-    assert.doesNotMatch(halted, /kill switch/i);
+    const halted = await renderPoliciesAt("", { canEdit: true, policies: [basePolicy], halted: automationDisabled(path), haltedAt: "2026-10-02T07:40:00Z", haltFile: path, now });
+    const [outside, record] = halted.split('data-layer="record"');
+    assert.match(outside, /Automation is stopped by an operator/);
+    assert.match(outside, /since <time[^>]*>2 hours ago<\/time>/);
+    assert.doesNotMatch(outside, /kill switch|halt file/i);
+    assert.equal(outside.includes(path), false, "the stop file's path is not in the visible text");
+    assert.ok(record.includes(path), "the stop file's path is in Technical details");
+    assert.deepEqual(rulesStatus(ruleCounts([basePolicy]), true), { tone: "urgent", label: "Automation halted" });
     assert.equal(readFileSync(path, "utf8"), "");
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -37,18 +45,22 @@ const basePolicy: Policy = {
   last_action_at: "2026-10-02T07:40:00Z", last_action_status: "executed", last_action_natural_key: "namedLocation:Branch offices", actions_last_7_days: 14,
 };
 
-test("a policy reads as what it does, acting as whom — never its codes or ids", () => {
-  assert.equal(policySentence(basePolicy),
-    "Rolls back cosmetic changes to any resource automatically, up to 50 an hour, acting as Svc Policy.");
-  assert.equal(policySentence({ ...basePolicy, action: "alert" }), "Alerts on cosmetic changes to any resource.");
-  assert.match(matchPhrase({ ...basePolicy, natural_key_glob: "group:Admin*", change_type: null, blast_radius: null }), /^changes to groups named like “Admin\*”$/);
-  assert.equal(policyStateSentence({ ...basePolicy, paused_at: "2026-10-02T07:40:00Z" }, "2026-10-02T09:40:00Z"), "Paused 2 hours ago after reaching its limit");
-  assert.equal(policyStateSentence({ ...basePolicy, enabled: false }, "2026-10-02T09:40:00Z"), "Turned off");
-  assert.match(policySentence({ ...basePolicy, run_as_principal: { ...basePolicy.run_as_principal!, readable: false, name: null } }), /acting as an account that no longer exists\./);
-  assert.match(policySentence({ ...basePolicy, run_as_principal: { ...basePolicy.run_as_principal!, name: "Policy service" } }), /acting as Policy service\.$/);
-  assert.equal(policiesVerdict([basePolicy, { ...basePolicy, paused_at: "2026-10-02T07:40:00Z" }], false), "Automation is on. 2 policies, 1 paused.");
-  for (const sentence of [policySentence(basePolicy), policiesVerdict([basePolicy], true)]) {
-    assert.doesNotMatch(sentence, /dispose-accept|auto_remediate|[0-9a-f]{8}-[0-9a-f]{4}/);
+test("a rule reads as what it does and how often, never its codes or ids", async () => {
+  const now = "2026-10-02T09:40:00Z";
+  assert.equal(ruleSentence(basePolicy), "Undoes low-risk changes to anything, up to 50 an hour.");
+  assert.equal(ruleSentence({ ...basePolicy, action: "alert" }), "Alerts on low-risk changes to anything and changes nothing.");
+  assert.equal(ruleState({ ...basePolicy, paused_at: "2026-10-02T07:40:00Z" }), "paused");
+  assert.equal(ruleState({ ...basePolicy, enabled: false }), "off");
+  const paused = rulesVerdict([basePolicy, { ...basePolicy, id: "7a1d0f3e-0000-4000-8000-000000000002", name: "Undo group changes", paused_at: "2026-10-02T07:40:00Z" }], false, now);
+  assert.equal(paused.text, "Undo group changes paused itself after hitting its limit 2 hours ago.");
+  assert.equal(paused.resume?.name, "Undo group changes");
+  // The run-as account reads as a person, by name; an unreadable one says so.
+  const html = await renderPoliciesAt("", { canEdit: true, policies: [basePolicy, { ...basePolicy, id: "7a1d0f3e-0000-4000-8000-000000000002", name: "Undo mail changes", run_as_principal: { ...basePolicy.run_as_principal!, readable: false, name: null } }], halted: false, now });
+  const [outside] = html.split('data-layer="record"');
+  assert.match(outside, /Svc Policy/);
+  assert.match(outside, /an account that no longer exists/);
+  for (const sentence of [ruleSentence(basePolicy), paused.text, outside.replace(/(href|title|data-row-id|aria-labelledby|id|for)="[^"]*"/g, "")]) {
+    assert.doesNotMatch(sentence, /dispose-accept|auto_remediate|[0-9a-f]{8}-[0-9a-f]{4}|svc-policy@/);
   }
 });
 
@@ -97,19 +109,19 @@ const preview: ActivationPreview = {
 };
 
 test("the activation preview names what it would roll back and everything it depends on above the limit", () => {
-  assert.equal(previewSentence(preview), "Ready to turn on. It would roll back 1 change now; KEEL will refuse 1 that depends on something above its limit.");
+  assert.equal(previewSentence(preview), "Ready to turn on. It would undo 1 change now; Keel will refuse 1 that depends on something above its limit.");
   assert.ok(previewSentence(preview).split(/\s+/).length <= 25);
   assert.equal(previewSentence({ ...preview, verdict: "blocked", blockers: ["unknown-impact"], unknowns: [{ reason: "unresolved-reference", naturalKeys: ["group:Finance"], detail: "x" }] }),
-    "Cannot turn on: KEEL cannot tell what rolling back 1 resource would affect.");
-  assert.equal(previewSentence({ ...preview, verdict: "blocked", blockers: ["run-as-not-authorized"] }), "Cannot turn on: the account it acts as can no longer roll back changes.");
+    "Cannot turn on: Keel cannot tell what undoing 1 change would affect.");
+  assert.equal(previewSentence({ ...preview, verdict: "blocked", blockers: ["run-as-not-authorized"] }), "Cannot turn on: the account it acts as can no longer undo changes.");
   const html = renderToStaticMarkup(createElement(ActivationPreviewView, { preview, now: "2026-10-03T09:05:00Z" }));
-  assert.match(html, /Privileged \(group\), needed by Finance \(group\)\. Impact: could lock out admins\. Above its limit, so KEEL will refuse these roll backs\./);
-  assert.match(html, /Finance \(group\) was changed\. Impact: cosmetic\.<\/li><li>Left alone: Privileged \(group\) was changed, but its impact \(could lock out admins\) is above its limit\./);
+  assert.match(html, /Privileged \(group\), needed by Finance \(group\)\. Impact: could lock out admins\. Above its limit, so Keel will refuse these undos\./);
+  assert.match(html, /Finance \(group\) was changed\. Impact: low risk\.<\/li><li>Left alone: Privileged \(group\) was changed, but its impact \(could lock out admins\) is above its limit\./);
   assert.match(html, /Deleting Payroll \(app registration\) is not supported, so it stays manual\./);
-  assert.match(html, /Policy service can roll back changes now\./);
+  assert.match(html, /Policy service can undo changes now\./);
   assert.match(html, /Groups have an owner: failing, with no exception\. Checked against a different backup than this change\./);
-  assert.match(html, /1 waiting to run, not yet rolled back/);
-  assert.match(html, /KEEL checks again before every roll back/);
+  assert.match(html, /1 waiting to run, not yet undone/);
+  assert.match(html, /Keel checks again before every undo/);
   // Everything outside the record is words; every id and version is inside it.
   const [outside, record] = html.split('data-layer="record"');
   assert.doesNotMatch(outside, /[0-9a-f]{8}-[0-9a-f]{4}|[0-9a-f]{32,}|group:|auto_remediate|tenant-lockout|closure|blast radius|projection/i);
@@ -118,11 +130,11 @@ test("the activation preview names what it would roll back and everything it dep
   }
 });
 
-test("a queued roll back is never reported as done, and refusals say what changed", () => {
-  assert.equal(outcomesSentence({ queued: 2, rolledBack: 0, failed: 0 }), "2 waiting to run, not yet rolled back");
-  assert.doesNotMatch(outcomesSentence({ queued: 2, rolledBack: 0, failed: 0 }), /\b2 rolled back/);
+test("a queued undo is never reported as done, and refusals say what changed", () => {
+  assert.equal(outcomesSentence({ queued: 2, rolledBack: 0, failed: 0 }), "2 waiting to run, not yet undone");
+  assert.doesNotMatch(outcomesSentence({ queued: 2, rolledBack: 0, failed: 0 }), /\b2 undone/);
   assert.equal(outcomesSentence({ queued: 0, rolledBack: 0, failed: 0 }), "It has not acted yet.");
-  assert.equal(outcomesSentence({ queued: 1, rolledBack: 3, failed: 1 }), "1 waiting to run, not yet rolled back · 3 rolled back · 1 failed or refused");
+  assert.equal(outcomesSentence({ queued: 1, rolledBack: 3, failed: 1 }), "1 waiting to run, not yet undone · 3 undone · 1 failed or refused");
   assert.equal(refusalSentence("preview-stale", ["grant"]), "The account's access changed since the preview. Preview again.");
   assert.equal(refusalSentence("preview-stale", ["policy", "ownership"]), "The policy and who owns what it touches changed since the preview. Preview again.");
   assert.equal(refusalSentence("preview-used"), "This preview was already used. Preview again.");

@@ -10,7 +10,7 @@ import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
 import { grantRole } from '../authz/administration.mjs';
-import { createPolicy, getPolicy, listPolicies } from '../policy/evaluate.mjs';
+import { createPolicy, getPolicy, listPolicies, listPolicyActions } from '../policy/evaluate.mjs';
 import { requestApproval, summarizeApprovalRequests, listApprovalRequests } from '../govern/approvals.mjs';
 import { enqueue, listJobs, summarizeJobs } from '../jobs/queue.mjs';
 import { createDryRunArtifact } from '../restore/dryRunArtifact.mjs';
@@ -96,7 +96,18 @@ test('mutation check: a policy row carries its run-as principal as a name, and i
   assert.equal(Object.hasOwn(row, 'run_as_principal_email'), false, 'the join columns are folded into the reference');
   assert.equal(row.last_action_natural_key, 'namedLocation:Branch offices');
   assert.equal(row.last_action_status, 'executed');
+  assert.equal(row.last_action_job_id, job.id, 'the last action names the job that ran it');
   assert.equal(row.actions_last_7_days, 1);
+
+  // The policy's action history: newest first, each with its job and the change it acted on.
+  const actions = await listPolicyActions(client, { tenantRef, policyId: policy.id });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].job_id, job.id);
+  assert.equal(actions[0].status, 'executed');
+  assert.equal(actions[0].natural_key, 'namedLocation:Branch offices');
+  assert.equal(actions[0].resource_type, 'namedLocation');
+  assert.equal(actions[0].drift_id, changed);
+  assert.deepEqual(await listPolicyActions(client, { tenantRef: tenant(), policyId: policy.id }), [], 'another tenant sees no actions');
   assert.equal(listed.find((entry) => entry.id === withoutRunAs.id).run_as_principal, null);
 
   assert.deepEqual((await getPolicy(client, { tenantRef, id: policy.id })).run_as_principal.name, 'Policy service');

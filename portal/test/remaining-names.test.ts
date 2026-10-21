@@ -7,12 +7,12 @@ import { compareWorkloads } from "../../engine/govern/compare.mjs";
 import { IntentCard } from "@/components/change-intent";
 import { exclusionLabel } from "@/components/incident-recovery";
 import { ActivationPreviewView } from "@/components/policy-preview";
-import { PolicyCard } from "@/components/policy-state";
 import { recordTitle, type ChangeRecord } from "@/lib/ask-view";
 import { intentResource, type ChangeIntent } from "@/lib/change-intents-view";
 import { exceptionSentence } from "@/lib/compliance-view";
 import { previewNames, type ActivationPreview, type Policy } from "@/lib/policies";
 import { withApproverNames } from "@/lib/portal-data";
+import { renderPoliciesAt } from "./render-policies";
 import type { BaselineRecord, ComplianceFinding } from "@/lib/types";
 
 // Emergency changes, Policies, Baselines and the smaller spots name what they are about
@@ -25,7 +25,7 @@ const GROUP_ID = "6c2d3e4f-0000-4000-8000-0000000000aa";
 const NOW = "2026-10-17T10:00:00Z";
 
 function visible(html: string): string {
-  return html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/(href|value|title)="[^"]*"/g, "");
+  return html.replace(/<details[\s\S]*?<\/details>/g, "").replace(/(href|value|title|data-row-id|aria-labelledby|id|for)="[^"]*"/g, "");
 }
 
 const person = (id: string, email: string | null, name: string | null) => ({ id, email, name, readable: email != null });
@@ -62,13 +62,14 @@ const policy: Policy = {
   actions_last_7_days: 3,
 };
 
-test("a policy says what it last acted on and who it acts as by name", () => {
-  const shown = visible(renderToStaticMarkup(createElement(PolicyCard, { policy, now: NOW })));
-  assert.match(shown, /Last acted 2 hours ago on Disable USB storage \(device management script\)\./);
-  assert.match(shown, /acting as Svc Policy\./);
+test("a rule says what it last acted on and who it acts as by name", async () => {
+  const shown = visible(await renderPoliciesAt("", { canEdit: true, policies: [policy], halted: false, now: NOW }));
+  assert.match(shown, /Last undid Disable USB storage 2 hours ago/);
+  assert.match(shown, /Svc Policy/, "the run-as account reads as a name drawn from its email");
+  assert.doesNotMatch(shown, /svc-policy@contoso\.com/);
   assert.doesNotMatch(shown, GUID);
-  const unnamed = visible(renderToStaticMarkup(createElement(PolicyCard, { policy: { ...policy, last_action_name: null, last_action_resource_type: null }, now: NOW })));
-  assert.match(unnamed, /on Unnamed setting\./);
+  const unnamed = visible(await renderPoliciesAt("", { canEdit: true, policies: [{ ...policy, last_action_name: null, last_action_resource_type: null }], halted: false, now: NOW }));
+  assert.match(unnamed, /Last undid an unnamed setting 2 hours ago/);
   assert.doesNotMatch(unnamed, GUID);
 });
 
@@ -106,7 +107,7 @@ test("the activation preview lists every resource by its saved name", async () =
   const shown = visible(html);
   assert.match(shown, /Disable USB storage \(device management script\) was changed/);
   assert.match(shown, /Finance \(group\), needed by Disable USB storage \(device management script\)/);
-  assert.match(shown, /Svc Policy can roll back changes now/);
+  assert.match(shown, /Svc Policy can undo changes now/);
   assert.doesNotMatch(shown, GUID);
   // A failed lookup leaves names empty, never the preview down.
   assert.deepEqual(await previewNames({ async query() { throw new Error("down"); } }, "tenant", preview), {});

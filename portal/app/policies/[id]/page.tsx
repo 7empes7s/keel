@@ -1,15 +1,17 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+
 import { GET as loadPolicy } from "@/app/api/policies/[id]/route";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { AutomationBanner, PolicyCard, policySentence, policyStateSentence } from "@/components/policy-state";
-import { Verdict } from "@/components/verdict";
-import type { Policy } from "@/lib/policies";
+import { PolicyPage as PolicyBody } from "@/components/policies/policy-page";
+import { RULE_KINDS, RULE_STATES, ruleKind, ruleState } from "@/lib/policy-view";
+import type { Policy, PolicyAction } from "@/lib/policies";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
+// One rule's page: its state in the header, the sentence once, what it watches, does
+// and acts as, its newest actions, and the controls.
 export default async function PolicyPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.policyPage);
@@ -18,19 +20,20 @@ export default async function PolicyPage({ params }: { params: Promise<{ id: str
   try {
     response = await loadPolicy(new Request(`http://localhost/api/policies/${encodeURIComponent(id)}`, { headers: await headers() }));
   } catch {
-    return <><PageHeader section="Automation center" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
+    return <><PageHeader description="This rule could not be read." section="Automation center" title="Automatic rule" /><DataUnavailable surface="This rule" /></>;
   }
   if (response.status === 404) notFound();
-  if (!response.ok) return <><PageHeader section="Automation center" title="Policy" description="This policy could not be read." /><DataUnavailable surface="This policy" /></>;
-  const { policy, automationDisabled, generatedAt } = await response.json() as { policy: Policy; automationDisabled: boolean; generatedAt: string };
-  const state = policyStateSentence(policy, generatedAt);
+  if (!response.ok) return <><PageHeader description="This rule could not be read." section="Automation center" title="Automatic rule" /><DataUnavailable surface="This rule" /></>;
+  const { policy, actions = [], automationDisabled, generatedAt } = await response.json() as { policy: Policy; actions?: PolicyAction[]; automationDisabled: boolean; generatedAt: string };
+  const state = RULE_STATES[ruleState(policy)];
   return <>
-    <PageHeader section="Automation center" title={policy.name} description="What this policy does, acting as whom, and what it last did." generatedAt={generatedAt} />
-    <Verdict text={`${state}. ${policySentence(policy)}`} tone={state === "Running" ? "good" : "attention"} />
-    <div data-layer="explanation">
-      <Link className="text-link back-link" href="/policies"><span aria-hidden="true">←</span> All policies</Link>
-      <AutomationBanner halted={automationDisabled} now={generatedAt} />
-      <PolicyCard canEdit={access.capabilities.includes("policies")} linkName={false} now={generatedAt} policy={policy} />
-    </div>
+    <PageHeader
+      description={`${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`}
+      generatedAt={generatedAt}
+      section="Automation center"
+      status={{ tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }}
+      title={policy.name}
+    />
+    <PolicyBody actions={actions} canEdit={access.capabilities.includes("policies")} halted={automationDisabled} now={generatedAt} policy={policy} />
   </>;
 }

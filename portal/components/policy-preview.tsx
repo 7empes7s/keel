@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { ActivationPreview, PreviewDrift } from "@/lib/policies";
 import { namedSubject } from "@/lib/job-names";
@@ -9,17 +10,22 @@ import { ago, formatTimestamp, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 
-// Roadmap task-92: what turning an automatic roll-back policy on would do, shown before
+// Roadmap task-92: what turning an undo rule on would do, shown before
 // it is turned on. The preview is frozen server-side; "Turn on" sends only its id, and
 // the server refuses if the policy, the account's access, ownership or the changes it
-// would act on moved since. Turning it on authorizes nothing: every roll back is
+// would act on moved since. Turning it on authorizes nothing: every undo is
 // checked again when it runs.
+
+/** "CREOS" -> "Creos": an owner code as a word. */
+function titleCase(code: string): string {
+  return code.toLowerCase().replace(/(^|[\s-])\p{L}/gu, (letter) => letter.toUpperCase());
+}
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-const IMPACT_WORDS: Record<string, string> = { cosmetic: "cosmetic", "access-affecting": "affects access", "tenant-lockout": "could lock out admins" };
+const IMPACT_WORDS: Record<string, string> = { cosmetic: "low risk", "access-affecting": "affects access", "tenant-lockout": "could lock out admins" };
 
 function impactWords(blastRadius: string | null): string {
   return (blastRadius && IMPACT_WORDS[blastRadius]) || "not rated";
@@ -30,11 +36,11 @@ const OPERATION_WORDS: Record<string, string> = {
   create: "Recreating", update: "Updating", delete: "Deleting", "restore-soft-deleted": "Restoring from the recycle bin",
 };
 const UNKNOWN_WORDS: Record<string, string> = {
-  "scope-unresolved": "KEEL could not find the backup it would restore from",
-  "not-in-backup": "it is not in the backup KEEL would restore from",
+  "scope-unresolved": "Keel could not find the backup it would restore from",
+  "not-in-backup": "it is not in the backup Keel would restore from",
   "unresolved-reference": "it refers to something that is not in the backup",
   "impact-unknown": "its impact is not rated",
-  "operation-unknown": "KEEL does not recognise the kind of change",
+  "operation-unknown": "Keel does not recognise the kind of change",
 };
 const FINDING_VERDICTS: Record<string, string> = {
   pass: "passing", fail: "failing", unknown: "not known", "not-applicable": "does not apply", exception: "excepted",
@@ -47,28 +53,28 @@ const CHANGED_WORDS: Record<string, string> = {
 /** The preview's own one-line answer. Under 25 words, no codes. */
 export function previewSentence(preview: ActivationPreview): string {
   if (preview.blockers.includes("automation-halted")) return "Cannot turn on while automation is halted.";
-  if (preview.blockers.includes("run-as-not-authorized")) return "Cannot turn on: the account it acts as can no longer roll back changes.";
+  if (preview.blockers.includes("run-as-not-authorized")) return "Cannot turn on: the account it acts as can no longer undo changes.";
   if (preview.blockers.includes("unknown-impact")) {
     const keys = new Set(preview.unknowns.flatMap((unknown) => unknown.naturalKeys));
-    return `Cannot turn on: KEEL cannot tell what rolling back ${plural(Math.max(keys.size, 1), "resource")} would affect.`;
+    return `Cannot turn on: Keel cannot tell what undoing ${plural(Math.max(keys.size, 1), "change")} would affect.`;
   }
   if (preview.matched.length === 0) return "Ready to turn on. Nothing matches it right now.";
   const refused = refusedMatches(preview).length;
-  const now = `Ready to turn on. It would roll back ${plural(preview.matched.length, "change")} now`;
-  return refused > 0 ? `${now}; KEEL will refuse ${refused} that ${refused === 1 ? "depends" : "depend"} on something above its limit.` : `${now}.`;
+  const now = `Ready to turn on. It would undo ${plural(preview.matched.length, "change")} now`;
+  return refused > 0 ? `${now}; Keel will refuse ${refused} that ${refused === 1 ? "depends" : "depend"} on something above its limit.` : `${now}.`;
 }
 
-/** Matched changes whose roll back depends on something above the policy's limit. */
+/** Matched changes whose undo depends on something above the rule's limit. */
 function refusedMatches(preview: ActivationPreview): PreviewDrift[] {
   const blocked = new Set(preview.dependencies.filter((dependency) => dependency.overCeiling).flatMap((dependency) => dependency.requiredBy));
   return preview.matched.filter((drift) => blocked.has(drift.naturalKey));
 }
 
-/** "1 waiting to run, not yet rolled back · 5 rolled back · 1 failed or refused". */
+/** "1 waiting to run, not yet undone · 5 undone · 1 failed or refused". */
 export function outcomesSentence(outcomes: { queued: number; rolledBack: number; failed: number }): string {
   const parts = [
-    outcomes.queued ? `${outcomes.queued} waiting to run, not yet rolled back` : null,
-    outcomes.rolledBack ? `${outcomes.rolledBack} rolled back` : null,
+    outcomes.queued ? `${outcomes.queued} waiting to run, not yet undone` : null,
+    outcomes.rolledBack ? `${outcomes.rolledBack} undone` : null,
     outcomes.failed ? `${outcomes.failed} failed or refused` : null,
   ].filter(Boolean);
   return parts.length ? parts.join(" · ") : "It has not acted yet.";
@@ -83,15 +89,15 @@ export function refusalSentence(code: string, changed: string[] = []): string {
     }
     case "preview-expired": return "The preview expired. Preview again.";
     case "preview-used": return "This preview was already used. Preview again.";
-    case "already-active": return "The policy is already on.";
-    case "preview-blocked": return "KEEL cannot turn it on now. Preview again to see why.";
-    default: return "The policy could not be turned on.";
+    case "already-active": return "The rule is already on.";
+    case "preview-blocked": return "Keel cannot turn it on now. Preview again to see why.";
+    default: return "The rule could not be turned on.";
   }
 }
 
 function limitSentence(preview: ActivationPreview): string {
   const ceiling = impactWords(preview.limits.maxBlastRadius);
-  return `Acts only on changes whose impact is ${ceiling} or lower, and refuses a roll back if anything it depends on is rated higher.`;
+  return `Acts only on changes rated ${ceiling} or lower, and refuses an undo if anything it depends on is rated higher.`;
 }
 
 function rateSentence(preview: ActivationPreview): string | null {
@@ -111,7 +117,7 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
     <section aria-label={`What turning on ${preview.policy.name} would do`} className="policy-preview">
       <p className={`policy-preview-sentence ${preview.verdict === "ready" ? "is-ready" : "is-blocked"}`} role="status">{previewSentence(preview)}</p>
 
-      <h3>What it would roll back now</h3>
+      <h3>What it would undo now</h3>
       <ul className="policy-facts">
         {preview.matched.length === 0 ? <li>Nothing matches it right now.</li> : null}
         {preview.matched.map((drift) => (
@@ -128,7 +134,7 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
           {preview.dependencies.map((dependency) => (
             <li className={dependency.overCeiling ? "is-over-limit" : undefined} key={dependency.naturalKey}>
               {resourceLabel(dependency.naturalKey)}, needed by {dependency.requiredBy.map((key) => resourceLabel(key)).join(", ")}. Impact: {impactWords(dependency.blastRadius)}.
-              {dependency.overCeiling ? " Above its limit, so KEEL will refuse these roll backs." : null}
+              {dependency.overCeiling ? " Above its limit, so Keel will refuse these undos." : null}
             </li>
           ))}
         </ul>
@@ -144,7 +150,7 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
       </> : null}
 
       {preview.unknowns.length > 0 ? <>
-        <h3>What KEEL cannot tell</h3>
+        <h3>What Keel cannot tell</h3>
         <ul className="policy-facts">
           {preview.unknowns.map((unknown, index) => (
             <li key={`${unknown.reason}-${index}`}>{unknown.naturalKeys.map((key) => resourceLabel(key)).join(", ") || "A matched change"}: {UNKNOWN_WORDS[unknown.reason] ?? "its effect is not known"}.</li>
@@ -158,10 +164,10 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
           {runAs.readable
             ? personLabel({ kind: "person", id: runAs.principalId ?? "", name: runAs.name === runAs.email ? null : runAs.name, email: runAs.email, readable: true }, "An account without a name")
             : "An account that is no longer readable"}
-          {preview.runAs.authorized ? " can roll back changes now." : " cannot roll back changes now."}
+          {preview.runAs.authorized ? " can undo changes now." : " cannot undo changes now."}
         </li>
         {preview.runAs.grants.map((grant) => (
-          <li key={grant.id}>{words(grant.role)}{grant.scope !== "*" ? ` for ${grant.scope.replace(/^entity:/, "")}` : ""}, granted <time dateTime={grant.activeFrom ?? undefined} title={formatTimestamp(grant.activeFrom)}>{ago(grant.activeFrom, now)}</time>{grant.activeUntil ? `, until ${formatTimestamp(grant.activeUntil)}` : ""}.</li>
+          <li key={grant.id}>{words(grant.role)}{grant.scope !== "*" ? ` for ${titleCase(grant.scope.replace(/^entity:/, ""))}` : ""}, granted <time dateTime={grant.activeFrom ?? undefined} title={formatTimestamp(grant.activeFrom)}>{ago(grant.activeFrom, now)}</time>{grant.activeUntil ? `, until ${formatTimestamp(grant.activeUntil)}` : ""}.</li>
         ))}
       </ul>
 
@@ -169,17 +175,17 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
       <ul className="policy-facts">
         <li>{limitSentence(preview)}</li>
         {rate ? <li>{rate}</li> : null}
-        {preview.limits.automationHalted ? <li>Automation is halted. Nothing acts until the halt file is removed.</li> : null}
+        {preview.limits.automationHalted ? <li>Automation is stopped by an operator. Nothing acts until it is started again.</li> : null}
         {overLimit.length > 0 ? <li>{plural(overLimit.length, "resource")} it depends on {overLimit.length === 1 ? "is" : "are"} above its limit.</li> : null}
       </ul>
 
       {preview.benchmarkFindings.state === "unavailable" || preview.benchmarkFindings.findings.length > 0 ? <>
-        <h3>Related benchmark findings</h3>
+        <h3>Security checks it affects</h3>
         <ul className="policy-facts">
-          {preview.benchmarkFindings.state === "unavailable" ? <li>Benchmark results could not be read.</li> : null}
+          {preview.benchmarkFindings.state === "unavailable" ? <li>Security check results could not be read.</li> : null}
           {preview.benchmarkFindings.findings.map((finding) => (
             <li key={finding.id}>
-              {finding.title ?? "A benchmark control"}: {FINDING_VERDICTS[finding.verdict] ?? "not known"}{finding.exposed ? ", with no exception" : ""}.
+              {finding.title ?? "A security check"}: {FINDING_VERDICTS[finding.verdict] ?? "not known"}{finding.exposed ? ", with no exception" : ""}.
               {finding.link === "linked" ? " Checked against the same backup as this change." : " Checked against a different backup than this change."}
             </li>
           ))}
@@ -192,7 +198,7 @@ export function ActivationPreviewView({ preview, now }: { preview: ActivationPre
       </> : null}
 
       <p className="policy-preview-note">
-        This preview holds until <time dateTime={preview.expiresAt} title={formatTimestamp(preview.expiresAt)}>{formatTimestamp(preview.expiresAt)}</time>. Turning the policy on approves nothing in advance: KEEL checks again before every roll back.
+        This preview holds until <time dateTime={preview.expiresAt} title={formatTimestamp(preview.expiresAt)}>{formatTimestamp(preview.expiresAt)}</time>. Turning the rule on approves nothing in advance: Keel checks again before every undo.
       </p>
 
       <TechnicalDetails summary="Technical details for this preview">
@@ -238,7 +244,7 @@ export function PolicyActivation({ policyId, name, now, initialPreview = null }:
     try {
       const response = await post("activation-preview", {});
       if (!response.ok) {
-        toast({ tone: "warning", title: "No preview", detail: "KEEL could not work out what this policy would do. Try again in a minute." });
+        toast({ tone: "warning", title: "No preview", detail: "Keel could not work out what this rule would do. Try again in a minute." });
         return;
       }
       setPreview(((await response.json()) as { preview: ActivationPreview }).preview);
@@ -257,7 +263,7 @@ export function PolicyActivation({ policyId, name, now, initialPreview = null }:
         setPreview(null);
         return;
       }
-      toast({ title: `${name} turned on`, detail: "KEEL checks again before every roll back." });
+      toast({ title: `${name} turned on`, detail: "Keel checks again before every undo." });
       // A full reload: these controls also render outside an app router (page tests).
       window.location.reload();
     } finally {
@@ -274,8 +280,8 @@ export function PolicyActivation({ policyId, name, now, initialPreview = null }:
             Turn on
           </button>
         ) : null}
-        <button aria-busy={busy === "preview"} className="btn btn-secondary btn-sm" disabled={busy !== null} onClick={() => void loadPreview()} type="button">
-          {preview ? "Preview again" : "Preview turning on"}
+        <button aria-busy={busy === "preview"} className={preview ? "btn btn-sm" : "btn btn-primary btn-sm"} disabled={busy !== null} onClick={() => void loadPreview()} type="button">
+          <Icon name="show" />{preview ? "Preview again" : "Preview turning on"}
         </button>
       </div>
     </div>

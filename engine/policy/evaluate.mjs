@@ -152,13 +152,13 @@ const POLICY_VIEW = `
   SELECT p.*,
          rp.email AS run_as_principal_email, rp.display_name AS run_as_principal_display_name,
          last_action.queued_at AS last_action_at, last_action.status AS last_action_status,
-         last_action.natural_key AS last_action_natural_key,
+         last_action.natural_key AS last_action_natural_key, last_action.job_id AS last_action_job_id,
          (SELECT count(*)::int FROM auto_remediation_execution e
            WHERE e.policy_id = p.id AND e.queued_at > now() - interval '7 days') AS actions_last_7_days
     FROM policy p
     LEFT JOIN principal rp ON rp.id = p.run_as_principal_id
     LEFT JOIN LATERAL (
-      SELECT e.queued_at, e.status, d.natural_key FROM auto_remediation_execution e
+      SELECT e.queued_at, e.status, e.job_id, d.natural_key FROM auto_remediation_execution e
         LEFT JOIN drift d ON d.id = e.drift_id
        WHERE e.policy_id = p.id ORDER BY e.queued_at DESC LIMIT 1
     ) last_action ON true`;
@@ -187,6 +187,25 @@ export async function listPolicies(client, { tenantRef, enabled } = {}) {
     [tenantRef, enabled ?? null],
   );
   return rows.map(withRunAs);
+}
+
+/** The newest automatic actions of one policy, each with the job that ran it and the
+ * change it acted on (key, type, and the saved display name when the change carries
+ * one), so the portal lists them by name with a link to the job. */
+export async function listPolicyActions(client, { tenantRef, policyId, limit = 20 }) {
+  const { rows } = await client.query(
+    `SELECT e.job_id::text AS job_id, e.status, e.queued_at, e.finished_at, e.error, e.drift_id::text AS drift_id,
+            d.natural_key, d.resource_type, d.change_type, d.blast_radius,
+            coalesce(d.after_payload->>'displayName', d.before_payload->>'displayName',
+                     d.after_payload->>'name', d.before_payload->>'name') AS display_name
+       FROM auto_remediation_execution e
+       LEFT JOIN drift d ON d.id = e.drift_id
+      WHERE e.tenant_ref = $1 AND e.policy_id::text = $2
+      ORDER BY e.queued_at DESC, e.job_id
+      LIMIT $3`,
+    [tenantRef, policyId, limit],
+  );
+  return rows;
 }
 
 export async function getPolicy(client, { tenantRef, id }) {

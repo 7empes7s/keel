@@ -29,8 +29,10 @@ import { CreateWizard } from "@/components/baselines/create-wizard";
 import { quickComparisons, setupStatus, setupVerdict as approvedVerdict, typeService } from "@/lib/baselines-view";
 import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
+import { Icon } from "@/components/shell/icons";
 import { PrincipalDetails } from "@/components/principal-details";
-import { AutomationBanner, PolicyCard, policiesVerdict, policySentence } from "@/components/policy-state";
+import { PoliciesPage } from "@/components/policies/policies-page";
+import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
@@ -51,7 +53,8 @@ import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { integrationsPageVerdict } from "@/lib/integrations-view";
 import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
-import type { ActivationPreview, Policy } from "@/lib/policies";
+import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
+import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
@@ -113,7 +116,7 @@ function completionResources() {
   ];
 }
 const HARNESS_PEOPLE = [
-  { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users"], role_grants: [] },
+  { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users", "remediate"], role_grants: [] },
   { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["read", "approve"], role_grants: [] },
 ];
 // The newest delivery on the Teams channel failed, so Settings says a channel is failing.
@@ -143,6 +146,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   // Task-92: the activation preview of policy p2, and a turn-on refused because the
   // run-as account's access changed after the preview.
   if (url.endsWith("/activation-preview")) return json({ preview: { ...ACTIVATION_PREVIEW, id: "9a0c0000-0000-4000-8000-000000000093" } }, 201);
+  // Policies: turning a rule off or on and resuming it succeed; a new rule lands on p2's page.
+  if (/\/api\/policies\/[^/]+\/(enabled|clear-pause)$/.test(url)) return json({ policy: {} });
+  if (url.endsWith("/api/policies") && init?.method === "POST") return json({ policy: { id: "p2" } }, 201);
   if (url.endsWith("/activate")) return json({ error: "preview-stale", changed: ["grant"] }, 409);
   // Task-93: approving your own emergency change is refused; a revoke succeeds.
   if (url.endsWith("/api/change-intents")) return json({ error: "owner-is-approver" }, 409);
@@ -374,23 +380,44 @@ const initialJobs = [
 ];
 
 const POLICY: Policy = {
-  id: "7a1d0f3e-0000-4000-8000-000000000001", name: "Auto-accept cosmetic drift", enabled: true, paused_at: null, run_as_repair_required: false,
+  id: "7a1d0f3e-0000-4000-8000-000000000001", name: "Undo low-risk changes", enabled: true, paused_at: null, run_as_repair_required: false,
   run_as_principal_id: "3f9c2b1e-0000-4000-8000-000000000002",
-  run_as_principal: { id: "3f9c2b1e-0000-4000-8000-000000000002", email: "svc-policy@contoso.com", name: "svc-policy@contoso.com", readable: true },
+  run_as_principal: { id: "3f9c2b1e-0000-4000-8000-000000000002", email: "svc-policy@contoso.com", name: "Policy service account", readable: true },
   resource_type: null, blast_radius: "cosmetic", natural_key_glob: null, change_type: "modified", action: "auto_remediate",
   max_blast_radius: "cosmetic", max_actions_per_window: 50, window_seconds: 3600, created_by: "marouanedefili@gmail.com", created_at: "2026-09-12T08:00:00Z",
-  last_action_at: "2026-10-02T07:40:00Z", last_action_status: "executed", last_action_natural_key: "namedLocation:Branch offices", actions_last_7_days: 14,
+  last_action_at: "2026-10-02T07:40:00Z", last_action_status: "executed", last_action_natural_key: "namedLocation:Branch offices", last_action_job_id: "a3",
+  last_action_name: "Branch offices", last_action_resource_type: "namedLocation", actions_last_7_days: 14,
 };
-const POLICIES: Policy[] = [POLICY, {
-  ...POLICY, id: "7a1d0f3e-0000-4000-8000-000000000003", name: "Alert on lockout risk", action: "alert", blast_radius: "tenant-lockout", change_type: null,
-  max_blast_radius: "tenant-lockout", max_actions_per_window: null, window_seconds: null, run_as_principal_id: null, run_as_principal: null,
-  last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
-}];
-// Task-92: an automatic policy that is off, with its activation preview open.
+const NO_ACTION = { last_action_at: null, last_action_status: null, last_action_natural_key: null, last_action_job_id: null, last_action_name: null, last_action_resource_type: null, actions_last_7_days: 0 };
+// Task-92: an undo rule that is off, with its activation preview open.
 const OFF_POLICY: Policy = {
-  ...POLICY, id: "7a1d0f3e-0000-4000-8000-000000000004", name: "Roll back group changes", enabled: false, resource_type: "group", blast_radius: null,
-  last_action_at: null, last_action_status: null, last_action_natural_key: null, actions_last_7_days: 0,
+  ...POLICY, ...NO_ACTION, id: "7a1d0f3e-0000-4000-8000-000000000004", name: "Undo changes to admin groups", enabled: false, resource_type: "group", blast_radius: null,
+  change_type: null, natural_key_glob: "group:Admin*", max_blast_radius: "access-affecting", max_actions_per_window: 5,
 };
+// The list: a running undo rule, a paused approval rule, an undo rule stopped because its
+// account needs repair, the undo rule that is off, and an alert rule.
+const PAUSED_POLICY: Policy = {
+  ...POLICY, ...NO_ACTION, id: "7a1d0f3e-0000-4000-8000-000000000005", name: "Ask before changing sign-in rules", action: "require_approval",
+  resource_type: "conditionalAccessPolicy", blast_radius: null, change_type: null, max_blast_radius: "access-affecting", max_actions_per_window: 10,
+  paused_at: "2026-10-02T08:55:00Z", run_as_principal_id: null, run_as_principal: null, actions_last_7_days: 10,
+  last_action_at: "2026-10-02T08:55:00Z", last_action_status: "queued", last_action_natural_key: "conditionalAccessPolicy:Block legacy auth", last_action_name: "Block legacy auth", last_action_resource_type: "conditionalAccessPolicy",
+};
+const STOPPED_POLICY: Policy = {
+  ...POLICY, ...NO_ACTION, id: "7a1d0f3e-0000-4000-8000-000000000006", name: "Undo mail flow changes", resource_type: "exchangeTransportRule", blast_radius: null,
+  run_as_repair_required: true, run_as_principal_id: "8c1e0000-0000-4000-8000-0000000000b4",
+  run_as_principal: { id: "8c1e0000-0000-4000-8000-0000000000b4", email: "lee.chen@contoso.example", name: "Lee Chen", readable: true },
+  max_actions_per_window: null, window_seconds: null,
+};
+const POLICIES: Policy[] = [POLICY, PAUSED_POLICY, STOPPED_POLICY, OFF_POLICY, {
+  ...POLICY, ...NO_ACTION, id: "7a1d0f3e-0000-4000-8000-000000000003", name: "Alert on changes that could lock out admins", action: "alert", blast_radius: "tenant-lockout", change_type: null,
+  max_blast_radius: "tenant-lockout", max_actions_per_window: null, window_seconds: null, run_as_principal_id: null, run_as_principal: null,
+}];
+// The running rule's newest actions: one undone, one failed, one waiting.
+const POLICY_ACTIONS: PolicyAction[] = [
+  { job_id: "r11", status: "queued", queued_at: "2026-10-02T09:30:00Z", finished_at: null, error: null, drift_id: "d9200000-0000-4000-8000-000000000011", natural_key: "group:Sales", resource_type: "group", change_type: "modified", blast_radius: "cosmetic", name: "Sales" },
+  { job_id: "a3", status: "executed", queued_at: "2026-10-02T07:38:00Z", finished_at: "2026-10-02T07:40:00Z", error: null, drift_id: "d9200000-0000-4000-8000-000000000012", natural_key: "namedLocation:Branch offices", resource_type: "namedLocation", change_type: "modified", blast_radius: "cosmetic", name: "Branch offices" },
+  { job_id: "r12", status: "failed", queued_at: "2026-10-01T09:10:00Z", finished_at: "2026-10-01T09:15:00Z", error: "Graph 403: Authorization_RequestDenied on PATCH /groups/5d1c0000-0000-4000-8000-0000000000f2", drift_id: "d9200000-0000-4000-8000-000000000013", natural_key: "group:Helpdesk admins", resource_type: "group", change_type: "modified", blast_radius: "cosmetic", name: "Helpdesk admins" },
+];
 const ACTIVATION_PREVIEW: ActivationPreview = {
   id: "9a0c0000-0000-4000-8000-000000000092", requestedBy: "8c1e0000-0000-4000-8000-0000000000a1",
   createdAt: "2026-10-02T09:38:00Z", expiresAt: "2026-10-02T10:08:00Z",
@@ -1656,26 +1683,20 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <h2>Ended</h2>
         <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state !== "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
       </div></>; }
-    case "/policies/p1": return <>{header("Automation center", POLICY.name, "What this policy does, acting as whom, and what it last did.")}
-      <Verdict text={`Running. ${policySentence(POLICY)}`} />
-      <div data-layer="explanation">
-        <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
-        <AutomationBanner halted={false} now={now} />
-        <PolicyCard canEdit linkName={false} now={now} policy={POLICY} />
-      </div></>;
-    case "/policies/p2": return <>{header("Automation center", OFF_POLICY.name, "What this policy does, acting as whom, and what it last did.")}
-      <Verdict text={`Turned off. ${policySentence(OFF_POLICY)}`} tone="attention" />
-      <div data-layer="explanation">
-        <a className="text-link back-link" href="#/policies"><span aria-hidden="true">←</span> All policies</a>
-        <AutomationBanner halted={false} now={now} />
-        <PolicyCard canEdit linkName={false} now={now} policy={OFF_POLICY} preview={ACTIVATION_PREVIEW} />
-      </div></>;
-    case "/policies": return <>{header("Automation center", "Policies", "What KEEL does on its own when something changes, and the account it acts as.")}
-      <Verdict text={policiesVerdict(POLICIES, false)} />
-      <div data-layer="explanation">
-        <AutomationBanner halted={false} now={now} />
-        {POLICIES.map((policy) => <PolicyCard canEdit key={policy.id} now={now} policy={policy} />)}
-      </div></>;
+    case "/policies/p1": case "/policies/p2": case "/policies/p3": {
+      const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
+      const state = RULE_STATES[ruleState(policy)];
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label })}
+        <PolicyPage actions={policy === POLICY ? POLICY_ACTIONS : []} canEdit halted={false} initialPreview={policy === OFF_POLICY ? ACTIVATION_PREVIEW : null} now={now} policy={policy} />
+      </>;
+    }
+    case "/policies": case "/policies/viewer": {
+      const viewer = path === "/policies/viewer";
+      return <>
+        <PageHeader actions={viewer ? undefined : <a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(POLICIES), false)} title="Automatic rules" />
+        <PoliciesPage canEdit={!viewer} halted={false} now={now} policies={POLICIES} />
+      </>;
+    }
     default: return <section className="empty-state state-page"><p className="eyebrow">Preview</p><h2>Not included in this preview</h2><p>This page needs live tenant data. Its styling and motion are the same as the pages shown here.</p></section>;
   }
 }

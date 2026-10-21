@@ -135,7 +135,7 @@ export function TierStrip({ disabled, tiers, canEditSchedules = false }: {
                 >
                   <Icon name="play" />Back up
                 </button>
-                {canEditSchedules ? <Link className="btn btn-sm btn-ghost" href="/schedules">Change schedule</Link> : null}
+                {canEditSchedules ? <Link className="btn btn-sm btn-ghost" href={tier.schedule ? `/schedules?open=${encodeURIComponent(tier.schedule.id)}` : "/schedules"}>Change schedule</Link> : null}
               </span>
             </div>
           );

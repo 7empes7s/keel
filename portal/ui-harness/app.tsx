@@ -12,7 +12,8 @@ import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { BackUpNow, TierStrip } from "@/components/backup-controls";
 import { ProtectCoverage } from "@/components/protect-coverage";
-import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
+import { SchedulesPage } from "@/components/schedules/schedules-page";
+import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
 import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
@@ -280,6 +281,13 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const state = body.action === "acknowledge" ? "acknowledged" : body.action === "resolve" ? "resolved" : body.action === "mute" ? "suppressed" : alert?.conditionActive ? "open" : "resolved";
     return json({ alert: { id: body.alertId, state } });
   }
+  // Schedules: the engine's floor refuses a backup every 10 minutes; other saves succeed.
+  if (url.endsWith("/api/schedules") && init?.method === "POST") {
+    const body = JSON.parse(String(init.body ?? "{}")) as { cron_override?: string | null };
+    if (body.cron_override === "*/10 * * * *") return json({ error: "schedule_minimum_interval: collect requires at least 15 minutes" }, 400);
+    return json({ schedule: { id: "saved" } });
+  }
+  if (/\/api\/actions\/(collect|discover|workload-collect|content-collect)$/.test(url)) return json({ job: { id: "a1" } }, 202);
   // Emergency access: every change to an emergency account is recorded.
   if (url.endsWith("/api/actions/breakglass")) return json({ ok: true });
   if (url.endsWith("/api/actions/setup")) return json({ run: { artifactId: SETUP_RUN, status: "pending-manual", stepId: null } });
@@ -760,7 +768,13 @@ const SCHEDULES: Schedule[] = [
   schedule("5c4e0000-0000-4000-8000-000000000003", "collect", "tier3", { every: "week", n: 1, atTime: "00:00" }, { cron_override: "0 0 * * 1", next_due_at: "2026-10-05T00:00:00Z" }),
   schedule("5c4e0000-0000-4000-8000-000000000004", "prune", null, { every: "day", n: 1, atTime: "00:00" }, { next_due_at: "2026-10-03T00:00:00Z" }),
   schedule("5c4e0000-0000-4000-8000-000000000005", "offsite", null, { every: "day", n: 1, atTime: "05:00" }, { enabled: false, next_due_at: "2026-10-03T05:00:00Z" }),
+  schedule("5c4e0000-0000-4000-8000-000000000006", "api-drift", null, { every: "week", n: 1, atTime: "03:00" }, { cron_override: "0 3 * * 1", next_due_at: "2026-10-05T03:00:00Z", last_job_id: "y1", last_run_at: "2026-09-28T03:00:00Z", last_status: "succeeded" }),
+  schedule("5c4e0000-0000-4000-8000-000000000007", "workload-collect", null, { every: "day", n: 1, atTime: "02:00" }, { next_due_at: "2026-10-03T02:00:00Z", last_job_id: "a1", last_run_at: "2026-10-02T02:00:00Z", last_status: "succeeded" }),
+  schedule("5c4e0000-0000-4000-8000-000000000008", "content-collect", null, { every: "day", n: 1, atTime: "01:00" }, { next_due_at: "2026-10-03T01:00:00Z", last_job_id: "a1", last_run_at: "2026-10-02T01:00:00Z", last_status: "succeeded" }),
+  schedule("5c4e0000-0000-4000-8000-000000000009", "discover", null, { every: "week", n: 1, atTime: "04:00" }, { cron_override: "0 4 * * 1", next_due_at: "2026-10-05T04:00:00Z" }),
 ];
+// A change check waits for a backup in which every type succeeds.
+const SCHEDULE_DEFERRALS = [{ id: "d71f0000-0000-4000-8000-0000000000d7", error: "drift-detect deferred: collection snapshot has failed or missing per-type coverage; retry on next successful collect", finished_at: "2026-10-02T00:05:00Z" }];
 
 // Roadmap task-110: measured load estimates as engine/schedules/forecast.mjs returns them.
 const presentation = (runs: [string, string, boolean][]): ScheduleForecast["presentation"] => ({
@@ -792,7 +806,7 @@ const FORECASTS: ScheduleForecast[] = [
 const ACKNOWLEDGED: ScheduleForecast = { ...FORECASTS[1], status: "warning",
   warnings: [{ code: "overlap", acknowledged: true, durationP90Ms: 72000000, neededIntervalMs: 144000000 }],
   proposal: { cadence: { every: "day", n: 2, atTime: "00:00" }, intervalMs: 172800000, floorMs: 900000, unchanged: false, cappedAtMaximum: false },
-  acknowledgement: { codes: ["overlap"], acknowledgedBy: "a11c0000-0000-4000-8000-0000000000a1", acknowledgedByName: "ops@contoso.com", acknowledgedAt: "2026-10-01T08:30:00Z", samples: 14 } };
+  acknowledgement: { codes: ["overlap"], acknowledgedBy: "a11c0000-0000-4000-8000-0000000000a1", acknowledgedByName: "Ops Team", acknowledgedAt: "2026-10-01T08:30:00Z", samples: 14 } };
 const SCHEDULE_FORECASTS = [FORECASTS[0], ACKNOWLEDGED, FORECASTS[2]];
 
 // Q45: a restore planned with the command line (no portal job) whose dry run shortens
@@ -1763,11 +1777,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           </div>
         </div></>;
     }
-    case "/schedules": {
-      const verdict = schedulesVerdict(SCHEDULES, now, SCHEDULE_FORECASTS);
-      return <>{header("Backup", "Schedules", "When KEEL backs up each tier and runs its upkeep. Times are in UTC.")}
-        <Verdict text={verdict.text} tone={verdict.tone} />
-        <div data-layer="explanation"><ScheduleTable canEdit deferrals={[]} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} /></div></>;
+    case "/schedules":
+    case "/schedules/viewer": {
+      const viewer = path === "/schedules/viewer";
+      return <>{header("Backup", "Schedules", "When Keel backs up and tidies up, and how hard each backup works Microsoft.", undefined, schedulesStatus(scheduleCounts(SCHEDULES, SCHEDULE_FORECASTS)))}
+        <SchedulesPage canEdit={!viewer} canRun={!viewer} deferrals={SCHEDULE_DEFERRALS} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
     }
     case "/restore": return <HarnessRestore jobs={jobs} />;
     case "/incidents": case "/incidents/viewer": return <IncidentsRoute viewer={path === "/incidents/viewer"} />;

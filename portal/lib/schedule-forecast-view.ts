@@ -37,12 +37,16 @@ function windowWords(forecast: ScheduleForecast): string {
   return `in the last ${days} day${days === 1 ? "" : "s"}`;
 }
 
-/** What the schedule costs Microsoft, or why KEEL cannot say yet. */
-export function forecastSentence(forecast: ScheduleForecast | undefined): string {
-  if (!forecast) return "Does not call Microsoft.";
+// Kinds that only touch Keel's own storage. Every other scheduled kind reads Microsoft,
+// but only backups of settings tiers are measured so far.
+const LOCAL_KINDS = new Set(["prune", "offsite"]);
+
+/** What the schedule costs Microsoft, or why Keel cannot say yet. */
+export function forecastSentence(forecast: ScheduleForecast | undefined, jobKind?: string): string {
+  if (!forecast) return jobKind && !LOCAL_KINDS.has(jobKind) ? "Reads Microsoft; its load is not measured for this kind yet." : "Does not call Microsoft.";
   if (forecast.status === "unknown") {
-    if (forecast.reason === "invalid-schedule") return "KEEL cannot estimate the load of this timetable.";
-    if (forecast.reason === "no-samples") return "No measured runs yet, so KEEL cannot estimate its load.";
+    if (forecast.reason === "invalid-schedule") return "Keel cannot estimate the load of this timetable.";
+    if (forecast.reason === "no-samples") return "No measured runs yet, so Keel cannot estimate its load.";
     const older = forecast.unmeasuredRuns ? " Older runs were not measured." : "";
     return `${forecast.samples} of ${forecast.minSamples} measured runs so far; too few to estimate its load.${older}`;
   }
@@ -63,7 +67,7 @@ export function warningSentence(warning: ScheduleForecast["warnings"][number], f
 export function proposalSentence(forecast: ScheduleForecast): string | null {
   const proposal = forecast.proposal;
   if (!proposal) return null;
-  if (proposal.unchanged) return "Even the slowest schedule KEEL suggests may not avoid this.";
+  if (proposal.unchanged) return "Even the slowest schedule Keel suggests may not avoid this.";
   const cadence = cadenceSentence({ cadence: proposal.cadence, cron_override: null });
   return `Suggested: ${cadence.charAt(0).toLowerCase()}${cadence.slice(1)}.`;
 }
@@ -71,7 +75,7 @@ export function proposalSentence(forecast: ScheduleForecast): string | null {
 export function businessHoursSentence(forecast: ScheduleForecast | undefined): string | null {
   const presentation = forecast?.presentation;
   if (!presentation || presentation.runs.length === 0) return null;
-  const zone = presentation.timeZone === "UTC" ? "UTC" : presentation.timeZone.replaceAll("_", " ");
+  const zone = presentation.timeZone === "UTC" ? "UTC" : `${presentation.timeZone.split("/").at(-1)!.replaceAll("_", " ")} time`;
   if (presentation.runs.length === 1) {
     return `The next run falls ${presentation.inBusinessHours ? "inside" : "outside"} business hours (${zone}).`;
   }
@@ -85,7 +89,7 @@ export function acknowledgementSentence(forecast: ScheduleForecast, now: string)
   return `${who} accepted this warning ${ago(ack.acknowledgedAt, now)}; the schedule was not changed.`;
 }
 
-export const FORECAST_CAVEAT = "An estimate from past runs, not a promise that Microsoft will not slow KEEL down.";
+export const FORECAST_CAVEAT = "An estimate from past runs, not a promise that Microsoft will not slow Keel down.";
 
 /** Warnings nobody has accepted yet; acknowledged ones stay listed but stop driving the verdict. */
 export function openWarnings(forecast: ScheduleForecast | undefined) {

@@ -22,6 +22,9 @@ import { POST as baselineActivateRoute } from "@/app/api/actions/baseline/activa
 import { POST as baselineRoute } from "@/app/api/actions/baseline/route";
 import { POST as backupRoute } from "@/app/api/actions/backup/route";
 import { POST as collectRoute } from "@/app/api/actions/collect/route";
+import { POST as contentCollectRoute } from "@/app/api/actions/content-collect/route";
+import { POST as discoverRoute } from "@/app/api/actions/discover/route";
+import { POST as workloadCollectRoute } from "@/app/api/actions/workload-collect/route";
 import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { GET as showJobRoute } from "@/app/api/jobs/[id]/route";
@@ -164,6 +167,10 @@ const actionRoutes: {
 }[] = [
   { name: "collect", post: collectRoute, capability: "collect", requiresApproval: false },
   { name: "backup", post: backupRoute, capability: "backup", requiresApproval: false },
+  // Run now on the Schedules page.
+  { name: "discover", post: discoverRoute, capability: "collect", requiresApproval: false },
+  { name: "workload-collect", post: workloadCollectRoute, capability: "collect", requiresApproval: false },
+  { name: "content-collect", post: contentCollectRoute, capability: "collect", requiresApproval: false },
   {
     name: "baseline",
     post: baselineRoute,
@@ -398,6 +405,19 @@ test("a permitted caller enqueues exactly one job with the right kind and params
     snapshotId,
     "the job must carry the chosen snapshot",
   );
+});
+
+test("Run now on Schedules enqueues one read-only job of the schedule's own kind", async () => {
+  const operator = { principalId: OPERATOR, capabilities: ["collect"] };
+  for (const [kind, route] of [["discover", discoverRoute], ["workload-collect", workloadCollectRoute], ["content-collect", contentCollectRoute]] as const) {
+    const response = await route(postAction(`/api/actions/${kind}`, { ...operator, body: {} }));
+    assert.equal(response.status, 202, kind);
+    const { job } = await response.json();
+    assert.equal(job.kind, kind);
+    assert.deepEqual(job.params, {});
+    assert.equal(job.requestedBy, OPERATOR);
+    assert.equal((await jobRows(kind)).length, 1, `exactly one ${kind} job`);
+  }
 });
 
 test("the guided create sends the chosen backup through the baseline action", async () => {

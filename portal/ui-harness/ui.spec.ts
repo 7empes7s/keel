@@ -9,6 +9,7 @@ const PAGES = [
   { name: "dashboard", hash: "/" },
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },
+  { name: "schedules-viewer", hash: "/schedules/viewer" },
   { name: "drift", hash: "/drift" },
   { name: "drift-services", hash: "/drift/services" },
   { name: "restore", hash: "/restore" },
@@ -1520,7 +1521,7 @@ const RECORD_IDS: Record<string, string[]> = {
   integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
   "integrations-servicenow-off": ["states-rejected", "field-approver", "u_keel_gated_change"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
-  schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)"],
+  schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "5c4e0000-0000-4000-8000-000000000009", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)", "d71f0000-0000-4000-8000-0000000000d7"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
@@ -2707,3 +2708,122 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+
+const TIER1_SCHEDULE = "5c4e0000-0000-4000-8000-000000000001";
+
+test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Run now, bulk turn off", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/schedules");
+  await expect(page.locator(".status-pill")).toHaveText("1 failed");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Backup of Tier 2 failed on its last run.");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(page.locator('[data-layer="verdict"] a.btn-primary')).toHaveAttribute("href", /jobs\/a4$/);
+  const tiles = page.locator(".sc-tile");
+  await expect(tiles).toHaveCount(4);
+  for (const tile of await tiles.all()) await expect(tile).toHaveAttribute("href", /.+/);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Backups", "Settings and content backups", "Checks", "Upkeep"]);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(9);
+  await expect(rows.filter({ hasText: "Backup of Tier 2" }).locator('a[href*="jobs/a4"]')).toHaveText("Failed 9 hours ago");
+  await expect(rows.filter({ hasText: "Backup of Tier 1" }).locator("time")).toHaveText("Fri 12:00 Paris");
+  await expect(rows.filter({ hasText: "Backup of Tier 1" }).locator("time")).toHaveAttribute("title", "Fri 10:00 UTC");
+  await expect(rows.filter({ hasText: "Check of what the tenant holds" })).toContainText("Load not measured");
+  await expect(rows.filter({ hasText: "Clean-up of old backups" })).toContainText("No Microsoft calls");
+  await expect(page.locator(".sc-note")).toContainText("The change check is waiting");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // Tiles filter by the address.
+  await tiles.filter({ hasText: "Failed last run" }).click();
+  await expect(page).toHaveURL(/status=failed/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await page.getByRole("link", { name: "Show everything" }).click();
+  await tiles.filter({ hasText: "Load warnings" }).click();
+  await expect(page).toHaveURL(/load=warning/);
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await page.getByRole("link", { name: "Show everything" }).click();
+
+  // The panel opens from the row name, with the time in Paris and UTC.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls)).filter((call) => call.method === "POST");
+  await page.locator(".sc-row-link", { hasText: "Backup of Tier 1" }).click();
+  await expect(page).toHaveURL(new RegExp(`open=${TIER1_SCHEDULE}`));
+  const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
+  await expect(sheet).toContainText("Fri 12:00 Paris (10:00 UTC)");
+  await expect(sheet).toContainText("Microsoft slowed down 6.4% of its requests in the last 14 days.");
+
+  // A custom timetable under the engine's floor is refused in plain words.
+  await sheet.locator("summary", { hasText: "Advanced: custom timetable" }).click();
+  await sheet.getByLabel("Custom timetable (UTC)").fill("*/10 * * * *");
+  await sheet.getByRole("button", { name: "Save" }).click();
+  await expect(sheet.getByRole("alert")).toHaveText("Backups can run at most every 15 minutes.");
+  await sheet.locator("summary", { hasText: "Advanced: custom timetable" }).click();
+
+  // Use the suggested timetable: the saved cadence is the proposal; the row says so.
+  await sheet.getByRole("button", { name: /Use suggested timetable/ }).click();
+  await expect(page.locator(".toast", { hasText: "Schedule saved" })).toBeVisible();
+  expect(JSON.parse((await calls()).filter((call) => call.url === "/api/schedules").at(-1)?.body ?? "{}")).toEqual({ id: TIER1_SCHEDULE, cadence: { every: "hour", n: 2, atTime: null }, cron_override: null });
+  await expect(page.locator(".sel-row", { hasText: "Backup of Tier 1" })).toContainText("Every 2 hours");
+
+  // Run now queues one backup of the tier and links to it.
+  await sheet.getByRole("button", { name: "Run now" }).click();
+  const started = page.locator(".toast", { hasText: "Backup of Tier 1 started" });
+  await expect(started).toBeVisible();
+  await expect(started.getByRole("link")).toHaveAttribute("href", /jobs\/a1$/);
+  expect((await calls()).filter((call) => call.url === "/api/actions/collect").map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ tier: "tier1" }]);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  // Select two with Shift+click, turn them off after a confirm.
+  await rows.nth(3).locator(".sel-check").click();
+  await rows.nth(4).click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-bar-count")).toContainText("2 schedules");
+  await page.locator(".sel-bar .btn-primary", { hasText: "Turn off 2 schedules" }).click();
+  const confirm = page.getByRole("dialog", { name: "Turn off these schedules?" });
+  await expect(confirm).toContainText("2 schedules stop running until you turn them on again.");
+  await confirm.getByRole("button", { name: "Turn off 2 schedules" }).click();
+  await expect(confirm).toBeHidden();
+  const offs = (await calls()).filter((call) => call.url === "/api/schedules").map((call) => JSON.parse(call.body ?? "{}")).filter((body) => body.enabled === false);
+  expect(offs).toHaveLength(2);
+  await expect(page.locator(".sel-row").filter({ has: page.locator(".badge", { hasText: /^Off$/ }) })).toHaveCount(3);
+});
+
+test("Schedules · a viewer sees every schedule, no amber action other than the failed run, and no controls", async ({ page }) => {
+  await open(page, "/schedules/viewer");
+  await expect(page.locator(".sc-tile")).toHaveCount(4);
+  await expect(page.locator(".sel-check")).toHaveCount(0);
+  await page.locator(".sc-row-link", { hasText: "Backup of Tier 1" }).click();
+  const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /Save|Run now|Accept warning|Use suggested/ })).toHaveCount(0);
+  await expect(sheet.getByRole("link", { name: "Turn off" })).toHaveCount(0);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/schedules", "/schedules?group=status", `/schedules?open=${TIER1_SCHEDULE}`]) {
+      test(`Schedules · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".sc-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".sc-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .sc-tile, .sc-row-link")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=")) {
+          const sheet = page.getByRole("dialog", { name: "Backup of Tier 1" });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Save" })).toBeInViewport();
+        }
+      });
+    }
+  }
+}

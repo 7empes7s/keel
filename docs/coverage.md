@@ -352,14 +352,14 @@ KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it
 - **App configuration for managed devices.** Recreates configurations and puts their settings back when the app they configure exists, and removes an unassigned one added since the backup.
   - *You do:* Add the app first. Values Microsoft never returns are entered again by hand.
 - **Windows PowerShell scripts** (not built yet). KEEL backs these up but does not restore them yet.
-  - *Not brought back:* the script itself (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it again.
+  - *Not brought back:* the script itself (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.
 - **macOS shell scripts** (not built yet). KEEL backs these up but does not restore them yet.
-  - *Not brought back:* the script itself (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it again.
+  - *Not brought back:* the script itself (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.
 - **Remediations** (not built yet). KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.
-  - *Not brought back:* the detection and remediation scripts (stored separately and not in the backup yet); who the remediation is assigned to (stored separately and not in the backup yet); remediations published by Microsoft (set by Microsoft).
-  - *You do:* Recreate your own remediations in the Intune admin center from the backup, then assign them again.
+  - *Not brought back:* the detection and remediation scripts (stored separately and not in the backup yet); remediations published by Microsoft (set by Microsoft).
+  - *You do:* Recreate your own remediations in the Intune admin center from the backup, then assign them to the groups and schedule in the backup.
 - **Custom compliance scripts** (not built yet). KEEL backs these up but does not restore them yet.
   - *Not brought back:* the script itself (stored separately and not in the backup yet).
   - *You do:* Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.
@@ -369,17 +369,17 @@ KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the built-in Default tag (set by Microsoft).
   - *You do:* The built-in Default tag exists in every tenant and is never written.
 - **Windows feature update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a profile is assigned to is not backed up yet, so assign it again by hand.
+  - *Not brought back:* who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
 - **Windows quality update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a profile is assigned to is not backed up yet, so assign it again by hand.
+  - *Not brought back:* who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
 - **Windows driver update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* approved drivers (stored separately and not in the backup yet); who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Driver approvals and assignments are not backed up yet, so approve the drivers and assign the profile again by hand.
+  - *Not brought back:* approved drivers (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
 - **Administrative templates** (not built yet). KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.
-  - *Not brought back:* the values entered for each setting (stored separately and not in the backup yet); who the template is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the template in the Intune admin center, using the backup for which settings were turned on.
+  - *Not brought back:* the values entered for each setting (stored separately and not in the backup yet).
+  - *You do:* Recreate the template in the Intune admin center, using the backup for which settings were turned on and who it was assigned to.
 - **Imported administrative template files** (not built yet). KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.
   - *Not brought back:* the template file content (a file the backup does not hold).
   - *You do:* Import the files again in the Intune admin center from your own copy.
@@ -413,8 +413,8 @@ KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* built-in categories (set by Microsoft).
   - *You do:* Recreate your own categories in the Intune admin center from the backup, then add the apps to them again.
 - **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
-  - *Not brought back:* logo images (stored separately and not in the backup yet); who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it again.
+  - *Not brought back:* logo images (stored separately and not in the backup yet).
+  - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.
 
 ## Microsoft 365 workloads
 

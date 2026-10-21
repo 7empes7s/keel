@@ -2,8 +2,8 @@
 // Every entry is a read-only list read. Endpoints follow Graph's documented
 // Intune routes and are unmeasured until the operator's first collect run on
 // the test tenant; most are beta-only, a fidelity risk the spec flags.
-// Policy assignments sit on a separate /assignments route for every type here
-// and are not read yet (the same holds for the older Intune family).
+// Policy assignments sit on a separate /assignments route; they are read per
+// policy as relationship reads (ASSIGNMENT_ROUTES in engine/collect/relationships.mjs).
 export default [
   // Scripts. Graph leaves the script body out of list reads and returns it
   // only on a GET of the single script.

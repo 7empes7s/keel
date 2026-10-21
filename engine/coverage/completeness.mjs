@@ -195,17 +195,18 @@ export const COMPLETENESS = Object.freeze({
   managedAppPolicy: { missing: [part('The list of protected apps, which a new policy needs', 'other-route'), part('Windows protection policies', 'not-written')] },
   targetedManagedAppConfiguration: { missing: [part('The apps it targets, which a new configuration needs', 'other-route')] },
   mobileAppConfiguration: {},
-  // Wave 1 CAT-INTUNE. Assignments of these types are on a separate route.
-  deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
-  deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route'), part('Who the script is assigned to', 'other-route')] },
-  deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Who the remediation is assigned to', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
+  // Wave 1 CAT-INTUNE. Assignments are backed up as relationship reads
+  // (engine/collect/relationships.mjs); none of these writers puts them back yet.
+  deviceManagementScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
+  deviceShellScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
+  deviceHealthScript: { whole: 'not-written', missing: [part('The detection and remediation scripts', 'other-route'), part('Remediations published by Microsoft', 'microsoft-managed')] },
   deviceComplianceScript: { whole: 'not-written', missing: [part('The script itself', 'other-route')] },
   assignmentFilter: {},
   roleScopeTag: { missing: [part('The built-in Default tag', 'microsoft-managed')] },
-  windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'other-route')] },
-  windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'other-route')] },
-  windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
-  groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route'), part('Who the template is assigned to', 'other-route')] },
+  windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
+  windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
+  windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
+  groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route')] },
   groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
@@ -219,7 +220,7 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
   onPremisesConditionalAccessSettings: { whole: 'not-written' },
   mobileAppCategory: { whole: 'not-written', missing: [part('Built-in categories', 'microsoft-managed')] },
-  intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
+  intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
 });
 

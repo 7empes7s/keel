@@ -5,7 +5,7 @@ import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 
 // Wave 1 DISC: the latest discovery inventory, and the words the Protect page shows for it.
 
-export type DiscoveryStatus = "catalogued" | "uncatalogued" | "unreadable" | "not-listed";
+export type DiscoveryStatus = "catalogued" | "uncatalogued" | "skipped" | "unreadable" | "not-listed";
 
 export interface DiscoveryItem {
   source: string;
@@ -57,6 +57,8 @@ export interface DiscoveryInventoryData {
     types: number;
     catalogued: number;
     uncatalogued: number;
+    /** Readable but not worth backing up; absent on runs before it existed. */
+    skipped?: number;
     unreadable: number;
     "not-listed": number;
     containers: Record<string, ContainerCount | null>;
@@ -72,7 +74,7 @@ export async function getDiscoveryInventory(): Promise<DiscoveryInventoryData | 
   try {
     return (await loadLatestDiscovery(client, {
       tenantRef: tenantRef(),
-      statuses: ["uncatalogued", "unreadable", "not-listed"],
+      statuses: ["uncatalogued", "skipped", "unreadable", "not-listed"],
     })) as DiscoveryInventoryData | null;
   } catch (error) {
     // The discovery tables arrive with schema.d/10-discovery.sql. Until a host has
@@ -127,11 +129,22 @@ export function unreadableSentence(item: Pick<DiscoveryItem, "reason" | "missing
   return `Not read: ${reason}. It ${item.grantSource === "graph" ? "needs" : "most likely needs"} the ${item.missingGrant} permission.`;
 }
 
+const SKIP_REASONS: Record<string, string> = {
+  "not-configuration": "it holds logs, reports or activity, not settings",
+  "microsoft-published": "Microsoft publishes the same list in every tenant",
+};
+
+/** Why a readable type is not worth backing up. */
+export function skippedSentence(item: Pick<DiscoveryItem, "reason">): string {
+  return `Not backed up: ${SKIP_REASONS[item.reason ?? ""] ?? "it holds no settings to restore"}.`;
+}
+
 /** The section's one-sentence answer. */
 export function discoveryHeadline(data: DiscoveryInventoryData): string {
   const { summary } = data;
   const parts = [`${plural(summary.catalogued, "type")} backed up`];
   parts.push(`${summary.uncatalogued.toLocaleString("en-GB")} readable but not backed up yet`);
+  if (summary.skipped) parts.push(`${summary.skipped.toLocaleString("en-GB")} not worth backing up`);
   if (summary.unreadable) parts.push(`${summary.unreadable.toLocaleString("en-GB")} KEEL cannot read`);
   return `Discovery found ${plural(summary.types, "type")}: ${parts.join(", ")}.`;
 }

@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { ALIAS_PATHS, SKIPPED_PATHS } from './notGaps.mjs';
 
 // Graph collections read in full by a workload collector rather than a catalogue entry.
 export const WORKLOAD_GRAPH_PATHS = Object.freeze({
@@ -27,9 +28,10 @@ export const isUnderItem = (path) => /\{[^}]+\}/.test(path);
 
 /**
  * Map<lowercase path, [{ type, version, source }]> of everything catalogued, from
- * `catalog` (default CATALOG) and the workload paths.
+ * `catalog` (default CATALOG), the workload paths and the alias paths (another path
+ * to a catalogued kind, engine/discovery/notGaps.mjs).
  */
-export function catalogedGraphPaths({ catalog = CATALOG, workloadPaths = WORKLOAD_GRAPH_PATHS } = {}) {
+export function catalogedGraphPaths({ catalog = CATALOG, workloadPaths = WORKLOAD_GRAPH_PATHS, aliasPaths = ALIAS_PATHS } = {}) {
   const out = new Map();
   const push = (path, entry) => {
     const list = out.get(key(path)) ?? [];
@@ -40,7 +42,15 @@ export function catalogedGraphPaths({ catalog = CATALOG, workloadPaths = WORKLOA
     if (!isUnderItem(entry.path)) push(entry.path, { type: entry.type, version: entry.version, source: 'catalogue' });
   }
   for (const [path, workload] of Object.entries(workloadPaths)) push(path, { type: workload, version: 'v1.0', source: 'workload' });
+  for (const [path, type] of Object.entries(aliasPaths)) {
+    if (!out.has(key(path))) push(path, { type, version: null, source: 'alias' });
+  }
   return out;
+}
+
+/** Map<lowercase path, reason> of readable paths that are not worth backing up. */
+export function skippedGraphPaths(skippedPaths = SKIPPED_PATHS) {
+  return new Map(Object.entries(skippedPaths).map(([path, reason]) => [key(path), reason]));
 }
 
 const workloadsDir = () => join(dirname(fileURLToPath(import.meta.url)), '..', 'collect', 'workloads');

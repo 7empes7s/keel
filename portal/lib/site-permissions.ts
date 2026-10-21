@@ -7,7 +7,6 @@ import { idNames } from "@/lib/saved-names";
 import {
   SITES_WORKLOAD, sitePermissionsFrom, siteName, type SitePermissionsData, type SitesRun,
 } from "@/lib/site-permissions-view";
-import { siteChangeFrom, type SiteChangesData } from "@/lib/site-changes-view";
 
 interface KeelClient {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -92,44 +91,4 @@ export async function withAppNames(client: KeelClient, tenant: string, data: Sit
       },
     }),
   };
-}
-
-/**
- * Changes to SharePoint site settings found within `days`, the newest per site or the
- * tenant's sharing settings, newest first, each with its site's name and its alert.
- * The name comes from the read that found the change, or the one before it when the
- * site is gone.
- */
-export async function loadSiteChanges(
-  client: KeelClient,
-  { tenantRef: tenant, now = new Date(), days = 30, limit = 50 }: { tenantRef: string; now?: Date; days?: number; limit?: number },
-): Promise<SiteChangesData> {
-  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const { rows } = await client.query(
-    `SELECT * FROM (
-       SELECT DISTINCT ON (d.resource_key)
-              d.id, d.resource_key, d.change_type, d.fields, d.blast_radius, d.collection_id, d.previous_collection_id,
-              c.observed_to, COALESCE(cur.fields, prev.fields) AS site_fields, a.id AS alert_id, a.state AS alert_state
-         FROM workload_drift d
-         JOIN workload_collection c ON c.id = d.collection_id
-         LEFT JOIN workload_observation cur ON cur.collection_id = d.collection_id AND cur.resource_key = d.resource_key
-         LEFT JOIN workload_observation prev ON prev.collection_id = d.previous_collection_id AND prev.resource_key = d.resource_key
-         LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
-                          AND a.control = 'baseline' AND a.condition = 'drift'
-        WHERE d.tenant_ref = $1 AND d.workload = $2 AND c.observed_to >= $3
-        ORDER BY d.resource_key, c.observed_to DESC, d.detected_at DESC
-     ) newest
-     ORDER BY observed_to DESC, resource_key LIMIT $4`,
-    [tenant, SITES_WORKLOAD, since, limit],
-  );
-  return { days, changes: rows.map(siteChangeFrom) };
-}
-
-export async function getSiteChanges(now: Date = new Date()): Promise<SiteChangesData> {
-  const client = (await connect(databaseUrl())) as KeelClient;
-  try {
-    return await loadSiteChanges(client, { tenantRef: tenantRef(), now });
-  } finally {
-    await client.end();
-  }
 }

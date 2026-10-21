@@ -500,12 +500,37 @@ export async function getComplianceData(): Promise<ComplianceData> {
     ]);
     return {
       generatedAt: now.toISOString(),
-      findings,
+      findings: await withExceptionPeople(client, findings),
       summary,
       storage,
       activeBaseline: baselines.find((baseline) => baseline.active) ?? null,
     };
   });
+}
+
+/** An exception's owner by name when it is someone in Keel (the owner is stored as
+ * typed, usually an email), and who granted it. Never a bare id or address. */
+async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
+  const exceptions = findings.map((finding) => finding.exception).filter((exception) => exception !== null);
+  if (exceptions.length === 0) return findings;
+  const owners = [...new Set(exceptions.map((exception) => exception.owner?.trim().toLowerCase()).filter((owner): owner is string => Boolean(owner)))];
+  const byEmail = new Map<string, Ref>();
+  if (owners.length) {
+    const { rows } = await client.query(
+      "SELECT id::text AS id, lower(email) AS email, display_name FROM principal WHERE lower(email) = ANY($1::text[])",
+      [owners],
+    );
+    for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
+  }
+  const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
+  return findings.map((finding) => (finding.exception ? {
+    ...finding,
+    exception: {
+      ...finding.exception,
+      ownerRef: byEmail.get(finding.exception.owner?.trim().toLowerCase() ?? "") ?? null,
+      grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
+    },
+  } : finding));
 }
 
 async function activeDriftFor(

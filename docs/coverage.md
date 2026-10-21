@@ -380,7 +380,17 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 
 ## Microsoft 365 workloads
 
-KEEL backs up the configuration of these workloads, never their content: no mail, no files, no Teams messages or channels.
+KEEL backs up the configuration of these workloads, listed below. It also backs up their content in a separate nightly run at 01:00 UTC, with delta sync and deduplication:
+
+- Exchange Online: mail folders and messages, calendars and contacts, including archive mailboxes.
+- OneDrive: files.
+- SharePoint: sites, lists and list items, document libraries and files with their versions.
+- Teams: teams, channels (standard, private and shared), channel members, tabs and apps. Channel files are covered through the team site in SharePoint.
+- Planner and group conversations: plans, buckets and tasks with their details; conversations, threads, posts and attachments.
+
+Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant.
+
+A content scope can narrow the content backup to mailboxes, OneDrives, sites and groups whose names start with a set prefix. Teams has no name filter and is always read in full. The KEEL test tenant uses this to back up only its test content.
 
 Each workload ships switched off. KEEL turns a backup on for your tenant only after a live read from your tenant is checked, and turns a restore on only after a live write and read-back on your tenant is checked, at most 30 days old. A test against a simulated tenant never switches anything on.
 

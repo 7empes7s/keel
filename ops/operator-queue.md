@@ -4694,3 +4694,24 @@ item that needs it stays untouched.
      entries and whether they all start with `KEEL-RT-`). Leave out any secret or certificate path contents.
 - **Report:** steps 1 to 6 in this Result (big JSON can go in a gist-free file on a new branch
   `claude/q99-coverage-numbers` under `ops/q99/`, never master). Nothing is written to the tenant or the DB.
+
+### Q100: Export the "readable, not backed up yet" list from the latest discovery run (read-only, DB only)
+- Drafted by the "Back up remaining readable kinds" thread (2026-10-21). Marouane asked to add the 276 kinds discovery
+  can read but Keel doesn't back up yet. The thread needs the list itself (path, version, object count) to plan and
+  prioritise them. Only the counts are in the queue so far (Q82).
+- Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns. Can run before Q99; it is one SELECT.
+- Status: todo
+- Do (with `set -a; . /etc/keel/db.env; set +a`):
+  1. ```sql
+     SELECT r.id, r.finished_at, r.summary->'counts' AS counts FROM discovery_run r ORDER BY r.finished_at DESC LIMIT 3;
+     ```
+     (if `summary->'counts'` is null, paste `summary` instead, masked).
+  2. For the newest run, as tab-separated output with a header:
+     ```sql
+     \copy (SELECT source, name, kind, entity_type, objects, objects_exact FROM discovery_item
+             WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1)
+               AND status = 'uncatalogued' ORDER BY name, source) TO '/tmp/q100-uncatalogued.tsv' WITH (FORMAT csv, DELIMITER E'\t', HEADER)
+     ```
+     These are Graph paths and counts only, no tenant content. Commit the file as `ops/q100/uncatalogued.tsv` on a new
+     branch `claude/q100-uncatalogued` (never master) and push it.
+- **Report:** step 1, the row count of step 2, and the branch commit. Nothing is written to the tenant or the DB.

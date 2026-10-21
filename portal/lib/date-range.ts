@@ -11,7 +11,8 @@ export interface DayRange {
 export type PresetId = "today" | "last-7" | "last-30" | "since-backup";
 
 export interface Preset {
-  id: PresetId;
+  // One of PresetId for the shared list; a page's own presets name theirs.
+  id: PresetId | (string & {});
   label: string;
   range: DayRange;
 }

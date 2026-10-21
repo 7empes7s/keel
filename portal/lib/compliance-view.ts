@@ -144,6 +144,11 @@ function kindWords(type: string): string {
   return CHECK_WORDS[type] ?? typeName(type).toLowerCase();
 }
 
+/** The plain title Keel gives a control, when it has one (also used by the Value report). */
+export function plainControlTitle(controlId: string): string | null {
+  return CONTROL_WORDS[controlId]?.title ?? null;
+}
+
 export function controlName(finding: ComplianceFinding): string {
   return CONTROL_WORDS[finding.controlId]?.title ?? finding.title ?? "A control Keel no longer holds";
 }

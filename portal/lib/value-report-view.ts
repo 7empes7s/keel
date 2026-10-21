@@ -1,6 +1,10 @@
+import type { BadgeTone } from "@/components/ui/badge";
+import type { IconName } from "@/components/shell/icons";
 import type { VerdictTone } from "@/components/verdict";
+import { plainKind } from "@/lib/baselines-view";
+import { addDays, isDay, shortDay, toDay, type Day, type DayRange } from "@/lib/date-range";
+import type { RiskTone } from "@/lib/menu-status";
 import { formatDuration } from "@/lib/resilience-view";
-import { resourceTypeLabel } from "@/lib/presentation";
 
 // Roadmap task-100: the value report in words. Every number comes from
 // engine/reports/value.mjs; this file only turns it into sentences. Hours appear only
@@ -38,11 +42,15 @@ export interface OutcomeRow {
   planId: string | null;
   driftId: string | null;
   attemptEventIds: string[];
+  // The newest attempt's job; absent on reports written before it was added.
+  lastJobId?: string | null;
 }
 
 export interface FindingRow {
   id: string;
   controlId: string;
+  // The control's title from the engine's registry, when it still holds the control.
+  title?: string | null;
   framework: string;
   edition: string;
   profile: string;
@@ -122,17 +130,83 @@ export interface ValueReport {
 
 export interface ValueReportData {
   report: ValueReport;
-  period: PeriodKey;
+  period: ReportWindow;
   entity: string | null;
+  // Owner codes the reader may narrow to: every owner for a tenant-wide reader, their own otherwise.
+  owners?: string[];
 }
 
 export const PERIODS = { "30d": { days: 30, label: "Last 30 days" }, "90d": { days: 90, label: "Last 90 days" }, "365d": { days: 365, label: "Last 12 months" } } as const;
 export type PeriodKey = keyof typeof PERIODS;
 export const DEFAULT_PERIOD: PeriodKey = "30d";
+/** The engine's longest period (MAX_PERIOD_DAYS in engine/reports/value.mjs). */
+export const MAX_REPORT_DAYS = 366;
+const DAY_MS = 86_400_000;
 
 export function parsePeriod(value: string | string[] | undefined | null): PeriodKey {
   const raw = Array.isArray(value) ? value[0] : value;
   return raw && raw in PERIODS ? (raw as PeriodKey) : DEFAULT_PERIOD;
+}
+
+/** The period a report covers: a preset ("30d", "90d", "365d") or whole days ("2026-09-01..2026-09-30"). */
+export interface ReportWindow {
+  // What goes back into the URL as `period=`.
+  param: string;
+  preset: PeriodKey | null;
+  from: string;
+  to: string;
+}
+
+/**
+ * `period=` as a window ending at `now`. Old links (`30d`, `90d`, `365d`) keep working;
+ * a custom range runs from the start of its first day to the end of its last (never past
+ * now) and is cut to the engine's longest period. Anything else is the default preset.
+ */
+export function resolvePeriod(value: string | string[] | undefined | null, now: Date | string): ReportWindow {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const end = new Date(now);
+  if (raw && raw.includes("..")) {
+    const [first, last] = raw.split("..");
+    if (isDay(first) && isDay(last)) {
+      const [a, b] = first <= last ? [first, last] : [last, first];
+      const to = Math.min(end.getTime(), Date.parse(`${b}T00:00:00Z`) + DAY_MS);
+      let from = Date.parse(`${a}T00:00:00Z`);
+      if (from < to) {
+        if (to - from > MAX_REPORT_DAYS * DAY_MS) from = to - MAX_REPORT_DAYS * DAY_MS;
+        const fromDay = toDay(new Date(from));
+        return { param: `${fromDay}..${b}`, preset: null, from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+      }
+    }
+  }
+  const preset = parsePeriod(raw);
+  return { param: preset, preset, from: new Date(end.getTime() - PERIODS[preset].days * DAY_MS).toISOString(), to: end.toISOString() };
+}
+
+/** The picker's quick choices, as day ranges ending today. */
+export function periodPresets(today: Day): { id: PeriodKey; label: string; range: DayRange }[] {
+  return (Object.keys(PERIODS) as PeriodKey[]).map((key) => ({ id: key, label: PERIODS[key].label, range: { from: addDays(today, -PERIODS[key].days), to: today } }));
+}
+
+/** What the picker shows as chosen. */
+export function periodRange(window: ReportWindow, today: Day): DayRange {
+  if (window.preset) return periodPresets(today).find((preset) => preset.id === window.preset)!.range;
+  const [from, to] = window.param.split("..");
+  return { from, to };
+}
+
+/** A picked range back to `period=`: a preset key when it is one, else the days. */
+export function periodParam(range: DayRange, today: Day): string {
+  const to = range.to ?? range.from;
+  const preset = periodPresets(today).find((entry) => entry.range.from === range.from && entry.range.to === to);
+  return preset ? preset.id : `${range.from}..${to}`;
+}
+
+/** "Last 30 days · 2 Sep to 2 Oct" or "1 Sep to 30 Sep". */
+export function periodWords(window: ReportWindow, today: Day): string {
+  const from = shortDay(window.from.slice(0, 10), today);
+  const lastDay = toDay(new Date(Date.parse(window.to) - (window.preset ? 0 : 1)));
+  const days = `${from} to ${shortDay(lastDay, today)}`;
+  return window.preset ? `${PERIODS[window.preset].label} · ${days}` : days;
 }
 
 export function parseEntity(value: string | string[] | undefined | null): string | null {
@@ -171,8 +245,8 @@ const REASONS: Record<string, string> = {
   "completion-pending": "follow-up tasks after the restore are still open",
   "no-later-collection": "no backup since then could confirm the setting",
   "collection-still-differs": "the latest backup still shows the change",
-  "attempt-pending": "a try is waiting or running",
-  "all-attempts-failed": "every try failed or was cancelled",
+  "attempt-pending": "an attempt is waiting or running",
+  "all-attempts-failed": "every attempt failed or was cancelled",
 };
 
 export function outcomeReason(reason: string): string {
@@ -182,9 +256,10 @@ export function outcomeReason(reason: string): string {
 /** What an outcome was, without codes: "Restore of 3 settings" or "Group change put back". */
 export function outcomeName(row: OutcomeRow): string {
   if (row.family === "restore") return `Restore of ${plural(row.resources ?? 0, "setting")}`;
-  const type = row.resourceType ? resourceTypeLabel(row.resourceType) : "setting";
-  const what = row.changeType === "added" ? "added" : row.changeType === "removed" ? "removed" : "changed";
-  return `Undo a ${type} that was ${what}`;
+  const type = row.resourceType ? plainKind(row.resourceType).toLowerCase() : "setting";
+  if (row.changeType === "added") return `Undo a ${type} that was added`;
+  if (row.changeType === "removed") return `Undo a ${type} that was removed`;
+  return `Undo a change to a ${type}`;
 }
 
 export function percentText(value: number | null): string {
@@ -192,11 +267,11 @@ export function percentText(value: number | null): string {
 }
 
 export function outcomeSentence(outcomes: OutcomeSummary): string {
-  if (outcomes.total === 0) return "KEEL was not asked to put anything back in this period.";
+  if (outcomes.total === 0) return "Keel was not asked to put anything back in this period.";
   const verified = outcomes.states.verified;
   const head = verified
-    ? `KEEL put back and checked ${plural(verified, "item")} of ${outcomes.total} it was asked to (${percentText(outcomes.percentVerified)}).`
-    : `KEEL was asked to put back ${plural(outcomes.total, "item")}; none is checked yet.`;
+    ? `Keel put back and checked ${plural(verified, "item")} of ${outcomes.total} it was asked to (${percentText(outcomes.percentVerified)}).`
+    : `Keel was asked to put back ${plural(outcomes.total, "item")}; none is checked yet.`;
   const retries = outcomes.retries ? ` ${plural(outcomes.retries, "retry", "retries")} counted once each.` : "";
   return `${head}${retries}`;
 }
@@ -240,29 +315,135 @@ export function estimateNote(report: ValueReport): string {
 
 const FAMILY_NAMES = { restore: "checked restore", remediation: "checked undo of a change", finding: "fixed control" } as const;
 
+/** Who set the estimate, as written, unless it is an email address. */
+export function estimateOwner(hours: HoursSaved): string {
+  return hours.owner.includes("@") ? "the estimate owner" : hours.owner;
+}
+
 export function hoursSentence(hours: HoursSaved): string {
-  return `About ${hours.hours} hours saved, using the estimate set by ${hours.owner}. It counts checked results only, never tries.`;
+  return `About ${hours.hours} hours saved, using the estimate set by ${estimateOwner(hours)}. It counts checked results only, never attempts.`;
 }
 
 export function hoursRow(row: HoursSaved["byFamily"][number]): string {
   return `${plural(row.verified, FAMILY_NAMES[row.family], `${FAMILY_NAMES[row.family]}s`)} × ${row.minutesEach} minutes = ${row.hours} hours`;
 }
 
+/** An owner code in plain case: "FIN" reads "Fin", "IT_OPS" reads "It ops". No name table exists for owners. */
+export function ownerName(code: string): string {
+  const words = code.replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export function scopeSentence(report: ValueReport): string {
   if (report.scope.central) return "Showing the whole tenant.";
   if (report.scope.entities.length === 0) return "Showing nothing: you do not own any part of the tenant.";
-  return `Showing only what ${report.scope.entities.join(", ")} own${report.scope.entities.length === 1 ? "s" : ""}.`;
+  const names = report.scope.entities.map(ownerName);
+  return `Showing only what ${names.join(", ")} own${names.length === 1 ? "s" : ""}.`;
 }
 
-export function valueVerdict(report: ValueReport): { headline: string; text: string; tone: VerdictTone } {
+/** Failed or changed again: the requests that need someone to look. */
+export function needsLook(outcomes: OutcomeSummary): number {
+  return outcomes.states.failed + outcomes.states.reopened;
+}
+
+export function valueVerdict(report: ValueReport): { text: string; detail?: string; tone: VerdictTone } {
   const { outcomes } = report;
-  const open = outcomes.states.reopened + outcomes.states.failed;
-  if (outcomes.total === 0) {
-    return { headline: "Nothing to report yet", text: "No restores or undo requests in this period.", tone: "good" };
-  }
-  const text = `${outcomes.states.verified} of ${outcomes.total} put back and checked; ${open ? `${open} failed or changed again.` : "none failed."}`;
-  if (outcomes.states.reopened || outcomes.states.failed) return { headline: `${percentText(outcomes.percentVerified)} checked`, text, tone: "attention" };
-  return { headline: `${percentText(outcomes.percentVerified)} checked`, text, tone: "good" };
+  if (outcomes.total === 0) return { text: "Nothing to report yet: no restores or undo requests in this period.", tone: "good" };
+  const open = needsLook(outcomes);
+  const text = `${outcomes.states.verified} of ${plural(outcomes.total, "request")} put back and checked; ${open ? `${open} failed or changed again.` : "none failed."}`;
+  return { text, tone: open ? "attention" : "good" };
 }
 
-export const NO_COMPLIANCE_CLAIM = "This report shows what KEEL did and checked. It is not a statement of compliance with any regulation or framework.";
+/** The page header's pill. */
+export function valueStatus(report: ValueReport): { tone: RiskTone; label: string } {
+  const { outcomes } = report;
+  const open = needsLook(outcomes);
+  if (open) return { tone: "soon", label: `${open} need${open === 1 ? "s" : ""} a look` };
+  if (outcomes.total === 0) return { tone: "fine", label: "Nothing to report" };
+  const waiting = outcomes.total - outcomes.states.verified;
+  return waiting ? { tone: "low", label: `${waiting} not checked yet` } : { tone: "fine", label: "All checked" };
+}
+
+export const OUTCOME_WORDS: Record<OutcomeState, { badge: BadgeTone; tone: RiskTone | null; icon: IconName; rank: number; swatch: string }> = {
+  failed: { badge: "urgent", tone: "urgent", icon: "x-circle", rank: 0, swatch: "urgent" },
+  reopened: { badge: "soon", tone: "soon", icon: "alert", rank: 1, swatch: "soon" },
+  queued: { badge: "neutral", tone: null, icon: "play", rank: 2, swatch: "neutral" },
+  unconfirmed: { badge: "low", tone: "low", icon: "clock", rank: 3, swatch: "low" },
+  verified: { badge: "fine", tone: "fine", icon: "check-circle", rank: 4, swatch: "fine" },
+};
+
+/** The chart's order: good first, worst last, as in the mockup legend. */
+export const CHART_ORDER: OutcomeState[] = ["verified", "unconfirmed", "queued", "reopened", "failed"];
+
+export const FINDING_WORDS: Record<FindingState, { badge: BadgeTone; icon: IconName }> = {
+  open: { badge: "urgent", icon: "x-circle" },
+  unchecked: { badge: "neutral", icon: "info" },
+  resolved: { badge: "fine", icon: "check-circle" },
+};
+
+export const FAMILY_WORDS = { restore: { label: "Restores", one: "Restore", icon: "restore" as IconName }, remediation: { label: "Undo changes", one: "Undo a change", icon: "refresh" as IconName } } as const;
+
+/** Failed and changed again first, then waiting, then not checked, then checked; newest first inside each. */
+export function orderOutcomes(rows: OutcomeRow[]): OutcomeRow[] {
+  return [...rows].sort((a, b) => OUTCOME_WORDS[a.state].rank - OUTCOME_WORDS[b.state].rank
+    || String(outcomeWhen(b) ?? "").localeCompare(String(outcomeWhen(a) ?? "")) || a.id.localeCompare(b.id));
+}
+
+export function outcomeWhen(row: OutcomeRow): string | null {
+  return row.verifiedAt ?? row.reopenedAt ?? row.lastEventAt;
+}
+
+/** The line under a request's name: "Restore · 10 Sep" or "Sign-in rule · 28 Sep". */
+export function outcomeMeta(row: OutcomeRow, today: Day): string {
+  const kind = row.family === "restore" ? "Restore" : row.resourceType ? plainKind(row.resourceType) : "Undo a change";
+  const when = outcomeWhen(row);
+  return when ? `${kind} · ${shortDay(when.slice(0, 10), today)}` : kind;
+}
+
+/** Where a request's row goes: its newest job, or Activity for a report without job ids. */
+export function outcomeHref(row: OutcomeRow): string {
+  return row.lastJobId ? `/jobs/${encodeURIComponent(row.lastJobId)}` : "/activity";
+}
+
+export function attemptsWord(count: number): string {
+  return plural(count, "attempt");
+}
+
+/** The request's reason, as a sentence. */
+export function reasonSentence(reason: string): string {
+  const text = outcomeReason(reason);
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+/** "Groups have at least two owners": the portal's own plain title, else the registry's, never the code. */
+export function findingTitle(row: FindingRow, plainTitle: (controlId: string) => string | null = () => null): string {
+  return plainTitle(row.controlId) ?? row.title ?? "A security check Keel no longer holds";
+}
+
+/** The line under a security check's result. */
+export function findingLine(row: FindingRow, today: Day): string {
+  const day = (value: string | null) => (value ? shortDay(value.slice(0, 10), today) : null);
+  if (row.state === "resolved") return row.resolvedAt ? `Passing since ${day(row.resolvedAt)}` : "Passing on the newest check";
+  if (row.state === "unchecked") return "Keel could not read what this check needs";
+  return row.reopened ? `Failed again on ${day(row.failedAt) ?? "a later check"} after being fixed` : `Failing since ${day(row.failedAt) ?? "the start of the period"}`;
+}
+
+/** Durations for the recovery card: "14 min", "5 h". */
+export function shortDuration(ms: number | null): string {
+  if (ms === null) return "Not measured";
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return "Under 1 min";
+  if (minutes < 90) return `${minutes} min`;
+  const hours = Math.round(ms / 3_600_000);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} days`;
+}
+
+export const HOURS_FAMILY_WORDS = { restore: "Checked restores", remediation: "Checked undo of a change", finding: "Fixed security checks" } as const;
+
+/** "~2 h" on the tile; "About 1.5 hours" in the card. */
+export function hoursShort(hours: number): string {
+  return `~${hours} h`;
+}
+
+export const NO_COMPLIANCE_CLAIM = "This report shows what Keel did and checked. It is not a statement of compliance with any regulation or framework.";

@@ -19,6 +19,7 @@ import {
   rangeLabel,
   type Day,
   type DayRange,
+  type Preset,
 } from "@/lib/date-range";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -37,6 +38,7 @@ export function DatePicker({
   marked,
   markedLabel = "Has a backup",
   allowClear = false,
+  presets,
 }: {
   label: string;
   value: DayRange | null;
@@ -47,8 +49,10 @@ export function DatePicker({
   marked?: ReadonlySet<Day>;
   markedLabel?: string;
   allowClear?: boolean;
+  // A page's own quick choices in place of the shared ones (Today, Last 7 days, …).
+  presets?: Preset[];
 }) {
-  const list = mode === "range" ? presetList(today, lastBackup) : presetList(today).slice(0, 1);
+  const list = presets ?? (mode === "range" ? presetList(today, lastBackup) : presetList(today).slice(0, 1));
   const shown = rangeLabel(value, today, list);
   return (
     <div className="picker-field">
@@ -83,7 +87,7 @@ function DatePanel({ value, onChange, today, mode, list, marked, markedLabel, al
   onChange: (value: DayRange | null) => void;
   today: Day;
   mode: "single" | "range";
-  list: ReturnType<typeof presetList>;
+  list: Preset[];
   marked?: ReadonlySet<Day>;
   markedLabel: string;
   allowClear: boolean;

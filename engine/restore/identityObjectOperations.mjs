@@ -83,6 +83,35 @@ function servicePrincipalRefusal(resource, verb) {
   return null;
 }
 
+// ------------------------------------------------ multitenant org template
+
+/**
+ * The partner configuration template settings a restore may write. Inbound
+ * trust (whether this tenant accepts a partner's MFA and device claims) is
+ * never written: a wrong value changes how partner users pass Conditional
+ * Access, so a difference is reported for a person to change by hand.
+ */
+export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze([
+  'templateApplicationLevel', 'automaticUserConsentSettings',
+  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+]);
+
+const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) differs from the backup. A restore never changes it: review it in Entra admin center > External Identities > Cross-tenant access settings, and change it by hand if needed.';
+
+const inboundTrustDiffers = (resource) => resource.live?.payload
+  && resource.payload?.inboundTrust !== undefined
+  && !sameValue(resource.payload.inboundTrust, resource.live.payload.inboundTrust);
+
+function partnerTemplateRefusal(resource, verb) {
+  if (verb !== 'update' || !inboundTrustDiffers(resource)) return null;
+  if (!PARTNER_TEMPLATE_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]))) return null;
+  return { outcome: 'skipped', reason: `manual: ${INBOUND_TRUST_STEP}` };
+}
+
+function partnerTemplateAfterWrite(_io, { resource }) {
+  return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
+}
+
 // ------------------------------------------------------------- governance
 
 /** Lifecycle workflow fields Entra computes, or that are read separately. */
@@ -268,11 +297,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
     resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
-    singleton: true, operations: ['update'],
-    writable: [
-      'templateApplicationLevel', 'inboundTrust', 'automaticUserConsentSettings',
-      'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-    ],
+    singleton: true, operations: ['update'], writable: PARTNER_TEMPLATE_WRITABLE_FIELDS,
+    refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
   // Restore gaps, batch 3: guest and app consent settings.

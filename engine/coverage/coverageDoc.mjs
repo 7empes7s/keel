@@ -336,13 +336,13 @@ export const TYPE_GUIDE = Object.freeze({
   // Wave 1: backed up, no restore built yet.
   deviceManagementScript: manual('Windows PowerShell scripts', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it again.'),
+    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
   deviceShellScript: manual('macOS shell scripts', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it again.'),
+    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
   deviceHealthScript: manual('Remediations', NOT_BUILT,
     'KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.',
-    'Recreate your own remediations in the Intune admin center from the backup, then assign them again.'),
+    'Recreate your own remediations in the Intune admin center from the backup, then assign them to the groups and schedule in the backup.'),
   deviceComplianceScript: manual('Custom compliance scripts', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
     'Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.'),
@@ -356,19 +356,19 @@ export const TYPE_GUIDE = Object.freeze({
   }),
   windowsFeatureUpdateProfile: auto('Windows feature update profiles', {
     keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Who a profile is assigned to is not backed up yet, so assign it again by hand.',
+    todo: 'Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
   }),
   windowsQualityUpdateProfile: auto('Windows quality update profiles', {
     keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Who a profile is assigned to is not backed up yet, so assign it again by hand.',
+    todo: 'Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
   }),
   windowsDriverUpdateProfile: auto('Windows driver update profiles', {
     keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Driver approvals and assignments are not backed up yet, so approve the drivers and assign the profile again by hand.',
+    todo: 'Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
   }),
   groupPolicyConfiguration: manual('Administrative templates', NOT_BUILT,
     'KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.',
-    'Recreate the template in the Intune admin center, using the backup for which settings were turned on.'),
+    'Recreate the template in the Intune admin center, using the backup for which settings were turned on and who it was assigned to.'),
   groupPolicyUploadedDefinitionFile: manual('Imported administrative template files', NOT_BUILT,
     'KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.',
     'Import the files again in the Intune admin center from your own copy.'),
@@ -407,7 +407,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Recreate your own categories in the Intune admin center from the backup, then add the apps to them again.'),
   intuneBrandingProfile: manual('Company Portal branding', NOT_BUILT,
     'KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.',
-    'Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it again.'),
+    'Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.'),
 });
 
 const FAMILY_HEADINGS = Object.freeze({

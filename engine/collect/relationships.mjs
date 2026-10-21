@@ -91,6 +91,11 @@ function assignmentProject(item) {
       settingsDigest: item.settings && typeof item.settings === 'object'
         ? createHash('sha256').update(stableStringify(item.settings)).digest('hex')
         : null,
+      // A script or remediation assignment carries its run schedule (and, for
+      // a remediation, whether the fix runs). Kept only when present, so every
+      // other assignment's edge stays exactly as before.
+      ...(item.runSchedule && typeof item.runSchedule === 'object' ? { runSchedule: item.runSchedule } : {}),
+      ...(typeof item.runRemediationScript === 'boolean' ? { runRemediationScript: item.runRemediationScript } : {}),
     },
   };
 }
@@ -161,6 +166,18 @@ const ASSIGNMENT_ROUTES = Object.freeze({
   deviceManagementIntent: { version: 'beta', base: '/deviceManagement/intents', requires: DEVICE_CONFIG },
   targetedManagedAppConfiguration: { version: 'v1.0', base: '/deviceAppManagement/targetedManagedAppConfigurations', requires: APPS },
   mobileAppConfiguration: { version: 'v1.0', base: '/deviceAppManagement/mobileAppConfigurations', requires: APPS },
+  // Scripts, remediations, Windows update profiles, administrative templates
+  // and Company Portal branding (wave 1 CAT-INTUNE and remaining kinds batch 1).
+  // All are beta-only routes.
+  deviceManagementScript: { version: 'beta', base: '/deviceManagement/deviceManagementScripts', requires: DEVICE_CONFIG },
+  deviceShellScript: { version: 'beta', base: '/deviceManagement/deviceShellScripts', requires: DEVICE_CONFIG },
+  deviceHealthScript: { version: 'beta', base: '/deviceManagement/deviceHealthScripts', requires: DEVICE_CONFIG },
+  deviceComplianceScript: { version: 'beta', base: '/deviceManagement/deviceComplianceScripts', requires: DEVICE_CONFIG },
+  windowsFeatureUpdateProfile: { version: 'beta', base: '/deviceManagement/windowsFeatureUpdateProfiles', requires: DEVICE_CONFIG },
+  windowsQualityUpdateProfile: { version: 'beta', base: '/deviceManagement/windowsQualityUpdateProfiles', requires: DEVICE_CONFIG },
+  windowsDriverUpdateProfile: { version: 'beta', base: '/deviceManagement/windowsDriverUpdateProfiles', requires: DEVICE_CONFIG },
+  groupPolicyConfiguration: { version: 'beta', base: '/deviceManagement/groupPolicyConfigurations', requires: DEVICE_CONFIG },
+  intuneBrandingProfile: { version: 'beta', base: '/deviceManagement/intuneBrandingProfiles', requires: SERVICE_CONFIG },
   managedAppPolicy: {
     version: 'v1.0',
     requires: APPS,

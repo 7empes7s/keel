@@ -4637,3 +4637,57 @@ item that needs it stays untouched.
 - **Keep the fixture short-lived.** Run A to C back to back. If anything stops the delete, delete the policy yourself at
   once with the Restorer and say so.
 - **Report:** the dry run and enforce results (or the refusal verbatim), the check exit code, and the PR link.
+
+### Q99: Backup coverage numbers per service, for the executive report (read-only, DB and logs only)
+- Drafted by the "Backup coverage audit" thread (2026-10-21). Marouane asked how much Keel backs up per service and why the
+  rest is not. The code says what Keel *can* collect; this item gives the live numbers. Findings go to
+  `/mnt/project-files/handoff/backup-coverage/REPORT.md` (the thread writes it, not you).
+- Needs: nothing. Run from your own clone checked out at the commit `/opt/keel-live` is deployed at (never `/opt/keel`),
+  with `npm ci` in `engine/` if needed. No tenant calls, no job, schedule or config changes, no reruns.
+- Status: todo
+- Do (all with `set -a; . /etc/keel/db.env; set +a`):
+  1. Deployed build of `/opt/keel-live`, and every `schedule` row: job_kind, tier, enabled, last run time and status, next_due_at.
+  2. Coverage report as the portal builds it. Save as `<clone>/engine/q99-coverage.mjs` (scratch, never commit) and run
+     `node q99-coverage.mjs > /tmp/q99-coverage.json` from `<clone>/engine`; report the exit code and paste the JSON
+     (mask tenant names in `message` text):
+     ```js
+     import { connect } from './store/db.mjs';
+     import { buildCoverageReport } from './coverage/report.mjs';
+     import { CATALOG } from '../tools/tenant-probe/catalog.mjs';
+     import { DESCRIPTORS } from './collect/descriptors.mjs';
+     const c = await connect(process.env.KEEL_DB_URL);
+     const refs = (await c.query('SELECT tenant_ref, count(*)::int n FROM snapshot GROUP BY 1 ORDER BY 2 DESC')).rows;
+     const r = await buildCoverageReport(c, { tenantRef: refs[0].tenant_ref, catalog: CATALOG, descriptors: DESCRIPTORS, now: new Date() });
+     console.log(JSON.stringify({
+       tenants: refs.length, summary: r.summary, snapshot: r.snapshot,
+       types: r.types.map((t) => [t.type, t.status, t.outcome, t.itemCount, t.lastCollectedAt, t.stale,
+         t.detail?.httpStatus ?? null, t.detail?.graphCode ?? null, String(t.detail?.message ?? '').slice(0, 160)]),
+       workloads: r.workloads.map((w) => [w.workload, w.status, w.resources, w.observation?.endedAt ?? null, w.outOfScope,
+         JSON.stringify(w.reasons).slice(0, 300)]),
+     }, null, 1));
+     await c.end();
+     ```
+  3. Config workloads, newest run each, as SQL:
+     ```sql
+     SELECT DISTINCT ON (wc.workload) wc.workload, wc.outcome, wc.observed_to,
+            (SELECT count(*) FROM workload_observation o WHERE o.collection_id = wc.id) AS resources
+       FROM workload_collection wc ORDER BY wc.workload, wc.created_at DESC;
+     ```
+     plus, per workload, how many runs in the last 7 days and how many of those were `complete`/`partial`/`failed`/`disabled`.
+     For any workload whose newest run is not `complete`, the digest `reasons` verbatim (masked).
+  4. Content backup totals per workload:
+     ```sql
+     SELECT workload, count(DISTINCT container) containers, count(DISTINCT item_key) items, count(*) versions,
+            sum(bytes) bytes, sum(new_bytes) stored_new_bytes, max(created_at) newest
+       FROM content_item GROUP BY 1 ORDER BY 1;
+     SELECT count(*) chunks, sum(stored_bytes) stored_bytes FROM content_chunk;
+     ```
+     and the last 7 `content-collect` jobs: id, start, end, status, and the per-workload lines (items, bytes, status) from
+     the worker log, verbatim.
+  5. Config snapshots: total count, newest completed per tier (id masked, completed_at, status), and per tier how many of the
+     last 7 days' runs succeeded vs failed.
+  6. Tenant size for context, from the newest snapshot (counts only): users, groups, enterprise apps, managed devices
+     (`SELECT resource_type, count(*) FROM resource_version WHERE snapshot_id = <newest tier1/tier2/tier3> GROUP BY 1`),
+     and how many mailboxes, OneDrives, SharePoint sites and teams the newest content and workload runs found vs read.
+- **Report:** steps 1 to 6 in this Result (big JSON can go in a gist-free file on a new branch
+  `claude/q99-coverage-numbers` under `ops/q99/`, never master). Nothing is written to the tenant or the DB.

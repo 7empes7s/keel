@@ -5378,3 +5378,27 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
   result; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q115: Check the new backup kinds of batch 7 land in a snapshot (read-only, after #440)
+- Drafted by the "Back up Microsoft 365 settings left" thread (2026-10-21). Code: PR #440 (batch 7, 5 Microsoft 365
+  settings kinds). All are GET-only v1.0 catalogue reads; no writer.
+- Needs: PR #440 live (`git -C /opt/keel-live log --oneline | grep -c "#440"` is 1). Can run together with Q112.
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
+     line that names one of the types below with an error or a 400/403/404.
+  2. ```sql
+     WITH s AS (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
+     SELECT t.type, count(rv.resource_type) AS objects
+       FROM unnest('{sharepointSettings,itemInsightsSettings,externalConnection,simulationAutomation,attackSimulation}'::text[]) AS t(type)
+       LEFT JOIN resource_version rv ON rv.resource_type = t.type AND rv.snapshot_id = (SELECT id FROM s)
+      GROUP BY t.type ORDER BY t.type;
+     ```
+     If the table or column names differ, take the snapshot step 1 made and report what you ran.
+  3. Field check: report the top-level keys of the stored `sharepointSettings` payload, and confirm no stored
+     `attackSimulation` payload holds a `report` key.
+- **Expected:** step 1 exit 0. Step 2 from discovery run 3: 1 `sharepointSettings`, 1 `itemInsightsSettings`, 0 for the
+  other three. Step 3: about 29 setting keys (sharingCapability, isLoopEnabled, idleSessionSignOut, ...), no `report`.
+- **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.

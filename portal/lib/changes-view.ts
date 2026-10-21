@@ -81,12 +81,43 @@ export function changeSentence(item: Pick<DriftRecord, "naturalKey" | "changeTyp
   return `${resourceLabel(item.naturalKey)} ${verb}`;
 }
 
+// Service setting changes: where their review stands. Acknowledged ones stay listed
+// (someone has seen them; they are still open) until someone resolves them.
+export type ReviewState = "waiting" | "seen";
+
+export function reviewState(item: Pick<DriftRecord, "serviceRead">): ReviewState | null {
+  if (!item.serviceRead) return null;
+  return item.serviceRead.alertState === "acknowledged" ? "seen" : "waiting";
+}
+
+/** A service setting change nobody has acknowledged yet. */
+export function isWaiting(item: Pick<DriftRecord, "serviceRead">): boolean {
+  return reviewState(item) === "waiting";
+}
+
+export const REVIEW_WORDS: Record<ReviewState, string> = { waiting: "Waiting for review", seen: "Seen, not resolved" };
+
+/** What acknowledging or resolving the chosen service setting changes does, before it runs. */
+export function respondDetail(action: "acknowledge" | "resolve", count: number): string {
+  const them = count === 1 ? "it" : "them";
+  return action === "acknowledge"
+    ? `Marks ${them} as seen. ${count === 1 ? "It stays" : "They stay"} on this list until someone resolves ${them}. Nothing in Microsoft 365 changes.`
+    : `Closes ${count === 1 ? "its alert" : "their alerts"} and takes ${them} off this list, with your note. Nothing in Microsoft 365 changes.`;
+}
+
+/** The toast after acknowledging or resolving: how many worked and how many did not. */
+export function respondResult(action: "acknowledge" | "resolve", done: number, failed: number): string {
+  const verb = action === "acknowledge" ? "Acknowledged" : "Resolved";
+  const head = `${verb} ${done} ${done === 1 ? "change" : "changes"}`;
+  return failed ? `${head}; ${failed} could not be recorded` : head;
+}
+
 /** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators." */
 /** The Changes page verdict. Service setting changes (`serviceRead`) have no approved
  * setup, so they are counted apart: they wait for review, they did not move away from it. */
 export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
   const items = all.filter((item) => !item.serviceRead);
-  const waiting = all.length - items.length;
+  const waiting = all.filter(isWaiting).length;
   const services = `${waiting} service setting ${waiting === 1 ? "change waits" : "changes wait"} for review`;
   if (baselineSetAt === null) {
     return { text: `No setup is approved yet, so Keel cannot tell what changed${waiting ? `; ${services}` : ""}.`, tone: "critical" };
@@ -126,7 +157,7 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
   if (typeof value === "string") {
     if (value === "") return "empty";
     if (names) {
-      if (isObjectId(value)) return names[value.toLowerCase()] ?? "an object KEEL has no name for";
+      if (isObjectId(value)) return names[value.toLowerCase()] ?? "an object Keel has no name for";
       if (holdsObjectId(value)) return replaceObjectIds(value, (id) => names[id.toLowerCase()] ?? "(unnamed object)");
     }
     // Stored enum-like codes ("enabledForReportingButNotEnforced") read as words.
@@ -140,7 +171,7 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
       const named = value
         .filter((entry) => !(typeof entry === "string" && isObjectId(entry) && !names[entry.toLowerCase()]))
         .map((entry) => valueWords(entry, names));
-      if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} KEEL has no name for`);
+      if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} Keel has no name for`);
       return named.join(", ");
     }
   }
@@ -193,7 +224,7 @@ const REFUSAL_REASONS: [RegExp, string][] = [
   [/required by|depends on|still references/i, "something else still depends on it"],
 ];
 
-/** "KEEL refused to change Finance (group) because it is synced from on-premises Active Directory." */
+/** "Keel refused to change Finance (group) because it is synced from on-premises Active Directory." */
 export function refusalSentence(refusal: { naturalKey: string; reason: string }, label?: string): string {
   const name = label ?? resourceLabel(refusal.naturalKey);
   const known = REFUSAL_REASONS.find(([pattern]) => pattern.test(refusal.reason))?.[1];
@@ -201,8 +232,8 @@ export function refusalSentence(refusal: { naturalKey: string; reason: string },
   const plain = !known && !/[=_:{}[\]]|\b[a-z]+[A-Z]/.test(refusal.reason) ? refusal.reason.replace(/\.$/, "") : null;
   const because = known ?? plain;
   return because
-    ? `KEEL refused to change ${name} because ${because}.`
-    : `KEEL refused to change ${name}; the reason is in Technical details.`;
+    ? `Keel refused to change ${name} because ${because}.`
+    : `Keel refused to change ${name}; the reason is in Technical details.`;
 }
 
 export function changeKindWords(kind: "changed" | "added" | "removed"): string {

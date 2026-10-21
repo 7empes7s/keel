@@ -94,11 +94,15 @@ test("the loader lists the newest open change per resource in every service, wit
     assert.equal(finance.serviceRead?.collectionId, renamed);
     assert.equal(finance.blastRadius, "cosmetic");
 
-    // Acknowledged changes no longer wait for review.
-    await client.query(
-      `UPDATE alert SET state = 'acknowledged' WHERE tenant_ref = $1 AND resource_key = $2`,
-      [TENANT, `sharepoint-site-settings:site:${FINANCE}`],
+    // An acknowledged change stays listed as seen; a resolved one leaves the list.
+    const setState = (state: string) => client.query(
+      `UPDATE alert SET state = $3 WHERE tenant_ref = $1 AND resource_key = $2`,
+      [TENANT, `sharepoint-site-settings:site:${FINANCE}`, state],
     );
+    await setState("acknowledged");
+    const seen = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.deepEqual(seen.map((item) => [item.name, item.serviceRead?.alertState]), [["KEEL-RT-rule", "open"], ["Finance team", "acknowledged"], ["Archive", "open"]]);
+    await setState("resolved");
     assert.deepEqual((await loadServiceChanges(client, { tenantRef: TENANT, now })).map((item) => item.name), ["KEEL-RT-rule", "Archive"]);
     assert.equal((await loadServiceChanges(client, { tenantRef: TENANT, now, limit: 1 })).length, 1);
   } finally {

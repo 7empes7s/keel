@@ -745,7 +745,7 @@ test("restore refuses a synced group with the reason, before any check runs", as
   await page.getByLabel("Select Finance (group)").click();
   await page.getByRole("button", { name: "Put back 1 setting" }).click();
   await expect(page.getByRole("heading", { name: "KEEL cannot put this back" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("KEEL refused to change Finance (group) because it is synced from on-premises Active Directory, which owns it.");
+  await expect(page.getByRole("alert")).toContainText("Keel refused to change Finance (group) because it is synced from on-premises Active Directory, which owns it.");
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });
 
@@ -772,7 +772,7 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
   await sheet.getByRole("button", { name: "Check what undoing would do" }).click();
   const preview = sheet.locator(".remediation-preview");
   await expect(preview).toContainText("Put the approved settings back");
-  await expect(preview.locator('[role="alert"]')).toHaveText(/KEEL refused to change Finance \(group\) because it is synced from on-premises Active Directory, which owns it\./);
+  await expect(preview.locator('[role="alert"]')).toHaveText(/Keel refused to change Finance \(group\) because it is synced from on-premises Active Directory, which owns it\./);
   await expect(sheet.getByRole("button", { name: "Send for approval" })).toBeDisabled();
   const record = preview.locator('[data-layer="record"]');
   await record.locator("summary").click();
@@ -837,7 +837,7 @@ test("a change shows its behavioural settings and linked records, and flags mism
   const all = page.locator(".bl-tile", { hasText: "All open changes" });
   await expect(all.locator(".bl-tile-count")).toHaveText("7");
   await expect(all).toContainText("Everything that differs from the approved setup");
-  await expect(page.locator(".bl-context")).toContainText("1 change rests on records that do not match each other.");
+  await expect(page.locator(".bl-context")).toContainText("1 change could not be fully checked. Its details say why.");
 
   // The name opens the panel from the keyboard.
   await page.locator(".bl-row-link", { hasText: /^Finance$/ }).focus();
@@ -851,10 +851,10 @@ test("a change shows its behavioural settings and linked records, and flags mism
   await expect(diff.getByRole("heading", { name: "Changes behaviour (1)" })).toBeVisible();
   const evidence = sheet.locator(".decision-evidence");
   await expect(evidence.locator(".decision-mismatch-note")).toHaveText("2 records do not match the others. Check before you decide.");
-  await expect(evidence.locator(".decision-row-mismatch dt")).toHaveText(["Baseline copy · does not match", "Roll-back plan and result · does not match"]);
+  await expect(evidence.locator(".decision-row-mismatch dt")).toHaveText(["Approved setup copy · does not match", "Roll-back plan and result · does not match"]);
   await expect(evidence).toContainText("Owned by CREOS.");
   await expect(evidence).toContainText("A roll-back request is approved. Its job is finished.");
-  await expect(evidence).toContainText("It restores from a different backup than the baseline's, so it is not linked to this change. Result: KEEL wrote it back and checked the result.");
+  await expect(evidence).toContainText("It restores from a different backup than the approved setup's, so it is not linked to this change. Result: Keel wrote it back and checked the result.");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = evidence.locator('[data-layer="record"]');
   await record.locator("summary").click();
@@ -868,11 +868,11 @@ test("a change shows its behavioural settings and linked records, and flags mism
 
   const unknownSheet = await openChange(page, "HQ egress");
   const unknown = unknownSheet.locator(".semantic-diff");
-  await expect(unknown.locator(".semantic-summary")).toHaveText("KEEL did not keep the baseline's copy of this, so the earlier values are not known. Nothing is shown as removed.");
-  await expect(unknown.locator("td[data-label='Approved']")).toHaveText(["Not known", "Not known"]);
-  await expect(unknown.locator(".diff-kind")).toHaveText(["Now set", "Now set"]);
-  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The baseline holds no copy of this, so KEEL cannot check what it compared against.");
-  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so KEEL cannot check it.");
+  await expect(unknown.locator(".semantic-summary")).toHaveText("Keel did not keep the approved setup's copy of this, so the earlier values are not known. Nothing is shown as removed.");
+  await expect(unknown.locator(".cv-side[data-side='before']")).toHaveText([/^Approved\s*Not known$/, /^Approved\s*Not known$/]);
+  await expect(unknown.locator(".cv-note")).toHaveText(["Now set", "Now set"]);
+  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The approved setup holds no copy of this, so Keel cannot check what it compared against.");
+  await expect(unknownSheet.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so Keel cannot check it.");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
@@ -1459,8 +1459,8 @@ test("site permissions fit a phone without sideways scrolling", async ({ page })
 
 // Service setting changes sit in the Changes list beside the approved-setup changes, so
 // grouping and filtering by service cover every service, not only Entra ID and Intune.
-// They fit a phone, and their details point to the Alerts page instead of accept or undo.
-test("the Changes list groups and filters every service, and service changes point to Alerts", async ({ page }) => {
+// They fit a phone and are acknowledged or resolved in place instead of accepted or undone.
+test("the Changes list groups and filters every service, and service changes are answered in place", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page, "/drift/services", "dark");
   await expect(page.locator('[data-layer="verdict"]')).toContainText("5 service setting changes wait for review");
@@ -1475,10 +1475,86 @@ test("the Changes list groups and filters every service, and service changes poi
   await page.getByRole("link", { name: "Forward finance mail" }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
-  await expect(sheet).toContainText("Previous read → newest read");
+  await expect(sheet.locator(".cv-side[data-side='before'] small").first()).toHaveText("Previous read");
   await expect(sheet).toContainText("1 setting changed since the previous read.");
-  await expect(sheet.getByRole("link", { name: "Review on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeVisible();
+  await expect(sheet.getByRole("link", { name: "Open its alert" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-0000000000a6/);
   await expect(sheet.getByRole("button", { name: "Accept this change" })).toHaveCount(0);
+});
+
+// The Service settings tile keeps service changes only; acknowledging two posts one call
+// per alert and marks both seen; resolving needs a note and takes the change off the list.
+test("Changes · acknowledge and resolve service setting changes in place", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}"));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  const tile = page.locator(".bl-tile", { hasText: "Service settings" });
+  await expect(tile.locator(".bl-tile-count")).toHaveText("5");
+  await tile.click();
+  await expect(page).toHaveURL(/from=services/);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
+  await expect(page.locator(".bl-filter-note")).toContainText("Showing service setting changes only: 5 of");
+
+  await page.getByLabel(/^Select Forward finance mail/).check();
+  await page.getByLabel(/^Select Global/).check();
+  const bar = page.locator(".sel-bar");
+  await expect(bar).toContainText("Marks them as seen.");
+  await bar.getByRole("button", { name: "Acknowledge 2 changes" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Acknowledged 2 changes");
+  const acknowledged = await posts();
+  expect(acknowledged).toEqual([
+    { alertId: "a1e70000-0000-4000-8000-0000000000a6", action: "acknowledge" },
+    { alertId: "a1e70000-0000-4000-8000-0000000000a7", action: "acknowledge" },
+  ]);
+  for (const name of ["Forward finance mail", "Global"]) {
+    await expect(page.locator(".sel-row", { has: page.locator(".bl-row-link", { hasText: new RegExp(`^${name}$`) }) }).locator(".bl-row-who")).toContainText("Seen, not resolved");
+  }
+  await expect(tile.locator(".bl-tile-count")).toHaveText("3");
+  await expect(tile).toContainText("2 seen");
+
+  // Resolve one from its panel: a note is required, then it leaves the list.
+  const sheet = await openChange(page, "Global");
+  await expect(sheet.getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "Resolve with a note…" }).click();
+  const resolve = page.getByRole("dialog", { name: "Resolve this change" });
+  await resolve.getByRole("button", { name: "Resolve 1 change" }).click();
+  await expect(resolve.getByRole("alert")).toContainText("Write why");
+  await resolve.getByPlaceholder("What was checked, and why it is fine").fill("Federation was planned");
+  await resolve.getByRole("button", { name: "Resolve 1 change" }).click();
+  await expect(resolve).toBeHidden();
+  expect((await posts()).at(-1)).toEqual({ alertId: "a1e70000-0000-4000-8000-0000000000a7", action: "resolve", note: "Federation was planned" });
+  await expect(page.locator(".bl-row-link", { hasText: /^Global$/ })).toHaveCount(0);
+  await expect(page.locator(".sel-row")).toHaveCount(4);
+});
+
+// Other pages link to a filtered list by kind; the filter note says so.
+test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
+  await open(page, "/drift?kind=namedLocation");
+  await expect(page.locator(".bl-filter-note")).toContainText("Showing trusted location changes only: 2 of 7.");
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".bl-context")).toContainText("Checked after every backup.");
+  await expect(page.locator(".bl-context").getByRole("link", { name: "Run a backup now" })).toHaveAttribute("href", /protect/);
+  for (const hash of ["/drift", "/drift/services"]) {
+    await open(page, hash);
+    const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+    expect(visible).not.toMatch(/\bKEEL\b/);
+    // "Windows baseline" is a setting's own name; the page's words never say "baseline".
+    expect(visible).not.toMatch(/\b(the|a|no|in) baselines?\b|baseline's/i);
+    // Code-style type is for values only, inside the before and after blocks.
+    const mono = await page.locator("main#main-content *").evaluateAll((elements) => elements
+      .filter((element) => !element.closest('[data-layer="record"], .cv-side') && (element as HTMLElement).innerText?.trim() && getComputedStyle(element).fontFamily.toLowerCase().includes("mono"))
+      .map((element) => element.className));
+    expect(mono).toEqual([]);
+  }
+  // The same in an opened change: headings and labels are plain text, values are code-style.
+  await open(page, "/drift");
+  await openChange(page, "Finance");
+  const sheetMono = await page.locator(".bl-sheet *").evaluateAll((elements) => elements
+    .filter((element) => !element.closest('[data-layer="record"], .cv-side') && (element as HTMLElement).innerText?.trim() && getComputedStyle(element).fontFamily.toLowerCase().includes("mono"))
+    .map((element) => `${element.tagName}.${element.className}`));
+  expect(sheetMono).toEqual([]);
 });
 
 // Portal experience contract, mechanical checks (roadmap task-129). They run on every

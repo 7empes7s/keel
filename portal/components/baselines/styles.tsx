@@ -267,7 +267,7 @@ details.compare-group > summary { display: grid; grid-template-columns: minmax(0
   .bl-row-name { flex-basis: 100%; }
   .bl-row-who { display: block; flex-basis: 100%; min-width: 0; color: var(--text-soft); text-align: left; }
   .bl-tiles:not(.compare-summary) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .bl-row-who small::before { content: " · "; }
+  .bl-row-who > span + small::before { content: " · "; }
   .bl-compare-pickers { grid-template-columns: minmax(0, 1fr); }
   .bl-swap { justify-self: center; transform: rotate(90deg); }
   .bl-sides-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ChangedValuesStyles, Value } from "@/components/changed-values";
+import { ChangedValuesStyles, SidesRow, Value } from "@/components/changed-values";
 import { DecisionStyles } from "@/components/decision-styles";
 import { FieldRecord } from "@/components/drift-diff";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
@@ -16,7 +16,7 @@ function kindWords(field: SemanticField): string {
 
 function beforeWords(field: SemanticField, names: Record<string, string>): ReactNode {
   if (field.kind === "unknown-before") return "Not known";
-  if (field.kind === "added") return "Not set in the approved setup";
+  if (field.kind === "added") return "Not set";
   return <Value names={names} value={field.before} />;
 }
 
@@ -27,7 +27,7 @@ function afterWords(field: SemanticField, names: Record<string, string>): ReactN
 
 // Roadmap task-98: the settings of one change that alter behaviour, grouped by what a
 // roll back can do with them. Fields Microsoft sets itself are counted, never listed;
-// an earlier value KEEL did not keep reads "Not known", never as a removal.
+// an earlier value Keel did not keep reads "Not known", never as a removal.
 export function SemanticDiff({ item, change, record }: { item: DriftRecord; change: SemanticChange; record?: ReactNode }) {
   const headingId = `semantic-diff-heading-${item.id}`;
   const cosmetic = cosmeticSentence(change);
@@ -36,12 +36,11 @@ export function SemanticDiff({ item, change, record }: { item: DriftRecord; chan
       <DecisionStyles />
       <ChangedValuesStyles />
       <div className="drift-diff-head">
-        <p className="section-kicker">Approved setup → now</p>
         <h3 id={headingId}>{changeLabel(item)}</h3>
         <p className="field-help semantic-summary">{semanticSummarySentence(change, item.changeType)}</p>
         {cosmetic ? <p className="field-help semantic-cosmetic">{cosmetic}</p> : null}
         {change.rules === "generic" ? (
-          <p className="field-help">KEEL has no detailed rules for this kind of setting yet, so only ids and timestamps are left out.</p>
+          <p className="field-help">Keel has no detailed rules for this kind yet, so every setting that differs is listed.</p>
         ) : null}
       </div>
       {GROUPS.map((group) => {
@@ -53,31 +52,18 @@ export function SemanticDiff({ item, change, record }: { item: DriftRecord; chan
             <h4 id={groupId}>
               {IMPACT_HEADINGS[group]} <span className="semantic-count">({change.groups[group]})</span>
             </h4>
-            <div className="table-scroll">
-              <table aria-labelledby={groupId} className="data-table diff-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Setting</th>
-                    <th scope="col">Approved</th>
-                    <th scope="col">Now</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fields.map((field) => (
-                    <tr className={`diff-${field.kind === "unknown-before" ? "unknown" : field.kind}`} key={field.path}>
-                      <th data-label="Setting" scope="row">
-                        <span className="diff-field">
-                          <span className="diff-kind">{kindWords(field)}</span>
-                          <span>{fieldWords(field.path)}</span>
-                        </span>
-                      </th>
-                      <td data-label="Approved"><span className="diff-before">{beforeWords(field, item.refNames ?? {})}</span></td>
-                      <td data-label="Now"><span className="diff-after">{afterWords(field, item.refNames ?? {})}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul aria-labelledby={groupId} className="cv-list">
+              {fields.map((field) => (
+                <SidesRow
+                  after={afterWords(field, item.refNames ?? {})}
+                  before={beforeWords(field, item.refNames ?? {})}
+                  key={field.path}
+                  name={fieldWords(field.path)}
+                  note={kindWords(field)}
+                  sides={{ before: "Approved", after: "Now" }}
+                />
+              ))}
+            </ul>
           </div>
         );
       })}

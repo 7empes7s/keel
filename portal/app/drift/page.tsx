@@ -53,13 +53,14 @@ export default async function DriftPage() {
       />
       {data.baseline || serviceChanges.length ? (
         <div data-layer="explanation">
-          {data.scope ? (
-            <p className="capture-note">
-              You see changes to resources owned by {data.scope.entities.join(" and ")} only. Changes to
-              other resources in this tenant are reviewed by a central administrator.
-            </p>
-          ) : null}
-          <ChangeList baseline={data.baseline} capabilities={capabilities} items={items} now={data.generatedAt} summary={data.summary} />
+          <ChangeList
+            baseline={data.baseline}
+            capabilities={capabilities}
+            items={items}
+            now={data.generatedAt}
+            scopeNote={data.scope ? `You see changes to resources owned by ${data.scope.entities.join(" and ")} only. A central administrator reviews the rest of this tenant.` : null}
+            summary={data.summary}
+          />
         </div>
       ) : null}
     </>

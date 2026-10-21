@@ -25,7 +25,8 @@ const CSS = `
   padding-left: var(--space-sm);
   border-left: 3px solid var(--line);
 }
-.decision-row dt { font-weight: 600; }
+.decision-heading { margin: 0; font-size: 0.9375rem; font-weight: 650; }
+.decision-row dt { font-family: var(--font-sans); font-size: 0.875rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
 .decision-row dd { margin: 0; overflow-wrap: anywhere; }
 .decision-row-mismatch { border-left-color: var(--failed); }
 .decision-mismatch { color: var(--failed); font-weight: 600; }

@@ -17,7 +17,7 @@ export function DecisionWorkbook({ summary }: { summary: SemanticSummary }) {
   if (summary.total === 0) return null;
   const notes = [
     summary.mismatched ? `${plural(summary.mismatched, "change rests", "changes rest")} on records that do not match each other. Each one says which.` : null,
-    summary.unknownBefore ? `${plural(summary.unknownBefore, "change has", "changes have")} no baseline copy, so earlier values are not known.` : null,
+    summary.unknownBefore ? `${plural(summary.unknownBefore, "change has", "changes have")} no copy in the approved setup, so earlier values are not known.` : null,
     summary.cosmeticOnly ? `${plural(summary.cosmeticOnly, "change touches", "changes touch")} only settings Microsoft manages itself.` : null,
   ].filter((note): note is string => note !== null);
   return (
@@ -81,15 +81,15 @@ export function ChangeEvidencePanel({ evidence, attribution, now }: { evidence: 
   if (!evidence) {
     return (
       <section aria-label="What this decision rests on" className="decision-evidence">
-        <p className="section-kicker">What this decision rests on</p>
-        <p className="field-help">KEEL could not read the records behind this change.</p>
+        <h3 className="decision-heading">What this decision rests on</h3>
+        <p className="field-help">Keel could not read the records behind this change.</p>
       </section>
     );
   }
   return (
     <section aria-label="What this decision rests on" className="decision-evidence">
       <DecisionStyles />
-      <p className="section-kicker">What this decision rests on</p>
+      <h3 className="decision-heading">What this decision rests on</h3>
       {evidence.mismatches > 0 ? (
         <p className="decision-mismatch-note" role="note">
           {plural(evidence.mismatches, "record does", "records do")} not match the others. Check before you decide.
@@ -98,12 +98,12 @@ export function ChangeEvidencePanel({ evidence, attribution, now }: { evidence: 
       <dl className="decision-list">
         <Row label="Owner">{ownerSentence(evidence.ownership)}</Row>
         <Row label="Who made it">
-          {attribution ? `${ATTRIBUTION_HEADLINES[attribution.verdict]}.` : "KEEL did not check who made this change."}
+          {attribution ? `${ATTRIBUTION_HEADLINES[attribution.verdict]}.` : "Keel did not check who made this change."}
         </Row>
         <Row label="Found by" mismatch={evidence.observation.state === "mismatch"}>
           {seenSentence(evidence)}<When at={evidence.observation.at} now={now} />
         </Row>
-        <Row label="Baseline copy" mismatch={evidence.backup.state === "mismatch"}>
+        <Row label="Approved setup copy" mismatch={evidence.backup.state === "mismatch"}>
           {baselineSentence(evidence)}
           {evidence.backup.at ? <> Taken<When at={evidence.backup.at} now={now} />.</> : null}
         </Row>

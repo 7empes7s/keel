@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { Icon, type IconName } from "@/components/shell/icons";
 import { fieldWords } from "@/lib/changes-view";
 import { CHANGE_LABELS, changeLine, valueLines, valueText, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
@@ -19,6 +21,7 @@ const CSS = `
 .cv-value { font-family: var(--font-mono); }
 .cv-lines { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); }
 .cv-lines b { font-family: var(--font-sans); font-weight: 600; color: var(--text-soft); }
+.cv-note { display: block; color: var(--text-soft); font-size: 0.75rem; font-weight: 500; }
 .cv-arrow { width: 1rem; height: 1rem; margin-top: var(--space-xs); color: var(--text-muted); }
 .cv-more { margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
 .cv-objects { display: grid; gap: var(--space-sm); margin: 0; padding: 0; list-style: none; }
@@ -84,6 +87,29 @@ export function ChangedFieldList({ fields, total, sides, names, change = "change
       </ul>
       {total && total > fields.length ? <p className="cv-more">And {total - fields.length} more {total - fields.length === 1 ? "setting" : "settings"}.</p> : null}
     </>
+  );
+}
+
+/** One setting with both sides worded by the caller: a value, or a word such as "Not
+ *  known" when a side holds none (`null` reads "Not there"). `note` says what kind of
+ *  change it is, under the setting's name. */
+export function SidesRow({ name, note, sides, before, after }: {
+  name: string;
+  note?: string;
+  sides: { before: string; after: string };
+  before: ReactNode | null;
+  after: ReactNode | null;
+}) {
+  const side = (which: "before" | "after", value: ReactNode | null) => (
+    <span className="cv-side" data-empty={value === null || typeof value === "string" || undefined} data-side={which}><small>{sides[which]}</small>{value ?? "Not there"}</span>
+  );
+  return (
+    <li className="cv-row">
+      <span className="cv-name">{name}{note ? <small className="cv-note">{note}</small> : null}</span>
+      {side("before", before)}
+      <Icon className="cv-arrow" name="chevron" />
+      {side("after", after)}
+    </li>
   );
 }
 

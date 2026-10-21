@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ChangedValuesStyles, Value } from "@/components/changed-values";
+import { ChangedValuesStyles, SidesRow, Value } from "@/components/changed-values";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { changeKindWords, changeLabel, fieldWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
@@ -39,42 +39,28 @@ export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactN
       : changes.length
         ? `${changes.length} ${changes.length === 1 ? "setting" : "settings"} ${read ? `changed since the previous read` : changes.length === 1 ? "differs from the approved setup" : "differ from the approved setup"}.`
         : "The settings compare equal one by one; the full copies are in Technical details.";
-  const beforeLabel = read ? "Before" : "Approved";
+  const beforeLabel = read ? "Previous read" : "Approved";
 
   return (
     <section aria-labelledby={`drift-diff-heading-${item.id}`} className="drift-diff" id={`drift-diff-${item.id}`}>
       <ChangedValuesStyles />
       <div className="drift-diff-head">
-        <p className="section-kicker">{read ? "Previous read → newest read" : "Approved setup → now"}</p>
         <h3 id={`drift-diff-heading-${item.id}`}>{changeLabel(item)}</h3>
         <p className="field-help">{summary}</p>
       </div>
       {changes.length ? (
-        <div className="table-scroll">
-          <table className="data-table diff-table">
-            <thead>
-              <tr>
-                <th scope="col">Setting</th>
-                <th scope="col">{beforeLabel}</th>
-                <th scope="col">Now</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changes.map((change) => (
-                <tr className={`diff-${change.kind}`} key={change.path}>
-                  <th data-label="Setting" scope="row">
-                    <span className="diff-field">
-                      <span className="diff-kind">{changeKindWords(change.kind)}</span>
-                      <span>{fieldWords(change.path)}</span>
-                    </span>
-                  </th>
-                  <td data-label={beforeLabel}><span className="diff-before">{change.kind === "added" ? "—" : <Value names={item.refNames ?? {}} value={change.before} />}</span></td>
-                  <td data-label="Now"><span className="diff-after">{change.kind === "removed" ? "—" : <Value names={item.refNames ?? {}} value={change.after} />}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul aria-label={`${changeLabel(item)}: settings`} className="cv-list">
+          {changes.map((change) => (
+            <SidesRow
+              after={change.kind === "removed" ? null : <Value names={item.refNames ?? {}} value={change.after} />}
+              before={change.kind === "added" ? null : <Value names={item.refNames ?? {}} value={change.before} />}
+              key={change.path}
+              name={fieldWords(change.path)}
+              note={changeKindWords(change.kind)}
+              sides={{ before: beforeLabel, after: "Now" }}
+            />
+          ))}
+        </ul>
       ) : null}
       <TechnicalDetails>
         <RecordField label="Natural key" value={item.naturalKey} />

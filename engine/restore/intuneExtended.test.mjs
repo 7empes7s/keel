@@ -205,6 +205,64 @@ test('a notification template is created, then its localized messages are added 
   assert.deepEqual(writes.map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`), [`PATCH ${french.id}`]);
 });
 
+// ------------------------------------------- restore gaps, batch 1
+
+test('reusable settings groups, hotpatch policies and device categories are created without server-owned fields', async () => {
+  const cases = [
+    ['deviceManagementReusablePolicySetting', 'beta', {
+      id: 'r1', displayName: 'KEEL-RT-Firewall addresses', description: 'Fixture', version: 3, createdDateTime: 'x',
+      referencingConfigurationPolicyCount: 2, settingDefinitionId: 'vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}',
+      settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance', settingDefinitionId: 'vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}', groupSettingCollectionValue: [] },
+    }, ['id', 'version', 'createdDateTime', 'referencingConfigurationPolicyCount']],
+    ['windowsQualityUpdatePolicy', 'beta', {
+      id: 'q1', displayName: 'KEEL-RT-Hotpatch', description: 'Fixture', hotpatchEnabled: true, roleScopeTagIds: ['0'], assignments: [], lastModifiedDateTime: 'x',
+    }, ['id', 'assignments', 'lastModifiedDateTime']],
+    ['deviceCategory', 'v1.0', { id: 'c1', displayName: 'KEEL-RT-Kiosks', description: 'Fixture' }, ['id']],
+  ];
+  for (const [type, version, payload, dropped] of cases) {
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, payload), 'create', FAST);
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const post = graph.calls.find((call) => call.method === 'POST');
+    assert.equal(post.path, INTUNE_EXTENDED_RECORDS[type].collection, type);
+    assert.equal(post.version, version, type);
+    assert.equal(post.body.displayName, payload.displayName, type);
+    for (const field of dropped) assert.equal(field in post.body, false, `${type}.${field}`);
+  }
+});
+
+test('a reusable settings group update never changes its setting definition', async () => {
+  const path = '/deviceManagement/reusablePolicySettings/r-1';
+  const live = { id: 'r-1', displayName: 'KEEL-RT-Firewall addresses', description: 'old', settingDefinitionId: 'def-a' };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', { ...live, description: 'Fixture', settingDefinitionId: 'def-b' }, {
+    live: { state: 'present', targetId: 'r-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
+});
+
+test('a cleanup rule is only ever made to wait longer before retiring devices, and is never created', async () => {
+  const path = '/deviceManagement/managedDeviceCleanupRules/k-1';
+  const live = { id: 'k-1', displayName: 'KEEL-RT-Cleanup', deviceCleanupRulePlatformType: 'windows', deviceInactivityBeforeRetirementInDays: 60 };
+  const asLive = (payload) => resourceOf('managedDeviceCleanupRule', payload, { live: { state: 'present', targetId: 'k-1', payload: live } });
+
+  const sooner = idoFakeGraph({ seed: { [path]: live } });
+  const refused = await applyIntuneExtendedWrite(sooner, asLive({ ...live, deviceInactivityBeforeRetirementInDays: 30 }), 'update', FAST);
+  assert.match(refused.skipped.reason, /sooner than the 60 days set now/);
+  assert.equal(sooner.calls.length, 0);
+
+  const later = idoFakeGraph({ seed: { [path]: live } });
+  const written = await applyIntuneExtendedWrite(later, asLive({ ...live, deviceInactivityBeforeRetirementInDays: 90, deviceCleanupRulePlatformType: 'ios' }), 'update', FAST);
+  assert.equal(written.failed, undefined, written.failed?.error);
+  const patch = later.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.version, 'beta');
+  assert.deepEqual(patch.body, { deviceInactivityBeforeRetirementInDays: 90 });
+
+  const create = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('managedDeviceCleanupRule', live), 'create', FAST);
+  assert.match(create.failed.error, /unsupported operation/);
+});
+
 // ------------------------------------------------------------------- delete
 
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {

@@ -90,6 +90,11 @@ const REGISTERED = Object.freeze({
   assignmentFilter: ['create', 'update'],
   roleScopeTag: ['create', 'update'],
   notificationMessageTemplate: ['create', 'update'],
+  // Restore gaps, batch 1: Intune tenant settings.
+  deviceManagementReusablePolicySetting: ['create', 'update'],
+  windowsQualityUpdatePolicy: ['create', 'update'],
+  deviceCategory: ['create', 'update'],
+  managedDeviceCleanupRule: ['update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

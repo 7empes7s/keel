@@ -61,6 +61,14 @@ export default [
   { resourceType: 'roleScopeTag', operation: 'update', path: '/deviceManagement/roleScopeTags', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'notificationMessageTemplate', operation: 'create', path: '/deviceManagement/notificationMessageTemplates', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'notificationMessageTemplate', operation: 'update', path: '/deviceManagement/notificationMessageTemplates', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 1: Intune tenant settings.
+  { resourceType: 'deviceManagementReusablePolicySetting', operation: 'create', path: '/deviceManagement/reusablePolicySettings', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceManagementReusablePolicySetting', operation: 'update', path: '/deviceManagement/reusablePolicySettings', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'windowsQualityUpdatePolicy', operation: 'create', path: '/deviceManagement/windowsQualityUpdatePolicies', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'windowsQualityUpdatePolicy', operation: 'update', path: '/deviceManagement/windowsQualityUpdatePolicies', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceCategory', operation: 'create', path: '/deviceManagement/deviceCategories', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceCategory', operation: 'update', path: '/deviceManagement/deviceCategories', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'managedDeviceCleanupRule', operation: 'update', path: '/deviceManagement/managedDeviceCleanupRules', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

@@ -5,6 +5,7 @@ import {
   discoveryHeadline,
   objectCount,
   sourceLabel,
+  skippedSentence,
   sourceProblems,
   typeLabel,
   unreadableSentence,
@@ -29,6 +30,7 @@ function ItemRow({ item }: { item: DiscoveryItem }) {
           {item.status === "uncatalogued" && item.kind !== "cmdlet" ? ` · ${objectCount(item.objects, item.objectsExact)}` : null}
         </p>
         {item.status === "unreadable" ? <p className="activity-meta">{unreadableSentence(item)}</p> : null}
+        {item.status === "skipped" ? <p className="activity-meta">{skippedSentence(item)}</p> : null}
         <TechnicalDetails>
           <RecordField label={item.kind === "cmdlet" ? "Cmdlet" : "Graph path"} value={item.name} />
           <RecordField copy={false} label="Found in" value={item.source} />
@@ -69,6 +71,7 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
   }
   const uncatalogued = data.items.filter((item) => item.status === "uncatalogued");
   const unreadable = data.items.filter((item) => item.status === "unreadable");
+  const skipped = data.items.filter((item) => item.status === "skipped");
   const missing = data.catalogue.filter((entry) => entry.coverage === "unreadable" || entry.coverage === "not-in-metadata");
   const containers = containerLine(data);
   return (
@@ -88,6 +91,7 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
       {sourceProblems(data).map((line) => <p className="action-error" key={line}>{line}</p>)}
       <ItemList items={uncatalogued} summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
       <ItemList items={unreadable} summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
+      <ItemList items={skipped} summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
       {missing.length ? (
         <details className="technical-details">
           <summary>{`Backed-up types not found (${missing.length})`}</summary>

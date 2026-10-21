@@ -10,7 +10,8 @@
 // Wave 1 DISC: what the tenant holds that Keel could back up.
 //   run   reads each Graph version's $metadata, walks every entity set, singleton and
 //         containment path under them, and counts the objects each one holds. Each type
-//         is catalogued (Keel backs it up), uncatalogued (readable, not backed up yet)
+//         is catalogued (Keel backs it up), uncatalogued (readable, not backed up yet),
+//         skipped (readable, but logs, reports or a Microsoft-published catalogue)
 //         or unreadable (with the HTTP status, the reason and the grant it most likely
 //         needs; a refusal for a grant the app's token already holds is
 //         refused-with-grant, with no hint). Every request is a GET to Microsoft Graph;
@@ -79,7 +80,7 @@ const objects = (item) => (item.objects === null || item.objects === undefined ?
 export function describeInventory(run) {
   const { summary } = run;
   const lines = [
-    `Discovery ${run.finishedAt}: ${plural(summary.types, 'type')}; ${summary.catalogued} catalogued, ${summary.uncatalogued} uncatalogued, ${summary.unreadable} unreadable, ${summary['not-listed']} not listed.`,
+    `Discovery ${run.finishedAt}: ${plural(summary.types, 'type')}; ${summary.catalogued} catalogued, ${summary.uncatalogued} uncatalogued, ${summary.skipped ?? 0} skipped (not worth backing up), ${summary.unreadable} unreadable, ${summary['not-listed']} not listed.`,
   ];
   for (const source of run.sources) {
     if (source.status !== 'complete') lines.push(`  ${source.source}: ${source.status}${source.error ? ` (${source.error})` : ''}`);

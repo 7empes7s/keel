@@ -7,7 +7,8 @@ import { after, before, test } from 'node:test';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
-import { catalogedCmdlets, isUnderItem } from './catalogue.mjs';
+import { catalogPath, catalogedCmdlets, isUnderItem } from './catalogue.mjs';
+import { ALIAS_PATHS, SKIPPED_PATHS, SKIP_REASONS } from './notGaps.mjs';
 import { discover, discoverPowerShell, failureReason, probePath } from './discover.mjs';
 import { holdsGrant, missingGrant, tokenRoles } from './grants.mjs';
 import { discoverablePaths, parseMetadata } from './metadata.mjs';
@@ -83,6 +84,9 @@ ${types.join('\n')}
 <EntityContainer Name="GraphService">
 ${roots.join('\n')}
 <EntitySet Name="bookingBusinesses" EntityType="microsoft.graph.bookingBusiness" />
+<EntitySet Name="agreements" EntityType="microsoft.graph.entity" />
+<EntitySet Name="schemaExtensions" EntityType="microsoft.graph.entity" />
+<EntitySet Name="subscriptions" EntityType="microsoft.graph.entity" />
 <EntitySet Name="teams" EntityType="microsoft.graph.entity" />
 <Singleton Name="print" Type="microsoft.graph.print" />
 <Singleton Name="me" Type="graph.userSelf" />
@@ -205,6 +209,50 @@ test('on the fixture tenant every catalogued type is covered and the planted typ
     assert.equal(call.body, undefined);
     assert.equal(new URL(call.url).origin, 'https://graph.microsoft.com');
     assert.equal(call.auth, 'Bearer fixture-token');
+  }
+});
+
+test('an alias path counts as its backed-up kind and a skipped path is not a gap', async () => {
+  const tenant = fixtureTenant();
+  const graph = readOnlyGraph(async () => 'fixture-token', { fetchImpl: tenant.fetchImpl, sleep: async () => {} });
+  const run = await discover({ graph, metadata: { 'v1.0': fixtureMetadata() }, cataloguedCmdlets: CATALOGUED_CMDLETS, now: fixed, pageCap: 3 });
+  const byName = new Map(run.items.map((item) => [item.name, item]));
+
+  assert.deepEqual([byName.get('/agreements').status, byName.get('/agreements').catalogTypes], ['catalogued', ['agreement']]);
+  assert.deepEqual([byName.get('/schemaExtensions').status, byName.get('/schemaExtensions').reason], ['skipped', 'microsoft-published']);
+  assert.deepEqual([byName.get('/subscriptions').status, byName.get('/subscriptions').reason], ['skipped', 'not-configuration']);
+  // A skipped path is still read and counted; it just is not a gap.
+  assert.equal(byName.get('/subscriptions').objects, 1);
+  assert.equal(run.summary.skipped, 2);
+  assert.equal(run.summary.uncatalogued, 1);
+
+  // A refused skipped path stays unreadable: the reason it failed is kept.
+  const refusing = readOnlyGraph(async () => 'fixture-token', {
+    sleep: async () => {},
+    fetchImpl: async (url, init) => (new URL(url).pathname.endsWith('/subscriptions') ? json(403, { error: { code: 'Forbidden', message: 'no' } }) : tenant.fetchImpl(url, init)),
+  });
+  const refused = await discover({ graph: refusing, metadata: { 'v1.0': fixtureMetadata() }, cataloguedCmdlets: CATALOGUED_CMDLETS, now: fixed, pageCap: 3 });
+  assert.equal(refused.items.find((item) => item.name === '/subscriptions').status, 'unreadable');
+
+  // The schema takes the new status and reasons.
+  const runId = await saveDiscoveryRun(client, { tenantRef: 'sha256:discovery-skip-test', run });
+  const stored = await client.query("SELECT name, status, reason FROM discovery_item WHERE run_id = $1 AND status = 'skipped' ORDER BY name", [runId]);
+  assert.deepEqual(stored.rows, [{ name: '/schemaExtensions', status: 'skipped', reason: 'microsoft-published' }, { name: '/subscriptions', status: 'skipped', reason: 'not-configuration' }]);
+});
+
+test('every alias names a backed-up kind, and no alias or skipped path is itself catalogued', () => {
+  const types = new Set(CATALOG.map((entry) => entry.type));
+  const catalogued = new Set(CATALOG.map((entry) => catalogPath(entry.path).toLowerCase()));
+  const aliases = Object.keys(ALIAS_PATHS).map((path) => path.toLowerCase());
+  for (const [path, type] of Object.entries(ALIAS_PATHS)) {
+    assert.ok(types.has(type), `${path}: ${type} is not in the catalogue`);
+    assert.ok(!catalogued.has(path.toLowerCase()), `${path} is already a catalogue path`);
+  }
+  for (const [path, reason] of Object.entries(SKIPPED_PATHS)) {
+    assert.ok(SKIP_REASONS.includes(reason), `${path}: ${reason}`);
+    assert.ok(!catalogued.has(path.toLowerCase()), `${path} is skipped but backed up`);
+    assert.ok(!aliases.includes(path.toLowerCase()), `${path} is both an alias and skipped`);
+    assert.match(path, /^\/[A-Za-z]/);
   }
 });
 

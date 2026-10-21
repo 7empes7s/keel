@@ -13,8 +13,11 @@
  *    app already holds is `refused-with-grant`, with no grant hint. A count that stopped at
  *    the page cap is a lower bound (`objectsExact: false`). A PowerShell module whose
  *    command list was not supplied is `not-listed`.
+ *  - Not every readable path is a gap. A readable path that holds logs, reports,
+ *    runtime state or a Microsoft-published catalogue is `skipped` with the reason
+ *    (engine/discovery/notGaps.mjs); another path to a backed-up kind is catalogued.
  */
-import { catalogPath, catalogedCmdlets, catalogedGraphPaths, isUnderItem } from './catalogue.mjs';
+import { catalogPath, catalogedCmdlets, catalogedGraphPaths, isUnderItem, skippedGraphPaths } from './catalogue.mjs';
 import { missingGrant } from './grants.mjs';
 import { discoverablePaths, parseMetadata } from './metadata.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
@@ -23,7 +26,7 @@ export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
 export const DEFAULT_PAGE_CAP = 5;
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_MAX_PATHS = 5000;
-export const STATUSES = Object.freeze(['catalogued', 'uncatalogued', 'unreadable', 'not-listed']);
+export const STATUSES = Object.freeze(['catalogued', 'uncatalogued', 'skipped', 'unreadable', 'not-listed']);
 export const REASONS = Object.freeze(['missing-grant', 'refused-with-grant', 'not-licensed', 'not-listable', 'error', 'too-large']);
 
 // The containers content backup works through, counted from their Graph collections.
@@ -120,8 +123,8 @@ async function pool(items, limit, worker) {
  * { source: { source, version, status, error, paths }, items: [...] }.
  */
 export async function discoverGraphVersion(graph, version, metadataText, {
-  catalogued = catalogedGraphPaths(), pageCap = DEFAULT_PAGE_CAP, concurrency = DEFAULT_CONCURRENCY, maxPaths = DEFAULT_MAX_PATHS,
-  heldGrants = null,
+  catalogued = catalogedGraphPaths(), skipped = skippedGraphPaths(), pageCap = DEFAULT_PAGE_CAP, concurrency = DEFAULT_CONCURRENCY,
+  maxPaths = DEFAULT_MAX_PATHS, heldGrants = null,
 } = {}) {
   const source = `graph:${version}`;
   let paths;
@@ -144,12 +147,15 @@ export async function discoverGraphVersion(graph, version, metadataText, {
       if (error?.name === 'DiscoveryWriteRefused') throw error;
       probe = { readable: false, objects: null, objectsExact: null, httpStatus: null, reason: 'error', message: clip(String(error?.message ?? error)), grant: null };
     }
-    const catalogTypes = (catalogued.get(catalogPath(entry.path).toLowerCase()) ?? []).map((item) => item.type);
-    const status = probe.readable ? (catalogTypes.length ? 'catalogued' : 'uncatalogued') : 'unreadable';
+    const lookup = catalogPath(entry.path).toLowerCase();
+    const catalogTypes = (catalogued.get(lookup) ?? []).map((item) => item.type);
+    const skipReason = catalogTypes.length ? null : skipped.get(lookup) ?? null;
+    let status = 'unreadable';
+    if (probe.readable) status = catalogTypes.length ? 'catalogued' : skipReason ? 'skipped' : 'uncatalogued';
     return {
       source, name: entry.path, kind: entry.kind, entityType: entry.entityType, status, catalogTypes,
       objects: probe.objects, objectsExact: probe.objectsExact, httpStatus: probe.httpStatus,
-      reason: probe.reason, message: probe.message, missingGrant: probe.grant?.grant ?? null, grantSource: probe.grant?.source ?? null,
+      reason: status === 'skipped' ? skipReason : probe.reason, message: probe.message, missingGrant: probe.grant?.grant ?? null, grantSource: probe.grant?.source ?? null,
     };
   });
   return {

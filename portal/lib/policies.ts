@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { createPolicy, getPolicy, listPolicies, setPolicyEnabled, clearPolicyPause } from "../../engine/policy/evaluate.mjs";
+import { createPolicy, getPolicy, listPolicies, listPolicyActions, setPolicyEnabled, clearPolicyPause } from "../../engine/policy/evaluate.mjs";
 import { AUTOMATION_KILL_SWITCH_PATH } from "../../engine/policy/execute.mjs";
 import {
   ActivationNotFoundError, ActivationRefusedError, activatePolicy, createActivationPreview, summarizeAutomationOutcomes,
@@ -27,6 +27,8 @@ export interface Policy {
   last_action_at: string | null;
   last_action_status: string | null;
   last_action_natural_key: string | null;
+  /** The job that ran the last action, so the page can link to it. */
+  last_action_job_id?: string | null;
   /** The saved name of what it last acted on, filled in by the reader; never an id. */
   last_action_name?: string | null;
   last_action_resource_type?: string | null;
@@ -41,6 +43,22 @@ export interface Policy {
   window_seconds: number | null;
   created_by: string;
   created_at: string;
+}
+
+/** One automatic action of a rule: the job that ran it and the change it acted on. */
+export interface PolicyAction {
+  job_id: string;
+  status: "queued" | "executed" | "failed" | string;
+  queued_at: string;
+  finished_at: string | null;
+  error: string | null;
+  drift_id: string | null;
+  natural_key: string | null;
+  resource_type: string | null;
+  change_type: string | null;
+  blast_radius: string | null;
+  /** The saved name of the change, filled in by the reader; never an id. */
+  name: string | null;
 }
 
 // Roadmap task-92: the frozen activation preview, as engine/policy/activation.mjs stores it.
@@ -90,6 +108,26 @@ async function withLastActionNames(client: QueryClient, tenantRef: string, polic
     const saved = policy.last_action_natural_key ? names[policy.last_action_natural_key] : undefined;
     return { ...policy, last_action_name: saved?.name ?? null, last_action_resource_type: saved?.resourceType ?? null };
   });
+}
+
+/** A rule's newest actions, each named: the change's own name first, then the newest backup's. */
+async function namedActions(client: QueryClient, tenantRef: string, policyId: string): Promise<PolicyAction[]> {
+  const rows = await listPolicyActions(client, { tenantRef, policyId, limit: 20 }) as (Omit<PolicyAction, "name"> & { display_name: string | null })[];
+  let names: NamedKeys = {};
+  try {
+    names = await savedNames(client, tenantRef, rows.map((row) => row.natural_key).filter((key): key is string => Boolean(key)));
+  } catch (error) {
+    console.error("[keel-portal] policy action names unavailable", error);
+  }
+  return rows.map(({ display_name, ...row }) => ({
+    ...row,
+    queued_at: toIso(row.queued_at), finished_at: row.finished_at ? toIso(row.finished_at) : null,
+    name: payloadName({ displayName: display_name }) ?? (row.natural_key ? names[row.natural_key]?.name ?? null : null),
+  }));
+}
+
+function toIso(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value);
 }
 
 /** The name of every resource a preview lists: the changes' own names first, then the newest backup's. */
@@ -153,7 +191,16 @@ export function guardedPolicyShow(deps: GuardDeps = {}) {
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
     const found = await getPolicy(client, { tenantRef, id }) as Policy | null;
     const policy = found ? (await withLastActionNames(client as QueryClient, tenantRef, [found]))[0] : null;
-    return Response.json(policy ? { policy, automationDisabled: automationDisabled(), generatedAt: new Date().toISOString() } : { error: "not_found" }, { status: policy ? 200 : 404, headers: NO_STORE });
+    // The rule's newest 20 actions, for the detail page's "Recent actions"; a failed read leaves the list empty.
+    let actions: PolicyAction[] = [];
+    if (policy) {
+      try {
+        actions = await namedActions(client as QueryClient, tenantRef, policy.id);
+      } catch (error) {
+        console.error("[keel-portal] policy actions unavailable", error);
+      }
+    }
+    return Response.json(policy ? { policy, actions, automationDisabled: automationDisabled(), generatedAt: new Date().toISOString() } : { error: "not_found" }, { status: policy ? 200 : 404, headers: NO_STORE });
   }, deps);
 }
 

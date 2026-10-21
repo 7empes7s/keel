@@ -1574,19 +1574,187 @@ for (const hash of ["/baselines", "/drift", "/baselines/new", "/compare"]) {
 test("policy activation preview names dependencies above the limit and refuses a stale preview", async ({ page }) => {
   await open(page, "/policies/p2");
   const preview = page.locator("section.policy-preview");
-  await expect(preview.locator(".policy-preview-sentence")).toHaveText("Ready to turn on. It would roll back 2 changes now; KEEL will refuse 1 that depends on something above its limit.");
-  await expect(preview.locator(".policy-dependencies li")).toHaveText("Privileged approvers (group), needed by Finance (group). Impact: could lock out admins. Above its limit, so KEEL will refuse these roll backs.");
-  await expect(preview).toContainText("1 waiting to run, not yet rolled back");
-  await expect(preview).not.toContainText("1 rolled back");
+  await expect(preview.locator(".policy-preview-sentence")).toHaveText("Ready to turn on. It would undo 2 changes now; Keel will refuse 1 that depends on something above its limit.");
+  await expect(preview.locator(".policy-dependencies li")).toHaveText("Privileged approvers (group), needed by Finance (group). Impact: could lock out admins. Above its limit, so Keel will refuse these undos.");
+  await expect(preview).toContainText("1 waiting to run, not yet undone");
+  await expect(preview).not.toContainText("1 undone");
+  // With a preview ready, "Turn on" is the one amber action; a plain Turn on never shows for an undo rule.
+  await expect(page.locator("main .btn-primary:visible")).toHaveText("Turn on");
   await page.getByRole("button", { name: "Turn on" }).click();
   const toast = page.locator(".toast").first();
   await expect(toast).toContainText("Not turned on");
   await expect(toast).toContainText("The account's access changed since the preview. Preview again.");
   await expect(preview).toHaveCount(0);
+  // Without a preview, "Preview turning on" is the one amber action.
+  await expect(page.locator("main .btn-primary:visible")).toHaveText("Preview turning on");
+  await expect(page.getByRole("button", { name: "Turn on" })).toHaveCount(0);
   await page.getByRole("button", { name: "Preview turning on" }).click();
   await expect(page.locator("section.policy-preview .policy-preview-sentence")).toBeVisible();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
 });
+
+// The page's done-test (portal audit, Policies, one design): the status pill and verdict
+// name the paused rule, Resume is the one amber action, the tiles are links that set a
+// filter, the rules are grouped by what they do, names link to the rule's page, a
+// selection turns rules off through the guarded route after a confirm, and New rule
+// creates an undo rule switched off and lands on its page.
+test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/policies");
+  await expect(page.locator("main#main-content h1")).toHaveText("Automatic rules");
+  await expect(page.locator(".status-pill")).toHaveText("1 stopped");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Undo mail flow changes is stopped: the account it acts as needs repair.");
+  const tiles = page.locator(".po-tile");
+  await expect(tiles).toHaveCount(4);
+  await expect(tiles.filter({ hasText: "Running" })).toContainText("2");
+  await expect(tiles.filter({ hasText: "Paused or stopped" })).toContainText("1 hit its limit, 1 needs repair");
+  await expect(tiles.filter({ hasText: "Actions this week" })).toContainText("24");
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/policies/);
+  // Grouped by what the rule does, undo first; every name links to the rule's page.
+  const groups = page.locator(".sel-group .sel-group-name b");
+  await expect(groups).toHaveText(["Undo automatically", "Ask for approval", "Alert only"]);
+  await expect(page.locator(".sel-group").first()).toContainText("3 rules");
+  for (const link of await page.locator(".po-row-link").all()) expect(await link.getAttribute("href")).toMatch(/#\/policies\/[^/]+$/);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(5);
+  await expect(rows.filter({ hasText: "Undo low-risk changes" })).toContainText("Last undid Branch offices 2 hours ago");
+  await expect(rows.filter({ hasText: "Undo low-risk changes" })).toContainText("Policy service account");
+  await expect(rows.filter({ hasText: "Undo mail flow changes" }).locator(".badge")).toHaveText("Stopped: account needs repair");
+  await expect(rows.filter({ hasText: "Undo changes to admin groups" }).getByRole("link", { name: "Preview turning on" })).toBeVisible();
+  await expect(rows.filter({ hasText: "Undo changes to admin groups" }).getByRole("button", { name: "Turn on" })).toHaveCount(0);
+  await expect(rows.filter({ hasText: "Alert on changes" }).getByRole("link", { name: "Open alerts" })).toHaveAttribute("href", /alerts/);
+  // One amber action at most on the page: here none, since the stopped rule needs People, not Resume.
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // The Paused or stopped tile sets the filter in the address; Resume is amber there.
+  await tiles.filter({ hasText: "Paused or stopped" }).click();
+  await expect(page).toHaveURL(/state=paused/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".po-filter-note")).toContainText("Showing paused or stopped rules only: 2 of 5.");
+  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page).not.toHaveURL(/state=/);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
+
+  // Shift+click selects a range; "Turn off 2 rules" says what happens, confirms, then posts once per rule.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await rows.nth(0).locator(".sel-check").click();
+  await rows.nth(1).click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-bar-count")).toContainText("2 rules");
+  await expect(page.locator(".sel-bar")).toContainText("They stop acting on new changes. 2 undo rules need a preview to turn back on.");
+  await page.locator(".sel-bar .btn-primary", { hasText: "Turn off 2 rules" }).click();
+  await expect(page.locator(".toast").first()).toContainText("2 rules turned off");
+  const posts = (await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/enabled"));
+  expect(posts.map((call) => call.url)).toEqual(["/api/policies/7a1d0f3e-0000-4000-8000-000000000001/enabled", "/api/policies/7a1d0f3e-0000-4000-8000-000000000006/enabled"]);
+  for (const call of posts) expect(JSON.parse(call.body ?? "{}")).toEqual({ enabled: false });
+
+  // New rule: an undo rule is created off and lands on its page with "Preview turning on".
+  await page.getByRole("link", { name: "New rule" }).click();
+  const sheet = page.getByRole("dialog", { name: "New rule" });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("radio", { name: "Undo automatically" }).click();
+  await expect(sheet).toContainText("Created off. Keel shows what it would undo before you turn it on.");
+  await sheet.getByRole("button", { name: /^Account/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Marouane Defili" }).click();
+  await sheet.getByLabel("Name", { exact: true }).fill("Undo changes to admin groups");
+  await expect(sheet.locator(".po-check")).toContainText("Undoes changes to anything.");
+  await sheet.getByRole("button", { name: "Create rule" }).click();
+  const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/policies");
+  expect(created.length).toBe(1);
+  expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ name: "Undo changes to admin groups", action: "auto_remediate", maxBlastRadius: "cosmetic", runAsPrincipalId: "8c1e0000-0000-4000-8000-0000000000a1" });
+  await expect(page).toHaveURL(/#\/policies\/p2$/);
+  await expect(page.locator("main#main-content h1")).toHaveText("Undo changes to admin groups");
+  // Its page opens on the preview step (the harness shows p2 with a preview already made).
+  await expect(page.locator(".po-activation h2")).toHaveText("Before it turns on");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Preview turning on|Preview again/ })).toBeVisible();
+});
+
+test("Policies · a rule's page: the sentence once, actions open their jobs, Resume or Turn off as the controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/policies/p1");
+  await expect(page.locator(".status-pill")).toHaveText("Running");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Undoes low-risk changes to anything, up to 50 an hour.");
+  await expect(page.locator(".po-chip")).toHaveText(["Anything", "Changed", "Low risk"]);
+  await expect(page.locator(".po-person-link")).toContainText("Policy service account");
+  expect(await page.locator(".po-person-link").getAttribute("href")).toMatch(/principals/);
+  const actions = page.locator(".po-action");
+  await expect(actions).toHaveCount(3);
+  await expect(actions.nth(0).locator(".badge")).toHaveText("Waiting");
+  await expect(actions.nth(1)).toContainText("Branch offices");
+  await expect(actions.nth(1).locator(".badge")).toHaveText("Undone");
+  await expect(actions.nth(2).locator(".badge")).toHaveText("Failed");
+  for (const link of await actions.locator(".po-row-link").all()) expect(await link.getAttribute("href")).toMatch(/#\/jobs\/[^/]+$/);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await page.getByRole("button", { name: "Turn off" }).click();
+  await expect(page.locator("dialog[open]")).toContainText("Undo low-risk changes stops acting on new changes. It needs a preview to turn back on.");
+  await page.locator("dialog[open]").getByRole("button", { name: "Cancel" }).click();
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+  // A paused rule: Resume is the one amber action, and it posts to clear-pause.
+  await open(page, "/policies/p3");
+  await expect(page.locator(".status-pill")).toHaveText("Paused");
+  const amber = page.locator("main .btn-primary:visible");
+  await expect(amber).toHaveText("Resume");
+  await amber.click();
+  await expect(page.locator(".toast").first()).toContainText("Ask before changing sign-in rules resumed");
+  type Call = { url: string; method: string };
+  const posts = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls.filter((call) => call.method === "POST").map((call) => call.url));
+  expect(posts).toContain("/api/policies/7a1d0f3e-0000-4000-8000-000000000005/clear-pause");
+});
+
+test("Policies · a viewer sees the rules and no controls", async ({ page }) => {
+  await open(page, "/policies/viewer");
+  await expect(page.locator(".po-tile")).toHaveCount(4);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Turn off|Resume|Turn on/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "New rule" })).toHaveCount(0);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/policies", "/policies?group=state", "/policies/p1", "/policies/p2"]) {
+      test(`Policies · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".po-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        if (hash.startsWith("/policies?") || hash === "/policies") {
+          const tiles = await page.locator(".po-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+          expect(tiles.length).toBe(4);
+          expect(new Set(tiles).size).toBe(1);
+        }
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .po-tile, .po-row-link")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (width === 390 && hash === "/policies") {
+          // The New rule sheet fits a phone with its action in view.
+          await page.getByRole("link", { name: "New rule" }).click();
+          const sheet = page.getByRole("dialog", { name: "New rule" });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Create rule" })).toBeInViewport();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+          await page.keyboard.press("Escape");
+          await expect(sheet).toBeHidden();
+        }
+        if (width === 1440 && hash === "/policies") {
+          await page.getByRole("button", { name: /Select all 5 rules/ }).click();
+          await expect(page.locator(".sel-bar-count")).toContainText("5 rules");
+          await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Turn off 5 rules");
+          await expect(page.locator(".sel-bar")).toContainText("1 is already off and stays as it is.");
+        }
+      });
+    }
+  }
+}
 
 // Task-99: a grounded answer cites each record and its window, says which part of the
 // period is not known, never reads missing history as "nothing changed", and fits a phone.

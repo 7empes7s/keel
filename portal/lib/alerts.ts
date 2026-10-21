@@ -1,18 +1,22 @@
 import {
-  AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitions, resolveAlert,
+  ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitionsFor,
+  resolveAlert, suppressAlert, unsuppressAlert,
 } from "../../engine/notify/alerts.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
 import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
 import { savedNames } from "@/lib/saved-names";
+import { personLabel } from "@/lib/sentences";
 
-// Roadmap task-83: what the alerts inbox reads and the two things an operator can do
-// to an alert. Viewing needs `read`; acknowledging and resolving need the drift
-// response right (`dispose-accept`), checked here by the guard and again by the engine
-// against the database. The inbox's words are in lib/alerts-view.ts.
+// Roadmap task-83: what the alerts inbox reads and what an operator can do to an alert.
+// Viewing needs `read`; acknowledging and resolving need the drift response right
+// (`dispose-accept`); muting and unmuting need `policies`. Each is checked here by the
+// guard and again by the engine against the database. The page's words are in
+// lib/alerts-view.ts.
 
 const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const ALERT_RESPOND_CAPABILITY = "dispose-accept";
+export const ALERT_MUTE_CAPABILITY: string = ALERT_SUPPRESS_CAPABILITY;
 
 type Row = Record<string, unknown>;
 
@@ -22,9 +26,18 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 }
 
+// A person by name, never an email: an account without a display name reads from the
+// email's local part ("ops@contoso.com" is "Ops").
 function personName(row: Row | undefined): string | null {
   if (!row) return null;
-  return (row.display_name as string | null) || (row.email as string | null) || null;
+  const label = personLabel({ kind: "principal", id: String(row.id), name: (row.display_name as string | null) ?? null, email: (row.email as string | null) ?? null, readable: true }, "");
+  return label || null;
+}
+
+function noteOf(entry: Row): string | null {
+  const evidence = (entry.evidence ?? {}) as Row;
+  const text = typeof evidence.note === "string" ? evidence.note : typeof evidence.reason === "string" ? evidence.reason : null;
+  return text?.trim() || null;
 }
 
 interface QueryClient {
@@ -78,9 +91,12 @@ export async function alertResourceNames(client: QueryClient, tenantRef: string,
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
     const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
+    // Every alert's history in one read, not one per alert: the page polls.
     const histories = new Map<string, Row[]>();
-    for (const row of rows) {
-      histories.set(String(row.id), await listAlertTransitions(client, { tenantRef, actor: principalId, alertId: String(row.id) }) as Row[]);
+    const transitions = await listAlertTransitionsFor(client, { tenantRef, actor: principalId, alertIds: rows.map((row) => String(row.id)) }) as Row[];
+    for (const entry of transitions) {
+      const key = String(entry.alert_id);
+      histories.set(key, [...(histories.get(key) ?? []), entry]);
     }
     const ids = new Set<string>();
     for (const row of rows) {
@@ -131,6 +147,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
           actorName: personName(people.get(String(entry.actor))),
           at: iso(entry.occurred_at)!,
           eventId: (entry.event_id as string | null) ?? null,
+          note: noteOf(entry),
         })),
       };
     });
@@ -152,6 +169,32 @@ export function guardedAlertAction(deps: GuardDeps = {}) {
         const alert = action === "acknowledge"
           ? await acknowledgeAlert(client, { tenantRef, alertId, actor: principalId, note: note ?? null } as unknown as Parameters<typeof acknowledgeAlert>[1])
           : await resolveAlert(client, { tenantRef, alertId, actor: principalId, reason: note?.trim() || "Resolved by hand from the alerts inbox" });
+        return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state } }, { headers: NO_STORE });
+      } catch (error) {
+        if (error instanceof AlertAuthorizationError) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
+        if (error instanceof AlertStateError) return Response.json({ error: "conflict" }, { status: 409, headers: NO_STORE });
+        throw error;
+      }
+    },
+    deps,
+  );
+}
+
+/** Mute or unmute: the alert stays recorded, only notification stops. Needs `policies`. */
+export function guardedAlertMute(deps: GuardDeps = {}) {
+  return guarded(
+    { action: "alert-mute", capability: ALERT_MUTE_CAPABILITY, recordAttempt: true },
+    async ({ client, principalId, tenantRef, request }) => {
+      const body = await readActionParams(request);
+      const { alertId, action, note } = body;
+      if (typeof alertId !== "string" || !UUID.test(alertId)) throw new InvalidActionRequest("alertId is required");
+      if (action !== "mute" && action !== "unmute") throw new InvalidActionRequest("action must be mute or unmute");
+      if (note !== undefined && typeof note !== "string") throw new InvalidActionRequest("note must be text");
+      if (action === "mute" && !note?.trim()) throw new InvalidActionRequest("a reason is required to mute an alert");
+      try {
+        const alert = action === "mute"
+          ? await suppressAlert(client, { tenantRef, alertId, actor: principalId, reason: note!.trim() })
+          : await unsuppressAlert(client, { tenantRef, alertId, actor: principalId });
         return Response.json({ alert: { id: String((alert as Row).id), state: (alert as Row).state } }, { headers: NO_STORE });
       } catch (error) {
         if (error instanceof AlertAuthorizationError) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });

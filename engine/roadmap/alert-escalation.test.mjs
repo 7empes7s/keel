@@ -265,8 +265,9 @@ test('a read-only principal cannot acknowledge or resolve, in the engine or the 
     const { applyConditionEvent } = require('../engine/notify/alerts.mjs');
     const { createEscalationRule } = require('../engine/notify/escalation.mjs');
     const { POST: respond } = require('./app/api/actions/alerts/route.ts');
+    const { POST: mute } = require('./app/api/actions/alerts/mute/route.ts');
     const { GET: inbox } = require('./app/api/alerts/route.ts');
-    const { AlertInbox } = require('./components/alert-inbox.tsx');
+    const { renderAlertsAt } = require('./test/render-alerts.ts');
     const { alertsVerdict } = require('./lib/alerts-view.ts');
     const { tenantRef } = require('./lib/runtime-config.ts');
     const { PRINCIPAL_ID_HEADER, CAPABILITIES_HEADER } = require('./lib/principal.ts');
@@ -295,13 +296,13 @@ test('a read-only principal cannot acknowledge or resolve, in the engine or the 
         assert.equal(data.alerts[0].owner.name, 'Dana On-call');
         assert.ok(data.alerts[0].ackDeadlineAt);
         assert.equal(data.alerts[0].history[0].reason, 'condition-firing');
-        const readOnly = renderToStaticMarkup(React.createElement(AlertInbox, { alerts: data.alerts, now: data.generatedAt, canRespond: false }));
+        const readOnly = await renderAlertsAt('', { alerts: data.alerts, now: data.generatedAt, canRespond: false, canMute: false });
         assert.match(readOnly, /Finance \(group\)/);
-        assert.match(readOnly, /Owner: Dana On-call/);
-        assert.doesNotMatch(readOnly, />Acknowledge</);
+        assert.match(readOnly, /Dana On-call/);
+        assert.doesNotMatch(readOnly, />Acknowledge the overdue/);
         assert.doesNotMatch(readOnly, />Resolve</);
-        const operatorView = renderToStaticMarkup(React.createElement(AlertInbox, { alerts: data.alerts, now: data.generatedAt, canRespond: true }));
-        assert.match(operatorView, />Acknowledge</);
+        // The deadline is a minute away: the row counts it down.
+        assert.match(readOnly, /Due in 1 min/);
         assert.match(alertsVerdict(data.alerts, data.generatedAt).text, /1 alert needs someone/);
 
         // The read-only principal is refused before the alert is touched, even with a forged body.
@@ -317,6 +318,18 @@ test('a read-only principal cannot acknowledge or resolve, in the engine or the 
 
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'acknowledge' })).status, 200);
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'acknowledge' })).status, 409);
+
+        // Mute needs policies and a reason; unmute returns the alert to where its condition is.
+        const postMute = (principal, capabilities, body) => mute(new Request('http://localhost/api/actions/alerts/mute',
+          { method: 'POST', headers: headers(principal, capabilities), body: JSON.stringify(body) }));
+        assert.equal((await postMute(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'mute', note: 'noise' })).status, 403);
+        assert.equal((await postMute(ids.admin, ['policies'], { alertId: alert.id, action: 'mute' })).status, 400);
+        assert.equal((await postMute(ids.admin, ['policies'], { alertId: alert.id, action: 'mute', note: 'known change' })).status, 200);
+        assert.equal((await db.query('SELECT state FROM alert WHERE id = $1', [alert.id])).rows[0].state, 'suppressed');
+        const muted = await (await inbox(new Request('http://localhost/api/alerts', { headers: headers(ids.viewer, ['read']) }))).json();
+        assert.equal(muted.alerts[0].history.at(-1).note, 'known change', 'the reason is read back with the history');
+        assert.equal((await postMute(ids.admin, ['policies'], { alertId: alert.id, action: 'unmute' })).status, 200);
+        assert.equal((await db.query('SELECT state FROM alert WHERE id = $1', [alert.id])).rows[0].state, 'acknowledged');
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'resolve' })).status, 200);
         assert.equal((await db.query('SELECT state FROM alert WHERE id = $1', [alert.id])).rows[0].state, 'resolved');
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: 'not-an-id', action: 'resolve' })).status, 400);

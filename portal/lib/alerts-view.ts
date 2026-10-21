@@ -1,7 +1,13 @@
 // Roadmap task-83: the alerts inbox's types and words. Client-safe: no engine or
 // server imports, so the inbox component and the UI harness can use it.
+import type { IconName } from "@/components/shell/icons";
+import type { BadgeTone } from "@/components/ui/badge";
+import { typeService } from "@/lib/baselines-view";
 import { workloadLabel, WORKLOAD_LABELS } from "@/lib/compare-view";
 import { holdsObjectId, namedResource } from "@/lib/job-names";
+import type { RiskTone } from "@/lib/menu-status";
+import { resourceTypeLabel } from "@/lib/presentation";
+import type { CloudService } from "@/lib/services";
 
 export type AlertState = "open" | "acknowledged" | "resolved" | "reopened" | "suppressed";
 
@@ -15,6 +21,8 @@ export interface AlertHistoryEntry {
   actorName: string | null;
   at: string;
   eventId: string | null;
+  // The note or reason the person wrote with it (acknowledge, resolve, mute), if any.
+  note?: string | null;
 }
 
 export interface AlertItem {
@@ -84,10 +92,11 @@ export function historyLabel(entry: AlertHistoryEntry): string {
   return REASON_LABELS[entry.reason] ?? "Changed";
 }
 
+// "Approved setup" is the reader's word for a baseline (redesign rule 3).
 const CHANGE_WORDS: Record<string, string> = {
-  modified: "was changed from the baseline",
-  added: "was added since the baseline",
-  removed: "was removed since the baseline",
+  modified: "differs from the approved setup",
+  added: "is new since the approved setup was saved",
+  removed: "was removed since the approved setup was saved",
 };
 
 // Workload settings (SharePoint) have no baseline: each read is compared with the
@@ -132,11 +141,21 @@ export function alertTitle(alert: Pick<AlertItem, "resourceKey"> & Partial<Pick<
     return holdsObjectId(fromKey) ? `Unnamed item in ${label}` : `${fromKey} (${label})`;
   }
   const resourceType = alert.cause?.resourceType ?? null;
-  if (!name) return namedResource(key, {}, resourceType);
   const index = key.indexOf(":");
   const typeFromKey = index > 0 && !holdsObjectId(key.slice(0, index)) ? key.slice(0, index) : null;
-  return namedResource(key, { [key]: { name, resourceType: resourceType ?? typeFromKey ?? "setting" } });
+  const title = name
+    ? namedResource(key, { [key]: { name, resourceType: resourceType ?? typeFromKey ?? "setting" } })
+    : namedResource(key, {}, resourceType);
+  // Plain kind words for the Microsoft terms: "(sign-in rule)", not "(Conditional Access policy)".
+  const type = resourceType ?? typeFromKey;
+  const plain = type ? PLAIN_KIND_WORDS[type] : undefined;
+  return plain ? title.replace(resourceTypeLabel(type!), plain) : title;
 }
+
+const PLAIN_KIND_WORDS: Record<string, string> = {
+  conditionalAccessPolicy: "sign-in rule",
+  namedLocation: "trusted location",
+};
 
 /** The current cause in one plain sentence. */
 export function causeSentence(alert: AlertItem): string {
@@ -144,8 +163,8 @@ export function causeSentence(alert: AlertItem): string {
     if (alertWorkload(alert.resourceKey)) {
       return WORKLOAD_CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "Its settings changed since the previous read.";
     }
-    const change = CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "differs from the baseline";
-    return alert.conditionActive ? `It ${change}.` : "It matches the baseline again.";
+    const change = CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "differs from the approved setup";
+    return alert.conditionActive ? `It ${change}.` : "It matches the approved setup again.";
   }
   // Task 94: emergency account alerts, resolved by a person after review.
   if (alert.control === "break-glass") {
@@ -183,4 +202,210 @@ export function alertsVerdict(alerts: AlertItem[], now: string): { text: string;
   return overdue
     ? { text: `${head}; ${overdue} ${overdue === 1 ? "is" : "are"} past the deadline.`, tone: "critical" }
     : { text: `${head}.`, tone: "attention" };
+}
+
+// ---- The Alerts page (portal audit, one design): words, counts, filters and links.
+
+export const SEVERITY: Record<AlertItem["severity"], { label: string; tone: RiskTone; icon: IconName }> = {
+  critical: { label: "Critical", tone: "urgent", icon: "alert" },
+  warning: { label: "Warning", tone: "soon", icon: "clock" },
+  notice: { label: "Notice", tone: "low", icon: "info" },
+};
+export const SEVERITY_ORDER: AlertItem["severity"][] = ["critical", "warning", "notice"];
+
+// The state as a plain word with an icon. Colour means risk only (rule 1), so the
+// state badge is neutral; the severity carries the colour.
+export const STATE_WORDS: Record<AlertState, { label: string; plural: string; icon: IconName; tone: BadgeTone }> = {
+  open: { label: "Waiting", plural: "Needs someone", icon: "clock", tone: "neutral" },
+  reopened: { label: "Back again", plural: "Needs someone", icon: "refresh", tone: "neutral" },
+  acknowledged: { label: "Acknowledged", plural: "Acknowledged", icon: "check", tone: "neutral" },
+  resolved: { label: "Resolved", plural: "Resolved", icon: "check-circle", tone: "neutral" },
+  suppressed: { label: "Muted", plural: "Muted", icon: "pause", tone: "neutral" },
+};
+
+export type StateGroup = "waiting" | "acknowledged" | "resolved" | "muted";
+export const STATE_GROUP_ORDER: StateGroup[] = ["waiting", "acknowledged", "resolved", "muted"];
+export const STATE_GROUPS: Record<StateGroup, { label: string; icon: IconName; about: string }> = {
+  waiting: { label: "Needs someone", icon: "bell", about: "Nobody has acknowledged these yet" },
+  acknowledged: { label: "Acknowledged", icon: "check", about: "Someone is on it; they close when the change goes away" },
+  resolved: { label: "Resolved", icon: "check-circle", about: "Closed by Keel or by hand; history is kept" },
+  muted: { label: "Muted", icon: "pause", about: "Recorded, but nobody is told" },
+};
+
+export function stateGroup(alert: Pick<AlertItem, "state">): StateGroup {
+  if (alert.state === "open" || alert.state === "reopened") return "waiting";
+  if (alert.state === "suppressed") return "muted";
+  return alert.state;
+}
+
+export function isWaiting(alert: Pick<AlertItem, "state">): boolean {
+  return alert.state === "open" || alert.state === "reopened";
+}
+
+export function isActive(alert: Pick<AlertItem, "state">): boolean {
+  return ACTIVE_STATES.includes(alert.state);
+}
+
+/** Row colour: the severity while someone still has to act, nothing once it is closed. */
+export function alertTone(alert: AlertItem): RiskTone | null {
+  return isActive(alert) ? SEVERITY[alert.severity].tone : null;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** When it was last resolved, from its history. */
+export function resolvedAt(alert: Pick<AlertItem, "history">): string | null {
+  for (let index = alert.history.length - 1; index >= 0; index -= 1) {
+    if (alert.history[index].toState === "resolved") return alert.history[index].at;
+  }
+  return null;
+}
+
+export interface AlertCounts { waiting: number; overdue: number; acknowledged: number; resolvedWeek: number; muted: number; total: number }
+
+export function alertCounts(alerts: AlertItem[], now: string): AlertCounts {
+  const counts: AlertCounts = { waiting: 0, overdue: 0, acknowledged: 0, resolvedWeek: 0, muted: 0, total: alerts.length };
+  const since = new Date(now).valueOf() - WEEK_MS;
+  for (const alert of alerts) {
+    if (isWaiting(alert)) counts.waiting += 1;
+    if (isOverdue(alert, now)) counts.overdue += 1;
+    if (alert.state === "acknowledged") counts.acknowledged += 1;
+    if (alert.state === "suppressed") counts.muted += 1;
+    const resolved = alert.state === "resolved" ? resolvedAt(alert) : null;
+    if (resolved && new Date(resolved).valueOf() >= since) counts.resolvedWeek += 1;
+  }
+  return counts;
+}
+
+/** The header pill: urgent when one is past its deadline, soon while one waits. */
+export function alertsStatus(counts: AlertCounts): { tone: RiskTone; label: string } {
+  if (counts.overdue) return { tone: "urgent", label: `${counts.overdue} overdue` };
+  if (counts.waiting) return { tone: "soon", label: `${counts.waiting} waiting` };
+  if (counts.acknowledged) return { tone: "low", label: `${counts.acknowledged} in hand` };
+  return { tone: "fine", label: "All clear" };
+}
+
+export type AlertFilter = "waiting" | "overdue" | "acknowledged" | "resolved" | "muted";
+const FILTERS: AlertFilter[] = ["waiting", "overdue", "acknowledged", "resolved", "muted"];
+
+export function parseAlertFilter(value: string | null | undefined): AlertFilter | null {
+  return FILTERS.includes(value as AlertFilter) ? (value as AlertFilter) : null;
+}
+
+export function alertMatches(alert: AlertItem, filter: AlertFilter | null, now: string): boolean {
+  if (!filter) return true;
+  if (filter === "overdue") return isOverdue(alert, now);
+  return stateGroup(alert) === filter;
+}
+
+export const FILTER_WORDS: Record<AlertFilter, string> = {
+  waiting: "alerts that need someone",
+  overdue: "alerts past their deadline",
+  acknowledged: "acknowledged alerts",
+  resolved: "resolved alerts",
+  muted: "muted alerts",
+};
+
+/** "3 h", "25 min", "2 days": a short span for a row. */
+export function shortSpan(ms: number): string {
+  const minutes = Math.max(1, Math.round(Math.abs(ms) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** The row's time column: a countdown while it waits, else when it last moved. */
+export function deadlineWords(alert: AlertItem, now: string): { text: string; tone: RiskTone | null } {
+  const at = (value: string) => new Date(value).valueOf() - new Date(now).valueOf();
+  if (isWaiting(alert)) {
+    if (!alert.ackDeadlineAt) return { text: "No deadline", tone: null };
+    const left = at(alert.ackDeadlineAt);
+    return left <= 0 ? { text: `Overdue ${shortSpan(left)}`, tone: "urgent" } : { text: `Due in ${shortSpan(left)}`, tone: left < 60 * 60 * 1000 ? "soon" : null };
+  }
+  if (alert.state === "acknowledged" && alert.acknowledgedAt) return { text: `Acknowledged ${shortSpan(at(alert.acknowledgedAt))} ago`, tone: null };
+  if (alert.state === "resolved") {
+    const when = resolvedAt(alert);
+    return { text: when ? `Resolved ${shortSpan(at(when))} ago` : "Resolved", tone: null };
+  }
+  return { text: "Nobody is told", tone: null };
+}
+
+/** The panel's deadline sentence. */
+export function deadlineSentence(alert: AlertItem, now: string, ago: (value: string, now: string) => string, fromNow: (value: string, now: string) => string): string | null {
+  if (!isWaiting(alert)) return null;
+  if (!alert.ackDeadlineAt) return "No acknowledgement deadline is set for alerts like this one.";
+  if (isOverdue(alert, now)) {
+    return alert.escalated
+      ? `It missed its acknowledgement deadline ${ago(alert.ackDeadlineAt, now)} and was escalated.`
+      : `It missed its acknowledgement deadline ${ago(alert.ackDeadlineAt, now)}.`;
+  }
+  return `Acknowledge it ${fromNow(alert.ackDeadlineAt, now)}.`;
+}
+
+/** The service an alert belongs to, for grouping. */
+export function alertService(alert: AlertItem): CloudService {
+  if (alert.control === "break-glass") return typeService("user");
+  const workload = alertWorkload(alert.resourceKey);
+  if (workload) return typeService(workload);
+  const index = alert.resourceKey.indexOf(":");
+  const type = alert.cause.resourceType ?? (index > 0 ? alert.resourceKey.slice(0, index) : alert.resourceKey);
+  return typeService(type);
+}
+
+/** Where to see the change behind the alert. Never a write: undo starts on Changes. */
+export function changeLink(alert: AlertItem): { href: string; label: string } {
+  if (alert.control === "break-glass") return { href: "/readiness", label: "Open emergency access" };
+  const workload = alertWorkload(alert.resourceKey);
+  if (workload === SHAREPOINT_SITES) {
+    const rest = alert.resourceKey.slice(workload.length + 1);
+    if (rest.startsWith("site:") && rest.length > 5) return { href: `/sites/${encodeURIComponent(rest.slice(5))}`, label: "Open the site" };
+  }
+  const name = usable(alert.name) ?? alertTitle(alert).replace(/ \([^()]*\)$/, "");
+  return { href: `/drift?q=${encodeURIComponent(name)}`, label: "Open the change" };
+}
+
+/** The engine's escalation error in words, never its code. */
+export function escalationWords(error: string | null): string | null {
+  if (!error) return null;
+  return error === "escalation-failed-no-recipient" || /recipient|channel/i.test(error)
+    ? "Keel could not escalate it: no channel is set to tell anyone."
+    : "Keel could not escalate it. Check the channels on Notifications.";
+}
+
+export const HISTORY_ICONS: Record<string, IconName> = {
+  "condition-firing": "bell",
+  "condition-recurred": "refresh",
+  "condition-recurred-flapping": "refresh",
+  "condition-resolved": "check-circle",
+  "resolution-held-flapping": "pause",
+  acknowledged: "check",
+  "resolved-by-operator": "check-circle",
+  suppressed: "pause",
+  unsuppressed: "play",
+  "escalated-ack-deadline-missed": "alert",
+  "escalation-failed-no-recipient": "x-circle",
+};
+
+/** What a bulk action will do, before it runs. */
+export function bulkDetail(action: "acknowledge" | "resolve" | "mute", chosen: AlertItem[]): string {
+  const can = chosen.filter((alert) => (action === "acknowledge" ? isWaiting(alert) : action === "resolve" ? isActive(alert) : alert.state !== "suppressed")).length;
+  const skip = chosen.length - can;
+  const lead = action === "acknowledge"
+    ? `${can === 1 ? "1 alert is" : `${can} alerts are`} marked as seen by you; ${can === 1 ? "it stays" : "they stay"} open until the change goes away.`
+    : action === "resolve"
+      ? `${can === 1 ? "1 alert closes" : `${can} alerts close`} now. If a change is still there, the next check opens it again.`
+      : `${can === 1 ? "1 alert is" : `${can} alerts are`} muted: still recorded, but nobody is told.`;
+  if (!skip) return lead;
+  const why = action === "acknowledge" ? "already acknowledged or closed" : action === "resolve" ? "already closed" : "already muted";
+  return `${lead} ${skip === 1 ? "1 is" : `${skip} are`} ${why} and ${skip === 1 ? "stays" : "stay"} as ${skip === 1 ? "it is" : "they are"}.`;
+}
+
+/** Which alerts an action applies to. */
+export function actionable(action: "acknowledge" | "resolve" | "mute" | "unmute", alert: AlertItem): boolean {
+  if (action === "acknowledge") return isWaiting(alert);
+  if (action === "resolve") return isActive(alert);
+  if (action === "mute") return alert.state !== "suppressed";
+  return alert.state === "suppressed";
 }

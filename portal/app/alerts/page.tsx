@@ -2,18 +2,18 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 
 import { GET as loadAlerts } from "@/app/api/alerts/route";
-import { AlertInbox } from "@/components/alert-inbox";
+import { AlertsPage as AlertsBody } from "@/components/alerts/alerts-page";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
-import { Verdict } from "@/components/verdict";
-import { ALERT_RESPOND_CAPABILITY } from "@/lib/alerts";
-import { alertsVerdict, type AlertInboxData } from "@/lib/alerts-view";
+import { ALERT_MUTE_CAPABILITY, ALERT_RESPOND_CAPABILITY } from "@/lib/alerts";
+import { alertCounts, alertsStatus, type AlertInboxData } from "@/lib/alerts-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
-const DESCRIPTION = "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.";
+const DESCRIPTION = "Changes that need someone, who owns each one, and when it is due.";
 
-// Roadmap task-83: the alerts inbox. Viewing needs read; the acknowledge and resolve
-// controls appear only for people who may use them, and the action route checks again.
+// Alerts (portal audit, one design). Viewing needs read; Acknowledge and Resolve show
+// only for people who may use them (`dispose-accept`), Mute only with `policies`, and
+// each route checks again.
 export default async function AlertsPage() {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.alertsPage);
@@ -25,12 +25,13 @@ export default async function AlertsPage() {
   } catch {
     return <><PageHeader section="Inbox" title="Alerts" description={DESCRIPTION} /><DataUnavailable surface="Alerts" /></>;
   }
-  const verdict = alertsVerdict(data.alerts, data.generatedAt);
   return <>
-    <PageHeader section="Inbox" title="Alerts" description={DESCRIPTION} generatedAt={data.generatedAt} />
-    <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation">
-      <AlertInbox alerts={data.alerts} canRespond={access.capabilities.includes(ALERT_RESPOND_CAPABILITY)} now={data.generatedAt} />
-    </div>
+    <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Inbox" status={alertsStatus(alertCounts(data.alerts, data.generatedAt))} title="Alerts" />
+    <AlertsBody
+      alerts={data.alerts}
+      canMute={access.capabilities.includes(ALERT_MUTE_CAPABILITY)}
+      canRespond={access.capabilities.includes(ALERT_RESPOND_CAPABILITY)}
+      now={data.generatedAt}
+    />
   </>;
 }

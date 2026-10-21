@@ -4877,7 +4877,8 @@ item that needs it stays untouched.
   (`engine/collect/workloads/sharepoint.mjs`, `collectSharePointSites`) a run refused by the ledger is always written as
   `disabled`, never `complete`. This item finds out which rows the finding came from.
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: todo
+- Status: cancelled (2026-10-21 20:55 UTC, by the drafting thread): not needed. The Q99 correction (20:35 UTC) already
+  answers it: the "is disabled" reasons came from an older run, and the newest runs are complete with no reasons.
 - Do (with `set -a; . /etc/keel/db.env; set +a`), tenant_ref masked to its last 4 characters:
   1. ```sql
      SELECT right(wc.tenant_ref::text, 4) AS tenant, wc.workload, wc.outcome, wc.created_at,

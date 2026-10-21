@@ -5220,3 +5220,51 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per type: promoted / refused (exact message) / blocked; the step 4 result; approval ids; the evidence branch and
   commit; any setting not back at its original value.
+
+### Q111: Live restore of guest domain restrictions, app pre-approval policies and guest federations (restore gaps batch 3, after #433)
+- Drafted by the "Restore batch 3" thread (2026-10-21). Code: PR #433. Record writers, fixture-tested only: guest invitation domain
+  restriction (`b2bManagementPolicy`, beta, **update only**, writes `definition` only), app permission pre-approval policies
+  (`permissionGrantPreApprovalPolicy`, beta, create + update of `conditions`), guest SAML/WS-Fed federation (`externalDomainFederation`,
+  v1.0, **update only**, never its domains).
+- Needs: /opt/keel-live at the #433 merge or later (`grep -q sameJsonStrings /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
+  to add: per the Q-inventory the Restorer holds Policy.ReadWrite.B2BManagementPolicy, Policy.ReadWrite.PermissionGrant and
+  Domain.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies,
+  break-glass or Marouane's account. Never block, allow or federate a real domain; never invite a guest.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same):
+  - guest domain restriction (tenant setting): **write down the current `definition` first.** If the tenant has no
+    b2bManagementPolicy, set one blocked domain `keel-rt-blocked.example` in the Entra admin center (External collaboration
+    settings) so one exists, and remove it again at the end;
+  - pre-approval policy (tenant setting, no name): one condition, scopeType `chat`, all sensitivity labels, Microsoft Graph
+    application permission ChatMessage.Read.Chat. **Never assign it to any service principal** (unassigned, it pre-approves nothing);
+  - SAML federation `KEEL-RT-148-fed` for the domain `keel-rt-fed.example` (issuer `https://keel-rt-fed.example/issuer`, sign-in
+    `https://keel-rt-fed.example/sso`, a fresh self-signed certificate). If Graph refuses the domain, report the exact message and
+    skip the federation part.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg3/plan-B.md`. Use its steps for these three types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote). Capture the domain restriction and the pre-approval policy
+     with `--allow-tenant-setting`.
+  2. Create the fixtures, then take snapshot S (one tier run that reads all three). Confirm all three are in S.
+  3. **Update round:** add `keel-rt-blocked.example` to BlockedDomains (or remove it, if S holds it); change the pre-approval
+     condition scopeType from chat to group; change the federation passiveSignInUri to `https://keel-rt-fed.example/drifted`.
+     Restore from S selecting them, approve, enforce, capture each `update`. Expect each read back equal to S; the dry run lists
+     only `definition`, `conditions` and `passiveSignInUri`.
+  4. **Create round** (pre-approval policy only): delete it, restore from S, approve, enforce, capture the `create` (new id
+     expected). Leave it unassigned.
+  5. **Refusal check (no write expected):** delete the federation, dry run from S. Expect it reported as not written (create is
+     not supported), 0 writes. Do not promote.
+  6. **Re-run check:** dry run from S again (after step 4; ignore the deleted federation). Expect 0 planned writes for the
+     domain restriction and the recreated policy's settings.
+  7. **Read-only probe for the next batch** (no write): `GET beta /policies/servicePrincipalCreationPolicies?$expand=includes,excludes`
+     and `GET v1.0 /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation?$expand=domains` (before step 5).
+     Report the status code of each and whether includes, excludes and domains came back filled.
+  8. Cleanup: delete the recreated pre-approval policy, the federation if still there, and put the domain restriction back to the
+     definition written down first. Report anything left.
+  9. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-3`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per type and operation: promoted / refused (exact message) / blocked; the step 5, 6 and 7 results; approval
+  ids; the evidence branch and commit; anything left in the tenant.

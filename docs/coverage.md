@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 125 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 98 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 74 are restored by hand from the backup.
+KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 104 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 80 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -61,6 +61,12 @@ KEEL tracks 125 kinds of Entra ID and Intune settings and backs up everything it
 | Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender admin role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -157,6 +163,19 @@ KEEL tracks 125 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate each custom attribute in the Entra admin center, under External Identities, Custom user attributes, from the backup, before the user flows that collect it.
 - **Authentication event listeners** (not built yet). KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.
   - *You do:* Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.
+- **Exchange admin roles** (not built yet). KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.
+  - *Not brought back:* built-in roles (set by Microsoft).
+  - *You do:* Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.
+- **Exchange admin role assignments** (not built yet). KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.
+  - *You do:* Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.
+- **Exchange app access scopes** (not built yet). KEEL backs these up but does not restore them yet. They limit which mailboxes an app role reaches.
+  - *You do:* Recreate each scope with Exchange Online PowerShell from the backup, before the app role assignments that use it. There is no admin center page for it.
+- **Defender admin roles** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Recreate each role in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, from the backup.
+- **Defender admin role assignments** (not built yet). KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.
+  - *You do:* Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.
+- **Defender app access scopes** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.
 
 ## Sign-in and security policies
 

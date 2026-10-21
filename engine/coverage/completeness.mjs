@@ -245,6 +245,13 @@ export const COMPLETENESS = Object.freeze({
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
   externalDomainFederation: { whole: 'not-written' },
+  // Remaining kinds, batch 5.
+  exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
+  exchangeRoleAssignment: { whole: 'not-written' },
+  exchangeCustomAppScope: { whole: 'not-written' },
+  defenderRoleDefinition: { whole: 'not-written' },
+  defenderRoleAssignment: { whole: 'not-written' },
+  defenderCustomAppScope: { whole: 'not-written' },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

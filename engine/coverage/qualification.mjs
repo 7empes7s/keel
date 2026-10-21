@@ -209,6 +209,13 @@ export const TYPE_DECISIONS = Object.freeze({
   identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
   externalDomainFederation: manual('no writer yet; the partner\'s identity provider is checked by hand'),
+  // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
+  exchangeRoleDefinition: manual('no writer yet; beta only, and built-in roles are Microsoft-managed'),
+  exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
+  exchangeCustomAppScope: manual('no writer yet; beta only'),
+  defenderRoleDefinition: manual('no writer yet; beta only'),
+  defenderRoleAssignment: manual('Defender admin access needs a privilege review before it is granted again'),
+  defenderCustomAppScope: manual('no writer yet; beta only'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -1032,6 +1039,19 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; its custom authentication extension is recreated first'),
   externalDomainFederation: byHand('policy', 'POST /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation', 'IdentityProvider.ReadWrite.All',
     'backed up with the partner\'s public signing certificate'),
+  // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
+  exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
+    'backed up; built-in roles are listed beside custom ones'),
+  exchangeRoleAssignment: byHand('identity-application', 'POST /roleManagement/exchange/roleAssignments (beta)', 'RoleManagement.ReadWrite.Exchange',
+    'backed up; a privilege review comes before any grant'),
+  exchangeCustomAppScope: byHand('identity-application', 'POST /roleManagement/exchange/customAppScopes (beta)', 'RoleManagement.ReadWrite.Exchange',
+    'backed up; no writer yet'),
+  defenderRoleDefinition: byHand('identity-application', 'POST /roleManagement/defender/roleDefinitions (beta)', 'RoleManagement.ReadWrite.Defender',
+    'backed up; no writer yet'),
+  defenderRoleAssignment: byHand('identity-application', 'POST /roleManagement/defender/roleAssignments (beta)', 'RoleManagement.ReadWrite.Defender',
+    'backed up; a privilege review comes before any grant'),
+  defenderCustomAppScope: byHand('identity-application', 'POST /roleManagement/defender/customAppScopes (beta)', 'RoleManagement.ReadWrite.Defender',
+    'backed up; no writer yet'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);

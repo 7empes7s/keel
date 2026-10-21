@@ -115,7 +115,7 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.deepEqual(data.deferrals.map((d) => d.error), [deferral]);
   const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
   // Task-131: the failure is kept verbatim, in the schedule's record layer.
-  assert.ok(html.includes(`<dt>Last error</dt><dd><code>${failure}</code>`));
+  assert.ok(html.includes(`<dt>Last error</dt><dd><pre class="technical-block"><code>${failure}</code></pre>`), "a multi-line error keeps its line breaks");
   assert.ok(html.includes(deferral));
   assert.ok(html.includes(`href="/jobs/${failedJobId}"`));
   assert.ok(html.includes("Every day at 05:00 UTC"));

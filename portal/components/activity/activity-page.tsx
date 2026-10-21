@@ -12,7 +12,8 @@ import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { JobRecordFields } from "@/components/job-table";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -259,13 +260,23 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         </section>
 
         <TechnicalDetails summary="Technical details for these entries">
-          <RecordField copy={false} label="Audit record check" value={integrity ? JSON.stringify(integrity) : "unavailable"} />
-          <RecordField copy={false} label="Checked with" value="GET /api/evidence/verify" />
+          <RecordGroup title="Audit record check">
+            <RecordField copy={false} label="Status" value={integrity?.status ?? "unavailable"} />
+            {integrity?.anchoredThroughSeq ? <RecordField copy={false} label="Checked off-site through entry" value={integrity.anchoredThroughSeq} /> : null}
+            {integrity?.unanchoredRecords !== undefined ? <RecordField copy={false} label="Entries not yet checked off-site" value={integrity.unanchoredRecords} /> : null}
+            {integrity?.brokenAtSeq ? <RecordField copy={false} label="Broken at entry" value={integrity.brokenAtSeq} /> : null}
+            {integrity?.reason ? <RecordField copy={false} label="Reason" value={integrity.reason} /> : null}
+            <RecordField copy={false} label="Checked with" value="GET /api/evidence/verify" />
+          </RecordGroup>
           {jobs.map((job) => (
-            <RecordField key={job.id} label={`Job: ${rows.find((row) => row.job === job)?.title ?? job.kind}`} usage={`${job.kind} · ${job.status} · requested by ${job.requestedBy}${job.error ? ` · ${String(job.error).split("\n")[0]}` : ""}`} value={job.id} />
+            <RecordGroup key={job.id} note={`job · ${job.kind} · ${job.status}`} title={rows.find((row) => row.job === job)?.title ?? job.kind}>
+              <JobRecordFields job={job} />
+            </RecordGroup>
           ))}
           {entries.map((entry) => (
-            <RecordField copy={false} key={entry.seq} label={`Audit entry ${entry.seq}`} value={`${entry.kind} · ${entry.actor} · ${entry.occurred_at} · ${JSON.stringify(entry.subject)}`} />
+            <RecordGroup key={entry.seq} note={`audit entry ${entry.seq} · ${entry.kind}`} title={rows.find((row) => row.entry === entry)?.title ?? entry.kind}>
+              <EntryRecordFields entry={entry} />
+            </RecordGroup>
           ))}
         </TechnicalDetails>
       </div>
@@ -337,7 +348,6 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
   const target = rowHref(row);
   const job = row.job;
   const entry = row.entry;
-  const subject = (entry?.subject ?? {}) as Record<string, unknown>;
   return (
     <DetailsSheet
       footer={retry || target ? <>
@@ -374,21 +384,8 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
         ) : null}
         {entry ? <p className="ac-plain ac-muted">Audit entries cannot be changed or removed. Each one is chained to the one before it, and the chain is checked against an off-site copy.</p> : null}
         <TechnicalDetails>
-          {job ? <>
-            <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
-            <RecordField copy={false} label="Kind and status" value={`${job.kind} · ${job.status}`} />
-            <RecordField label="Requested by (principal ID)" value={job.requestedBy} />
-            <RecordField copy={false} label="Times" value={`created ${job.createdAt ?? "never"} · started ${job.startedAt ?? "never"} · finished ${job.finishedAt ?? "never"}`} />
-            <RecordField copy={false} label="Params" value={JSON.stringify(job.params, null, 2)} />
-            {job.error ? <RecordField copy={false} label="Full error" value={String(job.error)} /> : null}
-          </> : null}
-          {entry ? <>
-            <RecordField copy={false} label="Evidence sequence" value={entry.seq} />
-            <RecordField copy={false} label="Kind" value={entry.kind} />
-            <RecordField label="Actor" value={entry.actor} />
-            <RecordField copy={false} label="Occurred at" value={entry.occurred_at} />
-            <RecordField copy={false} label="Subject" value={JSON.stringify(subject, null, 2)} />
-          </> : null}
+          {job ? <JobRecordFields job={job} /> : null}
+          {entry ? <EntryRecordFields entry={entry} /> : null}
         </TechnicalDetails>
       </div>
     </DetailsSheet>
@@ -402,3 +399,13 @@ function groupBy<T>(items: T[], key: (item: T) => string, meta: (key: string, li
   return rank ? groups.sort((a, b) => rank(a.key) - rank(b.key)) : groups.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/** Every stored field of one audit entry. */
+function EntryRecordFields({ entry }: { entry: EvidenceEntry }) {
+  return <>
+    <RecordField copy={false} label="Entry number" usage="entries are numbered in order; each is chained to the one before it" value={entry.seq} />
+    <RecordField copy={false} label="Kind" value={entry.kind} />
+    <RecordField label="Done by (account)" value={entry.actor} />
+    <RecordField copy={false} label="When" value={entry.occurred_at} />
+    <RecordField label="Subject" value={entry.subject as RecordValue} />
+  </>;
+}

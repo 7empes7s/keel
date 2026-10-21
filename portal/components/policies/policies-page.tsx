@@ -9,7 +9,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { NewRuleSheet } from "@/components/policies/new-rule-sheet";
 import { RuleRecord } from "@/components/policies/rule-record";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Person } from "@/components/ui/person";
@@ -233,9 +233,14 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
         </section>
 
         <TechnicalDetails summary="Technical details for these rules">
-          <RecordField copy={false} label="Automation stop file" value={`${haltFile ?? "/var/lib/keel/AUTOMATION_DISABLED"} · ${halted ? `present since ${haltedAt ?? "unknown"}` : "absent"}`} />
+          <RecordField copy={false} label="Automation stop file" value={haltFile ?? "/var/lib/keel/AUTOMATION_DISABLED"} />
+          <RecordField copy={false} label="Stop file state" value={halted ? `present since ${haltedAt ?? "unknown"}` : "absent"} />
           <RecordField copy={false} label="Read with" value="GET /api/policies" />
-          {policies.map((policy) => <RuleRecord key={policy.id} policy={policy} />)}
+          {policies.map((policy) => (
+            <RecordGroup key={policy.id} note={`automatic rule · ${policy.action}`} title={policy.name}>
+              <RuleRecord policy={policy} />
+            </RecordGroup>
+          ))}
         </TechnicalDetails>
       </div>
 

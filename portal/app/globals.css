@@ -5167,18 +5167,6 @@ section.wizard-panel {
   .verdict > .btn { width: 100%; }
 }
 
-.technical-details { margin-top: var(--space-xs); font-size: 0.8125rem; }
-.technical-details > summary { cursor: pointer; color: var(--text-soft); width: fit-content; }
-.technical-details[open] > summary { margin-bottom: var(--space-xs); }
-.technical-fields { display: grid; gap: var(--space-xs); margin: 0; }
-.technical-field { display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: var(--space-xs) var(--space-sm); }
-.technical-field dt { color: var(--text-soft); }
-.technical-field dd { margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: baseline; min-width: 0; }
-.technical-field code { overflow-wrap: anywhere; }
-.technical-usage { flex-basis: 100%; color: var(--text-soft); }
-@media (max-width: 46rem) {
-  .technical-field { grid-template-columns: 1fr; }
-}
 .incident-point-explanation time,
 .incident-intervals time,
 .incident-link time { font: inherit; color: inherit; }
@@ -5241,27 +5229,6 @@ section.wizard-panel {
   .data-table td > * {
     grid-column: auto;
   }
-}
-
-/* The record's disclosure triangle is drawn as text: iOS otherwise renders the default
-   marker as an emoji. U+FE0E asks for the text presentation. */
-.technical-details > summary {
-  list-style: none;
-}
-
-.technical-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.technical-details > summary::before {
-  content: "\25B8\FE0E";
-  display: inline-block;
-  width: 1.1em;
-  color: var(--text-muted);
-}
-
-.technical-details[open] > summary::before {
-  content: "\25BE\FE0E";
 }
 
 /* Roadmap task-87: baseline capture notes, re-capture action, compliance findings. */
@@ -9201,3 +9168,145 @@ body[data-sheet-open] .popover-panel { z-index: 80; }
   .po-form .segmented > * { flex: 1; justify-content: center; min-width: 0; }
   .po-form .picker-button { width: 100%; min-width: 0; }
 }
+
+/* The record layer ("Technical details"): one framed panel per section, fields in a
+   shared two-column grid (label, value) so values line up, monospace values on a muted
+   chip, JSON and long text as scrollable blocks, and one titled block per object when a
+   record covers a list. Tokens only. */
+.technical-details {
+  margin-top: var(--space-sm);
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  font-size: 0.8125rem;
+}
+.technical-details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 2.5rem;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.technical-details > summary::-webkit-details-marker { display: none; }
+/* The disclosure triangle is drawn as text: iOS otherwise renders the default marker
+   as an emoji. U+FE0E asks for the text presentation. */
+.technical-details > summary::before {
+  content: "\25B8\FE0E";
+  flex: none;
+  width: 1em;
+  color: var(--text-muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.technical-details[open] > summary::before { transform: rotate(90deg); }
+.technical-details > summary:hover { color: var(--text); }
+.technical-details > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.technical-summary-text { min-width: 0; overflow-wrap: anywhere; }
+.technical-summary-hint { margin-left: auto; flex: none; color: var(--text-muted); font-size: 0.75rem; font-weight: 500; }
+.technical-details[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.technical-body { min-width: 0; padding: var(--space-sm); }
+.technical-fields {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 13rem) minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-md);
+  margin: 0;
+  min-width: 0;
+}
+.technical-field {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  min-width: 0;
+}
+.technical-field > dt {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.technical-field > dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-xs);
+  margin: 0;
+  min-width: 0;
+}
+.technical-field > dd > code {
+  max-width: 100%;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.technical-none { color: var(--text-muted); font-style: italic; }
+.technical-field[data-block] { align-items: start; }
+.technical-field[data-block] > dd { align-items: flex-start; }
+.technical-block {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-height: 18rem;
+  margin: 0;
+  padding: var(--space-xs) var(--space-sm);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.technical-block code { font: inherit; }
+.technical-copy { min-height: 1.75rem; padding-block: 0; }
+.technical-usage { flex-basis: 100%; color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; }
+.technical-usage code { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-soft); }
+.technical-group {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--line);
+}
+.technical-fields > .technical-group:first-child { padding-top: 0; border-top: 0; }
+.technical-group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-xs);
+  margin: 0 0 var(--space-xs);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+.technical-group-note { color: var(--text-muted); font-size: 0.75rem; font-weight: 500; }
+.technical-group-body { margin: 0; min-width: 0; }
+@media (max-width: 46rem) {
+  .technical-summary-hint { display: none; }
+  .technical-fields { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
+  .technical-field { grid-template-columns: minmax(0, 1fr); gap: var(--space-2xs); }
+}
+.technical-details > ul { margin: 0; padding: var(--space-xs) var(--space-sm) var(--space-sm); }
+.data-table .technical-summary-hint,
+.technical-group .technical-summary-hint { display: none; }
+.technical-field[data-block] > dd { position: relative; }
+.technical-field[data-block] .technical-copy { position: absolute; top: 0.3125rem; right: 0.3125rem; background: var(--surface); }
+.technical-field[data-block] .technical-block { padding-right: 4.5rem; }

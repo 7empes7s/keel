@@ -1892,17 +1892,52 @@ test("the undo plan fits a phone without sideways scrolling", async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
-// Task-76: a setup step is done only when KEEL has seen it in the tenant, so the page
-// offers no way to tick one off; continuing re-checks the tenant through the route.
-test("setup shows the step waiting on the operator and continues through the guarded route", async ({ page }) => {
+// Setup (portal audit, pick A): a step is done only when Keel has seen it in the tenant,
+// so the page offers no way to tick one off; continuing re-checks the tenant through
+// the guarded route. The step waiting on you is open first, with its Microsoft page.
+test("Setup · the step waiting on you is open, links to Microsoft, and continues through the guarded route", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup", "dark");
-  const read = page.locator("section", { has: page.getByRole("heading", { name: "Read access for backups" }) });
-  await expect(read.locator(".setup-step-waiting-for-you h3")).toHaveText('Give keel-collector the Intune role "Read Only Operator"');
-  await expect(read.locator(".setup-step-waiting-for-you .pill")).toHaveText("Waiting for you");
-  await expect(page.getByRole("button", { name: /mark|done|complete/i })).toHaveCount(0);
-  await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toBeVisible();
-  // The harness answers fetch in-page, so record the call where the page's reload keeps it.
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Waiting on you: 2 steps");
+  const read = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Read access for backups" }) });
+  const current = read.locator('.su-step[data-state="current"]');
+  await expect(current).toHaveCount(1);
+  await expect(current.locator("h3")).toHaveText('Give the backup reader app the Intune role "Read Only Operator"');
+  await expect(current.locator(".badge")).toHaveText("Waiting for you");
+  await expect(current).toContainText("Lets Keel Backup Reader (Contoso) read Intune settings. Needs an Intune Administrator");
+  // The open step comes first in reading order: the done steps before it are one line each.
+  const firstOpen = await page.locator(".su-step-body").first().evaluate((body) => body.closest("li")?.querySelector("h3")?.textContent);
+  expect(firstOpen).toBe('Give the backup reader app the Intune role "Read Only Operator"');
+  await expect(read.locator('.su-step[data-state="done"]')).toHaveCount(2);
+  await expect(read.locator('.su-step[data-state="done"] .su-step-body')).toHaveCount(0);
+  await expect(current.getByRole("link", { name: /Open Intune roles in Microsoft/ })).toHaveAttribute("target", "_blank");
+  await expect(read.locator(".su-next")).toHaveText('Next: give the backup reader app the Intune role "Read Only Operator".');
+  // One amber action: Continue on the paused step. Start setup is outlined, never red.
+  expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
+  await expect(current.getByRole("button", { name: "Continue setup" })).toHaveClass(/btn-primary/);
+  await expect(page.getByRole("button", { name: "Start setup" })).not.toHaveClass(/btn-danger|btn-primary/);
+  await expect(page.locator("main .btn-danger")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /mark|tick/i })).toHaveCount(0);
+
+  // Admin consent opens Microsoft's consent page for this tenant and app; permissions
+  // are plain words with the Microsoft name beside them, never a comma list.
+  const restore = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Write access for restores" }) });
+  const consent = restore.locator('.su-step[data-state="current"]');
+  await expect(consent.locator("h3")).toHaveText("Grant admin consent for the restore writer app");
+  await expect(consent.locator('a[href^="https://login.microsoftonline.com/"][target=_blank]')).toHaveAttribute("href",
+    "https://login.microsoftonline.com/72f988bf-0000-4000-8000-0000000000aa/adminconsent?client_id=2e570e00-0000-4000-8000-0000000000c2");
+  const chip = consent.locator(".su-perm", { hasText: "Change groups" });
+  await expect(chip.locator(".su-perm-words")).toHaveText("Change groups");
+  await expect(chip.locator(".su-perm-code")).toHaveText("Group.ReadWrite.All");
+  expect((await page.locator(".su-page").innerText())).not.toMatch(/\.Read(Write)?\.All,/);
+  await expect(page.getByRole("button", { name: "Copy permission list" })).toBeVisible();
+
+  // Check again re-reads without a full reload.
+  await page.evaluate(() => { (window as unknown as { __stay: boolean }).__stay = true; });
+  await page.getByRole("button", { name: "Check again" }).click();
+  await expect(page.getByRole("button", { name: "Check again" })).toBeEnabled();
+  expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
+
   await page.evaluate(() => {
     const stub = window.fetch;
     window.fetch = (input, init) => {
@@ -1910,23 +1945,63 @@ test("setup shows the step waiting on the operator and continues through the gua
       return stub(input, init);
     };
   });
-  await read.getByRole("button", { name: "Continue setup" }).click();
+  await current.getByRole("button", { name: "Continue setup" }).click();
   await expect.poll(() => page.evaluate(() => sessionStorage.getItem("setup-call"))).not.toBeNull();
   expect(JSON.parse((await page.evaluate(() => sessionStorage.getItem("setup-call")))!)).toEqual({ resume: "5e7a" + "0b".repeat(30) });
+  expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
-// Task-76 production host: a grant broader than setup asks for is reported as found in
-// the tenant, never as something KEEL fixed or will remove.
-test("setup reports the restorer's extra grant as observed", async ({ page }) => {
+// Production host: a grant broader than setup asks for is reported as found in the
+// tenant, never as something Keel fixed or will remove. With read access confirmed,
+// the first backup is the page's one amber action.
+test("Setup · the restorer's extra grant shows as a check-soon chip, and the first backup runs from the verdict", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup/checked", "light");
-  const restore = page.locator("section", { has: page.getByRole("heading", { name: "Write access for restores" }) });
-  const consent = restore.locator(".setup-step", { has: page.getByRole("heading", { name: "Grant admin consent for keel-restorer" }) });
-  await expect(consent.locator(".pill")).toHaveText("Done");
-  await expect(consent).toContainText("The app also holds a permission this setup does not ask for: MailboxSettings.ReadWrite. KEEL reports it and does not remove it");
-  await expect(page.getByText("KEEL cannot look at your tenant from this server yet")).toHaveCount(0);
-  await expect(restore.locator(".setup-step-waiting-for-you h3")).toHaveText('Activate your "Privileged Role Administrator" role');
+  const restore = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Write access for restores" }) });
+  const consent = restore.locator(".su-step", { has: page.getByRole("heading", { name: "Grant admin consent for the restore writer app" }) });
+  await expect(consent).toHaveAttribute("data-state", "done");
+  await expect(consent.locator(".su-perm[data-extra] .su-perm-words")).toHaveText("Extra: Change mailbox settings");
+  await expect(consent.locator(".su-perm[data-extra] .su-perm-code")).toHaveText("MailboxSettings.ReadWrite");
+  await expect(consent).toContainText("Keel does not need it and does not remove it");
+  await expect(restore.locator('.su-step[data-state="current"] h3')).toHaveText('Activate your "Privileged Role Administrator" role');
+  // The restorer's app id is unknown here: no consent link anywhere on the page.
+  await expect(page.locator('a[href^="https://login.microsoftonline.com/"]')).toHaveCount(0);
+  const verdict = page.locator('[data-layer="verdict"]');
+  await expect(verdict.getByRole("button", { name: "Run the first backup" })).toHaveClass(/btn-primary/);
+  expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
+  await verdict.getByRole("button", { name: "Run the first backup" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/actions/backup")).length)).toBeGreaterThan(0);
 });
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/setup", "/setup/checked"]) {
+      test(`Setup · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles and tracks`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".su-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".su-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        if (width === 1440) {
+          const tracks = await page.locator(".su-track").evaluateAll((items) => items.map((item) => item.getBoundingClientRect()));
+          expect(tracks.length).toBe(2);
+          expect(Math.round(tracks[0].top)).toBe(Math.round(tracks[1].top));
+          expect(Math.round(tracks[0].height)).toBe(Math.round(tracks[1].height));
+        }
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .su-tile")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button") && !element.matches("div.su-tile")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+      });
+    }
+  }
+}
 
 // The approved setup page: one card for the setup in use, a card per service with what
 // is in line, changed or not covered, and the earlier setups. Fits a phone and a desktop.

@@ -36,7 +36,9 @@ export function RestoreFollowUps({ followUps, now }: { followUps: RestoreFollowU
             </div>
             <TechnicalDetails>
               <RecordField label="Restore reference" value={entry.restoreRef} />
-              {entry.jobId ? <RecordField label="Job ID" value={entry.jobId} /> : null}
+              <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={entry.jobId} />
+              <RecordField copy={false} label="Open steps" value={entry.pending} />
+              <RecordField copy={false} label="Restore finished" value={entry.since} />
             </TechnicalDetails>
           </li>
         ))}

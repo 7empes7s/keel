@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Icon } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   groupWorkloadsByService,
   hasBackupData,
@@ -105,8 +105,25 @@ function WorkloadCard({ workload, now, onStart, open }: { workload: RestoreWorkl
       ) : null}
       <TechnicalDetails>
         <RecordField label="Workload" value={workload.workload} />
-        {workload.backup ? <RecordField label="Backup (collection) ID" value={workload.backup.collectionId} /> : null}
-        {workload.lastRun ? <RecordField copy={false} label={`Newest run · ${workload.lastRun.outcome}`} value={workload.lastRun.reasons.join("; ") || workload.lastRun.collectionId} /> : null}
+        <RecordField copy={false} label="Service code" value={workload.service} />
+        <RecordField copy={false} label="Reads" value={workload.reads} />
+        {workload.writes.length ? <RecordField copy={false} label="Writes" value={workload.writes as unknown as RecordValue} /> : null}
+        {workload.backup ? (
+          <RecordGroup note={workload.backup.partial ? "partial" : "complete"} title="Newest backup with settings">
+            <RecordField label="Backup (collection) ID" value={workload.backup.collectionId} />
+            <RecordField copy={false} label="Taken" value={workload.backup.takenAt} />
+            <RecordField copy={false} label="Items" value={workload.backup.items} />
+            <RecordField copy={false} label="Partial" value={workload.backup.partial} />
+          </RecordGroup>
+        ) : null}
+        {workload.lastRun ? (
+          <RecordGroup note={workload.lastRun.outcome} title="Newest run">
+            <RecordField label="Collection ID" value={workload.lastRun.collectionId} />
+            <RecordField copy={false} label="Outcome" value={workload.lastRun.outcome} />
+            <RecordField copy={false} label="At" value={workload.lastRun.at} />
+            {workload.lastRun.reasons.map((reason, index) => <RecordField copy={false} key={`${index}:${reason}`} label="Reason" value={reason} />)}
+          </RecordGroup>
+        ) : null}
       </TechnicalDetails>
     </li>
   );

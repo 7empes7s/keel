@@ -12,7 +12,7 @@ import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/compo
 import { PendingSteps, type PendingStep } from "@/components/pending-steps";
 import { RestorePoint } from "@/components/restore/restore-point";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
 import { fieldWords, refusalSentence } from "@/lib/changes-view";
@@ -125,11 +125,25 @@ interface DryRunArtifact {
 
 const EDGE_RESULT_PREFIX = "edge:";
 
-// The raw reasons (requiring key and field path), for the record layer.
-function formatReasons(reasons: AdditionReason[]): string {
-  return reasons
-    .map((reason) => `${reason.requiredBy} at ${reason.field}`)
-    .join("; ");
+const DRY_RUN_OUTCOMES: { list: "applied" | "skipped" | "failed" | "notRemediable"; note: string }[] = [
+  { list: "applied", note: "would apply" },
+  { list: "skipped", note: "refused" },
+  { list: "failed", note: "would fail" },
+  { list: "notRemediable", note: "needs a person" },
+];
+
+/** One resource the closure added, with every resource that requires it and the
+ *  field path that points at it. */
+function AdditionGroup({ addition, note }: { addition: Addition; note: string }) {
+  return (
+    <RecordGroup note={note} title={addition.naturalKey}>
+      <RecordField label="Stored key" value={addition.naturalKey} />
+      <RecordField copy={false} label="Type" value={addition.resourceType} />
+      {addition.reasons.map((reason) => (
+        <RecordField key={`${reason.requiredBy}#${reason.field}`} label="Required by (stored key)" usage={<>at field <code>{reason.field}</code></>} value={reason.requiredBy} />
+      ))}
+    </RecordGroup>
+  );
 }
 
 /** "Block legacy auth (Conditional Access policy)", the resources that need this one. */
@@ -625,10 +639,14 @@ export function RestoreSelection({
                 <p>Leave these out of your selection and try again.</p>
               </div>
               <TechnicalDetails>
-                {preview.guardRefusals.map((guardRefusal) => (
-                  <RecordField copy={false} key={guardRefusal.naturalKey} label={`Safety check · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
-                ))}
                 <RecordField label="Backup ID" value={snapshotId} />
+                <RecordField label="Selected keys" value={preview.selected} />
+                {preview.guardRefusals.map((guardRefusal) => (
+                  <RecordGroup key={guardRefusal.naturalKey} note="safety check" title={guardRefusal.naturalKey}>
+                    <RecordField label="Stored key" value={guardRefusal.naturalKey} />
+                    <RecordField copy={false} label="Reason" value={guardRefusal.reason} />
+                  </RecordGroup>
+                ))}
               </TechnicalDetails>
             </section>
           ) : null}
@@ -659,15 +677,17 @@ export function RestoreSelection({
                 </div>
               ) : null}
               <TechnicalDetails>
-                <RecordField copy={false} label="Selected keys" value={preview.selected.join(", ")} />
-                <RecordField copy={false} label="Closure keys" value={preview.closureKeys.join(", ")} />
-                {preview.added.map((addition) => (
-                  <RecordField copy={false} key={addition.naturalKey} label={`Added · ${addition.naturalKey}`} value={`required by ${formatReasons(addition.reasons)}`} />
-                ))}
-                {preview.unresolvedReferences.map((reference) => (
-                  <RecordField copy={false} key={`${reference.from}:${reference.field}`} label={`Unresolved · ${reference.from}`} value={`${reference.field} → ${reference.symbol}`} />
-                ))}
                 <RecordField label="Backup ID" value={snapshotId} />
+                <RecordField label="Selected keys" value={preview.selected} />
+                <RecordField label="Closure keys" usage="everything the restore writes: the selection plus what it needs" value={preview.closureKeys} />
+                {preview.added.map((addition) => <AdditionGroup addition={addition} key={`added:${addition.naturalKey}`} note="added because it is needed" />)}
+                {preview.unresolvedReferences.map((reference) => (
+                  <RecordGroup key={`${reference.from}:${reference.field}`} note="unresolved reference" title={reference.from}>
+                    <RecordField label="From (stored key)" value={reference.from} />
+                    <RecordField copy={false} label="Field path" value={reference.field} />
+                    <RecordField label="Refers to" value={reference.symbol} />
+                  </RecordGroup>
+                ))}
               </TechnicalDetails>
             </section>
           ) : null}
@@ -705,7 +725,7 @@ export function RestoreSelection({
                 <TechnicalDetails>
                   <RecordField label="Job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} />
                   {dryRunArtifactId ? <RecordField label="Dry run ID" value={dryRunArtifactId} usage={<code>GET /api/actions/restore/dry-run/{dryRunArtifactId}</code>} /> : null}
-                  <RecordField copy={false} label="Polling" value={`every ${DRY_RUN_POLL_MS / 1000}s`} />
+                  <RecordField copy={false} label="Polling interval (s)" value={DRY_RUN_POLL_MS / 1000} />
                 </TechnicalDetails>
               ) : null}
             </section>
@@ -816,27 +836,35 @@ export function RestoreSelection({
             <RecordField label="Dry run ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
             {dryRunJobId ? <RecordField label="Dry run job ID" value={dryRunJobId} usage={<code>GET /api/jobs/{dryRunJobId}</code>} /> : null}
             <RecordField copy={false} label="Status" value={artifact.status} />
-            <RecordField copy={false} label="Closure keys" value={artifact.closureKeys.join(", ")} />
-            {artifact.effectsDigest ? <RecordField label="Effects digest" value={artifact.effectsDigest} /> : null}
-            {artifact.results.applied.map((entry) => (
-              <RecordField copy={false} key={`applied-${entry.naturalKey}`} label={`Would apply · ${entry.naturalKey}`} value={entry.reason ?? "would apply"} />
-            ))}
-            {artifact.results.skipped.map((entry) => (
-              <RecordField copy={false} key={`skipped-${entry.naturalKey}`} label={`Refused · ${entry.naturalKey}`} value={entry.reason ?? entry.error ?? "refused"} />
-            ))}
-            {artifact.results.failed.map((entry) => (
-              <RecordField copy={false} key={`failed-${entry.naturalKey}`} label={`Would fail · ${entry.naturalKey}`} value={entry.error ?? entry.reason ?? "failed"} />
-            ))}
-            {artifact.results.notRemediable.map((entry) => (
-              <RecordField copy={false} key={`manual-${entry.naturalKey}`} label={`Not remediable · ${entry.naturalKey}`} value={entry.reason ?? entry.error ?? "not remediable"} />
-            ))}
+            <RecordField label="Closure keys" value={artifact.closureKeys} />
+            <RecordField label="Effects digest" usage="approvers bind to this exact set of content effects" value={artifact.effectsDigest} />
+            {DRY_RUN_OUTCOMES.flatMap(({ list, note }) => artifact.results[list].map((entry) => (
+              <RecordGroup key={`${list}:${entry.naturalKey}`} note={note} title={entry.naturalKey}>
+                <RecordField label="Stored key" value={entry.naturalKey} />
+                <RecordField copy={false} label="Outcome" value={list} />
+                {entry.reason ? <RecordField copy={false} label="Reason" value={entry.reason} /> : null}
+                {entry.error ? <RecordField label="Error" value={entry.error} /> : null}
+              </RecordGroup>
+            )))}
             {artifact.guardRefusals.map((guardRefusal) => (
-              <RecordField copy={false} key={`guard-${guardRefusal.naturalKey}`} label={`Guard refusal · ${guardRefusal.naturalKey}`} value={guardRefusal.reason} />
+              <RecordGroup key={`guard:${guardRefusal.naturalKey}`} note="safety check refused it" title={guardRefusal.naturalKey}>
+                <RecordField label="Stored key" value={guardRefusal.naturalKey} />
+                <RecordField copy={false} label="Reason" value={guardRefusal.reason} />
+              </RecordGroup>
             ))}
             {(artifact.relationshipOperations ?? []).map((operation) => (
-              <RecordField copy={false} key={`edge-${operation.parentNaturalKey}|${operation.action}|${operation.targetNaturalKey ?? operation.targetId}`}
-                label={`Edge · ${operation.parentNaturalKey}`} value={`${operation.action} ${operation.family} ${operation.targetNaturalKey ?? operation.targetId ?? "created object"}`} />
+              <RecordGroup key={`edge:${operation.parentNaturalKey}|${operation.family}|${operation.action}|${operation.targetNaturalKey ?? operation.targetId}`} note={`${operation.family} ${operation.action}`} title={operation.parentNaturalKey}>
+                <RecordField label="Group (stored key)" value={operation.parentNaturalKey} />
+                <RecordField copy={false} label="Relationship" value={operation.family} />
+                <RecordField copy={false} label="Action" value={operation.action} />
+                <RecordField label="Target (stored key)" value={operation.targetNaturalKey} />
+                <RecordField label="Target object ID" value={operation.targetId} />
+              </RecordGroup>
             ))}
+            {artifact.results.pendingSteps?.length ? <RecordField label="Steps left for a person" value={artifact.results.pendingSteps as unknown as RecordValue} /> : null}
+            {artifact.recoveryMechanisms?.length ? <RecordField label="Recovery mechanisms" value={artifact.recoveryMechanisms as unknown as RecordValue} /> : null}
+            {artifact.contentEffects?.length ? <RecordField label="Content effects" value={artifact.contentEffects as unknown as RecordValue} /> : null}
+            {artifact.contentEffectApprovals?.length ? <RecordField label="Content effect approvals" value={artifact.contentEffectApprovals} /> : null}
           </TechnicalDetails>
 
           {artifact.status === "completed" ? (

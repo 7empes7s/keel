@@ -1324,7 +1324,7 @@ const RECORD_IDS: Record<string, string[]> = {
   resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],
   "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
   reports: ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "job:a1000000-0000-4000-8000-000000000002", "change:d1f70000-0000-4000-8000-000000000101", "keel.mfa.admins", "e7a10000-0000-4000-8000-000000000203", "4c".repeat(32), "9b".repeat(32), "/etc/keel/value-estimate.json"],
-  "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "entities FIN", "not-configured"],
+  "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "EntityFIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
   compare: ["c0a10000-0000-4000-8000-000000000001", "c0a10000-0000-4000-8000-000000000002", "conditionalAccessPolicy:Block legacy auth", "mailbox:finance@contoso.com", "drive:b!Xc9", "3e".repeat(32)],

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { RestorePoint } from "@/components/restore/restore-point";
 import { RestoreStepper } from "@/components/restore-selection";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { postAction } from "@/lib/action-client";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { toast } from "@/lib/toast";
@@ -427,8 +427,14 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
           <p>KEEL is reading {plural(chosenCount, unit, units)} from your tenant to compare with the backup. This only reads; nothing is written.</p>
           {runs.length > 1 ? <p className="selection-scope">{runs.filter((run) => run.state !== "running").length} of {runs.length} checked.</p> : null}
           <TechnicalDetails>
-            {runs.map((run) => <RecordField key={run.jobId} label={`Job ID${run.target ? ` · ${nameOf(run.target)}` : ""}`} value={run.jobId} usage={<code>GET /api/jobs/{run.jobId}</code>} />)}
-            {runs.map((run) => <RecordField key={run.artifactId} label={`Dry run ID${run.target ? ` · ${nameOf(run.target)}` : ""}`} value={run.artifactId} usage={<code>GET /api/actions/restore/dry-run/{run.artifactId}</code>} />)}
+            {runs.map((run) => (
+              <RecordGroup key={run.jobId} note={run.state} title={run.target ? nameOf(run.target) : "Check"}>
+                {run.target ? <RecordField label="Target (stored key)" value={run.target} /> : null}
+                <RecordField label="Job ID" value={run.jobId} usage={<code>GET /api/jobs/{run.jobId}</code>} />
+                <RecordField label="Dry run ID" value={run.artifactId} usage={<code>GET /api/actions/restore/dry-run/{run.artifactId}</code>} />
+                <RecordField copy={false} label="State" value={run.state} />
+              </RecordGroup>
+            ))}
           </TechnicalDetails>
         </div>
       ) : null}
@@ -577,8 +583,40 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
 
       <TechnicalDetails>
         <RecordField label="Dry run ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
+        <RecordField label="Job ID" value={run.jobId} usage={<code>GET /api/jobs/{run.jobId}</code>} />
+        {run.target ? <RecordField label="Target (stored key)" value={run.target} /> : null}
         <RecordField copy={false} label="Status" value={artifact.status} />
-        {refusals.map((item) => <RecordField copy={false} key={`refused-${item.naturalKey}`} label={`Refused · ${item.naturalKey}`} value={item.reason} />)}
+        <RecordField label="Effects digest" usage="approvers bind to this exact set of content effects" value={artifact.effectsDigest} />
+        {operations.map((operation, index) => (
+          <RecordGroup key={`op:${operation.resourceKey ?? operation.naturalKey ?? ""}:${operation.group ?? operation.kind ?? ""}:${index}`} note={operation.group ?? operation.kind ?? "operation"} title={operation.resourceKey ?? operation.naturalKey ?? `Operation ${index + 1}`}>
+            {operation.resourceKey ? <RecordField label="Resource key" value={operation.resourceKey} /> : null}
+            {operation.naturalKey ? <RecordField label="Stored key" value={operation.naturalKey} /> : null}
+            {operation.kind ? <RecordField copy={false} label="Kind" value={operation.kind} /> : null}
+            {operation.group ? <RecordField copy={false} label="Group" value={operation.group} /> : null}
+            {operation.member ? <RecordField label="Member" value={operation.member} /> : null}
+            {operation.before ? <RecordField label="Roles before" value={operation.before} /> : null}
+            {(operation.changes ?? []).map((change) => (
+              <RecordField copy={false} key={change.field} label={`Field ${change.field}`} value={{ now: change.before, after: change.after } as RecordValue} />
+            ))}
+          </RecordGroup>
+        ))}
+        {(plan?.manual ?? []).map((item, index) => (
+          <RecordGroup key={`manual:${item.resourceKey}:${item.field ?? ""}:${index}`} note="not sent; by hand" title={item.resourceKey}>
+            <RecordField label="Resource key" value={item.resourceKey} />
+            <RecordField copy={false} label="Field path" value={item.field} />
+            <RecordField copy={false} label="Reason" value={item.reason} />
+            {"before" in item ? <RecordField copy={false} label="Now" value={item.before as RecordValue} /> : null}
+            {"after" in item ? <RecordField copy={false} label="In the backup" value={item.after as RecordValue} /> : null}
+          </RecordGroup>
+        ))}
+        {refusals.map((item) => (
+          <RecordGroup key={`refused:${item.naturalKey}`} note="refused" title={item.naturalKey}>
+            <RecordField label="Stored key" value={item.naturalKey} />
+            <RecordField copy={false} label="Reason" value={item.reason} />
+          </RecordGroup>
+        ))}
+        {artifact.contentEffects?.length ? <RecordField label="Content effects" value={artifact.contentEffects as unknown as RecordValue} /> : null}
+        {artifact.contentEffectApprovals?.length ? <RecordField label="Content effect approvals" value={artifact.contentEffectApprovals} /> : null}
       </TechnicalDetails>
     </div>
   );

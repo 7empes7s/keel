@@ -2,10 +2,10 @@ import { CompareForm, type QuickPick } from "@/components/baselines/compare-form
 import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
-  rawValue, sideWords, workloadLabel, workloadNotComparedSentence,
+  sideWords, workloadLabel, workloadNotComparedSentence,
   type CompareData, type CompareField, type CompareResult, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
@@ -178,12 +178,29 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
       {settings.groups.length ? (
         <TechnicalDetails summary="Technical details: settings">
           {settings.groups.flatMap((group) => group.items.map((item) => (
-            <RecordField key={item.naturalKey} label={`${item.changeType} ${group.resourceType}`} value={item.naturalKey}
-              usage={item.fields?.length ? item.fields.map((field) => `${field.path}: ${rawValue(field.before)} → ${rawValue(field.after)}`).join("; ") : undefined} />
+            <RecordGroup key={item.naturalKey} note={`${item.changeType} ${group.resourceType}`} title={item.name ?? item.naturalKey}>
+              <RecordField label="Stored key" value={item.naturalKey} />
+              <RecordField copy={false} label="Type" usage={group.service} value={group.resourceType} />
+              <RecordField copy={false} label="Change" value={item.changeType} />
+              {item.blastRadius ? <RecordField copy={false} label="Blast radius" value={item.blastRadius} /> : null}
+              {item.fieldsTotal !== undefined ? <RecordField copy={false} label="Fields that differ" value={item.fieldsTotal} /> : null}
+              <FieldRecords fields={item.fields} />
+            </RecordGroup>
           )))}
         </TechnicalDetails>
       ) : null}
     </section>
+  );
+}
+
+/** One field per changed setting path, with its kind and both raw values. */
+function FieldRecords({ fields, prefix }: { fields?: CompareField[]; prefix?: string }) {
+  return (
+    <>
+      {(fields ?? []).map((field) => (
+        <RecordField copy={false} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} usage={prefix} value={{ kind: field.kind, before: field.before, after: field.after } as RecordValue} />
+      ))}
+    </>
   );
 }
 
@@ -238,9 +255,18 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
       {workloads.groups.length ? (
         <TechnicalDetails summary="Technical details: app settings">
           {workloads.groups.map((group) => (
-            <RecordField key={group.workload} label={`Workload ${group.workload}`}
-              value={`${group.left?.collectionId ?? "none"} (${group.left?.outcome ?? "none"}) → ${group.right?.collectionId ?? "none"} (${group.right?.outcome ?? "none"})`}
-              usage={(group.items ?? []).map((item) => `${item.changeType} ${item.resourceKey}`).join("; ") || undefined} />
+            <RecordGroup key={group.workload} note={group.reason ? `${group.state}, ${group.reason}` : group.state} title={workloadLabel(group.workload)}>
+              <RecordField label="Workload" usage={group.service} value={group.workload} />
+              <RecordField label="Before: collection ID" usage={group.left ? `${group.left.outcome}, ${group.left.at ?? "unknown time"}` : undefined} value={group.left?.collectionId} />
+              <RecordField label="After: collection ID" usage={group.right ? `${group.right.outcome}, ${group.right.at ?? "unknown time"}` : undefined} value={group.right?.collectionId} />
+              {group.total !== undefined ? (
+                <RecordField copy={false} label="Counts" value={{ added: group.added, removed: group.removed, changed: group.changed, unchanged: group.unchanged, unverified: group.unverified, unverifiedFields: group.unverifiedFields, unmatched: group.unmatched, total: group.total } as RecordValue} />
+              ) : null}
+              {(group.items ?? []).map((item) => (
+                <RecordField copy={false} key={item.resourceKey} label={`Resource key (${item.changeType})`} usage={item.name ?? undefined} value={item.resourceKey} />
+              ))}
+              {(group.items ?? []).map((item) => <FieldRecords fields={item.fields} key={`fields:${item.resourceKey}`} prefix={item.resourceKey} />)}
+            </RecordGroup>
           ))}
         </TechnicalDetails>
       ) : null}
@@ -287,9 +313,19 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
       {content.total > content.shown ? <p className="compare-note">Showing {content.shown} of {content.total} items. The full list is in Technical details for an operator.</p> : null}
       {changed.length ? (
         <TechnicalDetails summary="Technical details: content">
+          <RecordField copy={false} label="Items shown" usage={`of ${content.total}`} value={content.shown} />
           {changed.flatMap((group) => group.containers.map((container) => (
-            <RecordField key={`${group.workload}/${container.container}`} label={`Container (${group.workload})`} value={container.container}
-              usage={container.items.map((item) => `${item.changeType} ${item.itemKey} ${item.beforeSha256 ?? "absent"} → ${item.afterSha256 ?? "absent"}`).join("; ")} />
+            <RecordGroup key={`${group.workload}/${container.container}`} note={`${group.workload}, ${countsWords(container)}`} title={containerWords(container.container)}>
+              <RecordField label="Container" usage={group.workload} value={container.container} />
+              {container.items.map((item) => (
+                <RecordField
+                  key={item.itemKey}
+                  label={`Item key (${item.changeType})`}
+                  usage={item.name ?? undefined}
+                  value={{ itemKey: item.itemKey, kind: item.kind, beforeSha256: item.beforeSha256, afterSha256: item.afterSha256, beforeBytes: item.beforeBytes, afterBytes: item.afterBytes }}
+                />
+              ))}
+            </RecordGroup>
           )))}
         </TechnicalDetails>
       ) : null}
@@ -365,10 +401,18 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
         ))}
       </dl>
       <TechnicalDetails>
-        <RecordField label="Compare mode" value={result.mode} />
-        <RecordField label="From snapshot" value={result.left.snapshotId} usage={`Tenant ${result.left.tenantRef}, completed ${result.left.at ?? "unknown"}`} />
-        <RecordField label="To snapshot" value={result.right.snapshotId} usage={`Tenant ${result.right.tenantRef}, completed ${result.right.at ?? "unknown"}`} />
+        <RecordField copy={false} label="Compare mode" value={result.mode} />
+        <RecordField copy={false} label="Across tenants" value={result.portable} />
+        <RecordField copy={false} label="Result version" value={result.version} />
         <RecordField label="Compared at" value={result.generatedAt} copy={false} />
+        {([["Before", result.left], ["After", result.right]] as const).map(([label, side]) => (
+          <RecordGroup key={label} note={side.kind} title={label}>
+            <RecordField label="Snapshot ID" value={side.snapshotId} />
+            <RecordField label="Tenant reference" value={side.tenantRef} />
+            <RecordField copy={false} label="Completed" value={side.at} />
+            {side.latestStored?.length ? <RecordField label="Newest stored collection IDs" value={side.latestStored} /> : null}
+          </RecordGroup>
+        ))}
       </TechnicalDetails>
     </section>
   );

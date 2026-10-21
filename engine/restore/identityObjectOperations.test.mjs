@@ -315,6 +315,38 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
   }
 });
 
+test('restore gaps batch 2: the partner configuration template never writes inbound trust', async () => {
+  const type = 'multiTenantOrganizationPartnerConfigurationTemplate';
+  const path = '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration';
+  const consent = (inboundAllowed) => ({ inboundAllowed, outboundAllowed: false });
+  const trust = (isMfaAccepted) => ({ isMfaAccepted, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false });
+  const template = (isMfaAccepted, inboundAllowed) => ({ id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: trust(isMfaAccepted), automaticUserConsentSettings: consent(inboundAllowed) });
+  assert.equal(IDENTITY_RECORDS[type].writable.includes('inboundTrust'), false);
+  const run = async (desired, live) => {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+    return { result, writes: graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined) };
+  };
+
+  // Only inbound trust differs: nothing is written, and the step says to change it by hand.
+  let { result, writes } = await run(template(true, false), template(false, false));
+  assert.equal(writes.length, 0, 'no write when only inbound trust differs');
+  assert.match(result.skipped?.reason ?? '', /^manual: Inbound trust .* never changes it/);
+
+  // Inbound trust and another setting differ: only the other setting is sent, and inbound trust is a step.
+  ({ result, writes } = await run(template(true, true), template(false, false)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body, { automaticUserConsentSettings: consent(true) });
+  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['inboundTrust']);
+
+  // Inbound trust is the same: the write goes ahead with no extra step.
+  ({ result, writes } = await run(template(false, true), template(false, false)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ automaticUserConsentSettings: consent(true) }]);
+  assert.equal(result.applied.completion, undefined);
+});
+
 test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
   const path = '/policies/accessReviewPolicy';
   const live = { id: 'policy', displayName: 'Access review policy', isGroupOwnerManagementEnabled: true };

@@ -24,6 +24,7 @@ import { signEvidence, verifyEvidence } from '../../tools/release/qualification.
 import {
   READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, captureWorkloadReads, ledgerEvidenceFromWorkloadReadsAcceptance, main, workloadReadsRecordFile,
 } from '../../tools/qualification/workloadReadsLive.mjs';
+import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymize.mjs';
 import { WRITTEN_WORKLOADS } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
@@ -115,6 +116,22 @@ for (const workload of Object.keys(READ_FAMILIES)) {
     assert.doesNotMatch(JSON.stringify(evidence), new RegExp(TENANT));
   });
 }
+
+test('a captured read record carries no raw app id and passes the pseudonym check', async () => {
+  const APP = '11111111-2222-4333-8444-555555555555';
+  const live = fakeTenant('exchange-mail-flow');
+  const { record } = await capture('exchange-mail-flow', live, { credential: `app:${APP}` });
+  const evidence = signed(record);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions()).failures, []);
+  assert.match(evidence.subject.credentials.collector, /^app:[0-9a-f]{8}-[0-9a-f]{4}-8/);
+  const text = JSON.stringify(evidence, null, 2);
+  assert.doesNotMatch(text, new RegExp(APP));
+  const lines = [];
+  assert.equal(pseudonymizeCheck(['check', 'record.json'], { read: () => text, log: (line) => lines.push(line) }), 0, lines.join('\n'));
+  // The same app id always maps to the same pseudonym for this tenant.
+  const again = await capture('exchange-mail-flow', fakeTenant('exchange-mail-flow'), { credential: `app:${APP}` });
+  assert.equal(again.record.subject.credentials.collector, evidence.subject.credentials.collector);
+});
 
 test('a read that fails is not proof, keeps its message out of the record, and the workload stays off', async () => {
   const live = fakeTenant('exchange-mail-flow', {

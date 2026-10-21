@@ -43,14 +43,15 @@ export const DEFAULT_MAX_OBJECTS = 1000;
 const WHEN = 'WhenChangedUTC';
 const DEFENDER = 'Microsoft Defender for Office 365';
 
-// Who a protection rule applies to, and who it leaves out.
+// Who a protection rule applies to, and who it leaves out. The protection rule cmdlets
+// carry no WhenChangedUTC on live (Q105, 2026-10-21), so it is not declared here.
 const RECIPIENT_SCOPE = Object.freeze([
   'Name', 'State', 'Priority', 'Comments', 'SentTo', 'SentToMemberOf', 'RecipientDomainIs',
-  'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'ExceptIfRecipientDomainIs', WHEN,
+  'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'ExceptIfRecipientDomainIs',
 ]);
 const SENDER_SCOPE = Object.freeze([
   'Name', 'State', 'Priority', 'Comments', 'From', 'FromMemberOf', 'SenderDomainIs',
-  'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs', WHEN,
+  'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs',
 ]);
 const rule = (policyField) => Object.freeze([policyField, ...RECIPIENT_SCOPE]);
 
@@ -94,7 +95,8 @@ export const FAMILIES = Object.freeze({
   quarantinePolicy: Object.freeze({
     operation: 'exchange-extended.quarantine-policies', cmdlet: 'Get-QuarantinePolicy', prefix: 'quarantine-policy',
     fields: Object.freeze([
-      'Name', 'QuarantinePolicyType', 'EndUserQuarantinePermissionsValue', 'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress', WHEN,
+      // Get-QuarantinePolicy does not return EndUserQuarantinePermissionsValue (Q105); it is a Set- input only.
+      'Name', 'QuarantinePolicyType', 'ESNEnabled', 'IncludeMessagesFromBlockedSenderAddress', WHEN,
     ]),
   }),
   globalQuarantineSettings: Object.freeze({
@@ -315,6 +317,16 @@ export async function readExchangeExtended({ powershell = {}, families = FAMILY_
   const unidentified = reads.reduce((sum, read) => sum + read.unidentified, 0);
   const statuses = resources.flatMap((entry) => Object.values(entry.fieldCoverage).map((coverage) => coverage.status));
   const fieldCounts = statuses.reduce((counts, status) => ({ ...counts, [status]: (counts[status] ?? 0) + 1 }), {});
+  // Which declared fields an answer did not carry, per family, so a partial run says
+  // what it is missing (names only, never values).
+  const unknownFields = {};
+  for (const entry of resources) {
+    for (const [field, coverage] of Object.entries(entry.fieldCoverage)) {
+      if (coverage.status !== 'unknown') continue;
+      const family = (unknownFields[entry.kind] ??= {});
+      family[field] = (family[field] ?? 0) + 1;
+    }
+  }
   const perFamily = Object.fromEntries(families.map((family, index) => {
     const read = reads[index];
     const status = read.failure ? read.failure.status : read.unavailable ? read.unavailable.status : 'read';
@@ -341,6 +353,7 @@ export async function readExchangeExtended({ powershell = {}, families = FAMILY_
     unavailable,
     skipped,
     fieldCounts,
+    unknownFields,
   };
 }
 
@@ -375,6 +388,7 @@ export async function recordExchangeExtendedRun(client, { tenantRef, result }) {
       [tenantRef, EXCHANGE_EXTENDED_WORKLOAD, result.outcome, result.observedFrom, result.observedTo, {
         discovery: result.discovery ?? null,
         fieldCounts: result.fieldCounts ?? {},
+        unknownFields: result.unknownFields ?? {},
         failures: result.failures ?? [],
         unavailable: result.unavailable ?? [],
         skipped: result.skipped ?? [],

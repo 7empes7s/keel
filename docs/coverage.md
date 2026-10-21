@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 104 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 80 are restored by hand from the backup.
+KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 21 are full, 103 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 55 at least in part; the other 76 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -333,7 +333,7 @@ KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it
 | Settings catalog policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Enrollment restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
-| Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
@@ -366,13 +366,13 @@ KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Reusable settings groups | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Apple automated enrollment tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
@@ -390,9 +390,9 @@ KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Restore by hand in the Intune admin center from the backup, which includes each restriction's assignments and order.
 - **Intune admin roles** (KEEL choice). These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is backed up as Intune admin role assignments.
   - *You do:* Review the roles in the backup and recreate them in the Intune admin center, then assign them again.
-- **Device categories** (Microsoft limit). A category is only a name. Devices are put in a category when they enroll, which no restore can redo.
+- **Device categories.** Recreates categories and puts their names and descriptions back.
   - *Not brought back:* which devices are in the category (no tool can write it).
-  - *You do:* Recreate the category by hand. Devices pick it up at their next enrollment, or an admin sets it on each device.
+  - *You do:* Devices are put in a category when they enroll, which no restore can redo. Devices pick it up at their next enrollment, or an admin sets it on each device.
 - **Terms and conditions** (Microsoft limit). Who accepted cannot be recreated: a recreated policy asks every user to accept again.
   - *Not brought back:* who accepted the terms (no tool can write it).
   - *You do:* Recreate the terms by hand from the backup and tell users they will be asked to accept again.
@@ -482,8 +482,8 @@ KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it
 - **Settings catalog compliance policies** (not built yet). KEEL backs up the settings but does not restore them yet. The actions for noncompliance and who the policy is assigned to are not backed up yet.
   - *Not brought back:* actions for noncompliance (stored separately and not in the backup yet); who the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the policy in the Intune admin center from the backup, add its actions for noncompliance, and assign it again. Conditional Access that requires compliant devices needs it back first.
-- **Reusable settings groups** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each group in the Intune admin center from the backup before the policies that use it.
+- **Reusable settings groups.** Recreates groups and puts their settings back, before the settings catalog policies that use them.
+  - *You do:* A group is never moved to another setting definition; recreate it by hand if that changed.
 - **Policy sets** (not built yet). KEEL backs up each set's name and settings but not yet the apps and policies in it.
   - *Not brought back:* the apps and policies in each set (stored separately and not in the backup yet); who the set is assigned to (stored separately and not in the backup yet).
   - *You do:* Recreate the set in the Intune admin center, add the same apps and policies, and assign it again.
@@ -496,11 +496,12 @@ KEEL tracks 131 kinds of Entra ID and Intune settings and backs up everything it
 - **Managed Google Play connection** (Microsoft limit). The connection is made by signing in to Google. No tool can make it from a backup, and the enrollment codes are not backed up.
   - *Not brought back:* enrollment company codes and QR codes (Microsoft never returns it).
   - *You do:* Use the backup for the Google account and settings. Connect Managed Google Play again in the Intune admin center with that account, then turn on the same enrollment options.
-- **Device cleanup rules** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Set the same cleanup rules in the Intune admin center from the backup.
-- **Windows hotpatch update policies** (not built yet). KEEL backs these up but does not restore them yet. Who a policy is assigned to is not backed up yet.
+- **Device cleanup rules.** Puts a rule's settings back when that makes it wait as long or longer before retiring devices.
+  - *Not brought back:* a deleted rule, and a shorter wait before devices are retired (in the backup, but KEEL does not write it yet).
+  - *You do:* A deleted rule, and a rule the backup has retiring devices sooner than now, are set by hand in the Intune admin center from the backup, because a shorter wait can retire devices at once.
+- **Windows hotpatch update policies.** Recreates policies and puts their settings back.
   - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy in the Intune admin center from the backup and assign it again.
+  - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand.
 - **Multi admin approval policies** (not built yet). KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.
   - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
 - **macOS custom attribute scripts** (not built yet). KEEL backs up the script settings but not yet the script body or who it is assigned to.

@@ -165,6 +165,24 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     kind: 'named-object', fixture: `settings catalog policy ${FIXTURE_PREFIX}-settings (one Defender setting), assigned to group ${FIXTURE_PREFIX}-group only`,
     select: `${FIXTURE_PREFIX}-settings`, drift: 'switch its one setting off',
   },
+  // Restore gaps, batch 1: Intune tenant settings. None is assigned or used by a device in the test tenant.
+  deviceCategory: {
+    kind: 'named-object', fixture: `device category ${FIXTURE_PREFIX}-category (no devices are in it)`,
+    select: `${FIXTURE_PREFIX}-category`, drift: 'change its description',
+  },
+  deviceManagementReusablePolicySetting: {
+    kind: 'named-object', fixture: `firewall reusable settings group ${FIXTURE_PREFIX}-addresses (one address, 203.0.113.10), used by no policy`,
+    select: `${FIXTURE_PREFIX}-addresses`, drift: 'change its description',
+  },
+  windowsQualityUpdatePolicy: {
+    kind: 'named-object', fixture: `Windows hotpatch quality update policy ${FIXTURE_PREFIX}-hotpatch, assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-hotpatch`, drift: 'change its description',
+  },
+  managedDeviceCleanupRule: {
+    kind: 'named-object', fixture: `device cleanup rule ${FIXTURE_PREFIX}-cleanup for one platform the test tenant has no devices on (for example macOS), 270 days`,
+    select: `${FIXTURE_PREFIX}-cleanup`, drift: 'lower it to 180 days: the restore puts back 270 (longer only; a shorter backup value is refused)',
+    note: 'Update only: a deleted rule is recreated by hand. The test tenant has no managed devices, so no device can be retired.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

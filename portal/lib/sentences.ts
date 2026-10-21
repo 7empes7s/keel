@@ -229,13 +229,23 @@ interface EvidenceLike {
 export function evidenceSentence(entry: EvidenceLike, actorName: string, names: NamedKeys = {}): string {
   const subject = (entry.subject ?? {}) as Record<string, unknown>;
   const actionWords = (value: unknown) => (typeof value === "string" ? displayEnum("jobKind", value.replace(/:.*/, "")).toLowerCase() : "an action");
+  // "a backup", "an undo of changes": the action with its article, for a sentence.
+  const anAction = (value: unknown) => {
+    const text = actionWords(value);
+    return `${/^[aeiou]/.test(text) ? "an" : "a"} ${text}`;
+  };
+  const refusalWords: Record<string, string> = { "no-principal": "no account was signed in", capability: "that account is not allowed to" };
   switch (entry.kind) {
     case "approval-request": return `${actorName} asked for approval: ${actionWords(subject.action)}`;
-    case "approval-decision": return `${actorName} ${subject.decision === "reject" || subject.status === "rejected" ? "rejected" : "approved"} a request`;
+    case "approval-decision": {
+      const verb = /^reject/.test(String(subject.decision ?? "")) || subject.status === "rejected" ? "rejected" : "approved";
+      return typeof subject.action === "string" ? `${actorName} ${verb} ${anAction(subject.action)}` : `${actorName} ${verb} a request`;
+    }
+    case "approval-signoff": return typeof subject.action === "string" ? `${actorName} signed off ${anAction(subject.action)}; another approval is still needed` : `${actorName} signed off a request; another approval is still needed`;
     case "approval.decided": return `${actorName} decided an approval`;
     case "action-attempt": return subject.decision === "denied"
-      ? `${actorName} was refused: ${actionWords(subject.action)}`
-      : `${actorName} started ${actionWords(subject.action)}`;
+      ? `${actorName} was refused ${anAction(subject.action)}${typeof subject.reason === "string" && refusalWords[subject.reason] ? `: ${refusalWords[subject.reason]}` : ""}`
+      : `${actorName} started ${anAction(subject.action)}`;
     case "policy-evaluation": return typeof subject.naturalKey === "string"
       ? `Policies checked a change to ${namedResource(subject.naturalKey, names)}${subject.matched ? ", and one applied" : ""}`
       : "Policies checked a change";
@@ -253,10 +263,15 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "offsite-copy": return (subject.verification as { ok?: unknown } | undefined)?.ok === true && subject.remoteSha256 === subject.dumpSha256
       ? "An off-site copy of the backups was checked byte for byte"
       : "An off-site copy of the backups failed its check and does not count";
-    case "job.started": return `${actorName} started ${actionWords(subject.kind)}`;
+    case "job.started": return `${actorName} started ${anAction(subject.kind)}`;
     case "collection.completed": return typeof subject.items === "number"
       ? `A backup of ${plural(Number(subject.types ?? 0), "type")} finished with ${plural(subject.items, "item")}`
       : "A backup finished";
+    case "baseline-resnapshot": return `${actorName} re-captured an approved setup from a newer backup`;
+    case "benchmark-evaluation": return typeof subject.verdict === "string"
+      ? `A control check ${subject.verdict === "pass" ? "passed" : subject.verdict === "fail" ? "failed" : "could not decide"}`
+      : "A control check ran";
+    case "benchmark-exception": return `${actorName} ${subject.action === "revoke" || subject.revokedAt ? "withdrew" : "granted"} an exception to a control`;
     default: return `${actorName}: ${displayEnum("eventKind", entry.kind).toLowerCase()}`;
   }
 }

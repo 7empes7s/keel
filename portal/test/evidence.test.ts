@@ -82,6 +82,14 @@ test("evidence routes verify real hashes, detect tampering and truncation, and p
     assert.ok(!secondHtml.includes("before="));
     const empty: EvidenceData = await (await list(request("?to=2000-01-01"))).json();
     assert.equal(empty.entries.length, 0);
+    // Activity filters: several kinds at once, and one actor exactly as recorded.
+    const twoKinds: EvidenceData = await (await list(request("?kind=action-attempt,policy-evaluation&limit=10"))).json();
+    assert.equal(twoKinds.entries.length, 5);
+    const byActor: EvidenceData = await (await list(request("?actor=operator&kind=action-attempt"))).json();
+    assert.deepEqual(byActor.entries.map((entry) => entry.kind), ["action-attempt"]);
+    assert.equal((await (await list(request("?actor=nobody-here"))).json()).entries.length, 0);
+    assert.equal((await list(request("?actor=a%20b"))).status, 400);
+    assert.equal((await list(request("?kind=bad%20kind"))).status, 400);
     assert.match(renderToStaticMarkup(createElement(EvidenceTimeline, { data: empty, query: "" })), /No evidence matches/);
     for (const filter of ["limit=0", "limit=201", "before=-1", "before=9223372036854775808", "from=bad", "from=2026-02-31", "from=2100-01-01&to=2000-01-01"]) {
       assert.equal((await list(request(`?${filter}`))).status, 400, filter);

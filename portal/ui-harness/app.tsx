@@ -19,7 +19,8 @@ import { ApprovalInbox } from "@/components/approval-inbox";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { NotificationsPage } from "@/components/notifications/notifications-page";
 import { IntegrationConsole } from "@/components/integration-console";
-import { ActivityTimeline, IntegrityNote, activityVerdict, mergeActivity } from "@/components/activity-timeline";
+import { ActivityPage } from "@/components/activity/activity-page";
+import { activityCounts, activityStatus } from "@/lib/activity-view";
 import { ApprovedSetup } from "@/components/baselines/approved-setup";
 import { RecentWork } from "@/components/baselines/recent-work";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -354,8 +355,9 @@ const DRIFT_SUMMARY = {
 type Job = Parameters<typeof JobTable>[0]["jobs"][number];
 // Task-130: references arrive resolved, as the engine readers return them.
 const personRef = (id: string, name: string) => ({ kind: "person", id, name, readable: true, email: name.includes("@") ? name : null, system: !name.includes("@") });
+const PERSON_IDS: Record<string, string> = { "amara.okafor@contoso.example": "8c1e0000-0000-4000-8000-0000000000a2", "sam.ortiz@contoso.example": "8c1e0000-0000-4000-8000-0000000000b3" };
 const refs = (requester: string, extra: Partial<RowReferences> = {}): RowReferences => ({
-  ...EMPTY_REFERENCES, people: { requested_by: personRef(requester.includes("@") ? "8c1e0000-0000-4000-8000-0000000000a1" : requester, requester) }, ...extra,
+  ...EMPTY_REFERENCES, people: { requested_by: personRef(requester.includes("@") ? PERSON_IDS[requester] ?? "8c1e0000-0000-4000-8000-0000000000a1" : requester, requester) }, ...extra,
 });
 const job = (id: string, kind: string, status: string, extra: Partial<Job> = {}): Job => ({
   id, kind, status, params: { tier: "tier1" }, result: null, error: null, requestedBy: "marouanedefili@gmail.com",
@@ -516,10 +518,31 @@ const SERVICENOW_OFF: ServiceNowStatus = {
   mirror: { records: 0, waiting: 0, pendingUpdates: 0, heldBack: 0, conflicts: 0 }, heldBack: [],
 };
 const EVIDENCE = [
+  { seq: "18205", occurred_at: "2026-10-02T09:39:02Z", kind: "approval-decision", actor: "amara.okafor@contoso.example", subject: { requestId: "a9e10000-0000-4000-8000-000000000100", action: "restore", decision: "approved", executor: "worker", jobId: "a3" } },
   { seq: "18204", occurred_at: "2026-10-02T09:38:12Z", kind: "approval-decision", actor: "marouanedefili@gmail.com", subject: { requestId: "r0", decision: "approve" } },
   { seq: "18203", occurred_at: "2026-10-02T09:31:00Z", kind: "action-attempt", actor: "marouanedefili@gmail.com", subject: { action: "backup", decision: "attempted" } },
   { seq: "18202", occurred_at: "2026-10-02T09:12:44Z", kind: "collection.completed", actor: "scheduler", subject: { types: 142, items: 4812 } },
   { seq: "18201", occurred_at: "2026-10-02T09:05:10Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: false } },
+  { seq: "18200", occurred_at: "2026-10-02T08:52:30Z", kind: "action-attempt", actor: "sam.ortiz@contoso.example", subject: { action: "restore", decision: "denied", reason: "capability" } },
+  { seq: "18190", occurred_at: "2026-10-01T14:05:00Z", kind: "policy-evaluation", actor: "policy-automation", subject: { naturalKey: "group:5d1c0000-0000-4000-8000-0000000000f1", matched: true } },
+  { seq: "18171", occurred_at: "2026-09-28T06:10:00Z", kind: "recovery-drill", actor: "scheduler", subject: { mode: "live", outcome: "passed", cleanup: { status: "complete" } } },
+  { seq: "18170", occurred_at: "2026-09-28T05:00:00Z", kind: "offsite-copy", actor: "scheduler", subject: { dumpSha256: "4c".repeat(32), remoteSha256: "4c".repeat(32), verification: { ok: true } } },
+];
+// Activity shows more than the pages that list recent work: two older days of jobs, so
+// the Day grouping and the 7-day chart have something to show.
+const ACTIVITY_PEOPLE = {
+  "marouanedefili@gmail.com": personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com"),
+  "amara.okafor@contoso.example": personRef("8c1e0000-0000-4000-8000-0000000000a2", "amara.okafor@contoso.example"),
+  "sam.ortiz@contoso.example": personRef("8c1e0000-0000-4000-8000-0000000000b3", "sam.ortiz@contoso.example"),
+  scheduler: personRef("scheduler", "scheduler"),
+  "policy-automation": personRef("policy-automation", "policy-automation"),
+};
+const activityJobs = (jobs: Job[]): Job[] => [
+  ...jobs,
+  job("y1", "restore", "failed", { requestedBy: "amara.okafor@contoso.example", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: Exchange Online would not accept 2 of the mailbox rules", createdAt: "2026-10-01T16:50:00Z", startedAt: "2026-10-01T16:50:30Z", finishedAt: "2026-10-01T16:52:00Z", references: refs("amara.okafor@contoso.example", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010", resources: 2, snapshotAt: "2026-10-01T09:12:00Z" } }) }),
+  job("y2", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier2" }, createdAt: "2026-10-01T02:00:00Z", startedAt: "2026-10-01T02:00:10Z", finishedAt: "2026-10-01T02:09:00Z" }),
+  job("y3", "backup", "succeeded", { requestedBy: "scheduler", params: { tier: "tier1" }, createdAt: "2026-09-30T02:00:00Z", startedAt: "2026-09-30T02:00:10Z", finishedAt: "2026-09-30T02:03:00Z" }),
+  job("y4", "collect", "succeeded", { requestedBy: "scheduler", params: {}, createdAt: "2026-09-28T02:00:00Z", startedAt: "2026-09-28T02:00:10Z", finishedAt: "2026-09-28T02:12:00Z" }),
 ];
 const CAPTURED = (capturedAt: string, sourceSnapshotId: string | null, basis: BaselineCapture["basis"] = "source-snapshot"): BaselineCapture => ({
   basis, capturedAt, ageMs: Date.parse(now) - Date.parse(capturedAt), sourceSnapshotId,
@@ -1508,14 +1531,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   switch (path) {
     case "/kit": return <KitPage />;
     case "/": return <DashboardView data={dashboard(posture)} pendingApprovals={2} />;
-    case "/activity": return <>{header("Audit log", "Activity", "What KEEL has done and who decided what, newest first.")}
-      <Verdict text={activityVerdict(jobs, now)} tone={jobs.some((item) => item.status === "failed") ? "attention" : "good"} />
-      <div data-layer="explanation">
-        <IntegrityNote integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} />
-        <ActivityTimeline items={mergeActivity(jobs, EVIDENCE)} now={now} people={{ "marouanedefili@gmail.com": personRef("8c1e0000-0000-4000-8000-0000000000a1", "marouanedefili@gmail.com"), scheduler: personRef("scheduler", "scheduler") }}
-          names={{ "group:5d1c0000-0000-4000-8000-0000000000f1": { name: "Finance approvers", resourceType: "group" } }} />
+    case "/activity": case "/activity/viewer": {
+      const all = activityJobs(jobs);
+      const viewer = path === "/activity/viewer";
+      return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}
+        <ActivityPage canBackup={!viewer} entries={EVIDENCE} integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} jobs={all}
+          names={{ "group:5d1c0000-0000-4000-8000-0000000000f1": { name: "Finance approvers", resourceType: "group" } }} nextBefore={viewer ? null : "18170"} now={now} people={ACTIVITY_PEOPLE} />
         <JobRefresher active={active} />
-      </div></>;
+      </>;
+    }
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>

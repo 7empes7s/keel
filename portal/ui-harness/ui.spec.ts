@@ -291,7 +291,7 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(page.locator(".sel-row")).toHaveCount(10);
 
   // (3) The Failed tile sets status=failed and Sent shows failures only.
-  await tiles.filter({ hasText: "failed in the last 7 days" }).click();
+  await tiles.filter({ hasText: "Failed" }).click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
@@ -986,7 +986,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
   expect(new Set(heights).size).toBe(1);
   for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/health=/);
-  await tiles.filter({ hasText: "failed in the last 7 days" }).click();
+  await tiles.filter({ hasText: "Failed" }).click();
   await expect(page).toHaveURL(/health=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.locator(".pt-filter-note")).toContainText("Showing failed only: 2 of 15.");
@@ -994,7 +994,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await page.locator("main#main-content h1").waitFor();
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await page.getByRole("link", { name: "Show every kind" }).click();
-  await expect(page.locator(".sel-row")).toHaveCount(18);
+  await expect(page.locator(".sel-row")).toHaveCount(15);
   // Shift+click picks a range; the bar says which tiers run before anything runs.
   const rows = page.locator(".sel-row");
   await rows.nth(0).locator("input").click();
@@ -1009,7 +1009,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await expect(page.locator(".sel-bar")).toContainText("Runs Tier 2 and Tier 3 in full.");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Select all 15 kinds" }).click();
-  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(18);
+  await expect(page.locator(".sel-row[data-selected]")).toHaveCount(15);
   await page.keyboard.press("Escape");
   // Every kind name opens its panel; every job title is a link to its job.
   for (const link of await page.locator(".pt-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);

@@ -5182,3 +5182,41 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per type and operation: promoted / refused (exact message) / blocked; the step 5 and 6 results; approval ids;
   the evidence branch and commit; anything left in the tenant.
+
+### Q110: Live restore of five Entra ID tenant settings (restore gaps batch 2, after #432)
+- Drafted by the "Restore batch 2" thread (2026-10-21). Code: PR #432. New singleton record writers, update in place only,
+  fixture-tested only: external user leave settings (`externalIdentitiesPolicy`, beta), access review settings
+  (`accessReviewPolicy`, beta), admin role access review defaults (`directoryRoleAccessReviewPolicy`, beta), multitenant
+  organization user sync template (`multiTenantOrganizationIdentitySyncPolicyTemplate`, v1.0) and cross-tenant access template
+  (`multiTenantOrganizationPartnerConfigurationTemplate`, v1.0). Each writes only its own settings, never its name or id.
+- Needs: /opt/keel-live at the #432 merge or later (`grep -q multiTenantOrganizationPartnerConfigurationTemplate: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
+  to add: per the Q-inventory the Restorer holds Policy.ReadWrite.ExternalIdentities, Policy.ReadWrite.AccessReview,
+  RoleManagement.ReadWrite.Directory and Policy.ReadWrite.CrossTenantAccess. If Graph answers 403, report blocked with what Graph
+  names; grant nothing. Never touch CA policies, break-glass or Marouane's account. None of these settings touches sign-in.
+- **Fixtures:** these are tenant-wide settings (kind `tenant-setting` in `live-gate-plan.mjs` at B), so there is no KEEL-RT- object
+  to create. **Before anything, write down the current value of every setting you will drift** (step 2) and put each back at the end.
+  - external identities policy: drift `allowExternalIdentitiesToLeave` to the other value;
+  - access review policy: drift `isGroupOwnerManagementEnabled` to the other value;
+  - admin role access review defaults: drift `settings.instanceDurationInDays` (for example 14 to 7). Create or change no review.
+    If GET answers 404, report that type blocked;
+  - multitenant organization sync template: drift `userSyncInbound.isSyncAllowed` to the other value;
+  - multitenant organization access template: drift `automaticUserConsentSettings.inboundAllowed` to the other value. **Never change
+    inboundTrust.** If either template GET answers 404, report that type blocked.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg2/plan-B.md`. Use its steps for these five types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture` with `--allow-tenant-setting`, promote).
+  2. Record the five original values, then take snapshot S (one tier run that reads all five). Confirm all five are in S.
+  3. **Update round:** drift all five as above. Restore from S selecting them, approve, enforce, capture each `update`
+     (`--resource-type <type> --fixture <type> --allow-tenant-setting`). Expect each read back equal to S, and the dry run to list
+     only the drifted field per type.
+  4. **Re-run check:** dry run from S again. Expect 0 planned writes for the five.
+  5. Confirm every setting equals the value written down in step 2 (put back by hand any that does not, and report it).
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-2`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per type: promoted / refused (exact message) / blocked; the step 4 result; approval ids; the evidence branch and
+  commit; any setting not back at its original value.

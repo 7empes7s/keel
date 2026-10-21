@@ -89,32 +89,73 @@ function servicePrincipalRefusal(resource, verb) {
  * The guest federation fields that decide where guests from the domain sign in
  * and which tokens Entra trusts for them. A backup that was tampered with
  * could point them at another identity provider, so a restore never writes
- * them: a change to any of them withholds the whole update for a person to
- * check against the partner's identity provider and set by hand.
+ * them: a difference is reported for a person to check with the partner and
+ * set by hand. The name and protocol are still written.
  */
 export const FEDERATION_SIGN_IN_FIELDS = Object.freeze(['issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'signingCertificate']);
 
-const FEDERATION_PORTAL_PATH = 'Microsoft Entra admin center > External Identities > All identity providers > SAML/WS-Fed';
+export const FEDERATION_WRITABLE_FIELDS = Object.freeze(['displayName', 'preferredAuthenticationProtocol']);
 
-function federationSignInRefusal(resource, verb) {
-  if (verb !== 'update') return null;
+const FEDERATION_PORTAL_PATH = 'Entra admin center > External Identities > All identity providers > SAML/WS-Fed';
+
+/** The sign-in fields the backup holds that differ from the live federation (all of them when there is no live copy). */
+function federationSignInDiffers(resource) {
   const live = resource.live?.payload ?? null;
-  const changed = FEDERATION_SIGN_IN_FIELDS.filter((field) => resource.payload?.[field] !== undefined
+  return FEDERATION_SIGN_IN_FIELDS.filter((field) => resource.payload?.[field] !== undefined
     && (!live || !sameValue(resource.payload[field], live[field])));
-  if (changed.length === 0) return null;
+}
+
+const federationSignInStep = (fields) => `Where this guest federation's guests sign in (${fields.join(', ')}) differs from the backup. `
+  + `A restore never changes it, so a changed backup cannot send guests to another sign-in page: confirm the values with the partner, then set them in ${FEDERATION_PORTAL_PATH}.`;
+
+function federationRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const differs = federationSignInDiffers(resource);
+  if (differs.length === 0) return null;
+  const live = resource.live?.payload ?? null;
+  if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
   return {
-    outcome: 'skipped',
-    reason: `manual: the backup changes where this guest federation's guests sign in (${changed.join(', ')}); `
-      + 'a restore never writes that, so check the values with the partner and set them by hand',
-    completion: Object.freeze({
-      kind: 'manual-setting',
-      requirement: 'externalDomainFederationSignIn',
-      fields: Object.freeze([...changed]),
-      portalPath: FEDERATION_PORTAL_PATH,
-      description: `Confirm ${changed.join(', ')} with the partner organisation's identity provider, then set them in the ${FEDERATION_PORTAL_PATH}. `
-        + 'Do not copy them from the backup without that check: wrong values send guests to another sign-in page.',
-    }),
+    outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
+    completion: { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) },
   };
+}
+
+function federationAfterWrite(_io, { resource }) {
+  const differs = federationSignInDiffers(resource);
+  return {
+    completion: differs.length > 0
+      ? [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }]
+      : [],
+  };
+}
+
+// ------------------------------------------------ multitenant org template
+
+/**
+ * The partner configuration template settings a restore may write. Inbound
+ * trust (whether this tenant accepts a partner's MFA and device claims) is
+ * never written: a wrong value changes how partner users pass Conditional
+ * Access, so a difference is reported for a person to change by hand.
+ */
+export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze([
+  'templateApplicationLevel', 'automaticUserConsentSettings',
+  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+]);
+
+const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) differs from the backup. A restore never changes it: review it in Entra admin center > External Identities > Cross-tenant access settings, and change it by hand if needed.';
+
+const inboundTrustDiffers = (resource) => resource.live?.payload
+  && resource.payload?.inboundTrust !== undefined
+  && !sameValue(resource.payload.inboundTrust, resource.live.payload.inboundTrust);
+
+function partnerTemplateRefusal(resource, verb) {
+  if (verb !== 'update' || !inboundTrustDiffers(resource)) return null;
+  if (!PARTNER_TEMPLATE_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]))) return null;
+  return { outcome: 'skipped', reason: `manual: ${INBOUND_TRUST_STEP}` };
+}
+
+function partnerTemplateAfterWrite(_io, { resource }) {
+  return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
 }
 
 // ------------------------------------------------------------- governance
@@ -302,11 +343,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
     resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
-    singleton: true, operations: ['update'],
-    writable: [
-      'templateApplicationLevel', 'inboundTrust', 'automaticUserConsentSettings',
-      'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-    ],
+    singleton: true, operations: ['update'], writable: PARTNER_TEMPLATE_WRITABLE_FIELDS,
+    refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
   // Restore gaps, batch 3: guest and app consent settings.
@@ -328,14 +366,13 @@ export const IDENTITY_RECORDS = Object.freeze({
   // A guest federation's settings are updated in place. Its domains are a
   // separate collection the backup does not read yet, so a deleted federation
   // is set up again by hand. Its sign-in endpoints and signing certificate are
-  // never written back (federationSignInRefusal).
+  // never written back (FEDERATION_SIGN_IN_FIELDS).
   externalDomainFederation: defineRecord({
     resourceType: 'externalDomainFederation', version: 'v1.0', collection: FEDERATIONS,
     collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
       ? FEDERATIONS : null),
     operations: ['update'],
-    writable: ['displayName', 'issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'preferredAuthenticationProtocol', 'signingCertificate'],
-    refusal: federationSignInRefusal,
+    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
 });

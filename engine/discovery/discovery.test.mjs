@@ -39,8 +39,10 @@ function fixtureMetadata(catalog = CATALOG) {
     return map.get(name);
   };
   for (const entry of catalog) {
-    if (isUnderItem(entry.path)) continue;
-    const segments = entry.path.split('?')[0].split('/').filter(Boolean);
+    // A kind read per object is reached through the list it reads first.
+    const path = isUnderItem(entry.path) ? entry.parent?.path : entry.path;
+    if (!path || isUnderItem(path)) continue;
+    const segments = path.split('?')[0].split('/').filter(Boolean);
     let map = tree;
     let current;
     for (const segment of segments) {

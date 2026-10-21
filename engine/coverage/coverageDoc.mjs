@@ -335,18 +335,23 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Add the app first. Values Microsoft never returns are entered again by hand.',
   }),
   // Wave 1: backed up, no restore built yet.
-  deviceManagementScript: manual('Windows PowerShell scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
-  deviceShellScript: manual('macOS shell scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup, then assign it to the groups and schedule in the backup.'),
-  deviceHealthScript: manual('Remediations', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet. Remediations published by Microsoft are not yours to restore.',
-    'Recreate your own remediations in the Intune admin center from the backup, then assign them to the groups and schedule in the backup.'),
-  deviceComplianceScript: manual('Custom compliance scripts', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate the script in the Intune admin center from the backup. Compliance policies that use it need it back first.'),
+  // Restore gaps batch 4: the script body is backed up per script.
+  deviceManagementScript: auto('Windows PowerShell scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
+  deviceShellScript: auto('macOS shell scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
+  deviceHealthScript: auto('Remediations', {
+    keeps: 'Recreates your own remediations and puts the detection and fix scripts and their settings back. Remediations published by Microsoft are left alone.',
+    todo: 'Who a remediation runs on and its schedule are not put back yet, so assign it again by hand from the backup.',
+  }),
+  deviceComplianceScript: auto('Custom compliance scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back, before the compliance policies that use them.',
+    todo: 'A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
   assignmentFilter: auto('Assignment filters', {
     keeps: 'Recreates filters and puts their rules back.',
     todo: 'A filter is never moved to another platform; recreate it by hand if its platform changed.',
@@ -367,9 +372,11 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
     todo: 'Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
   }),
-  groupPolicyConfiguration: manual('Administrative templates', NOT_BUILT,
-    'KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.',
-    'Recreate the template in the Intune admin center, using the backup for which settings were turned on and who it was assigned to.'),
+  // Restore gaps batch 5: the values of each setting are backed up per setting.
+  groupPolicyConfiguration: auto('Administrative templates', {
+    keeps: 'Recreates templates and puts back which settings are turned on or off and the values entered for them.',
+    todo: 'Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.',
+  }),
   groupPolicyUploadedDefinitionFile: manual('Imported administrative template files', NOT_BUILT,
     'KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.',
     'Import the files again in the Intune admin center from your own copy.'),
@@ -439,9 +446,11 @@ export const TYPE_GUIDE = Object.freeze({
   operationApprovalPolicy: manual('Multi admin approval policies', NOT_BUILT,
     'KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.',
     'Recreate each policy in the Intune admin center from the backup, with the same approver groups.'),
-  deviceCustomAttributeShellScript: manual('macOS custom attribute scripts', NOT_BUILT,
-    'KEEL backs up the script settings but not yet the script body or who it is assigned to.',
-    'Recreate the script in the Intune admin center from your own copy of the script, using the backup for its settings, and assign it again.'),
+  // Restore gaps batch 5: the script body is backed up per script.
+  deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
   }),

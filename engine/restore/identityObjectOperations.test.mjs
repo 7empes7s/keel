@@ -315,6 +315,38 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
   }
 });
 
+test('restore gaps batch 2: the partner configuration template never writes inbound trust', async () => {
+  const type = 'multiTenantOrganizationPartnerConfigurationTemplate';
+  const path = '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration';
+  const consent = (inboundAllowed) => ({ inboundAllowed, outboundAllowed: false });
+  const trust = (isMfaAccepted) => ({ isMfaAccepted, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false });
+  const template = (isMfaAccepted, inboundAllowed) => ({ id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: trust(isMfaAccepted), automaticUserConsentSettings: consent(inboundAllowed) });
+  assert.equal(IDENTITY_RECORDS[type].writable.includes('inboundTrust'), false);
+  const run = async (desired, live) => {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+    return { result, writes: graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined) };
+  };
+
+  // Only inbound trust differs: nothing is written, and the step says to change it by hand.
+  let { result, writes } = await run(template(true, false), template(false, false));
+  assert.equal(writes.length, 0, 'no write when only inbound trust differs');
+  assert.match(result.skipped?.reason ?? '', /^manual: Inbound trust .* never changes it/);
+
+  // Inbound trust and another setting differ: only the other setting is sent, and inbound trust is a step.
+  ({ result, writes } = await run(template(true, true), template(false, false)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].body, { automaticUserConsentSettings: consent(true) });
+  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['inboundTrust']);
+
+  // Inbound trust is the same: the write goes ahead with no extra step.
+  ({ result, writes } = await run(template(false, true), template(false, false)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ automaticUserConsentSettings: consent(true) }]);
+  assert.equal(result.applied.completion, undefined);
+});
+
 test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
   const path = '/policies/accessReviewPolicy';
   const live = { id: 'policy', displayName: 'Access review policy', isGroupOwnerManagementEnabled: true };
@@ -422,7 +454,7 @@ test('restore gaps batch 3: a guest federation updates its settings in place, ne
   assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
 });
 
-test('a guest federation update never writes its sign-in endpoints or signing certificate', async () => {
+test('a guest federation restore never writes its sign-in endpoints or signing certificate', async () => {
   const live = {
     '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',
     issuerUri: 'https://keel-rt-fed.example/issuer', metadataExchangeUri: 'https://keel-rt-fed.example/mex',
@@ -434,22 +466,39 @@ test('a guest federation update never writes its sign-in endpoints or signing ce
     passiveSignInUri: 'https://keel-rt-other.example/sso',
     signingCertificate: 'MIIOther',
   };
+  assert.deepEqual([...FEDERATION_SIGN_IN_FIELDS].sort(), Object.keys(tampered).sort());
+  for (const field of FEDERATION_SIGN_IN_FIELDS) {
+    assert.equal(IDENTITY_RECORDS.externalDomainFederation.writable.includes(field), false, `${field} is not writable`);
+  }
+  const run = async (desired, mode = 'enforce') => {
+    const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [],
+      live: { state: 'present', targetId: 'fed-1', payload: live },
+    }, 'update', { ...FAST, mode });
+    return { graph, result, writes: graph.calls.filter((call) => call.method !== 'GET') };
+  };
+
   for (const [field, value] of Object.entries(tampered)) {
+    // Only a sign-in field differs: nothing is written, the step names it.
     for (const mode of ['enforce', 'dry-run']) {
-      const desired = { ...live, displayName: 'KEEL-RT-148-fed-renamed', [field]: value };
-      const graph = idoFakeGraph({ seed: { [`${FEDERATIONS}/fed-1`]: live } });
-      const result = await applyIdentityObjectWrite(graph, {
-        naturalKey: 'fed-1', resourceType: 'externalDomainFederation', payload: desired, references: [],
-        live: { state: 'present', targetId: 'fed-1', payload: live },
-      }, 'update', { ...FAST, mode });
+      const { result, writes } = await run({ ...live, [field]: value }, mode);
       assert.equal(result.applied, undefined, `${field} (${mode}) is withheld`);
       assert.match(result.skipped?.reason ?? '', new RegExp(`^manual: .*${field}`), `${field} (${mode})`);
-      assert.equal(result.skipped.completion.kind, 'manual-setting');
       assert.deepEqual(result.skipped.completion.fields, [field]);
-      assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, `${field} (${mode}): nothing is written`);
+      assert.equal(writes.length, 0, `${field} (${mode}): nothing is written`);
     }
+    // The name differs too: only the name is written, the sign-in field is a step.
+    const { result, writes } = await run({ ...live, displayName: 'KEEL-RT-148-fed-renamed', [field]: value });
+    assert.equal(result.failed, undefined, result.failed?.error);
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' }, `${field} is never sent`);
+    assert.deepEqual(result.applied.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
   }
-  assert.deepEqual([...FEDERATION_SIGN_IN_FIELDS].sort(), Object.keys(tampered).sort());
+
+  // Nothing differs in the sign-in fields: no step.
+  const { result } = await run({ ...live, displayName: 'KEEL-RT-148-fed-renamed' });
+  assert.deepEqual(result.applied.completion ?? [], []);
 });
 
 test('a guest federation update with no live copy to compare is withheld when it carries a sign-in field', async () => {

@@ -18,7 +18,9 @@
  *  - `refusal(resource, verb, ctx)`: a type's own refusals before any call;
  *  - `afterWrite(io, step)`: child writes made after the object (target apps,
  *    localized messages), each verified by the record;
- *  - `deleteGuard(io, step)`: a type's own reason not to delete.
+ *  - `deleteGuard(io, step)`: a type's own reason not to delete;
+ *  - `sameField(field, desired, live)`: a type's own equality for a field
+ *    Graph may return in another form (a JSON string with other spacing).
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -66,6 +68,7 @@ export function defineRecord(spec) {
     afterWrite: null,
     deleteGuard: null,
     transform: null,
+    sameField: null,
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
     excluded: Object.freeze([...(spec.excluded ?? [])]),
@@ -100,6 +103,11 @@ export function normalised(value) {
 }
 
 export const sameValue = (left, right) => isDeepStrictEqual(normalised(left ?? null), normalised(right ?? null));
+
+/** Field equality as the record means it (its own `sameField`, else sameValue). */
+const sameRecordField = (record, field, left, right) => (record.sameField
+  ? record.sameField(field, left, right) ?? sameValue(left, right)
+  : sameValue(left, right));
 
 /** The collection a record writes to for one payload, or null when it has none. */
 export function recordCollection(record, payload) {
@@ -140,7 +148,7 @@ export function recordWriteBody(record, payload, verb) {
 export function changedRecordFields(record, desired, live, verb = 'update') {
   const want = recordWriteBody(record, desired, verb);
   const have = recordWriteBody(record, live ?? {}, verb);
-  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameValue(want[key], have[key]));
+  return Object.keys(want).filter((key) => key !== '@odata.type' && !sameRecordField(record, key, want[key], have[key]));
 }
 
 /** null, or the post-state refusal text: every sent field reads back as sent. */
@@ -150,7 +158,7 @@ export function recordPostStateRefusal(record, sent, live) {
     && stripGraph(live['@odata.type']) !== stripGraph(sent['@odata.type'])) {
     return `post-state: the object reads back as ${stripGraph(live['@odata.type']) ?? 'an unnamed kind'}, not ${stripGraph(sent['@odata.type'])}`;
   }
-  const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !sameValue(sent[key], live[key]));
+  const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !sameRecordField(record, key, sent[key], live[key]));
   return wrong.length > 0 ? `post-state: ${wrong.join(', ')} did not read back as written` : null;
 }
 

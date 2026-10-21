@@ -445,15 +445,17 @@ export const TYPE_GUIDE = Object.freeze({
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
   }),
-  b2bManagementPolicy: manual('Guest invitation domain restrictions', NOT_BUILT,
-    'KEEL backs up the allowed or blocked guest domains but does not restore them yet.',
-    'Set the same allowed or blocked domains in the Entra admin center, under External collaboration settings, from the backup.'),
+  b2bManagementPolicy: auto('Guest invitation domain restrictions', {
+    keeps: 'Puts back the list of domains guests may, or may not, be invited from.',
+    todo: 'If the restriction was removed completely, set the domains again in the Entra admin center, under External collaboration settings.',
+  }),
   servicePrincipalCreationPolicy: manual('App creation policies', NOT_BUILT,
     'KEEL backs up each policy\'s name and settings but not yet its include and exclude conditions.',
     'Recreate the policy with PowerShell from the backup, then add its conditions again. There is no admin center page for it.'),
-  permissionGrantPreApprovalPolicy: manual('App permission pre-approval policies', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate each policy with PowerShell from the backup. There is no admin center page for it.'),
+  permissionGrantPreApprovalPolicy: auto('App permission pre-approval policies', {
+    keeps: 'Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).',
+    todo: 'A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.',
+  }),
   accessReviewPolicy: auto('Access review settings', {
     keeps: 'Puts back whether group owners can manage access reviews of their groups.',
   }),
@@ -475,9 +477,10 @@ export const TYPE_GUIDE = Object.freeze({
   authenticationEventListener: manual('Authentication event listeners', NOT_BUILT,
     'KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.',
     'Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.'),
-  externalDomainFederation: manual('Guest SAML or WS-Fed sign-in', NOT_BUILT,
-    'KEEL backs up each partner\'s federation settings and public signing certificate but does not restore them yet.',
-    'Recreate the identity provider in the Entra admin center, under External Identities, All identity providers, from the backup, and check the partner\'s metadata is still current.'),
+  externalDomainFederation: auto('Guest SAML or WS-Fed sign-in', {
+    keeps: 'Puts back each partner\'s sign-in addresses, protocol and public signing certificate.',
+    todo: 'A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner\'s certificate is still current.',
+  }),
   exchangeRoleDefinition: manual('Exchange admin roles', NOT_BUILT,
     'KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.',
     'Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.'),

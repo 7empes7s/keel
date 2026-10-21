@@ -4,8 +4,10 @@
 // 2026-10-19), so the grant each needs is one the Collector already holds
 // (Policy.Read.All, IdentityUserFlow.Read.All, Directory.Read.All).
 // Several are beta only, a fidelity risk the spec flags.
-// Restore gaps batch 2 writes the five singletons back (identityObjectOperations.mjs);
-// the lists have no writer yet, so their backup is a record to rebuild from.
+// Restore gaps batch 2 writes the five singletons back (identityObjectOperations.mjs),
+// and batch 3 the guest domain restriction, pre-approval policies and guest
+// federations; the other lists have no writer yet, so their backup is a record
+// to rebuild from.
 // None of these objects holds a secret: a federation's signing certificate is
 // the partner's public certificate.
 export default [

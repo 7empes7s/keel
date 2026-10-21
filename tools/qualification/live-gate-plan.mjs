@@ -208,6 +208,24 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     drift: 'switch automaticUserConsentSettings.inboundAllowed to the other value; never change inboundTrust; write the original down first',
     note: 'It only applies to tenants that join a multitenant organization later; existing partner settings are not touched.',
   },
+  // Restore gaps, batch 3: guest and app consent settings. None touches
+  // Conditional Access or any account.
+  b2bManagementPolicy: {
+    kind: 'tenant-setting', fixture: 'the tenant guest invitation domain restriction (the one b2bManagementPolicy)',
+    select: 'the policy id KEEL shows for b2bManagementPolicy',
+    drift: `add keel-rt-blocked.example to BlockedDomains (or remove it if the backup holds it); write the original definition down first`,
+    note: 'Only the definition is written. If the tenant has no policy, set one blocked domain keel-rt-blocked.example in the admin center first. Never block or allow a real domain.',
+  },
+  permissionGrantPreApprovalPolicy: {
+    kind: 'tenant-setting', fixture: 'a pre-approval policy assigned to no app: one condition, scopeType chat, Microsoft Graph application permission ChatMessage.Read.Chat',
+    select: 'the policy id KEEL shows for the fixture', drift: 'change the condition scopeType from chat to group',
+    note: 'Never assign it to a service principal: unassigned, it pre-approves nothing. Delete it at the end.',
+  },
+  externalDomainFederation: {
+    kind: 'named-object', fixture: `a SAML federation ${FIXTURE_PREFIX}-fed for the domain keel-rt-fed.example (sign-in https://keel-rt-fed.example/sso, a self-signed certificate)`,
+    select: `${FIXTURE_PREFIX}-fed`, drift: 'change its passiveSignInUri to https://keel-rt-fed.example/drifted',
+    note: 'Update only: a deleted federation is set up again by hand. No guest is invited from the domain. Delete it at the end.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

@@ -11,13 +11,17 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
 import { POST as incidentsRoute } from "@/app/api/actions/incidents/route";
 import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
+import { GET as snapshotItemsRoute } from "@/app/api/snapshots/[id]/items/route";
+import { IncidentQualificationSummary } from "@/components/incident-recovery";
+import { incidentAction, utcInstant } from "@/lib/incident-calls";
 import {
-  IncidentQualificationSummary, RecoveryPointTable, exclusionLabel, incidentVerdict, parseExclusions, recoveryPointStatusLabel,
-} from "@/components/incident-recovery";
+  exclusionLabel, failureWords, incidentStatus, incidentVerdict, itemLabel, orderBackups, parseExclusions, recoveryPointStatusLabel, timeline,
+} from "@/lib/incidents-view";
 import { visibleNavEntries, visibleNavLinks } from "@/components/nav-links";
 import { getIncidentRecoveryData, type IncidentDetail } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { renderIncidentsAt } from "./render-incidents";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // ------------------------------------------------------------------ rendering
@@ -43,7 +47,7 @@ const detail: IncidentDetail = {
       inCompromiseWindow: false, status: "qualified", stale: false, reasons: ["assessed clean with 1 malicious-field exclusion(s) (v2)"], pinned: true,
       assessment: {
         version: 2, verdict: "clean", exclusions: [{ naturalKey: "group:backdoor", field: null, reason: "attacker-created group", displayName: "Helpdesk Tier 0" }],
-        assessedBy: inv, assessedAt: "2026-10-01T10:05:00Z", fingerprint: "f2".repeat(32),
+        assessedBy: inv, assessedAt: "2026-10-01T10:05:00Z", fingerprint: "f2".repeat(32), rationale: "matches the day before",
       },
     },
   ],
@@ -54,50 +58,137 @@ const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 /** Text outside every [data-layer="record"] block (the contract's identifier test). */
 function outsideRecord(html: string): string {
   return html.replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, "")
+    .replace(/\s(?:data-row-id|href|title|id|for|aria-labelledby|aria-label)="[^"]*"/g, "")
     .replace(/<[^>]+>/g, " ");
 }
 
-test("statuses have plain-language labels", () => {
+test("states have plain-language labels", () => {
   assert.equal(recoveryPointStatusLabel("qualified"), "Cleared");
   assert.equal(recoveryPointStatusLabel("unsuitable"), "Unsafe");
   assert.equal(recoveryPointStatusLabel("unassessed"), "Not checked");
 });
 
-test("the verdict names the newest CLEARED snapshot in one short sentence, with one action", () => {
-  const verdict = incidentVerdict({ incidents: [detail.incident], selected: detail });
-  assert.equal(verdict.text, "Restore from the snapshot of 25 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
+test("the verdict names the newest CLEARED backup in one short sentence, with one action", () => {
+  const verdict = incidentVerdict({ incidents: [detail.incident], selected: detail, now: NOW });
+  assert.equal(verdict.text, "Restore from the backup of 25 Sept 2026, 06:00 UTC, the newest one cleared for “Admin consent phishing”.");
   assert.ok(verdict.text.split(/\s+/).length <= 25);
-  assert.equal(verdict.action?.label, "Restore from this snapshot");
+  assert.equal(verdict.detail, "It leaves out 1 harmful item: Helpdesk Tier 0 (group).");
+  assert.equal(verdict.action?.label, "Restore from this backup");
   assert.match(verdict.action?.href ?? "", new RegExp(`snapshot=${OLD_ID}`));
 
   const none = incidentVerdict({ incidents: [detail.incident], selected: { ...detail, recommended: null } });
-  assert.equal(none.tone, "critical");
+  assert.equal(none.tone, "urgent");
   assert.equal(none.action, null);
   assert.match(incidentVerdict({ incidents: [], selected: null }).text, /No security incidents/);
+  const closed = incidentVerdict({ incidents: [detail.incident], selected: { ...detail, incident: { ...detail.incident, status: "closed", closedAt: "2026-10-02T08:40:00Z" } }, now: NOW });
+  assert.equal(closed.text, "“Admin consent phishing” was closed 1 hour ago. Its checks and kept backups stay as a record.");
+  assert.equal(closed.action, null, "a closed incident offers no amber action");
 });
 
-test("rows name snapshots, people and resources; every id is labelled inside Technical details", () => {
-  const html = renderToStaticMarkup(createElement(RecoveryPointTable, { detail, now: NOW }));
+test("the status pill says whether a backup is cleared for the open incident", () => {
+  assert.deepEqual(incidentStatus([detail.incident], detail), { tone: "soon", label: "Incident open, backup cleared" });
+  assert.deepEqual(incidentStatus([detail.incident], { ...detail, recommended: null }), { tone: "urgent", label: "No backup cleared" });
+  assert.deepEqual(incidentStatus([], null), { tone: "fine", label: "No open incident" });
+  const closed = { ...detail.incident, status: "closed" as const };
+  assert.deepEqual(incidentStatus([closed], { ...detail, incident: closed }), { tone: "fine", label: "No open incident" });
+});
+
+test("backups list the recommended one first, then unsafe, then newest", () => {
+  assert.deepEqual(orderBackups(detail.points, detail.recommended).map((point) => point.snapshotId), [OLD_ID, NEW_ID]);
+});
+
+test("rows name backups and people; every id stays in Technical details", async () => {
+  const html = await renderIncidentsAt("", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: false });
   const visible = outsideRecord(html);
   assert.doesNotMatch(visible, UUID, "no id outside the record layer");
   assert.doesNotMatch(visible, /\bgroup:backdoor\b/, "no resource key outside the record layer");
-  assert.doesNotMatch(visible, /qualif|natural key|fingerprint/i, "no internal vocabulary outside the record layer");
-  assert.match(visible, /Cleared by\s+Ines Investigator\s+23 hours ago/);
-  assert.match(visible, /Helpdesk Tier 0 \(group\): attacker-created group/);
-  assert.match(visible, /Kept by\s+Ines Investigator\s+until released\. Being kept does not mean it is clean/);
-  assert.match(visible, /Taken while the attacker had access/);
-  const rows = html.split("<tr").slice(2);
-  assert.doesNotMatch(rows[0], /Recommended/, "the newest (unsafe) snapshot is not recommended");
-  assert.match(rows[1], /Cleared[\s\S]*Recommended/);
+  assert.doesNotMatch(visible, /qualif|natural key|fingerprint|snapshot/i, "no internal vocabulary outside the record layer");
+  assert.doesNotMatch(visible, /@/, "no email outside the record layer");
+  assert.match(visible, /Checked by\s+Ines Investigator\s+· 23 hours ago/);
+  assert.match(visible, /Marked unsafe by\s+Ines Investigator/);
+  assert.match(visible, /Taken during the attack/);
+  assert.match(visible, /Only investigators can change incidents\./);
+  const rows = html.split('class="ir-row"').slice(1).map((row) => row.split("ir-row-acts")[0]);
+  assert.match(rows[0], /25 Sept 2026, 06:00 UTC[\s\S]*Cleared[\s\S]*Recommended[\s\S]*Kept/, "the recommended, kept backup comes first");
+  assert.doesNotMatch(rows[1], /Recommended/, "the newest (unsafe) backup is not recommended");
+  assert.match(html, /class="btn btn-sm" href="\/restore\?snapshot=aaaaaaaa-[^"]*">Restore from this backup</);
+  assert.doesNotMatch(html, />Record your check<|>Record a new check<|>Close incident<|>Add attack window<|>New incident</, "read-only without investigate");
   // Record completeness: each id is still there, labelled.
-  assert.match(html, new RegExp(`Snapshot ID</dt><dd><code>${OLD_ID}</code>`));
+  assert.match(html, new RegExp(`Recommended snapshot ID</dt><dd><code>${OLD_ID}</code>`));
   assert.match(html, /Retention pin ID<\/dt><dd><code>44444444-/);
-  assert.match(html, /Exclusion<\/dt><dd><code>group:backdoor<\/code>/);
-  assert.doesNotMatch(html, />Record a check<|>Approve an override<|>Stop keeping<|>Keep</, "read-only without investigate");
 
-  const actionable = renderToStaticMarkup(createElement(RecoveryPointTable, { detail, now: NOW, canInvestigate: true }));
-  assert.match(actionable, />Approve an override</);
-  assert.match(actionable, />Stop keeping</);
+  const actionable = await renderIncidentsAt("", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
+  assert.match(actionable, />Record a new check</);
+  assert.match(actionable, />New incident</);
+  assert.match(actionable, />Close incident</);
+  assert.match(actionable, /href="\/incidents\?open=bbbbbbbb-0000-4000-8000-000000000002&amp;do=check"/, "a check opens in its sheet, kept in the URL");
+
+  const closed = { ...detail, incident: { ...detail.incident, status: "closed" as const, closedAt: "2026-10-02T08:40:00Z" } };
+  const readOnly = await renderIncidentsAt("", { incidents: [closed.incident], selected: closed, now: NOW, canInvestigate: true });
+  assert.match(readOnly, /This incident is closed, so nothing on it can change/);
+  assert.doesNotMatch(readOnly, />Record a new check<|>Close incident<|>Add attack window</, "a closed incident is a record");
+});
+
+test("a tile filters the list by state and keeps it in the URL", async () => {
+  const html = await renderIncidentsAt("state=unsafe", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
+  assert.match(html, /Showing unsafe backups only: 1 of 2\./);
+  assert.equal(html.split('class="ir-row"').length - 1, 1);
+  assert.match(html, /href="\/incidents\?state=cleared"/);
+});
+
+test("engine refusals become plain sentences, with no key or id in them", () => {
+  assert.equal(failureWords(409, "exclusion group:x is not in this snapshot"), "One of the items you left out is not in this backup. Pick it again from the list.");
+  assert.match(failureWords(409, "a compromised verdict refuses the whole point — exclusions apply only to a clean verdict"), /refused as a whole/);
+  assert.match(failureWords(409, "this point is already qualified — no override is needed"), /already cleared/);
+  assert.match(failureWords(409, "the incident is closed"), /closed/);
+  assert.match(failureWords(403), /no longer change incidents/);
+  for (const message of ["exclusion group:x field description is not in this snapshot", "endsAt must be after startsAt", "rationale is required"]) {
+    assert.doesNotMatch(failureWords(409, message), /group:|endsAt|rationale/);
+  }
+});
+
+test("the item picker shows names and kinds, never stored keys", () => {
+  assert.deepEqual(itemLabel({ naturalKey: "servicePrincipal:Mail Sync Helper", resourceType: "servicePrincipal", name: "Mail Sync Helper" }), { label: "Mail Sync Helper", kind: "enterprise app" });
+  const unnamed = itemLabel({ naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", name: null });
+  assert.equal(unnamed.label, "Block legacy auth");
+  assert.doesNotMatch(unnamed.label, /:/);
+});
+
+test("the timeline puts a backup taken in the attack window inside its band", () => {
+  const line = timeline(detail, NOW);
+  const band = line.bands[0];
+  const inside = line.dots.find((dot) => dot.id === NEW_ID)!;
+  const before = line.dots.find((dot) => dot.id === OLD_ID)!;
+  assert.ok(inside.x >= band.x && inside.x <= band.x + band.width, "the newest backup sits inside the window");
+  assert.ok(before.x < band.x, "the cleared backup is before the attacker got in");
+  assert.equal(band.ongoing, true);
+  assert.equal(before.recommended, true);
+});
+
+test("dates and times read as UTC; a bad time is refused", () => {
+  assert.equal(utcInstant("2026-09-30", "22:40"), "2026-09-30T22:40:00.000Z");
+  assert.equal(utcInstant("2026-09-30", "7:05"), "2026-09-30T07:05:00.000Z");
+  assert.equal(utcInstant("2026-09-30", "25:00"), null);
+  assert.equal(utcInstant(null, "10:00"), null);
+});
+
+test("each step posts its op to the incidents route with its own idempotency key", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify(calls.length === 2 ? { error: "refused", message: "this snapshot is already pinned for this incident" } : { pin: {} }), { status: calls.length === 2 ? 409 : 200 });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await incidentAction("pin", { incidentId: "i", snapshotId: "s1", reason: "evidence" }), { ok: true, body: { pin: {} } });
+    assert.deepEqual(await incidentAction("pin", { incidentId: "i", snapshotId: "s2", reason: "evidence" }), { ok: false, reason: "This backup is already kept for this incident." });
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(calls[0].url, "/api/actions/incidents");
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { op: "pin", incidentId: "i", snapshotId: "s1", reason: "evidence" });
+  const keys = calls.map((call) => new Headers(call.init.headers).get("idempotency-key"));
+  assert.ok(keys[0] && keys[1] && keys[0] !== keys[1]);
 });
 
 test("exclusions parse one per line and reject a line without a reason; labels read as names", () => {
@@ -213,10 +304,41 @@ test("incident changes require investigate, re-checked against current grants", 
   assert.equal(data.selected?.incident.owner.name, "investigator@contoso.example");
   assert.equal(data.selected?.points[0].assessment?.assessedBy?.name, "investigator@contoso.example");
   assert.match(data.selected?.points[0].snapshot.name ?? "", /^Snapshot of /);
+  assert.equal(data.selected?.points[0].assessment?.rationale, "before the window", "the check's own words reach the panel");
+
+  // A restore allowed anyway on an unchecked backup is read back, with who allowed it.
+  const { rows: others } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', now() - interval '3 days', now() - interval '3 days') RETURNING id",
+    [tenantRef()],
+  );
+  const unchecked = String(others[0].id);
+  assert.equal((await incidents({ op: "override", incidentId, snapshotId: unchecked, reason: "only backup with the old membership" })).status, 200);
+  const allowed = await getIncidentRecoveryData(incidentId);
+  assert.equal(allowed.selected?.overrides?.length, 1);
+  assert.equal(allowed.selected?.overrides?.[0].snapshotId, unchecked);
+  assert.equal(allowed.selected?.overrides?.[0].authorizedBy?.name, "investigator@contoso.example");
+  assert.equal((await incidents({ op: "revoke-override", overrideId: allowed.selected?.overrides?.[0].id })).status, 200);
+  assert.equal((await getIncidentRecoveryData(incidentId)).selected?.overrides?.length, 0, "a withdrawn permission is no longer listed");
 
   // A header still claiming investigate after the grant is revoked is refused by the engine.
   await revokeRole(client, { principalId: investigator.id, grantId: investigator.grantId, revokedBy: investigator.id });
   assert.equal((await incidents({ op: "pin", incidentId, snapshotId, reason: "again" })).status, 403);
+});
+
+test("a backup's items are read with the read permission, by this tenant's backup id", async () => {
+  const get = (id: string, capabilities: string[]) => {
+    const headers = new Headers();
+    headers.set(PRINCIPAL_ID_HEADER, investigator.id);
+    headers.set(CAPABILITIES_HEADER, capabilities.join(" "));
+    return snapshotItemsRoute(new Request(`http://localhost/api/snapshots/${id}/items`, { headers }));
+  };
+  assert.equal((await get(snapshotId, [])).status, 403);
+  assert.equal((await get("not-an-id", ["read"])).status, 400);
+  const response = await get(snapshotId, ["read"]);
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { snapshotId: string; resources: unknown[] };
+  assert.equal(body.snapshotId, snapshotId);
+  assert.deepEqual(body.resources, []);
 });
 
 test("a dry run may carry an incident id, which reaches the job and nothing else", async () => {

@@ -973,6 +973,8 @@ export interface IncidentRecoveryPoint {
     assessedBy: Ref | null;
     assessedAt: string | null;
     fingerprint: string;
+    // The investigator's own words for why: shown in the backup's panel.
+    rationale?: string | null;
   } | null;
 }
 
@@ -980,6 +982,9 @@ export interface IncidentDetail {
   incident: IncidentSummary;
   intervals: { id: string; startsAt: string | null; endsAt: string | null; reason: string | null; recordedBy: Ref | null }[];
   pins: { id: string; snapshotId: string; reason: string; pinnedBy: Ref; pinnedAt: string | null }[];
+  // Permissions to restore from a backup that is not cleared, not yet withdrawn. The
+  // restore gate still re-checks each one against the current check and attack window.
+  overrides?: { id: string; snapshotId: string; reason: string; authorizedBy: Ref | null; authorizedAt: string | null }[];
   points: IncidentRecoveryPoint[];
   recommended: string | null;
 }
@@ -1043,8 +1048,18 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
         recommended: string | null;
       }
       : null;
+    const overrideRows = chosen
+      ? (await client.query(
+        `SELECT id::text AS id, snapshot_id::text AS snapshot_id, reason, authorized_by, authorized_at
+           FROM incident_recovery_override
+          WHERE tenant_ref = $1 AND incident_id::text = $2 AND revoked_at IS NULL
+          ORDER BY authorized_at DESC`,
+        [ref, chosen.id],
+      )).rows
+      : [];
 
     const people = await principalRefs(client, [
+      ...overrideRows.map((row) => (row.authorized_by == null ? null : String(row.authorized_by))),
       ...rawIncidents.map((incident) => incident.owner),
       ...(listing?.intervals.map((interval) => interval.recordedBy) ?? []),
       ...(listing?.pins.map((pin) => pin.pinnedBy) ?? []),
@@ -1094,6 +1109,13 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
       incident: selectedIncident,
       intervals: listing.intervals.map((interval) => ({ ...interval, recordedBy: person(interval.recordedBy) })),
       pins: listing.pins.map((pin) => ({ ...pin, pinnedBy: person(pin.pinnedBy) ?? { kind: "person", id: pin.pinnedBy, name: "Unknown", href: null } })),
+      overrides: overrideRows.map((row) => ({
+        id: String(row.id),
+        snapshotId: String(row.snapshot_id),
+        reason: String(row.reason ?? ""),
+        authorizedBy: person(row.authorized_by == null ? null : String(row.authorized_by)),
+        authorizedAt: row.authorized_at == null ? null : (row.authorized_at instanceof Date ? row.authorized_at : new Date(String(row.authorized_at))).toISOString(),
+      })),
       points: points.map((point) => ({
         ...point,
         snapshot: { kind: "snapshot", id: point.snapshotId, name: snapshotName({ id: point.snapshotId, observedTo: point.observedTo, observedFrom: point.observedFrom }, points.map((other) => ({ id: other.snapshotId, observedTo: other.observedTo, observedFrom: other.observedFrom }))), href: `/restore?snapshot=${point.snapshotId}` },

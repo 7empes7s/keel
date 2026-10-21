@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { compareWorkloads } from "../../engine/govern/compare.mjs";
 import { IntentCard } from "@/components/change-intent";
-import { exclusionLabel } from "@/components/incident-recovery";
+import { exclusionLabel } from "@/lib/incidents-view";
 import { ActivationPreviewView } from "@/components/policy-preview";
 import { recordTitle, type ChangeRecord } from "@/lib/ask-view";
 import { intentResource, type ChangeIntent } from "@/lib/change-intents-view";

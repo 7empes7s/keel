@@ -351,3 +351,14 @@ export function fromNow(value: string | null, now: string | Date): string {
   const days = Math.round(hours / 24);
   return `in ${days} day${days === 1 ? "" : "s"}`;
 }
+
+/** What another person can do, in the third person: "Can approve, manage people, grant
+ * roles and 2 more". "You can" stays for the person signed in (the menu). */
+export function personAccess(capabilities: string[]): string {
+  return accessSummary(capabilities).replace(/^You can/, "Can");
+}
+
+/** Every verb another person has, for a tooltip or a list. */
+export function personAccessInFull(capabilities: string[]): string {
+  return accessInFull(capabilities).replace(/^You can/, "Can");
+}

@@ -1793,6 +1793,145 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+test("People · tiles, groups, Add person, Add Viewer to several, the last admin, Keel's accounts", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/principals");
+  await expect(page.locator("main#main-content h1")).toHaveText("People");
+  await expect(page.locator(".status-pill")).toHaveText("Only 1 admin");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("4 people can use Keel; 2 can approve.");
+  const tiles = page.locator(".pe-tile");
+  await expect(tiles).toHaveCount(4);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/principals/);
+  await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Admins", "Approvers", "Operators", "Starting later", "Disabled"]);
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(6);
+  for (const link of await page.locator(".pe-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  // A sentence about someone else never says "You".
+  for (const line of await page.locator(".pe-row-can").allTextContents()) expect(line).not.toMatch(/^You\b/);
+  await expect(rows.filter({ hasText: "Lee Chen" })).toContainText("Operator, only for Contoso FR");
+  await expect(rows.filter({ hasText: "Former Contractor" }).locator(".badge")).toHaveText("Disabled");
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // Keel's own accounts: listed apart, with no controls.
+  const keel = page.locator(".pe-keel-row");
+  await expect(keel).toHaveText(/Keel's scheduler/);
+  await expect(keel.locator("a, button, input")).toHaveCount(0);
+
+  // The Can approve tile sets ?role=approver and shows only approvers.
+  await tiles.filter({ hasText: "Can approve" }).click();
+  await expect(page).toHaveURL(/role=approver/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await expect(page.locator(".pe-filter-note")).toContainText("Showing approvers only: 2 of 6.");
+  await page.getByRole("link", { name: "Show everyone" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(6);
+
+  // Shift+click a range of 3, then "Add Viewer to 3 people" posts a grant per person who lacks it.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  await rows.nth(0).locator(".sel-check").click();
+  await rows.nth(2).click({ modifiers: ["Shift"] });
+  await expect(page.locator(".sel-bar-count")).toContainText("3 people");
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Add Viewer to 3 people");
+  await expect(page.locator(".sel-bar")).toContainText("From now on they can see backups, changes and reports.");
+  await page.locator(".sel-bar .btn-primary").click();
+  await expect(page.locator(".toast").first()).toContainText("Viewer added: 3 people");
+  const grants = (await calls()).filter((call) => call.method === "POST" && call.url.endsWith("/grant"));
+  expect(grants.length).toBe(3);
+  for (const call of grants) expect(JSON.parse(call.body ?? "{}")).toEqual({ role: "viewer" });
+  await page.keyboard.press("Escape");
+
+  // The last admin: Disable and the admin role's Remove are off, with the reason shown before any click.
+  await page.locator(".pe-row-link", { hasText: "Marouane Defili" }).click();
+  const panel = page.getByRole("dialog", { name: "Marouane Defili" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Disable" })).toBeDisabled();
+  await expect(panel.locator(".pe-grant", { hasText: "Admin" }).getByRole("button", { name: "Remove" })).toBeDisabled();
+  await expect(panel.locator(".pe-grant", { hasText: "Admin" })).toContainText("Keel keeps at least one admin. Make someone else an admin first.");
+  await expect(panel.locator(".pe-grant", { hasText: "Approver" }).getByRole("button", { name: "Remove" })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+
+  // Someone else: a role starting later can be cancelled; Disable confirms first.
+  await page.locator(".pe-row-link", { hasText: "Sam Ortiz" }).click();
+  const sam = page.getByRole("dialog", { name: "Sam Ortiz" });
+  await expect(sam.locator(".pe-grant", { hasText: "Restorer" })).toContainText("From 6 Oct 2026 until 20 Oct 2026 · granted by Marouane Defili");
+  await expect(sam.locator(".pe-grant", { hasText: "Restorer" }).getByRole("button", { name: "Cancel" })).toBeVisible();
+  await sam.getByRole("button", { name: "Disable" }).click();
+  await expect(page.locator("dialog[open]")).toContainText("Sam Ortiz can no longer sign in to Keel.");
+  await page.locator("dialog[open]").getByRole("button", { name: "Keep access" }).click();
+  await page.keyboard.press("Escape");
+
+  // A disabled person: Enable again is the one amber action in their panel, and posts to enable.
+  await page.locator(".pe-row-link", { hasText: "Former Contractor" }).click();
+  const former = page.getByRole("dialog", { name: "Former Contractor" });
+  await former.getByRole("button", { name: "Enable again" }).click();
+  await expect(page.locator(".toast", { hasText: "Former Contractor can use Keel again" })).toBeVisible();
+  expect((await calls()).some((call) => call.method === "POST" && call.url === "/api/principals/8c1e0000-0000-4000-8000-0000000000c3/enable")).toBe(true);
+  await page.keyboard.press("Escape");
+
+  // Add person posts {email, displayName, role} and the new row appears.
+  await page.getByRole("link", { name: "Add person" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add person" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("They can sign in once your sign-in gate lets their email through.");
+  await sheet.getByLabel("Email").fill("jo.martin@contoso.example");
+  await sheet.getByLabel("Name (optional)").fill("Jo Martin");
+  await sheet.getByRole("button", { name: /^Role/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Approver" }).click();
+  await sheet.getByRole("button", { name: "Add person" }).click();
+  const created = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/principals");
+  expect(created.length).toBe(1);
+  expect(JSON.parse(created[0].body ?? "{}")).toMatchObject({ email: "jo.martin@contoso.example", displayName: "Jo Martin", role: "approver" });
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".sel-row", { hasText: "Jo Martin" })).toBeVisible();
+});
+
+test("People · someone who may disable but not grant sees no role controls", async ({ page }) => {
+  await open(page, "/principals/viewer");
+  await expect(page.getByRole("link", { name: "Add person" })).toHaveCount(0);
+  await page.locator(".pe-row-link", { hasText: "Amara Okafor" }).click();
+  const panel = page.getByRole("dialog", { name: "Amara Okafor" });
+  await expect(panel.getByRole("button", { name: "Disable" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Remove|Add role/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Without the roles permission the bulk action is Disable, never a grant.
+  await page.locator(".sel-row").nth(1).locator(".sel-check").click();
+  await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Disable 1 person");
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/principals", "/principals?group=state", "/principals?open=8c1e0000-0000-4000-8000-0000000000b3", "/principals?new=1"]) {
+      test(`People · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".pe-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".pe-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .pe-tile, .pe-row-link, .bl-sheet a, .bl-sheet .btn")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("open=") || hash.includes("new=")) {
+          const sheet = page.getByRole("dialog");
+          await expect(sheet).toBeVisible();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
+          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toHaveCount(1);
+        }
+      });
+    }
+  }
+}
+
 // Task-99: a grounded answer cites each record and its window, says which part of the
 // period is not known, never reads missing history as "nothing changed", and fits a phone.
 test("ask cites its records, states unknown periods, and fits a phone", async ({ page }) => {

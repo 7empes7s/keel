@@ -386,6 +386,7 @@ export function createGraphSetupHost({
   };
 
   return Object.freeze({
+    tenantId,
     readers: readersFor(observeNow),
     adapters: Object.freeze(adapters),
     credentials,

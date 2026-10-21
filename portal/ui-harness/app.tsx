@@ -59,8 +59,9 @@ import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
-import { SetupProgress } from "@/components/setup-progress";
-import { setupVerdict, type SetupState } from "@/lib/setup-view";
+import { CheckAgain } from "@/components/setup/check-again";
+import { SetupPage as SetupBody } from "@/components/setup/setup-page";
+import { setupStatus as setupPageStatus, type SetupApp, type SetupState } from "@/lib/setup-view";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
@@ -74,7 +75,7 @@ import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
-import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
+import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
@@ -990,47 +991,54 @@ const BACKUP_ITEMS = [
   { naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", blastRadius: "tenant-lockout", service: "entra", name: "Block legacy auth" },
 ];
 
-// Task-76: read setup paused on the one step only the operator can do; restore
-// setup not started and not checked.
+// Setup: read setup paused on the Intune role, the one step only the operator can
+// do (registration and consent already done); restore setup not started, its app
+// registered and waiting for admin consent. Both apps were observed in Entra.
 const SETUP_RUN = "5e7a" + "0b".repeat(30);
-const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][number]["kind"], identity: "collector" | "restorer", name: string, action: string, progress: SetupState["scopes"][number]["steps"][number]["progress"], workload: string | null = null, scopes: string[] = []) =>
-  ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress });
+const SETUP_TENANT_ID = "72f988bf-0000-4000-8000-0000000000aa";
+const READER_APP: SetupApp = { displayName: "Keel Backup Reader (Contoso)", appId: "c011ec70-0000-4000-8000-0000000000c1" };
+const WRITER_APP: SetupApp = { displayName: "Keel Restore Writer (Contoso)", appId: "2e570e00-0000-4000-8000-0000000000c2" };
+const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][number]["kind"], identity: "collector" | "restorer", name: string, action: string, progress: SetupState["scopes"][number]["steps"][number]["progress"], workload: string | null = null, scopes: string[] = [], app: SetupApp | null = identity === "collector" ? READER_APP : WRITER_APP) =>
+  ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress, app });
 const READ_SCOPES = ["DeviceManagementConfiguration.Read.All", "Group.Read.All", "Policy.Read.All", "RoleManagement.Read.Directory", "User.Read.All"];
+const RESTORE_SCOPES = ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"];
 const SETUP: SetupState = {
   generatedAt: now,
-  canCheck: false,
+  tenantId: SETUP_TENANT_ID,
+  canCheck: true,
   canProvision: true,
-  collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["keel-collector", "keel-collector admin consent", "Read Only Operator", "keel.collect"] },
+  checkFailed: false,
+  collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["Read Only Operator", "keel.collect"] },
   firstCollection: null,
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
       run: { artifactId: SETUP_RUN, state: "waiting-for-you", workloads: ["entra-collect", "intune-collect"], approvedBy: "8c1e0000-0000-4000-8000-0000000000a1", approvedByName: "Marouane", approvedAt: "2026-10-02T07:40:00Z", lastEventAt: "2026-10-02T07:40:02Z", resumableByViewer: true, build: "keel-2026.10.03", qualificationMode: "live-qualified" },
       steps: [
-        setupStep("step-1a2b3c4d5e6f7a80", "registration", "collector", "keel-collector", "create-registration", "not-started", null, READ_SCOPES),
-        setupStep("step-1a2b3c4d5e6f7a81", "graph-permission", "collector", "keel-collector admin consent", "grant-consent", "not-started", null, READ_SCOPES),
+        { ...setupStep("step-1a2b3c4d5e6f7a80", "registration", "collector", "keel-collector", "create-registration", "done", null, READ_SCOPES), missingScopes: [] },
+        { ...setupStep("step-1a2b3c4d5e6f7a81", "graph-permission", "collector", "keel-collector admin consent", "grant-consent", "done", null, READ_SCOPES), missingScopes: [] },
         setupStep("step-1a2b3c4d5e6f7a82", "workload-rbac", "collector", "Read Only Operator", "assign-workload-role", "waiting-for-you", "intune-collect"),
         setupStep("step-1a2b3c4d5e6f7a83", "keel-app-permission", "collector", "keel.collect", "configure-keel-permission", "not-started"),
       ],
     },
     {
-      scope: "restore", workloads: ["entra-restore"], observed: false, run: null, planId: "plan-9f8e7d6c5b4a3921",
+      scope: "restore", workloads: ["entra-restore"], observed: true, run: null, planId: "plan-9f8e7d6c5b4a3921",
       steps: [
-        setupStep("step-2a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "create-registration", "not-checked", null, ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"]),
-        setupStep("step-2a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "not-checked", null, ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"]),
-        setupStep("step-2a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "not-checked", "entra-restore"),
-        setupStep("step-2a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "not-checked"),
+        { ...setupStep("step-2a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES), missingScopes: [] },
+        setupStep("step-2a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "needs-consent", null, RESTORE_SCOPES),
+        setupStep("step-2a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "to-do", "entra-restore"),
+        setupStep("step-2a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "to-do"),
       ],
     },
   ],
 };
-const setupVerdictFixture = setupVerdict(SETUP);
-// Task-76 production host: both apps already exist and were observed; read setup ran
-// to completion; the restorer's consent is satisfied and its extra grant is reported.
+// Production host: both apps exist; read setup ran to completion; the restorer's
+// consent is done and its extra grant is reported. The restorer's app id is not known
+// to this server, so its steps carry no app and no consent link.
 const SETUP_CHECKED_RUN = "5e7a" + "0c".repeat(30);
-const RESTORE_SCOPES = ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"];
 const SETUP_CHECKED: SetupState = {
   generatedAt: now,
+  tenantId: SETUP_TENANT_ID,
   canCheck: true,
   canProvision: true,
   checkFailed: false,
@@ -1049,15 +1057,14 @@ const SETUP_CHECKED: SetupState = {
     {
       scope: "restore", workloads: ["entra-restore"], observed: true, run: null, planId: "plan-8e7d6c5b4a392110",
       steps: [
-        { ...setupStep("step-4a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES), missingScopes: [] },
-        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES), missingScopes: [], excessScopes: ["MailboxSettings.ReadWrite"] },
-        setupStep("step-4a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "waiting-for-you", "entra-restore"),
-        setupStep("step-4a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "done"),
+        { ...setupStep("step-4a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES, null), missingScopes: [] },
+        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES, null), missingScopes: [], excessScopes: ["MailboxSettings.ReadWrite"] },
+        setupStep("step-4a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "waiting-for-you", "entra-restore", [], null),
+        setupStep("step-4a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "done", null, [], null),
       ],
     },
   ],
 };
-const setupCheckedVerdict = setupVerdict(SETUP_CHECKED);
 
 // Alerts page: an overdue, escalated critical alert; a warning with no owner; a resolved
 // one; a SharePoint site due in 3 hours; an emergency account acknowledged with a note;
@@ -1842,11 +1849,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
       const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
-      const backedUp = COVERAGE.types.filter((type) => type.reportStatus === "covered").map((type) => type.type);
+      // As on the live page: Entra ID and Intune kinds from the coverage types, the other
+      // services as service reads with their changes since the previous backup.
+      const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
+      const backedUp = COVERAGE.types.filter((type) => !isRead(type.type) && type.reportStatus === "covered").map((type) => type.type);
+      const serviceReads = COVERAGE.types.filter((type) => isRead(type.type)).map((type) => ({ type: type.type, read: type.reportStatus === "covered" }));
       return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
-        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} sources={CAPTURE_SOURCES} />
+        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }
@@ -1875,16 +1886,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
         <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
     }
-    case "/setup": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
-      <Verdict text={setupVerdictFixture.text} tone={setupVerdictFixture.tone} />
-      <div className="item-list" data-layer="explanation">
-        {SETUP.scopes.map((setup) => <SetupProgress canCheck={SETUP.canCheck} canProvision={SETUP.canProvision} canStart key={setup.scope} now={now} setup={setup} />)}
-      </div></>;
-    case "/setup/checked": return <>{header("Settings", "Setup", "Connect KEEL to your Microsoft tenant: what is in place, what is waiting on you, and when the first backup can run.")}
-      <Verdict text={setupCheckedVerdict.text} tone={setupCheckedVerdict.tone} />
-      <div className="item-list" data-layer="explanation">
-        {SETUP_CHECKED.scopes.map((setup) => <SetupProgress canCheck={SETUP_CHECKED.canCheck} canProvision={SETUP_CHECKED.canProvision} canStart checkFailed={SETUP_CHECKED.checkFailed} key={setup.scope} now={now} setup={setup} />)}
-      </div></>;
+    case "/setup":
+    case "/setup/checked": {
+      const state = path === "/setup" ? SETUP : SETUP_CHECKED;
+      return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
+        <SetupBody canBackup canStart state={state} /></>;
+    }
     case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">

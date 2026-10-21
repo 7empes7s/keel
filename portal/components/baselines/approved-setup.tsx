@@ -7,7 +7,7 @@ import { ResnapshotBaseline } from "@/components/resnapshot-baseline";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  coverageWords, kindsWords, serviceSummaries, setupName, versionState, type ServiceSummary,
+  coverageWords, kindsWords, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
 import { captureScope, changesSentence, resnapshotSource } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
@@ -76,8 +76,31 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
   );
 }
 
+// The three counts on a service card. A service read has no approved setup, so its
+// kinds are unchanged since the previous backup, or not read, rather than in line or
+// not covered.
+const STAT_WORDS: Record<ServiceSummary["basis"], { inLine: string; notCovered: string }> = {
+  "approved-setup": { inLine: "In line", notCovered: "Not covered" },
+  "previous-backup": { inLine: "Unchanged", notCovered: "Not read" },
+};
+
+function serviceNote(summary: ServiceSummary) {
+  if (summary.changed) {
+    return <>{summary.changed === 1 ? "1 change" : `${summary.changed} changes`} to {kindsWords(summary.changedKinds)}.<span className="bl-go">Review {summary.changed === 1 ? "it" : "them"}<Icon name="chevron" /></span></>;
+  }
+  if (summary.basis === "previous-backup") {
+    return summary.inLine.length
+      ? `No change since the previous backup: ${kindsWords(summary.inLine)}.`
+      : `The latest backup could not read ${kindsWords(summary.notCovered)}.`;
+  }
+  return summary.inLine.length
+    ? `Matches the approved setup: ${kindsWords(summary.inLine)}.`
+    : `Not in the approved setup yet: ${kindsWords(summary.notCovered)}.`;
+}
+
 function ServiceCard({ summary }: { summary: ServiceSummary }) {
   const total = summary.inLine.length + summary.changedKinds.length + summary.notCovered.length || 1;
+  const words = STAT_WORDS[summary.basis];
   const body = (
     <>
       <div className="bl-service-head">
@@ -95,27 +118,21 @@ function ServiceCard({ summary }: { summary: ServiceSummary }) {
           <dd>{summary.changedKinds.length}<small>{summary.changedKinds.length === 1 ? "kind" : "kinds"}</small></dd>
         </div>
         <div data-part="in-line">
-          <dt>In line</dt>
+          <dt>{words.inLine}</dt>
           <dd>{summary.inLine.length}<small>{summary.inLine.length === 1 ? "kind" : "kinds"}</small></dd>
         </div>
         <div data-part="not-covered">
-          <dt>Not covered</dt>
+          <dt>{words.notCovered}</dt>
           <dd>{summary.notCovered.length}<small>{summary.notCovered.length === 1 ? "kind" : "kinds"}</small></dd>
         </div>
       </dl>
-      <p className="bl-service-note">
-        {summary.changed
-          ? <>{summary.changed === 1 ? "1 change" : `${summary.changed} changes`} to {kindsWords(summary.changedKinds)}.<span className="bl-go">Review {summary.changed === 1 ? "it" : "them"}<Icon name="chevron" /></span></>
-          : summary.inLine.length
-            ? `Matches the approved setup: ${kindsWords(summary.inLine)}.`
-            : `Not in the approved setup yet: ${kindsWords(summary.notCovered)}.`}
-      </p>
+      <p className="bl-service-note">{serviceNote(summary)}</p>
     </>
   );
   return summary.changed ? (
-    <li><Link className="bl-card bl-service bl-link" data-tone={summary.tone} href={`/drift?service=${encodeURIComponent(summary.service.code)}`}>{body}</Link></li>
+    <li><Link className="bl-card bl-service bl-link" data-basis={summary.basis} data-tone={summary.tone} href={`/drift?service=${encodeURIComponent(summary.service.code)}`}>{body}</Link></li>
   ) : (
-    <li><div className="bl-card bl-service" data-tone={summary.notCovered.length && !summary.inLine.length ? undefined : "fine"}>{body}</div></li>
+    <li><div className="bl-card bl-service" data-basis={summary.basis} data-tone={summary.notCovered.length && !summary.inLine.length ? undefined : "fine"}>{body}</div></li>
   );
 }
 
@@ -190,6 +207,8 @@ function Record({ baselines }: { baselines: BaselineRecord[] }) {
 export function ApprovedSetup({
   baselines,
   items,
+  serviceChanges = [],
+  serviceReads = [],
   backedUp,
   canBaseline,
   now,
@@ -198,6 +217,11 @@ export function ApprovedSetup({
   baselines: BaselineRecord[];
   // Open changes against the setup in use; null when they could not be read.
   items: Pick<DriftRecord, "resourceType" | "blastRadius">[] | null;
+  // Open changes to Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform
+  // settings, each compared with the previous backup (lib/service-changes.ts).
+  serviceChanges?: Pick<DriftRecord, "resourceType" | "blastRadius" | "serviceRead">[];
+  // Those services' kinds on What's protected, and whether the latest backup read them.
+  serviceReads?: ServiceReadKind[];
   // Kinds of setting Keel backs up today, to show what the setup does not cover.
   backedUp: string[];
   canBaseline: boolean;
@@ -207,7 +231,8 @@ export function ApprovedSetup({
 }) {
   const active = baselines.find((baseline) => baseline.active) ?? null;
   const others = baselines.filter((baseline) => baseline !== active);
-  const summaries = active ? serviceSummaries(active, items ?? [], backedUp) : [];
+  const summaries = active ? serviceSummaries(active, [...(items ?? []), ...serviceChanges], backedUp, serviceReads) : [];
+  const anyRead = summaries.some((summary) => summary.basis === "previous-backup");
   return (
     <div className="bl-page">
       <BaselinesStyles />
@@ -226,7 +251,11 @@ export function ApprovedSetup({
       {active ? (
         <section aria-labelledby="bl-services-heading" className="bl-section">
           <SectionHead
-            about={items === null ? "Open changes could not be read just now, so every service shows as in line." : "Each Microsoft service against the approved setup. Services that need a look come first."}
+            about={items === null
+              ? "Open changes could not be read just now, so every service shows as in line."
+              : anyRead
+                ? "Entra ID and Intune against the approved setup; the other services against the previous backup, since an approved setup cannot hold their settings yet. Services that need a look come first."
+                : "Each Microsoft service against the approved setup. Services that need a look come first."}
             id="bl-services-heading"
             title="By service"
           />
@@ -237,6 +266,12 @@ export function ApprovedSetup({
             <div><dt data-part="changed">Changed</dt><dd>Kinds of setting that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
             <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup.</dd></div>
             <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet. Capture a new version to add it.</dd></div>
+            {anyRead ? (
+              <>
+                <div><dt data-part="in-line">Unchanged</dt><dd>Read in the latest backup, with no change since the one before.</dd></div>
+                <div><dt data-part="not-covered">Not read</dt><dd>The latest backup could not read it, or has not read it yet. <Link href="/protect">What&apos;s protected</Link> says why.</dd></div>
+              </>
+            ) : null}
           </dl>
         </section>
       ) : null}

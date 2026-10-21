@@ -128,6 +128,22 @@ test('a fully satisfied tenant completes the read setup with a run id and no wri
   assert.equal(scope.run.state, 'complete');
   assert.ok(scope.steps.every((step) => step.progress === 'done'));
   assert.equal(state.collect.allowed, true);
+  // Every step names the observed app (display name and app id only), for the
+  // page's Microsoft links; nothing else from the registration leaves the plan.
+  assert.ok(scope.steps.every((step) => step.app?.appId === COLLECTOR_APP_ID && step.app.displayName === 'KEEL Collector'));
+  assert.deepEqual(Object.keys(scope.steps[0].app).sort(), ['appId', 'displayName']);
+  assert.equal(composed.tenantId, TENANT_ID);
+});
+
+test('before the registration is observed, steps carry the app id the host is bound to', async (t) => {
+  const { client, owner } = await database(t);
+  const unbound = await loadSetupState(client, { tenantRef, viewerId: owner.id });
+  assert.ok(unbound.scopes.every((scope) => scope.steps.every((step) => step.app === null)));
+  const bound = await loadSetupState(client, { tenantRef, viewerId: owner.id, appIds: { collector: COLLECTOR_APP_ID, restorer: RESTORER_APP_ID } });
+  const read = bound.scopes.find((scope) => scope.scope === 'read');
+  const restore = bound.scopes.find((scope) => scope.scope === 'restore');
+  assert.deepEqual(read.steps[0].app, { displayName: null, appId: COLLECTOR_APP_ID });
+  assert.deepEqual(restore.steps[0].app, { displayName: null, appId: RESTORER_APP_ID });
 });
 
 test('unsatisfied manual steps report pending-manual and nothing is written', async (t) => {

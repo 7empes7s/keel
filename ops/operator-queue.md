@@ -5017,7 +5017,34 @@ item that needs it stays untouched.
   family read. A field is `unknown` when the cmdlet's answer did not carry a declared property at all. The fields were
   declared from Microsoft's docs, not measured live, so this item lists which ones the live module does not return.
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-21). DB reads only, no tenant calls; nothing was written to the tenant or the DB. Both outputs, verbatim:
+
+  ```
+        workload      | outcome |        kind        |               field               | status  | objects 
+  --------------------+---------+--------------------+-----------------------------------+---------+---------
+   exchange-extended  | partial | antiMalwareRule    | WhenChangedUTC                    | unknown |       2
+   exchange-extended  | partial | defenderPresetRule | WhenChangedUTC                    | unknown |       1
+   exchange-extended  | partial | eopPresetRule      | WhenChangedUTC                    | unknown |       1
+   exchange-extended  | partial | quarantinePolicy   | EndUserQuarantinePermissionsValue | unknown |       2
+   exchange-extended  | partial | safeAttachmentRule | WhenChangedUTC                    | unknown |       1
+   exchange-extended  | partial | safeLinksRule      | WhenChangedUTC                    | unknown |       2
+   exchange-mail-flow | partial | safeLinksPolicy    | UseTranslatedNotificationText     | unknown |       5
+   exchange-mail-flow | partial | transportRule      | WhenChangedUTC                    | unknown |       6
+  (8 rows)
+
+        workload      | outcome |          created_at           |           field_counts           | unidentified | capped | n_skipped | n_unavailable 
+  --------------------+---------+-------------------------------+----------------------------------+--------------+--------+-----------+---------------
+   exchange-mail-flow | partial | 2026-10-21 20:26:15.171144+00 | {"unknown": 11, "observed": 752} | 0            | false  |         0 |             0
+   exchange-extended  | partial | 2026-10-21 20:25:41.089009+00 | {"unknown": 9, "observed": 455}  | 0            | false  |         0 |             0
+  (2 rows)
+
+  ```
+
+  Every unknown field is one of three declared properties that the live module does not return: `WhenChangedUTC` on
+  transport rules and five rule kinds (13 objects), `UseTranslatedNotificationText` on safe links policies (5), and
+  `EndUserQuarantinePermissionsValue` on quarantine policies (2). mail-flow 6 + 5 = 11, extended 7 + 2 = 9. That matches
+  fieldCounts. Only these two runs (Q103 step 4) are non-disabled; every earlier run was disabled.
 - Do (with `set -a; . /etc/keel/db.env; set +a`). Field names and family kinds only; no values are selected:
   1. ```sql
      WITH latest AS (

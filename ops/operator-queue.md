@@ -4689,5 +4689,8 @@ item that needs it stays untouched.
   6. Tenant size for context, from the newest snapshot (counts only): users, groups, enterprise apps, managed devices
      (`SELECT resource_type, count(*) FROM resource_version WHERE snapshot_id = <newest tier1/tier2/tier3> GROUP BY 1`),
      and how many mailboxes, OneDrives, SharePoint sites and teams the newest content and workload runs found vs read.
+  7. The backup scope files, with names masked except the prefix: `/etc/keel/content-scope.json` and
+     `/etc/keel/workload-scope.json` (keys and the namePrefix value; for lists such as `mailboxes` or `sites`, how many
+     entries and whether they all start with `KEEL-RT-`). Leave out any secret or certificate path contents.
 - **Report:** steps 1 to 6 in this Result (big JSON can go in a gist-free file on a new branch
   `claude/q99-coverage-numbers` under `ops/q99/`, never master). Nothing is written to the tenant or the DB.

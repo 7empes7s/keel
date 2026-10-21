@@ -22,7 +22,8 @@ export function Verdict({ text, tone = "good", headline, detail, icon, action }:
   headline?: string;
   detail?: string;
   icon?: IconName;
-  action?: { label: string; href: string } | null;
+  // A link, or a button when the action runs on the page (such as "Send test to Slack").
+  action?: { label: string; href?: string; onClick?: () => void; busy?: boolean } | null;
 }) {
   const risk = RISK[tone];
   return (
@@ -33,7 +34,8 @@ export function Verdict({ text, tone = "good", headline, detail, icon, action }:
         <p className="verdict-sentence">{text}</p>
         {detail ? <p className="verdict-detail">{detail}</p> : null}
       </div>
-      {action ? <Link className="btn btn-primary primary" href={action.href}>{action.label}</Link> : null}
+      {action?.href ? <Link className="btn btn-primary primary" href={action.href}>{action.label}</Link> : null}
+      {action && !action.href && action.onClick ? <button aria-busy={action.busy || undefined} className="btn btn-primary primary" onClick={action.onClick} type="button">{action.label}</button> : null}
     </section>
   );
 }

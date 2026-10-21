@@ -55,6 +55,36 @@ export async function createEscalationRule(client, {
   return rule;
 }
 
+/** Every escalation rule of the tenant, newest first, with its owner's name and the
+ * channel it escalates to, for the Notifications page. */
+export async function listEscalationRules(client, { tenantRef }) {
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new Error('tenantRef is required');
+  const { rows } = await client.query(
+    `SELECT r.*, p.display_name AS owner_name, p.email AS owner_email, p.disabled_at AS owner_disabled_at,
+            c.kind AS channel_kind, c.enabled AS channel_enabled
+       FROM alert_escalation_rule r
+       LEFT JOIN principal p ON p.id = r.owner_principal_id
+       LEFT JOIN channel c ON c.id = r.escalate_channel_id
+      WHERE r.tenant_ref = $1
+      ORDER BY r.enabled DESC, r.created_at DESC, r.id`,
+    [tenantRef],
+  );
+  return rows;
+}
+
+/** Turns a rule off or back on. Rules are kept, never deleted: an escalation that
+ * already happened points at its rule. */
+export async function setEscalationRuleEnabled(client, { tenantRef, id, enabled, actor }) {
+  await authorize(client, actor, ESCALATION_CAPABILITY);
+  if (typeof tenantRef !== 'string' || !tenantRef) throw new Error('tenantRef is required');
+  if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean');
+  const { rows: [rule] } = await client.query(
+    'UPDATE alert_escalation_rule SET enabled = $3 WHERE id = $1 AND tenant_ref = $2 RETURNING *',
+    [id, tenantRef, enabled],
+  );
+  return rule ?? null;
+}
+
 /** The most specific enabled rule for an alert: a control match beats a catch-all, then the shortest window. */
 export async function ruleForAlert(client, alert) {
   const { rows } = await client.query(

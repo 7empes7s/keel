@@ -723,8 +723,19 @@ test("notification routes enforce configuration while viewers can read recent de
   const { GET: subscriptions, POST: createSubscription } = await import("@/app/api/subscriptions/route");
   const { GET: deliveries } = await import("@/app/api/deliveries/route");
   const { POST: disable } = await import("@/app/api/channels/[id]/disable/route");
-  const { DELETE: remove } = await import("@/app/api/subscriptions/[id]/route");
-  const admin = { principalId: "notification-admin", capabilities: ["read", "configuration"] };
+  const { POST: enable } = await import("@/app/api/channels/[id]/enable/route");
+  const { POST: sendTest } = await import("@/app/api/channels/[id]/test/route");
+  const { DELETE: remove, PATCH: change } = await import("@/app/api/subscriptions/[id]/route");
+  const { GET: escalations, POST: createEscalation } = await import("@/app/api/escalation-rules/route");
+  const { POST: escalationOff } = await import("@/app/api/escalation-rules/[id]/disable/route");
+  const { POST: escalationOn } = await import("@/app/api/escalation-rules/[id]/enable/route");
+  const { grantRole } = await import("../../engine/authz/administration.mjs");
+  // The test send and escalation rules are authorised by the engine against the
+  // principal table too, so this admin is a real, backdated admin grant.
+  const NOTIFIER = "1b2a4a00-0000-4000-8000-0000000000a7";
+  await client.query("INSERT INTO principal (id, email, display_name) VALUES ($1, 'notifier@action.test', 'Dana Notifier')", [NOTIFIER]);
+  await grantRole(client, { principalId: NOTIFIER, role: "admin", grantedBy: NOTIFIER, activeFrom: new Date(Date.now() - 60_000).toISOString() });
+  const admin = { principalId: NOTIFIER, capabilities: ["read", "configuration"] };
   const channelBody = { kind: "webhook", config: { url: "https://example.com/hook" } };
   for (const capabilities of [["read"], ["read", "collect"], ["policies"], []]) {
     const actor = { principalId: "notification-viewer", capabilities };
@@ -733,7 +744,13 @@ test("notification routes enforce configuration while viewers can read recent de
     assert.equal((await channels(routeRequest("/api/channels", "GET", actor))).status, 403);
     assert.equal((await subscriptions(routeRequest("/api/subscriptions", "GET", actor))).status, 403);
     assert.equal((await disable(routeRequest(`/api/channels/${randomUUID()}/disable`, "POST", actor))).status, 403);
+    assert.equal((await enable(routeRequest(`/api/channels/${randomUUID()}/enable`, "POST", actor))).status, 403);
+    assert.equal((await sendTest(routeRequest(`/api/channels/${randomUUID()}/test`, "POST", actor))).status, 403);
     assert.equal((await remove(routeRequest(`/api/subscriptions/${randomUUID()}`, "DELETE", actor))).status, 403);
+    assert.equal((await change(routeRequest(`/api/subscriptions/${randomUUID()}`, "PATCH", { ...actor, body: { channelId: randomUUID(), eventGlob: "*", minSeverity: "notice" } }))).status, 403);
+    assert.equal((await escalations(routeRequest("/api/escalation-rules", "GET", actor))).status, 403);
+    assert.equal((await createEscalation(routeRequest("/api/escalation-rules", "POST", { ...actor, body: { channelId: randomUUID(), minSeverity: "critical", ackWithinMs: 1_800_000 } }))).status, 403);
+    assert.equal((await escalationOff(routeRequest(`/api/escalation-rules/${randomUUID()}/disable`, "POST", actor))).status, 403);
   }
   const invalid = await createChannel(routeRequest("/api/channels", "POST", { ...admin, body: { kind: "fax" } }));
   assert.equal(invalid.status, 400);
@@ -746,33 +763,76 @@ test("notification routes enforce configuration while viewers can read recent de
   const { channel } = await created.json();
   assert.equal(channel.kind, "webhook");
   assert.equal(channel.enabled, true);
-  const subscribed = await createSubscription(routeRequest("/api/subscriptions", "POST", { ...admin, body: { channelId: channel.id, eventGlob: "drift.*", minSeverity: "warning" } }));
+  const subscribed = await createSubscription(routeRequest("/api/subscriptions", "POST", { ...admin, body: { channelId: channel.id, eventGlob: "alert.opened", minSeverity: "warning" } }));
   assert.equal(subscribed.status, 201);
   const { subscription } = await subscribed.json();
   assert.ok((await (await channels(routeRequest("/api/channels", "GET", admin))).json()).channels.some((row: { id: string }) => row.id === channel.id));
   assert.ok((await (await subscriptions(routeRequest("/api/subscriptions", "GET", admin))).json()).subscriptions.some((row: { id: string }) => row.id === subscription.id));
+
+  // Editing a rule sends the whole rule; a half-valid body changes nothing.
+  assert.equal((await change(routeRequest(`/api/subscriptions/${subscription.id}`, "PATCH", { ...admin, body: { channelId: channel.id, eventGlob: "*" } }))).status, 400);
+  const changed = await change(routeRequest(`/api/subscriptions/${subscription.id}`, "PATCH", { ...admin, body: { channelId: channel.id, eventGlob: "*", minSeverity: "critical" } }));
+  assert.equal(changed.status, 200);
+  assert.equal((await changed.json()).subscription.min_severity, "critical");
+  assert.equal((await change(routeRequest(`/api/subscriptions/${randomUUID()}`, "PATCH", { ...admin, body: { channelId: channel.id, eventGlob: "*", minSeverity: "critical" } }))).status, 404);
+
   await client.query(`INSERT INTO delivery (event, channel_id, requested_by, status, attempts, last_error, created_at)
     VALUES ($1,$2,$3,'retrying',2,'transport timeout',now()), ($4,$2,$3,'delivered',1,NULL,now() - interval '1 hour')`,
-    [{ kind: "drift.latest", severity: "critical" }, channel.id, "notification-admin", { kind: "drift.older", severity: "warning" }]);
+    [{ kind: "alert.opened", severity: "critical", resourceKey: "group:Finance approvers" }, channel.id, NOTIFIER, { kind: "alert.opened", severity: "warning", resourceKey: "group:Old project team" }]);
   const response = await deliveries(routeRequest(`/api/deliveries?channelId=${channel.id}&limit=1`, "GET", { principalId: "viewer", capabilities: ["read"] }));
   assert.equal(response.status, 200);
   const history = await response.json();
   assert.equal(history.deliveries.length, 1);
-  assert.equal(history.deliveries[0].event.kind, "drift.latest");
-  const { DeliveryTable, NotificationConsole } = await import("@/components/notification-console");
-  const { renderToStaticMarkup } = await import("react-dom/server");
-  const html = renderToStaticMarkup(React.createElement(DeliveryTable, { deliveries: history.deliveries }));
-  for (const value of ["drift.latest", "critical", channel.id, "retrying", "transport timeout", "Next attempt"]) assert.ok(html.includes(value), value);
-  assert.ok(!html.includes("drift.older"));
-  // The real client component uses Next's router even when hiding the controls;
-  // provide the same context Next installs at runtime.
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
-  const hidden = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
-    React.createElement(NotificationConsole, { canConfiguration: false, channels: [channel], subscriptions: [subscription] })));
-  assert.equal(hidden, "");
-  const controls = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
-    React.createElement(NotificationConsole, { canConfiguration: true, channels: [channel], subscriptions: [subscription] })));
-  for (const label of ["Add channel", "Turn off", "Add rule", "Delete rule"]) assert.ok(controls.includes(label), label);
+  assert.equal(history.deliveries[0].event.resourceKey, "group:Finance approvers");
+  assert.ok(history.deliveries[0].created_at, "a delivery carries when it was queued");
+  // The Failed tile filters by status through the route.
+  const retrying = await (await deliveries(routeRequest(`/api/deliveries?channelId=${channel.id}&status=retrying`, "GET", { principalId: "viewer", capabilities: ["read"] }))).json();
+  assert.deepEqual(retrying.deliveries.map((row: { status: string }) => row.status), ["retrying"]);
+  assert.equal((await deliveries(routeRequest(`/api/deliveries?status=lost`, "GET", { principalId: "viewer", capabilities: ["read"] }))).status, 400);
+
+  // "Send test" queues one notice-level test delivery and its notify job, nothing else.
+  const tested = await sendTest(routeRequest(`/api/channels/${channel.id}/test`, "POST", admin));
+  assert.equal(tested.status, 202);
+  const { delivery: testDelivery } = await tested.json();
+  assert.equal(testDelivery.event.kind, "test");
+  assert.equal(testDelivery.event.severity, "notice");
+  assert.equal(testDelivery.channel_id, channel.id);
+  assert.equal((await client.query("SELECT count(*)::int AS n FROM job WHERE params->>'deliveryId' = $1", [testDelivery.id])).rows[0].n, 1);
+  assert.equal((await sendTest(routeRequest(`/api/channels/${randomUUID()}/test`, "POST", admin))).status, 404);
+
+  // Escalation rules: list, add, turn off and back on, with the owner's name joined in.
+  const noneYet = await escalations(routeRequest("/api/escalation-rules", "GET", admin));
+  assert.equal(noneYet.status, 200);
+  assert.deepEqual((await noneYet.json()).escalationRules, []);
+  assert.equal((await createEscalation(routeRequest("/api/escalation-rules", "POST", { ...admin, body: { channelId: channel.id, minSeverity: "critical", ackWithinMs: 5 } }))).status, 400, "a wait under a minute is refused");
+  const escalated = await createEscalation(routeRequest("/api/escalation-rules", "POST", { ...admin, body: { channelId: channel.id, minSeverity: "critical", ackWithinMs: 30 * 60_000, ownerPrincipalId: NOTIFIER } }));
+  assert.equal(escalated.status, 201);
+  const { escalationRule } = await escalated.json();
+  assert.equal(escalationRule.ack_within_ms, 30 * 60_000);
+  assert.equal(escalationRule.created_by, NOTIFIER);
+  const listed = (await (await escalations(routeRequest("/api/escalation-rules", "GET", admin))).json()).escalationRules;
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].owner_name, "Dana Notifier");
+  assert.equal(listed[0].channel_kind, "webhook");
+  assert.equal((await escalationOff(routeRequest(`/api/escalation-rules/${escalationRule.id}/disable`, "POST", admin))).status, 200);
+  assert.equal((await client.query("SELECT enabled FROM alert_escalation_rule WHERE id = $1", [escalationRule.id])).rows[0].enabled, false);
+  assert.equal((await escalationOn(routeRequest(`/api/escalation-rules/${escalationRule.id}/enable`, "POST", admin))).status, 200);
+  assert.equal((await client.query("SELECT enabled FROM alert_escalation_rule WHERE id = $1", [escalationRule.id])).rows[0].enabled, true);
+  assert.equal((await escalationOff(routeRequest(`/api/escalation-rules/${randomUUID()}/disable`, "POST", admin))).status, 404);
+
+  // The page body: a viewer sees Sent only; an admin sees the controls; ids stay in the record.
+  const { renderNotificationsAt } = await import("./render-notifications");
+  const all = (await (await deliveries(routeRequest(`/api/deliveries?channelId=${channel.id}`, "GET", { principalId: "viewer", capabilities: ["read"] }))).json()).deliveries;
+  const viewer = await renderNotificationsAt("", { canConfiguration: false, channels: [], subscriptions: [], deliveries: all, now: new Date().toISOString() });
+  for (const absent of ["Add channel", "Send test", "Turn off", "Add rule"]) assert.ok(!viewer.includes(absent), `viewer never sees ${absent}`);
+  assert.ok(viewer.includes("Test alert"));
+  assert.ok(viewer.includes("Finance approvers (group)"));
+  const controls = await renderNotificationsAt("", { canConfiguration: true, channels: [channel], subscriptions: [{ ...subscription, min_severity: "critical", event_glob: "*" }], escalationRules: listed, deliveries: all, now: new Date().toISOString() });
+  for (const label of ["Add channel", "Send test", "Turn off", "Web address example.com"]) assert.ok(controls.includes(label), label);
+  const rules = await renderNotificationsAt("tab=rules", { canConfiguration: true, channels: [channel], subscriptions: [{ ...subscription, min_severity: "critical", event_glob: "*" }], escalationRules: listed, deliveries: all, now: new Date().toISOString() });
+  for (const label of ["Add rule", "All alerts", "Critical only", "Delete", "When nobody responds", "A critical alert not acknowledged in 30 minutes", "Owner Dana Notifier"]) assert.ok(rules.includes(label), label);
+  const visible = rules.replace(/<details[\s\S]*?<\/details>/g, "").replace(/<[^>]+>/g, " ");
+  assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(visible), "no id outside Technical details");
   for (const canRead of [true, false]) {
     assert.equal(visibleNavLinks({ canRead }).some((link) => link.href === "/notifications"), canRead);
   }
@@ -780,22 +840,36 @@ test("notification routes enforce configuration while viewers can read recent de
   const { default: NotificationsPage } = await import("@/app/notifications/page");
   const { workAsyncStorage } = await import("next/dist/server/app-render/work-async-storage.external.js");
   const { workUnitAsyncStorage } = await import("next/dist/server/app-render/work-unit-async-storage.external.js");
-  const page = await workAsyncStorage.run({ route: "/notifications", forceStatic: false, dynamicShouldError: false } as never, () =>
-    workUnitAsyncStorage.run({
-      type: "request", phase: "render",
-      headers: new Headers([[PRINCIPAL_ID_HEADER, "viewer"], [CAPABILITIES_HEADER, "read"]]),
-      implicitTags: [], url: { pathname: "/notifications", search: "" }, rootParams: {},
-      resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
-    } as never, () => NotificationsPage()));
-  const pageHtml = renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> }, page));
-  assert.ok(pageHtml.includes("drift.latest"));
-  assert.ok(pageHtml.includes("drift.older"));
-  assert.ok(pageHtml.indexOf("drift.latest") < pageHtml.indexOf("drift.older"));
-  assert.ok(!pageHtml.includes("Create channel"));
-  assert.ok(!pageHtml.includes("Create subscription"));
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const { PathnameContext, SearchParamsContext } = await import("next/dist/shared/lib/hooks-client-context.shared-runtime");
+  const renderPage = async (principalId: string, capabilities: string) => {
+    const page = await workAsyncStorage.run({ route: "/notifications", forceStatic: false, dynamicShouldError: false } as never, () =>
+      workUnitAsyncStorage.run({
+        type: "request", phase: "render",
+        headers: new Headers([[PRINCIPAL_ID_HEADER, principalId], [CAPABILITIES_HEADER, capabilities]]),
+        implicitTags: [], url: { pathname: "/notifications", search: "" }, rootParams: {},
+        resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
+      } as never, () => NotificationsPage()));
+    return renderToStaticMarkup(React.createElement(AppRouterContext.Provider, { value: {} as React.ContextType<typeof AppRouterContext> },
+      React.createElement(PathnameContext.Provider, { value: "/notifications" },
+        React.createElement(SearchParamsContext.Provider, { value: new URLSearchParams("") as unknown as React.ContextType<typeof SearchParamsContext> }, page))));
+  };
+  const pageHtml = await renderPage("viewer", "read");
+  assert.ok(pageHtml.includes("Finance approvers (group)"));
+  assert.ok(pageHtml.includes("Old project team (group)"));
+  assert.ok(pageHtml.indexOf("Finance approvers (group)") < pageHtml.indexOf("Old project team (group)"), "newest first");
+  assert.ok(!pageHtml.includes("Add channel"));
+  const adminHtml = await renderPage(NOTIFIER, "read configuration");
+  assert.ok(adminHtml.includes("status-pill"), "the admin sees the status pill");
+  assert.ok(adminHtml.includes("Web address example.com"));
 
   assert.equal((await disable(routeRequest(`/api/channels/${channel.id}/disable`, "POST", admin))).status, 200);
   assert.equal((await client.query("SELECT enabled FROM channel WHERE id = $1", [channel.id])).rows[0].enabled, false);
+  assert.equal((await sendTest(routeRequest(`/api/channels/${channel.id}/test`, "POST", admin))).status, 409, "no test to a channel that is off");
+  assert.equal((await enable(routeRequest(`/api/channels/${channel.id}/enable`, "POST", admin))).status, 200);
+  assert.equal((await client.query("SELECT enabled FROM channel WHERE id = $1", [channel.id])).rows[0].enabled, true);
   assert.equal((await remove(routeRequest(`/api/subscriptions/${subscription.id}`, "DELETE", admin))).status, 200);
   assert.equal((await client.query("SELECT id FROM subscription WHERE id = $1", [subscription.id])).rows.length, 0);
 });
+

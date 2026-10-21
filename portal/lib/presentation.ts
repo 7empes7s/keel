@@ -318,6 +318,11 @@ export const DISPLAY_ENUMS = {
     "live-qualified": "Proven on this tenant",
   },
   eventKind: {
+    "*": "All alerts",
+    "alert.opened": "An alert opened",
+    "alert.reopened": "An alert came back",
+    "alert.escalated": "Nobody responded to an alert",
+    test: "Test alert",
     "drift.detected": "A change was detected",
     "approval.decided": "An approval was decided",
     "job.started": "A job started",

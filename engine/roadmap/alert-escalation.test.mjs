@@ -22,7 +22,7 @@ import {
   AlertAuthorizationError, acknowledgeAlert, applyConditionEvent, resolveAlert,
 } from '../notify/alerts.mjs';
 import {
-  EscalationAuthorizationError, MISSING_RECIPIENT, createEscalationRule, escalateOverdue,
+  EscalationAuthorizationError, MISSING_RECIPIENT, createEscalationRule, escalateOverdue, listEscalationRules, ruleForAlert, setEscalationRuleEnabled,
 } from '../notify/escalation.mjs';
 import { attemptDelivery, createChannel } from '../notify/notifications.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -207,6 +207,32 @@ test('a missing recipient is an actionable error, and no owner is an explicit un
   assert.equal(orphan.ack_deadline_at, null);
   assert.equal(orphan.owner_principal_id, null);
   assert.equal(orphan.owner_source, 'unassigned');
+});
+
+// Portal audit, Notifications: the "when nobody responds" section lists the tenant's rules
+// with the owner's name and the channel joined in, and turns a rule off or back on.
+test('escalation rules are listed with owner and channel, and can be turned off and back on', async (t) => {
+  const client = await schemaClient(t);
+  const { tenantRef, admin, owner, channel, rule } = await fixture(client);
+  const viewer = await principal(client, 'viewer');
+  const listed = await listEscalationRules(client, { tenantRef });
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, rule.id);
+  assert.equal(listed[0].owner_name, 'Dana On-call');
+  assert.equal(listed[0].owner_principal_id, owner);
+  assert.equal(listed[0].channel_kind, 'webhook');
+  assert.equal(listed[0].channel_enabled, true);
+  assert.equal(listed[0].escalate_channel_id, channel.id);
+  assert.deepEqual(await listEscalationRules(client, { tenantRef: freshTenant() }), [], 'another tenant sees nothing');
+
+  await assert.rejects(setEscalationRuleEnabled(client, { tenantRef, id: rule.id, enabled: false, actor: viewer }), EscalationAuthorizationError);
+  const off = await setEscalationRuleEnabled(client, { tenantRef, id: rule.id, enabled: false, actor: admin });
+  assert.equal(off.enabled, false);
+  assert.equal((await listEscalationRules(client, { tenantRef }))[0].enabled, false, 'a rule that is off is still listed');
+  assert.equal(await ruleForAlert(client, { tenant_ref: tenantRef, control: 'baseline', severity: 'critical' }), null, 'a rule that is off no longer plans deadlines');
+  const on = await setEscalationRuleEnabled(client, { tenantRef, id: rule.id, enabled: true, actor: admin });
+  assert.equal(on.enabled, true);
+  assert.equal(await setEscalationRuleEnabled(client, { tenantRef: freshTenant(), id: rule.id, enabled: false, actor: admin }), null, 'another tenant cannot turn it off');
 });
 
 test('a read-only principal cannot acknowledge or resolve, in the engine or the portal', async (t) => {

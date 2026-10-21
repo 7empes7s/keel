@@ -224,14 +224,168 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 test("destructive writes ask for confirmation with Cancel focused", async ({ page }) => {
-  await open(page, "/notifications");
-  await page.getByRole("button", { name: "Delete rule" }).first().click();
+  await open(page, "/notifications?tab=rules");
+  await page.getByRole("button", { name: "Delete", exact: true }).first().click();
   const dialog = page.locator("dialog[open]");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });
+
+// The page's done-test (portal audit, Notifications, pick A: three tabs): the failing
+// channel comes first, tiles set the tab and the status filter in the address, a test
+// send posts to the channel's test route and appears under Sent, a channel can be turned
+// back on, the rule form offers only real alerts and saves them, a sent row links to its
+// alert, an escalation rule can be added and turned off, and the first screen holds one
+// amber action.
+test("Notifications · tiles, tabs, send test, turn back on, real-event rules, escalation, one amber action", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/notifications");
+  await expect(page.locator(".status-pill")).toHaveText("Slack is failing");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Slack has been failing for 27 minutes; the other 3 channels work.");
+  const amber = page.locator("main .btn-primary:visible");
+  await expect(amber).toHaveCount(1);
+  await expect(amber).toHaveText("Send test to Slack");
+  const tiles = page.locator(".nf-tile");
+  await expect(tiles).toHaveCount(4);
+  const heights = await tiles.evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+  expect(new Set(heights).size).toBe(1);
+  for (const tile of await tiles.all()) expect(await tile.getAttribute("href")).toMatch(/\/notifications/);
+  // Failing first; every channel name opens its panel.
+  await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Failing");
+  await expect(page.locator(".nf-row-link").first()).toHaveText("Slack");
+  for (const link of await page.locator(".nf-row-link").all()) expect(await link.getAttribute("href")).toMatch(/open=/);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  // The channel panel: what to do, the rules that use it, its recent sends, one amber action.
+  await page.locator(".nf-row-link", { hasText: "Slack" }).first().click();
+  await expect(page).toHaveURL(/open=c4e10000-0000-4000-8000-0000000000c4/);
+  const panel = page.getByRole("dialog", { name: "Slack" });
+  await expect(panel).toBeVisible();
+  await expect(panel.locator(".nf-note")).toContainText("Make a new address in Slack");
+  await expect(panel.getByRole("link", { name: "An alert came back · warning or above" })).toHaveCount(1);
+  await expect(panel.locator(".nf-mini > li")).toHaveCount(3);
+  await expect(panel.locator(".btn-primary:visible")).toHaveText("Send test");
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+  await page.goBack();
+  await expect(panel).toBeHidden();
+
+  // (1) Send test posts to the channel's test route; the Sent tab shows the new row.
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const posts = async () => (await calls()).filter((call) => call.method === "POST").map((call) => call.url);
+  await amber.click();
+  const toast = page.locator(".toast").first();
+  await expect(toast).toContainText("Test alert queued for Slack");
+  expect(await posts()).toContain("/api/channels/c4e10000-0000-4000-8000-0000000000c4/test");
+  await toast.getByRole("link", { name: "Show under Sent" }).click();
+  await expect(page).toHaveURL(/tab=sent/);
+  await expect(page).toHaveURL(/channel=c4e10000-0000-4000-8000-0000000000c4/);
+  await expect(page.locator(".nf-filter-note")).toContainText("Showing to Slack only");
+  await expect(page.locator(".nf-sent").first()).toContainText("Test alert");
+  await expect(page.locator(".nf-sent").first().locator(".badge")).toHaveText("Waiting to send");
+  // (4) A sent row about an alert links to it.
+  await expect(page.locator(".nf-sent .nf-row-link", { hasText: "Alert came back: Corporate laptops" }).first()).toHaveAttribute("href", /^#?\/alerts\?open=a1e70000-0000-4000-8000-000000000002$/);
+  await page.getByRole("link", { name: "Show every send" }).click();
+  await expect(page.locator(".sel-row")).toHaveCount(10);
+
+  // (3) The Failed tile sets status=failed and Sent shows failures only.
+  await tiles.filter({ hasText: "Failed" }).click();
+  await expect(page).toHaveURL(/status=failed/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
+  await expect(page.locator(".nf-filter-note")).toContainText("Showing failed only: 2 of 10.");
+
+  // (5) Turn back on: the off channel's row offers it, and it posts to the enable route.
+  await tiles.filter({ hasText: "Channels on" }).click();
+  await expect(page).not.toHaveURL(/tab=/);
+  const teams = page.locator(".sel-row", { hasText: "Microsoft Teams" });
+  await expect(teams.locator(".badge")).toHaveText("Turned off");
+  await teams.getByRole("button", { name: "Turn back on" }).click();
+  await expect(page.locator(".toast", { hasText: "Microsoft Teams turned back on" })).toHaveCount(1);
+  expect(await posts()).toContain("/api/channels/c4e10000-0000-4000-8000-0000000000c5/enable");
+
+  // (2) The rule form offers only real alerts and saves alert.opened.
+  await page.getByRole("radio", { name: /Who gets which alerts/ }).click();
+  await expect(page).toHaveURL(/tab=rules/);
+  await expect(page.locator(".nf-row-link", { hasText: "All alerts" })).toHaveCount(1);
+  await expect(page.locator(".nf-escalation")).toContainText("A critical alert not acknowledged in 30 minutes");
+  await expect(page.locator(".nf-escalation")).toContainText("Owner Sam Ortiz");
+  await page.getByRole("link", { name: "Add rule" }).click();
+  const form = page.getByRole("dialog", { name: "Add a rule" });
+  await expect(form).toBeVisible();
+  await form.getByRole("button", { name: /Which alerts/ }).click();
+  const choices = page.locator(".option-panel [role='option']");
+  await expect(choices).toHaveCount(3);
+  for (const [index, label] of ["All alerts", "An alert opened", "An alert came back"].entries()) await expect(choices.nth(index)).toContainText(label);
+  await choices.filter({ hasText: "An alert opened" }).click();
+  await form.getByRole("button", { name: "Add rule" }).click();
+  await expect(page.locator(".toast", { hasText: "Rule added" })).toHaveCount(1);
+  const bodies = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/subscriptions").map((call) => call.body ?? "");
+  expect(bodies.length).toBe(1);
+  expect(JSON.parse(bodies[0])).toMatchObject({ eventGlob: "alert.opened", minSeverity: "warning" });
+  await expect(form).toBeHidden();
+
+  // (6) An escalation rule can be added and turned off.
+  await page.getByRole("link", { name: "Add escalation" }).click();
+  const escalation = page.getByRole("dialog", { name: "Add an escalation rule" });
+  await expect(escalation).toBeVisible();
+  await escalation.getByRole("radio", { name: "4 h" }).click();
+  await expect(escalation.locator(".bl-help")).toContainText("If a critical alert is not acknowledged in 4 hours, Keel also sends it to Web address hooks.contoso.com.");
+  await escalation.getByRole("button", { name: "Add escalation" }).click();
+  await expect(page.locator(".toast", { hasText: "Escalation rule added" })).toHaveCount(1);
+  expect(await posts()).toContain("/api/escalation-rules");
+  await page.locator(".nf-escalation").getByRole("button", { name: "Turn off" }).click();
+  await expect(page.locator(".toast", { hasText: "Escalation rule turned off" })).toHaveCount(1);
+  expect(await posts()).toContain("/api/escalation-rules/e5c10000-0000-4000-8000-0000000000e1/disable");
+  // (7) Still one amber action at most on the page itself.
+  expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+});
+
+test("Notifications · a viewer sees what was sent and no controls", async ({ page }) => {
+  await open(page, "/notifications/viewer");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("9 alerts were sent recently; 2 failed.");
+  await expect(page.locator(".nf-tile")).toHaveCount(2);
+  await expect(page.locator(".nf-tabs")).toHaveCount(0);
+  await expect(page.locator(".nf-sent")).toHaveCount(9);
+  await expect(page.getByRole("button", { name: "Send test" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Add channel" })).toHaveCount(0);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const tab of ["", "tab=rules", "tab=sent"]) {
+      test(`Notifications · ${width} · ${theme} · ${tab || "channels"}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, `/notifications${tab ? `?${tab}` : ""}`, theme);
+        await expect(page.locator(".sel-row").first()).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>(".nf-page *, .page-header *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".nf-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(new Set(tiles).size).toBe(1);
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .nf-tile, .nf-row-link, .nf-chip")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        if (width === 390) {
+          // The phone tabs are short words; the panel is a full sheet with its actions in view.
+          await expect(page.getByRole("radio", { name: "Channels", exact: true })).toBeVisible();
+          if (!tab) {
+            await page.locator(".nf-row-link").first().click();
+            const sheet = page.getByRole("dialog", { name: "Slack" });
+            await expect(sheet).toBeVisible();
+            await expect(sheet.locator(".btn-primary:visible")).toBeInViewport();
+          }
+        }
+      });
+    }
+  }
+}
 
 test("a queued backup confirms with a toast linking to the job", async ({ page }) => {
   await open(page, "/protect");

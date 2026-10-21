@@ -22,6 +22,7 @@ export const DATA_SURFACES = {
   principalDisableApi: { capability: "users", source: "api/principals/[id]/disable/route.ts" },
   channelsApi: { capability: "configuration", source: "api/channels/route.ts" },
   subscriptionsApi: { capability: "configuration", source: "api/subscriptions/route.ts" },
+  escalationRulesApi: { capability: "configuration", source: "api/escalation-rules/route.ts" },
   deliveriesApi: { capability: "read", source: "api/deliveries/route.ts" },
   notificationsPage: { capability: "read", source: "notifications/page.tsx" },
   integrationsApi: { capability: "read", source: "api/integrations/route.ts" },

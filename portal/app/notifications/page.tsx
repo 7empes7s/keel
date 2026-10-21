@@ -1,53 +1,80 @@
 import { headers } from "next/headers";
 import { connection } from "next/server";
-import { GET as loadDeliveries } from "@/app/api/deliveries/route";
-import { GET as loadChannels } from "@/app/api/channels/route";
-import { GET as loadSubscriptions } from "@/app/api/subscriptions/route";
-import { PageHeader } from "@/components/page-header";
-import { DataUnavailable } from "@/components/data-unavailable";
-import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
-import { Verdict } from "@/components/verdict";
-import { notificationsVerdict } from "@/lib/notifications-view";
-import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import type { Channel, Subscription } from "@/lib/notifications";
 
-const DESCRIPTION = "Where KEEL sends alerts, which alerts go where, and what was sent.";
+import { GET as loadChannels } from "@/app/api/channels/route";
+import { GET as loadDeliveries } from "@/app/api/deliveries/route";
+import { GET as loadEscalationRules } from "@/app/api/escalation-rules/route";
+import { GET as loadPrincipals } from "@/app/api/principals/route";
+import { GET as loadSubscriptions } from "@/app/api/subscriptions/route";
+import { DataUnavailable } from "@/components/data-unavailable";
+import { NotificationsPage as NotificationsBody, type PersonChoice } from "@/components/notifications/notifications-page";
+import { PageHeader } from "@/components/page-header";
+import type { Channel, Delivery, EscalationRule, Subscription } from "@/lib/notifications";
+import { notificationCounts, notificationsStatus } from "@/lib/notifications-view";
+import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+
+const TITLE = "Notifications";
+const DESCRIPTION = "Where Keel sends alerts, who gets which alerts, and what was sent.";
 
 export default async function NotificationsPage() {
   await connection();
   const access = await requireReadAccess(DATA_SURFACES.notificationsPage);
   const canConfiguration = access.capabilities.includes("configuration");
+  const canUsers = access.capabilities.includes("users");
   const requestHeaders = await headers();
-  let history;
+  const requestFor = (path: string) => new Request(`http://localhost${path}`, { headers: requestHeaders });
+  const bodyOf = async (response: Response, path: string) => {
+    if (!response.ok) throw new Error(`${path} unavailable`);
+    return response.json();
+  };
+  const read = async (loader: (request: Request) => Promise<Response>, path: string) => bodyOf(await loader(requestFor(path)), path);
+
+  let history: { deliveries: Delivery[]; generatedAt: string };
   try {
-    const response = await loadDeliveries(new Request("http://localhost/api/deliveries", { headers: requestHeaders }));
-    if (!response.ok) throw new Error("Delivery history unavailable");
-    history = await response.json();
+    history = await bodyOf(await loadDeliveries(requestFor("/api/deliveries?limit=200")), "/api/deliveries");
   } catch {
-    return <><PageHeader section="Settings" title="Notifications" description={DESCRIPTION} /><DataUnavailable surface="Alert history" /></>;
+    return <><PageHeader description={DESCRIPTION} section="Settings" title={TITLE} /><DataUnavailable surface="Alert history" /></>;
   }
+
   let channels: Channel[] = [];
   let subscriptions: Subscription[] = [];
+  let escalationRules: EscalationRule[] = [];
+  let people: PersonChoice[] = [];
   let configurationUnavailable = false;
   if (canConfiguration) {
     try {
-      const responses = await Promise.all([
-        loadChannels(new Request("http://localhost/api/channels", { headers: requestHeaders })),
-        loadSubscriptions(new Request("http://localhost/api/subscriptions", { headers: requestHeaders })),
-      ]);
-      if (responses.some((response) => !response.ok)) throw new Error("Configuration unavailable");
-      channels = (await responses[0].json()).channels;
-      subscriptions = (await responses[1].json()).subscriptions;
-    } catch { configurationUnavailable = true; }
+      // One request at a time: the loaders share the request's database connection.
+      channels = (await read(loadChannels, "/api/channels")).channels;
+      subscriptions = (await read(loadSubscriptions, "/api/subscriptions")).subscriptions;
+      escalationRules = (await read(loadEscalationRules, "/api/escalation-rules")).escalationRules;
+    } catch {
+      configurationUnavailable = true;
+    }
+    if (canUsers) {
+      try {
+        const principals = (await read(loadPrincipals, "/api/principals")).principals as { id: string; display_name: string | null; email: string | null; disabled_at: string | null }[];
+        people = principals.filter((principal) => !principal.disabled_at).map((principal) => ({ id: principal.id, name: principal.display_name, email: principal.email }));
+      } catch {
+        people = [];
+      }
+    }
   }
-  const known = canConfiguration && !configurationUnavailable ? channels : null;
-  const failed = (history.deliveries as { status: string }[]).some((delivery) => delivery.status === "failed");
-  return <>
-    <PageHeader section="Settings" title="Notifications" description={DESCRIPTION} generatedAt={history.generatedAt} />
-    <Verdict text={notificationsVerdict(known, history.deliveries)} tone={failed || (known !== null && !known.some((channel) => channel.enabled)) ? "attention" : "good"} />
-    <div data-layer="explanation">
-      {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : <NotificationConsole canConfiguration={canConfiguration} channels={channels} subscriptions={subscriptions} />}
-      <DeliveryTable channels={known} deliveries={history.deliveries} now={history.generatedAt} />
-    </div>
-  </>;
+
+  const configured = canConfiguration && !configurationUnavailable;
+  const status = configured ? notificationsStatus(notificationCounts({ channels, subscriptions, escalationRules, deliveries: history.deliveries }, history.generatedAt), { channels, subscriptions }) : undefined;
+  return (
+    <>
+      <PageHeader description={DESCRIPTION} generatedAt={history.generatedAt} section="Settings" status={status} title={TITLE} />
+      {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : null}
+      <NotificationsBody
+        canConfiguration={configured}
+        channels={channels}
+        deliveries={history.deliveries}
+        escalationRules={escalationRules}
+        now={history.generatedAt}
+        people={people}
+        subscriptions={subscriptions}
+      />
+    </>
+  );
 }

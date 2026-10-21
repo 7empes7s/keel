@@ -5280,17 +5280,17 @@ item that needs it stays untouched.
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
      line that names one of the types below with an error or a 400/403/404.
   2. ```sql
-     WITH s AS (SELECT id FROM snapshot ORDER BY created_at DESC LIMIT 1)
+     WITH s AS (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
      SELECT t.type, count(rv.resource_type) AS objects
        FROM unnest('{exchangeRoleDefinition,exchangeRoleAssignment,exchangeCustomAppScope,defenderRoleDefinition,defenderRoleAssignment,defenderCustomAppScope,deviceManagementSettings,androidDeviceOwnerEnrollmentProfile,androidForWorkEnrollmentProfile,appleUserInitiatedEnrollmentProfile,androidForWorkSettings,deviceManagementDerivedCredentialSettings,microsoftTunnelConfiguration,microsoftTunnelHealthThreshold,iosLobAppProvisioningConfiguration,mobileAppRelationship,managedEBook,managedEBookCategory,cartToClassAssociation,windowsManagedAppProtection,enterpriseCodeSigningCertificate,symantecCodeSigningCertificate,userExperienceAnalyticsBaseline}'::text[]) AS t(type)
        LEFT JOIN resource_version rv ON rv.resource_type = t.type AND rv.snapshot_id = (SELECT id FROM s)
       GROUP BY t.type ORDER BY t.type;
      ```
-     If the table or column names differ, use the newest snapshot id the same way batch 4's check did and report what you ran.
+     If the table or column names differ, take the snapshot step 1 made and report what you ran.
   3. Secret check: confirm no stored payload of the new kinds holds a secret field:
      ```sql
      SELECT resource_type, count(*) FROM resource_version
-      WHERE snapshot_id = (SELECT id FROM snapshot ORDER BY created_at DESC LIMIT 1)
+      WHERE snapshot_id = (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
         AND resource_type IN ('androidDeviceOwnerEnrollmentProfile','androidForWorkEnrollmentProfile','symantecCodeSigningCertificate')
         AND (payload::text ~* '"(tokenValue|qrCodeContent|qrCodeImage|wifiPassword|password|content)"')
       GROUP BY 1;

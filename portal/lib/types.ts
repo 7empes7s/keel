@@ -488,6 +488,10 @@ export interface DashboardAlert {
   severity: "critical" | "warning" | "notice";
   title: string;
   detail: string;
+  // Which computed problem this is, so the Overview can drop one its verdict already
+  // states, and the list behind it.
+  key?: "no-baseline" | "empty-baseline" | "nothing-backed-up" | "backup-unfinished" | "failed" | "stale" | "uncovered" | "audit";
+  href?: string;
 }
 
 export interface DashboardData {

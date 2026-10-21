@@ -106,9 +106,11 @@ test("the dashboard alert appears only when at least one type is stale", () => {
   const freshAlerts = buildAlerts(dashboardData(0));
 
   assert.deepEqual(staleAlerts, [{
+    key: "stale",
     severity: "warning",
-    title: "1 configuration type is out of date",
-    detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup.",
+    title: "1 kind of setting is out of date",
+    detail: "They were backed up, but not recently enough for how critical they are. Run a backup.",
+    href: "/protect?health=out-of-date",
   }]);
   assert.equal(freshAlerts.some((alert) => alert.title.includes("out of date")), false);
 });

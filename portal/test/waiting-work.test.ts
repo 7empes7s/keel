@@ -100,15 +100,20 @@ test("open alerts, open incidents and open restore follow-up steps are counted; 
   assert.match(html, /id="follow-up"/);
 });
 
-test("the Overview shows a waiting card for each kind of open work, linked to where it is done", () => {
+test("the Overview shows a row for each kind of open work, linked to where it is done, and counts it on the Waiting tile", () => {
   const none = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
-  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore#follow-up"/, "nothing waits, so no cards");
+  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore#follow-up"/, "nothing waits, so no rows");
+  assert.doesNotMatch(none, /Waiting on you/, "a viewer who cannot approve and has nothing waiting sees no Waiting tile");
 
   const waiting = renderToStaticMarkup(createElement(DashboardView, {
     data: { ...DASHBOARD, waiting: { openAlerts: 3, openIncidents: 1, restoreFollowUps: 2 } }, pendingApprovals: null,
   }));
-  assert.match(waiting, /href="\/alerts"[\s\S]*?<strong>3<\/strong>/);
-  assert.match(waiting, /href="\/incidents"[\s\S]*?<strong>1<\/strong>/);
-  assert.match(waiting, /href="\/restore#follow-up"[\s\S]*?<strong>2<\/strong>/);
+  assert.match(waiting, /class="ov-row"[^>]*href="\/alerts"[\s\S]*?<b>3 alerts are not acknowledged<\/b>/);
+  assert.match(waiting, /class="ov-row"[^>]*href="\/incidents"[\s\S]*?<b>1 incident is open<\/b>/);
+  assert.match(waiting, /class="ov-row"[^>]*href="\/restore#follow-up"[\s\S]*?<b>2 restore steps are still open<\/b>/);
+  assert.match(waiting, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile adds them up and opens the first");
+
+  const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));
+  assert.match(approver, /data-tile="waiting"[^>]*href="\/approvals"[\s\S]*?<b class="ov-tile-count">0<\/b>/, "an approver always sees the tile");
   assert.equal(renderToStaticMarkup(createElement(RestoreFollowUps, { followUps: [], now: DASHBOARD.generatedAt })), "");
 });

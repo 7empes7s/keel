@@ -1153,67 +1153,84 @@ export function buildAlerts({
   "activeBaseline" | "lastCollection" | "coverage" | "evidence"
 >): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
+  const kinds = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
   if (!activeBaseline) {
     alerts.push({
+      key: "no-baseline",
       severity: "critical",
-      title: "No baseline is active",
-      detail: "KEEL cannot tell what changed until a baseline is set.",
+      title: "No setup is approved yet",
+      detail: "Keel cannot tell what changed until you approve a setup.",
+      href: "/baselines/new",
     });
   } else if (activeBaseline.resourceCount === 0) {
     alerts.push({
+      key: "empty-baseline",
       severity: "critical",
-      title: "The active baseline is empty",
-      detail: "It holds no resources, so it cannot describe how the tenant should look.",
+      title: "The approved setup is empty",
+      detail: "It holds no settings, so it cannot describe how the tenant should look.",
+      href: "/baselines",
     });
   }
 
   if (!lastCollection) {
     alerts.push({
+      key: "nothing-backed-up",
       severity: "critical",
       title: "Nothing has been backed up",
-      detail: "KEEL holds no snapshot of this tenant, so there is nothing to restore from.",
+      detail: "Keel holds no backup of this tenant, so there is nothing to restore from.",
+      href: "/protect",
     });
   } else if (lastCollection.status !== "complete") {
     alerts.push({
+      key: "backup-unfinished",
       severity: "warning",
       title: lastCollection.status === "running" ? "The latest backup is still running" : "The latest backup did not finish",
       detail: lastCollection.completedAt
-        ? "Its snapshot did not complete successfully."
-        : "Its snapshot has no finish time yet.",
+        ? "It did not complete successfully."
+        : "It has no finish time yet.",
+      href: "/activity?what=backup",
     });
   }
 
   if (coverage.failed > 0) {
     alerts.push({
+      key: "failed",
       severity: "critical",
-      title: `${coverage.failed} configuration ${coverage.failed === 1 ? "type" : "types"} failed ${coverage.failed === 1 ? "its" : "their"} last backup`,
-      detail: "KEEL does not count a failed read as backed up. Retry the backup or check permissions.",
+      title: `${kinds(coverage.failed, "kind of setting", "kinds of settings")} failed ${coverage.failed === 1 ? "its" : "their"} last backup`,
+      detail: "Keel does not count a failed read as backed up. Retry the backup or check permissions.",
+      href: "/protect?health=failed",
     });
   }
 
   if (coverage.stale > 0) {
     alerts.push({
+      key: "stale",
       severity: "warning",
-      title: `${coverage.stale} configuration ${coverage.stale === 1 ? "type is" : "types are"} out of date`,
-      detail: "They were backed up successfully, but not recently enough for how critical they are. Run a backup.",
+      title: `${kinds(coverage.stale, "kind of setting is", "kinds of settings are")} out of date`,
+      detail: "They were backed up, but not recently enough for how critical they are. Run a backup.",
+      href: "/protect?health=out-of-date",
     });
   }
 
   const uncovered = coverage.notCovered + coverage.neverCollected;
   if (uncovered > 0) {
     alerts.push({
+      key: "uncovered",
       severity: "warning",
-      title: `${uncovered} configuration ${uncovered === 1 ? "type is" : "types are"} not backed up`,
-      detail: "KEEL knows these configuration types but has no successful backup of them.",
+      title: `${kinds(uncovered, "kind of setting is", "kinds of settings are")} not backed up`,
+      detail: "Keel knows these kinds of settings but has no backup of them.",
+      href: "/protect",
     });
   }
 
   if (!evidence.ok) {
     alerts.push({
+      key: "audit",
       severity: "critical",
       title: "The audit record failed its integrity check",
       detail: "Who-did-what records cannot be trusted until this is investigated.",
+      href: "/activity?show=records",
     });
   }
 

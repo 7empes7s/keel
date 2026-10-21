@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { overviewVerdict } from "@/components/dashboard/status-hero";
+import { overviewVerdict } from "@/lib/overview-view";
 import type { ProtectionHeadline } from "@/lib/types";
 import { DRIFT_TREND_DAYS, fillDriftTrend } from "@/lib/portal-data";
 

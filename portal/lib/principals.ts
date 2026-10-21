@@ -1,5 +1,5 @@
 import { listPrincipals } from "../../engine/authz/principals.mjs";
-import { grantRole, revokeRole, disablePrincipal, SelfLockoutError, PrincipalNotFoundError, InvalidRoleGrantError } from "../../engine/authz/administration.mjs";
+import { grantRole, revokeRole, disablePrincipal, enablePrincipal, createPrincipal, SelfLockoutError, PrincipalNotFoundError, InvalidRoleGrantError, PrincipalExistsError } from "../../engine/authz/administration.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import type { DataSurface } from "@/lib/read";
 
@@ -7,7 +7,7 @@ const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export interface PrincipalView {
   id: string; email: string; display_name?: string | null; system_kind?: string | null; disabled_at: string | null; capabilities: string[];
-  role_grants: { id: string; role: string; active_from: string; active_until: string | null; granted_by?: string | null; scope?: string }[];
+  role_grants: { id: string; role: string; active_from: string; active_until: string | null; granted_by?: string | null; scope?: string; reason?: string | null }[];
   // Task 90: capabilities held only through entity-scoped grants, by entity code.
   entity_capabilities?: Record<string, string[]>;
 }
@@ -18,7 +18,27 @@ export function guardedPrincipalList(deps: GuardDeps = {}) {
   }, deps);
 }
 
-export function guardedPrincipalWrite(operation: "grant" | "revoke" | "disable", surface: DataSurface, deps: GuardDeps = {}) {
+const optionalText = (value: unknown) => value == null || typeof value === "string";
+
+// People page: add a person with a first role. Needs `users` (add people) and `roles`
+// (grant the first role). Answers the new person as the list shows them.
+export function guardedPrincipalCreate(deps: GuardDeps = {}) {
+  return guarded({ action: "principals:create", capability: "users", alsoRequires: ["roles"], recordAttempt: true }, async ({ client, principalId: actor, request }) => {
+    const body = await readActionParams(request);
+    if (typeof body.email !== "string" || typeof body.role !== "string" || !optionalText(body.displayName) || !optionalText(body.activeUntil) || !optionalText(body.reason)) throw new InvalidActionRequest();
+    try {
+      const { principal } = await createPrincipal(client, { email: body.email, displayName: (body.displayName as string | null | undefined) ?? null, role: body.role, grantedBy: actor, activeUntil: (body.activeUntil as string | null | undefined) || null, reason: (body.reason as string | null | undefined) ?? null });
+      const view = (await listPrincipals(client)).find((entry: PrincipalView) => entry.id === principal.id);
+      return Response.json({ principal: view }, { status: 201, headers: NO_STORE });
+    } catch (error) {
+      if (error instanceof PrincipalExistsError) return Response.json({ error: "exists" }, { status: 409, headers: NO_STORE });
+      if (error instanceof InvalidRoleGrantError) return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+      throw error;
+    }
+  }, deps);
+}
+
+export function guardedPrincipalWrite(operation: "grant" | "revoke" | "disable" | "enable", surface: DataSurface, deps: GuardDeps = {}) {
   return guarded({ action: `principals:${operation}`, capability: surface.capability, recordAttempt: true }, async ({ client, principalId: actor, request }) => {
     const principalId = new URL(request.url).pathname.split("/").at(-2) ?? "";
     if (!UUID.test(principalId)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
@@ -26,17 +46,20 @@ export function guardedPrincipalWrite(operation: "grant" | "revoke" | "disable",
     if (operation === "grant" && (typeof body.role !== "string"
       || (body.activeFrom != null && typeof body.activeFrom !== "string")
       || (body.activeUntil != null && typeof body.activeUntil !== "string")
-      || (body.entityCode != null && typeof body.entityCode !== "string"))) throw new InvalidActionRequest();
+      || (body.entityCode != null && typeof body.entityCode !== "string")
+      || !optionalText(body.reason))) throw new InvalidActionRequest();
     if (operation === "revoke" && (typeof body.grantId !== "string" || !UUID.test(body.grantId))) throw new InvalidActionRequest();
     try {
       const result = operation === "grant"
-        ? await grantRole(client, { principalId, role: body.role as string, grantedBy: actor, activeFrom: body.activeFrom as string | null | undefined, activeUntil: body.activeUntil as string | null | undefined, entityCode: (body.entityCode as string | null | undefined) ?? null })
+        ? await grantRole(client, { principalId, role: body.role as string, grantedBy: actor, activeFrom: body.activeFrom as string | null | undefined, activeUntil: body.activeUntil as string | null | undefined, entityCode: (body.entityCode as string | null | undefined) ?? null, reason: (body.reason as string | null | undefined) ?? null })
         : operation === "revoke" ? await revokeRole(client, { principalId, grantId: body.grantId, revokedBy: actor })
+        : operation === "enable" ? await enablePrincipal(client, principalId)
         : await disablePrincipal(client, principalId);
       return Response.json({ result }, { status: operation === "grant" ? 201 : 200, headers: NO_STORE });
     } catch (error) {
       const status = error instanceof SelfLockoutError ? 403 : error instanceof PrincipalNotFoundError ? 404 : error instanceof InvalidRoleGrantError ? 400 : null;
-      if (status) return Response.json({ error: status === 403 ? "forbidden" : status === 404 ? "not_found" : "invalid_request" }, { status, headers: NO_STORE });
+      // A refused lockout says so, so the page can tell it from a missing permission.
+      if (status) return Response.json({ error: status === 403 ? "last_admin" : status === 404 ? "not_found" : "invalid_request" }, { status, headers: NO_STORE });
       throw error;
     }
   }, deps);

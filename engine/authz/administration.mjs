@@ -3,11 +3,14 @@ import { CENTRAL_SCOPE, ROLE_CAPABILITIES, entityGrantScope } from './permission
 export class SelfLockoutError extends Error {}
 export class PrincipalNotFoundError extends Error {}
 export class InvalidRoleGrantError extends Error {}
+export class PrincipalExistsError extends Error {}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** @param {any} client
- * @param {{ principalId: string, role: string, grantedBy: string, activeFrom?: string | null, activeUntil?: string | null, entityCode?: string | null }} options
+ * @param {{ principalId: string, role: string, grantedBy: string, activeFrom?: string | null, activeUntil?: string | null, entityCode?: string | null, reason?: string | null }} options
  */
-export async function grantRole(client, { principalId, role, grantedBy, activeFrom = null, activeUntil = null, entityCode = null }) {
+export async function grantRole(client, { principalId, role, grantedBy, activeFrom = null, activeUntil = null, entityCode = null, reason = null }) {
   if (!Object.hasOwn(ROLE_CAPABILITIES, role)) throw new InvalidRoleGrantError('unknown role');
   // Task 90: an entity-scoped grant confines the role to that entity's resources.
   // Administration is tenant-wide by nature, so it is never entity-scoped.
@@ -25,9 +28,9 @@ export async function grantRole(client, { principalId, role, grantedBy, activeFr
   // above. Postgres now() carries microseconds, so a grant checked by resolvePrincipal
   // (which passes a JS Date) in the same millisecond could read as not yet active.
   const { rows } = await client.query(
-    `INSERT INTO role_grant (principal_id, role, granted_by, active_from, active_until, scope)
-     SELECT id, $2, $3, $4::timestamptz, $5, $6 FROM principal WHERE id = $1 RETURNING *`,
-    [principalId, role, grantedBy, from.toISOString(), activeUntil, scope],
+    `INSERT INTO role_grant (principal_id, role, granted_by, active_from, active_until, scope, reason)
+     SELECT id, $2, $3, $4::timestamptz, $5, $6, $7 FROM principal WHERE id = $1 RETURNING *`,
+    [principalId, role, grantedBy, from.toISOString(), activeUntil, scope, typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 500) : null],
   );
   if (!rows[0]) throw new PrincipalNotFoundError('principal not found');
   return rows[0];
@@ -90,4 +93,38 @@ export async function disablePrincipal(client, principalId) {
     await client.query('ROLLBACK');
     throw error;
   }
+}
+
+// Add a person with a first role in one step (People page). The email is the sign-in
+// identity, unique whatever its case; adding one that exists is refused, never merged.
+/** @param {any} client
+ * @param {{ email: string, displayName?: string | null, role: string, grantedBy: string, activeUntil?: string | null, reason?: string | null }} options
+ */
+export async function createPrincipal(client, { email, displayName = null, role, grantedBy, activeUntil = null, reason = null }) {
+  const address = typeof email === 'string' ? email.trim() : '';
+  if (!EMAIL.test(address) || address.length > 320) throw new InvalidRoleGrantError('invalid email');
+  if (!Object.hasOwn(ROLE_CAPABILITIES, role)) throw new InvalidRoleGrantError('unknown role');
+  const name = typeof displayName === 'string' && displayName.trim() ? displayName.trim().slice(0, 200) : null;
+  await client.query('BEGIN');
+  try {
+    const existing = await client.query('SELECT id FROM principal WHERE lower(email) = lower($1)', [address]);
+    if (existing.rows.length) throw new PrincipalExistsError('a person with this email already exists');
+    const { rows: [principal] } = await client.query(
+      'INSERT INTO principal (email, display_name) VALUES ($1, $2) RETURNING *', [address, name],
+    );
+    const grant = await grantRole(client, { principalId: principal.id, role, grantedBy, activeUntil, reason });
+    await client.query('COMMIT');
+    return { principal, grant };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+// Let a disabled person use Keel again. Their grants were kept, so the roles still in
+// their window apply again at once.
+export async function enablePrincipal(client, principalId) {
+  const { rows } = await client.query('UPDATE principal SET disabled_at = NULL WHERE id = $1 RETURNING *', [principalId]);
+  if (!rows[0]) throw new PrincipalNotFoundError('principal not found');
+  return rows[0];
 }

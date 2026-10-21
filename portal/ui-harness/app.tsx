@@ -30,7 +30,7 @@ import { quickComparisons, setupStatus, setupVerdict as approvedVerdict, typeSer
 import { toDay } from "@/lib/date-range";
 import { Verdict } from "@/components/verdict";
 import { Icon } from "@/components/shell/icons";
-import { PrincipalDetails } from "@/components/principal-details";
+import { PeoplePage } from "@/components/people/people-page";
 import { PoliciesPage } from "@/components/policies/policies-page";
 import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -55,6 +55,8 @@ import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
+import { peopleCounts, peopleStatus } from "@/lib/people-view";
+import type { PrincipalView } from "@/lib/principals";
 import { SetupProgress } from "@/components/setup-progress";
 import { setupVerdict, type SetupState } from "@/lib/setup-view";
 import { AlertInbox } from "@/components/alert-inbox";
@@ -119,6 +121,21 @@ const HARNESS_PEOPLE = [
   { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users", "remediate"], role_grants: [] },
   { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["read", "approve"], role_grants: [] },
 ];
+// People page: an admin who is also an approver (the only admin), an approver, an
+// operator with a restorer role starting later, a viewer who is an operator for one part
+// of the company, someone whose only role starts later, a disabled former contractor and
+// Keel's scheduler.
+const grant = (id: string, role: string, from: string, until: string | null = null, scope = "*", by: string | null = "8c1e0000-0000-4000-8000-0000000000a1", reason: string | null = null) => ({ id: `6a000000-0000-4000-8000-0000000000${id}`, role, active_from: from, active_until: until, granted_by: by, scope, reason });
+const PEOPLE_PAGE: PrincipalView[] = [
+  { id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane Defili", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration", "automation"], role_grants: [grant("01", "admin", "2026-09-01T00:00:00Z", null, "*", null), grant("02", "approver", "2026-09-01T00:00:00Z", null, "*", null)] },
+  { id: "8c1e0000-0000-4000-8000-0000000000a2", email: "amara.okafor@contoso.example", display_name: "Amara Okafor", disabled_at: null, capabilities: ["approve"], role_grants: [grant("03", "approver", "2026-09-03T00:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b3", email: "sam.ortiz@contoso.example", display_name: "Sam Ortiz", disabled_at: null, capabilities: ["collect", "backup", "baseline-create", "dispose-accept", "discover", "content-backup", "export"], role_grants: [grant("04", "operator", "2026-09-10T00:00:00Z"), grant("05", "restorer", "2026-10-06T00:00:00Z", "2026-10-20T23:59:59Z", "*", "8c1e0000-0000-4000-8000-0000000000a1", "Covers restores while Lee is away")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b4", email: "lee.chen@contoso.example", display_name: "Lee Chen", disabled_at: null, capabilities: ["read"], entity_capabilities: { CONTOSO_FR: ["collect", "backup", "baseline-create", "dispose-accept", "discover", "content-backup", "export"] }, role_grants: [grant("06", "viewer", "2026-09-12T00:00:00Z"), grant("07", "operator", "2026-09-12T00:00:00Z", null, "entity:CONTOSO_FR")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000b5", email: "priya.nair@contoso.example", display_name: null, disabled_at: null, capabilities: [], role_grants: [grant("08", "viewer", "2026-10-05T00:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [grant("09", "operator", "2026-06-01T00:00:00Z", "2026-09-20T10:00:00Z")] },
+  { id: "8c1e0000-0000-4000-8000-0000000000d1", email: "scheduler@keel.internal", display_name: "KEEL scheduler", system_kind: "scheduler", disabled_at: null, capabilities: ["collect", "configuration"], role_grants: [] },
+];
+const NEW_PERSON = (body: { email: string; displayName?: string | null; role: string }): PrincipalView => ({ id: "8c1e0000-0000-4000-8000-0000000000e9", email: body.email, display_name: body.displayName ?? null, disabled_at: null, capabilities: body.role === "viewer" ? ["read"] : [], role_grants: [grant("99", body.role, "2026-10-02T09:40:00Z")] });
 // The newest delivery on the Teams channel failed, so Settings says a channel is failing.
 const HARNESS_DELIVERIES = [
   { id: "d-1", channel_id: "c-teams", channel_kind: "teams", status: "failed", event: { kind: "drift.detected", severity: "high" }, attempts: 5, last_error: "403", next_attempt_at: null },
@@ -138,6 +155,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   // screenshot shows them.
   if (url.endsWith("/api/dashboard")) return json(dashboard(0));
   // Settings' menu badge and the search's people and kinds of settings.
+  // People: adding someone answers the new person; every change to a person succeeds.
+  if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
+  if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);
   if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
@@ -1655,11 +1675,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/benchmarks": { const verdict = complianceVerdict(COMPLIANCE); return <>{header("Baselines", "Compliance", "How the tenant measures against the controls KEEL checks, what each finding rests on, and where backups are kept.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><ComplianceReport data={COMPLIANCE} now={now} /></div></>; }
-    case "/principals": return <>{header("Settings", "People", "Who can use KEEL, their roles and what each can do. Principals include people and system accounts.")}
-      <Verdict text="1 person can use KEEL; 1 can approve." />
-      <div className="item-list" data-layer="explanation">
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000a1", email: "marouanedefili@gmail.com", display_name: "Marouane", disabled_at: null, capabilities: ["read", "approve", "users", "roles", "policies", "configuration"], role_grants: [{ id: "6a000000-0000-4000-8000-000000000001", role: "admin", active_from: "2026-09-01T00:00:00Z", active_until: null }, { id: "6a000000-0000-4000-8000-000000000002", role: "approver", active_from: "2026-09-01T00:00:00Z", active_until: null }] }} />
-      <PrincipalDetails canRoles canUsers now={now} principal={{ id: "8c1e0000-0000-4000-8000-0000000000c3", email: "former.contractor@contoso.com", disabled_at: "2026-09-20T10:00:00Z", capabilities: [], role_grants: [{ id: "6a000000-0000-4000-8000-000000000003", role: "operator", active_from: "2026-06-01T00:00:00Z", active_until: "2026-09-20T10:00:00Z" }] }} /></div></>;
+    case "/principals": case "/principals/viewer": {
+      // A viewer here holds users but not roles: they see everyone and can disable, not grant.
+      const rolesToo = path === "/principals";
+      return <>
+        <PageHeader actions={rolesToo ? <a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a> : undefined} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
+      </>;
+    }
     case "/alerts": { const verdict = alertsVerdict(INBOX_ALERTS, now); return <>{header("Inbox", "Alerts", "Changes that need someone: who owns each one, when it must be acknowledged, and what happened so far.")}
       <Verdict text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><AlertInbox alerts={INBOX_ALERTS} canRespond now={now} /></div></>; }

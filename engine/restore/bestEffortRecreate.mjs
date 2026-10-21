@@ -160,6 +160,24 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   windowsQualityUpdatePolicy: at(INTUNE, 'Devices', 'Windows updates', 'Quality updates'),
   operationApprovalPolicy: at(INTUNE, 'Tenant administration', 'Multi Admin Approval', 'Access policies'),
   deviceCustomAttributeShellScript: at(INTUNE, 'Devices', 'macOS', 'Custom attributes'),
+  // Remaining kinds, batch 6: Intune leftovers.
+  deviceManagementSettings: at(INTUNE, 'Endpoint security', 'Device compliance', 'Compliance settings'),
+  androidDeviceOwnerEnrollmentProfile: at(INTUNE, 'Devices', 'Enrollment', 'Android', 'Corporate-owned devices'),
+  androidForWorkEnrollmentProfile: at(INTUNE, 'Devices', 'Enrollment', 'Android'),
+  appleUserInitiatedEnrollmentProfile: at(INTUNE, 'Devices', 'Enrollment', 'Apple', 'Enrollment types'),
+  androidForWorkSettings: at(INTUNE, 'Devices', 'Enrollment', 'Android'),
+  deviceManagementDerivedCredentialSettings: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Derived credentials'),
+  microsoftTunnelConfiguration: at(INTUNE, 'Tenant administration', 'Microsoft Tunnel Gateway', 'Server configurations'),
+  microsoftTunnelHealthThreshold: at(INTUNE, 'Tenant administration', 'Microsoft Tunnel Gateway', 'Health status'),
+  iosLobAppProvisioningConfiguration: at(INTUNE, 'Apps', 'iOS/iPadOS', 'App provisioning profiles'),
+  mobileAppRelationship: at(INTUNE, 'Apps', 'All apps', '<app>', 'Properties', 'Dependencies'),
+  managedEBook: at(INTUNE, 'Apps', 'eBooks'),
+  managedEBookCategory: at(INTUNE, 'Apps', 'eBooks', 'eBook categories'),
+  cartToClassAssociation: 'Intune for Education: Groups > <class> > Device carts (no Intune admin center page)',
+  windowsManagedAppProtection: at(INTUNE, 'Apps', 'App protection policies'),
+  enterpriseCodeSigningCertificate: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Windows enterprise certificate'),
+  symantecCodeSigningCertificate: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Windows Symantec certificate'),
+  userExperienceAnalyticsBaseline: at(INTUNE, 'Reports', 'Endpoint analytics', 'Settings', 'Baselines'),
 });
 
 export function adminCenterPathFor(resourceType) {

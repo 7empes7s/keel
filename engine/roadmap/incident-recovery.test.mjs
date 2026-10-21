@@ -289,6 +289,38 @@ test('cross-tenant: another tenant cannot assess, pin or qualify this tenant\'s 
   await assert.rejects(listIncidentRecoveryPoints(client, { tenantRef: tenantB, incidentId: incidentA.id }), /incident not found/);
 });
 
+test('service settings and content backups are placed against the attack window, never assessed', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = freshTenant();
+  const other = freshTenant();
+  const investigator = await principal(client, 'investigator');
+  const incident = await openIncident(client, { tenantRef, title: 'Mail rule abuse', actorId: investigator.id });
+  await recordCompromiseInterval(client, { tenantRef, incidentId: incident.id, startsAt: daysAgo(2), reason: 'first malicious rule', actorId: investigator.id });
+  const settingsRun = (tenant, outcome, from, to) => client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at) VALUES ($1, 'exchange-mail-flow', $2, $3, $4, $4)`,
+    [tenant, outcome, from, to],
+  );
+  await settingsRun(tenantRef, 'complete', daysAgo(3.1), daysAgo(3));
+  await settingsRun(tenantRef, 'complete', daysAgo(1.1), daysAgo(1));
+  await settingsRun(tenantRef, 'failed', daysAgo(0.6), daysAgo(0.5));
+  await settingsRun(other, 'complete', daysAgo(5.1), daysAgo(5));
+  await client.query(
+    `INSERT INTO content_run (tenant_ref, workload, outcome, started_at, completed_at) VALUES ($1, 'exchange-mail', 'succeeded', $2, $3)`,
+    [tenantRef, daysAgo(1.2), daysAgo(1.1)],
+  );
+
+  const listing = await listIncidentRecoveryPoints(client, { tenantRef, incidentId: incident.id });
+  assert.deepEqual(listing.serviceBackups.map((entry) => [entry.kind, entry.workload]), [['content', 'exchange-mail'], ['service-settings', 'exchange-mail-flow']]);
+  const mailFlow = listing.serviceBackups[1];
+  assert.equal(mailFlow.assessed, false);
+  assert.equal(mailFlow.newestGood.inCompromiseWindow, true, 'a failed newer run is not the newest good backup');
+  assert.equal(mailFlow.beforeWindow.inCompromiseWindow, false);
+  assert.ok(new Date(mailFlow.beforeWindow.at) < new Date(daysAgo(2)), 'the copy before the window is taken before the attack started');
+  const mail = listing.serviceBackups[0];
+  assert.equal(mail.newestGood.inCompromiseWindow, true);
+  assert.equal(mail.beforeWindow, null, 'no content backup before the window opened');
+});
+
 // ------------------------------------------------------ full restore path (CLI)
 
 const configs = new Map([

@@ -510,3 +510,65 @@ test('portal: the Ask page and API answer a Sales reader with Sales records only
   `, { KEEL_TENANT_CONFIG_PATH: tenantConfig });
   assert.equal(await count(client, 'drift'), drifts);
 });
+
+test('a coverage question counts service settings and content backups for a reader of the whole tenant', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenantRefFor('task-99-every-service');
+  await collection(client, tenantRef, new Date(Date.now() - HOUR));
+  const { rows: [run] } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to)
+     VALUES ($1, 'exchange-mail-flow', 'complete', now() - interval '3 hours', now() - interval '2 hours') RETURNING id`,
+    [tenantRef],
+  );
+  await client.query("INSERT INTO workload_observation (collection_id, resource_key) VALUES ($1, 'KEEL-RT-rule-1'), ($1, 'KEEL-RT-rule-2')", [run.id]);
+  await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to)
+     VALUES ($1, 'power-platform-settings', 'disabled', now() - interval '3 hours', now() - interval '3 hours')`,
+    [tenantRef],
+  );
+  await client.query(
+    `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, started_at, completed_at)
+     VALUES ($1, 'exchange-mail', 'succeeded', 1, 10, now() - interval '4 hours', now() - interval '4 hours' + interval '1 minute')`,
+    [tenantRef],
+  );
+  await client.query(
+    `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id)
+     VALUES ($1, 'exchange-mail', 'mailbox:KEEL-RT-a', 'm1', 'v1', $2, 10, '[]'::jsonb, 'k1')`,
+    [tenantRef, 'c'.repeat(64)],
+  );
+
+  const central = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What is covered in the latest backup?' });
+  assert.equal(central.status, 'answered');
+  const byId = new Map(central.records.map((record) => [record.id, record]));
+  const mailFlow = byId.get('workload/exchange-mail-flow');
+  assert.equal(mailFlow.backup, 'service-settings');
+  assert.equal(mailFlow.service, 'Exchange');
+  assert.equal(mailFlow.outcome, 'complete');
+  assert.equal(mailFlow.count, 2);
+  assert.equal(byId.get('workload/power-platform-settings').outcome, 'disabled');
+  assert.equal(byId.get('workload/power-platform-settings').count, null, 'a workload never read has no count');
+  const mail = byId.get('content/exchange-mail');
+  assert.equal(mail.backup, 'content');
+  assert.equal(mail.outcome, 'succeeded');
+  assert.equal(mail.count, 1);
+  assert.ok(central.records.some((record) => record.backup === 'settings'));
+  assert.equal(central.total, central.records.length);
+  assert.ok(central.known.from <= mail.window.to, 'the answer covers the content run too');
+
+  // Service backups have no owner, so an entity-scoped reader and a typed question leave them out.
+  const scoped = await answerQuestion(client, { tenantRef, scope: SALES_SCOPE, question: 'What is covered in the latest backup?' });
+  assert.ok(scoped.records.every((record) => record.backup === 'settings'));
+  const typed = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'How many groups are covered?' });
+  assert.deepEqual(typed.records.map((record) => record.resourceType), ['group']);
+
+  // With no settings snapshot, the service backups still answer.
+  const servicesOnly = tenantRefFor('task-99-services-only');
+  await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to)
+     VALUES ($1, 'teams-org-policies', 'complete', now() - interval '3 hours', now() - interval '2 hours')`,
+    [servicesOnly],
+  );
+  const only = await answerQuestion(client, { tenantRef: servicesOnly, scope: CENTRAL, question: 'What is covered?' });
+  assert.equal(only.status, 'answered');
+  assert.deepEqual(only.records.map((record) => record.id), ['workload/teams-org-policies']);
+});

@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
+import { loadGoodServiceRuns } from '../coverage/serviceBackups.mjs';
 
 export const INCIDENT_EVIDENCE_KIND = 'incident-recovery';
 export const INCIDENT_CHECK_EVIDENCE_KIND = 'incident-recovery-check';
@@ -385,7 +386,39 @@ export async function listIncidentRecoveryPoints(client, { tenantRef, incidentId
     intervals: intervals.map(normalizeInterval),
     pins,
     ...ranked,
+    serviceBackups: serviceBackupsForIncident(await loadGoodServiceRuns(client, { tenantRef }), intervals.map(normalizeInterval)),
   };
+}
+
+/**
+ * Service settings and content backups placed against the attack window, one entry
+ * per workload: its newest good run (and whether it overlaps the window) and its newest
+ * good run that ended before the window opened, the likeliest clean copy. These are
+ * not assessed by an investigator: the clean or compromised check covers the Entra ID
+ * and Intune snapshots only, so each entry says it must be checked by hand. Pure.
+ */
+export function serviceBackupsForIncident(runs, intervals) {
+  const opens = intervals.map((interval) => new Date(interval.startsAt).getTime()).filter(Number.isFinite);
+  const windowOpens = opens.length ? Math.min(...opens) : null;
+  const byWorkload = new Map();
+  for (const run of runs) {
+    const key = `${run.kind}|${run.workload}`;
+    if (!byWorkload.has(key)) byWorkload.set(key, []);
+    byWorkload.get(key).push(run);
+  }
+  return [...byWorkload.values()].map((list) => {
+    const ordered = [...list].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const newest = ordered[0];
+    const before = windowOpens === null ? newest : ordered.find((run) => new Date(run.at).getTime() < windowOpens) ?? null;
+    const place = (run) => (run ? { id: run.id, from: run.from, at: run.at, inCompromiseWindow: inCompromiseWindow({ startedAt: run.from, completedAt: run.at }, intervals) } : null);
+    return {
+      kind: newest.kind,
+      workload: newest.workload,
+      newestGood: place(newest),
+      beforeWindow: place(before),
+      assessed: false,
+    };
+  }).sort((a, b) => a.kind.localeCompare(b.kind) || a.workload.localeCompare(b.workload));
 }
 
 export async function listIncidents(client, { tenantRef }) {

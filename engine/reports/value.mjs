@@ -31,6 +31,11 @@
  *    freshness, straight from loadRecoveryMetrics. Nothing configured stands in for a
  *    measurement.
  *
+ * 4. Backups in the period, for every service: complete Entra ID and Intune settings
+ *    backups, good service settings runs (Exchange, SharePoint, OneDrive, Teams, Purview,
+ *    Power Platform) and good content runs, with the content items newly stored. A
+ *    workload counts as backed up in the period only when one of its runs in it was good.
+ *
  * Hours saved appear ONLY when an operator configured an estimate (minutes per verified
  * outcome, with written assumptions). They multiply verified outcomes only, never
  * attempts. Without a valid estimate the report carries no hours at all.
@@ -627,6 +632,62 @@ async function visibleOutcomes(client, { tenantRef, scope, restore, change, at }
   return visible;
 }
 
+/**
+ * What KEEL backed up in the period, per backup family. Counts runs that finished in
+ * [from, to) and were good; a workload switched off (only `disabled` runs) is not
+ * counted as expected. Tenant-wide, like findings and recovery.
+ */
+export async function loadBackupSection(client, { tenantRef, from, to }) {
+  const { rows: [settings] } = await client.query(
+    `SELECT count(*)::int AS backups, max(completed_at) AS last_at FROM snapshot
+      WHERE tenant_ref = $1 AND status = 'complete' AND completed_at >= $2 AND completed_at < $3`,
+    [tenantRef, from, to],
+  );
+  const { rows: [tables] } = await client.query(
+    `SELECT to_regclass('workload_collection') IS NOT NULL AS workload, to_regclass('content_run') IS NOT NULL AS content_run,
+            to_regclass('content_item') IS NOT NULL AS content_item`,
+  );
+  let service = { runs: 0, workloads: 0, expected: 0, lastAt: null };
+  if (tables?.workload) {
+    const { rows: [row] } = await client.query(
+      `SELECT count(*) FILTER (WHERE good)::int AS runs, count(DISTINCT workload) FILTER (WHERE good)::int AS workloads,
+              max(observed_to) FILTER (WHERE good) AS last_at,
+              (SELECT count(DISTINCT workload)::int FROM workload_collection
+                WHERE tenant_ref = $1 AND outcome <> 'disabled' AND created_at < $3) AS expected
+         FROM (SELECT workload, observed_to, outcome IN ('complete','complete-empty') AS good FROM workload_collection
+                WHERE tenant_ref = $1 AND observed_to >= $2 AND observed_to < $3) runs`,
+      [tenantRef, from, to],
+    );
+    service = { runs: row.runs, workloads: row.workloads, expected: row.expected, lastAt: iso(row.last_at) };
+  }
+  let content = { runs: 0, workloads: 0, expected: 0, lastAt: null, itemsStored: 0, bytesStored: 0 };
+  if (tables?.content_run) {
+    const { rows: [row] } = await client.query(
+      `SELECT count(*) FILTER (WHERE outcome = 'succeeded')::int AS runs,
+              count(DISTINCT workload) FILTER (WHERE outcome = 'succeeded')::int AS workloads,
+              max(completed_at) FILTER (WHERE outcome = 'succeeded') AS last_at,
+              (SELECT count(DISTINCT workload)::int FROM content_run WHERE tenant_ref = $1 AND completed_at < $3) AS expected
+         FROM content_run WHERE tenant_ref = $1 AND completed_at >= $2 AND completed_at < $3`,
+      [tenantRef, from, to],
+    );
+    content = { ...content, runs: row.runs, workloads: row.workloads, expected: row.expected, lastAt: iso(row.last_at) };
+  }
+  if (tables?.content_item) {
+    const { rows: [row] } = await client.query(
+      `SELECT count(*)::int AS items, COALESCE(sum(new_bytes), 0)::bigint AS bytes FROM content_item
+        WHERE tenant_ref = $1 AND created_at >= $2 AND created_at < $3`,
+      [tenantRef, from, to],
+    );
+    content = { ...content, itemsStored: row.items, bytesStored: Number(row.bytes) };
+  }
+  return {
+    withheld: false,
+    settings: { backups: settings.backups, lastAt: iso(settings.last_at) },
+    serviceSettings: service,
+    content,
+  };
+}
+
 function recoverySection(metrics, { from, to }) {
   const attempts = (metrics.recoveryTime?.attempts ?? []).filter((attempt) => within(attempt.at, from, to));
   const samples = attempts.filter((attempt) => attempt.counts).map((attempt) => attempt.elapsedMs).sort((a, b) => a - b);
@@ -717,6 +778,7 @@ export async function loadValueReport(client, {
 
   let findings = { withheld: true };
   let recovery = { withheld: true };
+  let backups = { withheld: true };
   let findingsBounded = false;
   let evaluationsRead = 0;
   if (reader.central) {
@@ -729,6 +791,7 @@ export async function loadValueReport(client, {
     findings = { withheld: false, ...summarizeFindings(inPeriod), rows: table.rows, rowsShown: table.shown };
     const metrics = await loadRecoveryMetrics(client, { tenantRef, requiredTypes, now: period.to });
     recovery = recoverySection(metrics, period);
+    backups = await loadBackupSection(client, { tenantRef, from: period.from, to: period.to });
   }
 
   const verified = {
@@ -754,6 +817,7 @@ export async function loadValueReport(client, {
     outcomes: { ...summary, byFamily, rows: table.rows, rowsShown: table.shown, undoRunsExcluded: reader.central ? restore.undoPlans : null },
     findings,
     recovery,
+    backups,
     estimate: configured.state === 'configured'
       ? { state: 'configured', source: configured.source }
       : { state: configured.state, source: configured.source, problems: configured.problems ?? [] },
@@ -808,6 +872,15 @@ export function valueReportCsv(report) {
     meta.push(['findings_total', report.findings.total]);
     for (const state of FINDING_STATES) meta.push([`findings_${state}`, report.findings.states[state]]);
     meta.push(['findings_reopened', report.findings.reopened]);
+  }
+  if (report.backups && !report.backups.withheld) {
+    meta.push(['settings_backups', report.backups.settings.backups]);
+    meta.push(['service_settings_runs', report.backups.serviceSettings.runs]);
+    meta.push(['service_settings_workloads', `${report.backups.serviceSettings.workloads} of ${report.backups.serviceSettings.expected}`]);
+    meta.push(['content_runs', report.backups.content.runs]);
+    meta.push(['content_workloads', `${report.backups.content.workloads} of ${report.backups.content.expected}`]);
+    meta.push(['content_items_stored', report.backups.content.itemsStored]);
+    meta.push(['content_bytes_stored', report.backups.content.bytesStored]);
   }
   if (report.hoursSaved) {
     meta.push(['hours_saved_estimate', report.hoursSaved.hours]);

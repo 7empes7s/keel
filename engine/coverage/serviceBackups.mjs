@@ -226,3 +226,53 @@ export async function loadServiceBackups(client, { tenantRef }) {
   }
   return { settings, content };
 }
+
+/** Content workloads by name and service, as Microsoft names them. */
+export const CONTENT_WORKLOAD_INFO = Object.freeze({
+  'exchange-mail': { name: 'Mail, calendars and contacts', service: 'Exchange' },
+  'group-conversations': { name: 'Group conversations', service: 'Exchange' },
+  onedrive: { name: 'OneDrive files', service: 'SharePoint' },
+  sharepoint: { name: 'SharePoint document libraries', service: 'SharePoint' },
+  'sharepoint-sites': { name: 'SharePoint sites, lists and files', service: 'SharePoint' },
+  teams: { name: 'Teams, channels and tabs', service: 'Teams' },
+  planner: { name: 'Planner plans and tasks', service: null },
+});
+
+/** A content workload's name and service; an unknown one is named from its code. */
+export function contentWorkloadInfo(workload) {
+  return CONTENT_WORKLOAD_INFO[workload] ?? { name: String(workload).replaceAll('-', ' '), service: null };
+}
+
+/**
+ * The good runs of every service-settings and content workload, newest first, at most
+ * `perWorkload` each: { kind, workload, id, from, at }. For callers that place backups
+ * in time (Incidents).
+ */
+export async function loadGoodServiceRuns(client, { tenantRef, perWorkload = 50 }) {
+  assertTenantRef(tenantRef);
+  const present = await tablesPresent(client);
+  const runs = [];
+  if (present.workload) {
+    const { rows } = await client.query(
+      `SELECT workload, id, observed_from, observed_to FROM (
+         SELECT workload, id::text AS id, observed_from, observed_to,
+                row_number() OVER (PARTITION BY workload ORDER BY created_at DESC, id DESC) AS n
+           FROM workload_collection WHERE tenant_ref = $1 AND outcome IN ('complete','complete-empty')
+       ) ranked WHERE n <= $2 ORDER BY workload, observed_to DESC`,
+      [tenantRef, perWorkload],
+    );
+    for (const row of rows) runs.push({ kind: 'service-settings', workload: row.workload, id: row.id, from: iso(row.observed_from), at: iso(row.observed_to) });
+  }
+  if (present.contentRun) {
+    const { rows } = await client.query(
+      `SELECT workload, id, started_at, completed_at FROM (
+         SELECT workload, id::text AS id, started_at, completed_at,
+                row_number() OVER (PARTITION BY workload ORDER BY completed_at DESC, id DESC) AS n
+           FROM content_run WHERE tenant_ref = $1 AND outcome = 'succeeded'
+       ) ranked WHERE n <= $2 ORDER BY workload, completed_at DESC`,
+      [tenantRef, perWorkload],
+    );
+    for (const row of rows) runs.push({ kind: 'content', workload: row.workload, id: row.id, from: iso(row.started_at), at: iso(row.completed_at) });
+  }
+  return runs;
+}

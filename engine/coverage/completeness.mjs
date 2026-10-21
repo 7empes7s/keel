@@ -233,6 +233,18 @@ export const COMPLETENESS = Object.freeze({
   windowsQualityUpdatePolicy: { whole: 'not-written', missing: [part('Who the policy is assigned to', 'other-route')] },
   operationApprovalPolicy: { whole: 'not-written' },
   deviceCustomAttributeShellScript: { whole: 'not-written', missing: [part('The script body', 'other-route'), part('Who the script is assigned to', 'other-route')] },
+  // Remaining kinds, batch 4.
+  externalIdentitiesPolicy: { whole: 'not-written' },
+  b2bManagementPolicy: { whole: 'not-written' },
+  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('Its include and exclude conditions', 'other-route')] },
+  permissionGrantPreApprovalPolicy: { whole: 'not-written' },
+  accessReviewPolicy: { whole: 'not-written' },
+  directoryRoleAccessReviewPolicy: { whole: 'not-written' },
+  multiTenantOrganizationIdentitySyncPolicyTemplate: { whole: 'not-written' },
+  multiTenantOrganizationPartnerConfigurationTemplate: { whole: 'not-written' },
+  identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
+  authenticationEventListener: { whole: 'not-written' },
+  externalDomainFederation: { whole: 'not-written' },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

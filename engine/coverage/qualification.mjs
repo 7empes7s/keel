@@ -197,6 +197,18 @@ export const TYPE_DECISIONS = Object.freeze({
   windowsQualityUpdatePolicy: manual('no writer yet; beta only'),
   operationApprovalPolicy: manual('approval rules need a person to review them before they are set again'),
   deviceCustomAttributeShellScript: manual('no writer yet; the script body is read per script'),
+  // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; no writer is built yet.
+  externalIdentitiesPolicy: manual('no writer yet; beta only'),
+  b2bManagementPolicy: manual('no writer yet; beta only, and the domain lists are a JSON string'),
+  servicePrincipalCreationPolicy: manual('no writer yet; beta only, and the include and exclude conditions are read per policy'),
+  permissionGrantPreApprovalPolicy: manual('no writer yet; beta only'),
+  accessReviewPolicy: manual('no writer yet; beta only'),
+  directoryRoleAccessReviewPolicy: manual('no writer yet; beta only'),
+  multiTenantOrganizationIdentitySyncPolicyTemplate: manual('no writer yet; the template only affects tenants that join later'),
+  multiTenantOrganizationPartnerConfigurationTemplate: manual('no writer yet; the template only affects tenants that join later'),
+  identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
+  authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
+  externalDomainFederation: manual('no writer yet; the partner\'s identity provider is checked by hand'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -997,6 +1009,29 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; approval rules need a privilege review before they are set again'),
   deviceCustomAttributeShellScript: byHand('device-management', 'POST /deviceManagement/deviceCustomAttributeShellScripts (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up; the script body is read per script'),
+  // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; manual until a writer is built.
+  externalIdentitiesPolicy: byHand('policy', 'PATCH /policies/externalIdentitiesPolicy (beta)', 'Policy.ReadWrite.ExternalIdentities',
+    'backed up; no writer yet'),
+  b2bManagementPolicy: byHand('policy', 'PATCH /policies/b2bManagementPolicies/{id} (beta)', 'Policy.ReadWrite.B2BManagementPolicy',
+    'backed up; no writer yet'),
+  servicePrincipalCreationPolicy: byHand('policy', 'POST /policies/servicePrincipalCreationPolicies (beta)', 'Policy.ReadWrite.ApplicationConfiguration',
+    'backed up; the include and exclude conditions are read per policy'),
+  permissionGrantPreApprovalPolicy: byHand('policy', 'POST /policies/permissionGrantPreApprovalPolicies (beta)', 'Policy.ReadWrite.PermissionGrant',
+    'backed up; no writer yet'),
+  accessReviewPolicy: byHand('identity-application', 'PATCH /policies/accessReviewPolicy (beta)', 'Policy.ReadWrite.AccessReview',
+    'backed up; no writer yet'),
+  directoryRoleAccessReviewPolicy: byHand('identity-application', 'PATCH /policies/directoryRoleAccessReviewPolicy (beta)', 'RoleManagement.ReadWrite.Directory',
+    'backed up; no writer yet'),
+  multiTenantOrganizationIdentitySyncPolicyTemplate: byHand('policy', 'PATCH /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', 'Policy.ReadWrite.CrossTenantAccess',
+    'backed up; no writer yet'),
+  multiTenantOrganizationPartnerConfigurationTemplate: byHand('policy', 'PATCH /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration', 'Policy.ReadWrite.CrossTenantAccess',
+    'backed up; no writer yet'),
+  identityUserFlowAttribute: byHand('identity-application', 'POST /identity/userFlowAttributes', 'IdentityUserFlow.ReadWrite.All',
+    'backed up; built-in attributes are listed beside custom ones'),
+  authenticationEventListener: byHand('identity-application', 'POST /identity/authenticationEventListeners', 'EventListener.ReadWrite.All',
+    'backed up; its custom authentication extension is recreated first'),
+  externalDomainFederation: byHand('policy', 'POST /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation', 'IdentityProvider.ReadWrite.All',
+    'backed up with the partner\'s public signing certificate'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);

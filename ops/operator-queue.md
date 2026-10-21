@@ -5125,3 +5125,23 @@ item that needs it stays untouched.
      and delete `/root/q103-records/` (the held records with the raw id).
 - **Report:** per capture exit code and proven count; the check output and exit code; import counts; the run table as in
   Q103 step 4; the evidence branch and commit.
+
+### Q107: Recheck that Exchange mail flow and Exchange settings report complete (read-only)
+- Drafted by the "Exchange backups report partial" thread (2026-10-21). Q105 found the unknown fields were declared
+  properties the live module never returns. PR #429 stops declaring them and adds `digest.unknownFields` to each run.
+- Needs: PR #429 live (`git -C /opt/keel-live log --oneline | grep -c "#429"` is 1).
+- Status: todo
+- Result:
+- **Tenant:** reads only. The run sends only the declared `Get-` cmdlets with the collector credential. No grants, no role
+  or config changes.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-workload-collect.mjs run` once by hand (as in Q103 step 4). Report its exit code.
+  2. ```sql
+     SELECT workload, outcome, created_at, digest->'fieldCounts' AS field_counts, digest->'unknownFields' AS unknown_fields,
+            (SELECT count(*) FROM workload_observation o WHERE o.collection_id = wc.id) AS observations
+       FROM workload_collection wc
+      WHERE workload IN ('exchange-mail-flow', 'exchange-extended') AND created_at > now() - interval '15 minutes'
+      ORDER BY workload;
+     ```
+- **Expected:** both `complete`, `field_counts` with no `unknown`, `unknown_fields` `{}`, about 35 and 40 observations.
+- **Report:** step 1 exit code, step 2 verbatim.

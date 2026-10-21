@@ -21,6 +21,8 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
       viewerId: principalId,
       readers,
       operatorPrincipalId: host.operatorPrincipalId,
+      // The app ids the host signs in as, so steps can link to the app before it is observed.
+      appIds: host.credentials ? { collector: host.credentials.collector.identityRef, restorer: host.credentials.restorer.identityRef } : null,
     } as unknown as Parameters<typeof loadSetupState>[1]);
     let state: Awaited<ReturnType<typeof load>>;
     let checkFailed = false;
@@ -35,7 +37,7 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
       checkFailed = true;
     }
     return Response.json(
-      { ...state, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
+      { ...state, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
       { headers: NO_STORE },
     );
   }, deps);

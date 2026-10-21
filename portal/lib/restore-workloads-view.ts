@@ -1,4 +1,4 @@
-// Types and plain words for the Restore page's other Microsoft 365 services. No
+// Types and plain words for the Restore page's backups of other Microsoft 365 services. No
 // database here, so the client UI harness can render the cards from fixtures.
 
 export interface RestoreWorkloadWrite {
@@ -55,17 +55,10 @@ export function workloadBackupLine(workload: Pick<RestoreWorkload, "backup" | "l
   return { tone: "muted", text: "Not backed up yet" };
 }
 
-/** The chip on a card: is there a backup, and can KEEL put any of it back? */
-export function workloadRestoreChip(workload: Pick<RestoreWorkload, "writes" | "backup">): { tone: WorkloadTone; text: string } {
-  if (!workload.backup) return { tone: "muted", text: "No backup yet" };
-  return workload.writes.length ? { tone: "fine", text: "KEEL can put back" } : { tone: "soon", text: "By hand only" };
-}
-
-/** "Switched on once SharePoint tenant sharing and site settings is proven." */
-export function workloadWriteNote(write: RestoreWorkloadWrite): string | null {
-  if (!write.after.length) return null;
-  const names = write.after.length === 1 ? write.after[0] : `${write.after.slice(0, -1).join(", ")} and ${write.after.at(-1)}`;
-  return `Switched on once the restore of ${names} is proven on this tenant.`;
+/** True when there is something to show for this kind of setting on this tenant:
+ *  a backup, or a backup run that failed. Kinds that were never backed up are left out. */
+export function hasBackupData(workload: Pick<RestoreWorkload, "backup" | "lastRun">): boolean {
+  return workload.backup !== null || workload.lastRun?.outcome === "failed";
 }
 
 export interface WorkloadServiceGroup {
@@ -82,14 +75,6 @@ export function groupWorkloadsByService(workloads: RestoreWorkload[], order: (se
     groups.get(key)!.workloads.push(workload);
   }
   return [...groups.values()].sort((a, b) => order(a.service) - order(b.service));
-}
-
-/** The section's one-line summary. */
-export function workloadSummary(workloads: RestoreWorkload[]): string {
-  const services = new Set(workloads.map((workload) => workload.service ?? "other")).size;
-  const backedUp = workloads.filter((workload) => workload.backup).length;
-  const restorable = workloads.filter((workload) => workload.writes.length).length;
-  return `${count(services, "service")}, ${count(workloads.length, "kind", "kinds")} of settings: ${backedUp} backed up on this tenant, ${restorable} KEEL can put back at least in part.`;
 }
 
 // Starting a restore for one of these services from the Restore page.

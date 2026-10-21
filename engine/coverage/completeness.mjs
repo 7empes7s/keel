@@ -222,6 +222,17 @@ export const COMPLETENESS = Object.freeze({
   mobileAppCategory: { whole: 'not-written', missing: [part('Built-in categories', 'microsoft-managed')] },
   intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
+  // Remaining kinds, batch 3.
+  deviceManagementCompliancePolicy: { whole: 'not-written', missing: [part('Actions for noncompliance', 'other-route'), part('Who the policy is assigned to', 'other-route')] },
+  deviceManagementReusablePolicySetting: { whole: 'not-written' },
+  policySet: { whole: 'not-written', missing: [part('The apps and policies in each set', 'other-route'), part('Who the set is assigned to', 'other-route')] },
+  vppToken: { whole: 'not-written', missing: [part('The token file', 'secret')] },
+  depOnboardingSetting: { whole: 'not-written', missing: [part('The token file', 'secret'), part('Enrollment profiles under each token', 'other-route')] },
+  androidManagedStoreAccountEnterpriseSettings: { whole: 'not-written', missing: [part('Enrollment company codes and QR codes', 'secret')] },
+  managedDeviceCleanupRule: { whole: 'not-written' },
+  windowsQualityUpdatePolicy: { whole: 'not-written', missing: [part('Who the policy is assigned to', 'other-route')] },
+  operationApprovalPolicy: { whole: 'not-written' },
+  deviceCustomAttributeShellScript: { whole: 'not-written', missing: [part('The script body', 'other-route'), part('Who the script is assigned to', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

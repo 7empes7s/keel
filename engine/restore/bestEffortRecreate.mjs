@@ -128,6 +128,16 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   onPremisesConditionalAccessSettings: at(INTUNE, 'Tenant administration', 'Exchange on-premises access'),
   mobileAppCategory: at(INTUNE, 'Apps', 'App categories'),
   intuneBrandingProfile: at(INTUNE, 'Tenant administration', 'Customization'),
+  deviceManagementCompliancePolicy: at(INTUNE, 'Devices', 'Compliance', 'Policies'),
+  deviceManagementReusablePolicySetting: at(INTUNE, 'Endpoint security', 'Firewall', 'Reusable settings'),
+  policySet: at(INTUNE, 'Devices', 'Policy sets'),
+  vppToken: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Apple VPP tokens'),
+  depOnboardingSetting: at(INTUNE, 'Devices', 'Enrollment', 'Apple', 'Enrollment program tokens'),
+  androidManagedStoreAccountEnterpriseSettings: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Managed Google Play'),
+  managedDeviceCleanupRule: at(INTUNE, 'Devices', 'Device cleanup rules'),
+  windowsQualityUpdatePolicy: at(INTUNE, 'Devices', 'Windows updates', 'Quality updates'),
+  operationApprovalPolicy: at(INTUNE, 'Tenant administration', 'Multi Admin Approval', 'Access policies'),
+  deviceCustomAttributeShellScript: at(INTUNE, 'Devices', 'macOS', 'Custom attributes'),
 });
 
 export function adminCenterPathFor(resourceType) {

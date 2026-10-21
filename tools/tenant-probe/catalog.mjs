@@ -32,6 +32,7 @@ import entraGovernance from './catalog.d/entra-governance.mjs';
 import entraPerParent from './catalog.d/entra-per-parent.mjs';
 import intuneExtended from './catalog.d/intune-extended.mjs';
 import tenantConnectors from './catalog.d/tenant-connectors.mjs';
+import intuneTenantSettings from './catalog.d/intune-tenant-settings.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -45,6 +46,7 @@ export const CATALOG = [
   ...entraPerParent,
   ...intuneExtended,
   ...tenantConnectors,
+  ...intuneTenantSettings,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

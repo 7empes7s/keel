@@ -186,6 +186,17 @@ export const TYPE_DECISIONS = Object.freeze({
   mobileAppCategory: manual('no writer yet; built-in categories are Microsoft-managed'),
   intuneBrandingProfile: manual('no writer yet; beta only, and logo images are read per profile'),
   customAuthenticationExtension: manual('no writer yet; the endpoint\'s own sign-in settings are checked by hand'),
+  // Remaining kinds, batch 3: Intune tenant settings, backed up read-only; no writer is built yet.
+  deviceManagementCompliancePolicy: manual('no writer yet; beta only, and actions for noncompliance are read per policy'),
+  deviceManagementReusablePolicySetting: manual('no writer yet; beta only'),
+  policySet: manual('no writer yet; beta only, and the items in a set are read per set'),
+  vppToken: manual('Apple issues the token; no tool can upload it from a backup'),
+  depOnboardingSetting: manual('Apple issues the token; no tool can upload it from a backup'),
+  androidManagedStoreAccountEnterpriseSettings: manual('the binding is made by signing in to Google; no tool can make it from a backup'),
+  managedDeviceCleanupRule: manual('no writer yet; beta only'),
+  windowsQualityUpdatePolicy: manual('no writer yet; beta only'),
+  operationApprovalPolicy: manual('approval rules need a person to review them before they are set again'),
+  deviceCustomAttributeShellScript: manual('no writer yet; the script body is read per script'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -965,6 +976,27 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; logo images are read per profile'),
   customAuthenticationExtension: byHand('identity-application', 'POST /identity/customAuthenticationExtensions', 'CustomAuthenticationExtension.ReadWrite.All',
     'backed up; the endpoint and its sign-in settings are checked by hand before a recreate'),
+  // Remaining kinds, batch 3: Intune tenant settings, backed up read-only; manual until a writer is built.
+  deviceManagementCompliancePolicy: byHand('device-management', 'POST /deviceManagement/compliancePolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up with its settings; actions for noncompliance and assignments are read per policy'),
+  deviceManagementReusablePolicySetting: byHand('device-management', 'POST /deviceManagement/reusablePolicySettings (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; no writer yet'),
+  policySet: byHand('device-management', 'POST /deviceAppManagement/policySets (beta)', 'DeviceManagementApps.ReadWrite.All',
+    'backed up; the items in a set are read per set'),
+  vppToken: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up without the token; a new token comes from Apple Business Manager'),
+  depOnboardingSetting: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up without the token; a new token comes from Apple Business Manager'),
+  androidManagedStoreAccountEnterpriseSettings: byHand('device-management', null, 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up without enrollment codes; the binding is made by signing in to Google'),
+  managedDeviceCleanupRule: byHand('device-management', 'POST /deviceManagement/managedDeviceCleanupRules (beta)', 'DeviceManagementManagedDevices.ReadWrite.All',
+    'backed up; no writer yet'),
+  windowsQualityUpdatePolicy: byHand('device-management', 'POST /deviceManagement/windowsQualityUpdatePolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; no writer yet'),
+  operationApprovalPolicy: byHand('device-management', 'POST /deviceManagement/operationApprovalPolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; approval rules need a privilege review before they are set again'),
+  deviceCustomAttributeShellScript: byHand('device-management', 'POST /deviceManagement/deviceCustomAttributeShellScripts (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; the script body is read per script'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);

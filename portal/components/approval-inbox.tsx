@@ -7,7 +7,8 @@ import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "rea
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, ReferenceFields, refUsage, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { refUsage } from "@/lib/record-refs";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";

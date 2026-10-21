@@ -8350,6 +8350,10 @@ section.wizard-panel {
 }
 
 /* --- What's protected (portal audit: pick A on a desktop, pick B on a phone) --- */
+.content-backups > p { margin: var(--space-sm) 0 0; }
+.content-backups .activity-list { margin-top: var(--space-md); }
+.content-row-title { color: var(--text); font-weight: 600; }
+.content-row .row-name > small { white-space: normal; }
 .page-header-actions { display: inline-flex; align-items: center; gap: var(--space-xs); }
 .pt-backup-now { display: inline-grid; gap: var(--space-2xs); justify-items: end; }
 .pt-split { display: inline-flex; }
